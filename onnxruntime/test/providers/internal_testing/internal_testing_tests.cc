@@ -6,6 +6,9 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/utils.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/ort_env.h"
 
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
@@ -19,6 +22,9 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
+
+// defined in test_main.cc
+extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
@@ -239,6 +245,82 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
               ::testing::HasSubstr("Non-zero status code returned while running Conv node. Name:'Conv' "
                                    "Status Message: TODO: add NHWC implementation here."));
 }
+
+TEST(InternalTestingEP, TestRegisterAllocatorHandlesUsageInMultipleSessions) {
+  auto init_session = [](std::vector<std::shared_ptr<IExecutionProvider>>& eps,
+                         InferenceSessionWrapper& session) {
+    for (const auto& ep : eps) {
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(ep));
+    }
+
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model.onnx";
+    ASSERT_STATUS_OK(session.Load(ort_model_path));
+    ASSERT_STATUS_OK(session.Initialize());
+  };
+
+  // create 2 sessions
+  SessionOptions so;
+  InferenceSessionWrapper session1(so, GetEnvironment());
+  InferenceSessionWrapper session2(so, GetEnvironment());
+
+  // and use the same EP instances in both
+  const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
+  std::vector<std::shared_ptr<IExecutionProvider>> eps{
+      std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{},
+                                                         DataLayout::NHWC),
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
+
+  // check RegisterAllocator is implemented properly and supports calls from multiple inference sessions
+  init_session(eps, session1);
+  init_session(eps, session2);
+
+  // check that allocator sharing worked. the internal testing EP should be using the CPU EP allocator
+  ASSERT_EQ(eps[0]->GetAllocator(0, OrtMemType::OrtMemTypeDefault),
+            eps[1]->GetAllocator(0, OrtMemType::OrtMemTypeDefault))
+      << "EPs do not have the same default allocator";
+}
+
+// make sure allocators returned by SessionState::GetAllocator are valid when IExecutionProvider::ReplaceAllocator
+// is used. if something is off InferenceSession::Initialize will fail.
+TEST(InternalTestingEP, TestReplaceAllocatorDoesntBreakDueToLocalAllocatorStorage) {
+  OrtMemoryInfo mem_info("Replacement", OrtAllocatorType::OrtDeviceAllocator);
+  AllocatorPtr replacement_alloc = std::make_shared<CPUAllocator>(mem_info);
+  OrtEnv& env = *(OrtEnv*)(*ort_env);
+
+  ASSERT_STATUS_OK(env.RegisterAllocator(replacement_alloc));
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
+  InferenceSessionWrapper session(so, env.GetEnvironment());
+
+  const std::unordered_set<std::string> supported_ops{"Conv", "Clip"};
+
+  std::vector<std::shared_ptr<IExecutionProvider>> eps{
+      std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{},
+                                                         DataLayout::NHWC),
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
+
+  for (const auto& ep : eps) {
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(ep));
+  }
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model.onnx";
+  ASSERT_STATUS_OK(session.Load(ort_model_path));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  ASSERT_STATUS_OK(env.UnregisterAllocator(mem_info));
+
+  // CPU EP is simple and should use the replacement allocator
+  ASSERT_EQ(replacement_alloc, eps[1]->GetAllocator(0, OrtMemType::OrtMemTypeDefault));
+
+  // our test EP has a local allocator and GetAllocator override.
+  //   - a call to GetAllocator won't match the replacement one because of this.
+  //   - a call to IExecutionProvider::GetAllocator should.
+  // this is not a good setup, but at least clarifies how the current system works.
+  ASSERT_NE(replacement_alloc, eps[0]->GetAllocator(0, OrtMemType::OrtMemTypeDefault));
+  ASSERT_EQ(replacement_alloc, eps[0]->IExecutionProvider::GetAllocator(0, OrtMemType::OrtMemTypeDefault));
+}
+
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

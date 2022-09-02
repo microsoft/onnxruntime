@@ -1691,7 +1691,19 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Split", split_handler},
     {"Shape", shape_handler},
     {"Pad", pad_handler},
+// The CUDA Resize kernel assumes that the input is NCHW and
+// Resize can't be supported in ORT builds with CUDA enabled.
+// TODO: Enable this once the CUDA Resize kernel is implemented
+// "generically" (i.e.) aligning with the generic nature of the
+// ONNX spec.
+// See https://github.com/microsoft/onnxruntime/pull/10824 for
+// a similar fix applied to the CPU Resize kernel.
+// Per tests included in #10824, the ROCM EP also generates
+// incorrect results when this handler is used, so the Resize 
+// handler is not enabled even for those builds.
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
     {"Resize", resize_handler},
+#endif
     {"ReduceSum", reduce_sum_handler},
 
     {"ReduceLogSum", reduce_op_handler},
@@ -1756,6 +1768,30 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops
   return nullptr;
 }
 
+// Some op should be optimized any time there is a transpose as input and a handler is available.
+static bool CanNodeSkipCostCheck(const OptimizerCtx& ctx, const api::NodeRef& node) {
+  if (node.IsOp("Transpose")) {
+    return true;
+  }
+  if (node.IsOp("MaxPool")) {
+    // Inclusion of MaxPool is a hack because it has higher perf in the NHWC variant when supported.
+    return true;
+  }
+  if (node.IsOp("Resize")) {
+    // Resize is included because it has higher perf in the NHWC variant when
+    // the input X is 4D int8 tensor and the mode is linear
+    auto X_value_info = ctx.graph.GetValueInfo(node.Inputs()[0]);
+    auto X_shape = X_value_info->Shape();
+    auto X_dtype = X_value_info->DType();
+    auto mode = node.GetAttributeString("mode");
+    if (X_shape && X_shape->size() == 4 && (X_dtype == api::DataType::UINT8 || X_dtype == api::DataType::INT8) &&
+        mode && *mode == "linear") {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Finds a handler for the node and estimates the cost of pushing a transpose. Does so if deemed beneficial.
 bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& node,
                       const std::vector<int64_t>& perm, size_t transpose_input_index,
@@ -1771,9 +1807,7 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
     return false;
   }
 
-  // Transpose and MaxPool should be optimized any time there is a transpose as input and a handler is available.
-  // Inclusion of MaxPool is a hack because it has higher perf in the NHWC variant when supported.
-  if (!ctx.skip_cost_check && !node.IsOp("Transpose") && !node.IsOp("MaxPool")) {
+  if (!ctx.skip_cost_check && !CanNodeSkipCostCheck(ctx, node)) {
     // We require the input cost (number of transposes before the op) and the total cost to strictly decrease.
     // Strict decrease of the input cost ensures the optimization is stable, since the total cost decrease is just an
     // estimate (the transpose after the op may or may not cancel with a subsequent transpose). We don't want
@@ -1953,11 +1987,18 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
         continue;
       }
 
-      auto consumers = ctx.graph.GetValueConsumers(transpose_node.Outputs()[0]);
-      bool is_part_of_qdq_group = std::find_if(consumers->nodes.cbegin(), consumers->nodes.cend(),
+      // Check if Transpose node is the only consumer of dq node
+      auto consumers_of_dq_node = ctx.graph.GetValueConsumers(dq_node->Outputs()[0]);
+      if (!consumers_of_dq_node->comprehensive || consumers_of_dq_node->nodes.size() > 1) {
+        continue;
+      }
+
+      auto consumers_of_transpose_node = ctx.graph.GetValueConsumers(transpose_node.Outputs()[0]);
+      bool is_part_of_qdq_group = std::find_if(consumers_of_transpose_node->nodes.cbegin(),
+                                               consumers_of_transpose_node->nodes.cend(),
                                                [](const std::unique_ptr<api::NodeRef>& node) {
                                                  return node->OpType() == "QuantizeLinear";
-                                               }) != consumers->nodes.cend();
+                                               }) != consumers_of_transpose_node->nodes.cend();
       if (is_part_of_qdq_group) {
         continue;
       }
@@ -1968,7 +2009,9 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
         continue;
       }
 
-      if (!HandleQuantizeDequantizeScale(ctx.graph, *perm, *dq_node, ctx.opset)) {
+      // we're moving the Transpose to before the DQ, so we need to use the inverse permutations to update the axis
+      // attribute correctly when doing per-axis dequantization
+      if (!HandleQuantizeDequantizeScale(ctx.graph, InvertPerm(*perm), *dq_node, ctx.opset)) {
         continue;
       }
 

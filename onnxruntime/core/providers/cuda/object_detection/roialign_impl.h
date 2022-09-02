@@ -24,6 +24,7 @@ void RoiAlignImpl(
     int64_t roi_cols,
     T* top_data,
     const bool is_mode_avg,
+    const bool half_pixel,
     const int64_t* batch_indices_ptr);
 
 }  // namespace cuda

@@ -492,4 +492,5 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse = {
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_SSE::PackedK,
     0,
+    1  // assembly kernel M stride
 };

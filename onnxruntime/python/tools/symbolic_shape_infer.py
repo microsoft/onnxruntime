@@ -139,7 +139,7 @@ class SymbolicShapeInference:
             "Gather": self._infer_Gather,
             "GatherElements": self._infer_GatherElements,
             "GatherND": self._infer_GatherND,
-            "Gelu": self._pass_on_shape_and_type,
+            "Identity": self._pass_on_shape_and_type,
             "If": self._infer_If,
             "Loop": self._infer_Loop,
             "MatMul": self._infer_MatMul,
@@ -192,19 +192,18 @@ class SymbolicShapeInference:
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
         }
         self.aten_op_dispatcher_ = {
-            "aten::embedding": self._infer_Gather,
-            "aten::bitwise_or": self._infer_aten_bitwise_or,
-            "aten::diagonal": self._infer_aten_diagonal,
-            "aten::max_pool2d_with_indices": self._infer_aten_pool2d,
-            "aten::max": self._infer_aten_minmax,
-            "aten::min": self._infer_aten_minmax,
-            "aten::multinomial": self._infer_aten_multinomial,
-            "aten::unfold": self._infer_aten_unfold,
-            "aten::argmax": self._infer_aten_argmax,
-            "aten::avg_pool2d": self._infer_aten_pool2d,
-            "aten::_adaptive_avg_pool2d": self._infer_aten_pool2d,
-            "aten::binary_cross_entropy_with_logits": self._infer_aten_bce,
-            "aten::numpy_T": self._infer_Transpose,
+            "embedding": self._infer_Gather,
+            "bitwise_or": self._infer_aten_bitwise_or,
+            "diagonal": self._infer_aten_diagonal,
+            "max_pool2d_with_indices": self._infer_aten_pool2d,
+            "max": self._infer_aten_minmax,
+            "min": self._infer_aten_minmax,
+            "multinomial": self._infer_aten_multinomial,
+            "unfold": self._infer_aten_unfold,
+            "argmax": self._infer_aten_argmax,
+            "avg_pool2d": self._infer_aten_pool2d,
+            "_adaptive_avg_pool2d": self._infer_aten_pool2d,
+            "numpy_T": self._infer_Transpose,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -1345,18 +1344,6 @@ class SymbolicShapeInference:
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, new_shape))
 
-    def _infer_aten_bce(self, node):
-        reduction = self._try_get_value(node, 4)
-        if reduction is None:
-            reduction = 1
-        elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-        vi = self.known_vi_[node.output[0]]
-        if reduction == 0:
-            vi.type.tensor_type.elem_type = elem_type
-            vi.type.tensor_type.shape.CopyFrom(onnx.TensorShapeProto())
-        else:
-            vi.CopyFrom(helper.make_tensor_value_info(vi.name, elem_type, self._get_shape(node, 0)))
-
     def _infer_BatchNormalization(self, node):
         self._propagate_shape_and_type(node)
 
@@ -1535,7 +1522,7 @@ class SymbolicShapeInference:
             handle_negative_axis(ax, self._get_shape_rank(node, i + num_scan_states))
             for i, ax in enumerate(scan_input_axes)
         ]
-        # We may have cases where the subgraph has optionial inputs that appear in both subgraph's input and initializer,
+        # We may have cases where the subgraph has optional inputs that appear in both subgraph's input and initializer,
         # but not in the node's input. In such cases, the input model might be invalid, but let's skip those optional inputs.
         assert len(subgraph.input) >= len(node.input)
         subgraph_inputs = subgraph.input[: len(node.input)]
@@ -2389,6 +2376,29 @@ def parse_arguments():
         type=int,
         default=0,
     )
+    parser.add_argument(
+        "--save_as_external_data",
+        help="Saving an ONNX model to external data",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--all_tensors_to_one_file",
+        help="Saving all the external data to one file",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--external_data_location",
+        help="The file location to save the external file",
+        default="./",
+    )
+    parser.add_argument(
+        "--external_data_size_threshold",
+        help="The size threshold for external data",
+        type=int,
+        default=1024,
+    )
     return parser.parse_args()
 
 
@@ -2406,5 +2416,16 @@ if __name__ == "__main__":
         args.verbose,
     )
     if args.output and out_mp:
-        onnx.save(out_mp, args.output)
+        if args.save_as_external_data:
+            onnx.save_model(
+                out_mp,
+                args.output,
+                save_as_external_data=True,
+                all_tensors_to_one_file=args.all_tensors_to_one_file,
+                location=args.external_data_location,
+                size_threshold=args.external_data_size_threshold,
+                convert_attribute=False,
+            )
+        else:
+            onnx.save(out_mp, args.output)
         logger.info("Done!")

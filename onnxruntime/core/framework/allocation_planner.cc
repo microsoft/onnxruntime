@@ -77,13 +77,16 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   const SequentialExecutionPlan& plan = *planinfo.first;
   const SessionState& session_state = *planinfo.second;
   auto& graph = session_state.GetGraphViewer();
-  std::unordered_map<int, std::string> index_to_name;
+
+  const auto& name_idx_map = session_state.GetOrtValueNameIdxMap();
+  InlinedHashMap<int, std::string_view> index_to_name;
+  index_to_name.reserve(name_idx_map.Size());
 
   out << "Allocation Plan:\n";
   out << "(ort_value_idx) output_name : <allocation plan>\n";
   auto plan_size = plan.allocation_plan.size();
 
-  for (auto& name_index : session_state.GetOrtValueNameIdxMap()) {
+  for (auto& name_index : name_idx_map) {
     auto index = name_index.second;
     index_to_name[index] = name_index.first;
     out << "(" << index << ") " << name_index.first << " : ";
@@ -141,10 +144,10 @@ static const KernelCreateInfo& GetKernelCreateInfo(
 class PlannerImpl {
  public:
   PlannerImpl(const Node* parent_node, const onnxruntime::GraphViewer& graph_viewer,
-              const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
+              gsl::span<const NodeArg* const> outer_scope_node_args, const ExecutionProviders& providers,
               const KernelCreateInfoMap& kernel_create_info_map,
               const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-              const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
+              const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
       : context_(context),
@@ -166,13 +169,13 @@ class PlannerImpl {
 
   const Node* parent_node_;
   const onnxruntime::GraphViewer& graph_viewer_;
-  const std::vector<const NodeArg*>& outer_scope_node_args_;
+  gsl::span<const NodeArg* const> outer_scope_node_args_;
   const ExecutionProviders& execution_providers_;
 
   const KernelCreateInfoMap& kernel_create_info_map_;
   const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps_;
 
-  const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map_;
+  const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map_;
 
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
 
@@ -286,7 +289,9 @@ class PlannerImpl {
 #endif
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
-  bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input) {
+  bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input,
+                         bool* is_strided_tensor) {
+    *is_strided_tensor = false;
 #ifdef ENABLE_TRAINING
     // Inputs of Yields are essentially the outputs for FW partial subgraph
     // Thses tensors will be pass back to pytorch, thus cannot share the buffer with other tensors
@@ -299,7 +304,7 @@ class PlannerImpl {
     if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
       return false;
     }
-#endif  //ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
 
     auto p_output_arg = node.OutputDefs()[output_arg_num];
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
@@ -387,6 +392,7 @@ class PlannerImpl {
         }
         if (can_strided) {
           *reusable_input = Index(input_args[pair.first]->Name());
+          *is_strided_tensor = true;
           return true;
         }
       }
@@ -418,7 +424,7 @@ class PlannerImpl {
   }
 
   /*! \brief Given a tensor-type, return the size of an element of the tensor.
-  */
+   */
   static size_t GetElementSize(const DataType& tensor_type) {
     const TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
     MLDataType ml_data_type = DataTypeImpl::TypeFromProto(type_proto);
@@ -898,7 +904,7 @@ class PlannerImpl {
   // Should only be used after ProcessDef()
   Status ComputeReusePlan() {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
-    //copy the use counts to a vector, before computing reuse
+    // copy the use counts to a vector, before computing reuse
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     std::vector<int> ort_value_usecount;
     for (auto ort_value_info : ort_value_info_) {
@@ -960,6 +966,7 @@ class PlannerImpl {
         // Declare OrtValue index of the reused buffer.
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
+        bool is_strided_tensor = false;
         if (has_external_outputs) {
           ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
           AllocPlan(current).alloc_kind = AllocKind::kAllocatedExternally;
@@ -1006,11 +1013,16 @@ class PlannerImpl {
             }
           }
         } else if (!context_.IsParallelExecutionEnabled() &&
-                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
+                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused, &is_strided_tensor)) {
           // Re-using inputs is applicable for tensors, sequence tensors,
           // and optional types if the kernel has marked certain inputs as
           // possible candidates for re-use
           Reuse(reused, current, AllocKind::kReuse);
+#ifdef ENABLE_TRAINING
+          if (is_strided_tensor) AllocPlan(current).is_strided_tensor = true;
+#else
+          ORT_ENFORCE(!is_strided_tensor, "Strided tensor is not supported in non-training build for now.");
+#endif  // ENABLE_TRAINING
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
 #endif
@@ -1214,7 +1226,7 @@ class PlannerImpl {
     plan_.to_be_freed.reserve(freelist_.size());
     bool has_prev_dealloc_point = false;
     size_t prev_dealloc_point = 0;
-    //TODO: should be size_t
+    // TODO: should be size_t
     int current = 0;  // current index into the to_be_freed vector
 
     // Copy all items from freelist to to_be_freed in reverse order
@@ -1261,7 +1273,7 @@ class PlannerImpl {
   }
 #endif
 
-  //For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
+  // For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void AdjustInplaceLifeIntervals() {
     std::unordered_map<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
@@ -1309,7 +1321,7 @@ Status PlannerImpl::CreatePlan() {
   ORT_RETURN_IF_ERROR(ComputeFenceCheck());
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  //Adjust the allocate and lifetime intervals for all ml-values, based on their allocation kind.
+  // Adjust the allocate and lifetime intervals for all ml-values, based on their allocation kind.
   AdjustInplaceLifeIntervals();
 #endif
 
@@ -1331,16 +1343,16 @@ Status PlannerImpl::CreatePlan() {
 Status SequentialPlanner::CreatePlan(
     const Node* parent_node,
     const onnxruntime::GraphViewer& graph_viewer,
-    const std::vector<const NodeArg*>& outer_scope_node_args,
+    gsl::span<const NodeArg* const> outer_scope_node_args,
     const ExecutionProviders& providers,
     const KernelCreateInfoMap& kernel_create_info_map,
     const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-    const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
+    const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
-    std::unique_ptr<SequentialExecutionPlan>& plan) {
+    std::optional<SequentialExecutionPlan>& plan) {
   // allocate/reset here so we know it's clean
-  plan = std::make_unique<SequentialExecutionPlan>();
+  plan.emplace();
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
                       kernel_create_info_map, subgraphs_kernel_create_info_maps,

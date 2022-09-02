@@ -22,7 +22,7 @@ constexpr NameAndIndex nearestNeighborRoundingModes[] =
     {"round_prefer_floor", 0},  // round halves down
     {"round_prefer_ceil", 1},   // round halves up
     {"floor", 2},               // round always down
-    // {"ceil", 3},             // round always up (requires a DirectML API addition)
+    {"ceil", 3},                // round always up
 };
 
 void ComputePixelOffsetsAndScales(
@@ -212,14 +212,16 @@ public:
         );
 
         // Find any useless dimensions of size 1 that occur in both input and output.
+        // This enables higher dimension cases (where models prepend unnecessary
+        // dimensions) beyond DML's supported dimension count of 4.
         for (size_t i = 0, rank = m_outputDimensions.size(); i < rank; ++i)
         {
-	
             if (m_inputDimensions[i] == 1 && m_outputDimensions[i] == 1)
             {
                 squeezableDimensionIndices.push_back(gsl::narrow_cast<uint32_t>(i));
             }
         }
+
         RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ squeezedInputShape);
         RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ paddedScales);
         RemoveValuesByIndex(squeezableDimensionIndices, /*keepOneValue*/ true, /*inout*/ inputPixelOffsets);
@@ -248,30 +250,37 @@ public:
         std::string mode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::Mode, "NEAREST");
         DML_INTERPOLATION_MODE interpolationMode = Dml::MapStringToInteropolationMode(mode);
 
-        // DML's nearest neighbor mode uses round-halves-up (or round_prefer_ceil) via floor(input.x + 0.5).
-        // So to support floor, adjust the input by half a pixel.
-        // round_prefer_floor is not supported without an API extension,
-        // but existing code already default to treating it as round_prefer_ceil.
-        // So continue that.
+        // Map ONNX to DML's mode using offsets and rounding direction.
+        // These offsets are in addition to the coordinate transform offsets.
+        DML_AXIS_DIRECTION roundingDirection = DML_AXIS_DIRECTION_DECREASING;
         if (interpolationMode == DML_INTERPOLATION_MODE_NEAREST_NEIGHBOR)
         {
             std::string nearestMode = kernelCreationContext.GetOptionalAttribute<std::string>(AttrName::NearestMode, "round_prefer_floor");
+            float offsetAdjustment = 0.5f;
             auto optionalNearestModeValue = TryMapStringToIndex(nearestMode, nearestNeighborRoundingModes);
             if (optionalNearestModeValue)
             {
+                // The round_prefer_floor mode rounds values to the nearest integer, with half ties rounded toward
+                // negative infinity. The increasing rounding direction is correct, albeit unintuitive, because
+                // floor(x + 0.5) would return the wrong result, whereas the correct implementation is ceil(x - 0.5).
+                // The input offset is positive because positive input offsets translate the output rightward and
+                // downward, which (from the perspective of the output) is equivalent to panning the input
+                // toward further negative coordinates.
                 switch (*optionalNearestModeValue)
                 {
-                case 0: // round_prefer_floor
-                case 1: // round_prefer_ceil
-                    break;
-                case 2: // floor
-                    for (auto& offset : inputPixelOffsets)
-                    {
-                        offset += 0.5;
-                    }
-                    break;
+                case 0: /*round_prefer_floor*/ roundingDirection = DML_AXIS_DIRECTION_INCREASING; offsetAdjustment =  0.5;  break;
+                case 1: /*round_prefer_ceil */ roundingDirection = DML_AXIS_DIRECTION_DECREASING; offsetAdjustment = -0.5;  break;
+                case 2: /*floor             */ roundingDirection = DML_AXIS_DIRECTION_DECREASING; offsetAdjustment =  0.0;  break;
+                case 3: /*ceil              */ roundingDirection = DML_AXIS_DIRECTION_INCREASING; offsetAdjustment =  0.0;  break;
                 default:
                     assert(false);
+                }
+            }
+            if (offsetAdjustment != 0.0f)
+            {
+                for (auto& offset : inputPixelOffsets)
+                {
+                    offset += offsetAdjustment;
                 }
             }
         }
@@ -280,16 +289,17 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        DML_RESAMPLE1_OPERATOR_DESC operatorDesc = {};
+        DML_RESAMPLE2_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = inputDescs.data();
         operatorDesc.OutputTensor = outputDescs.data();
         operatorDesc.InterpolationMode = interpolationMode;
+        operatorDesc.RoundingDirection = roundingDirection;
         operatorDesc.Scales = paddedScales.data();
         operatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(paddedScales.size());
         operatorDesc.InputPixelOffsets = inputPixelOffsets.data();
         operatorDesc.OutputPixelOffsets = outputPixelOffsets.data();
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE1, &operatorDesc };
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_RESAMPLE2, &operatorDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };
@@ -319,14 +329,6 @@ void CALLBACK QueryResize(IMLOperatorSupportQueryContextPrivate* context, bool* 
     // Note the extrapolation value is only pertinent for "tf_crop_and_resize" mode.
     float extrapolationValue = attributes.GetOptionalAttribute<float>(AttrName::ExtrapolationValue, 0.0);
     if (extrapolationValue != 0.0)
-    {
-        return;
-    }
-
-    // DML's nearest neighbor mode uses half pixels rounded down.
-    std::string nearestMode = attributes.GetOptionalAttribute<std::string>(AttrName::NearestMode, "round_prefer_floor");
-    auto optionalNearestModeValue = TryMapStringToIndex(nearestMode, nearestNeighborRoundingModes);
-    if (!optionalNearestModeValue)
     {
         return;
     }

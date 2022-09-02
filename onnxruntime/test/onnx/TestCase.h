@@ -24,8 +24,8 @@ class HeapBuffer;
 }
 }  // namespace onnxruntime
 
-//One test case is for one model file
-//One test case can contain multiple test data(input/output pairs)
+// One test case is for one model file
+// One test case can contain multiple test data(input/output pairs)
 class ITestCase {
  public:
   virtual void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
@@ -38,9 +38,9 @@ class ITestCase {
 
   virtual const std::string& GetTestCaseName() const = 0;
   virtual std::string GetTestCaseVersion() const = 0;
-  //a string to help identify the dataset
+  // a string to help identify the dataset
   virtual std::string GetDatasetDebugInfoString(size_t dataset_id) const = 0;
-  //The number of input/output pairs
+  // The number of input/output pairs
   virtual size_t GetDataCount() const = 0;
   virtual ~ITestCase() = default;
   virtual void GetPerSampleTolerance(double* value) const = 0;
@@ -83,8 +83,26 @@ std::unique_ptr<ITestCase> CreateOnnxTestCase(const std::string& test_case_name,
                                               double default_per_sample_tolerance,
                                               double default_relative_per_sample_tolerance);
 
+class TestTolerances {
+ public:
+  typedef std::unordered_map<std::string, double> Map;
+  TestTolerances(
+      double absolute_default, double relative_default,
+      const Map& absolute_overrides,
+      const Map& relative_overrides);
+  TestTolerances() = delete;
+  double absolute(const std::string& test_name) const;
+  double relative(const std::string& test_name) const;
+
+ private:
+  double absolute_default_;
+  double relative_default_;
+  const Map absolute_overrides_;
+  const Map relative_overrides_;
+};
+
 void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
                const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
-               double default_per_sample_tolerance, double default_relative_per_sample_tolerance,
+               const TestTolerances& tolerances,
                const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests,
                const std::function<void(std::unique_ptr<ITestCase>)>& process_function);

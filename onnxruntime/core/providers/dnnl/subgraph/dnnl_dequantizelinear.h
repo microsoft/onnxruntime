@@ -24,6 +24,7 @@ class DnnlDequantizeLinear {
   void CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node);
 
  private:
+  bool isZeroPointNonZero(dnnl::memory* zp_mem);
   int64_t GetAxis(DnnlNode& node, size_t x_dims);
   void Padd(dnnl::memory::desc* target, size_t front_pad, size_t back_pad);
   void ValidateDims(DnnlSubgraphPrimitive& sp, DnnlNode& node);

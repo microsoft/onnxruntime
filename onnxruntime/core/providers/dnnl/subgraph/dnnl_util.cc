@@ -21,10 +21,15 @@ dnnl::algorithm OrtOperatorToDnnlAlgorithm(std::string op) {
           {"Abs", dnnl::algorithm::eltwise_abs},
           {"BiasGelu", dnnl::algorithm::eltwise_gelu_erf},
           {"Elu", dnnl::algorithm::eltwise_elu},  // algorithm requires alpha value
+          {"Equal", dnnl::algorithm::binary_eq},
           {"Exp", dnnl::algorithm::eltwise_exp},
           {"FastGelu", dnnl::algorithm::eltwise_gelu_tanh},
           {"Gelu", dnnl::algorithm::eltwise_gelu_erf},
+          {"Greater", dnnl::algorithm::binary_gt},
+          {"GreaterOrEqual", dnnl::algorithm::binary_ge},
           {"LeakyRelu", dnnl::algorithm::eltwise_relu},  // algorithm requires alpha value
+          {"Less", dnnl::algorithm::binary_lt},
+          {"LessOrEqual", dnnl::algorithm::binary_le},
           {"Log", dnnl::algorithm::eltwise_log},
           {"Relu", dnnl::algorithm::eltwise_relu},
           {"Round", dnnl::algorithm::eltwise_round},

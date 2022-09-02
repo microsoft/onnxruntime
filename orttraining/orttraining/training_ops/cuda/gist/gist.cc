@@ -274,7 +274,7 @@ Status GistPackMsfp15EncoderOp<T>::ComputeInternal(OpKernelContext* context) con
   const size_t ndims = shape.NumDimensions();
   const size_t pre_axis_size = shape.SizeToDimension(ndims - 1);
   size_t axis_size = shape.SizeFromDimension(ndims - 1);
-  const size_t tile_size = 8;
+  constexpr size_t tile_size = 8;
   if (axis_size % tile_size != 0)
     axis_size = shape.SizeToDimension(ndims - 2);
 
@@ -313,7 +313,7 @@ Status GistPackMsfp15DecoderOp<T>::ComputeInternal(OpKernelContext* context) con
   const size_t ndims = shape.NumDimensions();
   const size_t pre_axis_size = shape.SizeToDimension(ndims - 1);
   size_t axis_size = shape.SizeFromDimension(ndims - 1);
-  const size_t tile_size = 8;
+  constexpr size_t tile_size = 8;
   if (axis_size % tile_size != 0)
     axis_size = shape.SizeToDimension(ndims - 2);
   typedef typename ToCudaType<T>::MappedType CudaT;

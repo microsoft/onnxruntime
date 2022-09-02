@@ -8,6 +8,7 @@ Implements ONNX's backend API.
 import os
 import unittest
 
+import packaging.version
 from onnx import ModelProto, helper, version
 from onnx.backend.base import Backend
 from onnx.checker import check_model
@@ -19,7 +20,7 @@ from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
 class OnnxRuntimeBackend(Backend):
     """
     Implements
-    `ONNX's backend API <https://github.com/onnx/onnx/blob/master/docs/ImplementingAnOnnxBackend.md>`_
+    `ONNX's backend API <https://github.com/onnx/onnx/blob/main/docs/ImplementingAnOnnxBackend.md>`_
     with *ONNX Runtime*.
     The backend is mostly used when you need to switch between
     multiple runtimes with the same API.
@@ -127,8 +128,8 @@ class OnnxRuntimeBackend(Backend):
             # check_model serializes the model anyways, so serialize the model once here
             # and reuse it below in the cls.prepare call to avoid an additional serialization
             # only works with onnx >= 1.10.0 hence the version check
-            onnx_version = tuple(map(int, (version.version.split(".")[:3])))
-            onnx_supports_serialized_model_check = onnx_version >= (1, 10, 0)
+            onnx_version = packaging.version.parse(version.version) or packaging.version.Version("0")
+            onnx_supports_serialized_model_check = onnx_version.release >= (1, 10, 0)
             bin_or_model = model.SerializeToString() if onnx_supports_serialized_model_check else model
             check_model(bin_or_model)
             opset_supported, error_message = cls.is_opset_supported(model)

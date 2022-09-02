@@ -58,7 +58,7 @@
 [submodule "cmake/external/emsdk"]
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
-	branch = 3.1.3
+	branch = 3.1.19
 [submodule "cmake/external/onnxruntime-extensions"]
 	path = cmake/external/onnxruntime-extensions
 	url = https://github.com/microsoft/onnxruntime-extensions.git
@@ -68,7 +68,7 @@
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
-	branch = 8.2-GA
+	branch = 8.4-GA
 [submodule "cmake/external/pthreadpool"]
 	path = cmake/external/pthreadpool
 	url = https://github.com/Maratyszcza/pthreadpool.git

@@ -1,0 +1,791 @@
+### YamlMime:ManagedReference
+items:
+- uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  commentId: T:Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  id: FixedBufferOnnxValue
+  parent: Microsoft.ML.OnnxRuntime
+  children:
+  - Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromMemory``1(Microsoft.ML.OnnxRuntime.OrtMemoryInfo,System.Memory{``0},Microsoft.ML.OnnxRuntime.Tensors.TensorElementType,System.Int64[],System.Int64)
+  - Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromTensor``1(Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0})
+  - Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose
+  - Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose(System.Boolean)
+  langs:
+  - csharp
+  - vb
+  name: FixedBufferOnnxValue
+  nameWithType: FixedBufferOnnxValue
+  fullName: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  type: Class
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/FixedBufferOnnxValue.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: FixedBufferOnnxValue
+    path: ../src/Microsoft.ML.OnnxRuntime/FixedBufferOnnxValue.shared.cs
+    startLine: 12
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nRepresents an OrtValue with its underlying buffer pinned\n"
+  example: []
+  syntax:
+    content: 'public class FixedBufferOnnxValue : IDisposable'
+    content.vb: >-
+      Public Class FixedBufferOnnxValue
+          Implements IDisposable
+  inheritance:
+  - System.Object
+  implements:
+  - System.IDisposable
+  inheritedMembers:
+  - System.Object.Equals(System.Object)
+  - System.Object.Equals(System.Object,System.Object)
+  - System.Object.GetHashCode
+  - System.Object.GetType
+  - System.Object.MemberwiseClone
+  - System.Object.ReferenceEquals(System.Object,System.Object)
+  - System.Object.ToString
+  modifiers.csharp:
+  - public
+  - class
+  modifiers.vb:
+  - Public
+  - Class
+- uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromTensor``1(Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0})
+  commentId: M:Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromTensor``1(Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0})
+  id: CreateFromTensor``1(Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0})
+  parent: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  langs:
+  - csharp
+  - vb
+  name: CreateFromTensor<T>(Tensor<T>)
+  nameWithType: FixedBufferOnnxValue.CreateFromTensor<T>(Tensor<T>)
+  fullName: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromTensor<T>(Microsoft.ML.OnnxRuntime.Tensors.Tensor<T>)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/FixedBufferOnnxValue.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CreateFromTensor
+    path: ../src/Microsoft.ML.OnnxRuntime/FixedBufferOnnxValue.shared.cs
+    startLine: 34
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nCreates a <xref href=\"Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue\" data-throw-if-not-resolved=\"false\"></xref> object from the tensor and pins its underlying buffer.\n"
+  example: []
+  syntax:
+    content: public static FixedBufferOnnxValue CreateFromTensor<T>(Tensor<T> value)
+    parameters:
+    - id: value
+      type: Microsoft.ML.OnnxRuntime.Tensors.Tensor{{T}}
+      description: ''
+    typeParameters:
+    - id: T
+      description: ''
+    return:
+      type: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+      description: a disposable instance of FixedBufferOnnxValue
+    content.vb: Public Shared Function CreateFromTensor(Of T)(value As Tensor(Of T)) As FixedBufferOnnxValue
+  overload: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromTensor*
+  nameWithType.vb: FixedBufferOnnxValue.CreateFromTensor(Of T)(Tensor(Of T))
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromTensor(Of T)(Microsoft.ML.OnnxRuntime.Tensors.Tensor(Of T))
+  name.vb: CreateFromTensor(Of T)(Tensor(Of T))
+- uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromMemory``1(Microsoft.ML.OnnxRuntime.OrtMemoryInfo,System.Memory{``0},Microsoft.ML.OnnxRuntime.Tensors.TensorElementType,System.Int64[],System.Int64)
+  commentId: M:Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromMemory``1(Microsoft.ML.OnnxRuntime.OrtMemoryInfo,System.Memory{``0},Microsoft.ML.OnnxRuntime.Tensors.TensorElementType,System.Int64[],System.Int64)
+  id: CreateFromMemory``1(Microsoft.ML.OnnxRuntime.OrtMemoryInfo,System.Memory{``0},Microsoft.ML.OnnxRuntime.Tensors.TensorElementType,System.Int64[],System.Int64)
+  parent: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  langs:
+  - csharp
+  - vb
+  name: CreateFromMemory<T>(OrtMemoryInfo, Memory<T>, TensorElementType, Int64[], Int64)
+  nameWithType: FixedBufferOnnxValue.CreateFromMemory<T>(OrtMemoryInfo, Memory<T>, TensorElementType, Int64[], Int64)
+  fullName: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromMemory<T>(Microsoft.ML.OnnxRuntime.OrtMemoryInfo, System.Memory<T>, Microsoft.ML.OnnxRuntime.Tensors.TensorElementType, System.Int64[], System.Int64)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/FixedBufferOnnxValue.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: CreateFromMemory
+    path: ../src/Microsoft.ML.OnnxRuntime/FixedBufferOnnxValue.shared.cs
+    startLine: 100
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  syntax:
+    content: public static FixedBufferOnnxValue CreateFromMemory<T>(OrtMemoryInfo memoryInfo, Memory<T> memory, TensorElementType elementType, long[] shape, long bytesSize)
+    parameters:
+    - id: memoryInfo
+      type: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+    - id: memory
+      type: System.Memory{{T}}
+    - id: elementType
+      type: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+    - id: shape
+      type: System.Int64[]
+    - id: bytesSize
+      type: System.Int64
+    typeParameters:
+    - id: T
+    return:
+      type: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+    content.vb: Public Shared Function CreateFromMemory(Of T)(memoryInfo As OrtMemoryInfo, memory As Memory(Of T), elementType As TensorElementType, shape As Long(), bytesSize As Long) As FixedBufferOnnxValue
+  overload: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromMemory*
+  nameWithType.vb: FixedBufferOnnxValue.CreateFromMemory(Of T)(OrtMemoryInfo, Memory(Of T), TensorElementType, Int64(), Int64)
+  modifiers.csharp:
+  - public
+  - static
+  modifiers.vb:
+  - Public
+  - Shared
+  fullName.vb: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromMemory(Of T)(Microsoft.ML.OnnxRuntime.OrtMemoryInfo, System.Memory(Of T), Microsoft.ML.OnnxRuntime.Tensors.TensorElementType, System.Int64(), System.Int64)
+  name.vb: CreateFromMemory(Of T)(OrtMemoryInfo, Memory(Of T), TensorElementType, Int64(), Int64)
+- uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose(System.Boolean)
+  commentId: M:Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose(System.Boolean)
+  id: Dispose(System.Boolean)
+  parent: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  langs:
+  - csharp
+  - vb
+  name: Dispose(Boolean)
+  nameWithType: FixedBufferOnnxValue.Dispose(Boolean)
+  fullName: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose(System.Boolean)
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/FixedBufferOnnxValue.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Dispose
+    path: ../src/Microsoft.ML.OnnxRuntime/FixedBufferOnnxValue.shared.cs
+    startLine: 135
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nIDisposable implementation\n"
+  example: []
+  syntax:
+    content: protected virtual void Dispose(bool disposing)
+    parameters:
+    - id: disposing
+      type: System.Boolean
+      description: true if invoked from Dispose()
+    content.vb: Protected Overridable Sub Dispose(disposing As Boolean)
+  overload: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose*
+  modifiers.csharp:
+  - protected
+  - virtual
+  modifiers.vb:
+  - Protected
+  - Overridable
+- uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose
+  commentId: M:Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose
+  id: Dispose
+  parent: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  langs:
+  - csharp
+  - vb
+  name: Dispose()
+  nameWithType: FixedBufferOnnxValue.Dispose()
+  fullName: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose()
+  type: Method
+  source:
+    remote:
+      path: csharp/src/Microsoft.ML.OnnxRuntime/FixedBufferOnnxValue.shared.cs
+      branch: csharp-docs
+      repo: https://github.com/cassiebreviu/onnxruntime.git
+    id: Dispose
+    path: ../src/Microsoft.ML.OnnxRuntime/FixedBufferOnnxValue.shared.cs
+    startLine: 153
+  assemblies:
+  - Microsoft.ML.OnnxRuntime
+  namespace: Microsoft.ML.OnnxRuntime
+  summary: "\nIDisposable implementation\n"
+  example: []
+  syntax:
+    content: public void Dispose()
+    content.vb: Public Sub Dispose
+  overload: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose*
+  implements:
+  - System.IDisposable.Dispose
+  modifiers.csharp:
+  - public
+  modifiers.vb:
+  - Public
+references:
+- uid: Microsoft.ML.OnnxRuntime
+  commentId: N:Microsoft.ML.OnnxRuntime
+  name: Microsoft.ML.OnnxRuntime
+  nameWithType: Microsoft.ML.OnnxRuntime
+  fullName: Microsoft.ML.OnnxRuntime
+- uid: System.Object
+  commentId: T:System.Object
+  parent: System
+  isExternal: true
+  name: Object
+  nameWithType: Object
+  fullName: System.Object
+- uid: System.IDisposable
+  commentId: T:System.IDisposable
+  parent: System
+  isExternal: true
+  name: IDisposable
+  nameWithType: IDisposable
+  fullName: System.IDisposable
+- uid: System.Object.Equals(System.Object)
+  commentId: M:System.Object.Equals(System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object)
+  nameWithType: Object.Equals(Object)
+  fullName: System.Object.Equals(System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.Equals(System.Object,System.Object)
+  commentId: M:System.Object.Equals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: Equals(Object, Object)
+  nameWithType: Object.Equals(Object, Object)
+  fullName: System.Object.Equals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.Equals(System.Object,System.Object)
+    name: Equals
+    nameWithType: Object.Equals
+    fullName: System.Object.Equals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetHashCode
+  commentId: M:System.Object.GetHashCode
+  parent: System.Object
+  isExternal: true
+  name: GetHashCode()
+  nameWithType: Object.GetHashCode()
+  fullName: System.Object.GetHashCode()
+  spec.csharp:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetHashCode
+    name: GetHashCode
+    nameWithType: Object.GetHashCode
+    fullName: System.Object.GetHashCode
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.GetType
+  commentId: M:System.Object.GetType
+  parent: System.Object
+  isExternal: true
+  name: GetType()
+  nameWithType: Object.GetType()
+  fullName: System.Object.GetType()
+  spec.csharp:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.GetType
+    name: GetType
+    nameWithType: Object.GetType
+    fullName: System.Object.GetType
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.MemberwiseClone
+  commentId: M:System.Object.MemberwiseClone
+  parent: System.Object
+  isExternal: true
+  name: MemberwiseClone()
+  nameWithType: Object.MemberwiseClone()
+  fullName: System.Object.MemberwiseClone()
+  spec.csharp:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.MemberwiseClone
+    name: MemberwiseClone
+    nameWithType: Object.MemberwiseClone
+    fullName: System.Object.MemberwiseClone
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ReferenceEquals(System.Object,System.Object)
+  commentId: M:System.Object.ReferenceEquals(System.Object,System.Object)
+  parent: System.Object
+  isExternal: true
+  name: ReferenceEquals(Object, Object)
+  nameWithType: Object.ReferenceEquals(Object, Object)
+  fullName: System.Object.ReferenceEquals(System.Object, System.Object)
+  spec.csharp:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ReferenceEquals(System.Object,System.Object)
+    name: ReferenceEquals
+    nameWithType: Object.ReferenceEquals
+    fullName: System.Object.ReferenceEquals
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: ', '
+    nameWithType: ', '
+    fullName: ', '
+  - uid: System.Object
+    name: Object
+    nameWithType: Object
+    fullName: System.Object
+    isExternal: true
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System.Object.ToString
+  commentId: M:System.Object.ToString
+  parent: System.Object
+  isExternal: true
+  name: ToString()
+  nameWithType: Object.ToString()
+  fullName: System.Object.ToString()
+  spec.csharp:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.Object.ToString
+    name: ToString
+    nameWithType: Object.ToString
+    fullName: System.Object.ToString
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: System
+  commentId: N:System
+  isExternal: true
+  name: System
+  nameWithType: System
+  fullName: System
+- uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  commentId: T:Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+  parent: Microsoft.ML.OnnxRuntime
+  name: FixedBufferOnnxValue
+  nameWithType: FixedBufferOnnxValue
+  fullName: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue
+- uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromTensor*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromTensor
+  name: CreateFromTensor
+  nameWithType: FixedBufferOnnxValue.CreateFromTensor
+  fullName: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromTensor
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor{{T}}
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.Tensor{``0}
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  definition: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+  name: Tensor<T>
+  nameWithType: Tensor<T>
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor<T>
+  nameWithType.vb: Tensor(Of T)
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Tensor(Of T)
+  name.vb: Tensor(Of T)
+  spec.csharp:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+    name: Tensor
+    nameWithType: Tensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+    name: Tensor
+    nameWithType: Tensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: Tensor<T>
+  nameWithType: Tensor<T>
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor<T>
+  nameWithType.vb: Tensor(Of T)
+  fullName.vb: Microsoft.ML.OnnxRuntime.Tensors.Tensor(Of T)
+  name.vb: Tensor(Of T)
+  spec.csharp:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+    name: Tensor
+    nameWithType: Tensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: Microsoft.ML.OnnxRuntime.Tensors.Tensor`1
+    name: Tensor
+    nameWithType: Tensor
+    fullName: Microsoft.ML.OnnxRuntime.Tensors.Tensor
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.Tensors
+  commentId: N:Microsoft.ML.OnnxRuntime.Tensors
+  name: Microsoft.ML.OnnxRuntime.Tensors
+  nameWithType: Microsoft.ML.OnnxRuntime.Tensors
+  fullName: Microsoft.ML.OnnxRuntime.Tensors
+- uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromMemory*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromMemory
+  name: CreateFromMemory
+  nameWithType: FixedBufferOnnxValue.CreateFromMemory
+  fullName: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.CreateFromMemory
+- uid: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  commentId: T:Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+  parent: Microsoft.ML.OnnxRuntime
+  name: OrtMemoryInfo
+  nameWithType: OrtMemoryInfo
+  fullName: Microsoft.ML.OnnxRuntime.OrtMemoryInfo
+- uid: System.Memory{{T}}
+  commentId: T:System.Memory{``0}
+  parent: System
+  definition: System.Memory`1
+  name: Memory<T>
+  nameWithType: Memory<T>
+  fullName: System.Memory<T>
+  nameWithType.vb: Memory(Of T)
+  fullName.vb: System.Memory(Of T)
+  name.vb: Memory(Of T)
+  spec.csharp:
+  - uid: System.Memory`1
+    name: Memory
+    nameWithType: Memory
+    fullName: System.Memory
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Memory`1
+    name: Memory
+    nameWithType: Memory
+    fullName: System.Memory
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  commentId: T:Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+  parent: Microsoft.ML.OnnxRuntime.Tensors
+  name: TensorElementType
+  nameWithType: TensorElementType
+  fullName: Microsoft.ML.OnnxRuntime.Tensors.TensorElementType
+- uid: System.Int64[]
+  isExternal: true
+  name: Int64[]
+  nameWithType: Int64[]
+  fullName: System.Int64[]
+  nameWithType.vb: Int64()
+  fullName.vb: System.Int64()
+  name.vb: Int64()
+  spec.csharp:
+  - uid: System.Int64
+    name: Int64
+    nameWithType: Int64
+    fullName: System.Int64
+    isExternal: true
+  - name: '[]'
+    nameWithType: '[]'
+    fullName: '[]'
+  spec.vb:
+  - uid: System.Int64
+    name: Int64
+    nameWithType: Int64
+    fullName: System.Int64
+    isExternal: true
+  - name: ()
+    nameWithType: ()
+    fullName: ()
+- uid: System.Int64
+  commentId: T:System.Int64
+  parent: System
+  isExternal: true
+  name: Int64
+  nameWithType: Int64
+  fullName: System.Int64
+- uid: System.Memory`1
+  commentId: T:System.Memory`1
+  isExternal: true
+  name: Memory<T>
+  nameWithType: Memory<T>
+  fullName: System.Memory<T>
+  nameWithType.vb: Memory(Of T)
+  fullName.vb: System.Memory(Of T)
+  name.vb: Memory(Of T)
+  spec.csharp:
+  - uid: System.Memory`1
+    name: Memory
+    nameWithType: Memory
+    fullName: System.Memory
+    isExternal: true
+  - name: <
+    nameWithType: <
+    fullName: <
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: '>'
+    nameWithType: '>'
+    fullName: '>'
+  spec.vb:
+  - uid: System.Memory`1
+    name: Memory
+    nameWithType: Memory
+    fullName: System.Memory
+    isExternal: true
+  - name: '(Of '
+    nameWithType: '(Of '
+    fullName: '(Of '
+  - name: T
+    nameWithType: T
+    fullName: T
+  - name: )
+    nameWithType: )
+    fullName: )
+- uid: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose*
+  commentId: Overload:Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose
+  name: Dispose
+  nameWithType: FixedBufferOnnxValue.Dispose
+  fullName: Microsoft.ML.OnnxRuntime.FixedBufferOnnxValue.Dispose
+- uid: System.Boolean
+  commentId: T:System.Boolean
+  parent: System
+  isExternal: true
+  name: Boolean
+  nameWithType: Boolean
+  fullName: System.Boolean
+- uid: System.IDisposable.Dispose
+  commentId: M:System.IDisposable.Dispose
+  parent: System.IDisposable
+  isExternal: true
+  name: Dispose()
+  nameWithType: IDisposable.Dispose()
+  fullName: System.IDisposable.Dispose()
+  spec.csharp:
+  - uid: System.IDisposable.Dispose
+    name: Dispose
+    nameWithType: IDisposable.Dispose
+    fullName: System.IDisposable.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )
+  spec.vb:
+  - uid: System.IDisposable.Dispose
+    name: Dispose
+    nameWithType: IDisposable.Dispose
+    fullName: System.IDisposable.Dispose
+    isExternal: true
+  - name: (
+    nameWithType: (
+    fullName: (
+  - name: )
+    nameWithType: )
+    fullName: )

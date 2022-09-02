@@ -2,15 +2,16 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Collections.Generic;
 
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
     /// Graph optimization level to use with SessionOptions
-    ///  [https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md]
+    ///  [https://github.com/microsoft/onnxruntime/blob/main/docs/ONNX_Runtime_Graph_Optimizations.md]
     /// </summary>
     public enum GraphOptimizationLevel
     {
@@ -336,8 +337,8 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtSessionOptionsAppendExecutionProvider_CoreML(handle, (uint)coremlFlags));
 #else
-#if !__ANDROID__
-            // the CoreML EP entry point is registered unless this is Android but is only valid if this is OSX
+#if __ENABLE_COREML__
+            // only attempt if this is OSX
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
                 NativeApiStatus.VerifySuccess(
@@ -384,14 +385,48 @@ namespace Microsoft.ML.OnnxRuntime
             }
 #endif
         }
-#endregion //ExecutionProviderAppends
 
-#region Public Methods
+        /// <summary>
+        /// Append SNPE or XNNPACK execution provider
+        /// </summary>
+        /// <param name="providerName">Execution provider to add. 'SNPE' or 'XNNPACK' are currently supported.</param>
+        /// <param name="providerOptions">Optional key/value pairs to specify execution provider options.</param>
+        public void AppendExecutionProvider(string providerName, Dictionary<string, string> providerOptions = null)
+        {
+            if (providerName != "SNPE" && providerName != "XNNPACK")
+            {
+                throw new NotSupportedException(
+                    "Only SNPE and XNNPACK execution providers can be enabled by this method.");
+            }
+
+            using (var cleanupList = new DisposableList<IDisposable>())
+            {
+                string[] ep = { providerName }; // put in array so we can use ConvertNamesToUtf8 for everything
+                var epArray = NativeOnnxValueHelper.ConvertNamesToUtf8(ep, n => n, cleanupList);
+
+                if (providerOptions == null)
+                {
+                    providerOptions = new Dictionary<string, string>();
+                }
+
+                var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(
+                    providerOptions.Keys.ToArray(), n => n, cleanupList);
+
+                var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(
+                    providerOptions.Values.ToArray(), n => n, cleanupList);
+
+                NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider(
+                    handle, epArray[0], keysArray, valuesArray, (UIntPtr)providerOptions.Count));
+            }
+        }
+        #endregion //ExecutionProviderAppends
+
+        #region Public Methods
         /// <summary>
         /// (Deprecated) Loads a DLL named 'libraryPath' and looks for this entry point:
         /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
         /// It then passes in the provided session options to this function along with the api base.
-        /// Deprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle 
+        /// Deprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle
         /// to release when all sessions relying on it are destroyed
         /// </summary>
         /// <param name="libraryPath">path to the custom op library</param>

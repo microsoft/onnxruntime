@@ -1,221 +1,208 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-    <PropertyGroup>
-        <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-        <Platform Condition=" '$(Platform)' == '' ">iPhoneSimulator</Platform>
-        <ProjectGuid>{19446672-EBA3-4BA6-8DFB-AB2A85AC9AA4}</ProjectGuid>
-        <ProjectTypeGuids>{FEACFBD2-3405-455C-9665-78FE426C6842};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
-        <TemplateGuid>{edc1b0fa-90cd-4038-8fad-98fe74adb368}</TemplateGuid>
-        <OutputType>Exe</OutputType>
-        <RootNamespace>Microsoft.ML.OnnxRuntime.Tests.iOS</RootNamespace>
-        <AssemblyName>Microsoft.ML.OnnxRuntime.Tests.iOS</AssemblyName>
-        <IPhoneResourcePrefix>Resources</IPhoneResourcePrefix>
-        <MtouchEnableSGenConc>true</MtouchEnableSGenConc>
-        <MtouchHttpClientHandler>NSUrlSessionHandler</MtouchHttpClientHandler>
-        <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
-        <ProvisioningType>automatic</ProvisioningType>
-        <SignAssembly>true</SignAssembly> <!-- need signing for friend access to the internals of the Tensors assembly -->
-        <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
-    </PropertyGroup>
-
-    <PropertyGroup>
-        <AutoGenerateBindingRedirects>True</AutoGenerateBindingRedirects>
-        <MtouchExtraArgs>--nowarn:0109</MtouchExtraArgs>
-        <NoWarn>CS8002</NoWarn>
-    </PropertyGroup>
-
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|iPhoneSimulator' ">
-        <DebugSymbols>true</DebugSymbols>
-        <DebugType>portable</DebugType>
-        <Optimize>false</Optimize>
-        <OutputPath>bin\iPhoneSimulator\Debug</OutputPath>
-        <DefineConstants>DEBUG</DefineConstants>
-        <ErrorReport>prompt</ErrorReport>
-        <WarningLevel>4</WarningLevel>
-        <MtouchArch>x86_64</MtouchArch>
-        <MtouchLink>None</MtouchLink>
-        <MtouchDebug>true</MtouchDebug>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    </PropertyGroup>
-
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|iPhoneSimulator' ">
-        <DebugType>none</DebugType>
-        <Optimize>true</Optimize>
-        <OutputPath>bin\iPhoneSimulator\Release</OutputPath>
-        <ErrorReport>prompt</ErrorReport>
-        <WarningLevel>4</WarningLevel>
-        <MtouchLink>None</MtouchLink>
-        <MtouchArch>x86_64</MtouchArch>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    </PropertyGroup>
-
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|iPhone' ">
-        <DebugSymbols>true</DebugSymbols>
-        <DebugType>portable</DebugType>
-        <Optimize>false</Optimize>
-        <OutputPath>bin\iPhone\Debug</OutputPath>
-        <DefineConstants>DEBUG</DefineConstants>
-        <ErrorReport>prompt</ErrorReport>
-        <WarningLevel>4</WarningLevel>
-        <MtouchArch>ARM64</MtouchArch>
-        <CodesignEntitlements>Entitlements.plist</CodesignEntitlements>
-        <CodesignKey>iPhone Developer</CodesignKey>
-        <MtouchDebug>true</MtouchDebug>
-        <MtouchLink>SdkOnly</MtouchLink>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    </PropertyGroup>
-
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|iPhone' ">
-        <DebugType>none</DebugType>
-        <Optimize>true</Optimize>
-        <OutputPath>bin\iPhone\Release</OutputPath>
-        <ErrorReport>prompt</ErrorReport>
-        <WarningLevel>4</WarningLevel>
-        <CodesignEntitlements>Entitlements.plist</CodesignEntitlements>
-        <MtouchArch>ARM64</MtouchArch>
-        <CodesignKey>iPhone Distribution</CodesignKey>
-        <MtouchLink>Full</MtouchLink>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <MtouchUseLlvm>true</MtouchUseLlvm>
-        <MtouchExtraArgs>--nowarn:0109 --linkskip=Microsoft.ML.OnnxRuntime.Tests.iOS --linkskip=Microsoft.ML.OnnxRuntime.Tests.Common --linkskip=Microsoft.ML.OnnxRuntime.Tests.Devices</MtouchExtraArgs>
-    </PropertyGroup>
-
-    <PropertyGroup>
-        <OnnxNativeFrameworkPathPhone>..\..\..\build\iOS\iphoneos\Release\Release-iphoneos\onnxruntime.framework</OnnxNativeFrameworkPathPhone>
-        <OnnxNativeFrameworkPathSimulator>..\..\..\build\iOS\iphonesimulator\Release\Release-iphonesimulator\onnxruntime.framework</OnnxNativeFrameworkPathSimulator>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="('$(Platform)' == 'iPhoneSimulator' AND Exists('$(OnnxNativeFrameworkPathSimulator)')) OR ('$(Platform)' == 'iPhone' AND Exists('$(OnnxNativeFrameworkPathPhone)'))">
-        <DefineConstants>__NATIVE_DEPENDENCIES_EXIST__</DefineConstants>
-    </PropertyGroup>
-
-    <ItemGroup>
-        <Reference Include="System" />
-        <Reference Include="System.Xml" />
-        <Reference Include="System.Core" />
-        <Reference Include="Xamarin.iOS" />
-        <Reference Include="System.Numerics" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <PackageReference Include="xunit.runner.devices">
-        <Version>2.5.25</Version>
-      </PackageReference>
-      <PackageReference Include="xunit">
-        <Version>2.4.1</Version>
-      </PackageReference>
-      <PackageReference Include="Google.Protobuf" Version="3.17.3" />
-      <PackageReference Include="Xamarin.Forms">
-        <Version>5.0.0.2083</Version>
-      </PackageReference>
-      <PackageReference Include="System.Memory" Version="4.5.3" IncludeAssets="None" />
-      <PackageReference Include="Xamarin.TestCloud.Agent">
-        <Version>0.22.2</Version>
-      </PackageReference>
-    </ItemGroup>
-
-    <ItemGroup>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Contents.json">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon1024.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon167.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon120.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon152.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon180.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon29.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon40.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon58.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon76.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon80.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon87.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon20.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-        <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon60.png">
-            <Visible>false</Visible>
-        </ImageAsset>
-    </ItemGroup>
-
-    <ItemGroup>
-        <Folder Include="Resources\" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <InterfaceDefinition Include="LaunchScreen.storyboard" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <None Include="Info.plist" />
-        <None Include="Entitlements.plist" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <Compile Include="Main.cs" />
-        <Compile Include="AppDelegate.cs" />
-    </ItemGroup>
-
-    <ItemGroup Condition="('$(Platform)' == 'iPhoneSimulator' AND Exists('$(OnnxNativeFrameworkPathSimulator)')) OR ('$(Platform)' == 'iPhone' AND Exists('$(OnnxNativeFrameworkPathPhone)'))">
-        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs">
-          <Link>InferenceTest.cs</Link>
-        </Compile>
-        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtIoBindingAllocationTest.cs">
-          <Link>OrtIoBindingAllocationTest.cs</Link>
-        </Compile>
-        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\TensorTests.cs">
-          <Link>TensorTests.cs</Link>
-        </Compile>
-        <Compile Include="InferenceTest.ios.cs" />
-        <ProjectReference Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj">
-            <Project>{584B53B3-359D-4DC2-BCD8-530B5D4685AD}</Project>
-            <Name>Microsoft.ML.OnnxRuntime</Name>
-        </ProjectReference>
-    </ItemGroup>
-
-    <ItemGroup>
-        <NativeReference Condition=" '$(Platform)' == 'iPhoneSimulator' And Exists('$(OnnxNativeFrameworkPathSimulator)') " Include="$(OnnxNativeFrameworkPathSimulator)">
-            <Kind>Framework</Kind>
-            <ForceLoad>True</ForceLoad>
-            <IsCxx>True</IsCxx>
-        </NativeReference>
-        <NativeReference Condition=" '$(Platform)' == 'iPhone' And Exists('$(OnnxNativeFrameworkPathPhone)') " Include="$(OnnxNativeFrameworkPathPhone)">
-            <Kind>Framework</Kind>
-            <ForceLoad>True</ForceLoad>
-            <IsCxx>True</IsCxx>
-        </NativeReference>
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj">
-        <Project>{04FA49F0-AA23-4EE5-B455-6E12FFAD29E6}</Project>
-        <Name>Microsoft.ML.OnnxRuntime.Tests.Common</Name>
-      </ProjectReference>
-      <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Devices\Microsoft.ML.OnnxRuntime.Tests.Devices.csproj">
-        <Project>{30431891-3929-4394-8049-75055B92315F}</Project>
-        <Name>Microsoft.ML.OnnxRuntime.Tests.Devices</Name>
-      </ProjectReference>
-    </ItemGroup>
-    <Import Project="$(MSBuildExtensionsPath)\Xamarin\iOS\Xamarin.iOS.CSharp.targets" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">iPhoneSimulator</Platform>
+    <ProjectGuid>{19446672-EBA3-4BA6-8DFB-AB2A85AC9AA4}</ProjectGuid>
+    <ProjectTypeGuids>{FEACFBD2-3405-455C-9665-78FE426C6842};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <TemplateGuid>{edc1b0fa-90cd-4038-8fad-98fe74adb368}</TemplateGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Microsoft.ML.OnnxRuntime.Tests.iOS</RootNamespace>
+    <AssemblyName>Microsoft.ML.OnnxRuntime.Tests.iOS</AssemblyName>
+    <IPhoneResourcePrefix>Resources</IPhoneResourcePrefix>
+    <MtouchEnableSGenConc>true</MtouchEnableSGenConc>
+    <MtouchHttpClientHandler>NSUrlSessionHandler</MtouchHttpClientHandler>
+    <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
+    <ProvisioningType>automatic</ProvisioningType>
+    <!-- need signing for friend access to the internals of the Tensors assembly -->
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+  </PropertyGroup>
+  <PropertyGroup>
+    <AutoGenerateBindingRedirects>True</AutoGenerateBindingRedirects>
+    <MtouchExtraArgs>--nowarn:0109</MtouchExtraArgs>
+    <NoWarn>CS8002</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|iPhoneSimulator' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>portable</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\iPhoneSimulator\Debug</OutputPath>
+    <DefineConstants>DEBUG</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <MtouchArch>x86_64</MtouchArch>
+    <MtouchLink>None</MtouchLink>
+    <MtouchDebug>true</MtouchDebug>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|iPhoneSimulator' ">
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\iPhoneSimulator\Release</OutputPath>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <MtouchLink>None</MtouchLink>
+    <MtouchArch>x86_64</MtouchArch>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|iPhone' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>portable</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\iPhone\Debug</OutputPath>
+    <DefineConstants>DEBUG</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <MtouchArch>ARM64</MtouchArch>
+    <CodesignEntitlements>Entitlements.plist</CodesignEntitlements>
+    <CodesignKey>iPhone Developer</CodesignKey>
+    <MtouchDebug>true</MtouchDebug>
+    <MtouchLink>SdkOnly</MtouchLink>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|iPhone' ">
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\iPhone\Release</OutputPath>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <CodesignEntitlements>Entitlements.plist</CodesignEntitlements>
+    <MtouchArch>ARM64</MtouchArch>
+    <CodesignKey>iPhone Distribution</CodesignKey>
+    <MtouchLink>Full</MtouchLink>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <MtouchUseLlvm>true</MtouchUseLlvm>
+    <MtouchExtraArgs>--nowarn:0109 --linkskip=Microsoft.ML.OnnxRuntime.Tests.iOS --linkskip=Microsoft.ML.OnnxRuntime.Tests.Common --linkskip=Microsoft.ML.OnnxRuntime.Tests.Devices</MtouchExtraArgs>
+  </PropertyGroup>
+  <PropertyGroup>
+    <OnnxNativeFrameworkPathPhone>..\..\..\build\iOS\iphoneos\Release\Release-iphoneos\onnxruntime.framework</OnnxNativeFrameworkPathPhone>
+    <OnnxNativeFrameworkPathSimulator>..\..\..\build\iOS\iphonesimulator\Release\Release-iphonesimulator\onnxruntime.framework</OnnxNativeFrameworkPathSimulator>
+  </PropertyGroup>
+  <PropertyGroup Condition="('$(Platform)' == 'iPhoneSimulator' AND Exists('$(OnnxNativeFrameworkPathSimulator)')) OR ('$(Platform)' == 'iPhone' AND Exists('$(OnnxNativeFrameworkPathPhone)'))">
+    <DefineConstants>__NATIVE_DEPENDENCIES_EXIST__</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(RunConfiguration)' == 'Default' ">
+    <AppExtensionDebugBundleId />
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Core" />
+    <Reference Include="Xamarin.iOS" />
+    <Reference Include="System.Numerics" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.runner.devices">
+      <Version>2.5.25</Version>
+    </PackageReference>
+    <PackageReference Include="xunit">
+      <Version>2.4.1</Version>
+    </PackageReference>
+    <PackageReference Include="Google.Protobuf" Version="3.17.3" />
+    <PackageReference Include="Xamarin.Forms">
+      <Version>5.0.0.2083</Version>
+    </PackageReference>
+    <PackageReference Include="System.Memory" Version="4.5.3" IncludeAssets="None" />
+    <PackageReference Include="Xamarin.TestCloud.Agent">
+      <Version>0.22.2</Version>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Contents.json">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon1024.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon167.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon120.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon152.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon180.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon29.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon40.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon58.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon76.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon80.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon87.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon20.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+    <ImageAsset Include="Assets.xcassets\AppIcon.appiconset\Icon60.png">
+      <Visible>false</Visible>
+    </ImageAsset>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Resources\" />
+  </ItemGroup>
+  <ItemGroup>
+    <InterfaceDefinition Include="LaunchScreen.storyboard" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Info.plist" />
+    <None Include="Entitlements.plist" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Main.cs" />
+    <Compile Include="AppDelegate.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="('$(Platform)' == 'iPhoneSimulator' AND Exists('$(OnnxNativeFrameworkPathSimulator)')) OR ('$(Platform)' == 'iPhone' AND Exists('$(OnnxNativeFrameworkPathPhone)'))">
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs">
+      <Link>InferenceTest.cs</Link>
+    </Compile>
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtIoBindingAllocationTest.cs">
+      <Link>OrtIoBindingAllocationTest.cs</Link>
+    </Compile>
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\TensorTests.cs">
+      <Link>TensorTests.cs</Link>
+    </Compile>
+    <Compile Include="InferenceTest.ios.cs" />
+    <ProjectReference Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj">
+        <Project>{584B53B3-359D-4DC2-BCD8-530B5D4685AD}</Project>
+        <Name>Microsoft.ML.OnnxRuntime</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <NativeReference Condition=" '$(Platform)' == 'iPhoneSimulator' And Exists('$(OnnxNativeFrameworkPathSimulator)') " Include="$(OnnxNativeFrameworkPathSimulator)">
+      <Kind>Framework</Kind>
+      <ForceLoad>True</ForceLoad>
+      <IsCxx>True</IsCxx>
+    </NativeReference>
+    <NativeReference Condition=" '$(Platform)' == 'iPhone' And Exists('$(OnnxNativeFrameworkPathPhone)') " Include="$(OnnxNativeFrameworkPathPhone)">
+      <Kind>Framework</Kind>
+      <ForceLoad>True</ForceLoad>
+      <IsCxx>True</IsCxx>
+    </NativeReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj">
+      <Project>{04FA49F0-AA23-4EE5-B455-6E12FFAD29E6}</Project>
+      <Name>Microsoft.ML.OnnxRuntime.Tests.Common</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Devices\Microsoft.ML.OnnxRuntime.Tests.Devices.csproj">
+      <Project>{30431891-3929-4394-8049-75055B92315F}</Project>
+      <Name>Microsoft.ML.OnnxRuntime.Tests.Devices</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath)\Xamarin\iOS\Xamarin.iOS.CSharp.targets" />
 </Project>

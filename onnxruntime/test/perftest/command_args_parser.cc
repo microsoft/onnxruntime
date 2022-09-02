@@ -33,14 +33,15 @@ namespace perftest {
       "\t-A: Disable memory arena\n"
       "\t-I: Generate tensor input binding (Free dimensions are treated as 1.)\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|nuphar|dml|acl|rocm|migraphx]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'openvino', 'nuphar', 'dml', 'acl', 'nnapi', 'coreml', 'snpe', 'rocm' or 'migraphx'. "
+      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|nuphar|dml|acl|nnapi|coreml|snpe|rocm|migraphx|xnnpack]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
+      "'openvino', 'nuphar', 'dml', 'acl', 'nnapi', 'coreml', 'snpe', 'rocm', 'migraphx' or 'xnnpack'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
       "\t-t [seconds_to_run]: Specifies the seconds to run for 'duration' mode. Default:600.\n"
       "\t-p [profile_file]: Specifies the profile name to enable profiling and dump the profile data to the file.\n"
       "\t-s: Show statistics result, like P75, P90. If no result_file provided this defaults to on.\n"
+      "\t-S: Given random seed, to produce the same input data. This defaults to -1(no initialize).\n"
       "\t-v: Show verbose information.\n"
       "\t-x [intra_op_num_threads]: Sets the number of threads used to parallelize the execution within nodes, A value of 0 means ORT will pick a default. Must >=0.\n"
       "\t-y [inter_op_num_threads]: Sets the number of threads used to parallelize the execution of the graph (across nodes), A value of 0 means ORT will pick a default. Must >=0.\n"
@@ -52,7 +53,7 @@ namespace perftest {
       "\t-o [optimization level]: Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels.\n"
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
-      "\t-d [cudnn_conv_algorithm]: Specify CUDNN convolution algothrithms: 0(benchmark), 1(heuristic), 2(default). \n"
+      "\t-d [cudnn_conv_algorithm]: Specify CUDNN convolution algorithms: 0(benchmark), 1(heuristic), 2(default). \n"
       "\t-q: [CUDA only] use separate stream for copy. \n"
       "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
@@ -78,6 +79,7 @@ namespace perftest {
       "\t    [TensorRT only] [trt_engine_cache_enable]: Enable engine caching.\n"
       "\t    [TensorRT only] [trt_engine_cache_path]: Specify engine cache path.\n"
       "\t    [TensorRT only] [trt_force_sequential_engine_build]: Force TensorRT engines to be built sequentially.\n"
+      "\t    [TensorRT only] [trt_context_memory_sharing_enable]: Enable TensorRT context memory sharing between subgraphs.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
       "\t [Example] [For TensorRT EP] -e tensorrt -i 'trt_fp16_enable|true trt_int8_enable|true trt_int8_calibration_table_name|calibration.flatbuffers trt_int8_use_native_calibration_table|false trt_force_sequential_engine_build|false'\n"
       "\t    [NNAPI only] [NNAPI_FLAG_USE_FP16]: Use fp16 relaxation in NNAPI EP..\n"
@@ -111,7 +113,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
     if (override_val <= 0) {
       return false;
     }
-  } ORT_CATCH (...) {
+  }
+  ORT_CATCH(...) {
     return false;
   }
   return true;
@@ -119,7 +122,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:AMPIvhsqz"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:AMPIvhsqz"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -212,6 +215,10 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         break;
       case 's':
         test_config.run_config.f_dump_statistics = true;
+        break;
+      case 'S':
+        test_config.run_config.random_seed_for_input_data = static_cast<int32_t>(
+            OrtStrtol<PATH_CHAR_TYPE>(optarg, nullptr));
         break;
       case 'v':
         test_config.run_config.f_verbose = true;

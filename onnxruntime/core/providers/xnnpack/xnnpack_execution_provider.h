@@ -11,37 +11,13 @@
 #include "xnnpack.h"
 
 namespace onnxruntime {
+// placeholder for future use. no options currently
 struct XnnpackExecutionProviderInfo {
-  bool create_arena{true};
-  int64_t xnn_thread_pool_size{0};
-  explicit XnnpackExecutionProviderInfo(bool use_arena = true, int64_t thread_pool_size = 1)
-      : create_arena{use_arena}, xnn_thread_pool_size(thread_pool_size) {}
+  XnnpackExecutionProviderInfo() = default;
 
-  XnnpackExecutionProviderInfo() = delete;
-};
-
-class XnnpackThreadPool {
- public:
-  XnnpackThreadPool() = default;
-
-  void InitializeWithPoolSize(int64_t num_threads) {
-#if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
-    if (num_threads > 1) {
-      threadpool_.reset(
-          pthreadpool_create(static_cast<size_t>(num_threads)));
-    }
-    printf("%zd\n", pthreadpool_get_threads_count(threadpool_.get()));
-#endif
+  XnnpackExecutionProviderInfo(const ProviderOptions&) {
+    // future: parse ProviderOptions
   }
-  pthreadpool_t Get() {
-    return threadpool_.get();
-  }
- private:
-#if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
-  // Thread pool with smart-pointer for lifetime management.
-  std::unique_ptr<pthreadpool, decltype(&pthreadpool_destroy)> threadpool_{
-      nullptr, &pthreadpool_destroy};
-#endif
 };
 
 class XnnpackExecutionProvider : public IExecutionProvider {
@@ -54,6 +30,8 @@ class XnnpackExecutionProvider : public IExecutionProvider {
       const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+
+  void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
 
   DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
 

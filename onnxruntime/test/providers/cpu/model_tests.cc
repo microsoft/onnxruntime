@@ -166,6 +166,7 @@ TEST_P(ModelTest, Run) {
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"maxunpool_export_with_output_shape",
        "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
+      {"cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose"},
       {"training_dropout", "result differs", {}},               // Temporary, subsequent PR will remove this.
       {"training_dropout_default", "result differs", {}},       // Temporary, subsequent PR will remove this.
       {"training_dropout_default_mask", "result differs", {}},  // Temporary, subsequent PR will remove this.
@@ -184,7 +185,7 @@ TEST_P(ModelTest, Run) {
       {"castlike_FLOAT_to_BFLOAT16_expanded", "type error", {}},
       {"castlike_FLOAT_to_STRING", "type error", {}},
       {"castlike_FLOAT_to_STRING_expanded", "type error", {}},
-      {"convtranspose_autopad_same", "type error", {}},
+      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"onnx180", "onnx181", "onnx190"}},
       {"gru_batchwise", "type error", {}},
       {"lstm_batchwise", "type error", {}},
       {"optional_get_element", "type error", {}},
@@ -663,7 +664,7 @@ TEST_P(ModelTest, Run) {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
           OrtTensorRTProviderOptionsV2 params{0, 0,       nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
-                                              0, nullptr, 0,       0,    0, 0,       0, nullptr, 0, nullptr, 0};
+                                              0, nullptr, 0,       0,    0, 0,       0, nullptr, 0, nullptr, 0, 0};
           ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(ortso, &params));
         } else {
           OrtTensorRTProviderOptionsV2* ep_option;

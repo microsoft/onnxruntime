@@ -349,7 +349,7 @@ void verify<K::Tensor, K::Image>(
         1. Image metadata does not exist: We should be tolerant to the models that does not have Image Metadata.
             In this case, user can still pass in ImageFeatureValue as long as it meets the requirement for image tensorization
         2. Model may have Image metadata that values that we do not support. In this case we should reject binding ImageFeatureValue
-           https://github.com/onnx/onnx/blob/master/docs/MetadataProps.md
+           https://github.com/onnx/onnx/blob/main/docs/MetadataProps.md
            Supported metadata values in RS5
                - Image.BitmapPixelFormat: Gray8, RGB8, BGR8
                - Image.ColorSpaceGamma: SRGB

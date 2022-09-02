@@ -267,10 +267,29 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
     } else {
       ORT_THROW(log_tag + "Input names mismatch between OpenVINO and ONNX. " + onnx_input_name + " doesn't exist in the list of OpenVINO input tensor names");
     }
-    OVTensorPtr graph_input_blob; 
-    graph_input_blob = infer_request->GetTensor(input_name);
     size_t batch_slice_idx = 0;
-    FillInputBlob(graph_input_blob, batch_slice_idx, input_name, ort, context, subgraph_context_);
+    if (subgraph_context_.has_dynamic_input_shape &&
+       global_context_.enable_dynamic_shapes == true &&
+       global_context_.device_type.find("CPU") != std::string::npos) {
+      const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_names.at(input_name));
+      auto tensor_info = ort.GetTensorTypeAndShape(tensor);
+      auto tensor_shape = ort.GetTensorShape(tensor_info);
+      auto tensor_size = tensor_shape.size();
+      auto tensor_iter = 0;
+      ov::Shape input_tensor_shape = ov::Shape(tensor_size, 0);
+      for (auto i = tensor_shape.begin(); i != tensor_shape.end(); ++i) {
+        input_tensor_shape[tensor_iter] = *i;
+        tensor_iter+=1;
+      }
+      auto input = ie_cnn_network_->get_parameters().at(0);
+      OVTensorPtr tensor_ptr = std::make_shared<ov::Tensor>(input->get_element_type(), input_tensor_shape);
+      FillInputBlob(tensor_ptr, batch_slice_idx, input_name, ort, context, subgraph_context_);
+      infer_request->SetTensor(input_name, tensor_ptr);
+    } else {
+      OVTensorPtr graph_input_blob;
+      graph_input_blob = infer_request->GetTensor(input_name);
+      FillInputBlob(graph_input_blob, batch_slice_idx, input_name, ort, context, subgraph_context_);
+    }
     input_idx++;
   }        
   #else

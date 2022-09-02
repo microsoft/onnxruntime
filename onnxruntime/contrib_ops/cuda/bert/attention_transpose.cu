@@ -18,7 +18,7 @@ limitations under the License.
 */
 
 #include "core/providers/cuda/cuda_common.h"
-#include "attention_impl.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
 
 using namespace onnxruntime::cuda;
 
@@ -92,7 +92,7 @@ __global__ void TransposeCtxLarge(const int H, const bool reversed_bs, const T* 
   }
 }
 
-bool LaunchTransCtx(cudaStream_t stream,
+Status LaunchTransCtx(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                     const int max_threads_per_block, const bool reversed_bs, const float* input, float* output) {
   const dim3 grid(sequence_length, batch_size, 1);
@@ -116,10 +116,10 @@ bool LaunchTransCtx(cudaStream_t stream,
       TransposeCtxLarge<float><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
     }
   }
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
-bool LaunchTransCtx(cudaStream_t stream,
+Status LaunchTransCtx(cudaStream_t stream,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                     const int max_threads_per_block, const bool reversed_bs, const half* input, half* output) {
   const dim3 grid(sequence_length, batch_size, 1);
@@ -155,7 +155,7 @@ bool LaunchTransCtx(cudaStream_t stream,
     }
   }
 
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
 template <typename T>
@@ -229,7 +229,7 @@ __global__ void TransposeQKVLarge(const int H, const bool reversed_bs, const T* 
   }
 }
 
-bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
+Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                     const int max_threads_per_block, const bool reversed_bs, const float* input, float* output) {
   const dim3 grid(sequence_length, batch_size, matrix_num);
@@ -252,12 +252,11 @@ bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       TransposeQKVLarge<float><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
     }
-
   }
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
-bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
+Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                     const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                     const int max_threads_per_block, const bool reversed_bs, const half* input, half* output) {
   const dim3 grid(sequence_length, batch_size, matrix_num);
@@ -292,9 +291,8 @@ bool LaunchTransQkv(cudaStream_t stream, const int matrix_num,
       TransposeQKVLarge<half><<<grid, block, 0, stream>>>(head_size, reversed_bs, input, output);
     }
   }
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
-
 
 }  // namespace cuda
 }  // namespace contrib

@@ -34,18 +34,44 @@ InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::un
       ops_{ops},
       stop_ops_{stop_ops},
       preferred_layout_{preferred_layout} {
-  //
-  // TODO: Allocation planner calls GetAllocator for the individual EP. It would be better if it goes through
-  // the session state to get the allocator so it's per-device (or for the allocation planner to try the EP first
-  // and fall back to using session state next by passing in a functor it can use to call SessionState::GetAllocator).
+}
 
-  AllocatorCreationInfo device_info(
-      [](int) {
-        return std::make_unique<CPUAllocator>(OrtMemoryInfo(INTERNAL_TESTING_EP,
-                                                            OrtAllocatorType::OrtDeviceAllocator));
-      });
+AllocatorPtr InternalTestingExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type) const {
+  // replicate setup that some EPs have with a local allocator
+  if (mem_type == OrtMemTypeDefault) {
+    return local_allocator_;
+  } else {
+    return IExecutionProvider::GetAllocator(device_id, mem_type);
+  }
+}
 
-  InsertAllocator(CreateAllocator(device_info));
+// implement RegisterAllocator to test/validate sharing the CPU EP's allocator
+void InternalTestingExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
+  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+
+  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
+  auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
+  if (!cpu_alloc) {
+    // use shared allocator if available
+    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
+
+    if (!cpu_alloc) {
+      // create our allocator
+      AllocatorCreationInfo allocator_info(
+          [](int) {
+            return std::make_unique<CPUAllocator>(OrtMemoryInfo(INTERNAL_TESTING_EP,
+                                                                OrtAllocatorType::OrtDeviceAllocator));
+          });
+
+      cpu_alloc = CreateAllocator(allocator_info);
+
+      // enable sharing of our allocator
+      allocator_manager.InsertAllocator(cpu_alloc);
+    }
+
+    local_allocator_ = cpu_alloc;
+    InsertAllocator(cpu_alloc);
+  }
 }
 
 InternalTestingExecutionProvider::~InternalTestingExecutionProvider() {}
@@ -189,7 +215,7 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
     compute_info.release_state_func = [](FunctionState /*state*/) {
     };
 
-    compute_info.compute_func = [&node](FunctionState /*state*/, const OrtCustomOpApi* c_api,
+    compute_info.compute_func = [&node](FunctionState /*state*/, const OrtApi* c_api,
                                         OrtKernelContext* context) -> Status {
       Ort::CustomOpApi api{*c_api};  // use C++ API for convenience
 

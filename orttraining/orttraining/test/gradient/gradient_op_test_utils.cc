@@ -202,30 +202,15 @@ void GradientOpTester::Run(
           const KernelCreateInfo* kci;
           auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);
           if (!st.IsOK()) {
+            // The goal here is unclear. It seems best to leave it to the Session
+            // creation to figure out whether the model can be executed using some
+            // valid execution-provider. Removed the logic here for partially inlining
+            // functions, as function-inlining requires other pre-conditions like
+            // Graph::Resolve etc, and it appears it is not being used anyway.
             if (!node.CanBeInlined()) {
               valid = false;
-            } else {
-              // TODO: hanlde the nested function case.
-              std::unique_ptr<Function> node_func;
-              st = node.GetInstantiateFunctionBody(node_func);
-              if (!st.IsOK()) {
-                valid = false;
-              } else {
-                for (auto& sub_node : node_func->Body().Nodes()) {
-                  if (sub_node.OpType() != "Constant") {
-                    auto sub_reg = execution_provider->GetKernelRegistry();
-                    const KernelCreateInfo* sub_kci;
-                    st = sub_reg->TryFindKernel(sub_node, execution_provider->Type(), &sub_kci);
-                    if (!st.IsOK()) {
-                      valid = false;
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-            if (!valid)
               break;
+            }
           }
         }
 
