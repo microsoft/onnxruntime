@@ -1820,7 +1820,7 @@ TEST(AttentionTest, Attention_Mask2D_Fp32_Random) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
   constexpr float threshold = 0.005f;
 #else
-  constexpr float threshold = 0.00025f;
+  constexpr float threshold = 0.0005f;
 #endif
 
   OpTester test("Attention", 1, onnxruntime::kMSDomain);
@@ -1858,7 +1858,7 @@ TEST(AttentionTest, Attention_Mask1D_Fp32_Random) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
   constexpr float threshold = 0.005f;
 #else
-  constexpr float threshold = 0.00025f;
+  constexpr float threshold = 0.0005f;
 #endif
 
   OpTester test("Attention", 1, onnxruntime::kMSDomain);
@@ -1894,7 +1894,7 @@ TEST(AttentionTest, Attention_Mask1D_Fp16_Random) {
     mask_index_data.push_back(sequence_length);
   }
 
-  if (HasCudaEnvironment(530)) {
+  if (HasCudaEnvironment(700)) {
     OpTester test("Attention", 1, onnxruntime::kMSDomain);
     test.AddAttribute<int64_t>("num_heads", 12);
     test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));

@@ -36,7 +36,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
  public:
   mhaImpl(FusedMHARunnerFP16v2* interface)
       : interface(interface), sm(interface->mSm), xmmaKernel(getXMMAKernelsV2(DATA_TYPE_FP16, sm)) {
-    ORT_ENFORCE((sm == kSM_70 || sm == kSM_72 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86),
+    ORT_ENFORCE((sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86),
                 "Unsupported architecture");
     params.clear();
   }

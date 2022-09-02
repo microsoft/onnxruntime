@@ -36,8 +36,8 @@ static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length
   }
 
   if (head_size == 32) {
-    return (sm == kSM_75 || sm == kSM_80) &&
-           (sequence_length == 128 || sequence_length == 256 || sequence_length == 512);
+    // SM86 could fall back to use SM80 kernel, so only SM70 does not support head size 32
+    return (sm != kSM_70) && (sequence_length == 128 || sequence_length == 256 || sequence_length == 512);
   }
 
   if (head_size != 64) {
@@ -49,7 +49,8 @@ static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length
     return false;
   }
 
-  if (sm == kSM_70 || sm == kSM_86) {
+  // SM86 could fall back to use SM80 kernel, so only SM70 does not support sequence length 512 for head size 64
+  if (sm == kSM_70) {
     return sequence_length != 512;
   }
 
