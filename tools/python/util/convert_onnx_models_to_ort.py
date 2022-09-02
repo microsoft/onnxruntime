@@ -189,7 +189,7 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--output_directory",
+        "--output_dir",
         type=pathlib.Path,
         help="Provide an output directory for the converted model/s and configuration file. "
         "If unspecified, the converted ORT format model/s will be in the same directory as the ONNX model/s.",
@@ -266,7 +266,7 @@ def parse_args():
 def convert_onnx_models_to_ort():
     args = parse_args()
 
-    output_dir = args.output_directory
+    output_dir = args.output_dir.resolve() if args.output_dir else None
     optimization_styles = [OptimizationStyle[style_str] for style_str in args.optimization_style]
     # setting optimization level is not expected to be needed by typical users, but it can be set with this
     # environment variable
