@@ -184,6 +184,7 @@ jobs:
       msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:DefineConstants=USE_${{ parameters.ORT_EP_NAME }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+  # C# test isn't launched by build.py, so models link has to be added.
   - script: |
      mklink /D /J models C:\local\models
     workingDirectory: '$(Build.BinariesDirectory)'
@@ -226,9 +227,9 @@ jobs:
            **/*.dll
 
 
-      #Manually set msBuildCommandline so that we can also set CAExcludePath
-      #build_dir must be a sub folder of $(Build.SourcesDirectory)
-      #TODO: move this step to a CPU-only machine to save GPU resources.
+      # Manually set msBuildCommandline so that we can also set CAExcludePath
+      # build_dir must be a sub folder of $(Build.SourcesDirectory)
+      # TODO: move this step to a CPU-only machine to save GPU resources.
       - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
         inputs:
