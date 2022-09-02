@@ -9,6 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
+#include "core/common/path_string.h"
 #include "core/common/profiler.h"
 #include "core/common/status.h"
 #include "core/framework/execution_providers.h"
@@ -154,11 +155,11 @@ class InferenceSession {
     */
   InferenceSession(const SessionOptions& session_options,
                    const Environment& session_env,
-                   const std::string& model_uri);
+                   const PathString& model_uri);
 #ifdef _WIN32
   InferenceSession(const SessionOptions& session_options,
                    const Environment& session_env,
-                   const std::wstring& model_uri);
+                   const std::string& model_uri);
 #endif
 
   /**
@@ -256,9 +257,9 @@ class InferenceSession {
    * @param model_uri absolute path of the model file.
    * @return OK if success.
    */
-  common::Status Load(const std::string& model_uri) ORT_MUST_USE_RESULT;
+  common::Status Load(const PathString& model_uri) ORT_MUST_USE_RESULT;
 #ifdef _WIN32
-  common::Status Load(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
+  common::Status Load(const std::string& model_uri) ORT_MUST_USE_RESULT;
 #endif
   /**
    * Load an ONNX or ORT format model.
@@ -300,8 +301,8 @@ class InferenceSession {
    */
   common::Status Initialize() ORT_MUST_USE_RESULT;
 
-  common::Status Run(const RunOptions& run_options, const std::vector<std::string>& feed_names,
-                     const std::vector<OrtValue>& feeds, const std::vector<std::string>& output_names,
+  common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names,
+                     gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
                      std::vector<OrtValue>* p_fetches,
                      const std::vector<OrtDevice>* p_fetches_device_info = nullptr) ORT_MUST_USE_RESULT;
 
@@ -315,7 +316,7 @@ class InferenceSession {
    *        This should not be changed during execution of this function.
    * @return OK if success.
    */
-  common::Status Run(const NameMLValMap& feeds, const std::vector<std::string>& output_names,
+  common::Status Run(const NameMLValMap& feeds, gsl::span<const std::string> output_names,
                      std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
@@ -324,7 +325,7 @@ class InferenceSession {
    * @param run_options use this to tune the Run call to your needs.
    */
   common::Status Run(const RunOptions& run_options, const NameMLValMap& feeds,
-                     const std::vector<std::string>& output_names,
+                     gsl::span<const std::string> output_names,
                      std::vector<OrtValue>* p_fetches) ORT_MUST_USE_RESULT;
 
   /**
@@ -443,6 +444,12 @@ class InferenceSession {
     */
   const profiling::Profiler& GetProfiling() const;
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryProfiler& GetMemoryProfiler() {
+    return memory_profiler_;
+  }
+#endif
+
   /**
    * Search registered execution providers for an allocator that has characteristics
    * specified within mem_info
@@ -476,17 +483,17 @@ class InferenceSession {
    * @param protobuf object corresponding to the model file. model_proto will be copied by the API.
    * @return OK if success.
    */
-  common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto) ORT_MUST_USE_RESULT;
+  common::Status LoadOnnxModel(ONNX_NAMESPACE::ModelProto model_proto) ORT_MUST_USE_RESULT;
 
   /**
    * Load an ONNX model.
    * @param protobuf object corresponding to the model file. This is primarily to support large models.
    * @return OK if success.
    */
-  common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) ORT_MUST_USE_RESULT;
+  common::Status LoadOnnxModel(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) ORT_MUST_USE_RESULT;
 
-  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
-                      const std::string& event_name) ORT_MUST_USE_RESULT;
+  common::Status LoadWithLoader(std::function<common::Status(std::shared_ptr<Model>&)> loader,
+                                const std::string& event_name) ORT_MUST_USE_RESULT;
 
   common::Status DoPostLoadProcessing(onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
@@ -535,7 +542,7 @@ class InferenceSession {
   std::unordered_set<std::string> model_output_names_;
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
-  std::basic_string<ORTCHAR_T> model_location_;
+  PathString model_location_;
 
   // The list of execution providers.
   ExecutionProviders execution_providers_;
@@ -550,14 +557,13 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-  template <typename T>
-  common::Status Load(const std::basic_string<T>& model_uri) ORT_MUST_USE_RESULT;
+  common::Status LoadOnnxModel(const PathString& model_uri) ORT_MUST_USE_RESULT;
 
   bool HasLocalSchema() const {
     return !custom_schema_registries_.empty();
   }
 
-  common::Status SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const;
+  common::Status SaveToOrtFormat(const PathString& filepath) const;
 #endif
 
   /**
@@ -565,10 +571,7 @@ class InferenceSession {
    * @param model_uri absolute path of the model file.
    * @return OK if success.
    */
-  common::Status LoadOrtModel(const std::string& model_uri) ORT_MUST_USE_RESULT;
-#ifdef _WIN32
-  common::Status LoadOrtModel(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
-#endif
+  common::Status LoadOrtModel(const PathString& model_uri) ORT_MUST_USE_RESULT;
 
   /**
    * Load an ORT format model.
@@ -580,7 +583,7 @@ class InferenceSession {
    */
   common::Status LoadOrtModel(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
 
-  common::Status LoadOrtModel(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
+  common::Status LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) ORT_MUST_USE_RESULT;
 
   // Create a Logger for a single execution if possible. Otherwise use the default logger.
   // If a new logger is created, it will also be stored in new_run_logger,
@@ -595,10 +598,10 @@ class InferenceSession {
   common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
                              const TensorShape& expected_shape) const ORT_MUST_USE_RESULT;
 
-  common::Status ValidateInputs(const std::vector<std::string>& feed_names,
-                                const std::vector<OrtValue>& feeds) const ORT_MUST_USE_RESULT;
+  common::Status ValidateInputs(gsl::span<const std::string> feed_names,
+                                gsl::span<const OrtValue> feeds) const ORT_MUST_USE_RESULT;
 
-  common::Status ValidateOutputs(const std::vector<std::string>& output_names,
+  common::Status ValidateOutputs(gsl::span<const std::string> output_names,
                                  const std::vector<OrtValue>* p_fetches) const ORT_MUST_USE_RESULT;
 
   common::Status WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) ORT_MUST_USE_RESULT;
@@ -617,13 +620,13 @@ class InferenceSession {
    */
 
   common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
-                                                   /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const ORT_MUST_USE_RESULT;
+                                                   /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const ORT_MUST_USE_RESULT;
 
   /*
    * Performs the shrinkage of arenas requested to be shrunk by the user
    * The `arenas_to_shrink` parameter is got from ValidateAndParseShrinkArenaString()
    */
-  void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
+  void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual common::Status AddPredefinedTransformers(
@@ -656,6 +659,10 @@ class InferenceSession {
 
   // Profiler for this session.
   profiling::Profiler session_profiler_;
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  MemoryProfiler memory_profiler_;
+#endif
 
   // Immutable state for each op in the model. Shared by all executors.
   // It has a dependency on execution_providers_.
@@ -783,6 +790,8 @@ class InferenceSession {
   // specifies that ORT should use the model bytes directly by setting the session config option
   // "session.use_ort_model_bytes_directly" to "1", this will be empty
   std::vector<uint8_t> ort_format_model_bytes_data_holder_;
+
+  bool using_ort_model_bytes_for_initializers_{false};
 
   // Container to store pre-packed weights to share between sessions.
   // The life-cycle of the cache itself is maintained by the user and the user will ensure

@@ -79,6 +79,16 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 // has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
 
+/// <summary>
+/// Key for using the ORT format model flatbuffer bytes directly for initializers.
+/// This avoids copying the bytes and reduces peak memory usage during model loading and initialization. 
+/// Requires `session.use_ort_model_bytes_directly` to be true. 
+/// If set, the flatbuffer bytes provided when creating the InferenceSession MUST remain valid for the entire 
+/// duration of the InferenceSession.
+/// </summary>
+static const char* const kOrtSessionOptionsConfigUseORTModelBytesForInitializers =
+    "session.use_ort_model_bytes_for_initializers";
+
 // This should only be specified when exporting an ORT format model for use on a different platform.
 // If the ORT format model will be used on ARM platforms set to "1". For other platforms set to "0"
 // Available since version 1.11.

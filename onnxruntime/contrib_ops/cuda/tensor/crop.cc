@@ -57,14 +57,14 @@ Status Crop<T>::ComputeInternal(OpKernelContext* context) const {
 
   CropImpl<CudaT>(
       Stream(),
-      reinterpret_cast<const CudaT*>(X->template Data<T>()),
+      reinterpret_cast<const CudaT*>(X->Data<T>()),
       gsl::narrow_cast<int>(leftBorder),
       gsl::narrow_cast<int>(topBorder),
       gsl::narrow_cast<int>(W),
       gsl::narrow_cast<int>(W * H),
       fdm_YW,
       fdm_YHW,
-      reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+      reinterpret_cast<CudaT*>(Y->MutableData<T>()),
       Y->Shape().Size());
 
   return Status::OK();

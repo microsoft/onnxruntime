@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -11,9 +11,14 @@
 extern "C" {
 #endif
 
-jsize safecast_size_t_to_jsize(size_t v);
-
-jsize safecast_int64_to_jsize(int64_t v);
+typedef struct {
+  /* The number of dimensions in the Tensor */
+  size_t dimensions;
+  /* The number of elements in the Tensor */
+  size_t elementCount;
+  /* The type of the Tensor */
+  ONNXTensorElementDataType onnxTypeEnum;
+} JavaTensorTypeShape;
 
 jint JNI_OnLoad(JavaVM *vm, void *reserved);
 
@@ -28,6 +33,8 @@ jint convertFromONNXDataFormat(ONNXTensorElementDataType type);
 ONNXTensorElementDataType convertToONNXDataFormat(jint type);
 
 size_t onnxTypeSize(ONNXTensorElementDataType type);
+
+OrtErrorCode getTensorTypeShape(JNIEnv * jniEnv, JavaTensorTypeShape * output, const OrtApi * api, const OrtValue * value);
 
 jfloat convertHalfToFloat(uint16_t half);
 
@@ -74,6 +81,10 @@ jint throwOrtException(JNIEnv *env, int messageId, const char *message);
 jint convertErrorCode(OrtErrorCode code);
 
 OrtErrorCode checkOrtStatus(JNIEnv * env, const OrtApi * api, OrtStatus * status);
+
+jsize safecast_size_t_to_jsize(size_t v);
+
+jsize safecast_int64_to_jsize(int64_t v);
 
 #ifdef __cplusplus
 }

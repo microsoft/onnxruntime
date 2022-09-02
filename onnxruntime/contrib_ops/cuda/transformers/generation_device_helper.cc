@@ -31,8 +31,8 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
             AllocatorPtr allocator,
             void* stream,
             onnxruntime::concurrency::ThreadPool* /*threadpool*/,
-            std::unique_ptr<Tensor>& output_values,
-            std::unique_ptr<Tensor>& output_indices) {
+            Tensor& output_values,
+            Tensor& output_indices) {
   ORT_ENFORCE(nullptr != input);
   int32_t rank = static_cast<int32_t>(input->Shape().NumDimensions());
 
@@ -51,15 +51,15 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
   int64_t dimension = input_shape[axis];
   int64_t N = elem_nums_cuda[0] / dimension;
 
-  output_values = Tensor::Create(input->DataType(), output_shape, allocator);
-  output_indices = Tensor::Create(DataTypeImpl::GetType<int64_t>(), output_shape, allocator);
+  output_values = std::move(*Tensor::Create(input->DataType(), output_shape, allocator));
+  output_indices = std::move(*Tensor::Create(DataTypeImpl::GetType<int64_t>(), output_shape, std::move(allocator)));
 
   if (input->IsDataType<float>()) {
     return TopKImpl<float>(nullptr,  // We limit number of beams in BeamSearchParameters, so K <= 256 and use NULL here
                            reinterpret_cast<cudaStream_t>(stream),
                            input->Data<float>(),
-                           static_cast<float*>(output_values->MutableDataRaw()),
-                           static_cast<int64_t*>(output_indices->MutableDataRaw()),
+                           static_cast<float*>(output_values.MutableDataRaw()),
+                           static_cast<int64_t*>(output_indices.MutableDataRaw()),
                            elem_nums_cuda,
                            static_cast<size_t>(elem_nums_cuda.Size()),
                            static_cast<int32_t>(axis),
@@ -72,8 +72,8 @@ Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest,
     return TopKImpl<MLFloat16>(nullptr,
                                reinterpret_cast<cudaStream_t>(stream),
                                input->Data<MLFloat16>(),
-                               static_cast<MLFloat16*>(output_values->MutableDataRaw()),
-                               static_cast<int64_t*>(output_indices->MutableDataRaw()),
+                               static_cast<MLFloat16*>(output_values.MutableDataRaw()),
+                               static_cast<int64_t*>(output_indices.MutableDataRaw()),
                                elem_nums_cuda,
                                static_cast<size_t>(elem_nums_cuda.Size()),
                                static_cast<int32_t>(axis),
@@ -350,10 +350,10 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   constexpr bool largest = true;
   constexpr bool sorted = true;  // results returned in sorted order.
 
-  std::unique_ptr<Tensor> topk_scores;
-  std::unique_ptr<Tensor> topk_indices;
+  std::unique_ptr<Tensor> topk_scores = Tensor::CreateDefault();
+  std::unique_ptr<Tensor> topk_indices = Tensor::CreateDefault();
   ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
-                           topk_scores, topk_indices));
+                           *topk_scores, *topk_indices));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("topk_scores", *(topk_scores.get()));
@@ -409,16 +409,16 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
 template <typename T>
 Status GreedySearchProcessLogits(
-  const OrtValue& logits,                                     // logits output of subgraph
-  transformers::IGreedySearchState<T>* greedy_state,          // state
-  transformers::ISequences* sequences,                        // sequences
-  AllocatorPtr& allocator,                                    // default allocator
-  onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
-  transformers::ILogitsProcessorList* logits_processors,      // logits processors
-  const transformers::IBeamSearchParameters* parameters,      // parameters
-  int step,                                                   // iteration counter
-  void* stream,                                               // cuda stream (for CUDA only)
-  const transformers::IConsoleDumper* dumper) {               // tensor dumper
+    const OrtValue& logits,                                 // logits output of subgraph
+    transformers::IGreedySearchState<T>* greedy_state,      // state
+    transformers::ISequences* sequences,                    // sequences
+    AllocatorPtr& allocator,                                // default allocator
+    onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+    transformers::ILogitsProcessorList* logits_processors,  // logits processors
+    const transformers::IBeamSearchParameters* parameters,  // parameters
+    int step,                                               // iteration counter
+    void* stream,                                           // cuda stream (for CUDA only)
+    const transformers::IConsoleDumper* dumper) {           // tensor dumper
   ORT_UNUSED_PARAMETER(logits_processors);
 
 #ifndef DEBUG_GENERATION
@@ -510,14 +510,14 @@ Status GreedySearchProcessLogits(
   const Tensor& input = next_token_scores_value.Get<Tensor>();
 
   constexpr int axis = 1;
-  const unsigned top_k = static_cast<unsigned>(1);
+  constexpr unsigned top_k = static_cast<unsigned>(1);
   constexpr bool largest = true;
   constexpr bool sorted = false;
 
-  std::unique_ptr<Tensor> topk_scores;
-  std::unique_ptr<Tensor> topk_indices;
+  auto topk_scores = Tensor::CreateDefault();
+  auto topk_indices = Tensor::CreateDefault();
   ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
-                           topk_scores, topk_indices));
+                           *topk_scores, *topk_indices));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("topk_scores", *(topk_scores.get()));

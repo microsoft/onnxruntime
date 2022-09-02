@@ -26,10 +26,10 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   size_t index = std::min(input_count, static_cast<size_t>(k_max_input_batch_size));
   InputBatchArray<CudaT> input_data_batch{static_cast<int32_t>(index)};
   for (size_t i = 0; i < index; ++i) {
-    input_data_batch[static_cast<int32_t>(i)] = reinterpret_cast<const CudaT*>(inputs[i].get().template Data<T>());
+    input_data_batch[static_cast<int32_t>(i)] = reinterpret_cast<const CudaT*>(inputs[i].get().Data<T>());
   }
 
-  CudaT* output_data = reinterpret_cast<CudaT*>(output.template MutableData<T>());
+  CudaT* output_data = reinterpret_cast<CudaT*>(output.MutableData<T>());
   Impl_NoBroadcastInputBatch<CudaT, VariadicElementwiseOpTag>(stream, input_data_batch, output_data,
                                                               output.Shape().Size());
 
@@ -42,9 +42,9 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
       ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[input_count - 1].get(), &output, &prepare));
       Impl_General<CudaT, VariadicElementwiseOpTag>(
           stream, prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,
-          reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()), &prepare.rhs_padded_strides,
-          reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()), &prepare.fdm_output_strides,
-          prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
+          reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()), &prepare.rhs_padded_strides,
+          reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()), &prepare.fdm_output_strides,
+          prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()),
           prepare.output_tensor->Shape().Size());
 
       // Must be the last.
@@ -52,10 +52,10 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
     }
 
     InputBatchArray<CudaT> left_input_data_batch{static_cast<int32_t>(batch)};
-    left_input_data_batch[0] = reinterpret_cast<const CudaT*>(output.template Data<T>());
+    left_input_data_batch[0] = reinterpret_cast<const CudaT*>(output.Data<T>());
     for (size_t i = 1; i < batch; ++i) {
       left_input_data_batch[static_cast<int32_t>(i)] =
-          reinterpret_cast<const CudaT*>(inputs[index].get().template Data<T>());
+          reinterpret_cast<const CudaT*>(inputs[index].get().Data<T>());
       index++;
     }
 
@@ -80,13 +80,13 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
       stream,
       prepare.output_rank_or_simple_broadcast,
       &prepare.lhs_padded_strides,
-      reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()),
+      reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()),
       &prepare.rhs_padded_strides,
-      reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()),
+      reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()),
       &prepare.fdm_output_strides,
       prepare.fdm_H,
       prepare.fdm_C,
-      reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
+      reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()),
       prepare.output_tensor->Shape().Size());
 
   return Status::OK();
@@ -117,9 +117,9 @@ VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::Gener
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes(), stream));
     ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[0].get(), &output, &prepare));
     Impl_Add(stream, prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,
-             reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()), &prepare.rhs_padded_strides,
-             reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()), &prepare.fdm_output_strides,
-             prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
+             reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()), &prepare.rhs_padded_strides,
+             reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()), &prepare.fdm_output_strides,
+             prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()),
              prepare.output_tensor->Shape().Size());
   } else {
     // First operation is between input[0] and input[index_of_same_shape] if index_of_same_shape is not 0.
@@ -128,9 +128,9 @@ VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::Gener
         BinaryElementwiseBroadcastPrepare(&inputs[index_of_same_shape].get(), &inputs[index].get(), &output, &prepare));
     Impl_General<CudaT, VariadicElementwiseOpTag>(
         stream, prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,
-        reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()), &prepare.rhs_padded_strides,
-        reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()), &prepare.fdm_output_strides,
-        prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
+        reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()), &prepare.rhs_padded_strides,
+        reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()), &prepare.fdm_output_strides,
+        prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()),
         prepare.output_tensor->Shape().Size());
   }
 
@@ -143,9 +143,9 @@ VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>::Gener
     ORT_RETURN_IF_ERROR(BinaryElementwiseBroadcastPrepare(&output, &inputs[index].get(), &output, &prepare));
     Impl_General<CudaT, VariadicElementwiseOpTag>(
         stream, prepare.output_rank_or_simple_broadcast, &prepare.lhs_padded_strides,
-        reinterpret_cast<const CudaT*>(prepare.lhs_tensor->template Data<T>()), &prepare.rhs_padded_strides,
-        reinterpret_cast<const CudaT*>(prepare.rhs_tensor->template Data<T>()), &prepare.fdm_output_strides,
-        prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->template MutableData<T>()),
+        reinterpret_cast<const CudaT*>(prepare.lhs_tensor->Data<T>()), &prepare.rhs_padded_strides,
+        reinterpret_cast<const CudaT*>(prepare.rhs_tensor->Data<T>()), &prepare.fdm_output_strides,
+        prepare.fdm_H, prepare.fdm_C, reinterpret_cast<CudaT*>(prepare.output_tensor->MutableData<T>()),
         prepare.output_tensor->Shape().Size());
   }
 
@@ -235,46 +235,37 @@ using MinOp = VariadicElementwiseOp<variadic_elementwise_ops::Min, uint32_t, uin
 
 using MaxOp = VariadicElementwiseOp<variadic_elementwise_ops::Max, uint32_t, uint64_t, int32_t, int64_t, MLFloat16,
                                     float, double, BFloat16>;
-
-const DeleteOnUnloadPtr<std::vector<MLDataType>> k_uzilhfd_datatypes = new std::vector<MLDataType>(
-    BuildKernelDefConstraints<uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>());
-const DeleteOnUnloadPtr<std::vector<MLDataType>> k_hfd_datatypes =
-    new std::vector<MLDataType>(BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>());
-
 }  // namespace
 
 // kernel registration
 
-#define REGISTER_KERNEL(name, impl_class, version, datatypes)       \
-  ONNX_OPERATOR_KERNEL_EX(                                          \
-      name,                                                         \
-      kOnnxDomain,                                                  \
-      version,                                                      \
-      kCudaExecutionProvider,                                       \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", datatypes), \
-      impl_class)
+#define REGISTER_KERNEL(name, impl_class, version, datatypes)                                                        \
+  ONNX_OPERATOR_KERNEL_EX(name, kOnnxDomain, version, kCudaExecutionProvider,                                        \
+                          (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<datatypes>()), \
+                          impl_class)
 
 #define REGISTER_VERSIONED_KERNEL(name, impl_class, start_version, end_version, datatypes) \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                       \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      start_version, end_version,                                                          \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", datatypes),                        \
-      impl_class)
+      name, kOnnxDomain, start_version, end_version, kCudaExecutionProvider,               \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<datatypes>()), impl_class)
 
-REGISTER_KERNEL(Sum, SumOp, 13, *k_hfd_datatypes)
-REGISTER_VERSIONED_KERNEL(Sum, SumOp, 8, 12, *k_hfd_datatypes)
-REGISTER_VERSIONED_KERNEL(Sum, SumOp, 6, 7, *k_hfd_datatypes)
+#define UZILHFD_TYPES uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16
+#define HFD_TYPES MLFloat16, float, double, BFloat16
 
-REGISTER_KERNEL(Min, MinOp, 13, *k_uzilhfd_datatypes)
-REGISTER_VERSIONED_KERNEL(Min, MinOp, 12, 12, *k_uzilhfd_datatypes)
-REGISTER_VERSIONED_KERNEL(Min, MinOp, 6, 11, *k_hfd_datatypes)
+REGISTER_KERNEL(Sum, SumOp, 13, HFD_TYPES)
+REGISTER_VERSIONED_KERNEL(Sum, SumOp, 8, 12, HFD_TYPES)
+REGISTER_VERSIONED_KERNEL(Sum, SumOp, 6, 7, HFD_TYPES)
 
-REGISTER_KERNEL(Max, MaxOp, 13, *k_uzilhfd_datatypes)
-REGISTER_VERSIONED_KERNEL(Max, MaxOp, 12, 12, *k_uzilhfd_datatypes)
-REGISTER_VERSIONED_KERNEL(Max, MaxOp, 6, 11, *k_hfd_datatypes)
+REGISTER_KERNEL(Min, MinOp, 13, UZILHFD_TYPES)
+REGISTER_VERSIONED_KERNEL(Min, MinOp, 12, 12, UZILHFD_TYPES)
+REGISTER_VERSIONED_KERNEL(Min, MinOp, 6, 11, HFD_TYPES)
 
+REGISTER_KERNEL(Max, MaxOp, 13, UZILHFD_TYPES)
+REGISTER_VERSIONED_KERNEL(Max, MaxOp, 12, 12, UZILHFD_TYPES)
+REGISTER_VERSIONED_KERNEL(Max, MaxOp, 6, 11, HFD_TYPES)
+
+#undef HFD_TYPES
+#undef UZILHFD_TYPES
 #undef REGISTER_VERSIONED_KERNEL
 #undef REGISTER_KERNEL
 

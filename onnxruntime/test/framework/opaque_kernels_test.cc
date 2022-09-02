@@ -395,7 +395,7 @@ TEST_F(OpaqueTypeTests, RunModel) {
   auto& rtensor = fetches.front().Get<Tensor>();
   // Should get the original shape back in the form of a tensor
   EXPECT_EQ(1u, rtensor.Shape().NumDimensions());
-  EXPECT_EQ(5, *rtensor.template Data<int64_t>());
+  EXPECT_EQ(5, *rtensor.Data<int64_t>());
 }
 
 }  // namespace test

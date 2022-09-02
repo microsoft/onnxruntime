@@ -559,7 +559,7 @@ and produces one output data (Tensor<T>) where the function `f(x) = quantize(alp
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
   const char* QLinearSigmoidDoc_ver1 = R"DOC(
-QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data 
+QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data
 (Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
 Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
 
@@ -584,6 +584,62 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
           {"tensor(uint8)", "tensor(int8)"},
           "Constrain input and output types to 8 bit tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QLinearSoftmax, 1, OpSchema().SetDoc(R"DOC(
+QLinearSoftmax computes the normalized exponential values for the given input:
+Softmax(input, axis) = Exp(input) / ReduceSum(Exp(input), axis=axis, keepdims=1)
+The input does not need to explicitly be a 2D vector. The "axis" attribute
+indicates the dimension along which QLinearSoftmax will be performed for onnx v.13+.
+or the dimension coerced to NxD Matrix for onnx v.12-.
+The output tensor has the same shape.
+)DOC")
+      .Attr("axis", "apply softmax to elements for dimensions axis,"
+      "or all dims along with axis according to op-version", AttributeProto::INT, static_cast<int64_t>(-1))
+      .Attr("opset", "opset version of corresponding SoftMax.", AttributeProto::INT)
+      .Input(0, "X", "The input tensor", "T")
+      .Input(1, "X_scale", "Scale of quantized input 'X'. It must be a scalar.", "tensor(float)")
+      .Input(2, "x_zero_point",
+            "Zero point tensor for input 'X'."
+            "It must be a scalar.",
+            "T", OpSchema::Optional)
+      .Input(3, "y_scale", "Scale of quantized output 'Y'. It must be a scalar.", "tensor(float)")
+      .Input(4, "y_zero_point",
+            "Zero point tensor for output 'Y'. "
+            "It must be a scalar.",
+            "T")
+      .Output(0, "Y",
+              "Output data tensor from pooling across the input "
+              "tensor. The output tensor has the same rank as the input. ",
+              "T")
+      .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"},
+              "Constrain input and output types to singed/unsigned int8 tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        // Shape inference starts
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        // Validate the value of 'axis'
+        const ONNX_NAMESPACE::TensorShapeProto& input_shape =
+            ctx.getInputType(0)->tensor_type().shape();
+        int r = input_shape.dim_size();
+        int axis = static_cast<int>(getAttribute(ctx, "axis", -1));
+        if (axis < -r || axis >= r) {
+          fail_shape_inference(
+              "'axis' must be in [",
+              -r,
+              " , ",
+              (r - 1),
+              "]. Its actual value is: ",
+              axis);
+        }
+
+        // Shape inference
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      }));
 
   ONNX_MS_OPERATOR_SET_SCHEMA(DynamicQuantizeLSTM, 1, OpSchema()
       .Attr(

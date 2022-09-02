@@ -1,4 +1,4 @@
-#include "core/optimizer/avx2_weight_s8_to_u8.h"
+#include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 
 #include <functional>
 #include <string>

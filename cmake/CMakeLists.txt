@@ -40,6 +40,10 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 7)
+  message(FATAL_ERROR  "GCC version must not less than 7")
+endif()
+
 # Options
 option(onnxruntime_RUN_ONNX_TESTS "Enable ONNX Compatibility Testing" OFF)
 option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
@@ -76,6 +80,7 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
+option(onnxruntime_USE_TENSORRT_BUILTIN_PARSER "Use TensorRT builtin parser" OFF)
 option(onnxruntime_TENSORRT_PLACEHOLDER_BUILDER "Instantiate Placeholder TensorRT Builder" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
@@ -110,7 +115,7 @@ option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 option(onnxruntime_USE_TVM "Build with TVM support" OFF)
 option(onnxruntime_TVM_CUDA_RUNTIME "Build TVM with CUDA support" OFF)
 option(onnxruntime_TVM_USE_LLVM "Build TVM with LLVM. Set customized path to llvm-config.exe here if need" OFF)
-option(onnxruntime_TVM_USE_HASH "Build ipp-crypto library for support has algorithm. It is defined for TVM only")
+option(onnxruntime_TVM_USE_HASH "Build ipp-crypto library for support hash algorithm. It is defined for TVM only")
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 
 # Options related to reducing the binary size produced by the build
@@ -168,6 +173,9 @@ option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 # build eager mode
 option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 
+# build Pytorch's LazyTensor support
+cmake_dependent_option(onnxruntime_ENABLE_LAZY_TENSOR "Enable ORT as a LazyTensor backend in Pytorch." ON "onnxruntime_ENABLE_TRAINING" OFF)
+
 # build separate library of schemas of (custom) ops used by ORT (for ONNX to MLIR translation)
 option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
@@ -186,6 +194,7 @@ option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer src dir")
 
 option(onnxruntime_ENABLE_CUDA_PROFILING "Enable CUDA kernel profiling" OFF)
+option(onnxruntime_ENABLE_ROCM_PROFILING "Enable ROCM kernel profiling" OFF)
 
 option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 
@@ -316,6 +325,16 @@ endif()
 # 'extended' implies minimal.
 if (onnxruntime_EXTENDED_MINIMAL_BUILD AND NOT onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_MINIMAL_BUILD ON)
+endif()
+
+# work around Android NDK bug which doesn't include -O flag for Release configuration
+# https://github.com/android/ndk/issues/1740
+# TODO: remove this when the NDK version(s) we support get fixed
+if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  # NB: attempting to match the effects of this fix: https://android-review.googlesource.com/c/platform/ndk/+/2168845
+  string(APPEND CMAKE_C_FLAGS_RELEASE " -O3")
+  string(APPEND CMAKE_CXX_FLAGS_RELEASE " -O3")
+  string(APPEND CMAKE_ASM_FLAGS_RELEASE " -O3")
 endif()
 
 # Enable space optimization for gcc/clang
@@ -575,6 +594,10 @@ if (MSVC)
     if (onnxruntime_DEV_MODE)
       string(APPEND CMAKE_CXX_FLAGS " /wd26812")
       string(APPEND CMAKE_C_FLAGS " /wd26812")
+      # warning C4805: '|': unsafe mix of type 'uintptr_t' and type 'bool' in operation (from c10/core/TensorImpl.h)
+      if (onnxruntime_ENABLE_EAGER_MODE)
+        string(APPEND CMAKE_CXX_FLAGS " /wd4805")
+      endif()
     endif()
   endif()
   string(APPEND CMAKE_CXX_FLAGS " /experimental:external /external:W0 /external:templates- /external:I ${CMAKE_CURRENT_SOURCE_DIR} /external:I ${CMAKE_CURRENT_BINARY_DIR}")
@@ -846,10 +869,6 @@ if (onnxruntime_DISABLE_OPTIONAL_TYPE)
   add_compile_definitions(DISABLE_OPTIONAL_TYPE)
 endif()
 
-if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
-  message(FATAL_ERROR "onnxruntime_CUDNN_HOME required for onnxruntime_USE_CUDA")
-endif()
-
 get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
 get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
@@ -1014,9 +1033,15 @@ set(onnxruntime_LINK_DIRS )
 if (onnxruntime_USE_CUDA)
       #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
       if (WIN32)
-        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib/x64 ${onnxruntime_CUDA_HOME}/x64/lib64)
+        if(onnxruntime_CUDNN_HOME)
+          list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib/x64)
+        endif()
+        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/x64/lib64)
       else()
-        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib64 ${onnxruntime_CUDA_HOME}/lib64)
+        if(onnxruntime_CUDNN_HOME)
+          list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib64)
+        endif()
+        list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/lib64)
       endif()
 endif()
 
@@ -1106,6 +1131,8 @@ else()
   check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
   check_cxx_compiler_flag(-Wformat-truncation HAS_FORMAT_TRUNCATION)
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
+  check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
+  check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
 
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -1124,6 +1151,13 @@ else()
   endif()
   if (HAS_UNDEFINED_VAR_TEMPLATE)
     list(APPEND ORT_WARNING_FLAGS -Wno-undefined-var-template)
+  endif()
+  if (HAS_DEPRECATED_BUILTINS)
+    list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-builtins)
+  endif()
+
+  if (HAS_ENUM_CONSTEXPR_CONVERSION)
+    target_compile_options(${PROTOBUF_LIB} PRIVATE "-Wno-enum-constexpr-conversion")
   endif()
 endif()
 
@@ -1231,6 +1265,9 @@ endif()
 function(onnxruntime_set_compile_flags target_name)
     target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
     if (MSVC)
+      foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+        target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
+      endforeach()
       target_compile_definitions(${target_name} PUBLIC -DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES -D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
       if (onnxruntime_ENABLE_MEMLEAK_CHECKER)
         target_compile_definitions(${target_name} PUBLIC -DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
@@ -1502,18 +1539,12 @@ if (onnxruntime_USE_TVM)
   if (NOT TARGET tvm)
     message(STATUS "Include TVM(*).")
     include(tvm)
-    if (onnxruntime_TVM_USE_HASH)
-      message(STATUS "Include ipp-crypto(*).")
-      include(ipp-crypto)
-    endif()
   endif()
 
   # ipp-crypto
   if (onnxruntime_TVM_USE_HASH)
-    set(ARCH intel64 CACHE STRING "Only defined for TVM")
-    add_subdirectory(${ipp_crypto_SOURCE_DIR} ${ipp_crypto_BINARY_DIR} EXCLUDE_FROM_ALL)
-    set_target_properties(ippcp_s PROPERTIES FOLDER ${ipp_crypto_SOURCE_DIR})
-    set(IPP_CRYPTO_INCLUDES ${ipp_crypto_INCLUDE_DIRS})
+    message(STATUS "Include ipp-crypto(*).")
+    include(ipp-crypto)
   endif()
 
   # TVM
@@ -1552,10 +1583,6 @@ if (onnxruntime_USE_TVM)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
-  if (onnxruntime_TVM_USE_HASH)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ippcp_s)
-    list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES ippcp_s)
-  endif()
 endif()
 
 # XNNPACK EP
@@ -1708,6 +1735,10 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
   endif()
 
+  if (onnxruntime_USE_OPENVINO_CPU_FP16)
+    add_definitions(-DOPENVINO_CONFIG_CPU_FP16=1)
+  endif()
+
   if (onnxruntime_USE_OPENVINO_VAD_M)
     add_definitions(-DOPENVINO_CONFIG_VAD_M=1)
   endif()
@@ -1730,9 +1761,14 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
-
+  
   if (onnxruntime_USE_OPENVINO_CPU_FP32_NP)
     add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
+    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
+  endif()
+
+  if (onnxruntime_USE_OPENVINO_CPU_FP16_NP)
+    add_definitions(-DOPENVINO_CONFIG_CPU_FP16=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
 
@@ -1791,23 +1827,19 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
-  if (WIN32)
-    set(CMAKE_CUDA_STANDARD 17)
-    foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-      string(APPEND CMAKE_CXX_FLAGS " /external:I\"${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}\"")
-    endforeach()
-  else()
-    #CUDA 10.2 on Linux doesn't support C++17
-    set(CMAKE_CUDA_STANDARD 14)
+  set(CMAKE_CUDA_STANDARD 17)
+  if(onnxruntime_CUDNN_HOME)
+    file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   endif()
-  file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
-
   if (NOT CMAKE_CUDA_ARCHITECTURES)
     if (CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
       # Support for Jetson/Tegra ARM devices
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # TX1, Nano
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_62,code=sm_62") # TX2
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_72,code=sm_72") # AGX Xavier, NX Xavier
+      if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_87,code=sm_87") # AGX Orin, NX Orin
+      endif()
     else()
       # the following compute capabilities are removed in CUDA 11 Toolkit
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
@@ -1831,7 +1863,7 @@ if (onnxruntime_USE_CUDA)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --Werror default-stream-launch")
   endif()
   if (NOT WIN32)
-    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --compiler-options -fPIC")
+    list(APPEND CUDA_NVCC_FLAGS --compiler-options -fPIC)
   endif()
   # Options passed to cudafe
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=bad_friend_decl\"")
@@ -1916,6 +1948,10 @@ endif()
 
 if (onnxruntime_ENABLE_CUDA_PROFILING)
   add_compile_definitions(ENABLE_CUDA_PROFILING)
+endif()
+
+if (onnxruntime_ENABLE_ROCM_PROFILING)
+  add_compile_definitions(ENABLE_ROCM_PROFILING)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -2039,6 +2075,22 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   add_compile_definitions(ENABLE_EAGER_MODE)
   list(APPEND ONNXRUNTIME_TARGETS onnxruntime_eager)
 endif()
+
+if (onnxruntime_ENABLE_LAZY_TENSOR)
+  # To support LazyTensor, ORT needs to call Python function from C/C++.
+  # so onnxruntime_ENABLE_PYTHON is required.
+  if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
+    message(
+        FATAL_ERROR
+        "Option onnxruntime_ENABLE_LAZY_TENSOR can only be set when onnxruntime_ENABLE_TRAINING and onnxruntime_ENABLE_PYTHON are enabled")
+  endif()
+  add_compile_definitions(ENABLE_LAZY_TENSOR)
+  # TODO: In the future, we can compile LazyTensor into a standalone
+  # library target, onnxruntime_lazy_tensor, to make the buid
+  # cleaner.
+  #list(APPEND ONNXRUNTIME_TARGETS onnxruntime_lazy_tensor)
+endif()
+
 foreach(target_name ${ONNXRUNTIME_TARGETS})
   include(${target_name}.cmake)
 endforeach()

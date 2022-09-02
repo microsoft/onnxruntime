@@ -1,6 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+# pylint: disable=missing-docstring
+# pylint: disable=C0103
+
 from distutils.version import LooseVersion
 
 import pytest
@@ -22,7 +25,19 @@ def torch_version_lower_than(v):
     return LooseVersion(torch.__version__) < LooseVersion(v)
 
 
-def test_GeLU():
+@pytest.fixture(scope="session", autouse=True)
+def run_before_test_session(request):
+    def insert_disable_fallback_in_env():
+        os.environ["ORTMODULE_FALLBACK_POLICY"] = "FALLBACK_DISABLE"
+
+    def remove_disable_fallback_from_env():
+        del os.environ["ORTMODULE_FALLBACK_POLICY"]
+
+    insert_disable_fallback_in_env()
+    request.addfinalizer(remove_disable_fallback_from_env)
+
+
+def test_gelu():
     @torch.jit.script
     def bias_gelu(bias, y):
         x = bias + y
@@ -741,7 +756,6 @@ def test_InnerModuleCall():
             ctx.device = device
             ctx.inner = InnerModel(dim, device).to(device)
             if use_ort:
-                enable_custom_autograd_function(ctx.inner)
                 ctx.inner = ORTModule(ctx.inner)
             z = ctx.inner(x)
             return z
@@ -1076,9 +1090,6 @@ def test_non_differentiable_autograd_function():
         print("Ref:")
         print(y_ref)
 
-        from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
-
-        enable_custom_autograd_support()
         m = ORTModule(m)
 
         # Inferene mode.

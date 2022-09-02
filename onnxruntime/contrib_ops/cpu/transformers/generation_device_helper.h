@@ -37,8 +37,8 @@ using TopkFunc = std::function<Status(
     AllocatorPtr allocator,
     void* stream,  // cudaStream_t
     onnxruntime::concurrency::ThreadPool* threadpool,
-    std::unique_ptr<Tensor>& output_values,
-    std::unique_ptr<Tensor>& output_indices)>;
+    Tensor& output_values,
+    Tensor& output_indices)>;
 
 // Create subgraph inputs: input_ids, position_ids and attention_mask (for GPT-2).
 using CreateGptInputsFunc = std::function<Status(
@@ -168,8 +168,8 @@ Status TopK(
     AllocatorPtr allocator,
     void* stream,
     onnxruntime::concurrency::ThreadPool* threadpool,
-    std::unique_ptr<Tensor>& output_values,
-    std::unique_ptr<Tensor>& output_indices);
+    Tensor& output_values,
+    Tensor& output_indices);
 
 Status AddToFeeds(
     const IExecutionProvider* execution_provider,

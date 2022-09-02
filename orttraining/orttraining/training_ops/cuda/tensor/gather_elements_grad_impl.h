@@ -9,12 +9,11 @@
 namespace onnxruntime {
 namespace cuda {
 
+struct GatherScatterElementsArgs;
+
 template <typename T, typename TIndex>
-Status GatherElementsGradImpl(cudaStream_t stream, const int64_t rank, const int64_t axis,
-                              const int64_t input_dim_along_axis, const int64_t input_stride_along_axis,
-                              const TArray<int64_t>& masked_input_strides, const TIndex* indices_data,
-                              const int64_t indices_size, const TArray<fast_divmod>& indices_fdms,
-                              const T* updates_data, T* output_data);
+Status GatherElementsGradImpl(cudaStream_t stream, const TIndex* indices_data, const T* updates_data, T* output_data,
+                              const GatherScatterElementsArgs& args);
 
 }  // namespace cuda
 }  // namespace onnxruntime

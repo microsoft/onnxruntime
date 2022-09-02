@@ -4,7 +4,7 @@
 #include "core/providers/cpu/ml/zipmap.h"
 #include "core/util/math_cpuonly.h"
 /**
-https://github.com/onnx/onnx/blob/master/onnx/defs/traditionalml/defs.cc
+https://github.com/onnx/onnx/blob/main/onnx/defs/traditionalml/defs.cc
 ONNX_OPERATOR_SCHEMA(ZipMap)
 .SetDomain("ai.onnx.ml")
 .SetDoc(R"DOC(
@@ -65,7 +65,7 @@ common::Status ZipMapOp::Compute(OpKernelContext* context) const {
                   "Zipmap only supports 1D or 2D input tensors");
   }
 
-  const auto* x_data = X.template Data<float>();
+  const auto* x_data = X.Data<float>();
 
   if (using_strings_) {
     if (features_per_batch != static_cast<int64_t>(classlabels_strings_.size())) {
@@ -77,7 +77,7 @@ common::Status ZipMapOp::Compute(OpKernelContext* context) const {
     auto* y_data = context->Output<std::vector<std::map<std::string, float>>>(0);
     if (y_data == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
 
-    //auto* y_data = Y->template MutableData<std::vector<std::map<std::string, float>>>();
+    //auto* y_data = Y->MutableData<std::vector<std::map<std::string, float>>>();
     y_data->resize(batch_size);
     int64_t current_weight_0 = 0;
     for (int64_t n = 0; n < batch_size; n++) {
@@ -97,7 +97,7 @@ common::Status ZipMapOp::Compute(OpKernelContext* context) const {
     }
     auto* y_data = context->Output<std::vector<std::map<std::int64_t, float>>>(0);
     if (y_data == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
-    //auto* y_data = Y->template MutableData<std::vector<std::map<int64_t, float>>>();
+    //auto* y_data = Y->MutableData<std::vector<std::map<int64_t, float>>>();
     y_data->resize(batch_size);
     int64_t current_weight_0 = 0;
     for (int n = 0; n < batch_size; n++) {

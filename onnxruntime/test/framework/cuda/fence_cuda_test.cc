@@ -42,7 +42,7 @@ class FenceCudaTestInferenceSession : public InferenceSession {
   FenceCudaTestInferenceSession(const SessionOptions& so, const Environment& env) : InferenceSession(so, env) {}
   Status LoadModel(onnxruntime::Model& model) {
     auto model_proto = model.ToProto();
-    auto st = Load(model_proto);
+    auto st = LoadOnnxModel(std::move(model_proto));
     return st;
   }
 };
@@ -129,7 +129,7 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
 
   float expected_output[4] = {13.0f, -18.0f, -27.0f, 40.0f};
   for (int i = 0; i < 4; ++i) {
-    EXPECT_EQ(output.template Data<float>()[i], expected_output[i]);
+    EXPECT_EQ(output.Data<float>()[i], expected_output[i]);
   }
 }
 
@@ -178,7 +178,7 @@ TEST(CUDAFenceTests, TileWithInitializer) {
 
   float expected_output[8] = {-1, 2, -1, 2, 3, -4, 3, -4};
   for (int i = 0; i < 8; ++i) {
-    EXPECT_EQ(output.template Data<float>()[i], expected_output[i]);
+    EXPECT_EQ(output.Data<float>()[i], expected_output[i]);
   }
 }
 
@@ -238,7 +238,7 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
 
   float expected_output[16] = {7, -10, 7, -10, -15, 22, -15, 22, 7, -10, 7, -10, -15, 22, -15, 22};
   for (int i = 0; i < 16; ++i) {
-    EXPECT_EQ(output.template Data<float>()[i], expected_output[i]);
+    EXPECT_EQ(output.Data<float>()[i], expected_output[i]);
   }
 }
 

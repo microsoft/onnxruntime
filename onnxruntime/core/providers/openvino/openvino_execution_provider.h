@@ -75,6 +75,9 @@ struct OpenVINOExecutionProviderInfo {
 #if defined OPENVINO_CONFIG_CPU_FP32
       device_type_ = "CPU";
       precision_ = "FP32";
+#elif defined OPENVINO_CONFIG_CPU_FP16
+      device_type_ = "CPU";
+      precision_ = "FP16";      
 #elif defined OPENVINO_CONFIG_GPU_FP32
       device_type_ = "GPU";
       precision_ = "FP32";
@@ -107,6 +110,9 @@ struct OpenVINOExecutionProviderInfo {
     } else if (dev_type == "CPU_FP32") {
       device_type_ = "CPU";
       precision_ = "FP32";
+    } else if (dev_type == "CPU_FP16") {
+      device_type_ = "CPU";
+      precision_ = "FP16";  
     } else if (dev_type == "GPU_FP32") {
       device_type_ = "GPU";
       precision_ = "FP32";

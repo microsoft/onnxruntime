@@ -30,10 +30,14 @@ class OrtValueNameIdxMap {
     return p.first->second;
   }
 
-  common::Status GetIdx(const std::string& name, int& idx) const {
+  common::Status GetIdx(std::string_view name, int& idx) const {
     idx = -1;
 
+#ifdef DISABLE_ABSEIL
+    auto it = map_.find(std::string(name));
+#else
     auto it = map_.find(name);
+#endif
     if (it == map_.end()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not find OrtValue with name '", name, "'");
     }
