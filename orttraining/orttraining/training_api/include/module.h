@@ -91,6 +91,15 @@ struct Module {
   // Returns the output count for eval graph
   size_t GetEvalModeOutputCount() const noexcept;
 
+  // Return size of all parameters
+  size_t GetParametersSize(const bool trainable_only=true) const;
+
+  // Copy parameters onto contiguous buffer held by parameters_buffer
+  Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only=true);
+  
+  // Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
+  Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only=true);
+
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
@@ -98,6 +107,7 @@ struct Module {
   std::vector<std::string> train_output_names_;
   std::vector<std::string> eval_input_names_;
   std::vector<std::string> eval_output_names_;
+  std::vector<std::string> weight_names_;
   std::vector<OrtValue> weights_;
   std::vector<OrtValue> gradients_;
   bool accumulate_gradient_ = false;

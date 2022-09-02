@@ -37,6 +37,8 @@
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.16.0" /> <!-- should match version ORT native build uses -->
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.8.0" />
+    <!-- use Newtonsoft.Json dependency of Microsoft.NET.Test.Sdk at a more recent version -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
     <PackageReference Include="xunit" Version="2.4.1" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.3" />
     <PackageReference Include="$(PACKAGENAME)" Version="$(CurrentOnnxRuntimeVersion)" />

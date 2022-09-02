@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "precomp.h"
+#include "DmlDFT.h"
 #include "OperatorRegistration.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorVersions.h"
@@ -333,12 +334,12 @@ constexpr static std::array<SupportedTensorDataTypes, 4> supportedTypeListQLinea
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
-    SupportedTensorDataTypes::Int32 
+    SupportedTensorDataTypes::Int32
 };
 
 
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListDynamicQuantizeLinear = {
-    SupportedTensorDataTypes::Float32, 
+    SupportedTensorDataTypes::Float32,
     SupportedTensorDataTypes::UInt8,
 };
 
@@ -351,28 +352,28 @@ constexpr auto requiredConstantCpuInputs(Args... args)
 
 // Define a single row of OperatorRegistrationInformation.
 #define REG_INFO(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, ##__VA_ARGS__, 
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, ##__VA_ARGS__,
 
 // Versioned operator
 #define REG_INFO_VER(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName##version, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, false, ##__VA_ARGS__, 
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName##version, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, false, ##__VA_ARGS__,
 
 // Identity operators use Copy, alias their first input, and use elementwise identity operators
 // when needed for striding support, but issue actual copies outside the graph.
 #define REG_INFO_COPY(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, true, ##__VA_ARGS__, 
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, true, ##__VA_ARGS__,
 
 // MS-domain operators
 #define REG_INFO_MS(version, operatorName, ...) \
-    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, ##__VA_ARGS__, 
+    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, ##__VA_ARGS__,
 
 // MS-domain operators
 #define REG_INFO_MSDML(version, operatorName, ...) \
-    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDmlDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, ##__VA_ARGS__, 
+    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDmlDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, ##__VA_ARGS__,
 
 constexpr static OperatorRegistrationInformation operatorRegistrationInformationTable[] =
 {
-///  Domain/Type, Ver,  Name,                               TypeNames,                       Types,                                 Graph Support,                  Required const CPU inputs, 
+///  Domain/Type, Ver,  Name,                               TypeNames,                       Types,                                 Graph Support,                  Required const CPU inputs,
 ///                                                                                                                                                                 Input count required for graph support,
 ///                                                                                                                                                                 Support query function
 
@@ -687,7 +688,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MSDML(1,  FusedMatMul,                        typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MSDML(1,  FusedAdd,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MSDML(1,  FusedSum,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported,     requiredConstantCpuInputs(), 2)},
-    
+
     {REG_INFO(     10,  IsInf,                              typeNameListTwo,                supportedTypeListIsInf,                 DmlGraphSupport::Supported)},
     {REG_INFO(     10,  Mod,                                typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Mod,                                typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
@@ -700,7 +701,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
 
     {REG_INFO(      9,  MaxUnpool,                          typeNameListTwo,                supportedTypeListMaxUnpool,             DmlGraphSupport::Supported,      requiredConstantCpuInputs(2))},
     {REG_INFO(     11,  MaxUnpool,                          typeNameListTwo,                supportedTypeListMaxUnpool,             DmlGraphSupport::Supported,      requiredConstantCpuInputs(2))},  // 11 is identical to 9.
-        
+
     {REG_INFO_MS(  1,   QLinearAdd,                         typeNameListDefault,            supportedTypeListInteger8,              DmlGraphSupport::Supported)},
     {REG_INFO(     10,  QLinearConv,                        typeNameListFour,               supportedTypeListQLinearConv,           DmlGraphSupport::Supported)},
     {REG_INFO(     10,  QLinearMatMul,                      typeNameListThree,              supportedTypeListQLinearMatMul,         DmlGraphSupport::Supported)},
@@ -708,8 +709,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     10,  ConvInteger,                        typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
     {REG_INFO(     11,  DynamicQuantizeLinear,              typeNameListTwo,                supportedTypeListDynamicQuantizeLinear, DmlGraphSupport::Supported)},
 };
- 
-template<typename T> 
+
+template<typename T>
 MLOperatorEdgeDescription EdgeDesc()
 {
     return {MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLTypeTraits<T>::TensorType)};
@@ -726,7 +727,7 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
     for (const OperatorRegistrationInformation& information : operatorRegistrationInformationTable)
     {
         assert(information.tensorTypeNames.size() == information.supportedTensorDataTypes.size());
-            
+
         MLOperatorKernelDescription desc = {};
         desc.domain = information.domain;
         desc.name = information.operatorName;
@@ -735,11 +736,11 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
         // The graph must be configured with operators from only the legacy DML API, or only the new DML API
         bool kernelSupportsGraph = !bool(information.dmlGraphSupport & DmlGraphSupport::NotSupported);
 
-        desc.options = information.shapeInferenceFunction ? 
+        desc.options = information.shapeInferenceFunction ?
             MLOperatorKernelOptions::None : MLOperatorKernelOptions::AllowDynamicInputShapes;
 
         desc.minimumOperatorSetVersion = information.sinceVersion;
-    
+
         typeConstraints.resize(information.tensorTypeNames.size());
         desc.typeConstraints = typeConstraints.data();
         desc.typeConstraintCount = static_cast<uint32_t>(typeConstraints.size());
@@ -750,7 +751,7 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
         FusionHelpers::AssertFusableOperatorSupportsVersionIfExists(desc.name, desc.domain, desc.minimumOperatorSetVersion);
 #endif
 
-        // edgeDescs will accumulate the edge descriptions across all type constraints.  
+        // edgeDescs will accumulate the edge descriptions across all type constraints.
         // The values of allowedTypeCount will indicate how many elements of edgeDescs
         // belong to each type constraint.
         edgeDescs.clear();
@@ -773,7 +774,7 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             if (bool(supportedTypes & SupportedTensorDataTypes::Int64  )) edgeDescs.push_back(EdgeDesc<int64_t>());
             //if (bool(supportedTypes & SupportedTensorDataTypes::String )) edgeDescs.push_back(EdgeDesc<std::string>());
             if (bool(supportedTypes & SupportedTensorDataTypes::Bool   )) edgeDescs.push_back(EdgeDesc<bool>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Float16)) edgeDescs.push_back(EdgeDesc<::MLFloat16>()); 
+            if (bool(supportedTypes & SupportedTensorDataTypes::Float16)) edgeDescs.push_back(EdgeDesc<::MLFloat16>());
             if (bool(supportedTypes & SupportedTensorDataTypes::Float64)) edgeDescs.push_back(EdgeDesc<double>());
             if (bool(supportedTypes & SupportedTensorDataTypes::UInt32 )) edgeDescs.push_back(EdgeDesc<uint32_t>());
             if (bool(supportedTypes & SupportedTensorDataTypes::UInt64 )) edgeDescs.push_back(EdgeDesc<uint64_t>());
@@ -781,7 +782,7 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             typeConstraints[i].allowedTypeCount = static_cast<uint32_t>(edgeDescs.size() - lastEdgeDescSize);
             lastEdgeDescSize = edgeDescs.size();
         }
-        
+
         // Now that the edge descriptions list won't be re-allocated, assign pointers to its memory
         // into the type constraints entries
         size_t totalTypeCount = 0;
@@ -793,7 +794,7 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
 
         ComPtr<MLOperatorKernelFactory> factory =  wil::MakeOrThrow<MLOperatorKernelFactory>(information.creationFunction);
         ComPtr<MLOperatorShapeInferrer> shapeInferrer;
-        
+
         if (information.shapeInferenceFunction)
         {
             shapeInferrer = wil::MakeOrThrow<MLOperatorShapeInferrer>(information.shapeInferenceFunction);
@@ -806,8 +807,8 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
         }
 
         ORT_THROW_IF_FAILED(registryPrivate->RegisterOperatorKernel(
-            &desc, 
-            factory.Get(), 
+            &desc,
+            factory.Get(),
             shapeInferrer.Get(),
             supportQuery.Get(),
             true, // isInternalOperator
@@ -818,6 +819,8 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             static_cast<uint32_t>(information.requiredConstantCpuInputs.second)
         ));
     }
+
+    GpuDFTOperatorFactory::RegisterDFTKernel(registry);
 }
 
 } // namespace Dml

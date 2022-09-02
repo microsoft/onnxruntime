@@ -112,6 +112,48 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
   }
 }
 
+inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
+                                       cublasOperation_t transa,
+                                       cublasOperation_t transb,
+                                       int m, int n, int k,
+                                       const float* alpha,
+                                       const half* A, int lda,
+                                       const half* B, int ldb,
+                                       const float* beta,
+                                       half* C, int ldc,
+                                       const cudaDeviceProp& prop) {
+  const HalfGemmOptions* half_options = HalfGemmOptions::GetInstance();
+  onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, half_options->GetMathMode());
+  if (half_options->IsCompute16F()) {
+    // The alpha and beta shall have same precision as compute type.
+    uint16_t h_a = onnxruntime::math::floatToHalf(*alpha);
+    uint16_t h_b = onnxruntime::math::floatToHalf(*beta);
+    return cublasGemmEx(handle,
+                        transa,
+                        transb,
+                        m, n, k,
+                        &h_a,
+                        A, CUDA_R_16F, lda,
+                        B, CUDA_R_16F, ldb,
+                        &h_b,
+                        C, CUDA_R_16F, ldc,
+                        half_options->GetComputeType(),
+                        CUBLAS_GEMM_DEFAULT);
+  } else {
+    return cublasGemmEx(handle,
+                        transa,
+                        transb,
+                        m, n, k,
+                        alpha,
+                        A, CUDA_R_16F, lda,
+                        B, CUDA_R_16F, ldb,
+                        beta,
+                        C, CUDA_R_16F, ldc,
+                        half_options->GetComputeType(),
+                        CUBLAS_GEMM_DEFAULT);
+  }
+}
+
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
                                        int n, int k, const BFloat16* alpha, const BFloat16* A, int lda,
@@ -379,7 +421,7 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      const cudaDeviceProp& prop) {
   const HalfGemmOptions* half_options = HalfGemmOptions::GetInstance();
   onnxruntime::cuda::CublasMathModeSetter math_mode_setter(prop, handle, half_options->GetMathMode());
-  if (half_options->IsCompute16F()) {    
+  if (half_options->IsCompute16F()) {
     // The alpha and beta shall have same precision as compute type.
     uint16_t h_a = onnxruntime::math::floatToHalf(*alpha);
     uint16_t h_b = onnxruntime::math::floatToHalf(*beta);
