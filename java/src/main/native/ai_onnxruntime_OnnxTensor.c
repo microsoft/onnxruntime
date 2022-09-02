@@ -44,8 +44,8 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensor
         // Check if we're copying a scalar or not
         if (shapeLen == 0) {
           // Scalars are passed in as a single element array
-          size_t copied = copyJavaToPrimitiveArray(jniEnv, onnxType, tensorData, dataObj);
-          failed = copied == 0 ? 1 : failed;
+          int64_t copied = copyJavaToPrimitiveArray(jniEnv, onnxType, dataObj, tensorData);
+          failed = copied == -1 ? 1 : failed;
         } else {
           // Extract the tensor shape information
           JavaTensorTypeShape typeShape;
@@ -53,9 +53,9 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createTensor
 
           if (code == ORT_OK) {
             // Copy the java array into the tensor
-            size_t copied = copyJavaToTensor(jniEnv, onnxType, tensorData, typeShape.elementCount,
-                                             typeShape.dimensions, dataObj);
-            failed = copied == 0 ? 1 : failed;
+            int64_t copied = copyJavaToTensor(jniEnv, onnxType, typeShape.elementCount,
+                                             typeShape.dimensions, dataObj, tensorData);
+            failed = copied == -1 ? 1 : failed;
           } else {
             failed = 1;
           }
