@@ -2535,8 +2535,8 @@ void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry&
                               OrtDevice::GPU,
                               stream_,
                               use_ep_level_unified_stream_,
-                              nullptr,
-                              nullptr);
+                              GetPerThreadContext().CudnnHandle(),
+                              GetPerThreadContext().CublasHandle());
 }
 
 }  // namespace onnxruntime

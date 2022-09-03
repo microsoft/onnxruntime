@@ -296,13 +296,13 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
 }
 
 void ScheduleDownstream(ExecutionContext& ctx,
-                        onnxruntime::NotificationIndex notification_index,
+                        size_t trigger,
                         bool single_thread_mode) {
   auto* ctx_ptr = &ctx;
   auto* plan = ctx.GetSessionState().GetExecutionPlan();
   auto& downstream_map = plan->downstream_map;
   auto* tp = single_thread_mode ? nullptr : ctx.GetSessionState().GetInterOpThreadPool();
-  auto it = downstream_map.find(notification_index);
+  auto it = downstream_map.find(trigger);
   if (it != downstream_map.end()) {
     for (auto downstream : it->second) {
       // increase the task count before schedule down-stream
