@@ -5,14 +5,14 @@ parent: Accelerate PyTorch
 grand_parent: Tutorials
 nav_order: 1
 ---
-# Inference with PyTorch
+# Inference PyTorch Models
 {: .no_toc }
 
 Learn about PyTorch and how to perform inference with PyTorch models.
 
-PyTorch dominates the deep learning landscape with its readily digestible and flexible API; the large number of ready-made models available, particularly in the natural language (NLP) domain; as well as its domain specific libraries.
+PyTorch leads the deep learning landscape with its readily digestible and flexible API; the large number of ready-made models available, particularly in the natural language (NLP) domain; as well as its domain specific libraries.
 
-With its growing ecosystem of developers and applications, this articles is a quick tour through inference with PyTorch. There are a number of different ways to perform inference with PyTorch; these are enumerated below.
+A growing ecosystem of developers and applications seek to use models built with PyTorch and this articles provides a quick tour of inferencing PyTorch models. There are a number of different ways to perform inference of PyTorch models; these are enumerated below.
 
 This article assumes that you are looking for information about performing inference with your PyTorch model rather than how to train a PyTorch model.
 
@@ -59,11 +59,13 @@ tokenizer = transformers.BertTokenizer.from_pretrained(model_name)
 model = transformers.BertForQuestionAnswering.from_pretrained(model_name)
 ```
 
-Once you have created or imported a trained model, how do you run it to perform inference? There are a number of different methods and frameworks that you can use to perform inference in PyTorch.
+Once you have created or imported a trained model, how do you run it to perform inference? Below we describe several approaches that you can use to perform inference in PyTorch.
 
-## Inference with native PyTorch
+## Inference options
 
-If you are running in an environment that contains Python executables and libraries, you can run your application in native PyTorch.
+### Inference with native PyTorch
+
+If you are not sensitive to performance or size and are running in an environment that contains Python executables and libraries, you can run your application in native PyTorch.
 
 Once you have your trained model, there are two methods that you (or your data science team) can use to save and load the model for inference:
 
@@ -94,11 +96,11 @@ Which of these methods you use depends on your configuration. Saving and loading
 
 Saving the trained parameters of the model (the state dictionary, or state_dict) is more flexible than the first approach as long as you have access to the original model code.
 
-There are two main reasons why you may choose to use a different approach than native PyTorch to perform inference on your model. The first is that you must running in an environment that contains a Python runtime and the PyTorch libraries and associated dependencies. If you want to run on an environemnt, such as web or mobile or specialized hardware, running PyTorch inference with native PyTorch will not work. The second is performance. Out of the box, PyTorch model may not give the performance that your application needs.
+There are two main reasons why you may not want to use native PyTorch to perform inference on your model. The first is that you must be running in an environment that contains a Python runtime and the PyTorch libraries and associated dependencies - these add up to several gigabytes of files. If you want to run in an environment such as mobile phone, web browser, or on specialized hardware, running PyTorch inference with native PyTorch will not work. The second is performance. Out of the box, PyTorch model may not give the performance that your application needs.
 
-## Inference with TorchScript
+### Inference with TorchScript
 
-If you are running in an environment that is more constrained and you cannot install PyTorch or other python libraries, you have the option of performing inference with PyTorch models that have been converted to TorchScript. TorchScript is a subset of Python that allows you to create serializable models that can be loaded and executed in non Python environments. It is also optimized for the language constructs most used by deep learning models.
+If you are running in an environment that is more constrained where you cannot install PyTorch or other Python libraries, you have the option of performing inference with PyTorch models that have been converted to TorchScript. TorchScript is a subset of Python that allows you to create serializable models that can be loaded and executed in non-Python environments.
 
 ```python
 # Export to TorchScript
@@ -135,7 +137,7 @@ Whilst you do not need to have a Python runtime in your environment to perform i
 
 ## Inference with ONNXRuntime
 
-When performance and portability are paramount, you can use ONNXRuntime to perform inference on a PyTorch model. With ONNXRuntime, you can reduce latency and memory and increase throughput. You can also run a single model on cloud, edge, web  or mobile, using the language bindings and libraries provided with ONNXRuntime.
+When performance and portability are paramount, you can use ONNXRuntime to perform inference of a PyTorch model. With ONNXRuntime, you can reduce latency and memory and increase throughput. You can also run a model on cloud, edge, web or mobile, using the language bindings and libraries provided with ONNXRuntime.
 
 The first step is to export your PyTorch model to ONNX format using the PyTorch ONNX exporter.
 
@@ -147,9 +149,9 @@ example = ...
 torch.onnx.export(model, PATH, example)
 ```
 
-Once exported to ONNX format, you can view the model in the Netron viewer to understand the model graph and the inputs and output node names and shapes, and which nodes have variably sized inputs and outputs (dynamic axes).
+Once exported to ONNX format, you can optionally view the model in the Netron viewer to understand the model graph and the inputs and output node names and shapes, and which nodes have variably sized inputs and outputs (dynamic axes).
 
-Then you can run the ONNX model in the environment of your choice. The ONNXRuntime engine is implemented in C++ and had a C++ API as well as APIs in Python, C#, Java, Javascript, Julia and Ruby. For example, the following code snippet shows a skeleton of a C++ inference application.
+Then you can run the ONNX model in the environment of your choice. The ONNXRuntime engine is implemented in C++ and has APIs in C++, Python, C#, Java, Javascript, Julia, and Ruby. ONNXRuntime can run your model on Linux, Mac, Windows, iOS, and Android. For example, the following code snippet shows a skeleton of a C++ inference application.
 
 ```cpp
   // Allocate ONNXRuntime session
@@ -173,23 +175,23 @@ Then you can run the ONNX model in the environment of your choice. The ONNXRunti
   session_.Run(Ort::RunOptions{nullptr}, input_names, &input_tensor, 1, output_names, &output_tensor, 1);
 ```
 
-Out of the box, ONNXRuntime applies a series of optimizations to the ONNX graph, combining nodes where possible and factoring out constant values (constant folding). ONNXRuntime also integrates with a number of hardware accelerators via its Execution Provider interface, including CUDA, TensorRT, OpenVINO, CoreML and NNAPI, depending on which hardware you are running on.
+Out of the box, ONNXRuntime applies a series of optimizations to the ONNX graph, combining nodes where possible and factoring out constant values (constant folding). ONNXRuntime also integrates with a number of hardware accelerators via its Execution Provider interface, including CUDA, TensorRT, OpenVINO, CoreML and NNAPI, depending on which hardware platform you are targeting.
 
-You can also improve the performance of the ONNX model by quantizing it.
+You can further improve the performance of the ONNX model by quantizing it.
 
-If the application is running in constrained environments, such as mobile and edge you can build a reduced size runtime, based on the model or models that the application runs.
+If the application is running in constrained environments, such as mobile and edge, you can build a reduced size runtime based on the model or set of models that the application runs.
 
-To started in your language and environment of choice, see [Get started with ONNX Runtime](../../get-started/)
+To get started in your language and environment of choice, see [Get started with ONNX Runtime](../../get-started/)
 
-## Further reading
+## Examples
 
-### Convert model to ONNX
+### Export model to ONNX
 
 * [Basic PyTorch export through torch.onnx](https://pytorch.org/docs/stable/onnx.html)
 * [Super-resolution with ONNX Runtime](https://pytorch.org/tutorials/advanced/super_resolution_with_onnxruntime.html)
 * [Export PyTorch model with custom ops](../export-pytorch-model.md)
 
-### PyTorch inference examples
+### Accelerated inference with ONNXRuntime
 
 * [Accelerate BERT model on CPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_CPU.ipynb)
 * [Accelerate BERT model on GPU](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/PyTorch_Bert-Squad_OnnxRuntime_GPU.ipynb)
