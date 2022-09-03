@@ -527,7 +527,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const FeedsFetchesManager& feeds_fetches_manager,
                                        gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                        const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                       ExecutionMode /*execution_mode*/, const bool* terminate_flag,
+                                       ExecutionMode execution_mode, const bool* terminate_flag,
                                        const logging::Logger& logger, const bool only_execute_path_to_fetches = false,
                                        Stream* parent_stream = nullptr) {
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
@@ -536,14 +536,13 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 
   DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size(), session_state);
 
-  bool single_stream = session_state.GetExecutionPlan()->NumberOfValidStream() == 1;
   bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;
   // in following two cases, we execute the workload in main thread:
-  // 1. only have 1 stream, it could be the CPU sequential inference scenario, or GPU case when all the nodes are running on GPU.
+  // 1. execution mode is sequential.
   // 2. execute a subgraph. Because in current implmentation, the execute of subgraph is launched through parent kernel.
   //    the parent kernel will occupy a thread in thread pool. if we use multiple threads to execute subgraph, it may cause
   //    deadlock when we reach the limitation of thread pool.
-  bool single_thread_mode = single_stream || is_subgraph;
+  bool single_thread_mode = execution_mode == ExecutionMode::ORT_SEQUENTIAL || is_subgraph;
 #ifdef ENABLE_TRAINING
   single_thread_mode = true;
 #endif
