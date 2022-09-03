@@ -23,6 +23,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockitoSession;
+import org.mockito.quality.Strictness;
 
 public class OnnxruntimeModuleTest {
   private ReactApplicationContext reactContext =
