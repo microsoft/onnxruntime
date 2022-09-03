@@ -5,6 +5,7 @@
 
 import torch
 import torch.onnx.symbolic_helper as sym_help
+from packaging.version import Version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
@@ -20,7 +21,9 @@ class CustomOpSymbolicRegistry:
     def register_all(cls):
         for name, fn in cls._SYMBOLICS.items():
             # Symbolic name is in format: domain::name
-            register_custom_op_symbolic(name, fn, 1)
+            # Exporter will fail to register symbolic with non-empty domain when torch version is < 1.11.0.
+            if Version(torch.__version__) >= Version("1.11.0") or name.startswith("::"):
+                register_custom_op_symbolic(name, fn, 1)
 
 
 def register_symbolic(name, domain=""):
@@ -174,26 +177,6 @@ def adaptive_avg_pool2d(g, self, output_size):
     return g.op("org.pytorch.aten::ATen", self, output_size, operator_s="_adaptive_avg_pool2d")
 
 
-@register_symbolic("binary_cross_entropy_with_logits")
-def binary_cross_entropy_with_logits(g, self, target, weight, pos_weight, reduction):
-    # If weight is not None, we need to check if it requires grad and add gradient graph accordingly.
-    # But current custom_gradient_registry doesn't support such None checking,
-    # So doesn't support non-None weight for now.
-    if weight is None or sym_help._is_none(weight):
-        return g.op(
-            "org.pytorch.aten::ATen",
-            self,
-            target,
-            weight,
-            pos_weight,
-            reduction,
-            operator_s="binary_cross_entropy_with_logits",
-        )
-    from torch.onnx.symbolic_opset12 import binary_cross_entropy_with_logits as bce
-
-    return bce(g, self, target, weight, pos_weight, reduction)
-
-
 @register_symbolic("numpy_T")
 def numpy_T(g, self):
     # Numpy-style `a.T`: returns the tensor
@@ -218,6 +201,36 @@ def squeeze(g, self, dim=None):
         return squeeze_with_if(g, self, dim)
     squeeze_dim = sym_help._get_const(dim, "i", "dim")
     return sym_help._squeeze_helper(g, self, axes_i=[squeeze_dim])
+
+
+# Exporter's prim::ConstantChunk uses multiple Slice nodes, which is fine for inference.
+# For training, the gradient graph will be multiple SliceGrad and one Sum, which is inefficient compared to
+# exporting to Split with SplitGrad as gradient graph.
+@register_symbolic("ConstantChunk", "prim")
+def prim_ConstantChunk(g, self, chunks, dim):
+    if chunks == 1:
+        return self
+    input_shape_dim = g.op(
+        "Gather", g.op("Shape", self), g.op("Constant", value_t=torch.tensor([dim], dtype=torch.long)), axis_i=0
+    )
+    chunk_size_minus_1 = g.op("Constant", value_t=torch.tensor([chunks - 1], dtype=torch.long))
+    chunk_dim = g.op(
+        "Div",
+        g.op("Add", input_shape_dim, chunk_size_minus_1),
+        g.op("Constant", value_t=torch.tensor([chunks], dtype=torch.long)),
+    )
+    return g.op(
+        "Split",
+        self,
+        g.op(
+            "Concat",
+            g.op("Expand", chunk_dim, chunk_size_minus_1),
+            g.op("Sub", input_shape_dim, g.op("Mul", chunk_dim, chunk_size_minus_1)),
+            axis_i=0,
+        ),
+        axis_i=dim,
+        outputs=chunks,
+    )
 
 
 # For torch.einsum.

@@ -351,7 +351,7 @@ def test_ortmodule_fallback_torch_model(is_training, fallback_enabled, matching_
 
                 ort_out = ort_model(x)
                 pt_out = pt_model(x)
-                _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
+                _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=1e-3, atol=1e-6)
             else:
                 with pytest.raises(_fallback.ORTModuleTorchModelException) as ex_info:
                     ort_model = ORTModule(pt_model)
@@ -525,7 +525,7 @@ def test_ortmodule_fallback_onnx_model__custom_autograd(
                     )
                 pt_out = pt_model(x.mm(w1)).mm(w2)
                 ort_out = ort_model(x.mm(w1)).mm(w2)
-                _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
+                _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=1e-03, atol=1e-04)
             else:
                 with pytest.raises(_fallback.ORTModuleONNXModelException) as ex_info:
                     _ = ort_model(x.mm(w1)).mm(w2)

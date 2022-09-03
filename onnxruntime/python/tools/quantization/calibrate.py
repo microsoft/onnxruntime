@@ -67,23 +67,18 @@ class CalibraterBase:
         self.symmetric = symmetric
         self.use_external_data_format = use_external_data_format
 
-        # augment graph
         self.augment_model = None
-        self.augment_graph()
-
-        # Create InferenceSession
         self.infer_session = None
         self.execution_providers = ["CPUExecutionProvider"]
-        self._create_inference_session()
 
     def set_execution_providers(self, execution_providers=["CPUExecutionProvider"]):
         """
         reset the execution providers to execute the collect_data. It triggers to re-creating inference session.
         """
         self.execution_providers = execution_providers
-        self._create_inference_session()
+        self.create_inference_session()
 
-    def _create_inference_session(self):
+    def create_inference_session(self):
         """
         create an OnnxRuntime InferenceSession.
         """
@@ -358,6 +353,7 @@ class HistogramCalibrater(CalibraterBase):
         self.num_bins = num_bins
         self.num_quantized_bins = num_quantized_bins
         self.percentile = percentile
+        self.tensors_to_calibrate = None
 
     def augment_graph(self):
         """
@@ -366,15 +362,11 @@ class HistogramCalibrater(CalibraterBase):
         """
         model = clone_model_with_shape_infer(self.model)
 
-        added_nodes = []
-        added_outputs = []
-        tensors, value_infos = self.select_tensors_to_calibrate(model)
+        self.tensors_to_calibrate, value_infos = self.select_tensors_to_calibrate(model)
+        for tensor in self.tensors_to_calibrate:
+            if tensor not in self.model_original_outputs:
+                model.graph.output.append(value_infos[tensor])
 
-        for tensor in tensors:
-            added_outputs.append(value_infos[tensor])
-
-        model.graph.node.extend(added_nodes)
-        model.graph.output.extend(added_outputs)
         onnx.save(
             model,
             self.augmented_model_path,
@@ -408,7 +400,7 @@ class HistogramCalibrater(CalibraterBase):
             for k, v in d.items():
                 merged_dict.setdefault(k, []).append(v)
 
-        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i not in self.model_original_outputs)
+        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i in self.tensors_to_calibrate)
 
         if not self.collector:
             self.collector = HistogramCollector(
@@ -825,12 +817,13 @@ def create_calibrator(
     extra_options={},
 ):
 
+    calibrator = None
     if calibrate_method == CalibrationMethod.MinMax:
         # default settings for min-max algorithm
         symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
         moving_average = False if "moving_average" not in extra_options else extra_options["moving_average"]
         averaging_constant = 0.01 if "averaging_constant" not in extra_options else extra_options["averaging_constant"]
-        return MinMaxCalibrater(
+        calibrator = MinMaxCalibrater(
             model,
             op_types_to_calibrate,
             augmented_model_path,
@@ -844,7 +837,7 @@ def create_calibrator(
         num_bins = 128 if "num_bins" not in extra_options else extra_options["num_bins"]
         num_quantized_bins = 128 if "num_quantized_bins" not in extra_options else extra_options["num_quantized_bins"]
         symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
-        return EntropyCalibrater(
+        calibrator = EntropyCalibrater(
             model,
             op_types_to_calibrate,
             augmented_model_path,
@@ -858,7 +851,7 @@ def create_calibrator(
         num_bins = 2048 if "num_bins" not in extra_options else extra_options["num_bins"]
         percentile = 99.999 if "percentile" not in extra_options else extra_options["percentile"]
         symmetric = True if "symmetric" not in extra_options else extra_options["symmetric"]
-        return PercentileCalibrater(
+        calibrator = PercentileCalibrater(
             model,
             op_types_to_calibrate,
             augmented_model_path,
@@ -867,5 +860,10 @@ def create_calibrator(
             num_bins=num_bins,
             percentile=percentile,
         )
+
+    if calibrator:
+        calibrator.augment_graph()
+        calibrator.create_inference_session()
+        return calibrator
 
     raise ValueError("Unsupported calibration method {}".format(calibrate_method))

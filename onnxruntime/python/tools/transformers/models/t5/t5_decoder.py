@@ -352,8 +352,6 @@ class T5DecoderHelper:
                     onnx_model_path,
                     save_as_external_data=True,
                     all_tensors_to_one_file=True,
-                    size_threshold=4096,
-                    convert_attribute=False,
                 )
 
     @staticmethod

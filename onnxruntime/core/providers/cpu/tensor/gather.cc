@@ -88,7 +88,7 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
                       const size_t element_bytes, const int64_t block_size, const int64_t M,
                       const int64_t N, const int64_t data_batch_bytes, const int64_t gathered_batch_bytes,
                       const TensorShape& input_data_shape, const int64_t axis, concurrency::ThreadPool* tp) {
-  const Tin* indices_data = indices_tensor->template Data<Tin>();
+  const Tin* indices_data = indices_tensor->Data<Tin>();
 
   // Check the indices first in case there's a out of bound index.
   auto axis_dim_limit = input_data_shape[axis];

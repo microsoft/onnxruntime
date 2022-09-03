@@ -65,8 +65,8 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   auto output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, output_dims);
 
-  const auto* X_data = X->template Data<T>();
-  auto* Y_data = Y->template MutableData<T>();
+  const auto* X_data = X->Data<T>();
+  auto* Y_data = Y->MutableData<T>();
 
   // The main loop
   const int64_t channels = x_shape[1];
@@ -144,7 +144,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
            pool_attrs_.global_pooling ? nullptr : pool_attrs_.kernel_shape.data(),
            pool_attrs_.global_pooling ? nullptr : pads.data(),
            pool_attrs_.global_pooling ? nullptr : pool_attrs_.strides.data(), output_dims.data(),
-           X->template Data<float>(), Y->template MutableData<float>(), thread_pool);
+           X->Data<float>(), Y->MutableData<float>(), thread_pool);
 
   return Status::OK();
 }
@@ -196,9 +196,9 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, output_dims);
   Tensor* I = context->Output(1, output_dims);
 
-  const auto* X_data = X->template Data<T>();
-  auto* Y_data = Y->template MutableData<T>();
-  int64_t* I_data = I != nullptr ? I->template MutableData<int64_t>() : nullptr;
+  const auto* X_data = X->Data<T>();
+  auto* Y_data = Y->MutableData<T>();
+  int64_t* I_data = I != nullptr ? I->MutableData<int64_t>() : nullptr;
 
   // The main loop
   int64_t channels = x_shape[1];

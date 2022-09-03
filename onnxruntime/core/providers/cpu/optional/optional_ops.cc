@@ -22,7 +22,7 @@ ONNX_CPU_OPERATOR_KERNEL(Optional,
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalHasElement,
                                    15,
-                                   16,
+                                   17,
                                    KernelDefBuilder()
                                     .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
                                     .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),
@@ -30,7 +30,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalHasElement,
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalGetElement,
                                    15,
-                                   16,
+                                   17,
                                    KernelDefBuilder()
                                     .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
                                     .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
@@ -41,14 +41,14 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalGetElement,
                                    OptionalGetElement);
 
 ONNX_CPU_OPERATOR_KERNEL(OptionalHasElement,
-                         17,
+                         18,
                          KernelDefBuilder()
                              .TypeConstraint("O", DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypes())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),
                          OptionalHasElement);
 
 ONNX_CPU_OPERATOR_KERNEL(OptionalGetElement,
-                         17,
+                         18,
                          KernelDefBuilder()
                              .TypeConstraint("O", DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypes())
                              .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
@@ -138,7 +138,11 @@ Status Optional::Compute(OpKernelContext* ctx) const {
 
   } else {  // No input was provided - we use the type proto to construct the output OrtValue
 
-    CheckValidTypeProto(*type_proto_);
+    if (!CheckValidTypeProto(*type_proto_)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "The TypeProto attribute in the Optional op ",
+                             "can only be of type(tensor) or (seq(tensor))");
+    }
 
     // type is either Tensor or TensorSeq (we have validated this already in CheckValidTypeProto())
     if (type_proto_->has_tensor_type()) {

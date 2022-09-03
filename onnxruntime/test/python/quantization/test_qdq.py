@@ -145,7 +145,6 @@ class TestQDQExtraOptions(unittest.TestCase):
         initializers.append(onnx.numpy_helper.from_array(matmul_weight_data_1, name="Q"))
         matmul_weight_data_2 = np.random.normal(0, 0.1, [5, 5]).astype(np.float32)
         initializers.append(onnx.numpy_helper.from_array(matmul_weight_data_2, name="R"))
-        matmul_weight_data_3 = np.random.normal(0, 0.1, [5, 5]).astype(np.float32)
         initializers.append(onnx.numpy_helper.from_array(matmul_weight_data_2, name="S"))
 
         add_node = onnx.helper.make_node("Add", ["L", "P"], ["T"], name="Add")
@@ -208,24 +207,23 @@ class TestQDQExtraOptions(unittest.TestCase):
         # QDQ pair shoud not be added to node's output
         for node in quantizer.model.nodes():
             if node.name == "MatMul1":
-                self.assertTrue("T_DequantizeLinear_1" in node.input)
-            if node.name == "MatMul2":
-                self.assertTrue("T_DequantizeLinear_2" in node.input)
-            if node.name == "MatMul3":
-                self.assertTrue("T_DequantizeLinear_3" in node.input)
-            if node.name == "Add":
-                for input in node.input:
-                    self.assertTrue("DequantizeLinear" not in input)
+                self.assertIn("T_DequantizeLinear_Output_1", node.input)
+            elif node.name == "MatMul2":
+                self.assertIn("T_DequantizeLinear_Output_2", node.input)
+            elif node.name == "MatMul3":
+                self.assertIn("T_DequantizeLinear_Output_3", node.input)
+            elif node.name == "Add":
+                self.assertNotIn("L_DequantizeLinear_Output", node.input)
 
             # QDQ pair shoud not be added to MatMul's output
             if node.op_type == "QuantizeLinear":
-                self.assertTrue(
-                    node.input[0]
-                    not in [
-                        "M_QuantizeLinearInput",
-                        "N_QuantizeLinearInput",
-                        "O_QuantizeLinearInput",
-                    ]
+                self.assertNotIn(
+                    node.input[0],
+                    {
+                        "M_QuantizeLinear_Input",
+                        "N_QuantizeLinear_Input",
+                        "O_QuantizeLinear_Input",
+                    },
                 )
 
 

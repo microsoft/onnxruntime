@@ -7,7 +7,6 @@
 
 #pragma once
 
-
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {

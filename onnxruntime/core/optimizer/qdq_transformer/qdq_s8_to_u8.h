@@ -15,11 +15,12 @@ namespace onnxruntime {
     */
 class QDQS8ToU8Transformer : public GraphTransformer {
  public:
-  QDQS8ToU8Transformer(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("QDQS8ToU8Transformer", compatible_execution_providers) {}
+  QDQS8ToU8Transformer(bool weights_to_u8, const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("QDQS8ToU8Transformer", compatible_execution_providers), weights_to_u8_(weights_to_u8) {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+  bool weights_to_u8_;
 };
 
 }  // namespace onnxruntime
