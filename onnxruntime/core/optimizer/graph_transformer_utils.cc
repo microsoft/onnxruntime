@@ -64,6 +64,7 @@
 #include "core/optimizer/unsqueeze_elimination.h"
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
+#include "core/optimizer/memory_alleviation.h"
 #endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -267,6 +268,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (enable_gelu_approximation) {
         transformers.emplace_back(std::make_unique<GeluApproximation>(cpu_cuda_rocm_eps));
       }
+
+#ifdef ENABLE_TRAINING
+      const std::string enable_memory_alleviation =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableMemoryAlleviation, "");
+      transformers.emplace_back(std::make_unique<MemoryAlleviation>(enable_memory_alleviation));
+#endif
 
 #ifdef MLAS_TARGET_AMD64_IX86
       if (avx2_precision_mode) {
