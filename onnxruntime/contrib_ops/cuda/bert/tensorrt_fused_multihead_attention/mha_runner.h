@@ -39,7 +39,7 @@ class MHARunner {
         mStrideQKV(0),
         mLdOut(0),
         mStrideOut(0),
-        mRsqrtHeadSize(1.F / sqrtf(headSize)) {
+        mRsqrtHeadSize(1.F / sqrtf(static_cast<float>(headSize))) {
   }
 
   virtual ~MHARunner() = default;

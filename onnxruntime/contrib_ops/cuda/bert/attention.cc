@@ -35,17 +35,12 @@ static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length
     return false;
   }
 
-  if (head_size == 32) {
-    // SM86 could fall back to use SM80 kernel, so only SM70 does not support head size 32
-    return (sm != kSM_70) && (sequence_length == 128 || sequence_length == 256 || sequence_length == 512);
-  }
-
   if (head_size != 64) {
     return false;
   }
 
   // For sequence length 512, and SM86 could fall back to SM80;
-  // In our test, T4 GPU has no enough shared memory to load fmha_v2_fp16_512_64_sm75_kernel.
+  // In our test, T4 GPU has no enough shared memory to load fmha_v2_fp16_512_64_sm75_kernel so we removed it.
   if (!(sequence_length == 64 || sequence_length == 128 || sequence_length == 192 ||
         sequence_length == 256 || sequence_length == 384 || (sequence_length == 512 && sm >= kSM_80))) {
     return false;

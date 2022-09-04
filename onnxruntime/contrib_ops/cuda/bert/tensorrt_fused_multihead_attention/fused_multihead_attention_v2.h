@@ -119,14 +119,6 @@ extern unsigned char fused_multihead_attention_v2_fp16_96_64_kernel_sm80_cubin[]
 extern unsigned char fused_multihead_attention_v2_fp16_96_64_kernel_sm86_cubin[];
 
 extern unsigned char cubin_fmha_v2_fp16_512_64_sm80_cu_cubin[];
-extern unsigned char cubin_fmha_v2_fp16_512_32_sm80_cu_cubin[];
-extern unsigned char cubin_fmha_v2_fp16_256_32_sm80_cu_cubin[];
-extern unsigned char cubin_fmha_v2_fp16_128_32_sm80_cu_cubin[];
-
-extern unsigned char cubin_fmha_v2_fp16_512_64_sm75_cu_cubin[];
-extern unsigned char cubin_fmha_v2_fp16_512_32_sm75_cu_cubin[];
-extern unsigned char cubin_fmha_v2_fp16_256_32_sm75_cu_cubin[];
-extern unsigned char cubin_fmha_v2_fp16_128_32_sm75_cu_cubin[];
 
 extern uint32_t fused_multihead_attention_v2_fp16_64_64_kernel_sm70_cubin_len;
 extern uint32_t fused_multihead_attention_v2_fp16_96_64_kernel_sm70_cubin_len;
@@ -151,14 +143,6 @@ extern uint32_t fused_multihead_attention_v2_fp16_96_64_kernel_sm80_cubin_len;
 extern uint32_t fused_multihead_attention_v2_fp16_96_64_kernel_sm86_cubin_len;
 
 extern uint32_t cubin_fmha_v2_fp16_512_64_sm80_cu_cubin_len;
-extern uint32_t cubin_fmha_v2_fp16_512_32_sm80_cu_cubin_len;
-extern uint32_t cubin_fmha_v2_fp16_256_32_sm80_cu_cubin_len;
-extern uint32_t cubin_fmha_v2_fp16_128_32_sm80_cu_cubin_len;
-
-extern uint32_t cubin_fmha_v2_fp16_512_64_sm75_cu_cubin_len;
-extern uint32_t cubin_fmha_v2_fp16_512_32_sm75_cu_cubin_len;
-extern uint32_t cubin_fmha_v2_fp16_256_32_sm75_cu_cubin_len;
-extern uint32_t cubin_fmha_v2_fp16_128_32_sm75_cu_cubin_len;
 
 static const struct FusedMultiHeadAttentionKernelMetaInfoV2 {
   Data_type mDataType;
@@ -231,50 +215,7 @@ static const struct FusedMultiHeadAttentionKernelMetaInfoV2 {
      fused_multihead_attention_v2_fp16_384_64_kernel_sm75_cubin_len,
      "fused_multihead_attention_v2_fp16_384_64_kernel_sm75", 53248, 256, 0, false},
 
-    // {fp16} x {512} x {64, 32} x {sm75} x {normal, noloop}
-    {DATA_TYPE_FP16, 512, 64, kSM_75, cubin_fmha_v2_fp16_512_64_sm75_cu_cubin,
-     cubin_fmha_v2_fp16_512_64_sm75_cu_cubin_len, "fmha_v2_fp16_512_64_sm75_kernel", 69632, 256, 0, false},
-    {DATA_TYPE_FP16, 512, 64, kSM_75, cubin_fmha_v2_fp16_512_64_sm75_cu_cubin,
-     cubin_fmha_v2_fp16_512_64_sm75_cu_cubin_len, "fmha_v2_fp16_512_64_sm75_kernel_nl", 69632, 256, 32, false},
-    {DATA_TYPE_FP16, 512, 32, kSM_75, cubin_fmha_v2_fp16_512_32_sm75_cu_cubin,
-     cubin_fmha_v2_fp16_512_32_sm75_cu_cubin_len, "fmha_v2_fp16_512_32_sm75_kernel", 36864, 256, 0, false},
-    {DATA_TYPE_FP16, 512, 32, kSM_75, cubin_fmha_v2_fp16_512_32_sm75_cu_cubin,
-     cubin_fmha_v2_fp16_512_32_sm75_cu_cubin_len, "fmha_v2_fp16_512_32_sm75_kernel_nl", 36864, 256, 32, false},
-
-    // {fp16} x {128} x {32} x {sm75} x {normal, noloop}
-    {DATA_TYPE_FP16, 128, 32, kSM_75, cubin_fmha_v2_fp16_128_32_sm75_cu_cubin,
-     cubin_fmha_v2_fp16_128_32_sm75_cu_cubin_len, "fmha_v2_fp16_128_32_sm75_kernel", 16384, 128, 0, false},
-    {DATA_TYPE_FP16, 128, 32, kSM_75, cubin_fmha_v2_fp16_128_32_sm75_cu_cubin,
-     cubin_fmha_v2_fp16_128_32_sm75_cu_cubin_len, "fmha_v2_fp16_128_32_sm75_kernel_nl", 10240, 128, 32, false},
-
-    // {fp16} x {256} x {32} x {sm75} x {normal, noloop}
-    {DATA_TYPE_FP16, 256, 32, kSM_75, cubin_fmha_v2_fp16_256_32_sm75_cu_cubin,
-     cubin_fmha_v2_fp16_256_32_sm75_cu_cubin_len, "fmha_v2_fp16_256_32_sm75_kernel", 18432, 128, 0, false},
-    {DATA_TYPE_FP16, 256, 32, kSM_75, cubin_fmha_v2_fp16_256_32_sm75_cu_cubin,
-     cubin_fmha_v2_fp16_256_32_sm75_cu_cubin_len, "fmha_v2_fp16_256_32_sm75_kernel_nl", 18432, 128, 32, false},
-
 #if CUDA_VERSION >= 11000
-    // {fp16} x {128} x {32} x {sm80} x {normal, noloop}
-    {DATA_TYPE_FP16, 128, 32, kSM_80, cubin_fmha_v2_fp16_128_32_sm80_cu_cubin,
-     cubin_fmha_v2_fp16_128_32_sm80_cu_cubin_len, "fmha_v2_fp16_128_32_sm80_kernel", 32768, 128, 0, false},
-    {DATA_TYPE_FP16, 128, 32, kSM_80, cubin_fmha_v2_fp16_128_32_sm80_cu_cubin,
-     cubin_fmha_v2_fp16_128_32_sm80_cu_cubin_len, "fmha_v2_fp16_128_32_sm80_kernel_nl", 20480, 128, 16, false},
-
-    // {fp16} x {256} x {32} x {sm80} x {normal, noloop}
-    {DATA_TYPE_FP16, 256, 32, kSM_80, cubin_fmha_v2_fp16_256_32_sm80_cu_cubin,
-     cubin_fmha_v2_fp16_256_32_sm80_cu_cubin_len, "fmha_v2_fp16_256_32_sm80_kernel", 20480, 128, 0, false},
-    {DATA_TYPE_FP16, 256, 32, kSM_80, cubin_fmha_v2_fp16_256_32_sm80_cu_cubin,
-     cubin_fmha_v2_fp16_256_32_sm80_cu_cubin_len, "fmha_v2_fp16_256_32_sm80_kernel_nl", 20480, 128, 32, false},
-
-    // {fp16} x {512} x {64, 32} x {sm80} x {normal, noloop}
-    {DATA_TYPE_FP16, 512, 64, kSM_80, cubin_fmha_v2_fp16_512_64_sm80_cu_cubin,
-     cubin_fmha_v2_fp16_512_64_sm80_cu_cubin_len, "fmha_v2_fp16_512_64_sm80_kernel", 73728, 256, 0, false},
-    {DATA_TYPE_FP16, 512, 64, kSM_80, cubin_fmha_v2_fp16_512_64_sm80_cu_cubin,
-     cubin_fmha_v2_fp16_512_64_sm80_cu_cubin_len, "fmha_v2_fp16_512_64_sm80_kernel_nl", 73728, 256, 32, false},
-    {DATA_TYPE_FP16, 512, 32, kSM_80, cubin_fmha_v2_fp16_512_32_sm80_cu_cubin,
-     cubin_fmha_v2_fp16_512_32_sm80_cu_cubin_len, "fmha_v2_fp16_512_32_sm80_kernel", 40960, 256, 0, false},
-    {DATA_TYPE_FP16, 512, 32, kSM_80, cubin_fmha_v2_fp16_512_32_sm80_cu_cubin,
-     cubin_fmha_v2_fp16_512_32_sm80_cu_cubin_len, "fmha_v2_fp16_512_32_sm80_kernel_nl", 40960, 256, 32, false},
 
     // Ampere
     {DATA_TYPE_FP16, 64, 64, kSM_80, fused_multihead_attention_v2_fp16_64_64_kernel_sm80_cubin,
@@ -301,6 +242,10 @@ static const struct FusedMultiHeadAttentionKernelMetaInfoV2 {
     {DATA_TYPE_FP16, 384, 64, kSM_80, fused_multihead_attention_v2_fp16_384_64_kernel_sm80_cubin,
      fused_multihead_attention_v2_fp16_384_64_kernel_sm80_cubin_len,
      "fused_multihead_attention_v2_fp16_384_64_kernel_sm80", 114688, 256, 0, false},
+    {DATA_TYPE_FP16, 512, 64, kSM_80, cubin_fmha_v2_fp16_512_64_sm80_cu_cubin,
+     cubin_fmha_v2_fp16_512_64_sm80_cu_cubin_len, "fmha_v2_fp16_512_64_sm80_kernel", 73728, 256, 0, false},
+    {DATA_TYPE_FP16, 512, 64, kSM_80, cubin_fmha_v2_fp16_512_64_sm80_cu_cubin,
+     cubin_fmha_v2_fp16_512_64_sm80_cu_cubin_len, "fmha_v2_fp16_512_64_sm80_kernel_nl", 73728, 256, 32, false},
 
     // GA10x
     // Note: For GA10X keep only kernels whose sharedMemBytes < 100KiB
