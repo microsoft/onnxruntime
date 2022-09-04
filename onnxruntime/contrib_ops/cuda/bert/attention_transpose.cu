@@ -97,8 +97,8 @@ __global__ void TransposeCtxLarge(const int H, const bool reversed_bs, const T* 
 }
 
 Status LaunchTransCtx(cudaStream_t stream,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const bool reversed_bs, const float* input, float* output) {
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output) {
   const dim3 grid(sequence_length, batch_size, 1);
   if (0 == (head_size & 1)) {
     const int H = head_size / 2;
@@ -124,8 +124,8 @@ Status LaunchTransCtx(cudaStream_t stream,
 }
 
 Status LaunchTransCtx(cudaStream_t stream,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const bool reversed_bs, const half* input, half* output) {
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output) {
   const dim3 grid(sequence_length, batch_size, 1);
   if (0 == (head_size % 4)) {
     const int H = head_size / 4;
@@ -234,8 +234,8 @@ __global__ void TransposeQKVLarge(const int H, const bool reversed_bs, const T* 
 }
 
 Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const bool reversed_bs, const float* input, float* output) {
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs, const float* input, float* output) {
   const dim3 grid(sequence_length, batch_size, matrix_num);
   if (0 == (head_size & 1)) {
     const int H = head_size / 2;
@@ -261,8 +261,8 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
 }
 
 Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const bool reversed_bs, const half* input, half* output) {
+                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
+                      const int max_threads_per_block, const bool reversed_bs, const half* input, half* output) {
   const dim3 grid(sequence_length, batch_size, matrix_num);
   if (0 == (head_size % 4)) {
     const int H = head_size / 4;
@@ -297,109 +297,6 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
   }
   return CUDA_CALL(cudaGetLastError());
 }
-
-
-// Transpose for TRT
-template <typename T>
-__global__ void TransposeTrt(const int H, const T* input, T* output) {
-  // Input:  SxBxNxH
-  // Output: BxSxNxH
-  int n = threadIdx.y;
-  int s = blockIdx.x;
-  int b = blockIdx.y;
-
-  int num_heads = blockDim.y;
-  int sequence_length = gridDim.x;
-
-  const int NH = num_heads * H;
-  const int NHS = NH * sequence_length;
-
-  const int batch_size = gridDim.y;
-  const int BNH = NH * batch_size;
-
-  const int in_offset = s * BNH + b * NH + n * H;
-
-  int out_offset = b * NHS + s * NH + n * H;
-
-  const int i = threadIdx.x;
-  if (i < H) {
-    output[out_offset + i] = input[in_offset + i];
-  }
-}
-
-template <typename T>
-__global__ void TransposeTrtLarge(const int H, const T* input, T* output) {
-  int n = threadIdx.y;
-  int s = blockIdx.x;
-  int b = blockIdx.y;
-
-  int stride = blockDim.x;
-  int num_heads = blockDim.y;
-  int sequence_length = gridDim.x;
-
-  const int NH = num_heads * H;
-  const int NHS = NH * sequence_length;
-
-  const int batch_size = gridDim.y;
-  const int BNH = NH * batch_size;
-
-  const int in_offset = s * BNH + b * NH + n * H;
-
-  int out_offset = b * NHS + s * NH + n * H;
-
-  int i = threadIdx.x;
-  while (i < H) {
-    output[out_offset + i] = input[in_offset + i];
-    i += stride;
-  }
-}
-
-Status LaunchTransTrt(cudaStream_t stream,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block,  const float* input, float* output) {
-    return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, "LaunchTransTrt for float32 not implemented");
-}
-
-Status LaunchTransTrt(cudaStream_t stream,
-                    const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                    const int max_threads_per_block, const half* input, half* output) {
-  const dim3 grid(sequence_length, batch_size, 1);
-  if (0 == (head_size % 4)) {
-    const int H = head_size / 4;
-    const float2* input2 = reinterpret_cast<const float2*>(input);
-    float2* output2 = reinterpret_cast<float2*>(output);
-    if (H * num_heads <= max_threads_per_block) {
-      const dim3 block(H, num_heads, 1);
-      TransposeTrt<float2><<<grid, block, 0, stream>>>(H, input2, output2);
-    } else {
-      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      TransposeTrtLarge<float2><<<grid, block, 0, stream>>>(H, input2, output2);
-    }
-  } else if (0 == (head_size & 1)) {
-    const int H = head_size / 2;
-    const half2* input2 = reinterpret_cast<const half2*>(input);
-    half2* output2 = reinterpret_cast<half2*>(output);
-    if (H * num_heads <= max_threads_per_block) {
-      const dim3 block(H, num_heads, 1);
-      TransposeTrt<half2><<<grid, block, 0, stream>>>(H, input2, output2);
-    } else {
-      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      TransposeTrtLarge<half2><<<grid, block, 0, stream>>>(H, input2, output2);
-    }
-  } else {  // this should be an "odd" case. probably not worth catching it in the half2 kernel.
-    if (head_size * num_heads <= max_threads_per_block) {
-      const dim3 block(head_size, num_heads, 1);
-      TransposeTrt<half><<<grid, block, 0, stream>>>(head_size, input, output);
-    } else {
-      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      TransposeTrtLarge<half><<<grid, block, 0, stream>>>(head_size, input, output);
-    }
-  }
-
-  return CUDA_CALL(cudaGetLastError());
-}
-
-
 
 }  // namespace cuda
 }  // namespace contrib

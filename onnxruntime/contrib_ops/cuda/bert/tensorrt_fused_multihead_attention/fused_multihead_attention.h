@@ -60,6 +60,8 @@ class TFusedMultiHeadAttentionXMMAKernel {
                   &sharedMemPerMultiprocessor, cudaDevAttrMaxSharedMemoryPerBlockOptin, deviceID) != cudaSuccess ||
               sharedMemPerMultiprocessor < static_cast<int32_t>(kernelMeta.mSharedMemBytes)) {
             // skip load function because not enough shared memory to launch the kernel
+            printf("skip loading trt fused attention kernel %s because not enough shared memory",
+                   kernelMeta.mFuncName);
             continue;
           }
         }
@@ -80,11 +82,16 @@ class TFusedMultiHeadAttentionXMMAKernel {
           if (mDriver.cuFuncSetAttribute(funcInfo.mDeviceFunction,
                                          CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, kernelMeta.mSharedMemBytes) != CUDA_SUCCESS) {
             // some chip may not have enough shared memory to launch the kernel
+            printf("skip loading trt fused attention kernel %s because no enough shared memory",
+                   kernelMeta.mFuncName);
             continue;
           }
         }
         mFunctions.insert({kernelKey, funcInfo});
         const int s = static_cast<int>(kernelMeta.mS);
+#ifndef NDEBUG
+        printf("loaded trt fused attention kernel (%s)\n", kernelMeta.mFuncName);
+#endif
         if (mValidSequences.find(s) == mValidSequences.end()) {
           mValidSequences.insert(s);
         }

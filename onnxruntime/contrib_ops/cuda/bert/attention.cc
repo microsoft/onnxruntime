@@ -44,14 +44,11 @@ static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length
     return false;
   }
 
+  // For sequence length 512, and SM86 could fall back to SM80;
+  // In our test, T4 GPU has no enough shared memory to load fmha_v2_fp16_512_64_sm75_kernel.
   if (!(sequence_length == 64 || sequence_length == 128 || sequence_length == 192 ||
-        sequence_length == 256 || sequence_length == 384 || sequence_length == 512)) {
+        sequence_length == 256 || sequence_length == 384 || (sequence_length == 512 && sm >= kSM_80))) {
     return false;
-  }
-
-  // SM86 could fall back to use SM80 kernel, so only SM70 does not support sequence length 512 for head size 64
-  if (sm == kSM_70) {
-    return sequence_length != 512;
   }
 
   return true;
@@ -115,7 +112,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     if (nullptr == fused_fp16_runner_.get()) {
       fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, head_size, sm));
     }
-    fused_runner = fused_fp16_runner_.get();
+    // In case some kernel  not loaded due to shared memory limit, we need to double check here.
+    if (fused_fp16_runner_->isValid(sequence_length)){
+      fused_runner = fused_fp16_runner_.get();
+    }
   }
 
   cublasHandle_t cublas = CublasHandle();

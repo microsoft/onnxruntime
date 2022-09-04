@@ -24,33 +24,30 @@ using namespace onnxruntime::cuda;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
-__global__ void getTrtPaddingOffsetKernel(int* trt_mha_padding_offset,
-                                          const int* sequence_length,
-                                          const int request_batch_size,
-                                          const int request_sequence_length) {
+__global__ void getTrtSequenceOffset(int* trt_mha_padding_offset,
+                                     const int* mask_index,
+                                     const int batch_size) {
   extern __shared__ int tmp_offset[];
   if (threadIdx.x == 0) {
     tmp_offset[0] = 0;
-    for (int i = 0; i < request_batch_size; i++) {
-      tmp_offset[i * 2 + 1] = tmp_offset[i * 2] + sequence_length[i];
-      tmp_offset[i * 2 + 2] = request_sequence_length * (i + 1);
+    for (int i = 0; i < batch_size; i++) {
+      tmp_offset[i + 1] = tmp_offset[i] + mask_index[i];
     }
   }
   __syncthreads();
-  for (int i = threadIdx.x; i < 2 * request_batch_size + 1; i += blockDim.x) {
+  for (int i = threadIdx.x; i < batch_size + 1; i += blockDim.x) {
     trt_mha_padding_offset[i] = tmp_offset[i];
   }
 }
 
-// Get TensorRT fused mha padding offset when we keep the padding
-void LaunchTrtPaddingOffset(int* trt_mha_padding_offset,
-                            const int* sequence_length,
-                            const int request_batch_size,
-                            const int request_sequence_length,
-                            cudaStream_t stream) {
-  getTrtPaddingOffsetKernel<<<1, 256, sizeof(int) * (2 * request_batch_size + 1), stream>>>(
-      trt_mha_padding_offset, sequence_length, request_batch_size, request_sequence_length);
+// Get sequence offset for TensorRT fused attention when there is no padding (or padding is removed)
+// For example, when sequence length is
+void LaunchTrtSequenceOffset(int* trt_mha_padding_offset,
+                             const int* mask_index,
+                             const int batch_size,
+                             cudaStream_t stream) {
+  getTrtSequenceOffset<<<1, 256, sizeof(int) * (batch_size + 1), stream>>>(
+      trt_mha_padding_offset, mask_index, batch_size);
 }
 
 }  // namespace cuda

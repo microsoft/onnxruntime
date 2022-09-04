@@ -19,7 +19,8 @@ namespace cuda {
 //     output:  (num_matrices, batch_size, num_heads, sequence_length, head_size)
 // format 2:
 //     input :  (batch_size, sequence_length, num_matrices, num_heads, head_size)
-//     output:  (sequence_length, batch_size, num_heads, num_matrices, head_size)
+//     output:  (batch_size, sequence_length, num_heads, num_matrices, head_size)
+
 template <typename T>
 void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,

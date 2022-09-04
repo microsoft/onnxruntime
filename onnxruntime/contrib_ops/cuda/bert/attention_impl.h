@@ -93,15 +93,6 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                       const int max_threads_per_block, const bool reversed_bs, const half* input, half* output);
 
-// SxBxNxH => BxSxNxH
-Status LaunchTransTrt(cudaStream_t stream,
-                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const float* input, float* output);
-
-Status LaunchTransTrt(cudaStream_t stream,
-                      const int sequence_length, const int batch_size, const int head_size, const int num_heads,
-                      const int max_threads_per_block, const half* input, half* output);
-
 Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                   const int all_sequence_length,
                                   const int sequence_length,
@@ -148,11 +139,11 @@ Status LaunchConcatPastToPresent(cudaStream_t stream,
                                  const half* k_v,
                                  half* present);
 
-void LaunchTrtPaddingOffset(int* trt_mha_padding_offset,
-                            const int* sequence_length,
-                            const int request_batch_size,
-                            const int request_sequence_length,
-                            cudaStream_t stream);
+void LaunchTrtSequenceOffset(int* trt_mha_padding_offset,
+                             const int* mask_index,
+                             const int batch_size,
+                             cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

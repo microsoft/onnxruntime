@@ -82,16 +82,6 @@ class MHARunner {
   float mRsqrtHeadSize;
 };
 
-std::pair<int, int> tuneBatchedGemm(const int32_t B, const int32_t S, const int32_t numHeads, const int32_t headSize);
-
-template <typename T>
-int32_t computeScaledSoftmax(cudaStream_t stream, const int32_t ld, const int32_t B, const int32_t N,
-                             const float rsqrtHeadSize, const T* input, T* output);
-
-template <typename T>
-int32_t computeMaskedScaledSoftmax(cudaStream_t stream, const int32_t ld, const int32_t B, const int32_t N,
-                                   const float rsqrtHeadSize, const int* maskIdx, const T* input, T* output);
-
 class FusedMHARunnerFP16v2 : public MHARunner {
  public:
   FusedMHARunnerFP16v2(const int32_t numHeads, const int32_t headSize, const int32_t sm);

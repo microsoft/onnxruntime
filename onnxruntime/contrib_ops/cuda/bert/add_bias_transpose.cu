@@ -39,7 +39,7 @@ namespace cuda {
 template <typename T>
 __global__ void AddBiasTransposeTrt(const T* input, const T* biases, T* output) {
   // Input:  BxSxMxNxH (Format 2)
-  // Output: SxBxNxMxH
+  // Output: BxSxNxMxH
   // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
 
   int n = threadIdx.y;
@@ -58,7 +58,7 @@ __global__ void AddBiasTransposeTrt(const T* input, const T* biases, T* output) 
   const int NHS = NH * sequence_length;
 
   int in_offset = n * head_size + (m + s * M) * NH + b * NHS * M;
-  const int out_offset = s * batch_size * M * NH + b * M * NH + n * M * H + m * H;
+  const int out_offset = b * NHS * M + s * M * NH + n * M * H + m * H;
 
   const int h = threadIdx.x;
   if (h < head_size) {
@@ -83,7 +83,7 @@ __global__ void AddBiasTransposeTrtLarge(const int head_size, const T* input, co
   const int NH = num_heads * H;
   const int NHS = NH * sequence_length;
   int in_offset = n * H + (m + s * M) * NH + b * NHS * M;
-  const int out_offset = s * batch_size * M * NH + b * M * NH + n * M * H + m * H;
+  const int out_offset = b * NHS * M + s * M * NH + n * M * H + m * H;
 
   int h = threadIdx.x;
   while (h < H) {
