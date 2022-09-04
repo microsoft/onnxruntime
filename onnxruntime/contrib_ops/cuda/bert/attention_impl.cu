@@ -140,8 +140,7 @@ Status QkvToContext(
 
     return Status::OK();
   }
-}
-else {
+
   const int all_sequence_length = past_sequence_length + sequence_length;
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
                                                sequence_length, all_sequence_length);
@@ -223,7 +222,6 @@ else {
   // temp_output is BxNxSxH, transpose to output BxSxNxH
   return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads,
                         max_threads_per_block, false, temp_output, output);
-}
 }
 
 Status LaunchAttentionKernel(

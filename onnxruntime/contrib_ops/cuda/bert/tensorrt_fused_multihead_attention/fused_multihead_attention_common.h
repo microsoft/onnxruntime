@@ -19,8 +19,6 @@
 #include <cstdint>
 #include "core/providers/cuda/cuda_common.h"
 
-#define USE_INT8_ATTENTION 0
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {

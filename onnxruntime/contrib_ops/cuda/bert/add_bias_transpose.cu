@@ -47,21 +47,18 @@ __global__ void AddBiasTransposeTrt(const T* input, const T* biases, T* output) 
   int b = blockIdx.y;
   int m = blockIdx.z;  // matrix id
 
-  const int head_size = blockDim.x;
-  const int num_heads = blockDim.y;
-
-  const int sequence_length = gridDim.x;
-  const int batch_size = gridDim.y;
+  const int H = blockDim.x;
+  const int N = blockDim.y;
+  const int S = gridDim.x;
   const int M = gridDim.z;
-  const int H = head_size;
-  const int NH = num_heads * head_size;
-  const int NHS = NH * sequence_length;
 
-  int in_offset = n * head_size + (m + s * M) * NH + b * NHS * M;
-  const int out_offset = b * NHS * M + s * M * NH + n * M * H + m * H;
+  const int NH = N * H;
+  const int offset = (b * S + s) * M * NH;
+  const int in_offset = offset + m * NH + n * H;
+  const int out_offset = offset + (n * M + m) * H;
 
   const int h = threadIdx.x;
-  if (h < head_size) {
+  if (h < H) {
     output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
   }
 }
@@ -74,16 +71,15 @@ __global__ void AddBiasTransposeTrtLarge(const int head_size, const T* input, co
   int m = blockIdx.z;
 
   const int stride = blockDim.x;
-  const int num_heads = blockDim.y;
-
-  const int sequence_length = gridDim.x;
-  const int batch_size = gridDim.y;
-  const int M = gridDim.z;
   const int H = head_size;
-  const int NH = num_heads * H;
-  const int NHS = NH * sequence_length;
-  int in_offset = n * H + (m + s * M) * NH + b * NHS * M;
-  const int out_offset = b * NHS * M + s * M * NH + n * M * H + m * H;
+  const int N = blockDim.y;
+  const int S = gridDim.x;
+  const int M = gridDim.z;
+
+  const int NH = N * H;
+  const int offset = (b * S + s) * M * NH;
+  const int in_offset = offset + m * NH + n * H;
+  const int out_offset = offset + (n * M + m) * H;
 
   int h = threadIdx.x;
   while (h < H) {
