@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/env_var_utils.h"
-#include "contrib_ops/cuda/bert/attention.h"
-#include "contrib_ops/cuda/bert/attention_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
+#include "core/platform/env_var_utils.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
+#include "contrib_ops/cuda/bert/attention.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -30,6 +29,9 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+// Environment variable to disable fused attention kernel. Default is false.
+constexpr const char* kDisableFusedAttention = "ORT_DISABLE_FUSED_ATTENTION";
+
 static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length) {
   if (!(sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86)) {
     return false;
@@ -51,6 +53,7 @@ static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length
 
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
+  disable_fused_runner_ = sizeof(T) != 2 || ParseEnvironmentVariableWithDefault<bool>(kDisableFusedAttention, false);
 }
 
 template <typename T>
@@ -94,7 +97,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
-  bool use_fused_runner = (sizeof(T) == 2 &&
+  bool use_fused_runner = (!disable_fused_runner_ &&
                            nullptr != mask_index && mask_index->Shape().NumDimensions() == 1 &&
                            nullptr == past &&
                            nullptr == present &&

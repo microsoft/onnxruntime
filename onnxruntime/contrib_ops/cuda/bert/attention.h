@@ -21,6 +21,7 @@ class Attention final : public CudaKernel, public AttentionBase {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
+  bool disable_fused_runner_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
 };
 
