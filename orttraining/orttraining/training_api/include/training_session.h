@@ -5,6 +5,7 @@
 #include "core/common/common.h"
 #include "module.h"
 #include "optimizer.h"
+#include "lr_scheduler.h"
 #include "checkpoint.h"
 
 namespace onnxruntime {
@@ -30,9 +31,17 @@ class TrainingSession {
                   const std::unordered_map<std::string, std::shared_ptr<Parameter>>& parameters,
                   const ModelIdentifiers& model_identifiers);
 
-  size_t GetTrainModeOutputCount() const noexcept;
+  Status RegisterScheduler(const std::function<
+                               std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,
+                           std::optional<float> initial_lr);
 
-  size_t GetEvalModeOutputCount() const noexcept;
+  size_t GetTrainingModelOutputCount() const noexcept;
+
+  size_t GetEvalModelOutputCount() const noexcept;
+
+  std::string GetTrainingModelOutputName(size_t index) const noexcept;
+
+  std::string GetEvalModelOutputName(size_t index) const noexcept;
 
   Status TrainStep(const RunOptions& run_options,
                    const std::vector<OrtValue>& inputs,
@@ -46,14 +55,27 @@ class TrainingSession {
 
   Status OptimizerStep(const RunOptions& run_options);
 
+  Status SetLearningRate(float learning_rate) noexcept;
+
+  float GetLearningRate() const;
+
+  Status SchedulerStep() noexcept;
+
   Status CreateCheckpointState(CheckpointState& chkpt_state, bool save_optimizer_state) const;
+
+  size_t GetParametersSize(const bool trainable_only=true) const;
+
+  Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only=true);
+  
+  Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only=true);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TrainingSession);
 
   const std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
   std::unique_ptr<Module> module_;
-  std::unique_ptr<Optimizer> optimizer_;
+  std::shared_ptr<Optimizer> optimizer_;
+  std::unique_ptr<LRSchedulerBase> scheduler_;
 };
 }  // namespace api
 }  // namespace training

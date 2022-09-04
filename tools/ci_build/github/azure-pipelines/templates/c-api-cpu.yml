@@ -86,7 +86,7 @@ jobs:
         export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
         export ONNX_ML=1
         export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-        python3 -m pip install numpy==1.16.6 wheel
+        python3 -m pip install numpy wheel
         python3 -m pip install $(Build.SourcesDirectory)/cmake/external/onnx
         sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
       displayName: 'Build and Test MacOS'

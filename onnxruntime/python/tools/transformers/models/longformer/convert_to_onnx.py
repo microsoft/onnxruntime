@@ -5,39 +5,53 @@
 # --------------------------------------------------------------------------
 
 # This script converts Longformer model from huggingface transformers 4.0 or later to ONNX.
-# Unlike normal ONNX model exporting, it will directly translate LongformerSelfAttention to the LongformerAttention operator in ONNX Runtime.
+# It translates LongformerSelfAttention to the LongformerAttention operator in ONNX Runtime.
 #
-# Before running this script, please run "python setup.py install" in ./torch_extensions under Linux with PyTorch installed.
-# Then you can update the path of longformer_attention.cpython-*.so and run this script in same environment.
+# Before running this script, prepare a python environment in Linux with PyTorch 1.9.0 and other packages installed.
+# Then run "python setup.py install" in ./torch_extensions directory. If your python version is not 3.8, you will need
+# update this script with correct name of longformer_attention.cpython-*.so (search TODO below).
 #
 # It is tested in Ubuntu 18.04 with python 3.8, onnxruntime-gpu 1.11.0, PyTorch 1.9.0, transformers 4.18.0.
-# Warning: Using newer version (1.10 or 1.11) of PyTorch might encounter issue in exporting, but they are fine for benchmarking.
+# Warning: Using  PyTorch 1.10 or newer version might encounter issue in exporting, but they are fine for benchmarking.
 #
-# Example commands for exporting longformer base model in Linux:
+# Example commands to export longformer base model in Linux:
+#   conda create -n longformer python=3.8
+#   conda activate longformer
+#   python3 -m pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.9.0 -f https://download.pytorch.org/whl/torch_stable.html
+#   python3 -m pip install coloredlogs flatbuffers numpy packaging sympy protobuf==3.20.1 onnx==1.12.0 transformers==4.18.0
+#   python3 -m pip install -i https://test.pypi.org/simple/ ort-nightly-gpu
 #   cd ./torch_extensions
+#   rm -rf build
 #   python setup.py install
 #   cd ..
 #   python convert_to_onnx.py --model longformer-base-4096 --precision fp16 --optimize_onnx
+#   python convert_to_onnx.py --model longformer-base-4096 --precision fp16 --optimize_onnx --no_merge_qkv
 #
 # GPU is not needed for this script. You can run it in CPU. For --optimize_onnx, you can use either onnxruntime or onnxruntime-gpu package.
 #
 # For inference of the onnx model, you will need onnxruntime-gpu 1.7.0 or newer version.
 
 import argparse
+import inspect
 import os
 import sys
 from pathlib import Path
 
-import numpy as np
 import torch
 import transformers
-from longformer_helper import PRETRAINED_LONGFORMER_MODELS, LongformerHelper
+from longformer_helper import PRETRAINED_LONGFORMER_MODELS
+from onnx import load_model
 from packaging import version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import parse_args
+from transformers import LongformerModel, LongformerSelfAttention
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from onnx_model_bert import BertOnnxModel
 from torch_onnx_export_helper import torch_onnx_export
+
+# Supports format 0 or 1
+weight_bias_format = 0
 
 
 @parse_args("v", "v", "v", "v", "v", "v", "v", "i", "i")
@@ -77,6 +91,11 @@ torch.ops.load_library(
 
 
 def parse_arguments():
+    """Parse arguments
+
+    Returns:
+        args: Namespace
+    """
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -96,6 +115,14 @@ def parse_arguments():
         help="Export padding logic to ONNX graph. If not enabled, user need pad input so that sequence length is multiple of window size.",
     )
     parser.set_defaults(export_padding=False)
+
+    parser.add_argument(
+        "--no_merge_qkv",
+        required=False,
+        action="store_true",
+        help="Stack the weights of q, k and v on dimension 0 instead of dimension 1.",
+    )
+    parser.set_defaults(no_merge_qkv=False)
 
     parser.add_argument(
         "-o",
@@ -161,8 +188,8 @@ def my_longformer_self_attention_forward_4(
     input_mask = input_mask.masked_fill(is_index_masked, -10000.0)
     # Yet another way to generate input_mask = torch.masked_fill(attention_mask, is_index_global_attn, 0.0)
 
-    # TODO: add postprocess of ONNX model to calculate based on graph input: input_mask = (attention_mask - 1) * 10000.0
-    # TODO: add postprocess of ONNX model to use graph input directly: glboal_mask = global_attention_mask
+    # TODO: add postprocessing of ONNX model to calculate based on graph input: input_mask = (attention_mask - 1) * 10000.0
+    # TODO: add postprocessing of ONNX model to use graph input directly: global_mask = global_attention_mask
 
     # The following check is based on the dummy inputs (only the last token is masked).
     assert (
@@ -178,12 +205,12 @@ def my_longformer_self_attention_forward_4(
             self.key.weight.transpose(0, 1),
             self.value.weight.transpose(0, 1),
         ),
-        dim=1,
+        dim=weight_bias_format,
     )
-    weight = weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
-    bias = torch.stack((self.query.bias, self.key.bias, self.value.bias), dim=0)
-    bias = bias.reshape(3 * self.embed_dim)
+    if weight_bias_format == 1:
+        # shape is (hidden_size, 3*hidden_size) for format 1, otherwise (3, hidden_size, hidden_size) by default
+        weight = weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
     global_weight = torch.stack(
         (
@@ -191,12 +218,24 @@ def my_longformer_self_attention_forward_4(
             self.key_global.weight.transpose(0, 1),
             self.value_global.weight.transpose(0, 1),
         ),
-        dim=1,
+        dim=weight_bias_format,
     )
-    global_weight = global_weight.reshape(self.embed_dim, 3 * self.embed_dim)
 
-    global_bias = torch.stack((self.query_global.bias, self.key_global.bias, self.value_global.bias), dim=0)
-    global_bias = global_bias.reshape(3 * self.embed_dim)
+    if weight_bias_format == 1:
+        global_weight = global_weight.reshape(self.embed_dim, 3 * self.embed_dim)
+
+    if weight_bias_format == 1:
+        bias = torch.stack((self.query.bias, self.key.bias, self.value.bias), dim=0)
+        bias = bias.reshape(3 * self.embed_dim)
+        global_bias = torch.stack((self.query_global.bias, self.key_global.bias, self.value_global.bias), dim=0)
+        global_bias = global_bias.reshape(3 * self.embed_dim)
+    else:
+        bias = torch.stack(
+            (self.query.bias, self.key.bias, self.value.bias, self.key_global.bias, self.value_global.bias), dim=0
+        )
+        bias = bias.reshape(5 * self.embed_dim)
+        global_bias = self.query_global.bias
+        global_bias = global_bias.reshape(1 * self.embed_dim)
 
     attn_output = torch.ops.onnxruntime.LongformerAttention(
         hidden_states,
@@ -237,7 +276,7 @@ def my_longformer_self_attention_forward_4_3(
     )
 
 
-# For transformers 4.3.2
+# For transformers 4.3.2 or later versions
 def my_longformer_self_attention_forward_4_3_2(
     self,
     hidden_states,
@@ -260,12 +299,23 @@ def my_longformer_self_attention_forward_4_3_2(
     )
 
 
-def export_longformer(model, onnx_model_path, export_padding):
+def export_longformer(model: LongformerModel, onnx_model_path: str, export_padding: bool):
+    """Export longformer model to ONNX
+
+    Args:
+        model (LongformerModel): longformer model
+        onnx_model_path (str): output onnx path
+        export_padding (bool): whether export padding logic to ONNX so that input string can be any length.
+
+    Raises:
+        RuntimeError: This tool requires transformers 4.0.0 or later.
+        RuntimeError: LongformerSelfAttention.forward arguments are different.
+    """
     input_ids, attention_mask, global_attention_mask = get_dummy_inputs(
         model.config, export_padding, device=torch.device("cpu")
     )
 
-    example_outputs = model(
+    _ = model(
         input_ids,
         attention_mask=attention_mask,
         global_attention_mask=global_attention_mask,
@@ -274,11 +324,7 @@ def export_longformer(model, onnx_model_path, export_padding):
     if version.parse(transformers.__version__) < version.parse("4.0.0"):
         raise RuntimeError("This tool requires transformers 4.0.0 or later.")
 
-    # Here we replace LongformerSelfAttention.forward using our implmentation for exporting ONNX model
-    import inspect
-
-    from transformers import LongformerSelfAttention
-
+    # Here we replace LongformerSelfAttention.forward using our implementation for exporting ONNX model
     key = " ".join(inspect.getfullargspec(LongformerSelfAttention.forward).args)
     args_to_func = {
         "self hidden_states attention_mask layer_head_mask is_index_masked is_index_global_attn is_global_attn output_attentions": my_longformer_self_attention_forward_4_3_2,
@@ -322,15 +368,18 @@ def export_longformer(model, onnx_model_path, export_padding):
     )
     print(f"ONNX model exported to {onnx_model_path}")
 
-    # Restore original implementaiton:
+    # Restore original implementation:
     LongformerSelfAttention.forward = original_forward
 
 
-def optimize_longformer(onnx_model_path, fp32_model_path, fp16_model_path=None):
-    from onnx import load_model
+def optimize_longformer(onnx_model_path: str, fp32_model_path: str, fp16_model_path=None):
+    """Optimize longformer onnx model
 
-    from onnxruntime.transformers.onnx_model_bert import BertOnnxModel
-
+    Args:
+        onnx_model_path (str): path of original ONNX model.
+        fp32_model_path (str): path of optimized fp32 model.
+        fp16_model_path (str, optional): path of optimized fp16 model. Defaults to None.
+    """
     model = load_model(onnx_model_path, format=None, load_external_data=True)
     optimizer = BertOnnxModel(model)
     optimizer.optimize()
@@ -350,15 +399,16 @@ def main(args):
     model_name = args.model
     onnx_model_path = model_name + ".onnx"
 
-    from transformers import LongformerModel
+    global weight_bias_format
+    weight_bias_format = 0 if args.no_merge_qkv else 1
 
     model = LongformerModel.from_pretrained(PRETRAINED_LONGFORMER_MODELS[model_name])
 
     export_longformer(model, onnx_model_path, args.export_padding)
 
     if args.optimize_onnx or args.precision != "fp32":
-        fp32_model_path = model_name + "_fp32.onnx"
-        fp16_model_path = model_name + "_fp16.onnx" if args.precision == "fp16" else None
+        fp32_model_path = model_name + f"_f{weight_bias_format}" + "_fp32.onnx"
+        fp16_model_path = model_name + f"_f{weight_bias_format}" + "_fp16.onnx" if args.precision == "fp16" else None
         optimize_longformer(onnx_model_path, fp32_model_path, fp16_model_path)
 
 

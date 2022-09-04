@@ -36,6 +36,7 @@ struct OrtModelTestInfo {
   std::vector<std::pair<std::string, std::string>> configs;
   bool run_use_buffer{false};
   bool disable_copy_ort_buffer{false};
+  bool use_buffer_for_initializers{false};
 };
 
 static void RunOrtModel(const OrtModelTestInfo& test_info) {
@@ -47,6 +48,10 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
 
   if (test_info.disable_copy_ort_buffer) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "1"));
+
+    if (test_info.use_buffer_for_initializers) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesForInitializers, "1"));
+    }
   }
 
   std::vector<char> model_data;
@@ -460,6 +465,15 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBufferNoCopy) {
   RunOrtModel(test_info);
 }
 
+// Load the model from a buffer instead of a file path, and not copy the buffer in session creation
+TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBufferNoCopyInitializersUseBuffer) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  test_info.run_use_buffer = true;
+  test_info.disable_copy_ort_buffer = true;
+  test_info.use_buffer_for_initializers = true;
+  RunOrtModel(test_info);
+}
+
 #if !defined(DISABLE_ML_OPS)
 // test that we can deserialize and run a previously saved ORT format model
 // for a model with sequence and map outputs
@@ -543,6 +557,5 @@ TEST(OrtModelOnlyTests, TestBackwardsCompat) {
 }
 
 #endif  // !defined(DISABLE_ML_OPS)
-
 }  // namespace test
 }  // namespace onnxruntime

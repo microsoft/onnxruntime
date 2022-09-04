@@ -36,8 +36,7 @@ Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const 
     name_ = tensor_proto.name();
   }
 
-  auto proto_dims = utils::GetTensorShapeFromTensorProto(tensor_proto);
-  TensorShape proto_shape(proto_dims);
+  auto proto_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
 
   // This must be pre-allocated
   Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType(), proto_shape, std::make_shared<CPUAllocator>());
