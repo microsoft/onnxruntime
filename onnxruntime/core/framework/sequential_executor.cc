@@ -546,8 +546,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
       });
     }
   }
-
-  ctx.WaitAll();
+  if (!single_thread_mode)
+    ctx.WaitAll();
   ORT_RETURN_IF_ERROR(ctx.TaskStatus());
   ORT_RETURN_IF_ERROR(ctx.GetExecutionFrame()->GetOutputs(fetches));
   if (ctx.GetExecutionFrame()->HasMemoryPatternPlanner()) {

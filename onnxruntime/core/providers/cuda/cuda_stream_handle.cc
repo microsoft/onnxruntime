@@ -45,14 +45,47 @@ struct StreamPool& GetStreamPool() {
   return stream_pool;
 }
 
+struct EventPool {
+  ~EventPool() {
+    for (const auto& e : events_) {
+      CUDA_CALL_THROW(cudaEventDestroy(e));
+    }
+    events_.clear();
+  }
+  cudaEvent_t GetEvent() {
+    if (events_.empty()) {
+      cudaEvent_t event;
+      CUDA_CALL_THROW(cudaEventCreateWithFlags(&event, cudaEventDisableTiming));
+      return event;
+    } else {
+      cudaEvent_t event = events_.back();
+      events_.pop_back();
+      return event;
+    }
+  }
+
+  void PutEvent(cudaEvent_t event) {
+    ORT_ENFORCE(event);
+    events_.push_back(event);
+  }
+
+  std::vector<cudaEvent_t> events_;
+};
+
+struct EventPool& GetEventPool() {
+  thread_local EventPool event_pool;
+  return event_pool;
+}
+
 struct CudaNotification : public synchronize::Notification {
   CudaNotification(Stream* s) : Notification(s) {
-    CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
+    // CUDA_CALL_THROW(cudaEventCreateWithFlags(&event_, cudaEventDisableTiming));
+    event_ = GetEventPool().GetEvent();
   }
 
   ~CudaNotification() {
     if (event_)
-      CUDA_CALL_THROW(cudaEventDestroy(event_));
+      GetEventPool().PutEvent(event_);
   }
 
   void Activate() override {
