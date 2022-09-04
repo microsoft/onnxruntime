@@ -6,7 +6,6 @@ import sys
 import torch
 from utils import (
     chain_enc_dec_with_beamsearch,
-    export_helper,
     export_summarization_edinit,
     export_summarization_enc_dec_past,
     onnx_inference,
@@ -94,4 +93,4 @@ if __name__ == "__main__":
         chain_enc_dec_with_beamsearch.convert_model(args)
     if not args.no_inference:
         logger.info(f"========== INFERENCING WITH ONNX MODEL ==========")
-        onnx_inference.inference(args)
+        onnx_inference.run_inference(args)

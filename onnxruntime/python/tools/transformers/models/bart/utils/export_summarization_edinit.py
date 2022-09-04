@@ -51,7 +51,7 @@ class EncoderDecoderInit(torch.nn.Module):
 
 def _create_encoder_export(args, config):
     """
-    Exporting the excoder part of BART by inserting torch.onnx.export and
+    Exports the encoder part of BART by inserting torch.onnx.export and
     wrapper torch.nn.Module into `_prepare_encoder_decoder_kwargs_for_generation`.
 
     Args:

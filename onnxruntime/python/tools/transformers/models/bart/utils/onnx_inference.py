@@ -8,7 +8,7 @@ from utils import export_helper
 from onnxruntime import InferenceSession, SessionOptions
 
 
-def inference(args):
+def run_inference(args):
 
     beam = args.num_beams
     min_length = args.min_length
@@ -20,7 +20,6 @@ def inference(args):
 
     with torch.no_grad():
 
-        # TODO: why long loading time..
         model, input_data = export_helper.model_initialize(config, tokenizer, args)
         batch_num = 3
         input_data = input_data.repeat(batch_num, 1)

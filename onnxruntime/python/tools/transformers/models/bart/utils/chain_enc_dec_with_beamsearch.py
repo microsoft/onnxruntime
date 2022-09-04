@@ -11,7 +11,7 @@ from onnx import TensorProto, helper
 from utils import export_helper
 
 
-def make_dim_proto_numaric(model, config):
+def make_dim_proto_numeric(model, config):
 
     sequence_length = str(1)
     num_heads = str(config.encoder_attention_heads)
