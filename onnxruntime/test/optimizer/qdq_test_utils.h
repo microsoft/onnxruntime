@@ -93,7 +93,7 @@ GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, c
 
 template <typename InputType, typename OutputType>
 GetQDQTestCaseFn BuildQDQAveragePoolTestCase(const std::vector<int64_t>& input_shape,
-    int64_t count_include_pad = 0) {
+                                             int64_t count_include_pad = 0) {
   return [input_shape, count_include_pad](ModelTestBuilder& builder) {
 
 #ifdef USE_NNAPI  // NNAPI require consistent scales/ZPs for DQ -> Pool -> Q
@@ -144,7 +144,7 @@ GetQDQTestCaseFn BuildQDQMaxPoolTestCase(const std::vector<int64_t>& input_shape
   return [input_shape, q_eq_dq](ModelTestBuilder& builder) {
     float dq_scale = 0.0035f;
     float pool_output_scale = q_eq_dq ? dq_scale : 0.0038f;
-    float q_scale =  0.0039f;
+    float q_scale = 0.0039f;
     InputType dq_zp = 7;
     InputType pool_output_zp = q_eq_dq ? dq_zp : std::numeric_limits<OutputType>::max() / 2;
     InputType q_zp = std::numeric_limits<OutputType>::max() / 2;
@@ -267,6 +267,38 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
                                                 dq_scale,
                                                 std::numeric_limits<OutputType>::max() / 2,
                                                 output_arg);
+  };
+}
+
+template <typename InputType, typename OutputType>
+GetQDQTestCaseFn BuildQDQSplitTestCase(
+    const std::vector<int64_t>& input_shape,
+    const int64_t& axis) {
+  return [input_shape, axis](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<InputType>(input_shape,
+                                                   std::numeric_limits<InputType>::min(),
+                                                   std::numeric_limits<InputType>::max());
+
+    InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
+    OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output);
+
+    // add Split
+
+    auto* split_output_1 = builder.MakeIntermediate();
+    auto* split_output_2 = builder.MakeIntermediate();
+    auto* split_output_3 = builder.MakeIntermediate();
+    Node& split_node = builder.AddNode("Split", {dq_output}, {split_output_1, split_output_2, split_output_3});
+    split_node.AddAttribute("axis", axis);
+
+    // add Q
+    auto* q_split_output_1 = builder.MakeOutput();
+    auto* q_split_output_2 = builder.MakeOutput();
+    auto* q_split_output_3 = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<OutputType>(split_output_1, .003f, q_zp, q_split_output_1);  // Model input (node_token_1)
+    builder.AddQuantizeLinearNode<OutputType>(split_output_2, .003f, q_zp, q_split_output_2);  // Model input (node_token_2)
+    builder.AddQuantizeLinearNode<OutputType>(split_output_3, .003f, q_zp, q_split_output_3);
   };
 }
 

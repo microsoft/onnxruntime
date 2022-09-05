@@ -338,7 +338,7 @@ class BaseOpSupportChecker : public IOpSupportChecker {
       const OpSupportCheckParams& params) const;
 
   virtual int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 15; }
+  virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 17; }
 
   // Check if this node_unit's type is supported
   // SingleNode type NodeUnit is supported
