@@ -3,21 +3,35 @@ import time
 from typing import Any, Dict, Optional
 
 import torch
-from transformers import BartForConditionalGeneration, file_utils
+from transformers import BartConfig, BartForConditionalGeneration, file_utils
 from utils import export_helper
 
 
 class DecoderInitWrapper(torch.nn.Module):
-    def __init__(self, m):
-        super().__init__()
-        self.m = m
+    """Initial part of Decoder wrapper.
 
-    def forward(self, last_hidden_state, decoder_input_ids, attention_mask):
+    We split BART into three parts: Encoder plus initial part of Decodoer, main part of Decoder, and Beam Search.
+    This module is the initial part of Decodoer which is introduced in `EncoderDecoderInit`.
+
+    Attributes:
+        model: the BART model.
+    """
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(
+        self,
+        last_hidden_state: torch.Tensor,
+        decoder_input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+    ):
         encoder_outputs = file_utils.ModelOutput()
         encoder_outputs["last_hidden_state"] = last_hidden_state
         encoder_outputs["hidden_states"] = None
         encoder_outputs["attentions"] = None
-        return self.m(
+        return self.model(
             None,
             encoder_outputs=encoder_outputs,
             decoder_input_ids=decoder_input_ids,
@@ -29,6 +43,16 @@ class DecoderInitWrapper(torch.nn.Module):
 
 
 class EncoderDecoderInit(torch.nn.Module):
+    """Encoder plus initial part of Decoder wrapper.
+
+    We split BART into three parts: Encoder plus initial part of Decodoer, main part of Decoder, and Beam Search.
+    This module is Encoder plus initial part of Decodoer.
+
+    Attributes:
+        encoder: the BART encoder.
+        decoderwrapper: `DecoderInitWrapper`.
+    """
+
     def __init__(self, encoder: torch.nn.Module, decoderwrapper: DecoderInitWrapper):
         super().__init__()
         self.encoder = encoder
@@ -38,25 +62,22 @@ class EncoderDecoderInit(torch.nn.Module):
         self, encoder_input_ids: torch.Tensor, encoder_attention_mask: torch.Tensor, decoder_input_ids: torch.Tensor
     ):
         encoder_out = self.encoder(encoder_input_ids, encoder_attention_mask)
-
         encoder_output = encoder_out["last_hidden_state"]
         decoder_out = self.decoder_init(encoder_output, decoder_input_ids, encoder_attention_mask)
-        present_self, present_cross = export_helper.PastKeyValuesHelper.group_by_self_and_cross(
-            decoder_out.past_key_values
-        )
+        present_self, present_cross = export_helper.group_by_self_and_cross(decoder_out.past_key_values)
         present = present_self + present_cross
 
         return decoder_out.logits, encoder_output, present
 
 
-def _create_encoder_export(args, config):
-    """
-    Exports the encoder part of BART by inserting torch.onnx.export and
-    wrapper torch.nn.Module into `_prepare_encoder_decoder_kwargs_for_generation`.
+def _create_encoder_export(args, config: BartConfig):
+    """Wrapper function to pass in args and config.
+
+    This wrapper function exposes ONNX model output location and onnx version to users.
 
     Args:
         args: User input.
-        config: BART config
+        config: BART config.
     """
 
     def _prepare_encoder_decoder_kwargs_for_generation(
@@ -90,7 +111,7 @@ def _create_encoder_export(args, config):
         encdecinit = EncoderDecoderInit(encoder, wrapped_decoder)
         # use results from encdecinit here to compare with ORT.
         _, _, present = encdecinit(encoder_input_ids, encoder_attention_mask, decoder_input_ids)
-        output_past_names = export_helper.PastKeyValuesHelper.get_input_names(present, encoder=True)
+        output_past_names = export_helper.get_input_names(present, encoder=True)
 
         # random name to use in dynamic axes
         sequence_length = "1"
@@ -142,18 +163,28 @@ def _create_encoder_export(args, config):
 
 
 def export_encoder(args):
+    """Export BART encoder to ONNX.
 
+    By replacing the inner function of `_prepare_encoder_decoder_kwargs_for_generation`,
+    we export encoder model into ONNX with the usage of model.genration()
+
+    Args:
+        args: User input.
+
+    Return:
+        Encoder ONNX model in the given output directory, or under onnx_models folder.
+    """
     beam = args.num_beams
     min_length = args.min_length
     max_length = args.max_length
     repetition_penalty = args.repetition_penalty
     no_repeat_ngram_size = args.no_repeat_ngram_size
 
-    config, tokenizer = export_helper.config_initialize(args)
+    config, tokenizer = export_helper.initialize_config(args)
 
     with torch.no_grad():
 
-        model, input_data = export_helper.model_initialize(config, tokenizer, args)
+        model, input_data = export_helper.initialize_model(config, tokenizer, args)
         start_time = time.time()
         model._prepare_encoder_decoder_kwargs_for_generation = _create_encoder_export(args, config).__get__(
             model, BartForConditionalGeneration

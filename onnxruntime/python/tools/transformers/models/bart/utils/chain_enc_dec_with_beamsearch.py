@@ -4,7 +4,6 @@
 # -------------------------------------------------------------------------
 
 import os
-from email.policy import strict
 
 import onnx
 from onnx import TensorProto, helper
@@ -12,7 +11,12 @@ from utils import export_helper
 
 
 def make_dim_proto_numeric(model, config):
+    """Make dim_proto numeric.
 
+    Args:
+        model (BartForConditionalGeneration): Bart model.
+        config: Bart config.
+    """
     sequence_length = str(1)
     num_heads = str(config.encoder_attention_heads)
     hidden_size = str(config.d_model)
@@ -32,8 +36,14 @@ def make_dim_proto_numeric(model, config):
 
 
 def convert_model(args):
+    """Combine encoder, decoder, and beam search op to convert ONNX model.
 
-    config, _ = export_helper.config_initialize(args)
+    Using beam search op to connect encoder and decoder of the model, and convert it into one ONNX model.
+
+    Args:
+        args: User input.
+    """
+    config, _ = export_helper.initialize_config(args)
 
     eos_token_id = config.eos_token_id
     pad_token_id = config.pad_token_id
@@ -45,11 +55,11 @@ def convert_model(args):
 
     encoder_model = onnx.load(encoder_path, load_external_data=True)
     encoder_model.graph.name = "encoderdecoderinit subgraph"
-    make_dim_proto_numaric(encoder_model, config)
+    make_dim_proto_numeric(encoder_model, config)
 
     decoder_model = onnx.load(decoder_path, load_external_data=True)
     decoder_model.graph.name = "decoder subgraph"
-    make_dim_proto_numaric(decoder_model, config)
+    make_dim_proto_numeric(decoder_model, config)
 
     inputs = [
         "input_ids",

@@ -3,13 +3,13 @@ import os
 import time
 
 import torch
-from transformers import BartForConditionalGeneration, file_utils
+from transformers import BartConfig, BartForConditionalGeneration, file_utils
 from utils import export_helper
 
 from onnxruntime import InferenceSession, SessionOptions
 
 
-def decoder_config_update(config):
+def decoder_config_update(config: BartConfig):
     """
     Add parameters into decoder config to help expoerting. These parameter
     are later consumed with control flow and assertion
@@ -30,11 +30,26 @@ def decoder_config_update(config):
 
 
 class DecoderWrapper(torch.nn.Module):
-    def __init__(self, m):
-        super().__init__()
-        self.m = m
+    """main part of BART Decoder wrapper.
 
-    def forward(self, decoder_input_ids, attention_mask, encoder_hidden_states, *past):
+    We split BART into three parts: Encoder plus initial part of Decodoer, main part of Decoder, and Beam Search.
+    This module is the main part of Decodoer.
+
+    Attributes:
+        model: the BART model.
+    """
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(
+        self,
+        decoder_input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        *past: torch.Tensor,
+    ):
         encoder_outputs = file_utils.ModelOutput()
         encoder_outputs["last_hidden_state"] = encoder_hidden_states
         encoder_outputs["hidden_states"] = None
@@ -42,8 +57,8 @@ class DecoderWrapper(torch.nn.Module):
         if len(past) == 0:
             past_key_values = None
         else:
-            past_key_values = export_helper.PastKeyValuesHelper.back_group_by_layer(past)
-        decoder_out = self.m(
+            past_key_values = export_helper.back_group_by_layer(past)
+        decoder_out = self.model(
             None,
             encoder_outputs=encoder_outputs,
             decoder_input_ids=decoder_input_ids,
@@ -52,25 +67,26 @@ class DecoderWrapper(torch.nn.Module):
             use_cache=True,
             return_dict=True,
         )
-        present_self, _ = export_helper.PastKeyValuesHelper.group_by_self_and_cross(decoder_out.past_key_values)
+        present_self, _ = export_helper.group_by_self_and_cross(decoder_out.past_key_values)
         return decoder_out.logits, present_self
 
 
-def _decoder_forward_wrapper(model, decoder_config, args):
-    """
+def _decoder_forward_wrapper(model: BartForConditionalGeneration, decoder_config: BartConfig, args):
+    """Wrapper function to pass in args and config.
+
     Exporting the decoder of BART by inserting torch.onnx.export and wrapper
     torch.nn.Module into `forward`.
 
     Args:
-        model: BartForConditionalGeneration
-        args: User input
-        decoder_config: BART config after `decoder_config_update`
+        model: BartForConditionalGeneration module.
+        args: User input.
+        decoder_config: BART config after `decoder_config_update`.
     """
     model._forward = model.forward
 
-    def forward(self, input_ids, attention_mask, **kwargs):
+    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs):
         # attention_mask is required to show as forward parameters based on `generation_utils.py`
-        # reference: https://github.com/huggingface/transformers/blob/6faf283288ce3390281ad8c1d37ccb13f2d03990/src/transformers/generation_utils.py#L1200-L1203
+        # reference: https://github.com/huggingface/transformers/blob/main/src/transformers/generation_utils.py#L1200-L1203
         kwargs["attention_mask"] = attention_mask
 
         if decoder_config.is_decoder_exported and decoder_config.is_decoder_with_past_exported:
@@ -110,9 +126,7 @@ def _decoder_forward_wrapper(model, decoder_config, args):
         past_inputs = kwargs["past_key_values"]
         past_input_list = []
         if past_inputs is not None and not decoder_config.is_decoder_with_past_exported:
-            past_input_list = copy.deepcopy(
-                export_helper.PastKeyValuesHelper.group_by_self_and_cross(past_inputs, concat=True)
-            )
+            past_input_list = copy.deepcopy(export_helper.group_by_self_and_cross(past_inputs, concat=True))
 
         # compare `decoder_out_pt` with ORT results.
         decoder_out_pt = self._forward(input_ids, **kwargs)
@@ -129,13 +143,13 @@ def _decoder_forward_wrapper(model, decoder_config, args):
         if past_inputs is not None:
             decoder_config.is_decoder_with_past_exported = True
             inputs.extend(past_input_list)
-            input_past_names = export_helper.PastKeyValuesHelper.get_input_names(past_inputs, encoder=False)
+            input_past_names = export_helper.get_input_names(past_inputs, encoder=False)
             onnx_model_path = os.path.join(args.output, "decoder_past.onnx")
         else:
             decoder_config.is_decoder_exported = True
 
         input_names = ["input_ids", "encoder_attention_mask", "encoder_hidden_states"] + input_past_names
-        output_past_names = export_helper.PastKeyValuesHelper.get_output_names(past_outputs)
+        output_past_names = export_helper.get_output_names(past_outputs)
         output_names = ["logits"] + output_past_names
 
         sequence_length = "1"
@@ -207,20 +221,30 @@ def _decoder_forward_wrapper(model, decoder_config, args):
 
 
 def export_decoder(args):
+    """Export BART decoder to ONNX.
 
+    By replacing the inner function of `BartForConditionalGeneration` forward,
+    we export encoder model into ONNX with the usage of model.genration()
+
+    Args:
+        args: User input.
+
+    Return:
+        Decoder ONNX model in the given output directory, or under onnx_models folder.
+    """
     beam = args.num_beams
     min_length = args.min_length
     max_length = args.max_length
     repetition_penalty = args.repetition_penalty
     no_repeat_ngram_size = args.no_repeat_ngram_size
 
-    config, tokenizer = export_helper.config_initialize(args)
+    config, tokenizer = export_helper.initialize_config(args)
     config.use_decoder = True
     config = decoder_config_update(config)
 
     with torch.no_grad():
 
-        model, input_data = export_helper.model_initialize(config, tokenizer, args)
+        model, input_data = export_helper.initialize_model(config, tokenizer, args)
         start_time = time.time()
 
         model.forward = _decoder_forward_wrapper(model, config, args).__get__(model, BartForConditionalGeneration)

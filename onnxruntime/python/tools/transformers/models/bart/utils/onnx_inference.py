@@ -9,6 +9,13 @@ from onnxruntime import InferenceSession, SessionOptions
 
 
 def run_inference(args):
+    """Run inference with BART Pytorch and ONNX models.
+
+    Run an easy example with two models for a simple check on performance.
+
+    Args:
+        args: User input.
+    """
 
     beam = args.num_beams
     min_length = args.min_length
@@ -16,11 +23,11 @@ def run_inference(args):
     repetition_penalty = args.repetition_penalty
     no_repeat_ngram_size = args.no_repeat_ngram_size
 
-    config, tokenizer = export_helper.config_initialize(args)
+    config, tokenizer = export_helper.initialize_config(args)
 
     with torch.no_grad():
 
-        model, input_data = export_helper.model_initialize(config, tokenizer, args)
+        model, input_data = export_helper.initialize_model(config, tokenizer, args)
         batch_num = 3
         input_data = input_data.repeat(batch_num, 1)
 
