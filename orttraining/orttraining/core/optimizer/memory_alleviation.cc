@@ -102,7 +102,7 @@ Status MemoryAlleviation::RegisterRecomputableIntermediateOps() {
     }
 
     input_node_output_args.push_back(
-        std::make_pair(std::move(data_true_node), producer_output_index));
+        std::make_pair(std::move(data_true_node), static_cast<int>(producer_output_index)));
     return true;
   };
 
