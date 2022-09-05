@@ -4,6 +4,7 @@
 #pragma once
 #include <charconv>
 
+#include "core/common/inlined_containers.h"
 #include "core/common/string_utils.h"
 #include "core/optimizer/graph_transformer.h"
 
@@ -25,11 +26,11 @@ constexpr char UserConfig_OpTypeGelu[] = "Gelu";
 constexpr char UserConfig_OpTypeTile[] = "Tile";
 
 using NodeOutputPort = std::pair<const Node*, int>;
-using OpCrawlerFunctionType = std::function<bool(const Graph&, const Node&, std::vector<NodeOutputPort>&)>;
-using ActivationUsedMap = std::unordered_map<std::string, std::pair<bool, bool>>;
+using OpCrawlerFunctionType = std::function<bool(const Graph&, const Node&, InlinedVector<NodeOutputPort>&)>;
+using ActivationUsedMap = InlinedHashMap<std::string, std::pair<bool, bool>>;
 
 struct EntryOperatorConfig {
-  std::vector<int> input_arg_indices;  // input index to iterate further (bottom up)
+  InlinedVector<int> input_arg_indices;  // input index to iterate further (bottom up)
   AlleviationType type;
 };
 
@@ -84,7 +85,7 @@ class MemoryAlleviation : public GraphTransformer {
    */
   Status PrepareForTransformation(const Graph& graph,
                                   memory_alleviation::ActivationUsedMap& fw_op_output_arg_used_map,
-                                  std::unordered_map<NodeIndex, bool>& is_forward_op_map) const;
+                                  InlinedHashMap<NodeIndex, bool>& is_forward_op_map) const;
   /**
    * @brief Find all stashed activations, e.g. activations used by forward operators and backward operators.
    *
@@ -95,8 +96,8 @@ class MemoryAlleviation : public GraphTransformer {
    */
   Status GetStashedActivationCandidates(
       const Graph& graph,
-      const std::unordered_map<std::string, std::pair<bool, bool>>& fw_op_output_arg_used_map,
-      std::unordered_map<const Node*, std::vector<size_t>>& candidate_output_args_map) const;
+      const InlinedHashMap<std::string, std::pair<bool, bool>>& fw_op_output_arg_used_map,
+      InlinedHashMap<const Node*, InlinedVector<size_t>>& candidate_output_args_map) const;
 
   /**
    * @brief Find recomputable subgraphs (has at least one nodes, at most MAXIMUM_RECOMPUTE_COUNT nodes).
@@ -105,14 +106,14 @@ class MemoryAlleviation : public GraphTransformer {
    * @param node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
    * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
    * @param nodes_in_topological_order Collected vector of nodes of found subgraph, in the order of the topological sorted.
-   * @param oss string stream to ouput information to users.
+   * @param oss string stream to output information to users.
    * @param node_type_in_topological_order string stream for the subgraph node optype sequence, used to info users.
    * @param alleviation_type return the alleviation type of the passed-in node.
    * @return Status
    */
   Status SelectSubgraph(const Graph& graph, const Node& node,
                         const memory_alleviation::ActivationUsedMap& fw_op_output_arg_used_map,
-                        std::vector<const Node*>& nodes_in_topological_order,
+                        InlinedVector<const Node*>& nodes_in_topological_order,
                         std::ostringstream& oss,
                         std::ostringstream& node_type_in_topological_order,
                         memory_alleviation::AlleviationType& alleviation_type) const;
@@ -126,7 +127,7 @@ class MemoryAlleviation : public GraphTransformer {
    * @return Status
    */
   Status CreateRecomputeGraph(Graph& graph,
-                              const std::vector<const Node*>& nodes_in_topological_order,
+                              const InlinedVector<const Node*>& nodes_in_topological_order,
                               Node*& recompute_subgraph_output_node) const;
 
   /**
@@ -135,16 +136,16 @@ class MemoryAlleviation : public GraphTransformer {
    * @param stashed_activation_statistics statistics around stashed activation memory saving.
    * @return void
    */
-  void PrintSummary(const std::unordered_map<std::string, std::unordered_map<std::string, int>>&
+  void PrintSummary(const InlinedHashMap<std::string, InlinedHashMap<std::string, int>>&
                         stashed_activation_statistics,
-                    const std::unordered_map<std::string, memory_alleviation::AlleviationType>&
+                    const InlinedHashMap<std::string, memory_alleviation::AlleviationType>&
                         subgraph_str_to_alleviation_type) const;
 
   // For some computational cheap operator, register whether/how to extend recompute subgraph into its input nodes.
-  std::unordered_map<std::string, memory_alleviation::OpCrawlerFunctionType> recomputable_intermediate_op_crawler_map_;
+  InlinedHashMap<std::string, memory_alleviation::OpCrawlerFunctionType> recomputable_intermediate_op_crawler_map_;
 
   // The op type that used as an ending node (or entry node) to find a recompute subgraph or find an offload activation.
-  std::unordered_map<std::string, memory_alleviation::EntryOperatorConfig> entry_op_type_to_input_arg_index_map_;
+  InlinedHashMap<std::string, memory_alleviation::EntryOperatorConfig> entry_op_type_to_input_arg_index_map_;
 
   memory_alleviation::AlleviationType gelu_alleviation_type_{memory_alleviation::AlleviationType::None};
   memory_alleviation::AlleviationType dropout_alleviation_type_{memory_alleviation::AlleviationType::None};

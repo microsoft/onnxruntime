@@ -8,15 +8,13 @@
 #include "core/optimizer/utils.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
 
-using namespace ONNX_NAMESPACE;
 using onnxruntime::memory_alleviation::ActivationUsedMap;
 
 namespace onnxruntime {
 
 namespace {
-std::string TensorShapeProtoToString(const TensorShapeProto* shape) {
+std::string TensorShapeProtoToString(const ONNX_NAMESPACE::TensorShapeProto* shape) {
   std::ostringstream shape_oss;
-  std::vector<int64_t> dim_values;
   if (shape != nullptr) {
     for (int dim_index = 0; dim_index < shape->dim_size(); dim_index++) {
       auto dim = shape->dim(dim_index);
@@ -83,7 +81,7 @@ Status MemoryAlleviation::ParseAlleviationConfigFromString(const std::string& en
 Status MemoryAlleviation::RegisterRecomputableIntermediateOps() {
   recomputable_intermediate_op_crawler_map_["Where"] =
       [](const Graph& graph, const Node& node,
-         std::vector<memory_alleviation::NodeOutputPort>& input_node_output_args) -> bool {
+         InlinedVector<memory_alleviation::NodeOutputPort>& input_node_output_args) -> bool {
     const Node* data_true_node = graph.GetProducerNode(node.InputDefs()[1]->Name());
     if (!data_true_node) {
       // input is graph inptus.
@@ -104,7 +102,7 @@ Status MemoryAlleviation::RegisterRecomputableIntermediateOps() {
     }
 
     input_node_output_args.push_back(
-        std::make_pair<const Node*, int>(std::move(data_true_node), producer_output_index));
+        std::make_pair(std::move(data_true_node), producer_output_index));
     return true;
   };
 
@@ -113,10 +111,10 @@ Status MemoryAlleviation::RegisterRecomputableIntermediateOps() {
 
 Status MemoryAlleviation::PrepareForTransformation(const Graph& graph,
                                                    ActivationUsedMap& fw_op_output_arg_used_map,
-                                                   std::unordered_map<NodeIndex, bool>& is_forward_op_map) const {
+                                                   InlinedHashMap<NodeIndex, bool>& is_forward_op_map) const {
   fw_op_output_arg_used_map.clear();
   is_forward_op_map.clear();
-  std::unordered_map<std::string, std::unordered_set<const Node*>> node_arg_name_to_consumer_node_map;
+  InlinedHashMap<std::string, std::unordered_set<const Node*>> node_arg_name_to_consumer_node_map;
 
   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
@@ -162,7 +160,7 @@ Status MemoryAlleviation::PrepareForTransformation(const Graph& graph,
 Status MemoryAlleviation::SelectSubgraph(const Graph& graph,
                                          const Node& node,
                                          const ActivationUsedMap& fw_op_output_arg_used_map,
-                                         std::vector<const Node*>& nodes,
+                                         InlinedVector<const Node*>& nodes,
                                          std::ostringstream& oss,
                                          std::ostringstream& node_type_in_topological_order,
                                          memory_alleviation::AlleviationType& alleviation_type) const {
@@ -196,8 +194,8 @@ Status MemoryAlleviation::SelectSubgraph(const Graph& graph,
     // For entry node, we only trace back from the specified output port.
     if (std::find(input_arg_indices.begin(), input_arg_indices.end(), it->GetSrcArgIndex()) !=
         input_arg_indices.end()) {
-      memory_alleviation::NodeOutputPort p = std::make_pair<const Node*, int>(&(input_edge.GetNode()),
-                                                                              input_edge.GetDstArgIndex());
+      memory_alleviation::NodeOutputPort p = std::make_pair(&(input_edge.GetNode()),
+                                                            input_edge.GetDstArgIndex());
       q.push_back(p);
     }
   }
@@ -228,7 +226,7 @@ Status MemoryAlleviation::SelectSubgraph(const Graph& graph,
         continue;
       }
 
-      std::vector<memory_alleviation::NodeOutputPort> input_node_output_args;
+      InlinedVector<memory_alleviation::NodeOutputPort> input_node_output_args;
       const auto& functor = recomputable_intermediate_op_crawler_map_.at(n->OpType());
       if (functor(graph, *n, input_node_output_args)) {
         if (std::find(nodes.begin(), nodes.end(), n) == nodes.end()) {
@@ -243,7 +241,7 @@ Status MemoryAlleviation::SelectSubgraph(const Graph& graph,
           auto& output_arg_name = next_input_arg_it->first->OutputDefs()[next_input_arg_it->second]->Name();
           if (!fw_op_output_arg_used_map.at(output_arg_name).second) {
             next_q.push_back(*next_input_arg_it);
-          };
+          }
         }
       }
     }
@@ -271,8 +269,8 @@ Status MemoryAlleviation::SelectSubgraph(const Graph& graph,
 
 Status MemoryAlleviation::GetStashedActivationCandidates(
     const Graph& graph,
-    const std::unordered_map<std::string, std::pair<bool, bool>>& fw_op_output_arg_used_map,
-    std::unordered_map<const Node*, std::vector<size_t>>& candidate_output_args_map) const {
+    const InlinedHashMap<std::string, std::pair<bool, bool>>& fw_op_output_arg_used_map,
+    InlinedHashMap<const Node*, InlinedVector<size_t>>& candidate_output_args_map) const {
   for (auto& kv : fw_op_output_arg_used_map) {
     // used by fw and bw, then it is a candidates.
     if (kv.second.first && kv.second.second) {
@@ -295,14 +293,14 @@ Status MemoryAlleviation::GetStashedActivationCandidates(
 }
 
 Status MemoryAlleviation::CreateRecomputeGraph(Graph& graph,
-                                               const std::vector<const Node*>& nodes_in_topological_order,
+                                               const InlinedVector<const Node*>& nodes_in_topological_order,
                                                Node*& recompute_subgraph_output_node) const {
   const size_t node_count_to_recompute = nodes_in_topological_order.size();
   if (node_count_to_recompute > 0) {
-    std::unordered_map<NodeArg*, NodeArg*> self_contained_outputs_map;
+    InlinedHashMap<NodeArg*, NodeArg*> self_contained_outputs_map;
     for (size_t i = 0; i < node_count_to_recompute; ++i) {
       Node* node_to_duplicate = const_cast<Node*>(nodes_in_topological_order[i]);
-      std::vector<NodeArg*> new_input_args;
+      InlinedVector<NodeArg*> new_input_args;
       new_input_args.reserve(node_to_duplicate->MutableInputDefs().size());
       for (NodeArg* input_arg : node_to_duplicate->MutableInputDefs()) {
         new_input_args.push_back(self_contained_outputs_map.find(input_arg) == self_contained_outputs_map.end()
@@ -310,7 +308,7 @@ Status MemoryAlleviation::CreateRecomputeGraph(Graph& graph,
                                      : self_contained_outputs_map[input_arg]);
       }
 
-      std::vector<NodeArg*> new_output_args;
+      InlinedVector<NodeArg*> new_output_args;
       new_output_args.reserve(node_to_duplicate->MutableOutputDefs().size());
       for (size_t k = 0; k < node_to_duplicate->MutableOutputDefs().size(); ++k) {
         const auto& output = node_to_duplicate->MutableOutputDefs()[k];
@@ -340,15 +338,15 @@ Status MemoryAlleviation::CreateRecomputeGraph(Graph& graph,
 
 Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                     const logging::Logger& /*logger*/) const {
-  std::unordered_map<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
-  std::unordered_map<NodeIndex, bool> is_forward_op_map;
+  InlinedHashMap<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
+  InlinedHashMap<NodeIndex, bool> is_forward_op_map;
   ORT_RETURN_IF_ERROR(PrepareForTransformation(graph, fw_op_output_arg_used_map, is_forward_op_map));
 
-  std::unordered_map<const Node*, std::vector<size_t>> candidate_output_args_map;
+  InlinedHashMap<const Node*, InlinedVector<size_t>> candidate_output_args_map;
   ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph, fw_op_output_arg_used_map, candidate_output_args_map));
 
-  std::unordered_map<std::string, std::unordered_map<std::string, int>> stashed_activation_statistics;
-  std::unordered_map<std::string, memory_alleviation::AlleviationType> subgraph_str_to_alleviation_type;
+  InlinedHashMap<std::string, InlinedHashMap<std::string, int>> stashed_activation_statistics;
+  InlinedHashMap<std::string, memory_alleviation::AlleviationType> subgraph_str_to_alleviation_type;
   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
   for (int i = static_cast<int>(node_ids.size() - 1); i >= 0; --i) {
@@ -357,7 +355,7 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
       continue;
     }
 
-    std::vector<const Node*> nodes_in_topological_order;
+    InlinedVector<const Node*> nodes_in_topological_order;
     std::ostringstream oss;
     std::ostringstream node_type_in_topological_order;
     memory_alleviation::AlleviationType alleviation_type;
@@ -426,9 +424,9 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
   return Status::OK();
 }
 
-void MemoryAlleviation::PrintSummary(const std::unordered_map<std::string, std::unordered_map<std::string, int>>&
+void MemoryAlleviation::PrintSummary(const InlinedHashMap<std::string, InlinedHashMap<std::string, int>>&
                                          stashed_activation_statistics,
-                                     const std::unordered_map<std::string, memory_alleviation::AlleviationType>&
+                                     const InlinedHashMap<std::string, memory_alleviation::AlleviationType>&
                                          subgraph_str_to_alleviation_type) const {
   if (stashed_activation_statistics.size() == 0) {
     return;

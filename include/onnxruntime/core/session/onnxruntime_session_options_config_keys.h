@@ -61,14 +61,12 @@ static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enab
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
+#ifdef ENABLE_TRAINING
 // Specifies a list of op types for memory footprint reduction.
 // The value should be a ","-delimited list of pair of <op type, alleviation strategy>.
 // For example, "Gelu:1,Dropout:1,Tile:2". Alleviation strateg currently has valid values: 0 - disabled, 1 - recompute.
 static const char* const kOrtSessionOptionsEnableMemoryAlleviation = "optimization.enable_memory_alleviation";
-
-static const char* const kOrtSessionOptionsEnableDropoutRecompute = "optimization.enable_dropout_recompute";
-
-static const char* const kOrtSessionOptionsEnableTileRecompute = "optimization.enable_tile_recompute";
+#endif
 
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
 // Using device allocators means the memory allocation is made using malloc/new.
@@ -90,9 +88,9 @@ static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "ses
 
 /// <summary>
 /// Key for using the ORT format model flatbuffer bytes directly for initializers.
-/// This avoids copying the bytes and reduces peak memory usage during model loading and initialization. 
-/// Requires `session.use_ort_model_bytes_directly` to be true. 
-/// If set, the flatbuffer bytes provided when creating the InferenceSession MUST remain valid for the entire 
+/// This avoids copying the bytes and reduces peak memory usage during model loading and initialization.
+/// Requires `session.use_ort_model_bytes_directly` to be true.
+/// If set, the flatbuffer bytes provided when creating the InferenceSession MUST remain valid for the entire
 /// duration of the InferenceSession.
 /// </summary>
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesForInitializers =

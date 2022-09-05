@@ -21,23 +21,12 @@
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/math.h"
-#include "test/capturing_sink.h"
-#include "test/common/tensor_op_test_utils.h"
-#include "test/compare_ortvalue.h"
 #include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
-#include "test/optimizer/graph_transform_test_fixture.h"
-#include "test/providers/provider_test_utils.h"
+#include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
-#include "test/util/include/default_providers.h"
-#include "test/util/include/inference_session_wrapper.h"
-#include "test/util/include/temp_dir.h"
-#ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/memory_alleviation.h"
-#endif
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
