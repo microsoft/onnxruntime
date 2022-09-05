@@ -17,8 +17,8 @@ namespace onnxruntime {
 class RocblasHandleStreamGuard {
  public:
   RocblasHandleStreamGuard(rocblas_handle handle, hipStream_t stream) : handle_{handle} {
-   ROCBLAS_CALL_THROW(rocblas_get_stream(handle_, &original_stream_));
-   ROCBLAS_CALL_THROW(rocblas_set_stream(handle_, stream));
+    ROCBLAS_CALL_THROW(rocblas_get_stream(handle_, &original_stream_));
+    ROCBLAS_CALL_THROW(rocblas_set_stream(handle_, stream));
   }
 
   ~RocblasHandleStreamGuard() {
