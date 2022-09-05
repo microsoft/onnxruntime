@@ -10,9 +10,15 @@ ORT_API_STATUS_IMPL(CreateTrainingSession, _In_ const OrtEnv* env, _In_ const Or
                     _In_ const ORTCHAR_T* eval_model_path, _In_ const ORTCHAR_T* optimizer_model_path,
                     _Outptr_ OrtTrainingSession** out);
 
-ORT_API_STATUS_IMPL(TrainingSessionGetTrainModeOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(TrainingSessionGetTrainingModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
 
-ORT_API_STATUS_IMPL(TrainingSessionGetEvalModeOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(TrainingSessionGetEvalModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+
+ORT_API_STATUS_IMPL(TrainingSessionGetTrainingModelOutputName, _In_ const OrtSession* sess, size_t index,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
+
+ORT_API_STATUS_IMPL(TrainingSessionGetEvalModelOutputName, _In_ const OrtSession* sess, size_t index,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
 
 ORT_API_STATUS_IMPL(ResetGrad, _Inout_ OrtTrainingSession* session);
 
@@ -26,10 +32,12 @@ ORT_API_STATUS_IMPL(EvalStep, _In_ const OrtTrainingSession* session, _In_opt_ c
 
 ORT_API_STATUS_IMPL(SetLearningRate, _Inout_ OrtTrainingSession* sess, _In_ float learning_rate);
 
+ORT_API_STATUS_IMPL(GetLearningRate, _Inout_ OrtTrainingSession* sess, _Out_ float* learning_rate);
+
 ORT_API_STATUS_IMPL(OptimizerStep, _Inout_ OrtTrainingSession* session, _In_opt_ const OrtRunOptions* run_options);
 
-ORT_API_STATUS_IMPL(RegisterLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ void* lr_scheduler_parameters,
-                    _In_ enum OrtLRSchedulerType lr_scheduler_type, _In_opt_ const float* initial_lr);
+ORT_API_STATUS_IMPL(RegisterLinearLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ const int64_t warmup_step_count,
+                    _In_ const int64_t total_step_count, _In_ const float initial_lr);
 
 ORT_API_STATUS_IMPL(SchedulerStep, _Inout_ OrtTrainingSession* sess);
 

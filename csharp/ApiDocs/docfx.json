@@ -4,12 +4,12 @@
       "src": [
         {
           "files": [
-            "src/Microsoft.ML.OnnxRuntime/**.csproj"
+            "src/Microsoft.ML.OnnxRuntime/**.cs"
           ],
           "src": "../"
         }
       ],
-      "dest": "csharp",
+      "dest": "api",
       "disableGitFeatures": false,
       "disableDefaultFilter": false
     }
@@ -36,7 +36,7 @@
     "resource": [
       {
         "files": [
-          "images/**"
+          //"images/**"
         ]
       }
     ],
@@ -47,7 +47,6 @@
         ],
         "exclude": [
           "obj/**",
-          "dest/**",
           "csharp/**"
         ]
       }
