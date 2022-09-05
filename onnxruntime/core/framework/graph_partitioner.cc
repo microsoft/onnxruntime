@@ -101,7 +101,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
                                         "the layout transformer.";
     return Status::OK();
   }
-
+  size_t node_count_assigned_to_ep = 0;
   {
     GraphViewer graph_viewer(graph);
     capabilities = current_ep.GetCapability(graph_viewer,
@@ -109,6 +109,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
     if (capabilities.empty()) {
       return Status::OK();
     }
+    node_count_assigned_to_ep = capabilities.size();
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -148,7 +149,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
     GraphViewer graph_viewer(graph);
     capabilities = current_ep.GetCapability(graph_viewer,
                                             kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type));
-
+    node_count_assigned_to_ep = capabilities.size();
     // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
     InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
     for (const auto& capability : capabilities) {
@@ -174,7 +175,8 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
+      printf("%zd nodes will be assigned to %s\n",
+             node_count_assigned_to_ep, current_ep.Type().c_str());
   return Status::OK();
 }
 
