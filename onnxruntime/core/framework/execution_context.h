@@ -17,7 +17,7 @@ class ExecutionFrame;
 using OrtValueIndex = int;
 
 struct ReleasePlan {
-  std::unique_ptr<std::atomic_int[]> value_ref_counts_;
+  std::unique_ptr<int[]> value_ref_counts_;
 };
 
 class DeviceStreamCollectionImpl;

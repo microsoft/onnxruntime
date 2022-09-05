@@ -126,7 +126,7 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
   // generate release plan (the ref counts)
   auto& release_actions = session_state->GetExecutionPlan()->release_actions;
   release_plan = std::make_unique<ReleasePlan>();
-  release_plan->value_ref_counts_.reset(new std::atomic_int[release_actions.size()]);
+  release_plan->value_ref_counts_.reset(new int[release_actions.size()]);
   for (size_t i = 0; i < release_actions.size(); ++i) {
     release_plan->value_ref_counts_[i] = static_cast<int>(release_actions[i].ref_count);
   }
