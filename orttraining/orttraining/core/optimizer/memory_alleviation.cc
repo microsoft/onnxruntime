@@ -422,7 +422,7 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
     modified = modify_graph;
   }
 
-  PrintSummary(stashed_activation_statistics, subgraph_str_to_alleviation_type);
+  PrintSummary(stashed_activation_statistics, subgraph_str_to_alleviation_type, logger);
 
   return Status::OK();
 }
@@ -430,7 +430,8 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
 void MemoryAlleviation::PrintSummary(const InlinedHashMap<std::string, InlinedHashMap<std::string, int>>&
                                          stashed_activation_statistics,
                                      const InlinedHashMap<std::string, memory_alleviation::AlleviationType>&
-                                         subgraph_str_to_alleviation_type) const {
+                                         subgraph_str_to_alleviation_type,
+                                     const logging::Logger& logger) const {
   if (stashed_activation_statistics.size() == 0) {
     return;
   }

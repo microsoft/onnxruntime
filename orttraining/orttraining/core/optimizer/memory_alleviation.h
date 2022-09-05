@@ -140,7 +140,8 @@ class MemoryAlleviation : public GraphTransformer {
   void PrintSummary(const InlinedHashMap<std::string, InlinedHashMap<std::string, int>>&
                         stashed_activation_statistics,
                     const InlinedHashMap<std::string, memory_alleviation::AlleviationType>&
-                        subgraph_str_to_alleviation_type) const;
+                        subgraph_str_to_alleviation_type,
+                    const logging::Logger& logger) const;
 
   // For some computational cheap operator, register whether/how to extend recompute subgraph into its input nodes.
   InlinedHashMap<std::string, memory_alleviation::OpCrawlerFunctionType> recomputable_intermediate_op_crawler_map_;
