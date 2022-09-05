@@ -318,9 +318,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._debug_options.logging.log_level)
-        session_options.add_session_config_entry('optimization.enable_dropout_recompute', '1')
-        session_options.add_session_config_entry('optimization.enable_tile_recompute', '1')
-        session_options.add_session_config_entry('optimization.enable_gelu_recompute', '1')
+        session_options.add_session_config_entry('optimization.enable_dropout_recompute', '0')
+        session_options.add_session_config_entry('optimization.enable_tile_recompute', '0')
+        session_options.add_session_config_entry('optimization.enable_gelu_recompute', '0')
 
         if self._debug_options.save_onnx_models.save:
             session_options.optimized_model_filepath = os.path.join(
