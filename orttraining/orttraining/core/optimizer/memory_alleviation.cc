@@ -4,9 +4,9 @@
 #include "core/framework/random_seed.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
-#include "orttraining/core/optimizer/memory_alleviation.h"
 #include "core/optimizer/utils.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
+#include "orttraining/core/optimizer/memory_alleviation.h"
 
 using onnxruntime::memory_alleviation::ActivationUsedMap;
 
@@ -114,7 +114,7 @@ Status MemoryAlleviation::PrepareForTransformation(const Graph& graph,
                                                    InlinedHashMap<NodeIndex, bool>& is_forward_op_map) const {
   fw_op_output_arg_used_map.clear();
   is_forward_op_map.clear();
-  InlinedHashMap<std::string, std::unordered_set<const Node*>> node_arg_name_to_consumer_node_map;
+  InlinedHashMap<std::string, InlinedHashSet<const Node*>> node_arg_name_to_consumer_node_map;
 
   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
@@ -407,7 +407,8 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
           for (const auto& output_edge : output_edges) {
             // Add new edge connecting the input with the output nodes directly.
             // This also updates the destination node's input node args
-            graph.AddEdge(replacement_node->Index(), output_edge.dst_node, output_index, output_edge.dst_arg_index);
+            graph.AddEdge(replacement_node->Index(), output_edge.dst_node, static_cast<int>(output_index),
+                          output_edge.dst_arg_index);
           }
         }
       }

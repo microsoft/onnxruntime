@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include <charconv>
 
 #include "core/common/inlined_containers.h"
