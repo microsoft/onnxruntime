@@ -337,7 +337,7 @@ Status MemoryAlleviation::CreateRecomputeGraph(Graph& graph,
 }
 
 Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
-                                    const logging::Logger& /*logger*/) const {
+                                    const logging::Logger& logger) const {
   InlinedHashMap<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
   InlinedHashMap<NodeIndex, bool> is_forward_op_map;
   ORT_RETURN_IF_ERROR(PrepareForTransformation(graph, fw_op_output_arg_used_map, is_forward_op_map));
@@ -369,7 +369,9 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
     if (oss.tellp() != std::streampos(0)) {
       postfix_if_any = " with its precedent nodes: " + oss.str();
     }
-    LOGS_DEFAULT(WARNING) << "Node " << node.Name() << "(" << node.OpType() << ") can be recomputed" << postfix_if_any;
+
+    LOGS(logger, WARNING) << "Node " << node.Name() << "(" << node.OpType() << ") can be recomputed" << postfix_if_any
+                          << "\n";
 
     Node* replacement_node = nullptr;
 
@@ -451,7 +453,7 @@ void MemoryAlleviation::PrintSummary(const InlinedHashMap<std::string, InlinedHa
     summary << "\t--------------------------------\n";
   }
   summary << "\t=================================\n";
-  LOGS_DEFAULT(WARNING) << summary.str();
+  LOGS(logger, WARNING) << summary.str() << "\n";
 }
 
 }  // namespace onnxruntime
