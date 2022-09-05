@@ -55,7 +55,7 @@ struct EventPool {
   cudaEvent_t GetEvent() {
     if (events_.empty()) {
       cudaEvent_t event;
-      CUDA_CALL_THROW(cudaEventCreateWithFlags(&event, cudaEventDisableTiming));
+      CUDA_CALL_THROW(cudaEventCreate(&event, cudaEventDisableTiming));
       return event;
     } else {
       cudaEvent_t event = events_.back();

@@ -225,6 +225,8 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   CUDA_CALL_THROW(cudaDeviceSynchronize());
   CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop_, info_.device_id));
 
+  deferred_release_cpu_ptrs.reserve(64);
+
   // This scenario is not supported.
   ORT_ENFORCE(!(info.has_user_compute_stream && info.external_allocator_info.UseExternalAllocator()));
 
@@ -259,11 +261,12 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
       // iterate from the end
 
       for (int i = static_cast<int>(deferred_release_cpu_ptrs.size()) - 1; i >= 0; i--) {
-        CUDA_CALL_THROW(cudaEventSynchronize(deferred_release_cpu_ptrs[i].kernel_complete_event));
+        //CUDA_CALL_THROW(cudaEventSynchronize(deferred_release_cpu_ptrs[i].kernel_complete_event));
         cpu_alloc->Free(deferred_release_cpu_ptrs[i].cpu_ptr);
-        CUDA_CALL_THROW(cudaEventDestroy(deferred_release_cpu_ptrs[i].kernel_complete_event));
-        deferred_release_cpu_ptrs.erase(deferred_release_cpu_ptrs.begin() + i);
+        //CUDA_CALL_THROW(cudaEventDestroy(deferred_release_cpu_ptrs[i].kernel_complete_event));
+        //deferred_release_cpu_ptrs.erase(deferred_release_cpu_ptrs.begin() + i);
       }
+      deferred_release_cpu_ptrs.clear();
     }
   }
 
@@ -378,12 +381,12 @@ Status CUDAExecutionProvider::Sync() const {
 
 void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream) {
   // TODO: event reusing?
-  cudaEvent_t kernel_complete_event;
+  /*cudaEvent_t kernel_complete_event;
   CUDA_CALL_THROW(cudaEventCreate(&kernel_complete_event, cudaEventDisableTiming));
-  CUDA_CALL_THROW(cudaEventRecord(kernel_complete_event, stream));
+  CUDA_CALL_THROW(cudaEventRecord(kernel_complete_event, stream));*/
   // the push_back is not thread safe
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  deferred_release_cpu_ptrs.push_back({p, kernel_complete_event});
+  // std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+  //deferred_release_cpu_ptrs.push_back({p, nullptr});
 }
 
 Status CUDAExecutionProvider::OnRunStart() {
@@ -393,16 +396,19 @@ Status CUDAExecutionProvider::OnRunStart() {
   // check if cudaEvents has passed for deferred release
   // note that we need to take a mutex in case of multi-threaded Run()
   {
-    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+    //std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
     if (!deferred_release_cpu_ptrs.empty()) {
       // iterate from the end
       for (int i = static_cast<int>(deferred_release_cpu_ptrs.size()) - 1; i >= 0; i--) {
-        if (cudaSuccess == cudaEventQuery(deferred_release_cpu_ptrs[i].kernel_complete_event)) {
+        cpu_alloc->Free(deferred_release_cpu_ptrs[i].cpu_ptr);
+        //deferred_release_cpu_ptrs.erase(deferred_release_cpu_ptrs.begin() + i);
+        /*if (cudaSuccess == cudaEventQuery(deferred_release_cpu_ptrs[i].kernel_complete_event)) {
           cpu_alloc->Free(deferred_release_cpu_ptrs[i].cpu_ptr);
           CUDA_RETURN_IF_ERROR(cudaEventDestroy(deferred_release_cpu_ptrs[i].kernel_complete_event));
           deferred_release_cpu_ptrs.erase(deferred_release_cpu_ptrs.begin() + i);
-        }
+        }*/
       }
+      deferred_release_cpu_ptrs.clear();
     }
   }
   // create per thread context cache

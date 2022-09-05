@@ -118,7 +118,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     cudaEvent_t kernel_complete_event;
   };
 
-  std::vector<DeferredReleaseCPUPtr> deferred_release_cpu_ptrs;
+  InlinedVector<DeferredReleaseCPUPtr> deferred_release_cpu_ptrs;
   OrtMutex deferred_release_cpu_ptr_mutex_;
 
   class PerThreadContext final {
