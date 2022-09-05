@@ -318,8 +318,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._debug_options.logging.log_level)
-        # Disable memory alleviation by default.
-        session_options.add_session_config_entry("optimization.enable_memory_alleviation", "Dropout:0,Gelu:0,Tile:0")
+        # Disable memory alleviation by default. Allow user to enable it via environment variable.
+        enable_memory_alleviation = ortmodule._defined_from_envvar(
+            "ORTMODULE_ENABLE_MEMORY_ALLEVIATION", "Dropout:0,Gelu:0,Tile:0", warn=True
+        )
+        session_options.add_session_config_entry("optimization.enable_memory_alleviation", enable_memory_alleviation)
 
         if self._debug_options.save_onnx_models.save:
             session_options.optimized_model_filepath = os.path.join(
@@ -368,12 +371,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         if self._run_symbolic_shape_infer:
             self._onnx_models.exported_model = SymbolicShapeInference.infer_shapes(
                 self._onnx_models.exported_model, auto_merge=True, guess_output_rank=True
-            )
-
-            self._onnx_models.save_exported_model(
-                self._debug_options.save_onnx_models.path,
-                self._debug_options.save_onnx_models.name_prefix + "2",
-                self._export_mode,
             )
 
         # Restore the recorded random states
