@@ -65,7 +65,7 @@
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
-#include "core/optimizer/memory_alleviation.h"
+#include "orttraining/core/optimizer/memory_alleviation.h"
 #endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

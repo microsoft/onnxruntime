@@ -36,7 +36,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
 #ifdef ENABLE_TRAINING
-#include "core/optimizer/memory_alleviation.h"
+#include "orttraining/core/optimizer/memory_alleviation.h"
 #endif
 
 using namespace std;

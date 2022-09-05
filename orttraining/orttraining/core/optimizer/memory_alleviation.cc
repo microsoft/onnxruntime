@@ -4,7 +4,7 @@
 #include "core/framework/random_seed.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/memory_alleviation.h"
+#include "orttraining/core/optimizer/memory_alleviation.h"
 #include "core/optimizer/utils.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
 
@@ -85,6 +85,11 @@ Status MemoryAlleviation::RegisterRecomputableIntermediateOps() {
       [](const Graph& graph, const Node& node,
          std::vector<memory_alleviation::NodeOutputPort>& input_node_output_args) -> bool {
     const Node* data_true_node = graph.GetProducerNode(node.InputDefs()[1]->Name());
+    if (!data_true_node) {
+      // input is graph inptus.
+      return true;
+    }
+
     size_t producer_output_index = 0;
     for (size_t i = 0; i < data_true_node->OutputDefs().size(); ++i) {
       if (data_true_node->OutputDefs()[i]->Name().compare(node.InputDefs()[1]->Name()) == 0) {
@@ -166,15 +171,14 @@ Status MemoryAlleviation::SelectSubgraph(const Graph& graph,
   const Node* start_node = &node;
   // We handle Reshape specifically because it is reusing buffer of input tensor.
   if (node.OpType() == "Reshape") {
+    // Be noted, prev_node could be nullptr.
     const Node* prev_node = graph.GetProducerNode(node.InputDefs()[0]->Name());
     start_node = prev_node;
     nodes.push_back(&node);
   }
 
-  bool need_check = entry_op_type_to_input_arg_index_map_.find(start_node->OpType()) !=
-                    entry_op_type_to_input_arg_index_map_.end();
-
-  if (!need_check) {
+  if (!start_node || entry_op_type_to_input_arg_index_map_.find(start_node->OpType()) ==
+                         entry_op_type_to_input_arg_index_map_.end()) {
     nodes.clear();
     return Status::OK();
   }
@@ -273,6 +277,7 @@ Status MemoryAlleviation::GetStashedActivationCandidates(
     // used by fw and bw, then it is a candidates.
     if (kv.second.first && kv.second.second) {
       const Node* n = graph.GetProducerNode(kv.first);
+      ORT_ENFORCE(n, "Activation should have a producer node");
       size_t k = 0;
       for (k = 0; k < n->OutputDefs().size(); ++k) {
         if (n->OutputDefs()[k]->Name().compare(kv.first) == 0) {
@@ -425,6 +430,10 @@ void MemoryAlleviation::PrintSummary(const std::unordered_map<std::string, std::
                                          stashed_activation_statistics,
                                      const std::unordered_map<std::string, memory_alleviation::AlleviationType>&
                                          subgraph_str_to_alleviation_type) const {
+  if (stashed_activation_statistics.size() == 0) {
+    return;
+  }
+
   std::ostringstream summary;
   summary << "\nMemoryAlleviation Summary:\n";
   summary << "\tType config:\n\t\tDropout-" << dropout_alleviation_type_
