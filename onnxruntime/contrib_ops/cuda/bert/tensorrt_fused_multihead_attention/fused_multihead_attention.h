@@ -20,6 +20,7 @@
 #include <mutex>
 #include <set>
 #include <cstdint>
+#include <utility>
 #include <unordered_map>
 #include <vector>
 #include "cuda_runtime_api.h"
@@ -50,7 +51,9 @@ class TFusedMultiHeadAttentionXMMAKernel {
     for (uint32_t i = 0; i < mKernelMetaCount; ++i) {
       const auto& kernelMeta = mKernelMeta[i];
       const auto kernelKey = hashID(kernelMeta);
-      if (kernelMeta.mSM == smVersion && kernelMeta.mDataType == mDataType && mFunctions.find(kernelKey) == mFunctions.end()) {
+      if (kernelMeta.mSM == smVersion &&
+          kernelMeta.mDataType == mDataType &&
+          mFunctions.find(kernelKey) == mFunctions.end()) {
         const uint32_t DEFAULT_SMEM_SIZE{48 * 1024};
         if (kernelMeta.mSharedMemBytes >= DEFAULT_SMEM_SIZE) {
           int32_t deviceID{0};
@@ -79,8 +82,9 @@ class TFusedMultiHeadAttentionXMMAKernel {
         funcInfo.mMetaInfoIndex = i;
         cuErrCheck(mDriver.cuModuleGetFunction(&funcInfo.mDeviceFunction, hmod, kernelMeta.mFuncName), mDriver);
         if (kernelMeta.mSharedMemBytes >= DEFAULT_SMEM_SIZE) {
-          if (mDriver.cuFuncSetAttribute(funcInfo.mDeviceFunction,
-                                         CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES, kernelMeta.mSharedMemBytes) != CUDA_SUCCESS) {
+          if (CUDA_SUCCESS != mDriver.cuFuncSetAttribute(funcInfo.mDeviceFunction,
+                                                         CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                                                         kernelMeta.mSharedMemBytes)) {
             // some chip may not have enough shared memory to launch the kernel
             printf("skip loading trt fused attention kernel %s because no enough shared memory",
                    kernelMeta.mFuncName);

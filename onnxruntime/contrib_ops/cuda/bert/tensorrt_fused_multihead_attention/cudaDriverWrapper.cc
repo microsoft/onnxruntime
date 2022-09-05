@@ -21,7 +21,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif  // defined(WIN32_LEAN_AND_MEAN)
 #include <windows.h>
-#define dllOpen(name) (void*)LoadLibraryA("nv" name ".dll")
+#define dllOpen(name) reinterpret_cast<void*>(LoadLibraryA("nv" name ".dll"))
 #define dllClose(handle) FreeLibrary(static_cast<HMODULE>(handle))
 #define dllGetSym(handle, name) GetProcAddress(static_cast<HMODULE>(handle), name)
 #else
@@ -31,12 +31,7 @@
 #define dllGetSym(handle, name) dlsym(handle, name)
 #endif
 
-//#include "common/plugin.h"
 #include "cudaDriverWrapper.h"
-#include <cstdint>
-#include <cstdio>
-#include <cuda.h>
-#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -52,18 +47,18 @@ CUDADriverWrapper::CUDADriverWrapper() {
     return ret;
   };
 
-  *(void**)(&_cuGetErrorName) = load_sym(handle, "cuGetErrorName");
-  *(void**)(&_cuFuncSetAttribute) = load_sym(handle, "cuFuncSetAttribute");
-  *(void**)(&_cuLinkComplete) = load_sym(handle, "cuLinkComplete");
-  *(void**)(&_cuModuleUnload) = load_sym(handle, "cuModuleUnload");
-  *(void**)(&_cuLinkDestroy) = load_sym(handle, "cuLinkDestroy");
-  *(void**)(&_cuModuleLoadData) = load_sym(handle, "cuModuleLoadData");
-  *(void**)(&_cuLinkCreate) = load_sym(handle, "cuLinkCreate_v2");
-  *(void**)(&_cuModuleGetFunction) = load_sym(handle, "cuModuleGetFunction");
-  *(void**)(&_cuLinkAddFile) = load_sym(handle, "cuLinkAddFile_v2");
-  *(void**)(&_cuLinkAddData) = load_sym(handle, "cuLinkAddData_v2");
-  *(void**)(&_cuLaunchCooperativeKernel) = load_sym(handle, "cuLaunchCooperativeKernel");
-  *(void**)(&_cuLaunchKernel) = load_sym(handle, "cuLaunchKernel");
+  *reinterpret_cast<void**>(&_cuGetErrorName) = load_sym(handle, "cuGetErrorName");
+  *reinterpret_cast<void**>(&_cuFuncSetAttribute) = load_sym(handle, "cuFuncSetAttribute");
+  *reinterpret_cast<void**>(&_cuLinkComplete) = load_sym(handle, "cuLinkComplete");
+  *reinterpret_cast<void**>(&_cuModuleUnload) = load_sym(handle, "cuModuleUnload");
+  *reinterpret_cast<void**>(&_cuLinkDestroy) = load_sym(handle, "cuLinkDestroy");
+  *reinterpret_cast<void**>(&_cuModuleLoadData) = load_sym(handle, "cuModuleLoadData");
+  *reinterpret_cast<void**>(&_cuLinkCreate) = load_sym(handle, "cuLinkCreate_v2");
+  *reinterpret_cast<void**>(&_cuModuleGetFunction) = load_sym(handle, "cuModuleGetFunction");
+  *reinterpret_cast<void**>(&_cuLinkAddFile) = load_sym(handle, "cuLinkAddFile_v2");
+  *reinterpret_cast<void**>(&_cuLinkAddData) = load_sym(handle, "cuLinkAddData_v2");
+  *reinterpret_cast<void**>(&_cuLaunchCooperativeKernel) = load_sym(handle, "cuLaunchCooperativeKernel");
+  *reinterpret_cast<void**>(&_cuLaunchKernel) = load_sym(handle, "cuLaunchKernel");
 }
 
 CUDADriverWrapper::~CUDADriverWrapper() {
@@ -103,26 +98,30 @@ CUresult CUDADriverWrapper::cuModuleGetFunction(CUfunction* hfunc, CUmodule hmod
   return (*_cuModuleGetFunction)(hfunc, hmod, name);
 }
 
-CUresult CUDADriverWrapper::cuLinkAddFile(CUlinkState state, CUjitInputType type, const char* path, uint32_t numOptions,
-                                          CUjit_option* options, void** optionValues) const {
+CUresult CUDADriverWrapper::cuLinkAddFile(
+    CUlinkState state, CUjitInputType type, const char* path, uint32_t numOptions,
+    CUjit_option* options, void** optionValues) const {
   return (*_cuLinkAddFile)(state, type, path, numOptions, options, optionValues);
 }
 
-CUresult CUDADriverWrapper::cuLinkAddData(CUlinkState state, CUjitInputType type, void* data, size_t size,
-                                          const char* name, uint32_t numOptions, CUjit_option* options, void** optionValues) const {
+CUresult CUDADriverWrapper::cuLinkAddData(
+    CUlinkState state, CUjitInputType type, void* data, size_t size,
+    const char* name, uint32_t numOptions, CUjit_option* options, void** optionValues) const {
   return (*_cuLinkAddData)(state, type, data, size, name, numOptions, options, optionValues);
 }
 
-CUresult CUDADriverWrapper::cuLaunchCooperativeKernel(CUfunction f, uint32_t gridDimX, uint32_t gridDimY,
-                                                      uint32_t gridDimZ, uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes,
-                                                      CUstream hStream, void** kernelParams) const {
+CUresult CUDADriverWrapper::cuLaunchCooperativeKernel(
+    CUfunction f, uint32_t gridDimX, uint32_t gridDimY,
+    uint32_t gridDimZ, uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes,
+    CUstream hStream, void** kernelParams) const {
   return (*_cuLaunchCooperativeKernel)(
       f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams);
 }
 
-CUresult CUDADriverWrapper::cuLaunchKernel(CUfunction f, uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
-                                           uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes, CUstream hStream,
-                                           void** kernelParams, void** extra) const {
+CUresult CUDADriverWrapper::cuLaunchKernel(
+    CUfunction f, uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
+    uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes, CUstream hStream,
+    void** kernelParams, void** extra) const {
   return (*_cuLaunchKernel)(
       f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, extra);
 }

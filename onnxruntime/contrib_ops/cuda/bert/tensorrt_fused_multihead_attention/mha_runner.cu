@@ -34,7 +34,7 @@ static inline void set_alpha(uint32_t& alpha, float norm, Data_type dtype) {
 
 class FusedMHARunnerFP16v2::mhaImpl {
  public:
-  mhaImpl(FusedMHARunnerFP16v2* interface)
+  explicit mhaImpl(FusedMHARunnerFP16v2* interface)
       : interface(interface), sm(interface->mSm), xmmaKernel(getXMMAKernelsV2(DATA_TYPE_FP16, sm)) {
     ORT_ENFORCE((sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86),
                 "Unsupported architecture");
@@ -44,8 +44,6 @@ class FusedMHARunnerFP16v2::mhaImpl {
   ~mhaImpl() {}
 
   void setup(const int S, const int B) {
-    // TODO these implementation details might be better centralized into the XMMA code, since they are needed in
-    // several places (also outside of this plugin)
     size_t warps_m{};
     size_t warps_n{};
     size_t warps_k = 1;
@@ -102,7 +100,8 @@ class FusedMHARunnerFP16v2::mhaImpl {
     params.o_stride_in_bytes = interface->mNumHeads * interface->mHeadSize * sizeof(half);
   }
 
-  void run(const void* qkvPtr, const void* /*maskPtr*/, const void* seqLens, void* output, void* workspace, cudaStream_t stream) {
+  void run(const void* qkvPtr, const void* /*maskPtr*/, const void* seqLens,
+           void* output, void* workspace, cudaStream_t stream) {
     params.qkv_ptr = const_cast<void*>(qkvPtr);
 
     // dummy input in V2/V3 because now we use cu_seqlens

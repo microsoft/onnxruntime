@@ -41,20 +41,6 @@ struct Fused_multihead_attention_params_v2 {
   // The stride between rows of O.
   int64_t o_stride_in_bytes;
 
-#if defined(STORE_P)
-  // The pointer to the P matrix (for debugging).
-  void* p_ptr{};
-  // The stride between rows of the P matrix (for debugging).
-  int64_t p_stride_in_bytes{};
-#endif  // defined(STORE_P)
-
-#if defined(STORE_S)
-  // The pointer to the S matrix (for debugging).
-  void* s_ptr{};
-  // The stride between rows of the S matrix (for debugging).
-  int64_t s_stride_in_bytes{};
-#endif  // defined(STORE_S)
-
   // The dimensions.
   int32_t b{};
   int32_t h{};
@@ -95,6 +81,7 @@ struct Fused_multihead_attention_params_v2 {
     *this = Fused_multihead_attention_params_v2();
   }
 };
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 extern unsigned char fused_multihead_attention_v2_fp16_64_64_kernel_sm70_cubin[];
 extern unsigned char fused_multihead_attention_v2_fp16_96_64_kernel_sm70_cubin[];
@@ -321,7 +308,10 @@ class FusedMultiHeadAttentionXMMAKernelV2
 #endif
       };
       for (uint32_t i = 0u; i < sizeof(unrollList) / sizeof(unrollList[0]); ++i) {
-        if (mSM == unrollList[i].mSM && mDataType == unrollList[i].mDataType && params.s == unrollList[i].mS && params.b <= unrollList[i].mMaxBatch) {
+        if (mSM == unrollList[i].mSM &&
+            mDataType == unrollList[i].mDataType &&
+            params.s == unrollList[i].mS &&
+            params.b <= unrollList[i].mMaxBatch) {
           forceUnroll = true;
           break;
         }

@@ -1677,7 +1677,7 @@ TEST(AttentionTest, AttentionPastState_dynamic) {
   test.AddOptionalInputEdge<int32_t>();
   test.AddInput<float>("past", past_dims, past_data);
 
-  test.AddReferenceOutputs("testdata/attention_past_state.onnx");
+  test.AddReferenceOutputs("testdata/attention_past_state.onnx", 0.005f);
   test.Run();
 }
 #endif  //! defined(__wasm__)

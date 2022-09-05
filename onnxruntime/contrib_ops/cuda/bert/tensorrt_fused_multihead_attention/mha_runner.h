@@ -87,7 +87,7 @@ class FusedMHARunnerFP16v2 : public MHARunner {
   FusedMHARunnerFP16v2(const int32_t numHeads, const int32_t headSize, const int32_t sm);
   ~FusedMHARunnerFP16v2() = default;  // for pimpl
 
-  virtual void setup(const int32_t S, const int32_t B) override;
+  void setup(const int32_t S, const int32_t B) override;
 
   void run(const void* qkvPtr, const void* maskPtr, const void* seqLens,
            void* output, void* workspace, cudaStream_t stream) override;
