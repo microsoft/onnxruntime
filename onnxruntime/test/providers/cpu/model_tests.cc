@@ -1065,10 +1065,10 @@ TEST_P(ModelTest, Run) {
 #if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 #ifdef _WIN32
     paths.push_back(ORT_TSTR("..\\models"));
-    paths.push_back(ORT_TSTR("..\\webmodels"));
+    paths.push_back(ORT_TSTR("..\\onnxops"));
 #else
     paths.push_back(ORT_TSTR("../models"));
-    paths.push_back(ORT_TSTR("../webmodels"));
+    paths.push_back(ORT_TSTR("../onnxops"));
 #endif
 #endif
 

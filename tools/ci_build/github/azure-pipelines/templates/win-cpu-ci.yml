@@ -183,7 +183,7 @@ jobs:
   # C# test isn't launched by build.py, so models link has to be added.
   - script: |
      mklink /D /J models C:\local\models
-     mklink /D /J webmodels C:\local\webmodels
+     mklink /D /J onnxops C:\local\onnxops
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Create models link'
 

@@ -2706,8 +2706,8 @@ def main():
         source_onnx_model_dir = "C:\\local\\models" if is_windows() else "/data/models"
         setup_test_data(source_onnx_model_dir, "models", build_dir, configs)
 
-        nodejs_test_data_dir = "C:\\local\\webmodels" if is_windows() else "/data/webmodels"
-        setup_test_data(nodejs_test_data_dir, "webmodels", build_dir, configs)
+        nodejs_test_data_dir = "C:\\local\\onnxops" if is_windows() else "/data/onnxops"
+        setup_test_data(nodejs_test_data_dir, "onnxops", build_dir, configs)
 
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
 
