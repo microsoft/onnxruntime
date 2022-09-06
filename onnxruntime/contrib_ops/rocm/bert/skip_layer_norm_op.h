@@ -50,9 +50,7 @@ Status SkipLayerNormSmallOp(const SkipLayerNormParams<T>* params) {
                      0, params->stream, params->ld, params->input, params->skip,
                      params->beta, params->gamma, params->bias, maybe2half<T>(params->epsilon), params->output,
                      (params->bias == nullptr) ? false : true);
-  auto status = hipGetLastError();
-  ORT_RETURN_IF(status != hipSuccess, ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, hipGetErrorName(status)));
-  return Status::OK();
+  return HIP_CALL(hipGetLastError());
 }
 
 }  // namespace rocm

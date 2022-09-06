@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from itertools import product
+
 import kernel_explorer as ke
 import numpy as np
 import pytest
@@ -12,12 +14,7 @@ def get_bert_sizes():
     batch_sizes = [1, 8, 64, 128]
     seq_lens = [384]
     hidden_sizes = [128, 256, 384, 1024]
-    bert_sizes = []
-    for bsz in batch_sizes:
-        for sql in seq_lens:
-            for hsz in hidden_sizes:
-                bert_sizes.append([bsz, sql, hsz])
-    return bert_sizes
+    return product(batch_sizes, seq_lens, hidden_sizes)
 
 
 def dtype_to_funcs(dtype):
