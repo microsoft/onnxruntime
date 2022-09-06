@@ -10,13 +10,15 @@ struct CudaStreamBundle {
 };
 
 struct StreamPool {
+  StreamPool(){};
   ~StreamPool() {
     for (const auto& s : streams_) {
       cudaStreamDestroy(s.cuda_stream_);
-      cublasDestroy(s.cublas_handle_);
       cudnnDestroy(s.cudnn_handle_);
+      cublasDestroy(s.cublas_handle_);
     }
   }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(StreamPool);
   CudaStreamBundle GetStream() {
     if (streams_.empty()) {
       CudaStreamBundle stream_bundle;
