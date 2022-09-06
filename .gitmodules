@@ -78,3 +78,6 @@
 [submodule "cmake/external/XNNPACK"]
 	path = cmake/external/XNNPACK
 	url = https://github.com/google/XNNPACK.git
+[submodule "cmake/external/curl"]
+	path = cmake/external/curl
+	url = https://github.com/curl/curl.git

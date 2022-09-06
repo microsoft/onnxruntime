@@ -109,6 +109,8 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides.inc"
 )
 
+
+
 if(onnxruntime_USE_NUPHAR)
   set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
 endif()
@@ -242,7 +244,13 @@ endif()
 if (onnxruntime_REDUCED_OPS_BUILD)
   substitute_op_reduction_srcs(onnxruntime_providers_src)
 endif()
+
 onnxruntime_add_static_library(onnxruntime_providers ${onnxruntime_providers_src})
+
+add_subdirectory(external/curl)
+target_include_directories(onnxruntime_providers PRIVATE external/curl/include)
+target_link_libraries(onnxruntime_providers PRIVATE libcurl)
+
 if (onnxruntime_REDUCED_OPS_BUILD)
   add_op_reduction_include_dirs(onnxruntime_providers)
 endif()
