@@ -65,7 +65,7 @@ struct CalculateInlinedVectorDefaultInlinedElements {
   // 1. There is at least one inlined element.
   // 2. `sizeof(InlinedVector<T>) <= kPreferredInlinedVectorSizeof` unless
   // it contradicts 1.
-  static constexpr size_t kPreferredInlinedVectorSizeof = 128;
+  static constexpr size_t kPreferredInlinedVectorSizeof = 64;
 
   // static_assert that sizeof(T) is not "too big".
   //
