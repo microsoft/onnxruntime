@@ -18,6 +18,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
+#include "core/common/inlined_containers.h"
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
@@ -1583,6 +1584,9 @@ class Graph {
   // for the fused kernel. I really don't like it. but for short-term solution, let's host
   // those schemas here.
   InlinedVector<std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_containers_;
+  // in some case, a fused sub-graph will happens multiple times in one model, we use a map
+  // to store reusable-schema in lookup.
+  InlinedHashMap<std::string, std::reference_wrapper<ONNX_NAMESPACE::OpSchema>> reusable_fused_schema_map_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Graph nodes.
