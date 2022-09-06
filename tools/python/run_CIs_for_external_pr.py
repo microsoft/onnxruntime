@@ -14,7 +14,7 @@ def parse_args():
         os.path.basename(__file__),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""Trigger CIs running for the specified pull request.
-    
+
         Requires the GitHub CLI to be installed. See https://github.com/cli/cli#installation for details.
         After installation you will also need to setup an auth token to access the ONNX Runtime repository by running
         `gh auth login`. Easiest is to run that from a directory in your local copy of the repo.
