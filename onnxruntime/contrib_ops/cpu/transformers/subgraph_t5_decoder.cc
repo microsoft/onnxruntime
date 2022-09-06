@@ -132,7 +132,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   AllocatorPtr allocator = session_state_->GetAllocator(encoder_feeds[0].Get<Tensor>().Location());
 
   // Copy beam next tokens in CPU to input_ids in provider device (CPU for CPU EP, or GPU for CUDA EP).
-  int batch_beam_size = static_cast<int>(beam_next_tokens.length());
+  int batch_beam_size = static_cast<int>(beam_next_tokens.size());
   int64_t dims[] = {batch_beam_size, 1};
   TensorShape input_ids_shape(&dims[0], 2);
   OrtValue input_ids;

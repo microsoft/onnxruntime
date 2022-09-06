@@ -599,7 +599,7 @@ void OpTester::AddSparseCooTensorData(std::vector<Data>& data,
   auto p_tensor = MakeSparseTensor(data_type, dims);
   auto mutator = p_tensor->MakeCooData(nnz, indices.size());
   CopyDataToTensor(values, mutator.Values());
-  CopyDataToTensor(indices.as_bytes(), mutator.Indices());
+  CopyDataToTensor(gsl::as_bytes(indices), mutator.Indices());
 
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), check_params);
@@ -622,7 +622,7 @@ void OpTester::AddSparseCooTensorStrings(std::vector<Data>& data,
   auto mutable_values = mutator.Values().MutableDataAsSpan<std::string>();
   ORT_ENFORCE(values.size() == mutable_values.size(), "Must allocate space for values");
   std::copy(values.cbegin(), values.cend(), mutable_values.begin());
-  CopyDataToTensor(indices.as_bytes(), mutator.Indices());
+  CopyDataToTensor(gsl::as_bytes(indices), mutator.Indices());
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), CheckParams());
 }
@@ -645,8 +645,8 @@ void OpTester::AddSparseCsrTensorData(std::vector<Data>& data,
 
   auto mutator = p_tensor->MakeCsrData(nnz, inner_indices.size(), outer_indices.size());
   CopyDataToTensor(values, mutator.Values());
-  CopyDataToTensor(inner_indices.as_bytes(), mutator.Inner());
-  CopyDataToTensor(outer_indices.as_bytes(), mutator.Outer());
+  CopyDataToTensor(gsl::as_bytes(inner_indices), mutator.Inner());
+  CopyDataToTensor(gsl::as_bytes(outer_indices), mutator.Outer());
 
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), check_params);
@@ -671,8 +671,8 @@ void OpTester::AddSparseCsrTensorStrings(std::vector<Data>& data,
   auto mutable_values = mutator.Values().MutableDataAsSpan<std::string>();
   ORT_ENFORCE(values.size() == mutable_values.size(), "Must allocate space for values");
   std::copy(values.cbegin(), values.cend(), mutable_values.begin());
-  CopyDataToTensor(inner_indices.as_bytes(), mutator.Inner());
-  CopyDataToTensor(outer_indices.as_bytes(), mutator.Outer());
+  CopyDataToTensor(gsl::as_bytes(inner_indices), mutator.Inner());
+  CopyDataToTensor(gsl::as_bytes(outer_indices), mutator.Outer());
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), CheckParams());
 }
