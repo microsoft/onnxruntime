@@ -324,7 +324,7 @@ public:
             std::array<uint32_t, 4> reshapedInputStrides = { 1, 1, 1, 1 };
             std::array<uint32_t, 4> reshapedOutputStrides = { 1, 1, 1, 1 };
             std::array<uint32_t, 4> temporaryStrides = { 1, 1, 1, 1 };
-            for (int i = static_cast<int>(inputDims.size()) - 2; i >= 0; i--)
+            for (int i = static_cast<int>(reshapedInputSize.size()) - 2; i >= 0; i--)
             {
                 reshapedInputStrides[i] = reshapedInputSize[i + 1] * reshapedInputStrides[i + 1];
                 reshapedOutputStrides[i] = reshapedOutputSize[i + 1] * reshapedOutputStrides[i + 1];
