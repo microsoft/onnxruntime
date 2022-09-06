@@ -60,7 +60,6 @@ def main():
         "Windows GPU CI Pipeline",
         "Windows GPU TensorRT CI Pipeline",
         "ONNX Runtime Web CI Pipeline",
-
         # linux
         "Linux CPU CI Pipeline",
         "Linux CPU Minimal Build E2E CI Pipeline",
@@ -68,19 +67,16 @@ def main():
         "Linux GPU TensorRT CI Pipeline",
         "Linux Nuphar CI Pipeline",
         "Linux OpenVINO CI Pipeline",
-
         # mac
         "MacOS CI Pipeline",
-
         # training
         "orttraining-amd-gpu-ci-pipeline",
         "orttraining-linux-ci-pipeline",
         "orttraining-linux-gpu-ci-pipeline",
         "orttraining-ortmodule-distributed",
-
         # checks
         "onnxruntime-python-checks-ci-pipeline",
-        "onnxruntime-binary-size-checks-ci-pipeline"
+        "onnxruntime-binary-size-checks-ci-pipeline",
     ]
 
     # azp run is limited to 10 pipelines at a time
