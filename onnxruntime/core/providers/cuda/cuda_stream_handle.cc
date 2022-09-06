@@ -80,10 +80,6 @@ CudaStream::CudaStream(cudaStream_t stream, const OrtDevice& device, bool own_fl
                        cudnnHandle_t external_cudnn_handle, cublasHandle_t external_cublas_handle) : Stream(stream, device), own_stream_(own_flag) {
   cublas_handle_ = external_cublas_handle;
   cudnn_handle_ = external_cudnn_handle;
-  if (!own_flag) {
-    CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
-    CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
-  }
 }
 
 CudaStream::~CudaStream() {
