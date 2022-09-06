@@ -92,6 +92,8 @@ TEST(ConvIntegerTest, WithPadding_2D_u8s8) {
   test.Run();
 }
 
+
+
 TEST(ConvIntegerTest, WithGroup_2D_u8u8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 3, 3, 3};
@@ -175,6 +177,8 @@ TEST(ConvIntegerTest, WithGroup_2D_u8s8) {
                            150, 281, 292, 135});
   test.Run();
 }
+
+
 
 TEST(ConvIntegerTest, WithPadding_3D_u8u8) {
   OpTester test("ConvInteger", 10);
@@ -343,6 +347,7 @@ TEST(ConvIntegerTest, Pointwise_3D_u8s8) {
                            100, 104, 108});
   test.Run();
 }
+
 TEST(ConvIntegerTest, WithStride2_2D_u8u8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 7, 7};
@@ -431,7 +436,6 @@ TEST(ConvIntegerTest, WithStride3_2D_u8u8) {
   // Exercise the (stride_w > 2) path inside Math::Im2col.
   test.Run();
 }
-
 TEST(ConvIntegerTest, WithStride3_2D_u8s8) {
   OpTester test("ConvInteger", 10);
   std::vector<int64_t> x_dims{1, 1, 7, 7};
