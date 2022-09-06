@@ -134,15 +134,15 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
  public:
   BarrierStep(size_t id) : SequentialExecutionPlan::ExecutionStep(),
                            barrier_id{id},
-                           func_([](size_t barrier_idx, void* ctx, size_t /*stream_idx*/, bool& continue_flag) {
+                           func_([id](void* ctx, size_t /*stream_idx*/, bool& continue_flag) {
                              ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-                             continue_flag = execution_context->DecCountDownBarrier(barrier_idx);
+                             continue_flag = execution_context->DecCountDownBarrier(id);
                              return Status::OK();
                            }) {
   }
 
-  StepCommandFn GetStepFun() override {
-    return std::bind(func_, barrier_id, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+  StepCommandFn& GetStepFun() override {
+    return func_;
   }
 
   std::string Dump() const override {
@@ -153,7 +153,7 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
 
  private:
   size_t barrier_id{0};
-  std::function<Status(size_t barrier_idx, void* ctx, size_t stream_idx, bool& continue_flag)> func_;
+  std::function<Status(void* ctx, size_t stream_idx, bool& continue_flag)> func_;
 };
 
 class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
@@ -162,22 +162,20 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
                                                                    wait_handle(handle),
                                                                    notification_idx(idx),
                                                                    func_(
-                                                                       [](WaitNotificationFn wait_handle,
-                                                                          NotificationIndex notification_idx,
-                                                                          void* ctx, size_t stream_idx, bool& continue_flag) {
+                                                                       [handle, idx](void* ctx, size_t stream_idx, bool& continue_flag) {
                                                                          ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-                                                                         wait_handle(*execution_context->GetDeviceStream(stream_idx), *execution_context->GetNotification(notification_idx));
+                                                                         handle(*execution_context->GetDeviceStream(stream_idx), *execution_context->GetNotification(idx));
                                                                          // update streams clock status
                                                                          if (execution_context->GetDeviceStream(stream_idx)) {
-                                                                           execution_context->GetDeviceStream(stream_idx)->UpdateStreamClock(execution_context->GetNotification(notification_idx)->stream_clock_);
+                                                                           execution_context->GetDeviceStream(stream_idx)->UpdateStreamClock(execution_context->GetNotification(idx)->stream_clock_);
                                                                          }
-                                                                         LOGS(execution_context->GetLogger(), INFO) << "stream " << stream_idx << " wait on Notification with id: " << notification_idx;
+                                                                         LOGS(execution_context->GetLogger(), INFO) << "stream " << stream_idx << " wait on Notification with id: " << idx;
                                                                          continue_flag = true;
                                                                          return Status::OK();
                                                                        }) {}
 
-  StepCommandFn GetStepFun() override {
-    return std::bind(func_, wait_handle, notification_idx, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+  StepCommandFn& GetStepFun() override {
+    return func_;
   }
 
   std::string Dump() const override {
@@ -189,17 +187,14 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
  private:
   WaitNotificationFn wait_handle;
   NotificationIndex notification_idx;
-  std::function<Status(WaitNotificationFn wait_handle,
-                       NotificationIndex notification_idx,
-                       void* ctx, size_t stream_idx, bool& continue_flag)>
-      func_;
+  std::function<Status(void* ctx, size_t stream_idx, bool& continue_flag)> func_;
 };
 
 class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
  public:
   LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(),
                                       node_index{index},
-                                      func_([](NodeIndex node_idx, void* ctx, size_t stream_idx, bool& continue_flag) {
+                                      func_([index](void* ctx, size_t stream_idx, bool& continue_flag) {
                                         auto* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
                                         if (!continue_flag) {
                                           LOGS(execution_context->GetLogger(), WARNING) << "Exiting due to terminate flag being set to true.";
@@ -207,19 +202,19 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
                                         }
 #ifdef ENABLE_TRAINING
                                         auto* node_to_execute = execution_context->GetNodeToExecute();
-                                        if (node_to_execute && node_to_execute->count(node_idx) == 0) {
+                                        if (node_to_execute && node_to_execute->count(index) == 0) {
                                           continue_flag = true;
                                           return Status::OK();
                                         }
 #endif
-                                        onnxruntime::Status status = ExecuteKernel(*execution_context, node_idx, stream_idx);
+                                        onnxruntime::Status status = ExecuteKernel(*execution_context, index, stream_idx);
                                         continue_flag = status.IsOK();
                                         return status;
                                       }) {
   }
 
-  StepCommandFn GetStepFun() override {
-    return std::bind(func_, node_index, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+  StepCommandFn& GetStepFun() override {
+    return func_;
   }
 
   std::string Dump() const override {
@@ -230,14 +225,14 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
 
  private:
   NodeIndex node_index{0};
-  std::function<Status(NodeIndex index, void* ctx, size_t stream_idx, bool& continue_flag)> func_;
+  std::function<Status(void* ctx, size_t stream_idx, bool& continue_flag)> func_;
 };
 
 class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
  public:
   ActivateNotificationStep(NotificationIndex notification_index) : SequentialExecutionPlan::ExecutionStep(),
                                                                    notification_idx(notification_index),
-                                                                   func_([](NotificationIndex notification_index, void* ctx, size_t stream_idx, bool& continue_flag) {
+                                                                   func_([notification_index](void* ctx, size_t stream_idx, bool& continue_flag) {
                                                                      ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
                                                                      if (execution_context->GetNotification(notification_index)) {
                                                                        execution_context->GetNotification(notification_index)->ActivateAndUpdate();
@@ -248,8 +243,8 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
                                                                    }) {
   }
 
-  StepCommandFn GetStepFun() override {
-    return std::bind(func_, notification_idx, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+  StepCommandFn& GetStepFun() override {
+    return func_;
   }
 
   virtual std::string Dump() const override {
@@ -260,23 +255,23 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
 
  private:
   NotificationIndex notification_idx;
-  std::function<Status(NotificationIndex notification_idx, void* ctx, size_t stream_idx, bool& continue_flag)> func_;
+  std::function<Status(void* ctx, size_t stream_idx, bool& continue_flag)> func_;
 };
 
 class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
  public:
   TriggerDownstreamStep(size_t trigger_point_index) : SequentialExecutionPlan::ExecutionStep(),
                                                       trigger_point_index(trigger_point_index),
-                                                      func_([](size_t trigger, void* ctx, size_t /*stream_idx*/, bool& continue_flag) {
+                                                      func_([trigger_point_index](void* ctx, size_t /*stream_idx*/, bool& continue_flag) {
                                                         ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-                                                        ScheduleDownstream(*execution_context, trigger, execution_context->SingleThreadMode());
+                                                        ScheduleDownstream(*execution_context, trigger_point_index, execution_context->SingleThreadMode());
                                                         continue_flag = true;
                                                         return Status::OK();
                                                       }) {
   }
 
-  StepCommandFn GetStepFun() override {
-    return std::bind(func_, trigger_point_index, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+  StepCommandFn& GetStepFun() override {
+    return func_;
   }
 
   virtual std::string Dump() const override {
@@ -287,7 +282,7 @@ class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
 
  private:
   size_t trigger_point_index;
-  std::function<Status(size_t trigger_point_index, void* ctx, size_t stream_idx, bool& continue_flag)> func_;
+  std::function<Status(void* ctx, size_t stream_idx, bool& continue_flag)> func_;
 };
 
 class PlannerImpl {

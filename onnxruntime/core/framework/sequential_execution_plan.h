@@ -103,7 +103,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   class ExecutionStep {
    public:
     virtual ~ExecutionStep() {}
-    virtual StepCommandFn GetStepFun() = 0;
+    virtual StepCommandFn& GetStepFun() = 0;
     virtual std::string Dump() const = 0;
   };
 
