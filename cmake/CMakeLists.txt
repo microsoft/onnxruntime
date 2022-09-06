@@ -997,6 +997,10 @@ if (CPUINFO_SUPPORTED)
   endif()
 endif()
 
+# GSL
+set(GSL_LITE_DIR ${REPO_ROOT}/cmake/external/gsl-lite)
+add_subdirectory(${GSL_LITE_DIR} EXCLUDE_FROM_ALL)
+
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
 # we make it through via a handler so CUDA does not complain

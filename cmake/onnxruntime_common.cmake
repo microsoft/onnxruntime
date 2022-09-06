@@ -78,7 +78,7 @@ file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
 # Remove new/delete intercept. To deal with memory leaks
 # Use either non-mimalloc build OR use mimalloc built-in features.
 if(WIN32 AND onnxruntime_USE_MIMALLOC)
-    list(REMOVE_ITEM onnxruntime_common_src 
+    list(REMOVE_ITEM onnxruntime_common_src
     "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.h")
 endif()
@@ -127,7 +127,7 @@ target_include_directories(onnxruntime_common
     PUBLIC
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
-target_link_libraries(onnxruntime_common safeint_interface Boost::mp11)
+target_link_libraries(onnxruntime_common safeint_interface Boost::mp11 gsl::gsl-lite)
 
 if(NOT WIN32)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
