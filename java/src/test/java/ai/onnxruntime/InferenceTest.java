@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -615,6 +616,12 @@ public class InferenceTest {
   @EnabledIfSystemProperty(named = "USE_DNNL", matches = "1")
   public void testDNNL() throws OrtException {
     runProvider(OrtProvider.DNNL);
+  }
+
+  @Test
+  @EnabledIfSystemProperty(named = "USE_XNNPACK", matches = "1")
+  public void testXNNPACK() throws OrtException {
+    runProvider(OrtProvider.XNNPACK);
   }
 
   private void runProvider(OrtProvider provider) throws OrtException {
@@ -1514,6 +1521,9 @@ public class InferenceTest {
           break;
         case CORE_ML:
           options.addCoreML();
+          break;
+        case XNNPACK:
+          options.addXnnpack(Collections.emptyMap());
           break;
         case NUPHAR:
           options.addNuphar(true, "");

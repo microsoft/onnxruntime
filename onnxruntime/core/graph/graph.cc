@@ -10,6 +10,7 @@
 #include <stack>
 #include <queue>
 
+#include "core/common/common.h"
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
 #include "core/common/inlined_containers.h"
@@ -167,6 +168,12 @@ static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
     shape->add_dim()->set_dim_value(dim);
 
   return t;
+}
+
+static std::string GenerateSchemaKey(const IndexedSubGraph& subgraph_ptr) {
+    return MakeString(subgraph_ptr.GetMetaDef()->domain, "_",
+                      subgraph_ptr.GetMetaDef()->name, "_",
+                      subgraph_ptr.GetMetaDef()->since_version);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -3795,13 +3802,13 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   std::unordered_map<std::string, int> output_indexes;
 
   int cur_idx = 0;
-  for (auto& arg_name : func_meta_def->inputs) {
+  for (const auto& arg_name : func_meta_def->inputs) {
     input_args.push_back(GetNodeArg(arg_name));
     input_indexes[arg_name] = cur_idx++;
   }
 
   cur_idx = 0;
-  for (auto& arg_name : func_meta_def->outputs) {
+  for (const auto& arg_name : func_meta_def->outputs) {
     output_args.push_back(GetNodeArg(arg_name));
     output_indexes[arg_name] = cur_idx++;
   }
@@ -3820,12 +3827,20 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   // kernel lookup works as per usual, if not using an existing schema.
   // in an extended minimal build we do the lookup via a hash so don't need a schema.
   fused_node.SetSinceVersion(func_meta_def->since_version);
-  if (sub_graph.use_existing_schema) {
+  if (sub_graph.schema_source == IndexedSubGraph::SourceOfSchema::EXISTING) {
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
+  } else if (IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE == sub_graph.schema_source) {
+    auto schema_key = GenerateSchemaKey(sub_graph);
+    if (!reusable_fused_schema_map_.contains(schema_key)) {
+      fused_schemas_containers_.push_back(
+          function_utils::CreateSchema(*this, sub_graph, /*allow_aggregated_tensor_type=*/true));
+      reusable_fused_schema_map_.emplace(schema_key, *fused_schemas_containers_.back());
+    }
+
+    fused_node.op_ = &(reusable_fused_schema_map_.at(schema_key).get());
   } else {
-    auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
-    fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
+    fused_schemas_containers_.push_back(function_utils::CreateSchema(*this, sub_graph));
     fused_node.op_ = fused_schemas_containers_.back().get();
   }
 #endif
@@ -3836,31 +3851,6 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
   Node& node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
 
   return node;
-}
-
-void Graph::CancelFuseSubGraph(const Node& fused_node) {
-  auto node_idx = fused_node.Index();
-  if (!GetNode(node_idx))
-    return;
-
-  if (fused_node.NodeType() != Node::Type::Fused)
-    return;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // Remove the tempoary schema from schema container container
-  auto* temp_schema_ptr = fused_node.Op();
-  auto it = std::find_if(
-      fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
-      [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
-        return schema.get() == temp_schema_ptr;
-      });
-  if (it != fused_schemas_containers_.end()) {
-    fused_schemas_containers_.erase(it);
-  }
-#endif
-
-  // Remove the fused_node
-  RemoveNode(node_idx);
 }
 
 void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node) {
