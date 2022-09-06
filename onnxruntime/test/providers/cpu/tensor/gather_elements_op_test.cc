@@ -45,139 +45,6 @@ void GetData(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
     indices_data[i] =
         static_cast<TIndex>((static_cast<int64_t>(std::rand()) % (input_dims[axis] * 2)) - input_dims[axis]);
   }
- 
-  // int64_t indices - axis 1
-  OpTester test3("GatherElements", 11);
-  test3.AddAttribute<int64_t>("axis", 1LL);
-  test3.AddInput<T>("data", {2, 2},
-                    {1, 2,
-                     3, 4});
-  test3.AddInput<int64_t>("indices", {2, 2},
-                          {0, 0,
-                           1, 0});
-  test3.AddOutput<T>("output", {2, 2},
-                     {1, 1,
-                      4, 3});
-  if (exclude_tensorrt) {
-    test3.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test3.Run();
-  }
-
-  // negative indices - axis 1
-  OpTester test4("GatherElements", 11);
-  test4.AddAttribute<int64_t>("axis", 1LL);
-  test4.AddInput<T>("data", {2, 2},
-                    {1, 2,
-                     3, 4});
-  test4.AddInput<int64_t>("indices", {2, 2},
-                          {0, 0,
-                           -1, -1});
-  test4.AddOutput<T>("output", {2, 2},
-                     {1, 1,
-                      4, 4});
-  // skip TensorRT because it doesn't support negative indices				  
-  test4.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-
-  // indices out of bounds
-  OpTester test5("GatherElements", 11);
-  test5.AddAttribute<int64_t>("axis", 1LL);
-  test5.AddInput<T>("data", {2, 2},
-                    {1, 2,
-                     3, 4});
-  test5.AddInput<int64_t>("indices", {2, 2},
-                          {0, 0,
-                           2, 2});
-  test5.AddOutput<T>("output", {2, 2},
-                     {1, 1,
-                      3, 3});
-  // skip cuda as the cuda kernel won't throw the error message
-  // skip openvino which will not throw error message but will ensure no out-of-bound access
-  // skip TensorRT because it doesn't support out of bounds indices
-  test5.Run(OpTester::ExpectResult::kExpectFailure,
-            "GatherElements op: Out of range value in index tensor",
-            {kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
-
-  // 3D input - axis 1
-  OpTester test6("GatherElements", 11);
-  test6.AddAttribute<int64_t>("axis", 1LL);
-  test6.AddInput<T>("data", {2, 2, 2},
-                    {1, 2,
-                     3, 4,
-                     5, 6,
-                     7, 8});
-  test6.AddInput<int64_t>("indices", {1, 2, 1},
-                          {0, 1});
-  test6.AddOutput<T>("output", {1, 2, 1}, {1, 3});
-  if (exclude_tensorrt) {
-    test6.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test6.Run();
-  }
-
-  // 3D input - axis 2
-  OpTester test7("GatherElements", 11);
-  test7.AddAttribute<int64_t>("axis", 2LL);
-  test7.AddInput<T>("data", {2, 2, 2},
-                    {1, 2,
-                     3, 4,
-                     5, 6,
-                     7, 8});
-  test7.AddInput<int64_t>("indices", {1, 2, 1},
-                          {0, 1});
-  test7.AddOutput<T>("output", {1, 2, 1}, {1, 4});
-  if (exclude_tensorrt) {
-    test7.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test7.Run();
-  }
-
-  // 2D input - axis 1
-  OpTester test8("GatherElements", 11);
-  test8.AddAttribute<int64_t>("axis", 1LL);
-  test8.AddInput<T>("data", {3, 3},
-                    {1, 2, 3,
-                     4, 5, 6,
-                     7, 8, 9});
-  test8.AddInput<int64_t>("indices", {3, 2},
-                          {1, 0, 0, 1, 0, 1});
-  test8.AddOutput<T>("output", {3, 2}, {2, 1, 4, 5, 7, 8});
-  if (exclude_tensorrt) {
-    test8.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test8.Run();
-  }
-
-  // 2D input - axis 1
-  OpTester test9("GatherElements", 11);
-  test9.AddAttribute<int64_t>("axis", 0LL);
-  test9.AddInput<T>("data", {3, 3},
-                    {1, 2, 3,
-                     4, 5, 6,
-                     7, 8, 9});
-  test9.AddInput<int64_t>("indices", {3, 2},
-                          {1, 0, 0, 1, 0, 1});
-  test9.AddOutput<T>("output", {3, 2}, {4, 2, 1, 5, 1, 5});
-  if (exclude_tensorrt) {
-    test9.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test9.Run();
-  }
-
-  // 1D input - axis 0
-  OpTester test10("GatherElements", 11);
-  test10.AddAttribute<int64_t>("axis", 0LL);
-  test10.AddInput<T>("data", {3},
-                     {1, 2, 3});
-  test10.AddInput<int64_t>("indices", {2},
-                           {1, 0});
-  test10.AddOutput<T>("output", {2}, {2, 1});
-  if (exclude_tensorrt) {
-    test10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test10.Run();
-  }
-  
   for (size_t i = 0; i < output_size; ++i) {
     int64_t input_offset = 0;
     int64_t remain = static_cast<int64_t>(i);
@@ -302,11 +169,9 @@ void RunTestWrapper<std::string>() {
   // indices out of bounds
   OpTester test4("GatherElements", 11);
   test4.AddAttribute<int64_t>("axis", 1LL);
-
   test4.AddInput<std::string>("data", {2, 2}, {"a", "b", "c", "d"});
   test4.AddInput<int32_t>("indices", {2, 2}, {0, 0, -3, -3});
   test4.AddOutput<std::string>("output", {2, 2}, {"a", "a", "c", "c"});
-  // skip nuphar, which will not throw error message but will ensure no out-of-bound access
   // skip Openvino, which will not throw error message but will ensure no out-of-bound access
   test4.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Out of range value in index tensor",
             {kOpenVINOExecutionProvider});
@@ -422,12 +287,11 @@ TEST(GatherElementsOpTest, IndicesOutOfBounds) {
   test.AddInput<float>("data", {2, 2}, {1, 2, 3, 4});
   test.AddInput<int64_t>("indices", {2, 2}, {0, 0, 2, 2});
   test.AddOutput<float>("output", {2, 2}, {1, 1, 3, 3});
-  // skip nuphar, which will not throw error message but will ensure no out-of-bound access
   // skip cuda as the cuda kernel won't throw the error message
   // skip openvino which will not throw error message but will ensure no out-of-bound access
   // skip TensorRT because it doesn't support out of bounds indices
   test.Run(OpTester::ExpectResult::kExpectFailure, "",
-           {kNupharExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
+           {kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
             kTensorrtExecutionProvider});
 }
 
