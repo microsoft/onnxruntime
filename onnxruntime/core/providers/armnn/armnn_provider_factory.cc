@@ -4,6 +4,7 @@
 
 #include "core/providers/armnn/armnn_provider_factory.h"
 #include "armnn_execution_provider.h"
+#include "armnn_provider_factory_creator.h"
 #include "core/session/abi_session_options_impl.h"
 
 namespace onnxruntime {
@@ -23,13 +24,13 @@ std::unique_ptr<IExecutionProvider> ArmNNProviderFactory::CreateProvider() {
   return std::make_unique<ArmNNExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena) {
+std::shared_ptr<IExecutionProviderFactory> ArmNNProviderFactoryCreator::Create(int use_arena) {
   return std::make_shared<onnxruntime::ArmNNProviderFactory>(use_arena != 0);
 }
 
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ArmNN, _In_ OrtSessionOptions* options, int use_arena) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_ArmNN(use_arena));
+  options->provider_factories.push_back(onnxruntime::ArmNNProviderFactoryCreator::Create(use_arena));
   return nullptr;
 }

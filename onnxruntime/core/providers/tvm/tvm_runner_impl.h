@@ -27,7 +27,7 @@ public:
              const std::vector<DLTensor> tensors_outputs);
   virtual ~RunnerImpl() = default;
 
-  virtual common::Status run(const OrtCustomOpApi* api, OrtKernelContext* context) {
+  virtual common::Status run(const OrtApi* api, OrtKernelContext* context) {
     Ort::CustomOpApi ort{*api};
 
     set_input(ort, context);

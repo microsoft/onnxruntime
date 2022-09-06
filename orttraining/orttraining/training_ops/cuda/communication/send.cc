@@ -10,8 +10,8 @@
 #include "core/providers/cuda/nvtx_profile_context.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
-#include <mpi.h>
 
+#include "orttraining/core/framework/communication/mpi/mpi_include.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {

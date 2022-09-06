@@ -23,6 +23,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [BatchNormalization](https://github.com/onnx/onnx/blob/master/docs/Operators.md#BatchNormalization) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-7), [9-13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-9), [14](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-14), [15+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-15) |
 | [Bernoulli](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Bernoulli) |  |
 | [BitShift](https://github.com/onnx/onnx/blob/master/docs/Operators.md#BitShift) |  |
+| [BlackmanWindow](https://github.com/onnx/onnx/blob/master/docs/Operators.md#BlackmanWindow) |  |
 | [Cast](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Cast) | [6-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Cast-6), [9-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Cast-9), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Cast-13) |
 | [CastLike](https://github.com/onnx/onnx/blob/master/docs/Operators.md#CastLike) |  |
 | [Ceil](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Ceil) | [6-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Ceil-6), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Ceil-13) |
@@ -35,10 +36,11 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [ConstantOfShape](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ConstantOfShape) |  |
 | [Conv](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Conv) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Conv-1), [11+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Conv-11) |
 | [ConvInteger](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ConvInteger) |  |
-| [ConvTranspose](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ConvTranspose) |  |
+| [ConvTranspose](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ConvTranspose) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ConvTranspose-1), [11+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#ConvTranspose-11) |
 | [Cos](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Cos) | [7+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Cos-7) |
 | [Cosh](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Cosh) |  |
 | [CumSum](https://github.com/onnx/onnx/blob/master/docs/Operators.md#CumSum) |  |
+| [DFT](https://github.com/onnx/onnx/blob/master/docs/Operators.md#DFT) |  |
 | [DepthToSpace](https://github.com/onnx/onnx/blob/master/docs/Operators.md#DepthToSpace) | [1-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#DepthToSpace-1), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#DepthToSpace-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#DepthToSpace-13) |
 | [DequantizeLinear](https://github.com/onnx/onnx/blob/master/docs/Operators.md#DequantizeLinear) |  |
 | [Det](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Det) |  |
@@ -65,6 +67,8 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [Greater](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Greater) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Greater-7), [9-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Greater-9), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Greater-13) |
 | [GreaterOrEqual](https://github.com/onnx/onnx/blob/master/docs/Operators.md#GreaterOrEqual) |  |
 | [GridSample](https://github.com/onnx/onnx/blob/master/docs/Operators.md#GridSample) |  |
+| [HammingWindow](https://github.com/onnx/onnx/blob/master/docs/Operators.md#HammingWindow) |  |
+| [HannWindow](https://github.com/onnx/onnx/blob/master/docs/Operators.md#HannWindow) |  |
 | [HardSigmoid](https://github.com/onnx/onnx/blob/master/docs/Operators.md#HardSigmoid) |  |
 | [HardSwish](https://github.com/onnx/onnx/blob/master/docs/Operators.md#HardSwish) |  |
 | [Hardmax](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Hardmax) |  |
@@ -75,6 +79,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [IsNaN](https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsNaN) |  |
 | [LRN](https://github.com/onnx/onnx/blob/master/docs/Operators.md#LRN) |  |
 | [LSTM](https://github.com/onnx/onnx/blob/master/docs/Operators.md#LSTM) |  |
+| [LayerNormalization](https://github.com/onnx/onnx/blob/master/docs/Operators.md#LayerNormalization) |  |
 | [LeakyRelu](https://github.com/onnx/onnx/blob/master/docs/Operators.md#LeakyRelu) | [6-15](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#LeakyRelu-6), [16+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#LeakyRelu-16) |
 | [Less](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Less) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Less-7), [9-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Less-9), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Less-13) |
 | [LessOrEqual](https://github.com/onnx/onnx/blob/master/docs/Operators.md#LessOrEqual) |  |
@@ -91,6 +96,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [MaxUnpool](https://github.com/onnx/onnx/blob/master/docs/Operators.md#MaxUnpool) |  |
 | [Mean](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Mean) |  |
 | [MeanVarianceNormalization](https://github.com/onnx/onnx/blob/master/docs/Operators.md#MeanVarianceNormalization) |  |
+| [MelWeightMatrix](https://github.com/onnx/onnx/blob/master/docs/Operators.md#MelWeightMatrix) |  |
 | [Min](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Min) |  |
 | [Mod](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Mod) |  |
 | [Mul](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Mul) | [7-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Mul-7), [13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Mul-13), [14+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Mul-14) |
@@ -134,6 +140,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [ReverseSequence](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ReverseSequence) |  |
 | [RoiAlign](https://github.com/onnx/onnx/blob/master/docs/Operators.md#RoiAlign) |  |
 | [Round](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Round) |  |
+| [STFT](https://github.com/onnx/onnx/blob/master/docs/Operators.md#STFT) |  |
 | [Scan](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Scan) |  |
 | [Scatter](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Scatter) |  |
 | [ScatterElements](https://github.com/onnx/onnx/blob/master/docs/Operators.md#ScatterElements) |  |
@@ -145,6 +152,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [SequenceErase](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SequenceErase) |  |
 | [SequenceInsert](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SequenceInsert) |  |
 | [SequenceLength](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SequenceLength) |  |
+| [SequenceMap](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SequenceMap) |  |
 | [Shape](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Shape) | [1-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Shape-1), [13-14](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Shape-13), [15+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Shape-15) |
 | [Shrink](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Shrink) |  |
 | [Sigmoid](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sigmoid) | [6-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Sigmoid-6), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Sigmoid-13) |

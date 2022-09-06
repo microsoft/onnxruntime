@@ -17,6 +17,14 @@ struct OP_GeluGrad : public CtxGeluGrad {
   }
 };
 
+template <>
+struct OP_GeluGrad<half> : public CtxGeluGrad {
+  __device__ __inline__ half operator()(const half& dy, const half& x) const {
+    return static_cast<half>(
+        ComputeGeluGradScalar(static_cast<float>(dy), static_cast<float>(x), gelu_computation_mode::Default{}));
+  }
+};
+
 template <typename T>
 struct OP_FastGeluGrad : public CtxGeluGrad {
   __device__ __inline__ T operator()(const T& dy, const T& x) const {

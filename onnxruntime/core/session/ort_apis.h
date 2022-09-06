@@ -357,12 +357,14 @@ ORT_API_STATUS_IMPL(CreateOp,
                     _In_ const OrtKernelInfo* info,
                     _In_ const char* op_name,
                     _In_ const char* domain,
-                    int version,
+                    _In_ int version,
                     _In_opt_ const char** type_constraint_names,
                     _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                    int type_constraint_count,
+                    _In_opt_ int type_constraint_count,
                     _In_opt_ const OrtOpAttr* const* attr_values,
-                    int attr_count,
+                    _In_opt_ int attr_count,
+                    _In_ int input_count,
+                    _In_ int output_count,
                     _Outptr_ OrtOp** ort_op);
 
 ORT_API_STATUS_IMPL(InvokeOp,
@@ -374,5 +376,19 @@ ORT_API_STATUS_IMPL(InvokeOp,
                     _In_ int output_count);
 
 ORT_API(void, ReleaseOp, _Frees_ptr_opt_ OrtOp* op);
+
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider,
+                    _In_ OrtSessionOptions* options,
+                    _In_ const char* provider_name,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    _In_ size_t num_keys);
+
+ORT_API_STATUS_IMPL(CopyKernelInfo, _In_ const OrtKernelInfo* info, _Outptr_ OrtKernelInfo** info_copy);
+
+ORT_API(void, ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy);
+
+_Check_return_ _Ret_maybenull_ const OrtTrainingApi* ORT_API_CALL GetTrainingApi(uint32_t version)
+    NO_EXCEPTION ORT_MUST_USE_RESULT;
 
 }  // namespace OrtApis

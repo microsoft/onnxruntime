@@ -41,6 +41,9 @@ parameters:
   
 - name: ORT_EP_NAME
   type: string
+  
+- name: MachinePool
+  type: string
 
 - name: DocUpdateNeeded
   displayName: Run Tests?
@@ -55,10 +58,11 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true    
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-    DocUpdateNeeded: ${{ parameters.DocUpdateNeeded }}    
+    DocUpdateNeeded: ${{ parameters.DocUpdateNeeded }}
+    skipComponentGovernanceDetection: true
   workspace:
     clean: all
-  pool: 'Win-GPU-2019'
+  pool: ${{ parameters.MachinePool }}
   timeoutInMinutes:  300  
   steps:
   - task: UsePythonVersion@0
@@ -272,7 +276,3 @@ jobs:
     inputs:
       pathtoPublish: '$(Build.SourcesDirectory)/docs/ContribOperators.md'
       artifactName: 'ContribOperators.md'
-
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'

@@ -688,7 +688,7 @@ namespace Dml
         return m_allocator->DecodeDataHandle(data)->GetPooledResourceId();
     }
 
-    void ExecutionProviderImpl::GetABIExecutionInterface(
+    void ExecutionProviderImpl::GetABIExecutionInterfaceAndInvalidateState(
         bool isInternalOperator,
         IUnknown** abiExecutionObject) const 
     {
@@ -702,7 +702,7 @@ namespace Dml
         else
         {
             ComPtr<ID3D12GraphicsCommandList> commandList;
-            m_context->GetCommandListForRecording(commandList.GetAddressOf());
+            m_context->GetCommandListForRecordingAndInvalidateState(commandList.GetAddressOf());
 #ifdef _GAMING_XBOX
             ComPtr<GraphicsUnknownWrapper> wrappedCommandList = Microsoft::WRL::Make<GraphicsUnknownWrapper>(commandList.Get());
             *abiExecutionObject = wrappedCommandList.Detach();

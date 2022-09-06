@@ -65,6 +65,13 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/common/logging/logging.h"
 #include "core/providers/shared_library/provider_interfaces.h"
 
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
+#include "core/providers/rocm/rocm_provider_factory_creator.h"
+#include "core/providers/dnnl/dnnl_provider_factory_creator.h"
+#include "core/providers/migraphx/migraphx_provider_factory_creator.h"
+#include "core/providers/openvino/openvino_provider_factory_creator.h"
+#include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
+
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
@@ -263,7 +270,6 @@ struct ProviderHostImpl : ProviderHost {
   // IExecutionProvider (direct)
   AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) override { return p->IExecutionProvider::GetAllocator(id, mem_type); }
   void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::InsertAllocator(allocator); }
-  void IExecutionProvider__TryInsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::TryInsertAllocator(allocator); }
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                     const std::vector<const KernelRegistry*>& kernel_registries) override { return p->IExecutionProvider::GetCapability(graph_viewer, kernel_registries); }
   // !!! this api will be deprecated soon
@@ -279,7 +285,7 @@ struct ProviderHostImpl : ProviderHost {
     return p->IExecutionProvider::GenerateMetaDefId(graph_viewer, model_hash);
   }
 
-  void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, std::shared_ptr<AllocatorManager> allocator_manager) override {
+  void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, AllocatorManager& allocator_manager) override {
     return p->IExecutionProvider::RegisterAllocator(allocator_manager);
   }
 
@@ -737,7 +743,11 @@ struct ProviderHostImpl : ProviderHost {
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
   std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
     return std::make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
+#if !defined(ORT_MINIMAL_BUILD)
+                                   IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), graph_viewer->DomainToVersionMap(),
+#else
                                    IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
+#endif // ORT_MINIMAL_BUILD
                                    std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
   }
 
@@ -824,9 +834,23 @@ struct ProviderHostImpl : ProviderHost {
   const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }
 
   // Tensor (wrapped)
-  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override { return std::make_unique<Tensor>(p_type, shape, std::move(allocator)); }
-  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) override { return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset); }
-  void Tensor__operator_delete(Tensor* p) override { delete p; }
+  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override { 
+    return std::make_unique<Tensor>(p_type, shape, std::move(allocator)); 
+  }
+
+  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) override {
+    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset); 
+  }
+
+  std::unique_ptr<Tensor> Tensor__construct_default() override {
+    return std::make_unique<Tensor>(); 
+  }
+
+  virtual void Tensor__move_assign(Tensor& lhs, Tensor&& rhs) noexcept override {
+    lhs = std::move(rhs);
+  };
+
+  void Tensor__operator_delete(Tensor* p) noexcept override { delete p; }
 
   void Tensor__InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) override {
     Tensor::InitOrtValue(elt_type, shape, std::move(allocator), ort_value);
@@ -919,7 +943,9 @@ struct ProviderHostImpl : ProviderHost {
 
   // AllocatorManager (direct)
   void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) override { p->AllocatorManager::InsertAllocator(allocator); }
-  AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, int id, OrtMemType mem_type) override { return p->AllocatorManager::GetAllocator(id, mem_type); };
+  AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, OrtMemType mem_type, OrtDevice device) override {
+    return p->AllocatorManager::GetAllocator(mem_type, device);
+  };
 
 #if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
@@ -1122,28 +1148,28 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   return cuda_options_converted;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(const OrtCUDAProviderOptions* provider_options) {
   OrtCUDAProviderOptionsV2 cuda_options_converted = onnxruntime::OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(provider_options);
   return s_library_cuda.Get().CreateExecutionProviderFactory(&cuda_options_converted);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptionsV2* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(const OrtCUDAProviderOptionsV2* provider_options) {
   return s_library_cuda.Get().CreateExecutionProviderFactory(provider_options);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(const OrtROCMProviderOptions* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> RocmProviderFactoryCreator::Create(const OrtROCMProviderOptions* provider_options) {
   return s_library_rocm.Get().CreateExecutionProviderFactory(provider_options);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena) {
+std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(int use_arena) {
   return s_library_dnnl.Get().CreateExecutionProviderFactory(use_arena);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(int device_id) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(device_id);
 }
 
@@ -1171,24 +1197,24 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_force_sequential_engine_build = legacy_trt_options->trt_force_sequential_engine_build;
   // Add new provider option below
   // Use default value as this field is not available in OrtTensorRTProviderOptionsV
-
+  trt_options_converted.trt_context_memory_sharing_enable = 0;
   return trt_options_converted;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(const OrtTensorRTProviderOptions* provider_options) {
   OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(provider_options);
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(&trt_options_converted);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptionsV2* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(const OrtTensorRTProviderOptionsV2* provider_options) {
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const OrtMIGraphXProviderOptions* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(provider_options);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const OrtOpenVINOProviderOptions* provider_options) {
   return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options);
 }
 
@@ -1293,7 +1319,7 @@ ProviderOptions GetProviderInfo_Cuda(const OrtCUDAProviderOptionsV2* provider_op
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
+  auto factory = onnxruntime::DnnlProviderFactoryCreator::Create(use_arena);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
   }
@@ -1305,7 +1331,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessi
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(device_id);
+  auto factory = onnxruntime::TensorrtProviderFactoryCreator::Create(device_id);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
   }
@@ -1317,7 +1343,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::CreateExecutionProviderFactory_MIGraphX(device_id);
+  auto factory = onnxruntime::MIGraphXProviderFactoryCreator::Create(device_id);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_MIGraphX: Failed to load shared library");
   }
@@ -1329,7 +1355,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtS
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(tensorrt_options);
+  auto factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Tensorrt: Failed to load shared library");
   }
@@ -1341,7 +1367,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::CreateExecutionProviderFactory_MIGraphX(migraphx_options);
+  auto factory = onnxruntime::MIGraphXProviderFactoryCreator::Create(migraphx_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_MIGraphX: Failed to load shared library");
   }
@@ -1353,7 +1379,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX, _In
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::CreateExecutionProviderFactory_OpenVINO(provider_options);
+  auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(provider_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
   }
@@ -1399,7 +1425,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::CreateExecutionProviderFactory_Cuda(cuda_options);
+  auto factory = onnxruntime::CudaProviderFactoryCreator::Create(cuda_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Cuda: Failed to load shared library");
   }
@@ -1418,7 +1444,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessi
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::CreateExecutionProviderFactory_Rocm(rocm_options);
+  auto factory = onnxruntime::RocmProviderFactoryCreator::Create(rocm_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Rocm: Failed to load shared library");
   }
@@ -1430,7 +1456,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ Or
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(tensorrt_options);
+  auto factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_TensorRT: Failed to load shared library");
   }
@@ -1462,6 +1488,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_engine_decryption_enable = false;
   (*out)->trt_engine_decryption_lib_path = nullptr;
   (*out)->trt_force_sequential_engine_build = false;
+  (*out)->trt_context_memory_sharing_enable = false;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);
@@ -1557,7 +1584,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptionsV2* cuda_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::CreateExecutionProviderFactory_Cuda(cuda_options);
+  auto factory = onnxruntime::CudaProviderFactoryCreator::Create(cuda_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Cuda: Failed to load shared library");
   }

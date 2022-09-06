@@ -18,6 +18,9 @@ class EmbedLayerNormalizationQuant(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
+    def should_quantize(self):
+        return self.quantizer.should_quantize_node(self.node)
+
     def quantize(self):
         node = self.node
         assert node.op_type == "EmbedLayerNormalization"

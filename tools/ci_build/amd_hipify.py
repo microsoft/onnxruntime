@@ -19,26 +19,20 @@ contrib_ops_excluded_files = [
     "bert/attention.cc",
     "bert/attention_impl.cu",
     "bert/attention_softmax.h",
-    "bert/decoder_attention.h",
-    "bert/decoder_attention.cc",
     "bert/embed_layer_norm.cc",
     "bert/embed_layer_norm.h",
     "bert/embed_layer_norm_impl.cu",
     "bert/embed_layer_norm_impl.h",
     "bert/fast_gelu_impl.cu",
-    # 'bert/layer_norm.cuh',
-    "bert/longformer_attention.cc",
-    "bert/longformer_attention.h",
-    "bert/longformer_attention_softmax.cu",
-    "bert/longformer_attention_softmax.h",
-    "bert/longformer_attention_impl.cu",
-    "bert/longformer_attention_impl.h",
-    "bert/longformer_global_impl.cu",
-    "bert/longformer_global_impl.h",
-    "bert/transformer_cuda_common.h",
-    "math/bias_softmax.cc",
-    "math/bias_softmax.h",
-    "math/bias_softmax_impl.cu",
+    "bert/fast_gelu_impl.h",
+    "bert/fast_gelu.cc",
+    "bert/fast_gelu.h",
+    "bert/skip_layer_norm.cc",
+    "bert/skip_layer_norm.h",
+    "bert/skip_layer_norm_impl.cu",
+    "bert/skip_layer_norm_impl.h",
+    "bert/transformer_common.h",
+    "bert/transformer_common.cc",
     "math/complex_mul.cc",
     "math/complex_mul.h",
     "math/complex_mul_impl.cu",
@@ -64,10 +58,12 @@ contrib_ops_excluded_files = [
     "tensor/image_scaler_impl.h",
     "transformers/beam_search.cc",
     "transformers/beam_search.h",
-    "transformers/beam_search_device_helper.cc",
-    "transformers/beam_search_device_helper.h",
+    "transformers/generation_device_helper.cc",
+    "transformers/generation_device_helper.h",
     "transformers/beam_search_impl.cu",
     "transformers/beam_search_impl.h",
+    "transformers/greedy_search.cc",
+    "transformers/greedy_search.h",
     "transformers/dump_cuda_tensor.cc",
     "transformers/dump_cuda_tensor.h",
     "conv_transpose_with_dynamic_pads.cc",
@@ -95,31 +91,14 @@ provider_excluded_files = [
     "math/einsum.h",
     "math/gemm.cc",
     "math/matmul.cc",
-    "math/matmul_integer.cc",
-    "math/matmul_integer.cu",
-    "math/matmul_integer.cuh",
-    "math/matmul_integer.h",
     "math/softmax_impl.cu",
     "math/softmax_warpwise_impl.cuh",
     "math/softmax.cc",
-    "nn/batch_norm.cc",
-    "nn/batch_norm.h",
     "nn/conv.cc",
     "nn/conv.h",
     "nn/conv_transpose.cc",
     "nn/conv_transpose.h",
-    "nn/instance_norm.cc",
-    "nn/instance_norm.h",
-    "nn/instance_norm_impl.cu",
-    "nn/instance_norm_impl.h",
-    "nn/lrn.cc",
-    "nn/lrn.h",
-    "nn/max_pool_with_index.cu",
-    "nn/max_pool_with_index.h",
-    "nn/pool.cc",
-    "nn/pool.h",
     "reduction/reduction_ops.cc",
-    "reduction/reduction_ops.h",
     "rnn/cudnn_rnn_base.cc",
     "rnn/cudnn_rnn_base.h",
     "rnn/gru.cc",
@@ -132,7 +111,7 @@ provider_excluded_files = [
     "rnn/rnn_impl.h",
     "shared_inc/cuda_call.h",
     "shared_inc/fpgeneric.h",
-    "shared_inc/integer_gemm.h",
+    "shared_inc/softmax.h",
     "cuda_allocator.cc",
     "cuda_allocator.h",
     "cuda_call.cc",
@@ -208,7 +187,9 @@ def hipify(src_file_path, dst_file_path):
     if not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
     # Run hipify-perl first, capture output
-    s = subprocess.run([get_hipify_path(), src_file_path], stdout=subprocess.PIPE, universal_newlines=True).stdout
+    s = subprocess.run(
+        [get_hipify_path(), "-roc", src_file_path], stdout=subprocess.PIPE, universal_newlines=True, check=False
+    ).stdout
 
     # Additional exact-match replacements.
     # Order matters for all of the following replacements, reglardless of appearing in logical sections.
@@ -230,6 +211,7 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("hipblasDestroy", "rocblas_destroy_handle")
     s = s.replace("hipblasSetStream", "rocblas_set_stream")
     s = s.replace("HIPBLAS_OP_T", "rocblas_operation_transpose")
+    s = s.replace("HIPBLAS_OP_N", "rocblas_operation_none")
 
     s = s.replace("RegisterCudaContribKernels", "RegisterRocmContribKernels")
     s = s.replace("cudaEvent", "hipEvent")
@@ -280,6 +262,9 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('#include "cub/util_allocator.cuh"', "#include <hipcub/util_allocator.hpp>")
     s = s.replace("#include <cub/util_type.cuh>", "#include <hipcub/backend/rocprim/util_type.hpp>")
     s = s.replace('#include "cub/util_type.cuh"', "#include <hipcub/backend/rocprim/util_type.hpp>")
+    s = s.replace("#include <cub/device/device_partition.cuh>", "#include <hipcub/device/device_partition.hpp>")
+    s = s.replace("#include <math_constants.h>", "#include <limits>")
+    s = s.replace("#include <library_types.h>", "")  # Doesn't exist
     s = s.replace("typedef half MappedType", "typedef __half MappedType")
 
     # CUBLAS -> HIPBLAS
@@ -292,6 +277,19 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("CUBLAS", "ROCBLAS")
     s = s.replace("Cublas", "Rocblas")
     s = s.replace("cublas", "rocblas")
+
+    # Undefined ROCMRT constants -> std::numeric_limits
+    s = s.replace("ROCMRT_INF_F", "std::numeric_limits<float>::infinity()")
+
+    # HIPBLAS -> rocblas
+    s = s.replace("HIPBLAS_R_16F", "rocblas_datatype_f16_r")
+    s = s.replace("HIPBLAS_R_32F", "rocblas_datatype_f32_r")
+    s = s.replace("ROCBLAS_GEMM_DEFAULT_TENSOR_OP", "rocblas_gemm_algo_standard")
+    s = s.replace("ROCBLAS_TENSOR_OP_MATH", "0 /* CUBLAS_TENSOR_OP_MATH is deprecated */")
+
+    # compatible layer
+    s = s.replace("rocblas_gemm_strided_batched_ex", "_compat_rocblas_gemm_strided_batched_ex")
+    s = s.replace("RocblasMathModeSetter", "CompatRocblasMathModeSetter")
 
     # CURAND -> HIPRAND
     s = s.replace("CURAND", "HIPRAND")
@@ -311,6 +309,12 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("hipdnn", "miopen")
     s = s.replace("HIPDNN_STATUS_SUCCESS", "miopenStatusSuccess")
     s = s.replace("HIPDNN", "MIOPEN")
+    s = s.replace("MIOPEN_BATCHNORM_SPATIAL", "miopenBNSpatial")
+    s = s.replace("MIOPEN_BATCHNORM_PER_ACTIVATION", "miopenBNPerActivation")
+    s = s.replace("MIOPEN_LRN_CROSS_CHANNEL", "miopenLRNCrossChannel")
+    s = s.replace("MIOPEN_POOLING_MAX", "miopenPoolingMax")
+    s = s.replace("MIOPEN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING", "miopenPoolingAverageInclusive")
+    s = s.replace("MIOPEN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING", "miopenPoolingAverage")
 
     # CUSPARSE -> HIPSPARSE
     s = s.replace("CUSPARSE", "HIPSPARSE")

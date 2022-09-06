@@ -504,4 +504,5 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd = {
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_WASMSIMD::PackedK,
     0,
+    4 // multiple of kernel stride M
 };

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -82,11 +82,11 @@ jint convertFromONNXDataFormat(ONNXTensorElementDataType type) {
             return 3;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:   // maps to c type int16_t
             return 4;
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:      // maps to c type uint32_t
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  // maps to c type uint32_t
             return 5;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:   // maps to c type int32_t
             return 6;
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:      // maps to c type uint64_t
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:  // maps to c type uint64_t
             return 7;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:   // maps to c type int64_t
             return 8;
@@ -94,7 +94,7 @@ jint convertFromONNXDataFormat(ONNXTensorElementDataType type) {
             return 9;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:   // maps to c type float
             return 10;
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:      // maps to c type double
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:  // maps to c type double
             return 11;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:  // maps to c++ type std::string
             return 12;
@@ -181,6 +181,31 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
         default:
             return 0;
     }
+}
+
+OrtErrorCode getTensorTypeShape(JNIEnv * jniEnv, JavaTensorTypeShape* output, const OrtApi * api, const OrtValue * value) {
+  OrtTensorTypeAndShapeInfo* info;
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorTypeAndShape(value, &info));
+  if (code != ORT_OK) {
+    return code;
+  }
+  code = checkOrtStatus(jniEnv, api, api->GetDimensionsCount(info, &output->dimensions));
+  if (code != ORT_OK) {
+    api->ReleaseTensorTypeAndShapeInfo(info);
+    return code;
+  }
+  code = checkOrtStatus(jniEnv, api, api->GetTensorShapeElementCount(info, &output->elementCount));
+  if (code != ORT_OK) {
+    api->ReleaseTensorTypeAndShapeInfo(info);
+    return code;
+  }
+  code = checkOrtStatus(jniEnv, api, api->GetTensorElementType(info, &output->onnxTypeEnum));
+  api->ReleaseTensorTypeAndShapeInfo(info);
+  if (code != ORT_OK) {
+    return code;
+  }
+
+  return ORT_OK;
 }
 
 typedef union FP32 {
@@ -1029,19 +1054,24 @@ jint convertErrorCode(OrtErrorCode code) {
     }
 }
 
-void checkOrtStatus(JNIEnv *jniEnv, const OrtApi * api, OrtStatus * status) {
-    if (status == NULL) return;
+OrtErrorCode checkOrtStatus(JNIEnv *jniEnv, const OrtApi * api, OrtStatus * status) {
+    if (status == NULL) {
+        return ORT_OK;
+    }
     const char* message = api->GetErrorMessage(status);
+    OrtErrorCode errCode = api->GetErrorCode(status);
     size_t len = strlen(message)+1;
     char* copy = malloc(sizeof(char)*len);
     if (copy == NULL) {
+      api->ReleaseStatus(status);
       throwOrtException(jniEnv, 1, "Not enough memory");
-      return;
+      return ORT_FAIL;
     }
     memcpy(copy,message,len);
-    int messageId = convertErrorCode(api->GetErrorCode(status));
+    int messageId = convertErrorCode(errCode);
     api->ReleaseStatus(status);
     throwOrtException(jniEnv,messageId,copy);
+    return errCode;
 }
 
 jsize safecast_size_t_to_jsize(size_t v) {

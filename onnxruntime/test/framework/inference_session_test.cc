@@ -35,6 +35,9 @@
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #endif
+#ifdef USE_TENSORRT
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
+#endif
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
@@ -85,9 +88,9 @@ class FuseAdd : public OpKernel {
     auto Y = context->Input<Tensor>(1);
     auto Z = context->Input<Tensor>(2);
     auto& shape = X->Shape();
-    auto M = context->Output(0, shape)->template MutableData<float>();
+    auto M = context->Output(0, shape)->MutableData<float>();
     for (int i = 0; i < shape.Size(); ++i) {
-      *(M + i) = *(X->template Data<float>() + i) + *(Y->template Data<float>() + i) + *(Z->template Data<float>() + i);
+      *(M + i) = *(X->Data<float>() + i) + *(Y->Data<float>() + i) + *(Z->Data<float>() + i);
     }
     return Status::OK();
   }
@@ -217,8 +220,8 @@ void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_di
                    const std::vector<T>& expected_values) {
   TensorShape expected_shape(expected_dims);
   ASSERT_EQ(expected_shape, tensor.Shape());
-  const std::vector<T> found(tensor.template Data<T>(),
-                             tensor.template Data<T>() + expected_values.size());
+  const std::vector<T> found(tensor.Data<T>(),
+                             tensor.Data<T>() + expected_values.size());
   ASSERT_EQ(expected_values, found);
 }
 
@@ -1447,6 +1450,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   ONNX_NAMESPACE::TypeProto bool_tensor;
   bool_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
   auto& if_cond_input = graph.GetOrCreateNodeArg("if_cond_input", &bool_tensor);
   auto& graph_if_input = graph.GetOrCreateNodeArg("graph_if_input", nullptr);
@@ -1485,7 +1489,9 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test3LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#if USE_CUDA
+#if USE_TENSORRT
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+#elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
@@ -1562,11 +1568,13 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
 
   ONNX_NAMESPACE::TypeProto float_tensor_input;
   float_tensor_input.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor_input.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
   ONNX_NAMESPACE::TypeProto float_tensor;
   float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("__graph_0__float_unknown");
   ONNX_NAMESPACE::TypeProto bool_tensor;
   bool_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
   // graph inputs
   auto& input_0 = graph.GetOrCreateNodeArg("input_0", &float_tensor_input);
@@ -1617,7 +1625,9 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test2LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#if USE_CUDA
+#if USE_TENSORRT
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+#elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
@@ -1763,7 +1773,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   TensorShape expected_shape(Y_dims);
   ASSERT_EQ(expected_shape, rtensor.Shape());
   for (size_t i = 0; i < Y_data.size(); ++i)
-    EXPECT_NEAR(Y_data[i], rtensor.template Data<float>()[i], FLT_EPSILON);
+    EXPECT_NEAR(Y_data[i], rtensor.Data<float>()[i], FLT_EPSILON);
 
   // run truncated sequence
   output_names.clear();
@@ -1806,7 +1816,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     ASSERT_EQ(truncated_shape, truncated_rtensor.Shape());
     auto seq_output_stride = truncated_shape.SizeFromDimension(1);
     for (int i = 0; i < truncated_shape.Size(); ++i)
-      EXPECT_NEAR(Y_data[i + seq_start * seq_output_stride], truncated_rtensor.template Data<float>()[i], FLT_EPSILON);
+      EXPECT_NEAR(Y_data[i + seq_start * seq_output_stride], truncated_rtensor.Data<float>()[i], FLT_EPSILON);
 
     // prepare for next truncated input
     fetches = truncated_fetches;
@@ -2004,14 +2014,14 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   OrtCUDAProviderOptions provider_options{};
   provider_options.default_memory_arena_cfg = &arena_cfg;
   provider_options.device_id = 0;
-  auto factory = CreateExecutionProviderFactory_Cuda(&provider_options);
+  auto factory = CudaProviderFactoryCreator::Create(&provider_options);
 
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(factory->CreateProvider()));
   ASSERT_STATUS_OK(session_object.Initialize());
 
   // Fetch the CUDA allocator to analyze its stats
-  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator);
+  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
   auto cuda_alloc = session_object.GetAllocator(mem_info);
 
   AllocatorStats alloc_stats;

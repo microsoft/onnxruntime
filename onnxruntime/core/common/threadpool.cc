@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 
 #include "core/platform/threadpool.h"
 #include "core/common/common.h"
@@ -377,6 +378,13 @@ ThreadPool::ThreadPool(Env* env,
   assert(degree_of_parallelism >= 1);
   if (degree_of_parallelism >= 2) {
     int threads_to_create = degree_of_parallelism - 1;
+
+    if (!thread_options_.affinity.empty()) {
+      // Remove first affinity element as designated for the caller thread
+      thread_options_.affinity.erase(thread_options_.affinity.begin());
+      assert(thread_options_.affinity.size() >= size_t(threads_to_create));
+    }
+
     extended_eigen_threadpool_ =
         std::make_unique<ThreadPoolTempl<Env> >(name,
                                                 threads_to_create,
@@ -481,31 +489,32 @@ std::string ThreadPool::StopProfiling() {
   }
 }
 
-thread_local ThreadPool::ParallelSection* ThreadPool::ParallelSection::current_parallel_section{nullptr};
+namespace {
+thread_local std::optional<ThreadPoolParallelSection> current_parallel_section;
+}
 
 ThreadPool::ParallelSection::ParallelSection(ThreadPool* tp) {
-  ORT_ENFORCE(!current_parallel_section, "Nested parallelism not supported");
-  ORT_ENFORCE(!ps_.get());
+  ORT_ENFORCE(!current_parallel_section.has_value(), "Nested parallelism not supported");
+  ORT_ENFORCE(!ps_);
   tp_ = tp;
   if (tp && tp->underlying_threadpool_) {
-    ps_ = tp->underlying_threadpool_->AllocateParallelSection();
-    tp_->underlying_threadpool_->StartParallelSection(*ps_.get());
-    current_parallel_section = this;
+    current_parallel_section.emplace();
+    ps_ = &*current_parallel_section;
+    tp_->underlying_threadpool_->StartParallelSection(*ps_);
   }
 }
 
 ThreadPool::ParallelSection::~ParallelSection() {
   if (current_parallel_section) {
-    tp_->underlying_threadpool_->EndParallelSection(*ps_.get());
-    ps_.reset();
-    current_parallel_section = nullptr;
+    tp_->underlying_threadpool_->EndParallelSection(*ps_);
+    current_parallel_section.reset();
   }
 }
 
 void ThreadPool::RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) {
   if (underlying_threadpool_) {
-    if (ThreadPool::ParallelSection::current_parallel_section) {
-      underlying_threadpool_->RunInParallelSection(*(ThreadPool::ParallelSection::current_parallel_section->ps_.get()),
+    if (current_parallel_section.has_value()) {
+      underlying_threadpool_->RunInParallelSection(*current_parallel_section,
                                                    std::move(fn),
                                                    n, block_size);
     } else {
@@ -647,6 +656,18 @@ std::string ThreadPool::StopProfiling(concurrency::ThreadPool* tp) {
     return tp->StopProfiling();
   } else {
     return {};
+  }
+}
+
+void ThreadPool::EnableSpinning() {
+  if (extended_eigen_threadpool_) {
+    extended_eigen_threadpool_->EnableSpinning();
+  }
+}
+
+void ThreadPool::DisableSpinning() {
+  if (extended_eigen_threadpool_) {
+    extended_eigen_threadpool_->DisableSpinning();
   }
 }
 

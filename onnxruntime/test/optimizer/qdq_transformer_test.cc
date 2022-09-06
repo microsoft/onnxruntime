@@ -36,16 +36,6 @@
 namespace onnxruntime {
 namespace test {
 
-static std::vector<std::string> GetNodeOpTypesInTopologicalOrder(const Graph& graph) {
-  std::vector<std::string> op_types{};
-  GraphViewer graph_viewer{graph};
-  const auto& ordering = graph_viewer.GetNodesInTopologicalOrder();
-  for (const auto node_idx : ordering) {
-    op_types.push_back(graph.GetNode(node_idx)->OpType());
-  }
-  return op_types;
-}
-
 #if !defined(DISABLE_CONTRIB_OPS)
 
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
@@ -226,6 +216,55 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
   test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
 }
+
+#if (defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(_M_IX86) || defined(__x86_64__) || defined(__i386__) || !defined(DISABLE_CONTRIB_OPS)
+
+TEST(QDQTransformerTests, DQ_S8_to_U8) {
+  const std::vector<int64_t>& input_shape = {19, 37};
+  const std::vector<int64_t>& weights_shape = {37, 23};
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+
+    // Use full range weight values to expose avx2 u8s8 overflow problems
+    auto* weight = builder.MakeInitializer<int8_t>(weights_shape, -128, 127);
+    auto* output_arg = builder.MakeOutput();
+
+    // add QDQ activation
+    typedef std::numeric_limits<uint8_t> Input1Limits;
+    auto* dq1_output = AddQDQNodePair<int8_t>(builder, input1_arg, .039f, (int8_t)((Input1Limits::max() + Input1Limits::min()) / 2 + 1));
+
+    // add DQ weight
+    auto* dq_w_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<int8_t>(weight, .003f, -10, dq_w_output);
+
+
+    builder.AddNode("MatMul", {dq1_output, dq_w_output}, {output_arg});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+      EXPECT_EQ(op_to_count["MatMul"], 0);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+  };
+
+  auto add_session_options = [&](SessionOptions& so) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsAvx2PrecisionMode, "1"));
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    12 /*opset_version*/,
+                    0.01 /*per_sample_tolerance*/,
+                    0.01 /*relative_per_sample_tolerance*/,
+                    nullptr, add_session_options);
+}
+#endif // Only for X64 with contrib ops enabled
 
 template <typename InputType, typename OutputType>
 void QDQTransformerAveragePoolTests() {
@@ -1622,7 +1661,9 @@ TEST(QDQTransformerTests, ConvTranspose_DQForward) {
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2);
+                      TransformerLevel::Level2,
+                      12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
+                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
@@ -1695,7 +1736,9 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
-                      13 /*opset_version*/);
+                      13 /*opset_version*/,
+                      0.0, 0.0, nullptr, {},    // defaults that we're not overriding
+                      {"TransposeOptimizer"});  // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
@@ -1812,6 +1855,67 @@ TEST(QDQTransformerTests, Concat) {
   test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2, true);
   test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2, false, true);
   test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2, false, false, true);
+}
+
+template <typename InputType, typename OutputType>
+void QDQTransformerSoftmaxTests() {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, int64_t axis) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape, -5.f, 5.f);
+      auto* output_arg = builder.MakeOutput();
+      // add QDQ + Softmax
+      auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .105f,
+                        (std::numeric_limits<OutputType>::max() / 255 * 255) / 2);
+      auto* softmax_output = builder.MakeIntermediate();
+      auto& softmax_node = builder.AddNode("Softmax", {dq_output}, {softmax_output});
+      softmax_node.AddAttribute("axis", axis);
+      // add QDQ output
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<OutputType>(softmax_output,
+                                                1.0f / (std::numeric_limits<OutputType>::max() + 1),
+                                                0,
+                                                q_output);
+      builder.AddDequantizeLinearNode<OutputType>(q_output,
+                                                  1.0f / (std::numeric_limits<OutputType>::max() + 1),
+                                                  0,
+                                                  output_arg);
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      if constexpr (std::is_same<InputType, OutputType>::value) {
+        EXPECT_EQ(op_to_count["com.microsoft.QLinearSoftmax"], 1);
+        EXPECT_EQ(op_to_count["Softmax"], 0);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      } else {
+        EXPECT_EQ(op_to_count["com.microsoft.QLinearSoftmax"], 0);
+        EXPECT_EQ(op_to_count["Softmax"], 1);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+      }
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+  };
+
+  test_case({1, 12, 37}, -1);
+  test_case({1, 23, 13, 13}, -2);
+}
+
+TEST(QDQTransformerTests, Softmax_S8S8) {
+  QDQTransformerSoftmaxTests<int8_t, int8_t>();
+}
+
+TEST(QDQTransformerTests, Softmax_U8U8) {
+  QDQTransformerSoftmaxTests<uint8_t, uint8_t>();
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
@@ -1957,7 +2061,9 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Default,
-                      TransformerLevel::Level1);
+                      TransformerLevel::Level1,
+                      12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
+                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
@@ -2103,7 +2209,9 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Default,
-                      TransformerLevel::Level1);
+                      TransformerLevel::Level1,
+                      12, 0.0, 0.0, nullptr, {},  // defaults that we're not overriding
+                      {"TransposeOptimizer"});    // disable TransposeOptimizer for simplicity
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
@@ -2264,6 +2372,63 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
       ASSERT_TRUE(result.empty());
     }
   }
+}
+
+// regression test to validate TransposeOptimizer and QDQ Propagation don't loop
+// see https://github.com/microsoft/onnxruntime/issues/11605
+TEST(QDQTransformerTests, QDQPropagation_GH11605) {
+  auto test_case = [&]() {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>({1, 4, 4},
+                                                   std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      // add DQ
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode(input_arg, 0.123f, uint8_t(0), dq_output);
+
+      // add Transpose 0, 2, 1
+      const std::vector<int64_t>& perms{0, 2, 1};
+      auto* transpose_output = builder.MakeIntermediate();
+      Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
+      transpose_node.AddAttribute("perm", perms);
+
+      // add Softmax with axis=2 (to block the Transpose moving past it due to the transpose perms)
+      auto* softmax_output = builder.MakeIntermediate();
+      Node& softmax_node = builder.AddNode("Softmax", {transpose_output}, {softmax_output});
+      softmax_node.AddAttribute("axis", int64_t(2));
+
+      // add second Transpose. this is so the check in TransposeOptimizer::ProcessTranspose for outputs leading to
+      // a Transpose is satisfied, allowing the first Transpose to move past the Q/DQ inserted by QDQ Propagation
+      Node& transpose_node2 = builder.AddNode("Transpose", {softmax_output}, {builder.MakeOutput()});
+      transpose_node2.AddAttribute("perm", perms);
+    };
+
+    // check that an edge case where transpose optimization gets blocked is handled gracefully.
+    // Original: DQ -> Tr -> SoftM -> Tr
+    // QDQ Prop inserts a Q/DQ pair to create a QDQ node group for the Transpose: DQ -> Tr -> Q -> DQ -> SoftM -> Tr
+    // Transpose opt phase 1 moves the Tr down until it blocks on the SoftMax: DQ -> Q -> DQ -> Tr -> SoftM -> Tr
+    // Transpose opt phase 2 flips the Tr to prior to the DQ as it's not part of a QDQ node group at that point, as
+    // running the transpose on 8-bit data should be cheaper: DQ -> Q -> Tr -> DQ -> SoftM -> Tr
+    // QDQ cleanup in Level2 removes the unnecessary DQ/Q pair at the start: Tr -> DQ -> SoftM -> Tr
+    // this is the optimal result as the Transpose is using 8-bit data and we have no surplus Q/DQ pairs
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      std::vector<std::string> expected_op_types_in_order{
+          "Transpose",
+          "DequantizeLinear",
+          "Softmax",
+          "Transpose"};
+
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level2);
+  };
+
+  test_case();
 }
 
 // test removal of Q->DQ pairs by QDQFinalCleanupTransformer

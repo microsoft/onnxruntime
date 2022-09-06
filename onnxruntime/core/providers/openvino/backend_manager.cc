@@ -1,9 +1,14 @@
 // Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
-#include "core/providers/shared_library/provider_api.h"
-#include <inference_engine.hpp>
 #include <fstream>
+#include <vector>
+#include <string>
+#include <memory>
+
+#include "core/providers/shared_library/provider_api.h"
+
+#include <inference_engine.hpp>
 
 #include "contexts.h"
 #include "backend_manager.h"
@@ -84,6 +89,26 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
     subgraph_context_.has_dynamic_input_shape = false;
 
   } else if (ModelHasSymbolicInputDims(subgraph)) {
+    subgraph_context_.has_dynamic_input_shape = true;
+    if (GetGlobalContext().device_type.find("MYRIAD") != std::string::npos) {
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims."
+                            " Defering backend initialization and device_type is MYRIAD.";
+    }
+    if (GetGlobalContext().device_type.find("CPU") != std::string::npos) {
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims and "
+                       << "device_type is CPU.";
+      #if (defined OV_API_20)
+        if (GetGlobalContext().enable_dynamic_shapes) {
+          LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
+                          << "Creating backend Dynamic Shapes";
+          concrete_backend_ = BackendFactory::MakeBackend(*model_proto_, GetGlobalContext(), subgraph_context_);
+          LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
+                          << "Backend created for graph " << subgraph_context_.subgraph_name;
+        }
+      #endif
+    }
+  } else if (ModelHasSymbolicInputDims(subgraph) &&
+      GetGlobalContext().device_type.find("GPU") != std::string::npos) {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims. Defering backend initialization";
     subgraph_context_.has_dynamic_input_shape = true;
   } else {
@@ -236,7 +261,15 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
 }
 
 void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
-  if (subgraph_context_.has_dynamic_input_shape) {
+  bool use_dynamic_backend = true;
+  if (GetGlobalContext().enable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape &&
+      GetGlobalContext().device_type.find("CPU") != std::string::npos) {
+    #if (defined OV_API_20)
+      concrete_backend_->Infer(api, context);
+      use_dynamic_backend = false;
+    #endif
+  }
+  else if (use_dynamic_backend && subgraph_context_.has_dynamic_input_shape) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
     auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
 
@@ -251,9 +284,9 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
     auto search = backend_map_.find(key);
     if (search == backend_map_.end()) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
-                         << "Creating concrete backend for key: " << key;
+                        << "Creating concrete backend for key: " << key;
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
-                         << "Backend created for graph " << subgraph_context_.subgraph_name;
+                        << "Backend created for graph " << subgraph_context_.subgraph_name;
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(*model_proto_, tensor_shapes);
       dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
                                                     GetGlobalContext(), subgraph_context_);

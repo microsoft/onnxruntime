@@ -38,7 +38,7 @@ RUN . $VAI_ROOT/conda/etc/profile.d/conda.sh &&\
     cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
     cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt &&\
     cd onnxruntime &&\
-    /bin/sh ./build.sh --use_openmp --config RelWithDebInfo --enable_pybind --build_wheel --use_vitisai --parallel --update --build --build_shared_lib &&\
+    /bin/sh ./build.sh --config RelWithDebInfo --enable_pybind --build_wheel --use_vitisai --parallel --update --build --build_shared_lib &&\
     pip install /code/onnxruntime/build/Linux/RelWithDebInfo/dist/*-linux_x86_64.whl &&\
     cd .. &&\
     rm -rf onnxruntime cmake-3.21.0-linux-x86_64

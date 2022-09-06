@@ -81,6 +81,13 @@ miopenDataType_t MiopenTensor::GetDataType() {
   ORT_THROW("miopen engine currently supports only single/half/int32/int8 precision data types.");
 }
 
+#if ROCM_VERSION >= 50000
+template<>
+miopenDataType_t MiopenTensor::GetDataType<double>() {
+  return miopenDouble;
+}
+#endif
+
 template<>
 miopenDataType_t MiopenTensor::GetDataType<float>() {
   return miopenFloat;

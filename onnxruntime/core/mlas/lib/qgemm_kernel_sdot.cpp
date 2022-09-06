@@ -756,6 +756,7 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>,
     MLAS_GEMM_S8S8_KERNEL_SDOT::PackedK,
     MLAS_GEMM_S8S8_KERNEL_SDOT::PackedStrides.K,
+    8 // Kernel Stride M
 };
 
 

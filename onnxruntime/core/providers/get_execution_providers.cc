@@ -129,6 +129,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
             false,
 #endif
         },
+        {
+            kXnnpackExecutionProvider,
+#ifdef USE_XNNPACK
+            true,
+#else
+            false,
+#endif
+        },
         {kCpuExecutionProvider, true},  // kCpuExecutionProvider is always last
 };
 }  // namespace

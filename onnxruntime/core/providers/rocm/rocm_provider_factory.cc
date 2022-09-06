@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
 #include "core/providers/rocm/rocm_provider_factory.h"
 
 #include <memory>
@@ -10,7 +9,9 @@
 #include "gsl/gsl"
 
 #include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/providers/rocm/rocm_execution_provider_info.h"
 #include "core/providers/rocm/rocm_allocator.h"
+#include "core/providers/rocm/rocm_provider_factory_creator.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
 
@@ -44,10 +45,6 @@ struct ROCMProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> ROCMProviderFactory::CreateProvider() {
   return std::make_unique<ROCMExecutionProvider>(info_);
-}
-
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(const ROCMExecutionProviderInfo& info) {
-  return std::make_shared<onnxruntime::ROCMProviderFactory>(info);
 }
 
 struct ProviderInfo_ROCM_Impl : ProviderInfo_ROCM {

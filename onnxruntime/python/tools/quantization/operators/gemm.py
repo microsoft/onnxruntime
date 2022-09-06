@@ -6,6 +6,7 @@ from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, find_by_name, get_mul_node, ms_domain
 from .base_operator import QuantOperatorBase
+from .matmul import QOpMatMul
 from .qdq_base_operator import QDQOperatorBase
 
 
@@ -33,7 +34,7 @@ def set_default_beta(gemm_node):
     return 1.0
 
 
-class QLinearGemm(QuantOperatorBase):
+class QLinearGemm(QOpMatMul):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 

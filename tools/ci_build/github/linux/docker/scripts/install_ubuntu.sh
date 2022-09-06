@@ -42,6 +42,7 @@ PACKAGE_LIST="autotools-dev \
 	libssl1.1 \
 	libkrb5-3 \
 	libtinfo-dev \
+	libtinfo5 \
 	libtool \
 	openssh-server \
 	aria2 \

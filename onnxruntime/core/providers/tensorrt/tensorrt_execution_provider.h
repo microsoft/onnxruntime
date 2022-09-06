@@ -26,6 +26,7 @@ static const std::string kCachePath = "ORT_TENSORRT_CACHE_PATH";
 static const std::string kDecryptionEnable = "ORT_TENSORRT_ENGINE_DECRYPTION_ENABLE";
 static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LIB_PATH";
 static const std::string kForceSequentialEngineBuild= "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
+static const std::string kContextMemorySharingEnable= "ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -103,13 +104,13 @@ struct TensorrtFuncState {
   nvinfer1::IRuntime* runtime = nullptr;
   nvinfer1::IOptimizationProfile* trt_profile = nullptr;
   AllocatorPtr scratch_allocator;
+  bool context_memory_sharing_enable;
+  size_t* max_context_mem_size_ptr = nullptr;
+  IAllocatorUniquePtr<void>* context_memory = nullptr;
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
   int (*engine_encryption)(const char*, char*, size_t);
-  // If sub-graph has dynamic input shape and the shape range changes, or the first time writing out engine cache, this flag is set to true and engine cache will be saved. Otherwise the flag is false.
-  // Note: For dynamic input shape, if update_engine_cache flag is true, profile cache will be saved as well.
-  bool update_engine_cache;
 };
 
 // Logical device representation.
@@ -132,7 +133,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
-  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+  void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
   Status OnRunEnd(bool sync_stream) override;
 
@@ -166,6 +167,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   OrtMutex tensorrt_mu_;
   int device_id_;
   AllocatorPtr allocator_;
+  bool context_memory_sharing_enable_ = false;
+  size_t max_ctx_mem_size_ = 0;  
+  IAllocatorUniquePtr<void> context_memory_ = nullptr;
   mutable char model_path_[4096];  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);

@@ -208,29 +208,31 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
   const char* provider_;
 };
 
-struct InstantCustomKernel {
-  InstantCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*);
-
-  ~InstantCustomKernel();
+struct StandaloneCustomKernel {
+  StandaloneCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*);
+  ~StandaloneCustomKernel();
   void Compute(OrtKernelContext* context);
 
  private:
-  void InitTopK(Ort::CustomOpApi ort, const OrtKernelInfo* info);
+  void InitTopK(Ort::CustomOpApi ort);
   void InvokeTopK(OrtKernelContext* context);
 
-  void InitGru(Ort::CustomOpApi ort, const OrtKernelInfo* info);
+  void InitGru(Ort::CustomOpApi ort);
   void InvokeGru(OrtKernelContext* context);
 
+  void InitInvokeConv(OrtKernelContext* context);  // create Conv and invoke in Compute(...)
+
   Ort::CustomOpApi ort_;
-  OrtOp* op_add{};
-  OrtOp* op_topk{};
-  OrtOp* op_gru{};
+  OrtKernelInfo* info_copy_{};
+  OrtOp* op_add_{};
+  OrtOp* op_topk_{};
+  OrtOp* op_gru_{};
 };
 
-struct InstantCustomOp : Ort::CustomOpBase<InstantCustomOp, InstantCustomKernel> {
-  explicit InstantCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+struct StandaloneCustomOp : Ort::CustomOpBase<StandaloneCustomOp, StandaloneCustomKernel> {
+  explicit StandaloneCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
 
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new InstantCustomKernel(api, info, compute_stream_); };
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new StandaloneCustomKernel(api, info, compute_stream_); };
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
 

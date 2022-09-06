@@ -81,7 +81,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     }
 
     if (c != nullptr) {
-      GemmBroadcastBias(M, N, 1.f, c->template Data<int32_t>(), &(c->Shape()), gemm_output_data);
+      GemmBroadcastBias(M, N, 1.f, c->Data<int32_t>(), &(c->Shape()), gemm_output_data);
     }
 
     MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape{M, N, K, a_is_signed, b_is_signed, c != nullptr};
@@ -164,12 +164,12 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
   std::vector<float> ComputeOutputScale(const Tensor* a_scale, const Tensor* b_scale, const Tensor* y_scale) const {
     const int64_t output_scale_size = b_scale->Shape().Size();
     std::vector<float> output_scales(output_scale_size);
-    auto a_scale_value = *(a_scale->template Data<float>());
-    const auto* b_scale_data = b_scale->template Data<float>();
+    auto a_scale_value = *(a_scale->Data<float>());
+    const auto* b_scale_data = b_scale->Data<float>();
     for (int64_t i = 0; i < output_scale_size; i++) {
       output_scales[i] = (alpha_ * a_scale_value * b_scale_data[i]);
       if (nullptr != y_scale) {
-        output_scales[i] /= *(y_scale->template Data<float>());
+        output_scales[i] /= *(y_scale->Data<float>());
       }
     }
     return output_scales;
@@ -184,7 +184,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
                                std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>& requant_proc_ptr) {
     if (nullptr != y_zp) {
       bool is_y_signed = y->IsDataType<int8_t>();
-      int32_t y_zero_point = is_y_signed ? *y_zp->template Data<int8_t>() : *y_zp->template Data<uint8_t>();
+      int32_t y_zero_point = is_y_signed ? *y_zp->Data<int8_t>() : *y_zp->Data<uint8_t>();
       requant_proc_ptr = std::make_unique<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>(
           y->MutableDataRaw(),
           out_lda,

@@ -87,6 +87,15 @@ endif()
 onnxruntime_add_static_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
 add_dependencies(onnxruntime_graph onnx_proto flatbuffers)
 onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+
+if (MSVC)
+  set(ONNX_PROTOBUF_NATVIS_FILE "onnx_protobuf.natvis")
+  target_sources(
+      onnxruntime_graph
+      INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ONNX_PROTOBUF_NATVIS_FILE}>
+  )
+endif()
+
 if(NOT MSVC)
   target_compile_options(onnxruntime_graph PRIVATE "-Wno-parentheses")
 endif()
@@ -126,11 +135,15 @@ if (WIN32)
   set_target_properties(onnxruntime_graph PROPERTIES
       STATIC_LIBRARY_FLAGS "${onnxruntime_graph_static_library_flags}")
 
-  if (NOT onnxruntime_DISABLE_EXCEPTIONS)  
+  if (NOT onnxruntime_DISABLE_EXCEPTIONS)
     target_compile_options(onnxruntime_graph PRIVATE
         /EHsc   # exception handling - C++ may throw, extern "C" will not
     )
-  endif()  
+  endif()
+endif()
+
+if (onnxruntime_ENABLE_ATEN)
+  target_compile_definitions(onnxruntime_graph PRIVATE ENABLE_ATEN)
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

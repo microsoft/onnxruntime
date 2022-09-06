@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/python/orttraining_pybind_common.h"
+#include "python/onnxruntime_pybind_mlvalue.h"
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"

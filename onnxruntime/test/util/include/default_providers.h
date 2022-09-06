@@ -3,6 +3,7 @@
 #pragma once
 #include "core/common/optional.h"
 #include "core/providers/providers.h"
+#include "core/providers/provider_factory_creators.h"
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
@@ -26,7 +27,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptionsV2* params);
 
 // EP for internal testing
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_InternalTesting(const std::unordered_set<std::string>& supported_ops);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_InternalTesting(
+    const std::unordered_set<std::string>& supported_ops);
 
 namespace test {
 
@@ -47,8 +49,9 @@ std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_aren
 std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider();
 
-// EP for internal testing
 std::unique_ptr<IExecutionProvider> DefaultInternalTestingExecutionProvider(
     const std::unordered_set<std::string>& supported_ops);
 
