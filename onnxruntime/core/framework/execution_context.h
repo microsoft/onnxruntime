@@ -184,6 +184,6 @@ using NotificationIndex = size_t;
 
 void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since);
 void ScheduleDownstream(ExecutionContext& ctx,
-                        onnxruntime::NotificationIndex notification_index,
+                        size_t trigger,
                         bool single_thread_mode);
 }  // namespace onnxruntime

@@ -791,7 +791,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, ST
  opset.
 
  To double-check what versions an operator should have registrations for see
- https://github.com/onnx/onnx/blob/master/docs/Operators.md
+ https://github.com/onnx/onnx/blob/main/docs/Operators.md
 *****/
 
 template <>
