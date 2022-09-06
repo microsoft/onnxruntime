@@ -18,7 +18,6 @@ import multiprocessing
 import os
 import random
 import statistics
-import sys
 import timeit
 from dataclasses import dataclass
 from datetime import datetime
@@ -61,53 +60,49 @@ def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_op
             "Warning: Please install onnxruntime-gpu package instead of onnxruntime, and use a machine with GPU for testing gpu performance."
         )
 
-    if intra_op_num_threads is None and graph_optimization_level is None:
-        session = onnxruntime.InferenceSession(model_path)
+    if use_gpu:
+        if provider == "dml":
+            execution_providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+        elif provider == "rocm":
+            execution_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+        elif provider == "migraphx":
+            execution_providers = [
+                "MIGraphXExecutionProvider",
+                "ROCMExecutionProvider",
+                "CPUExecutionProvider",
+            ]
+        elif provider == "cuda":
+            execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        elif provider == "tensorrt":
+            execution_providers = [
+                "TensorrtExecutionProvider",
+                "CUDAExecutionProvider",
+                "CPUExecutionProvider",
+            ]
+        else:
+            execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
     else:
-        if use_gpu:
-            if provider == "dml":
-                execution_providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "rocm":
-                execution_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "migraphx":
-                execution_providers = [
-                    "MIGraphXExecutionProvider",
-                    "ROCMExecutionProvider",
-                    "CPUExecutionProvider",
-                ]
-            elif provider == "cuda":
-                execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "tensorrt":
-                execution_providers = [
-                    "TensorrtExecutionProvider",
-                    "CUDAExecutionProvider",
-                    "CPUExecutionProvider",
-                ]
-            else:
-                execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        else:
-            execution_providers = ["CPUExecutionProvider"]
+        execution_providers = ["CPUExecutionProvider"]
 
-        sess_options = onnxruntime.SessionOptions()
-        sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
+    sess_options = onnxruntime.SessionOptions()
 
-        if graph_optimization_level is None:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        elif graph_optimization_level == 0:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        elif graph_optimization_level == 1:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-        elif graph_optimization_level == 2:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-        elif graph_optimization_level == 99:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        else:
-            sess_options.graph_optimization_level = graph_optimization_level
+    if graph_optimization_level is None:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    elif graph_optimization_level == 0:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+    elif graph_optimization_level == 1:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+    elif graph_optimization_level == 2:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+    elif graph_optimization_level == 99:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    else:
+        sess_options.graph_optimization_level = graph_optimization_level
 
-        if intra_op_num_threads is not None:
-            sess_options.intra_op_num_threads = intra_op_num_threads
+    if intra_op_num_threads is not None:
+        sess_options.intra_op_num_threads = intra_op_num_threads
 
-        session = onnxruntime.InferenceSession(model_path, sess_options, providers=execution_providers)
+    session = onnxruntime.InferenceSession(model_path, sess_options, providers=execution_providers)
 
     if use_gpu:
         if provider == "dml":
