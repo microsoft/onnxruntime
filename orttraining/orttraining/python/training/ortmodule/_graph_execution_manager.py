@@ -322,6 +322,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         enable_memory_alleviation = ortmodule._defined_from_envvar(
             "ORTMODULE_ENABLE_MEMORY_ALLEVIATION", "Dropout:0,Gelu:0,Tile:0", warn=True
         )
+        warnings.warn(f"ORTMODULE_ENABLE_MEMORY_ALLEVIATION user config: {enable_memory_alleviation}", UserWarning)
         session_options.add_session_config_entry("optimization.enable_memory_alleviation", enable_memory_alleviation)
 
         if self._debug_options.save_onnx_models.save:
