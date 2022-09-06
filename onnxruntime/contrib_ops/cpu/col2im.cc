@@ -6,13 +6,13 @@
 namespace onnxruntime {
 namespace contrib {
 
-#define REGISTER_KERNEL_TYPED(T)                                              \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
-      Col2Im,                                                                 \
-      kMSDomain,                                                              \
-      1,                                                                      \
-      T,                                                                      \
-      kCpuExecutionProvider,                                                  \
+#define REGISTER_KERNEL_TYPED(T)                                                \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      Col2Im,                                                                   \
+      kMSDomain,                                                                \
+      1,                                                                        \
+      T,                                                                        \
+      kCpuExecutionProvider,                                                    \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Col2Im<T>);
 

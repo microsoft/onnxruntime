@@ -4,11 +4,10 @@
 #include "core/providers/cpu/tensor/col2im.h"
 #include "core/util/math_cpuonly.h"
 
-
 namespace onnxruntime {
 
-#define REGISTER_COL2IM_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS)                  \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                           \
+#define REGISTER_COL2IM_TYPED_KERNEL(OP_TYPE, VERSION, TYPE, KERNEL_CLASS)         \
+  ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(                                               \
       OP_TYPE,                                                                     \
       VERSION,                                                                     \
       TYPE,                                                                        \
@@ -26,9 +25,9 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
   int64_t image_shape_size = 1;
   int64_t kernel_shape_size = 1;
   TensorShapeVector adjusted_kernel_shape_dims;
-  for (auto i=0; i < image_shape->Shape().Size(); ++i) {
-    image_shape_size *=  image_shape->Data<int64_t>()[i];
-    kernel_shape_size *=  kernel_shape->Data<int64_t>()[i];
+  for (auto i = 0; i < image_shape->Shape().Size(); ++i) {
+    image_shape_size *= image_shape->Data<int64_t>()[i];
+    kernel_shape_size *= kernel_shape->Data<int64_t>()[i];
     adjusted_kernel_shape_dims.push_back(col2im_attrs_.dilations[i] * (kernel_shape->Data<int64_t>()[i] - 1) + 1);
   }
   TensorShape col_shape = col_tensor->Shape();
@@ -40,9 +39,9 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
 
   TensorShapeVector batched_image_shape_dims, adjusted_image_shape_dims;
   batched_image_shape_dims.insert(batched_image_shape_dims.begin(), {N, C});
-  for (auto i=0; i < image_shape->Shape()[0]; ++i) {
+  for (auto i = 0; i < image_shape->Shape()[0]; ++i) {
     batched_image_shape_dims.push_back(image_shape->Data<int64_t>()[i]);
-    adjusted_image_shape_dims.push_back(image_shape->Data<int64_t>()[i]-adjusted_kernel_shape[i]+1);
+    adjusted_image_shape_dims.push_back(image_shape->Data<int64_t>()[i] - adjusted_kernel_shape[i] + 1);
   }
   TensorShape batched_image_shape(batched_image_shape_dims);
   T* image_data = context->Output(0, batched_image_shape)->template MutableData<T>();
@@ -51,36 +50,36 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
   for (auto image_id = 0; image_id < N; ++image_id) {
     if (image_shape->Shape()[0] == 2) {
       math::Col2im<T, CPUMathUtil, StorageOrder::NCHW>(
-        col_data + image_id * col_data_stride,
-        C,
-        image_shape->Data<int64_t>()[0],
-        image_shape->Data<int64_t>()[1],
-        kernel_shape->Data<int64_t>()[0],
-        kernel_shape->Data<int64_t>()[1],
-        col2im_attrs_.dilations[0],
-        col2im_attrs_.dilations[1],
-        col2im_attrs_.pads[0],
-        col2im_attrs_.pads[1],
-        col2im_attrs_.pads[2],
-        col2im_attrs_.pads[3],
-        col2im_attrs_.strides[0],
-        col2im_attrs_.strides[1],
-        image_data + image_id * col_stride,
-        &CPUMathUtil::Instance());
+          col_data + image_id * col_data_stride,
+          C,
+          image_shape->Data<int64_t>()[0],
+          image_shape->Data<int64_t>()[1],
+          kernel_shape->Data<int64_t>()[0],
+          kernel_shape->Data<int64_t>()[1],
+          col2im_attrs_.dilations[0],
+          col2im_attrs_.dilations[1],
+          col2im_attrs_.pads[0],
+          col2im_attrs_.pads[1],
+          col2im_attrs_.pads[2],
+          col2im_attrs_.pads[3],
+          col2im_attrs_.strides[0],
+          col2im_attrs_.strides[1],
+          image_data + image_id * col_stride,
+          &CPUMathUtil::Instance());
     } else {
       math::Col2imNd<T, CPUMathUtil, StorageOrder::NCHW>(
-        col_data + image_id * col_data_stride,
-        image_shape->Data<int64_t>(),
-        adjusted_image_shape_dims.data(),
-        kernel_shape_size * C,
-        image_shape_size,
-        adjusted_kernel_shape.GetDims().data(),
-        col2im_attrs_.strides.data(),
-        col2im_attrs_.dilations.data(),
-        col2im_attrs_.pads.data(),
-        image_shape->Shape().Size(),
-        image_data + image_id * col_stride,
-        &CPUMathUtil::Instance());
+          col_data + image_id * col_data_stride,
+          image_shape->Data<int64_t>(),
+          adjusted_image_shape_dims.data(),
+          kernel_shape_size * C,
+          image_shape_size,
+          adjusted_kernel_shape.GetDims().data(),
+          col2im_attrs_.strides.data(),
+          col2im_attrs_.dilations.data(),
+          col2im_attrs_.pads.data(),
+          image_shape->Shape().Size(),
+          image_data + image_id * col_stride,
+          &CPUMathUtil::Instance());
     }
   }
   return Status::OK();

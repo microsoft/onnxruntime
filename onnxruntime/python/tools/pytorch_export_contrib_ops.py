@@ -1,5 +1,5 @@
-# Copyright (c) Microsoft Corporation. All rights reserved.
-# Licensed under the MIT License.
+#Copyright(c) Microsoft Corporation.All rights reserved.
+#Licensed under the MIT License.
 
 """
 Support for registering ONNX Runtime's built-in contrib ops with
@@ -8,7 +8,7 @@ PyTorch-ONNX exporter (torch.onnx.export).
 import typing
 
 try:
-    # TODO(justinchuby): Create a function to alert users when torch is not installed
+#TODO(justinchuby) : Create a function to alert users when torch is not installed
     import torch
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
@@ -35,26 +35,26 @@ def register():
     """
 
     def grid_sampler(g, input, grid, mode, padding_mode, align_corners):
-        # mode
-        #   'bilinear'      : onnx::Constant[value={0}]
-        #   'nearest'       : onnx::Constant[value={1}]
-        #   'bicubic'       : onnx::Constant[value={2}]
-        # padding_mode
-        #   'zeros'         : onnx::Constant[value={0}]
-        #   'border'        : onnx::Constant[value={1}]
-        #   'reflection'    : onnx::Constant[value={2}]
+#mode
+#'bilinear' : onnx::Constant[value = {0 }]
+#'nearest' : onnx::Constant[value = {1 }]
+#'bicubic' : onnx::Constant[value = {2 }]
+#padding_mode
+#'zeros' : onnx::Constant[value = {0 }]
+#'border' : onnx::Constant[value = {1 }]
+#'reflection' : onnx::Constant[value = {2 }]
         mode = sym_help._maybe_get_const(mode, "i")
         padding_mode = sym_help._maybe_get_const(padding_mode, "i")
         mode_str = ["bilinear", "nearest", "bicubic"][mode]
         padding_mode_str = ["zeros", "border", "reflection"][padding_mode]
         align_corners = int(sym_help._maybe_get_const(align_corners, "b"))
 
-        # From opset v13 onward, the output shape can be specified with
-        # (N, C, H, W) (N, H_out, W_out, 2) => (N, C, H_out, W_out)
-        # input_shape = input.type().sizes()
-        # gird_shape = grid.type().sizes()
-        # output_shape = input_shape[:2] + gird_shape[1:3]
-        # g.op(...).setType(input.type().with_sizes(output_shape))
+#From opset v13 onward, the output shape can be specified with
+#(N, C, H, W)(N, H_out, W_out, 2) =>(N, C, H_out, W_out)
+#input_shape = input.type().sizes()
+#gird_shape = grid.type().sizes()
+#output_shape = input_shape[ : 2] + gird_shape[1 : 3]
+#g.op(...).setType(input.type().with_sizes(output_shape))
 
         return g.op(
             "com.microsoft::GridSample",
@@ -74,7 +74,7 @@ def register():
 
     @torch.onnx.symbolic_helper.parse_args("v", "s")
     def gelu(g, self: torch._C.Value, approximate: str = "none"):
-        # Use microsoft::Gelu for performance if possible. It only supports approximate == "none"
+#Use microsoft::Gelu for performance if possible.It only supports approximate == "none"
         if approximate == "none":
             return g.op("com.microsoft::Gelu", self).setType(self.type())
         return torch.onnx.symbolic_opset9.gelu(g, self, approximate)
@@ -103,7 +103,7 @@ def unregister():
         try:
             torch.onnx.unregister_custom_op_symbolic(name, _OPSET_VERSION)
         except AttributeError:
-            # unregister_custom_op_symbolic is not available before PyTorch 1.12
+#unregister_custom_op_symbolic is not available before PyTorch 1.12
             namespace, kind = name.split("::")
             for version in sym_help._onnx_stable_opsets:
                 if version >= _OPSET_VERSION and sym_registry.is_registered_op(kind, namespace, version):

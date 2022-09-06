@@ -762,7 +762,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
                                     "Y = softmax(scores + bias)) with simple broadcast on bias. "
                                     "Intended to specialize softmax(scores + additive_mask) commonly found in transformer models.")
                                 .Attr("axis", "apply softmax to elements for dimensions axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Attr("is_inner_broadcast", "true if broadcast bias across input for dimensions broadcast_axis to axis-1, "
+                                .Attr("is_inner_broadcast",
+                                      "true if broadcast bias across input for dimensions broadcast_axis to axis-1, "
                                       "otherwise broadcast bias across input for dimensions 0 to broadcast_axis - 1",
                                       AttributeProto::INT)
                                 .Input(0, "data", "The input data as Tensor.", "T")
@@ -1011,86 +1012,86 @@ but it only supports *batched* multi-dimensional image tensors.
 
 NOTE: Although specifying image_shape looks redundant because it could be calculated from
       convolution formulas, it is required as input for more advanced scenarios as explained
-      at PyTorch's implementation (https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/Col2Im.cpp#L10)
+      at PyTorch's implementation (https://github.com/pytorch/pytorch/blob/faac3dbce20a6068a3e530c11788896e81a73c64/aten/src/ATen/native/Col2Im.cpp#L10)
 
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(Col2Im, 1,
                             OpSchema()
-                            .SetDoc(Col2Im_ver1_doc)
-                            .Attr(
-                                "dilations",
-                                "1-dimensional tensor with dilation value along each spatial axis of the image. "
-                                "If not present, the dilation defaults to 1 along each spatial axis of the image.",
-                                AttributeProto::INTS,
-                                OPTIONAL_VALUE)
-                            .Attr(
-                                "pads",
-                                "1-dimensional tensor with padding value for the beginning and ending along each"
-                                " spatial axis, it can take any value greater than or equal to 0. "
-                                "The value represent the number of pixels added to the beginning "
-                                "and end part of the corresponding axis. `pads` format should be as follow "
-                                "[x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin is the number of pixels "
-                                "added at the beginning of axis `i` and xi_end the same for the end of axis `i`. "
-                                "If not present, the padding defaults to 0 along start and end of each spatial axis.",
-                                AttributeProto::INTS,
-                                OPTIONAL_VALUE)
-                            .Attr(
-                                "strides",
-                                "1-dimensional tensor with stride value along each spatial axis. "
-                                "If not present, the stride defaults to 1 along each spatial axis.",
-                                AttributeProto::INTS,
-                                OPTIONAL_VALUE)
-                            .Input(
-                                0,
-                                "input",
-                                "Input data tensor to be rearranged from column blocks back into an image."
-                                " This is a 3-dimensional tensor containing [N, C * n-ary-product(block_shape), L],"
-                                " where N is batch dimension, C is image channel dimension and L is number of blocks.",
-                                "T",
-                                OpSchema::Single,
-                                true,
-                                1,
-                                OpSchema::Differentiable)
-                            .Input(
-                                1,
-                                "image_shape",
-                                "The shape of the spatial dimensions of the image after rearranging the column blocks."
-                                "This is a 1-dim tensor with size of at least 2, containing the value [H_img, W_img] "
-                                " for a 2-D image or [dim_i1, dim_i2, ..., dim_iN] for a N-D image.",
-                                "tensor(int64)",
-                                OpSchema::Single,
-                                true,
-                                1,
-                                OpSchema::NonDifferentiable)
-                            .Input(
-                                2,
-                                "block_shape",
-                                "The shape of the block to apply on the input."
-                                "This is a 1-dim tensor of size of at least 2, containing the value [H_block, W_block] "
-                                " for a 2-D image or [dim_b1, dim_b2, ..., dim_bN] for a N-D block."
-                                "Dilations, pads and strides are applied to block_shape under the hood."
-                                "The kernel window start at the top-left of the block and slides to the right and down,"
-                                "similarly to how Convolution kernels do.",
-                                "tensor(int64)",
-                                OpSchema::Single,
-                                true,
-                                1,
-                                OpSchema::NonDifferentiable)
-                            .Output(
-                                0,
-                                "output",
-                                "Output tensor produced by rearranging blocks into an image.",
-                                "T",
-                                OpSchema::Single,
-                                true,
-                                1,
-                                OpSchema::Differentiable)
-                            .TypeConstraint(
-                                "T",
-                                OpSchema::all_tensor_types_with_bfloat(),
-                                "Constrain input and output types to all numeric tensor types.")
-                           .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { col2imShapeInference(ctx); }));
+                                .SetDoc(Col2Im_ver1_doc)
+                                .Attr(
+                                    "dilations",
+                                    "1-dimensional tensor with dilation value along each spatial axis of the image. "
+                                    "If not present, the dilation defaults to 1 along each spatial axis of the image.",
+                                    AttributeProto::INTS,
+                                    OPTIONAL_VALUE)
+                                .Attr(
+                                    "pads",
+                                    "1-dimensional tensor with padding value for the beginning and ending along each "
+                                    "spatial axis, it can take any value greater than or equal to 0. "
+                                    "The value represent the number of pixels added to the beginning "
+                                    "and end part of the corresponding axis. `pads` format should be as follow "
+                                    "[x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin is the number of pixels "
+                                    "added at the beginning of axis `i` and xi_end the same for the end of axis `i`. "
+                                    "If not present, the padding defaults to 0 along start and end of each spatial axis.",
+                                    AttributeProto::INTS,
+                                    OPTIONAL_VALUE)
+                                .Attr(
+                                    "strides",
+                                    "1-dimensional tensor with stride value along each spatial axis. "
+                                    "If not present, the stride defaults to 1 along each spatial axis.",
+                                    AttributeProto::INTS,
+                                    OPTIONAL_VALUE)
+                                .Input(
+                                    0,
+                                    "input",
+                                    "Input data tensor to be rearranged from column blocks back into an image. "
+                                    "This is a 3-dimensional tensor containing [N, C * n-ary-product(block_shape), L], "
+                                    "where N is batch dimension, C is image channel dimension and L is number of blocks.",
+                                    "T",
+                                    OpSchema::Single,
+                                    true,
+                                    1,
+                                    OpSchema::Differentiable)
+                                .Input(
+                                    1,
+                                    "image_shape",
+                                    "The shape of the spatial dimensions of the image after rearranging the column blocks. "
+                                    "This is a 1-dim tensor with size of at least 2, containing the value [H_img, W_img] "
+                                    "for a 2-D image or [dim_i1, dim_i2, ..., dim_iN] for a N-D image.",
+                                    "tensor(int64)",
+                                    OpSchema::Single,
+                                    true,
+                                    1,
+                                    OpSchema::NonDifferentiable)
+                                .Input(
+                                    2,
+                                    "block_shape",
+                                    "The shape of the block to apply on the input."
+                                    "This is a 1-dim tensor of size of at least 2, containing the value [H_block, W_block] "
+                                    "for a 2-D image or [dim_b1, dim_b2, ..., dim_bN] for a N-D block. "
+                                    "Dilations, pads and strides are applied to block_shape under the hood. "
+                                    "The kernel window start at the top-left of the block and slides to the right and down, "
+                                    "similarly to how Convolution kernels do.",
+                                    "tensor(int64)",
+                                    OpSchema::Single,
+                                    true,
+                                    1,
+                                    OpSchema::NonDifferentiable)
+                                .Output(
+                                    0,
+                                    "output",
+                                    "Output tensor produced by rearranging blocks into an image.",
+                                    "T",
+                                    OpSchema::Single,
+                                    true,
+                                    1,
+                                    OpSchema::Differentiable)
+                                .TypeConstraint(
+                                    "T",
+                                    OpSchema::all_tensor_types_with_bfloat(),
+                                    "Constrain input and output types to all numeric tensor types.")
+                                .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { col2imShapeInference(ctx); }));
 
 constexpr const char* GridSample_ver1_doc = R"DOC(
       Given an `input` and a flow-field `grid`, computes the `output` using `input` values and pixel locations from `grid`.
