@@ -69,7 +69,7 @@ class QuantConfig:
         nodes_to_exclude = nodes_to_exclude or []
         nodes_to_quantize = nodes_to_quantize or []
         op_types_to_quantize = op_types_to_quantize or []
-        if execution_provider == "CPU":
+        if execution_provider == ExecutionProvider.CPU:
             self.op_types_to_quantize = op_types_to_quantize
             self.per_channel = per_channel
             self.reduce_range = reduce_range
@@ -80,13 +80,13 @@ class QuantConfig:
             self.use_external_data_format = use_external_data_format
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
-        elif execution_provider == "TRT":
+        elif execution_provider == ExecutionProvider.TRT:
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
-        elif execution_provider == "NNAPI":
+        elif execution_provider == ExecutionProvider.NNAPI:
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
-        elif execution_provider == "SNE":
+        elif execution_provider == ExecutionProvider.SNE:
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
 
@@ -158,19 +158,19 @@ class StaticQuantConfig(QuantConfig):
 
         super().__init__(execution_provider=execution_provider)
         self.extra_options = extra_options or {}
-        if execution_provider == "CPU":
+        if execution_provider == ExecutionProvider.CPU:
             self.quant_format = quant_format
             self.activation_type = activation_type
             self.calibrate_method = calibrate_method
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
-        elif execution_provider == "TRT":
+        elif execution_provider == ExecutionProvider.TRT:
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
-        elif execution_provider == "NNAPI":
+        elif execution_provider == ExecutionProvider.NNAPI:
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
-        elif execution_provider == "SNE":
+        elif execution_provider == ExecutionProvider.SNE:
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
 
@@ -205,16 +205,16 @@ class DynamicQuantConfig:
         """
         super().__init__(execution_provider=execution_provider)
         self.extra_options = extra_options or {}
-        if execution_provider == "CPU":
+        if execution_provider == ExecutionProvider.CPU:
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
-        elif execution_provider == "TRT":
+        elif execution_provider == ExecutionProvider.TRT:
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
-        elif execution_provider == "NNAPI":
+        elif execution_provider == ExecutionProvider.NNAPI:
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
-        elif execution_provider == "SNE":
+        elif execution_provider == ExecutionProvider.SNE:
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
 
