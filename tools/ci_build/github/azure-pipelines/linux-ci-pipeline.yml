@@ -13,7 +13,7 @@ jobs:
     clean: all
   variables:
     skipComponentGovernanceDetection: true
-  pool: Linux-CPU-2019
+  pool: Linux-CPU-2019-Beta
   steps:
   - checkout: self
     clean: true
