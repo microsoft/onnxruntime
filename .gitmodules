@@ -78,3 +78,6 @@
 [submodule "cmake/external/XNNPACK"]
 	path = cmake/external/XNNPACK
 	url = https://github.com/google/XNNPACK.git
+[submodule "cmake/external/FasterTransformer"]
+	path = cmake/external/FasterTransformer
+	url = https://github.com/NVIDIA/FasterTransformer/

@@ -538,6 +538,13 @@ if (onnxruntime_USE_CUDA)
     target_compile_definitions(onnxruntime_providers_cuda PRIVATE ENABLE_ATEN)
   endif()
 
+  # if (onnxruntime_USE_FASTERTRANSFORMER)
+    include(external/fastertransformer.cmake)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES transformer-static)
+    list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES transformer-static)
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE transformer-static)
+  # endif()
+
   install(TARGETS onnxruntime_providers_cuda
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
