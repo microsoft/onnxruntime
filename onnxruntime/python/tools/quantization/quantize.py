@@ -237,19 +237,9 @@ def quantize_static(
     model_input,
     model_output,
     calibration_data_reader: CalibrationDataReader,
-    quant_format=QuantFormat.QDQ,
-    op_types_to_quantize=[],
-    per_channel=False,
-    reduce_range=False,
-    activation_type=QuantType.QInt8,
-    weight_type=QuantType.QInt8,
-    nodes_to_quantize=[],
-    nodes_to_exclude=[],
-    optimize_model=True,
-    use_external_data_format=False,
-    calibrate_method=CalibrationMethod.MinMax,
     extra_options=None,
     execution_provider: ExecutionProvider = ExecutionProvider.CPU,
+    **kwargs,
 ):
     """
     Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
@@ -265,39 +255,6 @@ def quantize_static(
         calibration_data_reader: a calibration data reader. It
             enumerates calibration data and generates inputs for the
             original model.
-        quant_format: QuantFormat{QOperator, QDQ}.
-                QOperator format quantizes the model with quantized operators directly.
-                QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
-        op_types_to_quantize:
-            specify the types of operators to quantize, like ['Conv'] to quantize Conv only.
-            It quantizes all supported operators by default.
-        per_channel: quantize weights per channel
-        reduce_range:
-            quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine,
-            especially for per-channel mode
-        activation_type:
-                quantization data type of activation. Please refer to
-                https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
-        weight_type:
-            quantization data type of weight. Please refer to
-            https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
-        nodes_to_quantize:
-            List of nodes names to quantize. When this list is not None only the nodes in this list
-            are quantized.
-            example:
-            [
-                'Conv__224',
-                'Conv__252'
-            ]
-        nodes_to_exclude:
-            List of nodes names to exclude. The nodes in this list will be excluded from quantization
-            when it is not None.
-        optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
-            change the computation graph, making debugging of quantization loss difficult.
-        use_external_data_format: option used for large size (>2GB) model. Set to False by default.
-        calibrate_method:
-            Current calibration methods supported are MinMax and Entropy.
-            Please use CalibrationMethod.MinMax or CalibrationMethod.Entropy as options.
         extra_options:
             key value pair dictionary for various options in different case. Current used:
                 extra.Sigmoid.nnapi = True/False  (Default is False)
@@ -341,21 +298,24 @@ def quantize_static(
     extra_options = extra_options or {}
 
     quant_config = StaticQuantConfig(
-        quant_format=quant_format,
-        activation_type=activation_type,
+        quant_format=kwargs.get("quant_format") or QuantFormat.QDQ,
+        activation_type=kwargs.get("activation_type") or QuantType.QInt8,
+        calibrate_method=kwargs.get("calibrate_method") or CalibrationMethod.MinMax,
         extra_options=extra_options,
         execution_provider=execution_provider,
     )
 
-    quant_config.op_types_to_quantize = op_types_to_quantize or quant_config.op_types_to_quantize
-    quant_config.per_channel = per_channel or quant_config.per_channel
-    quant_config.reduce_range = reduce_range or False
-    quant_config.weight_type = weight_type or quant_config.weight_type
-    quant_config.nodes_to_quantize = nodes_to_quantize or quant_config.nodes_to_quantize
-    quant_config.nodes_to_exclude = nodes_to_exclude or quant_config.nodes_to_exclude
-    quant_config.optimize_model = optimize_model or quant_config.optimize_model
-    quant_config.use_external_data_format = use_external_data_format or False
-    quant_config.calibrate_method = calibrate_method or CalibrationMethod.MinMax
+    quant_config.op_types_to_quantize = kwargs.get("op_types_to_quantize", quant_config.op_types_to_quantize)
+    quant_config.per_channel = kwargs.get("per_channel", quant_config.per_channel)
+    quant_config.reduce_range = kwargs.get("reduce_range", quant_config.reduce_range)
+    quant_config.weight_type = kwargs.get("weight_type", quant_config.weight_type)
+    quant_config.nodes_to_quantize = kwargs.get("nodes_to_quantize", quant_config.nodes_to_quantize)
+    quant_config.nodes_to_exclude = kwargs.get("nodes_to_exclude", quant_config.nodes_to_exclude)
+    quant_config.optimize_model = kwargs.get("optimize_model", quant_config.optimize_model)
+    quant_config.use_external_data_format = kwargs.get(
+        "use_external_data_format", quant_config.use_external_data_format
+    )
+    quant_config.calibrate_method = kwargs.get("calibrate_method", quant_config.calibrate_method)
 
     mode = QuantizationMode.QLinearOps
 
@@ -442,46 +402,15 @@ def quantize_static(
 def quantize_dynamic(
     model_input: Path,
     model_output: Path,
-    op_types_to_quantize=None,
-    per_channel=False,
-    reduce_range=False,
-    weight_type=QuantType.QInt8,
-    nodes_to_quantize=None,
-    nodes_to_exclude=None,
-    optimize_model=True,
-    use_external_data_format=False,
     extra_options=None,
     execution_provider: ExecutionProvider = ExecutionProvider.CPU,
+    **kwargs,
 ):
     """Given an onnx model, create a quantized onnx model and save it into a file
 
     Args:
         model_input: file path of model to quantize
         model_output: file path of quantized model
-        op_types_to_quantize:
-            specify the types of operators to quantize, like ['Conv'] to quantize Conv only.
-            It quantizes all supported operators by default.
-        per_channel: quantize weights per channel
-        reduce_range:
-            quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine,
-            especially for per-channel mode
-        weight_type:
-            quantization data type of weight. Please refer to
-            https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
-        nodes_to_quantize:
-            List of nodes names to quantize. When this list is not None only the nodes in this list
-            are quantized.
-            example:
-            [
-                'Conv__224',
-                'Conv__252'
-            ]
-        nodes_to_exclude:
-            List of nodes names to exclude. The nodes in this list will be excluded from quantization
-            when it is not None.
-        optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
-            change the computation graph, making debugging of quantization loss difficult.
-        use_external_data_format: option used for large size (>2GB) model. Set to False by default.
         extra_options:
             key value pair dictionary for various options in different case. Current used:
                 extra.Sigmoid.nnapi = True/False  (Default is False)
@@ -498,21 +427,20 @@ def quantize_dynamic(
                     Default is True for dynamic mode. If enabled, only MatMul with const B will be quantized.
         execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
     """
-    op_types_to_quantize = op_types_to_quantize or []
-    nodes_to_quantize = nodes_to_quantize or []
-    nodes_to_exclude = nodes_to_exclude or []
     extra_options = extra_options or {}
 
     quant_config = DynamicQuantConfig(extra_options=extra_options, execution_provider=execution_provider)
 
-    quant_config.op_types_to_quantize = op_types_to_quantize or quant_config.op_types_to_quantize
-    quant_config.per_channel = per_channel or quant_config.per_channel
-    quant_config.reduce_range = reduce_range or False
-    quant_config.weight_type = weight_type or quant_config.weight_type
-    quant_config.nodes_to_quantize = nodes_to_quantize or quant_config.nodes_to_quantize
-    quant_config.nodes_to_exclude = nodes_to_exclude or quant_config.nodes_to_exclude
-    quant_config.optimize_model = optimize_model or quant_config.optimize_model
-    quant_config.use_external_data_format = use_external_data_format or False
+    quant_config.op_types_to_quantize = kwargs.get("op_types_to_quantize", quant_config.op_types_to_quantize)
+    quant_config.per_channel = kwargs.get("per_channel", quant_config.per_channel)
+    quant_config.reduce_range = kwargs.get("reduce_range", quant_config.reduce_range)
+    quant_config.weight_type = kwargs.get("weight_type", quant_config.weight_type)
+    quant_config.nodes_to_quantize = kwargs.get("nodes_to_quantize", quant_config.nodes_to_quantize)
+    quant_config.nodes_to_exclude = kwargs.get("nodes_to_exclude", quant_config.nodes_to_exclude)
+    quant_config.optimize_model = kwargs.get("optimize_model", quant_config.optimize_model)
+    quant_config.use_external_data_format = kwargs.get(
+        "use_external_data_format", quant_config.use_external_data_format
+    )
 
     mode = QuantizationMode.IntegerOps
 
