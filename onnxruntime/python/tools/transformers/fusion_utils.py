@@ -118,6 +118,12 @@ class FusionUtils:
             self.model.remove_nodes(nodes_to_remove)
             logger.info(f"Removed {len(nodes_to_remove)} Identity nodes")
 
+    def remove_cascaded_cast_nodes(self):
+        self.model.remove_cascaded_cast_nodes()
+
+    def remove_useless_cast_nodes(self):
+        self.model.remove_useless_cast_nodes()
+
     def remove_useless_reshape_nodes(self):
         """Remove reshape node that is not needed based on symbolic shape inference: input and output has same shape"""
         shape_infer = self.model.infer_runtime_shape(update=True)
