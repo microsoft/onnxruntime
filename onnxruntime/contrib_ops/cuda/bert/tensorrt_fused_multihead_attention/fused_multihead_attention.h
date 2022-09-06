@@ -23,7 +23,7 @@
 #include <utility>
 #include <unordered_map>
 #include <vector>
-#include "cuda_runtime_api.h"
+#include <cuda_runtime_api.h>
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cudaDriverWrapper.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/fused_multihead_attention_common.h"
 

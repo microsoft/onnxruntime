@@ -63,13 +63,15 @@ class CUDADriverWrapper {
   CUresult cuLinkAddData(CUlinkState state, CUjitInputType type, void* data, size_t size, const char* name,
                          uint32_t numOptions, CUjit_option* options, void** optionValues) const;
 
-  CUresult cuLaunchCooperativeKernel(CUfunction f, uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
-                                     uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes, CUstream hStream,
-                                     void** kernelParams) const;
+  CUresult cuLaunchCooperativeKernel(
+      CUfunction f, uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
+      uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes, CUstream hStream,
+      void** kernelParams) const;
 
-  CUresult cuLaunchKernel(CUfunction f, uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ, uint32_t blockDimX,
-                          uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes, CUstream hStream, void** kernelParams,
-                          void** extra) const;
+  CUresult cuLaunchKernel(
+      CUfunction f, uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ, uint32_t blockDimX,
+      uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes, CUstream hStream, void** kernelParams,
+      void** extra) const;
 
  private:
   void* handle;
@@ -86,9 +88,10 @@ class CUDADriverWrapper {
       CUlinkState, CUjitInputType, void*, size_t, const char*, unsigned int, CUjit_option*, void**);
   CUresult (*_cuLaunchCooperativeKernel)(CUfunction, unsigned int, unsigned int, unsigned int, unsigned int,
                                          unsigned int, unsigned int, unsigned int, CUstream, void**);
-  CUresult (*_cuLaunchKernel)(CUfunction f, uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
-                              uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes, CUstream hStream,
-                              void** kernelParams, void** extra);
+  CUresult (*_cuLaunchKernel)(
+      CUfunction f, uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
+      uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes, CUstream hStream,
+      void** kernelParams, void** extra);
 };
 
 inline void cuErrCheck_(CUresult stat, const CUDADriverWrapper& wrap, const char* file, int line) {
