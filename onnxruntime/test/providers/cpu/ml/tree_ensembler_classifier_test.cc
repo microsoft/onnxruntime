@@ -190,8 +190,7 @@ TEST(MLOpTest, TreeEnsembleClassifierFailShape) {
   std::vector<float> scores{7, 0, 0, 0};
   std::vector<float> probs = {};
   std::vector<float> log_probs = {};
- 
-  // define the context of the operator call
+
   constexpr int N = 1;
   test.AddAttribute("nodes_truenodeids", lefts);
   test.AddAttribute("nodes_falsenodeids", rights);
@@ -209,7 +208,8 @@ TEST(MLOpTest, TreeEnsembleClassifierFailShape) {
   test.AddInput<float>("X", {N, 2}, X);
   test.AddOutput<int64_t>("Y", {N}, results);
   test.AddOutput<float>("Z", {N, static_cast<int64_t>(classes.size())}, scores);
-  test.Run(OpTester::ExpectResult::kExpectFailure, "One path in the graph requests feature 2 but input tensor has 2 features.");
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "One path in the graph requests feature 2 but input tensor has 2 features.");
 }
 
 TEST(MLOpTest, TreeEnsembleClassifierLabels) {
