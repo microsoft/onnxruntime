@@ -32,10 +32,10 @@ def _optimization_suffix(optimization_level_str: str, optimization_style: Optimi
 
 def _create_config_file_path(
     model_path_or_dir: pathlib.Path,
+    output_dir: typing.Optional[pathlib.Path],
     optimization_level_str: str,
     optimization_style: OptimizationStyle,
     enable_type_reduction: bool,
-    output_dir: typing.Optional[pathlib.Path],
 ):
     config_name = "{}{}".format(
         "required_operators_and_types" if enable_type_reduction else "required_operators",
@@ -266,7 +266,12 @@ def parse_args():
 def convert_onnx_models_to_ort():
     args = parse_args()
 
-    output_dir = args.output_dir.resolve() if args.output_dir else None
+    output_dir = None
+    if args.output_dir is not None:
+        if not args.output_dir.is_dir():
+            args.output_dir.mkdir(parents=True)
+        output_dir = args.output_dir.resolve(strict=True)
+
     optimization_styles = [OptimizationStyle[style_str] for style_str in args.optimization_style]
     # setting optimization level is not expected to be needed by typical users, but it can be set with this
     # environment variable
@@ -345,10 +350,10 @@ def convert_onnx_models_to_ort():
 
             config_file = _create_config_file_path(
                 model_path_or_dir,
+                output_dir,
                 optimization_level_str,
                 optimization_style,
                 args.enable_type_reduction,
-                output_dir,
             )
 
             create_config_from_models(converted_models, config_file, args.enable_type_reduction)
