@@ -74,11 +74,12 @@ class OrtFormatModelDumper:
     def _dump_node(self, node: fbs.Node):
         optype = node.OpType().decode()
         domain = node.Domain().decode() or "ai.onnx"  # empty domain defaults to ai.onnx
+        since_version = node.SinceVersion()
 
         inputs = [node.Inputs(i).decode() for i in range(0, node.InputsLength())]
         outputs = [node.Outputs(i).decode() for i in range(0, node.OutputsLength())]
         print(
-            f"{node.Index()}:{node.Name().decode()}({domain}:{optype}) "
+            f"{node.Index()}:{node.Name().decode()}({domain}:{optype}:{since_version}) "
             f'inputs=[{",".join(inputs)}] outputs=[{",".join(outputs)}]'
         )
 
