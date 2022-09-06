@@ -192,49 +192,49 @@ __global__ void BitonicTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> 
 
 
 template <typename T>
-__device__ __inline__ bool Equal(const T& t0, const T& t1) {
+__device__ __forceinline__ bool Equal(const T& t0, const T& t1) {
     return t0 == t1;
 }
 
-__device__ __inline__ bool Equal(const float& t0, const float& t1) {
+__device__ __forceinline__ bool Equal(const float& t0, const float& t1) {
   return !(t0 > t1 || t1 > t0);
 }
 
-__device__ __inline__ bool Equal(const double& t0, const double& t1) {
+__device__ __forceinline__ bool Equal(const double& t0, const double& t1) {
   return !(t0 > t1 || t1 > t0);
 }
 
 template<typename T>
-__device__ bool SamePrefix(const T* t0, const T* t1, int64_t skip) {
+__device__ __forceinline__ bool SamePrefix(const T* t0, const T* t1, int64_t skip) {
   return ((*t0)^(*t1))>>skip == 0;
 }
 
-__device__ bool SamePrefix(const half* f0, const half* f1, int64_t skip) {
+__device__ __forceinline__ bool SamePrefix(const half* f0, const half* f1, int64_t skip) {
   return SamePrefix((const int16_t*)f0, (const int16_t*)f1, skip);
 }
 
-__device__ bool SamePrefix(const float* f0, const float* f1, int64_t skip) {
+__device__ __forceinline__ bool SamePrefix(const float* f0, const float* f1, int64_t skip) {
   return SamePrefix((const int32_t*)f0, (const int32_t*)f1, skip);
 }
 
-__device__ bool SamePrefix(const double* d0, const double* d1, int64_t skip) {
+__device__ __forceinline__ bool SamePrefix(const double* d0, const double* d1, int64_t skip) {
   return SamePrefix((const int64_t*)d0, (const int64_t*)d1, skip);
 }
 
 template<typename T>
-__device__ int32_t Radix(const T* t, int64_t skip) {
+__device__ __forceinline__ int32_t Radix(const T* t, int64_t skip) {
   return ((*t)>>skip)&255;
 }
 
-__device__ int32_t Radix(const half* f, int64_t skip) {
+__device__ __forceinline__ int32_t Radix(const half* f, int64_t skip) {
   return Radix((const int16_t*)f, skip);
 }
 
-__device__ int32_t Radix(const float* f, int64_t skip) {
+__device__ __forceinline__ int32_t Radix(const float* f, int64_t skip) {
   return Radix((const int32_t*)f, skip);
 }
 
-__device__ int32_t Radix(const double* d, int64_t skip) {
+__device__ __forceinline__ int32_t Radix(const double* d, int64_t skip) {
   return Radix((const int64_t*)d, skip);
 }
 
@@ -243,15 +243,15 @@ __device__ void SetByte(T* t, int64_t byte) {
   (*t) |= byte;
 }
 
-__device__ void SetByte(half* f, int64_t byte) {
+__device__ __forceinline__ void SetByte(half* f, int64_t byte) {
   SetByte((int16_t*)f, byte);
 }
 
-__device__ void SetByte(float* f, int64_t byte) {
+__device__ __forceinline__ void SetByte(float* f, int64_t byte) {
   SetByte((int32_t*)f, byte);
 }
 
-__device__ void SetByte(double* d, int64_t byte) {
+__device__ __forceinline__ void SetByte(double* d, int64_t byte) {
   SetByte((int64_t*)d, byte);
 }
 
@@ -427,7 +427,9 @@ __global__ void FillOutput(const T* input_v, const int64_t* input_i, T* output_v
   output_i[output_offset] = input_i[id];
 }
 
-__global__ void ExcludeOutput(int64_t* output_i, int64_t K, int64_t dimension) {
+// template is used to avoid linking issue, since __global__ function cannot be inline-ed
+template <typename T>
+__global__ void ExcludeOutput(T* output_i, T K, T dimension) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, dimension);
   if (id >= K) {
     output_i[id] = dimension;
@@ -477,7 +479,7 @@ Status TopKImpl(const CudaKernel* kernel, cudaStream_t stream, const T* input_x,
       if (1 == sorted) {
         FillOutput<CudaT><<<blocks_per_grid_K, BT, 0, stream>>>(output_key, output_value, output_v_ptr, output_i, elem_nums, size, axis, K, i, dimension);
       } else {  //reorder by ascending index
-        ExcludeOutput<<<blocks_per_grid_D, BT, 0, stream>>>(output_value, K, dimension);
+        ExcludeOutput<int64_t><<<blocks_per_grid_D, BT, 0, stream>>>(output_value, K, dimension);
         CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(temp_storage, temp_bytes, output_value, input_value, output_key, input_key, dimension, 0, sizeof(T)*8, stream));
         FillOutput<CudaT><<<blocks_per_grid_K, BT, 0, stream>>>(input_key, input_value, output_v_ptr, output_i, elem_nums, size, axis, K, i, dimension);
       }
