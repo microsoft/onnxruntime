@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 import logging
 import tempfile
+from enum import Enum
 from pathlib import Path
 
 from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
@@ -13,38 +14,40 @@ from .qdq_quantizer import QDQQuantizer
 from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model, model_has_pre_process_metadata
 from .registry import IntegerOpsRegistry, QLinearOpsRegistry
 
-EXECUTION_PROVIDERS = frozenset(["CPU", "TRT", "NNAPI", "SNE", "CUSTOM"])
+
+class ExecutionProvider(Enum):
+    CPU = 1
+    TRT = 2
+    NNAPI = 3
+    SNE = 4
 
 
-class StaticQuantConfig:
-    def __init__(
+class QuantConfig:
+    def __int__(
         self,
-        quant_format=QuantFormat.QDQ,
         op_types_to_quantize=None,
         per_channel=False,
         reduce_range=False,
-        activation_type=QuantType.QInt8,
         weight_type=QuantType.QInt8,
         nodes_to_quantize=None,
         nodes_to_exclude=None,
         optimize_model=True,
         use_external_data_format=False,
-        calibrate_method=CalibrationMethod.MinMax,
-        extra_options=None,
-        execution_provider="CUSTOM",
+        execution_provider: ExecutionProvider = ExecutionProvider.CPU,
     ):
         """
-        This is a class for static Quant Configuration
-
+        This is the Base class for both Static and Dynamic Quantize Configuration
         Args:
-            quant_format: QuantFormat{QOperator, QDQ}.
-                QOperator format quantizes the model with quantized operators directly.
-                QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
-            op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
+            op_types_to_quantize:
+                specify the types of operators to quantize, like ['Conv'] to quantize Conv only.
+                It quantizes all supported operators by default.
             per_channel: quantize weights per channel
-            reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
-            activation_type: quantization data type of activation. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
-            weight_type: quantization data type of weight. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
+            reduce_range:
+                quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine,
+                especially for per-channel mode
+            weight_type:
+                quantization data type of weight. Please refer to
+                https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
             nodes_to_quantize:
                 List of nodes names to quantize. When this list is not None only the nodes in this list
                 are quantized.
@@ -59,6 +62,54 @@ class StaticQuantConfig:
             optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
                 change the computation graph, making debugging of quantization loss difficult.
             use_external_data_format: option used for large size (>2GB) model. Set to False by default.
+            execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
+
+        """
+
+        nodes_to_exclude = nodes_to_exclude or []
+        nodes_to_quantize = nodes_to_quantize or []
+        op_types_to_quantize = op_types_to_quantize or []
+        if execution_provider == "CPU":
+            self.op_types_to_quantize = op_types_to_quantize
+            self.per_channel = per_channel
+            self.reduce_range = reduce_range
+            self.weight_type = weight_type
+            self.nodes_to_quantize = nodes_to_quantize
+            self.nodes_to_exclude = nodes_to_exclude
+            self.optimize_model = optimize_model
+            self.use_external_data_format = use_external_data_format
+            # TODO : change this config once our team decides default value
+            self.execution_provider = execution_provider
+        elif execution_provider == "TRT":
+            # TODO : change this config once our team decides default value
+            self.execution_provider = execution_provider
+        elif execution_provider == "NNAPI":
+            # TODO : change this config once our team decides default value
+            self.execution_provider = execution_provider
+        elif execution_provider == "SNE":
+            # TODO : change this config once our team decides default value
+            self.execution_provider = execution_provider
+
+
+class StaticQuantConfig(QuantConfig):
+    def __init__(
+        self,
+        quant_format=QuantFormat.QDQ,
+        activation_type=QuantType.QInt8,
+        calibrate_method=CalibrationMethod.MinMax,
+        extra_options=None,
+        execution_provider: ExecutionProvider = ExecutionProvider.CPU,
+    ):
+        """
+        This is the derived class for static Quantize Configuration
+
+        Args:
+            quant_format: QuantFormat{QOperator, QDQ}.
+                QOperator format quantizes the model with quantized operators directly.
+                QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
+            activation_type:
+                quantization data type of activation. Please refer to
+                https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
             calibrate_method:
                 Current calibration methods supported are MinMax and Entropy.
                 Please use CalibrationMethod.MinMax or CalibrationMethod.Entropy as options.
@@ -69,54 +120,48 @@ class StaticQuantConfig:
                     WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
                     EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
                                                   Dyanmic mode currently is supported. Will support more in future.
-                    ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
-                                                             if their input is not quantized already. Setting to True to force such operator
-                                                             always quantize input and so generate quantized output. Also the True behavior
-                                                             could be disabled per node using the nodes_to_exclude.
-                    MatMulConstBOnly = True/False: Default is False for static mode. If enabled, only MatMul with const B will be quantized.
-                    AddQDQPairToWeight = True/False : Default is False which quantizes floating-point weight and feeds it to
-                                                      solely inserted DeQuantizeLinear node. If True, it remains floating-point weight and
-                                                      inserts both QuantizeLinear/DeQuantizeLinear nodes to weight.
-                    OpTypesToExcludeOutputQuantizatioin = list of op type : Default is []. If any op type is specified, it won't quantize
-                                                                            the output of ops with this specific op types.
-                    DedicatedQDQPair = True/False : Default is False. When inserting QDQ pair, multiple nodes can share a single QDQ pair as their inputs.
-                                                    If True, it will create identical and dedicated QDQ pair for each node.
-                    QDQOpTypePerChannelSupportToAxis = dictionary : Default is {}. Set channel axis for specific op type, for example: {'MatMul': 1},
-                                                                    and it's effective only when per channel quantization is supported and per_channel is True.
-                                                                    If specific op type supports per channel quantization but not explicitly specified with channel axis,
-                                                                    default channel axis will be used.
-                    CalibTensorRangeSymmetric = True/False : Default is False. If enabled, the final range of tensor during calibration will be explicitly set to symmetric to central point "0".
-                    CalibMovingAverage = True/False : Default is False. If enabled, the moving average of the minimum and maximum values
-                                                      will be computed when the calibration method selected is MinMax.
-                    CalibMovingAverageConstant = float : Default is 0.01. Constant smoothing factor to use when computing the moving average of
-                                                         the minimum and maximum values. Effective only when the calibration method selected is
-                                                         MinMax and when CalibMovingAverage is set to True.
-
+                    ForceQuantizeNoInputCheck = True/False :
+                        By default, some latent operators like maxpool, transpose, do not quantize if their input is not
+                        quantized already. Setting to True to force such operator always quantize input and so generate
+                        quantized output. Also the True behavior could be disabled per node using the nodes_to_exclude.
+                    MatMulConstBOnly = True/False:
+                        Default is False for static mode. If enabled, only MatMul with const B will be quantized.
+                    AddQDQPairToWeight = True/False :
+                        Default is False which quantizes floating-point weight and feeds it to solely inserted
+                        DeQuantizeLinear node. If True, it remains floating-point weight and inserts both
+                        QuantizeLinear/DeQuantizeLinear nodes to weight.
+                    OpTypesToExcludeOutputQuantizatioin = list of op type :
+                        Default is []. If any op type is specified, it won't quantize the output of ops with this
+                        specific op types.
+                    DedicatedQDQPair = True/False :
+                        Default is False. When inserting QDQ pair, multiple nodes can share a single QDQ pair as their
+                        inputs. If True, it will create identical and dedicated QDQ pair for each node.
+                    QDQOpTypePerChannelSupportToAxis = dictionary :
+                        Default is {}. Set channel axis for specific op type, for example: {'MatMul': 1}, and it's
+                        effective only when per channel quantization is supported and per_channel is True. If specific
+                        op type supports per channel quantization but not explicitly specified with channel axis,
+                        default channel axis will be used.
+                    CalibTensorRangeSymmetric = True/False :
+                        Default is False. If enabled, the final range of tensor during calibration will be explicitly
+                        set to symmetric to central point "0".
+                    CalibMovingAverage = True/False :
+                        Default is False. If enabled, the moving average of the minimum and maximum values will be
+                        computed when the calibration method selected is MinMax.
+                    CalibMovingAverageConstant = float :
+                        Default is 0.01. Constant smoothing factor to use when computing the moving average of the
+                        minimum and maximum values. Effective only when the calibration method selected is MinMax and
+                        when CalibMovingAverage is set to True.
+            execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
         Raises:
-                ValueError: Raise ValueError if execution provider is unknown
+            ValueError: Raise ValueError if execution provider is unknown
         """
 
-        if execution_provider not in EXECUTION_PROVIDERS:
-            raise ValueError(f"Unknown execution provider: {execution_provider}")
-        extra_options = extra_options or {}
-        nodes_to_exclude = nodes_to_exclude or []
-        nodes_to_quantize = nodes_to_quantize or []
-        op_types_to_quantize = op_types_to_quantize or []
-        if execution_provider == "CUSTOM":
+        super().__init__(execution_provider=execution_provider)
+        self.extra_options = extra_options or {}
+        if execution_provider == "CPU":
             self.quant_format = quant_format
-            self.op_types_to_quantize = op_types_to_quantize
-            self.per_channel = per_channel
-            self.reduce_range = reduce_range
             self.activation_type = activation_type
-            self.weight_type = weight_type
-            self.nodes_to_quantize = nodes_to_quantize
-            self.nodes_to_exclude = nodes_to_exclude
-            self.optimize_model = optimize_model
-            self.use_external_data_format = use_external_data_format
             self.calibrate_method = calibrate_method
-            self.extra_options = extra_options
-            self.execution_provider = execution_provider
-        elif execution_provider == "CPU":
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
         elif execution_provider == "TRT":
@@ -133,77 +178,34 @@ class StaticQuantConfig:
 class DynamicQuantConfig:
     def __init__(
         self,
-        op_types_to_quantize=None,
-        per_channel=False,
-        reduce_range=False,
-        weight_type=QuantType.QInt8,
-        nodes_to_quantize=None,
-        nodes_to_exclude=None,
-        optimize_model=True,
-        use_external_data_format=False,
         extra_options=None,
-        execution_provider="CUSTOM",
+        execution_provider: ExecutionProvider = ExecutionProvider.CPU,
     ):
         """
         This is a class for dynamic Quant Configuration
 
         Args:
-            op_types_to_quantize: specify the types of operators to
-                quantize, like ['Conv'] to quantize Conv only. It
-                quantizes all supported operators by default
-            per_channel: quantize weights per channel
-            reduce_range: quantize weights with 7-bits. It may improve
-                the accuracy for some models running on non-VNNI
-                machine, especially for per-channel mode
-            weight_type: quantization data type of weight. Please refer
-                to https://onnxruntime.ai/docs/performance/quantization.
-                html for more details on data type selection
-            nodes_to_quantize: List of nodes names to quantize. When
-                this list is not None only the nodes in this list are
-                quantized. example: [
-                    'Conv__224',
-                    'Conv__252'
-                ]
-            nodes_to_exclude: List of nodes names to exclude. The nodes
-                in this list will be excluded from quantization when it
-                is not None.
-            optimize_model: optimize model before quantization.
-            use_external_data_format: option used for large size (>2GB)
-                model. Set to False by default.
-            extra_options: key value pair dictionary for various options
-                in different case. Current used:
-                    extra.Sigmoid.nnapi = True/False  (Default is False)
-                    ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
-                    WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
-                    EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
-                                                  Dyanmic mode currently is supported. Will support more in the future.
-                    ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
-                                                             if their input is not quantized already. Setting to True to force such operator
-                                                             always quantize input and so generate quantized output.
-                                                             Also the True behavior could be disabled per node using the nodes_to_exclude.
-                    MatMulConstBOnly = True/False: Default is True for dynamic mode. If enabled, only MatMul with const B will be quantized.
+            extra_options: key value pair dictionary for various options in different case. Current used:
+                extra.Sigmoid.nnapi = True/False  (Default is False)
+                ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
+                WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
+                EnableSubgraph = True/False :
+                    Default is False. If enabled, subgraph will be quantized. Dynamic mode currently is supported. Will
+                    support more in the future.
+                ForceQuantizeNoInputCheck = True/False :
+                    By default, some latent operators like maxpool, transpose, do not quantize if their input is not
+                    quantized already. Setting to True to force such operator always quantize input and so generate
+                    quantized output. Also the True behavior could be disabled per node using the nodes_to_exclude.
+                MatMulConstBOnly = True/False:
+                    Default is True for dynamic mode. If enabled, only MatMul with const B will be quantized.
+            execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
 
-            Raises:
-                ValueError: Raise ValueError if execution provider is unknown
+        Raises:
+            ValueError: Raise ValueError if execution provider is unknown
         """
-        if execution_provider not in EXECUTION_PROVIDERS:
-            raise ValueError(f"Unknown execution provider: {execution_provider}")
-        extra_options = extra_options or {}
-        nodes_to_exclude = nodes_to_exclude or []
-        nodes_to_quantize = nodes_to_quantize or []
-        op_types_to_quantize = op_types_to_quantize or []
-        if execution_provider == "CUSTOM":
-            self.op_types_to_quantize = op_types_to_quantize
-            self.per_channel = per_channel
-            self.reduce_range = reduce_range
-            self.weight_type = weight_type
-            self.nodes_to_quantize = nodes_to_quantize
-            self.nodes_to_exclude = nodes_to_exclude
-            self.optimize_model = optimize_model
-            self.use_external_data_format = use_external_data_format
-            self.extra_options = extra_options
-            self.execution_provider = execution_provider
-        elif execution_provider == "CPU":
+        super().__init__(execution_provider=execution_provider)
+        self.extra_options = extra_options or {}
+        if execution_provider == "CPU":
             # TODO : change this config once our team decides default value
             self.execution_provider = execution_provider
         elif execution_provider == "TRT":
@@ -231,39 +233,129 @@ def check_static_quant_arguments(quant_format: QuantFormat, activation_type: Qua
         )
 
 
-def quantize_static(model_input, model_output, calibration_data_reader: CalibrationDataReader, **kwargs):
-    """Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
-
-    It is recommended to use QuantFormat.QDQ format from 1.11 with activation_type = QuantType.QInt8 and
-                                                            weight_type = QuantType.QInt8.
-    If model is targeted to GPU/TRT, symmetric activation and weight are required.
-    If model is targeted to CPU, asymmetric activation and symmetric weight are recommended for balance of performance and accuracy.
+def quantize_static(
+    model_input,
+    model_output,
+    calibration_data_reader: CalibrationDataReader,
+    quant_format=QuantFormat.QDQ,
+    op_types_to_quantize=[],
+    per_channel=False,
+    reduce_range=False,
+    activation_type=QuantType.QInt8,
+    weight_type=QuantType.QInt8,
+    nodes_to_quantize=[],
+    nodes_to_exclude=[],
+    optimize_model=True,
+    use_external_data_format=False,
+    calibrate_method=CalibrationMethod.MinMax,
+    extra_options=None,
+    execution_provider: ExecutionProvider = ExecutionProvider.CPU,
+):
+    """
+    Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
+    It is recommended to use QuantFormat.QDQ format from 1.11 with activation_type = QuantType.QInt8 and weight_type
+    = QuantType.QInt8. If model is targeted to GPU/TRT, symmetric activation and weight are required. If model is
+    targeted to CPU, asymmetric activation and symmetric weight are recommended for balance of performance and
+    accuracy.
 
     Args:
+
         model_input: file path of model to quantize
         model_output: file path of quantized model
         calibration_data_reader: a calibration data reader. It
             enumerates calibration data and generates inputs for the
             original model.
+        quant_format: QuantFormat{QOperator, QDQ}.
+                QOperator format quantizes the model with quantized operators directly.
+                QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
+        op_types_to_quantize:
+            specify the types of operators to quantize, like ['Conv'] to quantize Conv only.
+            It quantizes all supported operators by default.
+        per_channel: quantize weights per channel
+        reduce_range:
+            quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine,
+            especially for per-channel mode
+        activation_type:
+                quantization data type of activation. Please refer to
+                https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
+        weight_type:
+            quantization data type of weight. Please refer to
+            https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
+        nodes_to_quantize:
+            List of nodes names to quantize. When this list is not None only the nodes in this list
+            are quantized.
+            example:
+            [
+                'Conv__224',
+                'Conv__252'
+            ]
+        nodes_to_exclude:
+            List of nodes names to exclude. The nodes in this list will be excluded from quantization
+            when it is not None.
+        optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
+            change the computation graph, making debugging of quantization loss difficult.
+        use_external_data_format: option used for large size (>2GB) model. Set to False by default.
+        calibrate_method:
+            Current calibration methods supported are MinMax and Entropy.
+            Please use CalibrationMethod.MinMax or CalibrationMethod.Entropy as options.
+        extra_options:
+            key value pair dictionary for various options in different case. Current used:
+                extra.Sigmoid.nnapi = True/False  (Default is False)
+                ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
+                WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
+                EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
+                                              Dyanmic mode currently is supported. Will support more in future.
+                ForceQuantizeNoInputCheck = True/False :
+                    By default, some latent operators like maxpool, transpose, do not quantize if their input is not
+                    quantized already. Setting to True to force such operator always quantize input and so generate
+                    quantized output. Also the True behavior could be disabled per node using the nodes_to_exclude.
+                MatMulConstBOnly = True/False:
+                    Default is False for static mode. If enabled, only MatMul with const B will be quantized.
+                AddQDQPairToWeight = True/False :
+                    Default is False which quantizes floating-point weight and feeds it to solely inserted
+                    DeQuantizeLinear node. If True, it remains floating-point weight and inserts both
+                    QuantizeLinear/DeQuantizeLinear nodes to weight.
+                OpTypesToExcludeOutputQuantizatioin = list of op type :
+                    Default is []. If any op type is specified, it won't quantize the output of ops with this
+                    specific op types.
+                DedicatedQDQPair = True/False :
+                    Default is False. When inserting QDQ pair, multiple nodes can share a single QDQ pair as their
+                    inputs. If True, it will create identical and dedicated QDQ pair for each node.
+                QDQOpTypePerChannelSupportToAxis = dictionary :
+                    Default is {}. Set channel axis for specific op type, for example: {'MatMul': 1}, and it's
+                    effective only when per channel quantization is supported and per_channel is True. If specific
+                    op type supports per channel quantization but not explicitly specified with channel axis,
+                    default channel axis will be used.
+                CalibTensorRangeSymmetric = True/False :
+                    Default is False. If enabled, the final range of tensor during calibration will be explicitly
+                    set to symmetric to central point "0".
+                CalibMovingAverage = True/False :
+                    Default is False. If enabled, the moving average of the minimum and maximum values will be
+                    computed when the calibration method selected is MinMax.
+                CalibMovingAverageConstant = float :
+                    Default is 0.01. Constant smoothing factor to use when computing the moving average of the
+                    minimum and maximum values. Effective only when the calibration method selected is MinMax and
+                    when CalibMovingAverage is set to True.
+        execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
     """
-    if "quant_config" in kwargs:
-        quant_config = kwargs["quant_config"]
+    extra_options = extra_options or {}
 
-    else:
-        quant_config = StaticQuantConfig(
-            quant_format=kwargs.get("quant_format") or QuantFormat.QDQ,
-            op_types_to_quantize=kwargs.get("op_types_to_quantize") or None,
-            per_channel=kwargs.get("per_channel") or False,
-            reduce_range=kwargs.get("reduce_range") or False,
-            activation_type=kwargs.get("activation_type") or QuantType.QInt8,
-            weight_type=kwargs.get("weight_type") or QuantType.QInt8,
-            nodes_to_quantize=kwargs.get("nodes_to_quantize") or None,
-            nodes_to_exclude=kwargs.get("nodes_to_exclude") or None,
-            optimize_model=kwargs.get("optimize_model") or True,
-            use_external_data_format=kwargs.get("use_external_data_format") or False,
-            calibrate_method=kwargs.get("calibrate_method") or CalibrationMethod.MinMax,
-            extra_options=kwargs.get("extra_options") or None,
-        )
+    quant_config = StaticQuantConfig(
+        quant_format=quant_format,
+        activation_type=activation_type,
+        extra_options=extra_options,
+        execution_provider=execution_provider,
+    )
+
+    quant_config.op_types_to_quantize = op_types_to_quantize or quant_config.op_types_to_quantize
+    quant_config.per_channel = per_channel or quant_config.per_channel
+    quant_config.reduce_range = reduce_range or False
+    quant_config.weight_type = weight_type or quant_config.weight_type
+    quant_config.nodes_to_quantize = nodes_to_quantize or quant_config.nodes_to_quantize
+    quant_config.nodes_to_exclude = nodes_to_exclude or quant_config.nodes_to_exclude
+    quant_config.optimize_model = optimize_model or quant_config.optimize_model
+    quant_config.use_external_data_format = use_external_data_format or False
+    quant_config.calibrate_method = calibrate_method or CalibrationMethod.MinMax
 
     mode = QuantizationMode.QLinearOps
 
@@ -347,28 +439,80 @@ def quantize_static(model_input, model_output, calibration_data_reader: Calibrat
         )
 
 
-def quantize_dynamic(model_input: Path, model_output: Path, **kwargs):
+def quantize_dynamic(
+    model_input: Path,
+    model_output: Path,
+    op_types_to_quantize=None,
+    per_channel=False,
+    reduce_range=False,
+    weight_type=QuantType.QInt8,
+    nodes_to_quantize=None,
+    nodes_to_exclude=None,
+    optimize_model=True,
+    use_external_data_format=False,
+    extra_options=None,
+    execution_provider: ExecutionProvider = ExecutionProvider.CPU,
+):
     """Given an onnx model, create a quantized onnx model and save it into a file
 
     Args:
         model_input: file path of model to quantize
         model_output: file path of quantized model
+        op_types_to_quantize:
+            specify the types of operators to quantize, like ['Conv'] to quantize Conv only.
+            It quantizes all supported operators by default.
+        per_channel: quantize weights per channel
+        reduce_range:
+            quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine,
+            especially for per-channel mode
+        weight_type:
+            quantization data type of weight. Please refer to
+            https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
+        nodes_to_quantize:
+            List of nodes names to quantize. When this list is not None only the nodes in this list
+            are quantized.
+            example:
+            [
+                'Conv__224',
+                'Conv__252'
+            ]
+        nodes_to_exclude:
+            List of nodes names to exclude. The nodes in this list will be excluded from quantization
+            when it is not None.
+        optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
+            change the computation graph, making debugging of quantization loss difficult.
+        use_external_data_format: option used for large size (>2GB) model. Set to False by default.
+        extra_options:
+            key value pair dictionary for various options in different case. Current used:
+                extra.Sigmoid.nnapi = True/False  (Default is False)
+                ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
+                WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
+                EnableSubgraph = True/False :
+                    Default is False. If enabled, subgraph will be quantized. Dynamic mode currently is supported. Will
+                    support more in the future.
+                ForceQuantizeNoInputCheck = True/False :
+                    By default, some latent operators like maxpool, transpose, do not quantize if their input is not
+                    quantized already. Setting to True to force such operator always quantize input and so generate
+                    quantized output. Also the True behavior could be disabled per node using the nodes_to_exclude.
+                MatMulConstBOnly = True/False:
+                    Default is True for dynamic mode. If enabled, only MatMul with const B will be quantized.
+        execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
     """
-    if "quant_config" in kwargs:
-        quant_config = kwargs["quant_config"]
+    op_types_to_quantize = op_types_to_quantize or []
+    nodes_to_quantize = nodes_to_quantize or []
+    nodes_to_exclude = nodes_to_exclude or []
+    extra_options = extra_options or {}
 
-    else:
-        quant_config = DynamicQuantConfig(
-            op_types_to_quantize=kwargs.get("op_types_to_quantize") or None,
-            per_channel=kwargs.get("per_channel") or False,
-            reduce_range=kwargs.get("reduce_range") or False,
-            weight_type=kwargs.get("weight_type") or QuantType.QInt8,
-            nodes_to_quantize=kwargs.get("nodes_to_quantize") or None,
-            nodes_to_exclude=kwargs.get("nodes_to_exclude") or None,
-            optimize_model=kwargs.get("optimize_model") or True,
-            use_external_data_format=kwargs.get("use_external_data_format") or False,
-            extra_options=kwargs.get("extra_options") or None,
-        )
+    quant_config = DynamicQuantConfig(extra_options=extra_options, execution_provider=execution_provider)
+
+    quant_config.op_types_to_quantize = op_types_to_quantize or quant_config.op_types_to_quantize
+    quant_config.per_channel = per_channel or quant_config.per_channel
+    quant_config.reduce_range = reduce_range or False
+    quant_config.weight_type = weight_type or quant_config.weight_type
+    quant_config.nodes_to_quantize = nodes_to_quantize or quant_config.nodes_to_quantize
+    quant_config.nodes_to_exclude = nodes_to_exclude or quant_config.nodes_to_exclude
+    quant_config.optimize_model = optimize_model or quant_config.optimize_model
+    quant_config.use_external_data_format = use_external_data_format or False
 
     mode = QuantizationMode.IntegerOps
 
