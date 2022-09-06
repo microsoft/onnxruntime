@@ -1,5 +1,5 @@
-## Copyright (c) Microsoft Corporation. All rights reserved.
-## Licensed under the MIT License.
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 
 import argparse
 import os
@@ -44,7 +44,7 @@ NPM_BUILD_DIR = [
     {"command": "npm run build", "path": os.path.normpath(os.path.join(CURRENT_FOLDER, "../web"))},
 ]
 
-#### Generating the build folders
+# Generating the build folders
 if not os.path.isdir(BINARIES_DIR):
     os.mkdir(BINARIES_DIR)
 
@@ -59,7 +59,7 @@ if not os.path.isdir(DIST_PATH):
 if not os.path.isdir(BINDING_PATH):
     os.mkdir(BINDING_PATH)
 
-#### Running the WASM build commands
+# Running the WASM build commands
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--config",
@@ -92,7 +92,7 @@ for entry in BUILDS:
             print("Error - can find " + entry["wasm_file_name"] + " there might be an issue with the build\n")
             sys.exit()
 
-## Copying WASM artifacts
+# Copying WASM artifacts
 for entry in BUILDS:
     if not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], CONFIGURATION, entry["wasm_file_name"])):
         print("Error - can find " + entry["wasm_file_name"] + " there might be an issue with the build\n")
@@ -102,7 +102,7 @@ for entry in BUILDS:
         os.path.join(DIST_PATH, entry["wasm_file_name"]),
     )
 
-## Copying JS binding files
+# Copying JS binding files
 for entry in JS_FILES:
     if not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], CONFIGURATION, entry["file_name"])):
         print("Error - can find " + entry["file_name"] + " there might be an issue with the build\n")
@@ -112,7 +112,7 @@ for entry in JS_FILES:
         os.path.join(BINDING_PATH, entry["file_name"]),
     )
 
-#### Build NPM package
+# Build NPM package
 for entry in NPM_BUILD_DIR:
     with subprocess.Popen(entry["command"], shell=True, cwd=entry["path"]) as p:
         p.wait()
