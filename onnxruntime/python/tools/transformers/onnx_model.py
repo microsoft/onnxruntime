@@ -579,8 +579,7 @@ class OnnxModel:
                                                  Defaults to None, which will use `float16.DEFAULT_OP_BLOCK_LIST` as default.
             node_block_list (List[str], optional): List of node names to leave as float32. Defaults to None.
             force_fp16_initializers(bool): force converting all float initializers to float16.
-                                           Default to false, which will
-                                            only the one needed to avoid precision loss.
+                                           Default to false, which will convert only the one needed to avoid precision loss.
             min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
             max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
         """
@@ -620,6 +619,7 @@ class OnnxModel:
         self.initialize(fp16_model)
 
         self.remove_cascaded_cast_nodes()
+
         self.remove_useless_cast_nodes()
 
     def create_node_name(self, op_type, name_prefix=None):
