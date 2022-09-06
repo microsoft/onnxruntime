@@ -302,7 +302,10 @@
         "^test_resize_downsample_sizes_linear_pytorch_half_pixel_cpu",
         "^test_resize_downsample_sizes_nearest_cpu",
         "^test_resize_upsample_sizes_nearest_cpu",
-        "^test_roialign_cpu"
+        "^test_roialign_cpu",
+        "^test_dft_axis_cpu",
+        "^test_dft_cpu",
+        "^test_dft_inverse_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [

@@ -1,16 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "synthetic_data_loader.h"
+
 #include <onnxruntime_cxx_api.h>
 
 #include <algorithm>
 #include <memory>
 #include <random>
 #include <type_traits>
-#include <variant>
 #include <vector>
-
-#include "synthetic_data_loader.h"
 
 namespace onnxruntime {
 namespace training {
