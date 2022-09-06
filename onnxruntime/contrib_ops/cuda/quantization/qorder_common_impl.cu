@@ -183,7 +183,7 @@ WarpReduceMax(T val) {
   val = max(val, __shfl_xor_sync(0xFFFFFFFF, val, 4));
   val = max(val, __shfl_xor_sync(0xFFFFFFFF, val, 8));
   val = max(val, __shfl_xor_sync(0xFFFFFFFF, val, 16));
-  retun val;
+  return val;
 }
 
 /************************************************************************
@@ -694,8 +694,10 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
   using BlockReduceInt32 = cub::BlockReduce<int32_t, TPB>;
   using BlockReduceFP32 = cub::BlockReduce<float, TPB>;
 
-  __shared__ typename BlockReduceInt32::TempStorage tmp_storage_int32;
-  __shared__ typename BlockReduceFP32::TempStorage tmp_storage_fp32;
+  __shared__ union {
+      typename BlockReduceInt32::TempStorage tmp_storage_int32;
+      typename BlockReduceFP32::TempStorage tmp_storage_fp32;
+  } unioned_tmp_storage;
   __shared__ float sum_reverse_block;
   __shared__ int32_t max_in_block;
 
@@ -711,7 +713,7 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
     ch4 = *(const char4*)(src + offset);
   }
   int32_t max_of_4 = max(max((int)ch4.x, (int)ch4.y), max((int)ch4.z, (int)ch4.w));
-  const int32_t max_all = BlockReduceInt32(tmp_storage_int32).Reduce(max_of_4, cub::Max());
+  const int32_t max_all = BlockReduceInt32(unioned_tmp_storage.tmp_storage_int32).Reduce(max_of_4, cub::Max());
   if (threadIdx.x == 0) {
     max_in_block = max_all;
   }
@@ -723,7 +725,7 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
       four_masks.z ? lookup_table[255 - max_in_block + (int)ch4.z] : 0.0f,
       four_masks.w ? lookup_table[255 - max_in_block + (int)ch4.w] : 0.0f};
   float sum_of_4 = epow_of_4.x + epow_of_4.y + epow_of_4.z + epow_of_4.w;
-  const float sum_all = BlockReduceFP32(tmp_storage_fp32).Reduce(sum_of_4, cub::Sum());
+  const float sum_all = BlockReduceFP32(unioned_tmp_storage.tmp_storage_fp32).Reduce(sum_of_4, cub::Sum());
   if (threadIdx.x == 0) {
     sum_reverse_block = (float)(1.0 / ((double)sum_all * scale_dst));
   }
@@ -807,58 +809,57 @@ void LaunchTransCtxNarrowCast(cudaStream_t stream, const cudaDeviceProp& device_
   TransposeCtxNarrowCast<<<grid, block, 0, stream>>>((const float4*)input, (char4*)output);
 }
 
+constexpr int S8TransposeWidth = 16;
 
-__global__ void QOrderBatchInt8MatrixTransposeKernel(
-  const int8_t* src, const int8_t* dst, const int rows, const int cols)
+__global__ void
+QOrderBatchInt8MatrixTransposeKernel(const int8_t* src, const int8_t* dst, const int rows, const int cols)
 {
-    __shared__ char4 shm[32 * 4][33];
-    const int64_t batch_offset = blockIdx.z * (rows * cols);
+    __shared__ char4 shm[S8TransposeWidth * 4][S8TransposeWidth + 1];
+    const int64_t batch_offset = int64_t(rows) * cols * blockIdx.z;
     src += batch_offset;
     dst += batch_offset;
 
-    const int col = (blockIdx.x * 32 + threadIdx.x) * 4;
-    const int row = (blockIdx.y * 32 + threadIdx.y) * 4;
-    const int c = threadIdx.x * 4;
+    const int src_col = blockIdx.x * (S8TransposeWidth << 2);
+    const int src_row = blockIdx.y * (S8TransposeWidth << 2);
+    const int c = threadIdx.x << 2;
+    const int r = threadIdx.y << 2;
 
+    int col = src_col + c;
+    int row =  src_row + r;
     if (row < rows && col < cols) {
-      char4 ch4_0 = *(const char4*)(src + row * cols + col);
-      char4 ch4_1 = *(const char4*)(src + (row + 1) * cols + col);
-      char4 ch4_2 = *(const char4*)(src + (row + 2) * cols + col);
-      char4 ch4_3 = *(const char4*)(src + (row + 3) * cols + col);
+      src += row * cols + col;
+      char4 ch4_0 = *(const char4*)(src);
+      char4 ch4_1 = *(const char4*)(src += cols);
+      char4 ch4_2 = *(const char4*)(src += cols);
+      char4 ch4_3 = *(const char4*)(src += cols);
 
-      const char4 out_ch4_0 = {ch4_0.x, ch4_1.x, ch4_2.x, ch4_3.x};
-      shm[c][threadIdx.y] = out_ch4_0;
-      const char4 out_ch4_1 = {ch4_0.y, ch4_1.y, ch4_2.y, ch4_3.y};
-      shm[c + 1][threadIdx.y] = out_ch4_1;
-      const char4 out_ch4_2 = {ch4_0.z, ch4_1.z, ch4_2.z, ch4_3.z};
-      shm[c + 2][threadIdx.y] = out_ch4_2;
-      const char4 out_ch4_3 = {ch4_0.w, ch4_1.w, ch4_2.w, ch4_3.w};
-      shm[c + 3][threadIdx.y] = out_ch4_3;
+      shm[c + 0][threadIdx.y] = {ch4_0.x, ch4_1.x, ch4_2.x, ch4_3.x};
+      shm[c + 1][threadIdx.y] = {ch4_0.y, ch4_1.y, ch4_2.y, ch4_3.y};
+      shm[c + 2][threadIdx.y] = {ch4_0.z, ch4_1.z, ch4_2.z, ch4_3.z};
+      shm[c + 3][threadIdx.y] = {ch4_0.w, ch4_1.w, ch4_2.w, ch4_3.w};
     }
-
     __syncthreads();
 
-    const int tcol = (blockIdx.x * 32 + threadIdx.y) * 4;
-    const int trow = (blockIdx.x * 32 + threadIdx.x) * 4;
-    if (trow < rows && tcol < cols) {
-      *(char4 *)(dst + (trow + 0) * cols + tcol) = shm[c + 0][threadIdx.y];
-      *(char4 *)(dst + (trow + 1) * cols + tcol) = shm[c + 1][threadIdx.y];
-      *(char4 *)(dst + (trow + 2) * cols + tcol) = shm[c + 2][threadIdx.y];
-      *(char4 *)(dst + (trow + 3) * cols + tcol) = shm[c + 3][threadIdx.y];
+    int tcol = src_row + c;
+    int trow = src_col + r;
+    if (trow < cols && tcol < rows) {
+      dst += trow * rows + tcol;
+      *(char4 *)(dst) = shm[r + 0][threadIdx.x];
+      *(char4 *)(dst += rows) = shm[r + 1][threadIdx.x];
+      *(char4 *)(dst += rows) = shm[r + 2][threadIdx.x];
+      *(char4 *)(dst += rows) = shm[r + 3][threadIdx.x];
     }
 }
-
 
 void QOrderBatchTransposeInt8Matrix(cudaStream_t stream, const cudaDeviceProp& device_prop,
                                     const int batch_size, const int rows, const int cols,
                                     const int8_t* input, int8_t* output) {
   ORT_ENFORCE(rows % 4 == 0 && cols % 4 == 0, "Matrix rows and cols must be divisible by 4!");
   ORT_ENFORCE(rows > 0 && cols > 0 && batch_size > 0, "batch_size, rows, cols should be positive");
-  dim3 block(32, 32);
-  dim3 grid((cols / 4 + 31) / 32, (rows /4 + 31) / 32, batch_size);
+  dim3 block(S8TransposeWidth, S8TransposeWidth);
+  dim3 grid((cols / 4 + S8TransposeWidth - 1) / S8TransposeWidth, (rows / 4 + S8TransposeWidth - 1) / S8TransposeWidth, batch_size);
   QOrderBatchInt8MatrixTransposeKernel<<<grid, block, 0, stream>>>(input, output, rows, cols);
 }
-
 
 }  // namespace cuda
 }  // namespace contrib

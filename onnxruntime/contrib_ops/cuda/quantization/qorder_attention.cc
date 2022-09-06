@@ -272,7 +272,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
                       batch_size, num_heads_, sequence_length);
   // debug_print(attention_probs, size_of_attention_scores, sequence_length, "attention_probs");
 
-  // Transpose v_layer from BxNxSxH to NxNxHxS to use tensor core int8 matmul
+  // Transpose v_layer from BxNxSxH to BxNxHxS to use tensor core int8 matmul
   QOrderBatchTransposeInt8Matrix(stream, device_prop, batch_size * num_heads_, sequence_length, head_size, v_layer, v_layer_T);
 
   const float context_layer_alpha = static_cast<float>((double)*scale_attn_probs_data * const_scale_qkv_layer_[2] / *scale_output_data);
