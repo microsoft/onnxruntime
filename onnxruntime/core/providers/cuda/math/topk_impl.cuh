@@ -300,13 +300,13 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> el
       if (KK > positive) {
         KK = dimension - KK + 1;
         sign = (T)-1;
-      } 
+      }
     } else {
       if (KK > negative) {
         KK = dimension - KK + 1;
       } else {
         sign = (T)-1;
-      } 
+      }
     }
     __syncthreads();
     #pragma unroll
@@ -472,7 +472,7 @@ Status TopKImpl(const CudaKernel* kernel, cudaStream_t stream, const T* input_x,
     auto blocks_per_grid_K = (int)(ceil(static_cast<float>(K) / BT));
     for (int64_t i = 0; i < N; i++) {
       FillInput<CudaT><<<blocks_per_grid_D, BT, 0, stream>>>(input_x_ptr, input_key, input_value, elem_nums, size, axis, K, i, dimension);
-      CUDA_RETURN_IF_ERROR(1 == largest ? cub::DeviceRadixSort::SortPairsDescending(temp_storage, temp_bytes, input_key, output_key, input_value, output_value, dimension, 0, sizeof(T)*8, stream) 
+      CUDA_RETURN_IF_ERROR(1 == largest ? cub::DeviceRadixSort::SortPairsDescending(temp_storage, temp_bytes, input_key, output_key, input_value, output_value, dimension, 0, sizeof(T)*8, stream)
             : cub::DeviceRadixSort::SortPairs(temp_storage, temp_bytes, input_key, output_key, input_value, output_value, dimension, 0, sizeof(T)*8, stream));
       if (1 == sorted) {
         FillOutput<CudaT><<<blocks_per_grid_K, BT, 0, stream>>>(output_key, output_value, output_v_ptr, output_i, elem_nums, size, axis, K, i, dimension);
@@ -481,7 +481,7 @@ Status TopKImpl(const CudaKernel* kernel, cudaStream_t stream, const T* input_x,
         CUDA_RETURN_IF_ERROR(cub::DeviceRadixSort::SortPairs(temp_storage, temp_bytes, output_value, input_value, output_key, input_key, dimension, 0, sizeof(T)*8, stream));
         FillOutput<CudaT><<<blocks_per_grid_K, BT, 0, stream>>>(input_key, input_value, output_v_ptr, output_i, elem_nums, size, axis, K, i, dimension);
       }
-    } 
+    }
   }
   return Status::OK();
 }
@@ -499,18 +499,6 @@ Status TopKImpl(const CudaKernel* kernel, cudaStream_t stream, const T* input_x,
                                                  int64_t sorted,           \
                                                  int64_t N,                \
                                                  int64_t dimension)
-
-TOPKIMPLE(uint8_t);
-TOPKIMPLE(uint16_t);
-TOPKIMPLE(uint32_t);
-TOPKIMPLE(uint64_t);
-TOPKIMPLE(int8_t);
-TOPKIMPLE(int16_t);
-TOPKIMPLE(int32_t);
-TOPKIMPLE(int64_t);
-TOPKIMPLE(float);
-TOPKIMPLE(MLFloat16);
-TOPKIMPLE(double);
 
 }  // namespace cuda
 }  // namespace onnxruntime
