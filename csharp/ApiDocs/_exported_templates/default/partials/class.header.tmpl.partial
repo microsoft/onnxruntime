@@ -1,0 +1,121 @@
+{{!Copyright (c) Microsoft. All rights reserved. Licensed under the MIT license. See LICENSE file in the project root for full license information.}}
+
+<h1 id="{{id}}" data-uid="{{uid}}" class="text-break">{{>partials/title}}</h1>
+<div class="markdown level0 summary">{{{summary}}}</div>
+<div class="markdown level0 conceptual">{{{conceptual}}}</div>
+{{#inClass}}
+<div class="inheritance">
+  <h5>{{__global.inheritance}}</h5>
+  {{#inheritance}}
+  <div class="level{{index}}">{{{specName.0.value}}}</div>
+  {{/inheritance}}
+  <div class="level{{level}}"><span class="xref">{{name.0.value}}</span></div>
+  {{#derivedClasses}}
+    <div class="level{{index}}">{{{specName.0.value}}}</div>
+  {{/derivedClasses}}
+</div>
+{{/inClass}}
+{{#implements.0}}
+<div class="implements">
+  <h5>{{__global.implements}}</h5>
+{{/implements.0}}
+{{#implements}}
+  <div>{{{specName.0.value}}}</div>
+{{/implements}}
+{{#implements.0}}
+</div>
+{{/implements.0}}
+{{#inheritedMembers.0}}
+<div class="inheritedMembers">
+  <h5>{{__global.inheritedMembers}}</h5>
+{{/inheritedMembers.0}}
+{{#inheritedMembers}}
+  <div>
+  {{#definition}}
+    <xref uid="{{definition}}" text="{{nameWithType.0.value}}" alt="{{fullName.0.value}}"/>
+  {{/definition}}
+  {{^definition}}
+    <xref uid="{{uid}}" text="{{nameWithType.0.value}}" alt="{{fullName.0.value}}"/>
+  {{/definition}}
+  </div>
+{{/inheritedMembers}}
+{{#inheritedMembers.0}}
+</div>
+{{/inheritedMembers.0}}
+<h6><strong>{{__global.namespace}}</strong>: {{{namespace.specName.0.value}}}</h6>
+<h6><strong>{{__global.assembly}}</strong>: {{assemblies.0}}.dll</h6>
+<h5 id="{{id}}_syntax">{{__global.syntax}}</h5>
+<div class="codewrapper">
+  <pre><code class="lang-{{_lang}} hljs">{{syntax.content.0.value}}</code></pre>
+</div>
+{{#syntax.parameters.0}}
+<h5 class="parameters">{{__global.parameters}}</h5>
+<table class="table table-bordered table-striped table-condensed">
+  <thead>
+    <tr>
+      <th>{{__global.type}}</th>
+      <th>{{__global.name}}</th>
+      <th>{{__global.description}}</th>
+    </tr>
+  </thead>
+  <tbody>
+{{/syntax.parameters.0}}
+{{#syntax.parameters}}
+    <tr>
+      <td>{{{type.specName.0.value}}}</td>
+      <td><span class="parametername">{{{id}}}</span></td>
+      <td>{{{description}}}</td>
+    </tr>
+{{/syntax.parameters}}
+{{#syntax.parameters.0}}
+  </tbody>
+</table>
+{{/syntax.parameters.0}}
+{{#syntax.return}}
+<h5 class="returns">{{__global.returns}}</h5>
+<table class="table table-bordered table-striped table-condensed">
+  <thead>
+    <tr>
+      <th>{{__global.type}}</th>
+      <th>{{__global.description}}</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>{{{type.specName.0.value}}}</td>
+      <td>{{{description}}}</td>
+    </tr>
+  </tbody>
+</table>
+{{/syntax.return}}
+{{#syntax.typeParameters.0}}
+<h5 class="typeParameters">{{__global.typeParameters}}</h5>
+<table class="table table-bordered table-striped table-condensed">
+  <thead>
+    <tr>
+      <th>{{__global.name}}</th>
+      <th>{{__global.description}}</th>
+    </tr>
+  </thead>
+  <tbody>
+{{/syntax.typeParameters.0}}
+{{#syntax.typeParameters}}
+    <tr>
+      <td><span class="parametername">{{{id}}}</span></td>
+      <td>{{{description}}}</td>
+    </tr>
+{{/syntax.typeParameters}}
+{{#syntax.typeParameters.0}}
+  </tbody>
+</table>
+{{/syntax.typeParameters.0}}
+{{#remarks}}
+<h5 id="{{id}}_remarks"><strong>{{__global.remarks}}</strong></h5>
+<div class="markdown level0 remarks">{{{remarks}}}</div>
+{{/remarks}}
+{{#example.0}}
+<h5 id="{{id}}_examples"><strong>{{__global.examples}}</strong></h5>
+{{/example.0}}
+{{#example}}
+{{{.}}}
+{{/example}}

@@ -93,6 +93,7 @@ provider_excluded_files = [
     "math/matmul.cc",
     "math/softmax_impl.cu",
     "math/softmax_warpwise_impl.cuh",
+    "math/softmax_common.cc",
     "math/softmax.cc",
     "nn/conv.cc",
     "nn/conv.h",
@@ -111,7 +112,6 @@ provider_excluded_files = [
     "rnn/rnn_impl.h",
     "shared_inc/cuda_call.h",
     "shared_inc/fpgeneric.h",
-    "shared_inc/softmax.h",
     "cuda_allocator.cc",
     "cuda_allocator.h",
     "cuda_call.cc",
@@ -129,6 +129,8 @@ provider_excluded_files = [
     "cuda_kernel.h",
     "cuda_pch.cc",
     "cuda_pch.h",
+    "cuda_profiler.cc",
+    "cuda_profiler.h",
     "cuda_provider_factory.cc",
     "cuda_provider_factory.h",
     "cuda_utils.cu",
@@ -146,8 +148,6 @@ training_ops_excluded_files = [
     "collective/adasum_kernels.cc",
     "collective/adasum_kernels.h",
     "math/div_grad.cc",  # miopen API differs from cudnn, no double type support
-    "math/softmax_grad_impl.cu",  # warp size differences
-    "math/softmax_grad.cc",  # miopen API differs from cudnn, no double type support
     "nn/batch_norm_grad.cc",  # no double type support
     "nn/batch_norm_grad.h",  # miopen API differs from cudnn
     "nn/batch_norm_internal.cc",  # miopen API differs from cudnn, no double type support

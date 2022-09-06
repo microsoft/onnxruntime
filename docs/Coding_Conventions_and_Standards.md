@@ -97,7 +97,7 @@ void foo(gsl::span<const std::string> names) {
 * Qualify usages of `auto` with `const`, `*`, `&` and `&&` where applicable to more clearly express the intent
 * When adding a new class, disable copy/assignment/move until you have a proven need for these capabilities. If a need arises, enable copy/assignment/move selectively, and when doing so validate that the implementation of the class supports what is being enabled.
   * Use `ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE` initially
-  * See the other `ORT_DISALLOW_*` macros in <https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/common.h>
+  * See the other `ORT_DISALLOW_*` macros in <https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/common.h>
 * Sometimes, `std::unique_ptr` might be considered for delayed or optional construction of objects or members of classes. Instead, use `std::optional` as appropriate to reduce the number of allocations.
 * Don't use `else` after `return`. see: [https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return](https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return)
 * Don't overuse `std::shared_ptr`. Use `std::shared_ptr` only if it's not clear when and where the object will be de-allocated. See also: [https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr)
@@ -141,7 +141,7 @@ Follow the [Black formatter](https://black.readthedocs.io)'s coding style when p
 
 Please adhere to the [PEP8 Style Guide](https://www.python.org/dev/peps/pep-0008/). We use [Google's python style guide](https://google.github.io/styleguide/pyguide.html) as the style guide which is an extension to PEP8.
 
-Code can be validated with [flake8](https://pypi.org/project/flake8/) using the configuration file in the root directory called [.flake8](https://github.com/microsoft/onnxruntime/tree/master/.flake8).
+Code can be validated with [flake8](https://pypi.org/project/flake8/) using the configuration file in the root directory called [.flake8](https://github.com/microsoft/onnxruntime/blob/main/.flake8).
 
 Use `pyright`, which is provided as a component of the `pylance` extension in VS Code for static type checking.
 

@@ -209,7 +209,7 @@ def parse_arguments():
         const="yes",
         type=str,
         help="Generate documentation listing standard ONNX operators and types implemented by "
-        "various execution providers and contrib operator schemas. "
+        "various execution providers and contrib operator schemas. Must be used for inference builds, only!"
         "Use `--gen_doc validate` to validate these match the current contents in /docs.",
     )
 
@@ -384,7 +384,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.3", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.19", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -480,6 +480,7 @@ def parse_arguments():
         "--use_tvm_hash", action="store_true", help="Build ipp-crypto for hash generation. It is used by TVM EP only"
     )
     parser.add_argument("--use_tensorrt", action="store_true", help="Build with TensorRT")
+    parser.add_argument("--use_tensorrt_builtin_parser", action="store_true", help="Use TensorRT builtin parser")
     parser.add_argument(
         "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
     )
@@ -611,7 +612,14 @@ def parse_arguments():
     parser.add_argument(
         "--code_coverage", action="store_true", help="Generate code coverage when targetting Android (only)."
     )
+
+    # lazy tensor support.
+    parser.add_argument(
+        "--enable_lazy_tensor", action="store_true", help="Enable use ORT as backend in Pytorch LazyTensor."
+    )
+
     parser.add_argument("--ms_experimental", action="store_true", help="Build microsoft experimental operators.")
+
     # eager mode
     parser.add_argument("--build_eager_mode", action="store_true", help="Build ONNXRuntime micro-benchmarks.")
     parser.add_argument(
@@ -643,6 +651,12 @@ def parse_arguments():
         action="store_true",
         help="enable cuda kernel profiling, \
         cupti library must be added to PATH beforehand.",
+    )
+
+    parser.add_argument(
+        "--enable_rocm_profiling",
+        action="store_true",
+        help="enable rocm kernel profiling.",
     )
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
@@ -836,6 +850,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
+        "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=" + ("ON" if args.use_tensorrt_builtin_parser else "OFF"),
         "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
         # set vars for TVM
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
@@ -901,9 +916,11 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
+        "-Donnxruntime_ENABLE_LAZY_TENSOR=" + ("ON" if args.enable_lazy_tensor else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS="
         + ("ON" if args.enable_external_custom_op_schemas else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
+        "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
     ]
     if args.external_graph_transformer_path:
@@ -936,7 +953,8 @@ def generate_build_tree(
             add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
         # TODO: this variable is not really needed
         add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
-        add_default_definition(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
+        if cudnn_home:
+            add_default_definition(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
 
     if is_windows():
         if args.enable_msvc_static_runtime:
@@ -1184,11 +1202,13 @@ def generate_build_tree(
         ]
 
     if args.gen_doc:
+        if args.enable_training:
+            raise BuildError("--gen_doc is not supported along with --enable_training")
         add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
     else:
         add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
 
-    if args.build_eager_mode:
+    if args.build_eager_mode or args.enable_lazy_tensor:
         import torch
 
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
@@ -1328,7 +1348,7 @@ def setup_cuda_vars(args):
         cuda_home_valid = cuda_home is not None and os.path.exists(cuda_home)
         cudnn_home_valid = cudnn_home is not None and os.path.exists(cudnn_home)
 
-        if not cuda_home_valid or not cudnn_home_valid:
+        if not cuda_home_valid or (not is_windows() and not cudnn_home_valid):
             raise BuildError(
                 "cuda_home and cudnn_home paths must be specified and valid.",
                 "cuda_home='{}' valid={}. cudnn_home='{}' valid={}".format(
@@ -1758,7 +1778,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         # Adding the torch lib path for loading DLLs for onnxruntime in eager mode
         # This works for Python 3.7 and below, and doesn't work for Python 3.8+
         # User will need to import torch before onnxruntime and it will work for all versions
-        if args.build_eager_mode and is_windows():
+        if (args.build_eager_mode or args.enable_lazy_tensor) and is_windows():
             import torch
 
             dll_path_list.append(os.path.join(os.path.dirname(torch.__file__), "lib"))
