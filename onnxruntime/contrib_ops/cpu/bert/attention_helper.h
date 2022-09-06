@@ -101,7 +101,7 @@ void PrepareMask(const int32_t* mask_index,
   bool is_raw_attention_mask = (nullptr != mask_index && mask_index_dims.size() == 2);
   bool has_mask_start_position = (nullptr != mask_index &&
                                   mask_index_dims.size() == 1 &&
-                                  static_cast<int>(mask_index_dims.at(0)) == 2 * batch_size);
+                                  static_cast<int>(mask_index_dims[0]) == 2 * batch_size);
 
   for (int b_i = 0; b_i < batch_size; b_i++) {
     // TODO: mask_index can be used in softmax to save some calculation.

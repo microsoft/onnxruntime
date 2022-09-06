@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/common/span_utils.h"
 #include "test/common/quantization_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -875,7 +876,7 @@ void TestQuantizedAttentionPastState(int64_t batch,
   std::vector<float> bias_data = random.Gaussian<float>(bias_dims, 0.0f, 0.3f);
 
   std::vector<float> input_scale{0.005f};
-  std::vector<float> weight_scale(random.Uniform<float>({weight_scale_zp_size}, -0.01f, 0.01f));
+  std::vector<float> weight_scale(random.Uniform<float>(AsSpan({weight_scale_zp_size}), -0.01f, 0.01f));
 
   std::vector<int64_t> past_dims{2, batch, head_number, past_seq_len, head_size};
   std::vector<float> past_data = random.Gaussian<float>(past_dims, 0.0f, 0.3f);
