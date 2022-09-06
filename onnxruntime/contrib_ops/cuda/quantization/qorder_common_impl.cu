@@ -175,6 +175,17 @@ WarpReduceSum(T val) {
   return val;
 }
 
+template <typename T>
+__inline__ __device__ T
+WarpReduceMax(T val) {
+  val = max(val, __shfl_xor_sync(0xFFFFFFFF, val, 1));
+  val = max(val, __shfl_xor_sync(0xFFFFFFFF, val, 2));
+  val = max(val, __shfl_xor_sync(0xFFFFFFFF, val, 4));
+  val = max(val, __shfl_xor_sync(0xFFFFFFFF, val, 8));
+  val = max(val, __shfl_xor_sync(0xFFFFFFFF, val, 16));
+  retun val;
+}
+
 /************************************************************************
  * Quantize Routines:
  *   - OrderRow (fp16/32) to OrderCol32 (cols % 32 == 0)
