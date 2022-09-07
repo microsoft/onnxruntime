@@ -42,7 +42,7 @@ class ONNXQuantizer:
         mode,
         static,
         weight_qType,
-        input_qType,
+        activation_qType,
         tensors_range,
         nodes_to_quantize,
         nodes_to_exclude,
@@ -82,8 +82,8 @@ class ONNXQuantizer:
             False if "ActivationSymmetric" not in self.extra_options else self.extra_options["ActivationSymmetric"]
         )
 
-        self.input_qType = (
-            onnx_proto.TensorProto.INT8 if input_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
+        self.activation_qType = (
+            onnx_proto.TensorProto.INT8 if activation_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
         )
         self.weight_qType = (
             onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -156,7 +156,7 @@ class ONNXQuantizer:
             self.mode,
             self.static,
             self.weight_qType,
-            self.input_qType,
+            self.activation_qType,
             self.tensors_range,
             self.nodes_to_quantize,
             self.nodes_to_exclude,
@@ -554,7 +554,7 @@ class ONNXQuantizer:
 
         zero_point_shape = []
         zero_point_name = param_name + "_zero_point"
-        zero_point_type = self.input_qType
+        zero_point_type = self.activation_qType
         scale_shape = []
         scale_name = param_name + "_scale"
 
@@ -723,7 +723,21 @@ class ONNXQuantizer:
             or (tensor_name in self.generated_value_names)
         )
 
-    def quantize_inputs(
+    def quantize_activation(self, node, indices, from_subgraph=False):
+        return self.__quantize_inputs(node, indices, False, False, False, -1, from_subgraph)
+
+    def quantize_weight(
+        self,
+        node,
+        indices,
+        reduce_range=False,
+        op_level_per_channel=False,
+        axis=-1,
+        from_subgraph=False,
+    ):
+        return self.__quantize_inputs(node, indices, True, reduce_range, op_level_per_channel, axis, from_subgraph)
+
+    def __quantize_inputs(
         self,
         node,
         indices,
@@ -768,14 +782,14 @@ class ONNXQuantizer:
                 if self.per_channel and op_level_per_channel:
                     (q_weight_name, zp_name, scale_name,) = self.quantize_weight_per_channel(
                         initializer.name,
-                        self.weight_qType if initializer_use_weight_qType else self.input_qType,
+                        self.weight_qType if initializer_use_weight_qType else self.activation_qType,
                         axis,
                         reduce_range,
                     )
                 else:
-                    q_weight_name, zp_name, scale_name = self.quantize_weight(
+                    q_weight_name, zp_name, scale_name = self.quantize_initializer(
                         initializer,
-                        self.weight_qType if initializer_use_weight_qType else self.input_qType,
+                        self.weight_qType if initializer_use_weight_qType else self.activation_qType,
                         reduce_range,
                     )
 
@@ -788,7 +802,7 @@ class ONNXQuantizer:
                     node_input + "_QuantizeLinear", self.new_nodes, self.model.graph()
                 )
                 if qlinear_node is None:
-                    quantize_input_nodes = self._get_quantize_input_nodes(node, input_index, self.input_qType)
+                    quantize_input_nodes = self._get_quantize_input_nodes(node, input_index, self.activation_qType)
                     if quantize_input_nodes is None:
                         return (None, None, None, None)
                     if from_subgraph:
@@ -811,7 +825,7 @@ class ONNXQuantizer:
                     parent_zero_point_names,
                     parent_scale_names,
                     _,
-                ) = self.parent.quantize_inputs(
+                ) = self.parent.__quantize_inputs(
                     node,
                     [input_index],
                     initializer_use_weight_qType=initializer_use_weight_qType,
@@ -829,9 +843,9 @@ class ONNXQuantizer:
                     "Invalid tensor name to quantize: {} @graph scope{}".format(node_input, self.graph_scope)
                 )
 
-        return (quantized_input_names, zero_point_names, scale_names, nodes)
+        return quantized_input_names, zero_point_names, scale_names, nodes
 
-    def quantize_weight(self, weight, qType, reduce_range=False, keep_float_weight=False):
+    def quantize_initializer(self, weight, qType, reduce_range=False, keep_float_weight=False):
         """
         :param weight: TensorProto initializer
         :param qType: type to quantize to
@@ -965,7 +979,7 @@ class ONNXQuantizer:
             q_weight_initializer = onnx.numpy_helper.from_array(quantized_weights, q_weight_name)
             self.model.initializer().extend([q_weight_initializer])
 
-        return (q_weight_name, zp_name, scale_name)
+        return q_weight_name, zp_name, scale_name
 
     def _dequantize_value(self, value_name):
         """
@@ -1029,7 +1043,7 @@ class ONNXQuantizer:
         quantization_params = {}
         for tensor_name in self.tensors_range.keys():
             rmin, rmax = self.tensors_range[tensor_name]
-            qmin, qmax = get_qmin_qmax_for_qType(self.input_qType, symmetric=self.is_activation_symmetric)
+            qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
 
             quantization_params[tensor_name] = compute_scale_zp(rmin, rmax, qmin, qmax, self.is_activation_symmetric)
 

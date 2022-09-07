@@ -64,7 +64,7 @@ class QLinearGemm(QOpMatMul):
                 zero_point_names,
                 scale_names,
                 nodes,
-            ) = self.quantizer.quantize_inputs(node, [0], reduce_range=self.quantizer.reduce_range)
+            ) = self.quantizer.quantize_activation(node, [0])
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(
                 node.input[1],
                 onnx_proto.TensorProto.INT8,
@@ -74,12 +74,24 @@ class QLinearGemm(QOpMatMul):
             zero_point_names.append(quant_weight_tuple[1])
             scale_names.append(quant_weight_tuple[2])
         else:
+            #  Get Quantized from both activation(input[0]) and weight(input[1])
             (
                 quantized_input_names,
                 zero_point_names,
                 scale_names,
                 nodes,
-            ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
+            ) = self.quantizer.quantize_activation(node, [0])
+
+            (
+                quantized_input_names_weight,
+                zero_point_names_weight,
+                scale_names_weight,
+                nodes_weight,
+            ) = self.quantizer.quantize_weight(node, [1], reduce_range=self.quantizer.reduce_range)
+            quantized_input_names.extend(quantized_input_names_weight)
+            zero_point_names.extend(zero_point_names_weight)
+            scale_names.extend(scale_names_weight)
+            nodes.extend(nodes_weight)
 
         if not data_found or quantized_input_names is None:
             return super().quantize()
@@ -133,14 +145,14 @@ class QDQGemm(QDQOperatorBase):
         node = self.node
         assert node.op_type == "Gemm"
 
-        self.quantizer.quantize_tensor(node.input[0])
+        self.quantizer.quantize_activation_tensor(node.input[0])
         if not self.disable_qdq_for_node_output:
-            self.quantizer.quantize_tensor(node.output[0])
+            self.quantizer.quantize_activation_tensor(node.output[0])
 
         if self.quantizer.is_per_channel():
-            self.quantizer.quantize_tensor_per_channel(node.input[1], 0 if is_B_transposed(node) else 1)
+            self.quantizer.quantize_weight_tensor_per_channel(node.input[1], 0 if is_B_transposed(node) else 1)
         else:
-            self.quantizer.quantize_tensor(node.input[1])
+            self.quantizer.quantize_weight_tensor(node.input[1])
 
         if len(node.input) == 3:
             if self.quantizer.is_input_a_weight(node.input[2]):
