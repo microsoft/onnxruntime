@@ -36,6 +36,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockitoSession;
+import org.mockito.quality.Strictness;
 
 @SmallTest
 public class TensorHelperTest {
@@ -207,7 +208,7 @@ public class TensorHelperTest {
 
   @Test
   public void createOutputTensor_bool() throws Exception {
-    MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
+    MockitoSession mockSession = mockitoSession().strictness(Strictness.LENIENT).mockStatic(Arguments.class).startMocking();
     try {
       when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
       when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
@@ -247,7 +248,7 @@ public class TensorHelperTest {
 
   @Test
   public void createOutputTensor_double() throws Exception {
-    MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
+    MockitoSession mockSession = mockitoSession().strictness(Strictness.LENIENT).mockStatic(Arguments.class).startMocking();
     try {
       when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
       when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
