@@ -154,6 +154,25 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   }
 }
 
+bool TunableOpIsEnabledByInfoOrEnv(const ROCMExecutionProviderInfo& info) {
+  auto env_ort_rocm_use_tunable_op = onnxruntime::GetEnvironmentVar("ORT_ROCM_USE_TUNABLE_OP");
+  if (env_ort_rocm_use_tunable_op.empty()) {
+    return info.use_tunable_op;
+  }
+
+  if (env_ort_rocm_use_tunable_op != "0" && env_ort_rocm_use_tunable_op != "1") {
+    LOGS_DEFAULT(ERROR) << "Value of environment variable ORT_ROCM_USE_TUNABLE_OP must be 0 or 1, but got "
+                        << env_ort_rocm_use_tunable_op;
+    return info.use_tunable_op;
+  }
+
+  const bool env_use_tunable_op = env_ort_rocm_use_tunable_op == "1";
+  if (env_use_tunable_op != info.use_tunable_op) {
+    LOGS_DEFAULT(INFO) << "ORT_ROCM_USE_TUNABLE_OP is set to " << env_ort_rocm_use_tunable_op;
+  }
+  return env_use_tunable_op;
+}
+
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
       info_{info} {
@@ -180,6 +199,10 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   size_t free = 0;
   size_t total = 0;
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
+
+  if (TunableOpIsEnabledByInfoOrEnv(info)) {
+    ORT_THROW_IF_ERROR(EnableTunableOp());
+  }
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {

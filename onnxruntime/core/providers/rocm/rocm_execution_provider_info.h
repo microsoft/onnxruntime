@@ -42,6 +42,7 @@ struct ROCMExecutionProviderInfo {
   bool do_copy_in_default_stream{true};
   bool has_user_compute_stream{false};
   void* user_compute_stream{nullptr};
+  bool use_tunable_op{false};
   // The following OrtArenaCfg instance only characterizes the behavior of the default memory
   // arena allocator and not any other auxiliary allocator that may also be part of the ROCM EP.
   // For example, auxiliary allocators `HIP_PINNED` and `HIP_CPU` will not be configured using this
