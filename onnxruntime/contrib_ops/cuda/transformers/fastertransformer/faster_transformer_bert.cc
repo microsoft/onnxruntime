@@ -2,8 +2,14 @@
 // Licensed under the MIT License.
 
 #include "faster_transformer_bert.h"
-//#include <bert/BertWeight.h>
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
 #include <bert/Bert.h>
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 namespace onnxruntime {
 namespace contrib {
