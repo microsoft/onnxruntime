@@ -7,6 +7,9 @@
 #include <thread>
 #include <vector>
 #include <sstream>
+
+#include <string>
+
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocation_planner.h"
@@ -14,7 +17,8 @@
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
-#include "core/framework/session_scope.h"
+//#include "core/framework/session_scope.h"
+#include "core/framework/session_scope_profiler.h"
 
 namespace onnxruntime {
 
@@ -30,7 +34,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, gsl::span<
                                    const logging::Logger& logger) {
 
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
-  SessionScope sess_scope(session_state, frame);
+  SessProfiler sess_profiler(session_state, frame);
 
 #if !defined(ORT_MINIMAL_BUILD)
   const auto* const to_be_executed_nodes = session_state.GetToBeExecutedNodes(fetch_mlvalue_idxs);
@@ -111,7 +115,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, gsl::span<
 
     Status compute_status;
     {
-      KernelScope kernel_scope(op_kernel_context, * p_op_kernel, sess_scope);
+      KernelProfiler kernel_profiler(sess_profiler, op_kernel_context, *p_op_kernel);
 
       ORT_TRY {
 #ifdef ENABLE_TRAINING

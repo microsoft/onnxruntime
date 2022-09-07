@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include <memory>
+//#include <memory>
+//#include <string>
 
 namespace onnxruntime {
 
@@ -11,8 +12,8 @@ class ExecutionFrame;
 class OpKernelContextInternal;
 class OpKernel;
 class SessionScope;
-class SessionScopeImpl;
-class KernelScopeImpl;
+//class SessionScopeImpl;
+//class KernelScopeImpl;
 
 class SessionScope {
  public:
@@ -21,7 +22,7 @@ class SessionScope {
   ~SessionScope();
 
  private:
-  std::unique_ptr<SessionScopeImpl> impl_;
+  //std::unique_ptr<SessionScopeImpl> impl_;
 };
 
 class KernelScope {
@@ -32,7 +33,7 @@ class KernelScope {
   ~KernelScope();
 
  private:
-  std::unique_ptr<KernelScopeImpl> impl_;
+  //std::unique_ptr<KernelScopeImpl> impl_;
 };
 
 }  // namespace onnxruntime

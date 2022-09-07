@@ -42,6 +42,7 @@ KernelScope::~KernelScope() {}
 
 #else
 
+/*
 static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
                                       size_t& total_output_sizes,
                                       const std::string& node_name,
@@ -106,7 +107,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   }
   ss << "]";
   input_type_shape = ss.str();
-}
+}*/
 
 #ifdef CONCURRENCY_VISUALIZER
 using namespace Concurrency;
@@ -388,35 +389,35 @@ class TraceKernelScope {
 };
 #endif
 
-class SessionScopeImpl {
- public:
-  friend class KernelScopeImpl;
-  SessionScopeImpl(const SessionState& sess_state,
-                   const ExecutionFrame& frame) : sess_state_(sess_state),
-                                                  frame_(frame),
-                                                  trace_scope_(sess_state_),
-                                                  concurrency_scope_(sess_state_.GetGraphViewer()),
-                                                  nvtx_scope_(std::this_thread::get_id()),
-                                                  profiler_scope_(sess_state_.Profiler()),
-                                                  mem_scope_(sess_state_, frame_) {
-    iteration_++;
-  }
-  ~SessionScopeImpl() = default;
+//class SessionScopeImpl {
+// public:
+//  friend class KernelScopeImpl;
+//  SessionScopeImpl(const SessionState& sess_state,
+//                   const ExecutionFrame& frame) : sess_state_(sess_state),
+//                                                  frame_(frame),
+//                                                  trace_scope_(sess_state_),
+//                                                  concurrency_scope_(sess_state_.GetGraphViewer()),
+//                                                  nvtx_scope_(std::this_thread::get_id()),
+//                                                  profiler_scope_(sess_state_.Profiler()),
+//                                                  mem_scope_(sess_state_, frame_) {
+//    iteration_++;
+//  }
+//  ~SessionScopeImpl() = default;
+//
+// private:
+//  std::atomic<size_t> iteration_{0};
+//  const SessionState& sess_state_;
+//  const ExecutionFrame& frame_;
+//  TraceSessScope trace_scope_;
+//  ConcurrencySessScope concurrency_scope_;
+//  NVTXSessScope nvtx_scope_;
+//  ProfilerSessScope profiler_scope_;
+//  MemSessScope mem_scope_;
+//  //add new session scope here
+//};
 
- private:
-  std::atomic<size_t> iteration_{0};
-  const SessionState& sess_state_;
-  const ExecutionFrame& frame_;
-  TraceSessScope trace_scope_;
-  ConcurrencySessScope concurrency_scope_;
-  NVTXSessScope nvtx_scope_;
-  ProfilerSessScope profiler_scope_;
-  MemSessScope mem_scope_;
-  //add new session scope here
-};
-
-SessionScope::SessionScope(const SessionState& sess_state, const ExecutionFrame& frame) {
-  impl_ = std::make_unique<SessionScopeImpl>(sess_state, frame);
+SessionScope::SessionScope(const SessionState& /*sess_state*/, const ExecutionFrame& /*frame*/) {
+  //impl_ = std::make_unique<SessionScopeImpl>(sess_state, frame);
 }
 
 SessionScope::~SessionScope() {}
@@ -461,94 +462,94 @@ class InstrumentKernelScope {
   InstrumentKernelScope(const OpKernel&){};
 };
 #endif
+//
+//class KernelScopeImpl {
+// public:
+//  KernelScopeImpl(OpKernelContextInternal& context,
+//                  const OpKernel& kernel,
+//                  SessionScope& sess_scope) : context_(context),
+//                                              kernel_(kernel),
+//                                              sess_scope_(sess_scope),
+//                                              sess_state_(sess_scope.impl_->sess_state_),
+//                                              concur_scope_(sess_scope.impl_->concurrency_scope_, kernel.Node()),
+//                                              nvtx_scope_(sess_scope.impl_->nvtx_scope_, kernel.Node()),
+//                                              dump_scope_(sess_scope.impl_->sess_state_, context, kernel.Node(), sess_scope.impl_->iteration_),
+//                                              //mem_scope_(sess_scope.impl_->sess_state_),
+//                                              trace_scope_(context, kernel),
+//                                              instrument_scope_(kernel) {
+//    is_profiler_enabled_ = sess_scope.impl_->profiler_scope_.Enabled();
+//
+//    if (is_profiler_enabled_) {
+//      auto& node = kernel.Node();
+//      node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
+//      auto& profiler = sess_scope.impl_->profiler_scope_.profiler_;
+//      auto sync_time_begin = profiler.Start();
+//      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+//                                     node_name_ + "_fence_before",
+//                                     sync_time_begin,
+//                                     {{"op_name", kernel_.KernelDef().OpName()}});
+//
+//      concurrency::ThreadPool::StartProfiling(sess_state_.GetThreadPool());
+//      kernel_begin_time_ = profiler.Start();
+//      CalculateTotalInputSizes(&context,
+//                               &kernel,
+//                               input_activation_sizes_,
+//                               input_parameter_sizes_,
+//                               node_name_,
+//                               input_type_shape_);
+//    }
+//  }
+//
+//  ~KernelScopeImpl() {
+//    if (is_profiler_enabled_) {
+//      CalculateTotalOutputSizes(&context_, total_output_sizes_, node_name_, output_type_shape_);
+//      auto& profiler = sess_scope_.impl_->profiler_scope_.profiler_;
+//      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+//                                     node_name_ + "_kernel_time",
+//                                     kernel_begin_time_,
+//                                     {
+//                                         {"op_name", kernel_.KernelDef().OpName()},
+//                                         {"provider", kernel_.KernelDef().Provider()},
+//                                         {"node_index", std::to_string(kernel_.Node().Index())},
+//                                         {"activation_size", std::to_string(input_activation_sizes_)},
+//                                         {"parameter_size", std::to_string(input_parameter_sizes_)},
+//                                         {"output_size", std::to_string(total_output_sizes_)},
+//                                         {"input_type_shape", input_type_shape_},
+//                                         {"output_type_shape", output_type_shape_},
+//                                         {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(sess_state_.GetThreadPool())},
+//                                     });
+//      auto sync_time_begin = profiler.Start();
+//      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
+//                                     node_name_ + "_fence_after",
+//                                     sync_time_begin,
+//                                     {{"op_name", kernel_.KernelDef().OpName()}});
+//    }
+//  }
+//
+// private:
+//  bool is_profiler_enabled_ = false;
+//  TimePoint kernel_begin_time_;
+//  std::string node_name_;
+//  OpKernelContextInternal& context_;
+//  const OpKernel& kernel_;
+//  SessionScope& sess_scope_;
+//  const SessionState& sess_state_;
+//  size_t input_activation_sizes_{};
+//  size_t input_parameter_sizes_{};
+//  size_t total_output_sizes_{};
+//  std::string input_type_shape_{};
+//  std::string output_type_shape_{};
+//  ConcurrencyKernelScope concur_scope_;
+//  NVTXKernelScope nvtx_scope_;
+//  DumpKernelScope dump_scope_;
+//  TraceKernelScope trace_scope_;
+//  InstrumentKernelScope instrument_scope_;
+//  //add new kernel scope here
+//};
 
-class KernelScopeImpl {
- public:
-  KernelScopeImpl(OpKernelContextInternal& context,
-                  const OpKernel& kernel,
-                  SessionScope& sess_scope) : context_(context),
-                                              kernel_(kernel),
-                                              sess_scope_(sess_scope),
-                                              sess_state_(sess_scope.impl_->sess_state_),
-                                              concur_scope_(sess_scope.impl_->concurrency_scope_, kernel.Node()),
-                                              nvtx_scope_(sess_scope.impl_->nvtx_scope_, kernel.Node()),
-                                              dump_scope_(sess_scope.impl_->sess_state_, context, kernel.Node(), sess_scope.impl_->iteration_),
-                                              //mem_scope_(sess_scope.impl_->sess_state_),
-                                              trace_scope_(context, kernel),
-                                              instrument_scope_(kernel) {
-    is_profiler_enabled_ = sess_scope.impl_->profiler_scope_.Enabled();
-
-    if (is_profiler_enabled_) {
-      auto& node = kernel.Node();
-      node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
-      auto& profiler = sess_scope.impl_->profiler_scope_.profiler_;
-      auto sync_time_begin = profiler.Start();
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     node_name_ + "_fence_before",
-                                     sync_time_begin,
-                                     {{"op_name", kernel_.KernelDef().OpName()}});
-
-      concurrency::ThreadPool::StartProfiling(sess_state_.GetThreadPool());
-      kernel_begin_time_ = profiler.Start();
-      CalculateTotalInputSizes(&context,
-                               &kernel,
-                               input_activation_sizes_,
-                               input_parameter_sizes_,
-                               node_name_,
-                               input_type_shape_);
-    }
-  }
-
-  ~KernelScopeImpl() {
-    if (is_profiler_enabled_) {
-      CalculateTotalOutputSizes(&context_, total_output_sizes_, node_name_, output_type_shape_);
-      auto& profiler = sess_scope_.impl_->profiler_scope_.profiler_;
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     node_name_ + "_kernel_time",
-                                     kernel_begin_time_,
-                                     {
-                                         {"op_name", kernel_.KernelDef().OpName()},
-                                         {"provider", kernel_.KernelDef().Provider()},
-                                         {"node_index", std::to_string(kernel_.Node().Index())},
-                                         {"activation_size", std::to_string(input_activation_sizes_)},
-                                         {"parameter_size", std::to_string(input_parameter_sizes_)},
-                                         {"output_size", std::to_string(total_output_sizes_)},
-                                         {"input_type_shape", input_type_shape_},
-                                         {"output_type_shape", output_type_shape_},
-                                         {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(sess_state_.GetThreadPool())},
-                                     });
-      auto sync_time_begin = profiler.Start();
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     node_name_ + "_fence_after",
-                                     sync_time_begin,
-                                     {{"op_name", kernel_.KernelDef().OpName()}});
-    }
-  }
-
- private:
-  bool is_profiler_enabled_ = false;
-  TimePoint kernel_begin_time_;
-  std::string node_name_;
-  OpKernelContextInternal& context_;
-  const OpKernel& kernel_;
-  SessionScope& sess_scope_;
-  const SessionState& sess_state_;
-  size_t input_activation_sizes_{};
-  size_t input_parameter_sizes_{};
-  size_t total_output_sizes_{};
-  std::string input_type_shape_{};
-  std::string output_type_shape_{};
-  ConcurrencyKernelScope concur_scope_;
-  NVTXKernelScope nvtx_scope_;
-  DumpKernelScope dump_scope_;
-  TraceKernelScope trace_scope_;
-  InstrumentKernelScope instrument_scope_;
-  //add new kernel scope here
-};
-
-KernelScope::KernelScope(OpKernelContextInternal& kernel_context,
-                         const OpKernel& kernel, SessionScope& sess_scope) {
-  impl_ = std::make_unique<KernelScopeImpl>(kernel_context, kernel, sess_scope);
+KernelScope::KernelScope(OpKernelContextInternal& /*kernel_context*/,
+                         const OpKernel& /*kernel*/, SessionScope& /*sess_scope*/) {
+  //impl_ = std::make_unique<KernelScopeImpl>(kernel_context, kernel, sess_scope);
 }
 
 KernelScope::~KernelScope() {}
