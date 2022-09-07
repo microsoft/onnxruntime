@@ -8,4 +8,5 @@ include_directories(${FASTERTRANSFORMER_DIR})
 include_directories(${FASTERTRANSFORMER_DIR}/src/fastertransformer/models)
 
 add_subdirectory(${FASTERTRANSFORMER_DIR} EXCLUDE_FROM_ALL)
+target_compile_options(transformer-static PRIVATE -Wno-error=unused-parameter)
 set_target_properties(transformer-static PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
