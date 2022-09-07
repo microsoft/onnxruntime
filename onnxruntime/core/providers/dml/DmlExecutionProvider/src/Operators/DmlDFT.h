@@ -71,7 +71,8 @@ private:
     bool m_isOnesided;
     bool m_isInverse;
 
-    struct StockhamParameters {
+    struct StockhamParameters
+    {
         // Allocate temporary buffers if needed
         struct ResourceDesc
         {
@@ -85,7 +86,7 @@ private:
             unsigned Left;
             unsigned Right;
             unsigned End;
-            unsigned CalculateIndex(unsigned index)
+            unsigned CalculateIndex(unsigned index) const
             {
                 if (index > 0 && index < End)
                 {
@@ -106,12 +107,14 @@ private:
         uint32_t NumberOfPasses = 0;
     };
 
-    enum class DFTType {
+    enum class DFTType
+    {
         Stockham = 0,
         BluesteinZChirp,
     };
 
-    struct DFTParameters {
+    struct DFTParameters
+    {
         DFTType Type = DFTType::Stockham;
         StockhamParameters StockhamParams = {};
         uint32_t DFTLength = 0;
@@ -318,7 +321,7 @@ public:
 
             auto temporarySize = reshapedInputSize;
             temporarySize.back() = reshapedOutputSize.back();
-            auto temporaryBufferByteSize = sizeof(float) * std::accumulate(temporarySize.begin(), temporarySize.end(), 1, std::multiplies());
+            auto temporaryBufferByteSize = sizeof(float) * ComputeElementCountFromDimensions(temporarySize);
 
             // Calculate elements and strides
             std::array<uint32_t, 4> reshapedInputStrides = { 1, 1, 1, 1 };
@@ -389,7 +392,7 @@ public:
                 params.StockhamParams.ResourceLoopList.push_back({});
                 params.StockhamParams.ResourceLoopList.back().Sizes = temporarySize;
                 params.StockhamParams.ResourceLoopList.back().Strides = temporaryStrides;
-                
+
                 auto& resource = params.StockhamParams.ResourceLoopList.back().Resource;
                 ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
             }
@@ -404,12 +407,12 @@ public:
         return params;
     }
 
-    void StockhamFFT(DFTParameters& dftParams, ID3D12GraphicsCommandList* commandList)
+    void StockhamFFT(const DFTParameters& dftParams, ID3D12GraphicsCommandList* commandList)
     {
-        auto& stockhamParams = dftParams.StockhamParams;
+        const auto& stockhamParams = dftParams.StockhamParams;
 
         // Create resource loop list
-        auto& loopList = stockhamParams.ResourceLoopList;
+        const auto& loopList = stockhamParams.ResourceLoopList;
 
         // Get input and output resources
         auto inputResource = loopList[0].Resource.Get();
