@@ -894,7 +894,7 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
     if (code != ORT_OK) {
       return NULL;
     }
-    ONNXType elementType;
+    ONNXType elementType = ONNX_TYPE_UNKNOWN;
     code = checkOrtStatus(jniEnv, api, api->GetValueType(firstElement, &elementType));
     if (code == ORT_OK) {
       switch (elementType) {
@@ -903,7 +903,7 @@ jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
           OrtTensorTypeAndShapeInfo* firstElementInfo = NULL;
           code = checkOrtStatus(jniEnv, api, api->GetTensorTypeAndShape(firstElement, &firstElementInfo));
           if (code == ORT_OK) {
-            ONNXTensorElementDataType element;
+            ONNXTensorElementDataType element = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
             code = checkOrtStatus(jniEnv, api, api->GetTensorElementType(firstElementInfo, &element));
             api->ReleaseTensorTypeAndShapeInfo(firstElementInfo);
             if (code == ORT_OK) {
@@ -976,11 +976,7 @@ jobject createMapInfoFromValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator 
 
   JavaTensorTypeShape keyInfo;
   code = getTensorTypeShape(jniEnv, &keyInfo, api, keys);
-  if (code != ORT_OK) {
-    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, keys));
-    return NULL;
-  }
-  code = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, keys));
+  api->ReleaseValue(keys);
   if (code != ORT_OK) {
     return NULL;
   }
@@ -994,11 +990,7 @@ jobject createMapInfoFromValue(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator 
 
   JavaTensorTypeShape valueInfo;
   code = getTensorTypeShape(jniEnv, &valueInfo, api, values);
-  if (code != ORT_OK) {
-    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, values));
-    return NULL;
-  }
-  code = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, values));
+  api->ReleaseValue(values);
   if (code != ORT_OK) {
     return NULL;
   }
