@@ -7,5 +7,6 @@ option(SM "" 75)
 option(CMAKE_BUILD_TYPE "" Release)
 
 add_subdirectory(${fastertransformer_root_dir})
+remove_definitions("-DENABLE_BF16")
 set_target_properties(transformer-static PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
