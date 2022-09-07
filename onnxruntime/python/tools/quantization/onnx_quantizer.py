@@ -724,7 +724,15 @@ class ONNXQuantizer:
         )
 
     def quantize_activation(self, node, indices, from_subgraph=False):
-        return self.__quantize_inputs(node, indices, False, False, False, -1, from_subgraph)
+        return self.__quantize_inputs(
+            node=node,
+            indices=indices,
+            initializer_use_weight_qType=False,
+            reduce_range=False,
+            op_level_per_channel=False,
+            axis=-1,
+            from_subgraph=from_subgraph,
+        )
 
     def quantize_weight(
         self,
@@ -735,7 +743,15 @@ class ONNXQuantizer:
         axis=-1,
         from_subgraph=False,
     ):
-        return self.__quantize_inputs(node, indices, True, reduce_range, op_level_per_channel, axis, from_subgraph)
+        return self.__quantize_inputs(
+            node=node,
+            indices=indices,
+            initializer_use_weight_qType=True,
+            reduce_range=reduce_range,
+            op_level_per_channel=op_level_per_channel,
+            axis=axis,
+            from_subgraph=from_subgraph,
+        )
 
     def __quantize_inputs(
         self,
