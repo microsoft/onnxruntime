@@ -337,14 +337,17 @@ void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
   // when not running in InferenceSession (e.g. Test)
   // it's OK to not remember the deferred release ptr
   // as the actual memory will be cleaned in arena allocator dtor
-  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
 
+  // This function should only record pointers returned by
+  // AllocateBufferOnCPUPinned.
+
+  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
   void* stream = GetComputeStream();
   auto it = deferred_release_buffer_pool_.find(stream);
-  if (it == deferred_release_buffer_pool_.end()) {
-    deferred_release_buffer_pool_[stream] = {p};
-  } else {
+  if (it != deferred_release_buffer_pool_.end()) {
     it->second.push_back(p);
+  } else {
+    deferred_release_buffer_pool_[stream] = {p};
   }
 }
 
@@ -396,7 +399,11 @@ void CUDAExecutionProvider::EnqueueDeferredRelease() {
 
     auto stream = static_cast<cudaStream_t>(it->first);
     auto& buffers = it->second;
+    // Allocate a heap object to extend the lifetime of allocator and buffer pointers
+    // until the end of callback (aka ReleaseCpuBufferCallback).
     auto cpu_buffers_info = new CpuBuffersInfo;
+    // This allocator must be the same to the allocator
+    // used in AllocateBufferOnCPUPinned.
     cpu_buffers_info->allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
     cpu_buffers_info->buffers = new void*[buffers.size()];
     for (size_t i = 0; i < buffers.size(); ++i) {
