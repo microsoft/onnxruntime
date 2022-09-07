@@ -23,7 +23,6 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockitoSession;
-import org.mockito.quality.Strictness;
 
 public class OnnxruntimeModuleTest {
   private ReactApplicationContext reactContext =
@@ -41,7 +40,7 @@ public class OnnxruntimeModuleTest {
 
   @Test
   public void onnxruntime_module() throws Exception {
-    MockitoSession mockSession = mockitoSession().strictness(Strictness.LENIENT).mockStatic(Arguments.class).startMocking();
+    MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
     try {
       when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
       when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
