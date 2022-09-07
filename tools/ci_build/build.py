@@ -474,7 +474,6 @@ def parse_arguments():
     parser.add_argument("--enable_msinternal", action="store_true", help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
     parser.add_argument("--use_vitisai", action="store_true", help="Build with Vitis-AI")
-    parser.add_argument("--use_nuphar", action="store_true", help="Build with nuphar")
     parser.add_argument("--use_tvm", action="store_true", help="Build with TVM")
     parser.add_argument("--tvm_cuda_runtime", action="store_true", default=False, help="Build TVM with CUDA support")
     parser.add_argument(
@@ -853,11 +852,9 @@ def generate_build_tree(
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
-        "-Donnxruntime_USE_NUPHAR_TVM=" + ("ON" if args.use_nuphar else "OFF"),
-        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar or args.use_tvm else "OFF"),
+        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
-        "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=" + ("ON" if args.use_tensorrt_builtin_parser else "OFF"),
         "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
@@ -1040,7 +1037,7 @@ def generate_build_tree(
     if args.use_full_protobuf or args.use_tensorrt or args.use_openvino or args.use_vitisai or args.gen_doc:
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
-    if (args.use_nuphar or args.use_tvm) and args.llvm_path is not None:
+    if args.use_tvm and args.llvm_path is not None:
         cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
 
     if args.use_cuda and not is_windows():
@@ -1266,7 +1263,7 @@ def generate_build_tree(
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
-        if args.use_nuphar or args.use_tvm:
+        if args.use_tvm:
             os.environ["PATH"] = (
                 os.path.join(config_build_dir, "_deps", "tvm-build")
                 + os.pathsep
@@ -1284,7 +1281,7 @@ def generate_build_tree(
                 + (
                     "ON"
                     if config.lower() == "debug"
-                    and not (args.use_nuphar or args.use_tvm)
+                    and not args.use_tvm
                     and not args.use_openvino
                     and not args.use_gdk
                     and not args.enable_msvc_static_runtime
@@ -1782,8 +1779,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_ios_tests(args, source_dir, config, cwd)
             continue
         dll_path_list = []
-        if args.use_nuphar:
-            dll_path_list.append(os.path.join(build_dir, "_deps", "tvm-build"))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
         # Adding the torch lib path for loading DLLs for onnxruntime in eager mode
@@ -1988,17 +1983,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([sys.executable, "onnxruntime_test_python_keras.py"], cwd=cwd, dll_path=dll_path)
 
 
-def nuphar_run_python_tests(build_dir, configs):
-    for config in configs:
-        if config == "Debug":
-            continue
-        cwd = get_config_build_dir(build_dir, config)
-        if is_windows():
-            cwd = os.path.join(cwd, config)
-        dll_path = os.path.join(build_dir, config, "_deps", "tvm-build", config)
-        run_subprocess([sys.executable, "onnxruntime_test_python_nuphar.py"], cwd=cwd, dll_path=dll_path)
-
-
 def tvm_run_python_tests(build_dir, configs):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -2028,7 +2012,6 @@ def build_python_wheel(
     use_dnnl,
     use_tensorrt,
     use_openvino,
-    use_nuphar,
     use_tvm,
     use_vitisai,
     use_acl,
@@ -2077,8 +2060,6 @@ def build_python_wheel(
             args.append("--use_openvino")
         elif use_dnnl:
             args.append("--use_dnnl")
-        elif use_nuphar:
-            args.append("--use_nuphar")
         elif use_tvm:
             args.append("--use_tvm")
         elif use_vitisai:
@@ -2101,7 +2082,7 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(
-    source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar, use_tvm, use_winml
+    source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_tvm, use_winml
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2134,8 +2115,6 @@ def build_nuget_package(
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.DNNL"'
     elif use_cuda:
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
-    elif use_nuphar:
-        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Nuphar"'
     elif use_tvm:
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Tvm"'
     else:
@@ -2710,9 +2689,6 @@ def main():
 
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
 
-        if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
-            nuphar_run_python_tests(build_dir, configs)
-
         # TODO(agladyshev):
         # to support Windows, we need to update .github/workflows/windows.yml
         # and add to the PATH variable the following value: C:Program Files\LLVM\bin
@@ -2743,7 +2719,6 @@ def main():
                 args.use_dnnl,
                 args.use_tensorrt,
                 args.use_openvino,
-                args.use_nuphar,
                 args.use_tvm,
                 args.use_vitisai,
                 args.use_acl,
@@ -2766,7 +2741,6 @@ def main():
                 args.use_openvino,
                 args.use_tensorrt,
                 args.use_dnnl,
-                args.use_nuphar,
                 args.use_tvm,
                 args.use_winml,
             )
