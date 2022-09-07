@@ -117,7 +117,7 @@ export declare namespace InferenceSession {
 
     /**
      * Log severity level. See
-     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+     * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/logging/severity.h
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
@@ -132,7 +132,7 @@ export declare namespace InferenceSession {
 
     /**
      * Store configurations for a session. See
-     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
+     * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/
      * onnxruntime_session_options_config_keys.h
      *
      * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
@@ -201,7 +201,7 @@ export declare namespace InferenceSession {
   export interface RunOptions {
     /**
      * Log severity level. See
-     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+     * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/logging/severity.h
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
@@ -230,7 +230,7 @@ export declare namespace InferenceSession {
 
     /**
      * Set a single run configuration entry. See
-     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
+     * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/
      * onnxruntime_run_options_config_keys.h
      *
      * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later

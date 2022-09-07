@@ -1,12 +1,12 @@
 parameters:
-- name: PythonVersion  
+- name: PythonVersion
   type: string
 
-- name: RocmVersion  
+- name: RocmVersion
   type: string
 
 
-  
+
 jobs:
 - job: wheels_python_${{ replace(parameters.PythonVersion,'.','_') }}_rocm_${{ replace(parameters.RocmVersion,'.','_') }}
   workspace:
@@ -27,7 +27,6 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm${{ parameters.RocmVersion }}
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: >-
-        --build-arg TORCH_VERSION=1.11.0
         --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
         --build-arg BUILD_UID=$(id -u)
         --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
@@ -73,7 +72,7 @@ jobs:
 
   # All UTs were here are now covered in AMD CI - see orttraining-pai-ci-pipeline.yml
   # This CI is mainly responsible for packaging. The uploaded whl could be used in the downstream CIs (if any).
-  # For example, docker image build (e.g., PTCA), reporting CI, etc. to further verify the whl as needed.  
+  # For example, docker image build (e.g., PTCA), reporting CI, etc. to further verify the whl as needed.
   # To view the UTs disabled from this CI - see https://github.com/microsoft/onnxruntime/pull/11945 for examples
 
   - script: |-

@@ -127,7 +127,7 @@ If the `device_type` runtime config option is not explicitly specified, CPU will
   Example:
   HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU AUTO:GPU,CPU
 
-*This is the hardware accelerator target that is enabled by **default** in the container image. After building the container image for one default target, the application may explicitly choose a different target at run time with the same container by using the [Dynamic device selction API](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/OpenVINO-ExecutionProvider.md#dynamic-device-selection).*
+*This is the hardware accelerator target that is enabled by **default** in the container image. After building the container image for one default target, the application may explicitly choose a different target at run time with the same container by using the [Dynamic device selction API](https://github.com/microsoft/onnxruntime/blob/main/docs/execution_providers/OpenVINO-ExecutionProvider.md#dynamic-device-selection).*
 
 
 ### OpenVINO on CPU
