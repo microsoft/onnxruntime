@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "core/common/gsl.h"
-
 #ifndef GSL_SUPPRESS
 #if defined(__clang__) && !defined(__NVCC__)
 #define GSL_SUPPRESS(x) [[gsl::suppress("x")]]
