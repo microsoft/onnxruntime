@@ -1,0 +1,19 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 76a5e06..5bfbd0b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -16,10 +16,10 @@ project(FasterTransformer LANGUAGES CXX CUDA)
+ 
+ find_package(CUDA 10.2 REQUIRED)
+ 
+-if(${CUDA_VERSION_MAJOR} VERSION_GREATER_EQUAL "11")
+-  add_definitions("-DENABLE_BF16")
+-  message("CUDA_VERSION ${CUDA_VERSION_MAJOR} is greater or equal than 11, enable -DENABLE_BF16 flag")
+-endif()
++# if(${CUDA_VERSION_MAJOR} VERSION_GREATER_EQUAL "11")
++#  add_definitions("-DENABLE_BF16")
++#  message("CUDA_VERSION ${CUDA_VERSION_MAJOR} is greater or equal than 11, enable -DENABLE_BF16 flag")
++# endif()
+ 
+ option(BUILD_TF "Build in TensorFlow mode" OFF)
+ option(BUILD_PYT "Build in PyTorch TorchScript class mode" OFF)

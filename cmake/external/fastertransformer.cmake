@@ -1,12 +1,12 @@
-set(fastertransformer_root_dir ${PROJECT_SOURCE_DIR}/external/FasterTransformer)
+set(FASTERTRANSFORMER_DIR ${PROJECT_SOURCE_DIR}/external/FasterTransformer)
+
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  # execute_process(COMMAND  git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/fastertransformer/DisableBFloat16Support.patch WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/${FASTERTRANSFORMER_DIR})
+endif()
 
 add_definitions(-DUSE_FASTERTRANSFORMER)
-include_directories(${fastertransformer_root_dir}/src/fastertransformer/models/bert)
+include_directories(${FASTERTRANSFORMER_DIR}/src/fastertransformer/models)
 
-option(SM "" 75)
-option(CMAKE_BUILD_TYPE "" Release)
-
-add_subdirectory(${fastertransformer_root_dir} EXCLUDE_FROM_ALL)
-remove_definitions("-DENABLE_BF16")
+add_subdirectory(${FASTERTRANSFORMER_DIR} EXCLUDE_FROM_ALL)
 set_target_properties(transformer-static PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
