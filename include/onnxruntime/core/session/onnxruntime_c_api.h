@@ -3516,6 +3516,7 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
   // TODO: Support 'Variadic' inputs/outputs
   INPUT_OUTPUT_REQUIRED = 0,
   INPUT_OUTPUT_OPTIONAL,
+  INPUT_OUTPUT_VARIADIC,
 } OrtCustomOpInputOutputCharacteristic;
 
 /*

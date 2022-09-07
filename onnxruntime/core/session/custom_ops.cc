@@ -174,8 +174,14 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
 
         // Only since the ORT API version 8 and onwards does the OrtCustomOp interface have the relevant methods exposed to query
         // if an input/output is required/optional. So, query the relevant methods ONLY from API version 8 onwards.
-        if (op->version >= 8 && op->GetInputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
-          option = onnx::OpSchema::FormalParameterOption::Optional;
+        if (op->version >= 8) {
+          auto characteristic = op->GetInputCharacteristic(op, i);
+
+          if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+            option = onnx::OpSchema::FormalParameterOption::Optional;
+          } else if (/*op->version >= 13 &&*/ characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC) {
+            option = onnx::OpSchema::FormalParameterOption::Variadic;
+          }
         }
 
         auto type = op->GetInputType(op, i);
@@ -195,8 +201,14 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
 
         // Only since the ORT API version 8 and onwards does the OrtCustomOp interface have the relevant methods exposed to query
         // if an input/output is required/optional. So, query the relevant methods ONLY from API version 8 onwards.
-        if (op->version >= 8 && op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
-          option = onnx::OpSchema::FormalParameterOption::Optional;
+        if (op->version >= 8) {
+          auto characteristic = op->GetOutputCharacteristic(op, i);
+
+          if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
+            option = onnx::OpSchema::FormalParameterOption::Optional;
+          } else if (/*op->version >= 13 &&*/ characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC) {
+            option = onnx::OpSchema::FormalParameterOption::Variadic;
+          }
         }
 
         auto type = op->GetOutputType(op, i);
