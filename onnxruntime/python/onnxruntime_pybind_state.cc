@@ -1083,6 +1083,8 @@ void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistra
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
+  // Note: Doesn't expose initial_growth_chunk_sizes_bytes option. This constructor kept for
+  // backwards compatibility, key-value pair constructor overload exposes all options
   // There is a global var: arena_extend_strategy, which means we can't use that var name here
   // See docs/C_API.md for details on what the following parameters mean and how to choose these values
   ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,
@@ -1093,7 +1095,32 @@ void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistra
     ort_arena_cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
     ort_arena_cfg->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
     return ort_arena_cfg;
-  }));
+  }))
+      .def(py::init([](const py::dict& feeds) {
+    auto ort_arena_cfg = std::make_unique<OrtArenaCfg>();
+    for (const auto kvp : feeds) {
+      std::string key = kvp.first.cast<std::string>();
+      if (key == "max_mem") {
+        ort_arena_cfg->max_mem = kvp.second.cast<size_t>();
+      } else if (key == "arena_extend_strategy") {
+        ort_arena_cfg->arena_extend_strategy = kvp.second.cast<int>();
+      } else if (key == "initial_chunk_size_bytes") {
+        ort_arena_cfg->initial_chunk_size_bytes = kvp.second.cast<int>();
+      } else if (key == "max_dead_bytes_per_chunk") {
+        ort_arena_cfg->max_dead_bytes_per_chunk = kvp.second.cast<int>();
+      } else if (key == "initial_growth_chunk_size_bytes") {
+        ort_arena_cfg->initial_growth_chunk_size_bytes = kvp.second.cast<int>();
+        } else {
+        ORT_THROW("Invalid OrtArenaCfg option: ", key);
+      }
+    }
+    return ort_arena_cfg;
+  }))
+      .def_readwrite("max_mem", &OrtArenaCfg::max_mem)
+      .def_readwrite("arena_extend_strategy", &OrtArenaCfg::arena_extend_strategy)
+      .def_readwrite("initial_chunk_size_bytes", &OrtArenaCfg::initial_chunk_size_bytes)
+      .def_readwrite("max_dead_bytes_per_chunk", &OrtArenaCfg::max_dead_bytes_per_chunk)
+      .def_readwrite("initial_growth_chunk_size_bytes", &OrtArenaCfg::initial_growth_chunk_size_bytes);
 
   py::class_<OrtMemoryInfo> ort_memory_info_binding(m, "OrtMemoryInfo");
   ort_memory_info_binding.def(py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
