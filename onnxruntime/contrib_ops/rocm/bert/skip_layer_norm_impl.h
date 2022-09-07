@@ -2,13 +2,14 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
 template <typename T>
-bool LaunchSkipLayerNormKernel(
+Status LaunchSkipLayerNormKernel(
     hipStream_t stream,
     T* output,        // output tensor
     const T* input,   // input tensor
@@ -25,4 +26,3 @@ bool LaunchSkipLayerNormKernel(
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
-

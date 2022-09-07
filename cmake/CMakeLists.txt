@@ -85,6 +85,7 @@ option(onnxruntime_TENSORRT_PLACEHOLDER_BUILDER "Instantiate Placeholder TensorR
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code coverage" OFF)
+option(onnxruntime_DONT_VECTORIZE "Do not vectorize operations in Eigen" OFF)
 
 #It's preferred to turn it OFF when onnxruntime is dynamically linked to PROTOBUF. But Tensort always required the full version of protobuf.
 cmake_dependent_option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instead of libprotobuf-lite when this option is ON" OFF "NOT onnxruntime_USE_TENSORRT" ON)
@@ -516,6 +517,10 @@ add_definitions(-DEIGEN_MPL2_ONLY)
 if (MSVC)
   add_definitions(-DEIGEN_HAS_CONSTEXPR -DEIGEN_HAS_VARIADIC_TEMPLATES -DEIGEN_HAS_CXX11_MATH -DEIGEN_HAS_CXX11_ATOMIC
           -DEIGEN_STRONG_INLINE=inline)
+endif()
+
+if ( onnxruntime_DONT_VECTORIZE )
+  add_definitions(-DEIGEN_DONT_VECTORIZE=1)
 endif()
 
 if (onnxruntime_CROSS_COMPILING)
@@ -1131,6 +1136,8 @@ else()
   check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
   check_cxx_compiler_flag(-Wformat-truncation HAS_FORMAT_TRUNCATION)
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
+  check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
+  check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
 
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -1149,6 +1156,13 @@ else()
   endif()
   if (HAS_UNDEFINED_VAR_TEMPLATE)
     list(APPEND ORT_WARNING_FLAGS -Wno-undefined-var-template)
+  endif()
+  if (HAS_DEPRECATED_BUILTINS)
+    list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-builtins)
+  endif()
+
+  if (HAS_ENUM_CONSTEXPR_CONVERSION)
+    target_compile_options(${PROTOBUF_LIB} PRIVATE "-Wno-enum-constexpr-conversion")
   endif()
 endif()
 

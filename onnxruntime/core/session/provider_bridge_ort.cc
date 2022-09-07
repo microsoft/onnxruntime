@@ -27,8 +27,10 @@
 #include "core/session/provider_bridge_ort.h"
 #include "core/util/math.h"
 #include "core/framework/sparse_utils.h"
-#include "core/common/string_helper.h"
 #include "core/graph/graph_proto_serializer.h"
+
+#include "core/session/onnxruntime_c_api.h"
+#include "core/common/string_helper.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -194,8 +196,8 @@ struct ProviderHostImpl : ProviderHost {
   void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
   void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
 
-  bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg); }
-  bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
+  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg); }
+  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
 #endif
 
 #ifdef USE_ROCM
@@ -209,8 +211,8 @@ struct ProviderHostImpl : ProviderHost {
   void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
   void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
 
-  bool RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_ROCM().RocmCall_false(retCode, exprString, libName, successCode, msg); }
-  bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_ROCM().RocmCall_true(retCode, exprString, libName, successCode, msg); }
+  Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_ROCM().RocmCall_false(retCode, exprString, libName, successCode, msg); }
+  void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { GetProviderInfo_ROCM().RocmCall_true(retCode, exprString, libName, successCode, msg); }
 #endif
 
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
