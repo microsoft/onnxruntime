@@ -227,22 +227,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
-  auto cpu_alloc = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  {
-    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-    auto it = deferred_release_cpu_ptr_.begin();
-    while (it != deferred_release_cpu_ptr_.end()) {
-      auto& e = it->first;
-      auto& v = it->second;
-      if (v.recorded)
-        CUDA_CALL_THROW(cudaEventSynchronize(e));
-      for (auto p : v.cpu_ptrs) {
-        cpu_alloc->Free(p);
-      }
-      CUDA_CALL_THROW(cudaEventDestroy(e));
-      it = deferred_release_cpu_ptr_.erase(it);
-    }
-  }
+  EnqueueDeferredRelease();
 
   // clean up thread local context caches
   {
@@ -352,43 +337,83 @@ void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
   // when not running in InferenceSession (e.g. Test)
   // it's OK to not remember the deferred release ptr
   // as the actual memory will be cleaned in arena allocator dtor
-  auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
-  if (current_deferred_release_event) {
-    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-    auto iter = deferred_release_cpu_ptr_.find(current_deferred_release_event);
-    ORT_ENFORCE(iter != deferred_release_cpu_ptr_.end());
-    iter->second.cpu_ptrs.push_back(p);
+  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
+
+  void* stream = GetComputeStream();
+  auto it = deferred_release_buffer_pool_.find(stream);
+  if (it == deferred_release_buffer_pool_.end()) {
+    deferred_release_buffer_pool_[stream] = {p};
+  } else {
+    it->second.push_back(p);
   }
+}
+
+struct CpuBuffersInfo {
+  // This struct stores the information needed
+  // to release CPU buffers allocated for GPU kernels.
+  // It's used to enqueue their release after
+  // associated GPU kernels in a CUDA stream.
+
+  // This is a CPU allocator in CUDA EP.
+  // It must be the one used to allocate the
+  // following pointers.
+  AllocatorPtr allocator;
+  // buffers[i] is the i-th pointer added by
+  // AddDeferredReleaseCPUPtr for a specific
+  // CUDA stream. For example, this fields
+  // should contain all values in
+  // deferred_release_buffer_pool_[my_stream]
+  // when release my_stream's buffers.
+  void** buffers;
+  // CPU buffer buffers[i].
+  // Number of buffer points in "buffers".
+  size_t n_buffers;
+};
+
+void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
+  auto info = reinterpret_cast<CpuBuffersInfo*>(raw_info);
+  // Uncomment the following line to check if all previous stream
+  // operations are done correctly.
+  // checkCudaErrors(tmp->status);
+  for (size_t i = 0; i < info->n_buffers; ++i) {
+    info->allocator->Free(info->buffers[i]);
+  }
+  delete[] info->buffers;
+  delete info;
+}
+
+void CUDAExecutionProvider::EnqueueDeferredRelease() {
+  // Release CPU buffers allocated for CUDA kernels (type: CudaKernel).
+  // They have to be released outside CUDA kernels because they must be alive
+  // during asynchronous GPU computation even after the CPU part (e.g,
+  // CudaKernel::ComputeInternal) already return.
+  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
+  for (auto it = deferred_release_buffer_pool_.begin(); it != deferred_release_buffer_pool_.end(); ++it) {
+    // it->first: a CUDA stream.
+    // it->second: CPU buffers associated with kernels running on it->first.
+    // This iteration enqueues a callback to release all buffers
+    // in it->second on it->first.
+
+    auto stream = static_cast<cudaStream_t>(it->first);
+    auto& buffers = it->second;
+    auto cpu_buffers_info = new CpuBuffersInfo;
+    cpu_buffers_info->allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+    cpu_buffers_info->buffers = new void*[buffers.size()];
+    for (size_t i = 0; i < buffers.size(); ++i) {
+      cpu_buffers_info->buffers[i] = buffers.at(i);
+    }
+    cpu_buffers_info->n_buffers = buffers.size();
+    cudaLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
+  }
+  // All buffers are scheduled for release.
+  // Let's clear releated information so that
+  // those buffers won't be released twice.
+  deferred_release_buffer_pool_.clear();
 }
 
 Status CUDAExecutionProvider::OnRunStart() {
   // always set CUDA device when session::Run() in case it runs in a worker thread
   CUDA_RETURN_IF_ERROR(cudaSetDevice(GetDeviceId()));
-  auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
-  // check if cudaEvents has passed for deferred release
-  // note that we need to take a mutex in case of multi-threaded Run()
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  auto it = deferred_release_cpu_ptr_.begin();
-  while (it != deferred_release_cpu_ptr_.end()) {
-    auto& e = it->first;
-    auto& v = it->second;
-    // note that cudaEventQuery returns cudaSucess before first cudaEventRecord
-    if (v.recorded && cudaSuccess == cudaEventQuery(e)) {
-      for (auto p : v.cpu_ptrs) {
-        cpu_alloc->Free(p);
-      }
-      cudaEvent_t expired_event = it->first;
-      it = deferred_release_cpu_ptr_.erase(it);
-      CUDA_RETURN_IF_ERROR(cudaEventDestroy(expired_event));
-    } else {
-      ++it;
-    }
-  }
-
-  auto& current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
-  CUDA_RETURN_IF_ERROR(cudaEventCreate(&current_deferred_release_event, cudaEventDisableTiming));
-  deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
-
   if (IsGraphCaptureEnabled() && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured()) {
     LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
     GetPerThreadContext().CaptureBegin();
@@ -407,9 +432,9 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
       GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture();
     }
   }
-  // record deferred release event on default stream, and release per_thread_context
-  auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
-  CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, static_cast<cudaStream_t>(GetComputeStream())));
+
+  EnqueueDeferredRelease();
+
   if (sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
   }
@@ -420,8 +445,6 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   if (!IsGraphCaptureEnabled()) {
     ReleasePerThreadContext();
   }
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
 
   return Status::OK();
 }

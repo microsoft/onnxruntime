@@ -58,7 +58,13 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().template GetConstOnes<T>(count);
   }
 
+  // Add CPU buffer to a buffer pool.
+  // They can and only can be released
+  // by calling EuqueueDeferredRelease.
   void AddDeferredReleaseCPUPtr(void* p);
+  // Release all buffers added by
+  // AddDeferredReleaseCPUPtr.
+  void EnqueueDeferredRelease();
 
   template <typename T>
   IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
@@ -112,13 +118,17 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
 
-  struct DeferredReleaseCPUPtrs {
-    bool recorded = false;
-    std::vector<void*> cpu_ptrs;
-  };
-
-  std::unordered_map<cudaEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
-  OrtMutex deferred_release_cpu_ptr_mutex_;
+  // deferred_release_buffer_pool_[my_stream] store all CPU buffers associated with
+  // CUDA kernels running on my_stream (type: cudaStream_t).
+  // Buffers' release is enqueued as a CUDA callback onto the associated stream (aka
+  // stream returned by GetComputeStream when calling AddDeferredReleaseCPUPtr) in OnRunEnd.
+  // Those are pointers allocated by AllocateBufferOnCPUPinned and should be released
+  // by CPU Allocator's Free function.
+  std::unordered_map<void*, std::vector<void*>> deferred_release_buffer_pool_;
+  // To add a pointer to deferred_release_buffer_pool_, we need a mutex because
+  // different threads may create CPU buffers at the same time. Releasing
+  // buffers also needs this mutex.
+  OrtMutex deferred_release_mutex_;
 
   class PerThreadContext final {
    public:
@@ -136,10 +146,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
     cublasLtHandle_t CublasLtHandle() const {
       return cublas_lt_handle_;
-    }
-
-    cudaEvent_t& GetCurrentDeferredReleaseEvent() {
-      return current_deferred_release_event_;
     }
 
     template <typename T>
@@ -187,11 +193,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
     cublasLtHandle_t cublas_lt_handle_ = nullptr;
-
-    // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
-    // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory
-    // so the ownership is passed to deferred_release_cpu_ptr_
-    cudaEvent_t current_deferred_release_event_ = nullptr;
 
     std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
