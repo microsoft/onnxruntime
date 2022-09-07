@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string>
+#include <vector>
+
+#include "core/common/logging/logging.h"
 #include "core/graph/contrib_ops/quantization_defs.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
@@ -25,9 +29,19 @@ using ONNX_NAMESPACE::OPTIONAL_VALUE;
 using ONNX_NAMESPACE::DbgOperatorSetTracker;
 #endif
 
-static void CheckFitsInsideBoundingBox(const ONNX_NAMESPACE::TensorShapeProto& input_shape,
-                                       const google::protobuf::RepeatedField<int64_t>& bounding_box_dims,
-                                       const BFPType& bfp_type) {
+void CheckFitsInsideBoundingBox(const ONNX_NAMESPACE::TensorShapeProto& input_shape,
+                                const google::protobuf::RepeatedField<int64_t>& bounding_box_dims,
+                                const BFPType& bfp_type) {
+  auto input_num_dims = input_shape.dim_size();
+  auto bounding_box_num_dims = bounding_box_dims.size();
+  if (input_num_dims == 0) {
+    // input is scalar so it must fit inside a bounding box
+    return;
+  } else if (bounding_box_num_dims == 0) {
+    LOGS_DEFAULT(WARNING) << "bounding_box_dims is an empty list.";
+    return;
+  }
+
   bool all_dim_values = true;
   int64_t numel = 1;
 
@@ -41,9 +55,7 @@ static void CheckFitsInsideBoundingBox(const ONNX_NAMESPACE::TensorShapeProto& i
   }
 
   auto is_custom_bfp = bfp_type == BFPType::Custom_BFP_0 || bfp_type == BFPType::Custom_BFP_0;
-
-  // all standard BFP types use a bounding box size of 16
-  if (all_dim_values && !is_custom_bfp && numel > 16) {
+  if (all_dim_values && !is_custom_bfp && numel > static_cast<int64_t>(get_bounding_box_size(bfp_type))) {
     fail_shape_inference("The number of elements in the bounding box dimensions exceeds the bounding box size.")
   }
 }
@@ -954,118 +966,119 @@ and segment_emedding; the embeddings are added then applied layer normalization 
 and segment_ids remain int32. All embeddings, gamma, and beta tensors are converted to int8/uint8. The last input mask is optional.
 If mask is provided, mask index (that is position of first 0 in mask, or number of words will be calculated.)DOC";
 
-  ONNX_MS_OPERATOR_SET_SCHEMA(QEmbedLayerNormalization, 1,
-                              OpSchema()
-                                  .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-                                  .SetDoc(QEmbedLayerNormalization_ver1_doc)
-                                  .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
-                                  .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
-                                  .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
-                                  .Input(2, "word_embedding_quant", "2D with shape (,hidden_size)", "T2")
-                                  .Input(3, "position_embedding_quant", "2D with shape (, hidden_size)", "T2")
-                                  .Input(4, "segment_embedding", "2D with shape (, hidden_size)", "T2", OpSchema::Optional)
-                                  .Input(5, "gamma_quant", "1D gamma tensor for layer normalization with shape (hidden_size)", "T2")
-                                  .Input(6, "beta_quant", "1D beta tensor for layer normalization  with shape (hidden_size)", "T2")
-                                  .Input(7, "mask", "Mask", "T1", OpSchema::Optional)
-                                  .Input(8, "word_embedding_scale", "Scale for word embeddings", "T")
-                                  .Input(9, "position_embedding_scale", "Scale for position embeddings", "T")
-                                  .Input(10, "segment_embedding_scale", "Scale for segment embeddings", "T", OpSchema::Optional)
-                                  .Input(11, "gamma_scale", "Scale for 1D gamma tensor", "T")
-                                  .Input(12, "beta_scale", "Scale for 1D beta tensor", "T")
-                                  .Input(13, "word_embedding_zero_point", "Zero point for word embeddings", "T2")
-                                  .Input(14, "position_embedding_zero_point", "Zero point for position embeddings", "T2")
-                                  .Input(15, "segment_embedding_zero_point", "Zero Point for segment embeddings", "T2", OpSchema::Optional)
-                                  .Input(16, "gamma_zero_point", "Zero Point for 1D gamma tensor", "T2")
-                                  .Input(17, "beta_zero_point", "Zero Point for 1D beta tensor", "T2")
-                                  .Output(0, "layernorm_out", "LayerNorm Output", "T")
-                                  .Output(1, "mask_index_out", "Mask Index Output", "T1")
-                                  .TypeConstraint("T1", {"tensor(int32)"}, "Constrain mask index to integer types")
-                                  .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
-                                  .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
-                                  .TypeAndShapeInferenceFunction(EmbedLayerNormalizationShapeInference));
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    QEmbedLayerNormalization, 1,
+    OpSchema()
+        .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+        .SetDoc(QEmbedLayerNormalization_ver1_doc)
+        .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT,
+              kDefaultEmbedLayerNormEpsilon)
+        .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
+        .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
+        .Input(2, "word_embedding_quant", "2D with shape (,hidden_size)", "T2")
+        .Input(3, "position_embedding_quant", "2D with shape (, hidden_size)", "T2")
+        .Input(4, "segment_embedding", "2D with shape (, hidden_size)", "T2", OpSchema::Optional)
+        .Input(5, "gamma_quant", "1D gamma tensor for layer normalization with shape (hidden_size)", "T2")
+        .Input(6, "beta_quant", "1D beta tensor for layer normalization  with shape (hidden_size)", "T2")
+        .Input(7, "mask", "Mask", "T1", OpSchema::Optional)
+        .Input(8, "word_embedding_scale", "Scale for word embeddings", "T")
+        .Input(9, "position_embedding_scale", "Scale for position embeddings", "T")
+        .Input(10, "segment_embedding_scale", "Scale for segment embeddings", "T", OpSchema::Optional)
+        .Input(11, "gamma_scale", "Scale for 1D gamma tensor", "T")
+        .Input(12, "beta_scale", "Scale for 1D beta tensor", "T")
+        .Input(13, "word_embedding_zero_point", "Zero point for word embeddings", "T2")
+        .Input(14, "position_embedding_zero_point", "Zero point for position embeddings", "T2")
+        .Input(15, "segment_embedding_zero_point", "Zero Point for segment embeddings", "T2", OpSchema::Optional)
+        .Input(16, "gamma_zero_point", "Zero Point for 1D gamma tensor", "T2")
+        .Input(17, "beta_zero_point", "Zero Point for 1D beta tensor", "T2")
+        .Output(0, "layernorm_out", "LayerNorm Output", "T")
+        .Output(1, "mask_index_out", "Mask Index Output", "T1")
+        .TypeConstraint("T1", {"tensor(int32)"}, "Constrain mask index to integer types")
+        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+        .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
+        .TypeAndShapeInferenceFunction(EmbedLayerNormalizationShapeInference));
 
-  constexpr const char* QOrderedMatMul_ver1_doc = R"DOC(TODO)DOC";
+constexpr const char* QOrderedMatMul_ver1_doc = R"DOC(TODO)DOC";
 
-  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedMatMul, 1,
-                              OpSchema()
-                                  .SetDoc(QOrderedMatMul_ver1_doc)
-                                  .Attr("order_A", "cublasLt order of matrix A. Default is ROW MAJOR.",
-                                        AttributeProto::INT, static_cast<int64_t>(1))
-                                  .Attr("order_B", "cublasLt order of matrix B. Default is ROW MAJOR.",
-                                        AttributeProto::INT, static_cast<int64_t>(1))
-                                  .Attr("order_Y",
-                                        "cublasLt order of matrix Y and optional matrix C. Default is ROW MAJOR.",
-                                        AttributeProto::INT, static_cast<int64_t>(1))
-                                  .Input(0, "A", "3-dimensional matrix A", "Q")
-                                  .Input(1, "scale_A", "scale of the input A", "S")
-                                  .Input(2, "B", "2-dimensional matrix B", "Q")
-                                  .Input(3, "scale_B", "scale of the input B", "S")
-                                  .Input(4, "scale_Y", "scale of the output Y", "S")
-                                  .Input(5, "bias", "1d bias", "S", OpSchema::Optional)
-                                  .Input(6, "C",
-                                         "3d or 2d matrix C. if 2d expand to 3d first. "
-                                         "Shape[0] should be 1 or same as A.shape[0] ",
-                                         "Q", OpSchema::Optional)
-                                  .Input(7, "scale_C", "scale of the input A", "S", OpSchema::Optional)
-                                  .Output(0, "Y", "Matrix multiply results from A * B", "Q")
-                                  .TypeConstraint("Q", {"tensor(int8)"},
-                                                  "Constrain input and output types to int8 tensors.")
-                                  .TypeConstraint("S", {"tensor(float)"}, "Constrain bias and scales to float32")
-                                  .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-                                    propagateElemTypeFromInputToOutput(ctx, 0, 0);
-                                    ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 2);
-                                  }));
+ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedMatMul, 1,
+                            OpSchema()
+                                .SetDoc(QOrderedMatMul_ver1_doc)
+                                .Attr("order_A", "cublasLt order of matrix A. Default is ROW MAJOR.",
+                                      AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("order_B", "cublasLt order of matrix B. Default is ROW MAJOR.",
+                                      AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("order_Y",
+                                      "cublasLt order of matrix Y and optional matrix C. Default is ROW MAJOR.",
+                                      AttributeProto::INT, static_cast<int64_t>(1))
+                                .Input(0, "A", "3-dimensional matrix A", "Q")
+                                .Input(1, "scale_A", "scale of the input A", "S")
+                                .Input(2, "B", "2-dimensional matrix B", "Q")
+                                .Input(3, "scale_B", "scale of the input B", "S")
+                                .Input(4, "scale_Y", "scale of the output Y", "S")
+                                .Input(5, "bias", "1d bias", "S", OpSchema::Optional)
+                                .Input(6, "C",
+                                       "3d or 2d matrix C. if 2d expand to 3d first. "
+                                       "Shape[0] should be 1 or same as A.shape[0] ",
+                                       "Q", OpSchema::Optional)
+                                .Input(7, "scale_C", "scale of the input A", "S", OpSchema::Optional)
+                                .Output(0, "Y", "Matrix multiply results from A * B", "Q")
+                                .TypeConstraint("Q", {"tensor(int8)"},
+                                                "Constrain input and output types to int8 tensors.")
+                                .TypeConstraint("S", {"tensor(float)"}, "Constrain bias and scales to float32")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 2);
+                                }));
 
-  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedLayerNormalization, 1,
-                              OpSchema()
-                                  .SetDoc("QOrderedLayerNormalization")
-                                  .Attr("axis",
-                                        "The first normalization dimension: normalization "
-                                        "will be performed along dimensions axis "
-                                        ": rank(inputs).",
-                                        AttributeProto::INT,
-                                        static_cast<int64_t>(-1))
-                                  .Attr("epsilon", "The epsilon value to use to avoid division by zero.",
-                                        AttributeProto::FLOAT, 1e-5f)
-                                  .Attr("order_X", "cublasLt order of input X. Default is ROW MAJOR.",
-                                        AttributeProto::INT, static_cast<int64_t>(1))
-                                  .Attr("order_Y",
-                                        "cublasLt order of matrix Y, must be same as order_X. "
-                                        "Default is ROW MAJOR.",
-                                        AttributeProto::INT, static_cast<int64_t>(1))
-                                  .AllowUncheckedAttributes()
-                                  .Input(0, "X", "Input data tensor from the previous layer.", "Q")
-                                  .Input(1, "scale_X", "scale of the quantized X", "S")
-                                  .Input(2, "scale", "Scale tensor, i.e., gamma vector.", "F")
-                                  .Input(3, "B", "Bias tensor.", "F", OpSchema::Optional)
-                                  .Input(4, "scale_Y", "scale of the quantized X", "S")
-                                  .Output(0, "Y", "Output data tensor.", "Q")
-                                  .TypeConstraint("F", {"tensor(float16)", "tensor(float)"},
-                                                  "Constrain input gamma and bias could be float16/float tensors. "
-                                                  "float may get better precision, float16 runs faster.")
-                                  .TypeConstraint("S", {"tensor(float)"}, "quantization scale must be float tensors.")
-                                  .TypeConstraint("Q", {"tensor(int8)"}, "quantization tensor must be int8 tensors.")
-                                  .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-                                    propagateShapeAndTypeFromFirstInput(ctx);
-                                    propagateElemTypeFromInputToOutput(ctx, 0, 0);
-                                  }));
+ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedLayerNormalization, 1,
+                            OpSchema()
+                                .SetDoc("QOrderedLayerNormalization")
+                                .Attr("axis",
+                                      "The first normalization dimension: normalization "
+                                      "will be performed along dimensions axis "
+                                      ": rank(inputs).",
+                                      AttributeProto::INT, static_cast<int64_t>(-1))
+                                .Attr("epsilon", "The epsilon value to use to avoid division by zero.",
+                                      AttributeProto::FLOAT, 1e-5f)
+                                .Attr("order_X", "cublasLt order of input X. Default is ROW MAJOR.",
+                                      AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("order_Y",
+                                      "cublasLt order of matrix Y, must be same as order_X. "
+                                      "Default is ROW MAJOR.",
+                                      AttributeProto::INT, static_cast<int64_t>(1))
+                                .AllowUncheckedAttributes()
+                                .Input(0, "X", "Input data tensor from the previous layer.", "Q")
+                                .Input(1, "scale_X", "scale of the quantized X", "S")
+                                .Input(2, "scale", "Scale tensor, i.e., gamma vector.", "F")
+                                .Input(3, "B", "Bias tensor.", "F", OpSchema::Optional)
+                                .Input(4, "scale_Y", "scale of the quantized X", "S")
+                                .Output(0, "Y", "Output data tensor.", "Q")
+                                .TypeConstraint("F", {"tensor(float16)", "tensor(float)"},
+                                                "Constrain input gamma and bias could be float16/float tensors. "
+                                                "float may get better precision, float16 runs faster.")
+                                .TypeConstraint("S", {"tensor(float)"}, "quantization scale must be float tensors.")
+                                .TypeConstraint("Q", {"tensor(int8)"}, "quantization tensor must be int8 tensors.")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  propagateShapeAndTypeFromFirstInput(ctx);
+                                  propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                }));
 
-  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedGelu, 1,
-                              OpSchema()
-                                  .SetDoc(R"DOC(Ordered Quantize Gelu.)DOC")
-                                  .Attr("order_X", "cublasLt order of input X. Default is ROW MAJOR.",
-                                        AttributeProto::INT, static_cast<int64_t>(1))
-                                  .Attr("order_Y",
-                                        "cublasLt order of matrix Y, must be same as order_X. "
-                                        "Default is ROW MAJOR.",
-                                        AttributeProto::INT, static_cast<int64_t>(1))
-                                  .Input(0, "X", "N-dimensional input A", "Q")
-                                  .Input(1, "scale_X", "scale of the input A", "S")
-                                  .Input(2, "scale_Y", "scale of the output Y", "S")
-                                  .Output(0, "Y", "Output of the Gelu", "Q")
-                                  .TypeConstraint("Q", {"tensor(int8)"},
-                                                  "Constrain input and output types to int8 tensors.")
-                                  .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32")
-                                  .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
-  }  // namespace contrib
+ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedGelu, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(Ordered Quantize Gelu.)DOC")
+                                .Attr("order_X", "cublasLt order of input X. Default is ROW MAJOR.",
+                                      AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("order_Y",
+                                      "cublasLt order of matrix Y, must be same as order_X. "
+                                      "Default is ROW MAJOR.",
+                                      AttributeProto::INT, static_cast<int64_t>(1))
+                                .Input(0, "X", "N-dimensional input A", "Q")
+                                .Input(1, "scale_X", "scale of the input A", "S")
+                                .Input(2, "scale_Y", "scale of the output Y", "S")
+                                .Output(0, "Y", "Output of the Gelu", "Q")
+                                .TypeConstraint("Q", {"tensor(int8)"},
+                                                "Constrain input and output types to int8 tensors.")
+                                .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32")
+                                .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+}  // namespace contrib
 }  // namespace onnxruntime

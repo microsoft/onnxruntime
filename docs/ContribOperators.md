@@ -18,6 +18,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
   * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
+  * <a href="#com.microsoft.DequantizeBFP">com.microsoft.DequantizeBFP</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
   * <a href="#com.microsoft.DynamicQuantizeLSTM">com.microsoft.DynamicQuantizeLSTM</a>
   * <a href="#com.microsoft.DynamicQuantizeMatMul">com.microsoft.DynamicQuantizeMatMul</a>
@@ -59,6 +60,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.QOrderedGelu">com.microsoft.QOrderedGelu</a>
   * <a href="#com.microsoft.QOrderedLayerNormalization">com.microsoft.QOrderedLayerNormalization</a>
   * <a href="#com.microsoft.QOrderedMatMul">com.microsoft.QOrderedMatMul</a>
+  * <a href="#com.microsoft.QuantizeBFP">com.microsoft.QuantizeBFP</a>
   * <a href="#com.microsoft.QuantizeLinear">com.microsoft.QuantizeLinear</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
@@ -982,6 +984,55 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float and float16 tensors.</dd>
 <dt><tt>B</tt> : tensor(bool)</dt>
 <dd>Constrain key_padding_mask to bool tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.DequantizeBFP"></a><a name="com.microsoft.dequantizebfp">**com.microsoft.DequantizeBFP**</a>
+
+  The BFP dequantization operator. It consumes the raw BFP data and some metadata such as the shape and strides of the original tensor and computes the dequantized tensor.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>bfp_type</tt> : int (required)</dt>
+<dd>The type of BFP - must match with the BFPType enum</dd>
+<dt><tt>bounding_box_dims</tt> : list of ints (required)</dt>
+<dd>Each bounding box spans these dimensions. If not specified, then it is up to the implementation to decide.</dd>
+<dt><tt>dtype</tt> : int</dt>
+<dd>The datatype to dequantize to.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>x</tt> : T1</dt>
+<dd>1-D, contiguous, raw, BFP data to be de-quantized.</dd>
+<dt><tt>shape</tt> : T2</dt>
+<dd>shape of the original tensor.</dd>
+<dt><tt>strides</tt> : T2</dt>
+<dd>strides of the original tensor.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>y</tt> : T3</dt>
+<dd>de-quantized tensor.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Constrain the input to uint8.</dd>
+<dt><tt>T2</tt> : tensor(int64)</dt>
+<dd>Constrain shape and strides to uint64.</dd>
+<dt><tt>T3</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain y to float and bfloat16.</dd>
 </dl>
 
 
@@ -3019,6 +3070,53 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to int8 tensors.</dd>
 <dt><tt>S</tt> : tensor(float)</dt>
 <dd>Constrain bias and scales to float32</dd>
+</dl>
+
+
+### <a name="com.microsoft.QuantizeBFP"></a><a name="com.microsoft.quantizebfp">**com.microsoft.QuantizeBFP**</a>
+
+  The BFP quantization operator. It consumes a full precision tensor and computes an BFP tensor.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>bfp_type</tt> : int (required)</dt>
+<dd>The type of BFP - must match with the BFPType enum</dd>
+<dt><tt>bounding_box_dims</tt> : list of ints</dt>
+<dd>Each bounding box spans these dimensions. If not specified, then it is up to the implementation to decide.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>x</tt> : T1</dt>
+<dd>N-D full precision input tensor to be quantized.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>y</tt> : T2</dt>
+<dd>1-D, contiguous BFP data</dd>
+<dt><tt>shape</tt> : T3</dt>
+<dd>Shape of x</dd>
+<dt><tt>strides</tt> : T3</dt>
+<dd>Strides of x</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain the input to float and bfloat.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Constrain y to uint8.</dd>
+<dt><tt>T3</tt> : tensor(int64)</dt>
+<dd>Constrain shape and strides to uint64.</dd>
 </dl>
 
 
