@@ -202,6 +202,22 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   }
 }
 
+Status ROCMExecutionProvider::EnableTunableOp() {
+  LOGS_DEFAULT(INFO) << "Enable TunableOp for ROCm Execution Provider";
+  use_tunable_op_ = true;
+  return Status::OK();
+}
+
+Status ROCMExecutionProvider::DisableTunableOp() {
+  LOGS_DEFAULT(INFO) << "Disable TunableOp for ROCm Execution Provider";
+  use_tunable_op_ = false;
+  return Status::OK();
+}
+
+bool ROCMExecutionProvider::IsTunableOpEnabled() const {
+  return use_tunable_op_;
+}
+
 std::unique_ptr<profiling::EpProfiler> ROCMExecutionProvider::GetProfiler() {
   return std::make_unique<profiling::RocmProfiler>();
 }
