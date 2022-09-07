@@ -27,6 +27,7 @@
 #include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/constant_sharing.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_act_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
@@ -5166,6 +5167,175 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
   }
 }
 #endif
+
+TEST_F(GraphTransformationTests, ConstantSharing_AddClip) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_pre = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count_pre.size(), 3U);
+    ASSERT_EQ(op_count_pre["Add"], 24);
+    ASSERT_EQ(op_count_pre["Clip"], 24);
+    ASSERT_EQ(op_count_pre["Neg"], 1);
+    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 72U);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    ASSERT_EQ(initialized_tensor_set.size(), 3U);
+    const NodeArg* add_initializer = nullptr;
+    const NodeArg* clip_min_initializer = nullptr;
+    const NodeArg* clip_max_initializer = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Add") == 0) {
+        if (!add_initializer) {
+          add_initializer = node.InputDefs()[1];
+        } else {
+          ASSERT_EQ(add_initializer, node.InputDefs()[1]);
+        }
+      } else if (node.OpType().compare("Clip") == 0) {
+        if (!clip_min_initializer && !clip_max_initializer) {
+          clip_min_initializer = node.InputDefs()[1];
+          clip_max_initializer = node.InputDefs()[2];
+        } else {
+          ASSERT_EQ(clip_min_initializer, node.InputDefs()[1]);
+          ASSERT_EQ(clip_max_initializer, node.InputDefs()[2]);
+        }
+      }
+    }
+
+    for (const auto& entry : initialized_tensor_set) {
+      InlinedVector<int64_t> values;
+      bool require_constant = true;
+      NodeArg* initializer_node_arg = graph.GetNodeArg(entry.first);
+      ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+
+      if (entry.first.compare(add_initializer->Name())) {
+        ASSERT_EQ(values.size(), 1);
+        ASSERT_EQ(values[0], 256);
+      } else if (entry.first.compare(clip_min_initializer->Name())) {
+        ASSERT_EQ(values.size(), 1);
+        ASSERT_EQ(values[0], 0);
+      } else if (entry.first.compare(clip_max_initializer->Name())) {
+        ASSERT_EQ(values.size(), 1);
+        ASSERT_EQ(values[0], 0);
+      }
+    }
+
+    auto op_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count.size(), 3U);
+    ASSERT_EQ(op_count["Add"], 24);
+    ASSERT_EQ(op_count["Clip"], 24);
+    ASSERT_EQ(op_count["Neg"], 1);
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<int64_t>({{1, 1, 256, 256}});
+    auto* neg_out = builder.MakeIntermediate();
+    builder.AddNode("Neg", {input_arg}, {neg_out});
+
+    for (size_t i = 0; i < 24; ++i) {
+      auto* add_initializer = builder.MakeScalarInitializer<int64_t>(256);
+      auto* add_out = builder.MakeIntermediate();
+      auto* clip_out = builder.MakeOutput();
+      auto* clip_min_initializer = builder.MakeScalarInitializer<int64_t>(0);
+      auto* clip_max_initializer = builder.MakeScalarInitializer<int64_t>(511);
+      builder.AddNode("Add", {neg_out, add_initializer}, {add_out});
+      builder.AddNode("Clip", {add_out, clip_min_initializer, clip_max_initializer}, {clip_out});
+    }
+  };
+
+  const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+    TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+template <typename T>
+void BuildConstantSharingDivMulGraph(ModelTestBuilder& builder) {
+  auto* input0_arg = builder.MakeInput<T>({{1, 1, 256, 256}});
+  auto* input1_arg = builder.MakeInput<T>({{1, 1, 256, 256}});
+  auto* div_out = builder.MakeIntermediate();
+  builder.AddNode("Div", {input0_arg, input1_arg}, {div_out});
+
+  for (size_t i = 0; i < 12; ++i) {
+    NodeArg* mul_initializer = nullptr;
+    if (std::is_same<T, MLFloat16>::value) {
+      mul_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(math::floatToHalf(1.0f)));
+    } else if (std::is_same<T, float>::value) {
+      mul_initializer = builder.MakeScalarInitializer<float>(1.0f);
+    } else {
+      ASSERT_TRUE(false);
+    }
+    auto* mul_out = builder.MakeOutput();
+    builder.AddNode("Mul", {div_out, mul_initializer}, {mul_out});
+  }
+}
+
+TEST_F(GraphTransformationTests, ConstantSharing_DivMul) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_pre = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count_pre.size(), 2U);
+    ASSERT_EQ(op_count_pre["Div"], 1);
+    ASSERT_EQ(op_count_pre["Mul"], 12);
+    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 12U);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    ASSERT_EQ(initialized_tensor_set.size(), 1U);
+    const NodeArg* mul_initializer = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Mul") == 0) {
+        if (!mul_initializer) {
+          mul_initializer = node.InputDefs()[1];
+        } else {
+          ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+        }
+      }
+    }
+
+    for (const auto& entry : initialized_tensor_set) {
+      if (entry.first.compare(mul_initializer->Name()) == 0) {
+        InlinedVector<float> values;
+        bool require_constant = true;
+        ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *mul_initializer, values, require_constant));
+        ASSERT_EQ(values.size(), 1);
+        ASSERT_EQ(values[0], 1.0f);
+      }
+    }
+
+    auto op_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count.size(), 2U);
+    ASSERT_EQ(op_count["Div"], 1);
+    ASSERT_EQ(op_count["Mul"], 12);
+  };
+
+  const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
+
+  // Float data type tests.
+  auto build_test_case_float = [&](ModelTestBuilder& builder) {
+    BuildConstantSharingDivMulGraph<float>(builder);
+  };
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+    TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
+                         TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // MLFloat16 data type tests.
+  auto build_test_case_mlfloat16 = [&](ModelTestBuilder& builder) {
+    BuildConstantSharingDivMulGraph<MLFloat16>(builder);
+  };
+
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+    TestGraphTransformer(build_test_case_mlfloat16, opset_version, *logger_, std::move(transformer),
+                         TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
 
 }  // namespace test
 }  // namespace onnxruntime
