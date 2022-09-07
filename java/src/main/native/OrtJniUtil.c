@@ -581,13 +581,25 @@ int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxT
             (*jniEnv)->SetBooleanArrayRegion(jniEnv, typedArr, 0, outputLength, (jboolean *)inputTensor);
             return consumedSize;
         }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:   // complex with float32 real and imaginary components
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:  // complex with float64 real and imaginary components
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64: {
+          // complex with float32 real and imaginary components
+          throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid inputTensor element type ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64.");
+          return -1;
+        }
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128: {
+          // complex with float64 real and imaginary components
+          throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid inputTensor element type ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128.");
+          return -1;
+        }
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: {
+          // Non-IEEE floating-point format based on IEEE754 single-precision
+          throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid inputTensor element type ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16.");
+          return -1;
+        }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
         default: {
-            throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid inputTensor element type.");
-            return -1;
+          throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid inputTensor element type ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED.");
+          return -1;
         }
     }
 }
@@ -618,7 +630,7 @@ int64_t copyTensorToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, con
   }
 }
 
-jobject createStringFromStringTensor(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor) {
+jobject createStringFromStringTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor) {
   jobject tempString = NULL;
   // Get the buffer size needed
   size_t totalStringLength = 0;
@@ -651,7 +663,7 @@ jobject createStringFromStringTensor(JNIEnv *jniEnv, const OrtApi * api, OrtAllo
   return tempString;
 }
 
-OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor, size_t length, jobjectArray outputArray) {
+OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor, size_t length, jobjectArray outputArray) {
   char * tempBuffer = NULL;
   // Get the buffer size needed
   size_t totalStringLength = 0;
@@ -711,7 +723,7 @@ string_tensor_cleanup:
   return code;
 }
 
-jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor) {
+jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor) {
     // Extract tensor info
     OrtTensorTypeAndShapeInfo* tensorInfo = NULL;
     OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetTensorTypeAndShape(tensor, &tensorInfo));
@@ -731,7 +743,7 @@ jobjectArray createStringArrayFromTensor(JNIEnv *jniEnv, const OrtApi * api, Ort
     jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
     jobjectArray outputArray = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(length), stringClazz, NULL);
 
-    code = copyStringTensorToArray(jniEnv, api, allocator, tensor, length, outputArray);
+    code = copyStringTensorToArray(jniEnv, api, tensor, length, outputArray);
     if (code != ORT_OK) {
         outputArray = NULL;
     }
@@ -1025,7 +1037,8 @@ jobject convertOrtValueToONNXValue(JNIEnv *jniEnv, const OrtApi * api, OrtAlloca
     case ONNX_TYPE_UNKNOWN:
     case ONNX_TYPE_OPAQUE:
     case ONNX_TYPE_OPTIONAL:
-    case ONNX_TYPE_SPARSETENSOR: {
+    case ONNX_TYPE_SPARSETENSOR:
+    default: {
       throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "These types are unsupported - ONNX_TYPE_UNKNOWN, ONNX_TYPE_OPAQUE, ONNX_TYPE_SPARSETENSOR.");
       return NULL;
     }
