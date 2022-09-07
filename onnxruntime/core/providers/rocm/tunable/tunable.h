@@ -17,6 +17,9 @@
 #include <vector>
 
 #include "core/common/common.h"
+#ifndef SHARED_PROVIDER
+#include "core/common/logging/logging.h"
+#endif
 #include "contrib_ops/rocm/bert/util.h"
 
 namespace onnxruntime {
@@ -150,6 +153,9 @@ class TunableOp {
   }
 
   int FindFastest(const ParamsT* params) {
+    auto op_name = typeid(this).name();
+    auto param_sig = params->Signature();
+    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_name << '(' << param_sig << ')';
     auto min_time = std::numeric_limits<double>::infinity();
     int id = -1;
     for (size_t i = 0; i < this->ops_.size(); i++) {
@@ -165,6 +171,7 @@ class TunableOp {
       }
     }
     ORT_ENFORCE(id >= 0, "Cannot found viable op");
+    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_name << '(' << param_sig << ") found fastest with id=" << id;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return id;
   }
