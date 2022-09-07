@@ -10,7 +10,7 @@ redirect_from: /docs/reference/api
 |:----------------------------------------------------------------------------------|
 | <span class="fs-5"> [Python API Docs](python/api_summary.html){: .btn target="_blank"} </span>  | 
 | <span class="fs-5"> [Java API Docs](java/index.html){: .btn target="_blank"} </span>   | 
-| <span class="fs-5"> [C# API Docs](csharp-api){: .btn target="_blank"} </span>|
+| <span class="fs-5"> [C# API Docs](csharp/api){: .btn target="_blank"} </span>|
 | <span class="fs-5"> [C/C++ API Docs](c){: .btn target="_blank"} </span>|
 | <span class="fs-5"> [WinRT API Docs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference){: .btn target="_blank"} </span>|
 | <span class="fs-5"> [Objective-C Docs](objectivec/index.html){: .btn target="_blank"} </span> |

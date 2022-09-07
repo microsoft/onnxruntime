@@ -132,7 +132,7 @@ The ONNX runtime provides a C# .NET binding for running inference on ONNX models
 
 
 ## API Reference
-[C# API Reference](../api/csharp-api)
+[C# API Reference](../api/csharp/api)
 
 ## Samples
 
@@ -141,4 +141,4 @@ See [Tutorials: Basics - C#](../tutorials/api-basics)
 
 ## Learn More
 - [C# Tutorials](../tutorials/)
-- [C# API Reference](../api/csharp-api.html)
+- [C# API Reference](../api/csharp/api)

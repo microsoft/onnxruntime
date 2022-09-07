@@ -292,5 +292,5 @@ In this example we created a simple console app however this could easily be imp
 
 There are many different BERT models that have been fine tuned for different tasks and different base models you could fine tune for your specific task. This code will work for most BERT models, just update the input, output and pre/postprocessing for your specific model.
 
-- [C# API Doc](https://onnxruntime.ai/docs/api/csharp-api)
+- [C# API Doc](https://onnxruntime.ai/docs/api/csharp/api)
 - [Get Started with C# in ONNX Runtime](https://onnxruntime.ai/docs/get-started/with-csharp.html)
