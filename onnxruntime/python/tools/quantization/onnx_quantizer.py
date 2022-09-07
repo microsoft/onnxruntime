@@ -590,7 +590,7 @@ class ONNXQuantizer:
             data_found, scale_name, zp_name, _, _ = self._get_quantization_params(input_name)
 
         nodes = []
-        if data_found == True:
+        if data_found:
             qlinear_node = onnx.helper.make_node(
                 "QuantizeLinear",
                 [input_name, scale_name, zp_name],
@@ -715,7 +715,7 @@ class ONNXQuantizer:
 
     def contains_tensor(self, tensor_name):
         """
-        only check for value info and newly generated tensor names, initializers are checked seperately
+        only check for value info and newly generated tensor names, initializers are checked separately
         """
         return (
             (tensor_name in self.value_infos)
@@ -734,6 +734,8 @@ class ONNXQuantizer:
             from_subgraph=from_subgraph,
         )
 
+    # In some circumstances a weight is not an initializer, for example of MatMul, if both A and B are not
+    # initializer, B can still be considered as Weight
     def quantize_weight(
         self,
         node,
