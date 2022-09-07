@@ -150,7 +150,7 @@ class QLinearConv(QuantOperatorBase):
             _,
         ) = self.quantizer._get_quantization_params(node.output[0])
 
-        if self.quantizer.is_input_a_weight(node.input[1]) and self.quantizer.is_per_channel():
+        if self.quantizer.is_input_a_initializer(node.input[1]) and self.quantizer.is_per_channel():
             (
                 quantized_input_names,
                 zero_point_names,

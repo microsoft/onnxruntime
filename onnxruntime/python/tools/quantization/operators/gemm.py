@@ -58,7 +58,7 @@ class QLinearGemm(QOpMatMul):
             _,
         ) = self.quantizer._get_quantization_params(node.output[0])
 
-        if self.quantizer.is_input_a_weight(node.input[1]) and self.quantizer.is_per_channel():
+        if self.quantizer.is_input_a_initializer(node.input[1]) and self.quantizer.is_per_channel():
             (
                 quantized_input_names,
                 zero_point_names,
@@ -98,7 +98,7 @@ class QLinearGemm(QOpMatMul):
 
         quantized_bias_name = ""
         if len(node.input) == 3:
-            if not self.quantizer.is_input_a_weight(node.input[2]):
+            if not self.quantizer.is_input_a_initializer(node.input[2]):
                 return super().quantize()
 
             quantized_bias_name = self.quantizer.quantize_bias_static(
@@ -155,7 +155,7 @@ class QDQGemm(QDQOperatorBase):
             self.quantizer.quantize_weight_tensor(node.input[1])
 
         if len(node.input) == 3:
-            if self.quantizer.is_input_a_weight(node.input[2]):
+            if self.quantizer.is_input_a_initializer(node.input[2]):
                 self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1], get_beta(self.node))
                 set_default_beta(self.node)
             else:

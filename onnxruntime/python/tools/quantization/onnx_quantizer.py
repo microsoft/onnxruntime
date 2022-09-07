@@ -289,7 +289,7 @@ class ONNXQuantizer:
 
         return self.model.model
 
-    def is_input_a_weight(self, input_name):
+    def is_input_a_initializer(self, input_name):
         initializer = find_by_name(input_name, self.model.initializer())
         return initializer is not None
 
@@ -305,7 +305,7 @@ class ONNXQuantizer:
         return self.parent.is_valid_quantize_weight(weight_name)
 
     def is_float_tensor(self, tensor_name):
-        if self.is_input_a_weight(tensor_name):
+        if self.is_input_a_initializer(tensor_name):
             return self.is_valid_quantize_weight(tensor_name)
 
         if tensor_name in self.value_infos.keys():
