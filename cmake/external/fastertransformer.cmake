@@ -6,7 +6,7 @@ include_directories(${fastertransformer_root_dir}/src/fastertransformer/models/b
 option(SM "" 75)
 option(CMAKE_BUILD_TYPE "" Release)
 
-add_subdirectory(${fastertransformer_root_dir})
+add_subdirectory(${fastertransformer_root_dir} EXCLUDE_FROM_ALL)
 remove_definitions("-DENABLE_BF16")
 set_target_properties(transformer-static PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
