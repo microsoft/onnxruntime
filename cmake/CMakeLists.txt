@@ -997,6 +997,11 @@ if (CPUINFO_SUPPORTED)
   endif()
 endif()
 
+# GSL
+set(GSL_DIR "${REPO_ROOT}/cmake/external/GSL")
+add_subdirectory(${GSL_DIR} EXCLUDE_FROM_ALL)
+set(GSL_TARGET "Microsoft.GSL::GSL")
+
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
 # we make it through via a handler so CUDA does not complain
