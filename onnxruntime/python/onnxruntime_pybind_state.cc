@@ -659,22 +659,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       }
     }
 #endif
-  } else if (type == kNupharExecutionProvider) {
-#if USE_NUPHAR
-    const auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      ORT_THROW_IF_ERROR(
-          ProviderOptionsParser{}
-              .AddAssignmentToReference("nuphar_settings", nuphar_settings)
-              .Parse(it->second));
-    }
-
-    auto p = onnxruntime::NupharProviderFactoryCreator::Create(true, nuphar_settings.c_str())->CreateProvider();
-
-    // clear nuphar_settings after use to avoid it being accidentally passed on to next session
-    nuphar_settings.clear();
-    return p;
-#endif
   } else if (type == kTvmExecutionProvider) {
 #if USE_TVM
     onnxruntime::tvm::TvmEPOptions info{};
@@ -891,8 +875,7 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
   return type_proto.has_tensor_type();
 }
 
-#if defined(USE_NUPHAR) ||   \
-    defined(USE_OPENVINO) || \
+#if defined(USE_OPENVINO) || \
     defined(USE_CUDA) ||     \
     defined(USE_ROCM)
 static void LogDeprecationWarning(
@@ -944,19 +927,6 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
-
-#ifdef USE_NUPHAR
-  // TODO remove deprecated global config
-  m.def("set_nuphar_settings", [](const std::string& str) {
-    LogDeprecationWarning("set_nuphar_settings", "Nuphar execution provider option \"nuphar_settings\"");
-    nuphar_settings = str;
-  });
-  // TODO remove deprecated global config
-  m.def("get_nuphar_settings", []() -> std::string {
-    LogDeprecationWarning("get_nuphar_settings");
-    return nuphar_settings;
-  });
-#endif
 
 #ifdef USE_OPENVINO
   m.def(
