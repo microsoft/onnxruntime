@@ -374,8 +374,7 @@ extends:
             targetPath: '$(Build.BinariesDirectory)'
             
         - powershell: |
-           dir merged
-           Get-ChildItem -Path merged\M*.nupkg 
+           Rename-Item  -Path merged packages
            
           workingDirectory: '$(Build.BinariesDirectory)'
-          displayName: 'PowerShell Script'
+          displayName: 'Rename nuget folder'
