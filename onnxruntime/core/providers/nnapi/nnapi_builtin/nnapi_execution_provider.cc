@@ -259,8 +259,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_ONLY);
     }
 
-    ORT_RETURN_IF_ERROR(builder.Compile());
-    std::unique_ptr<nnapi::Model> nnapi_model(&builder.GetModel());
+    std::unique_ptr<nnapi::Model> nnapi_model;
+    ORT_RETURN_IF_ERROR(builder.Compile(nnapi_model));
 
     // Build map from input name to its index in input definitions
     {

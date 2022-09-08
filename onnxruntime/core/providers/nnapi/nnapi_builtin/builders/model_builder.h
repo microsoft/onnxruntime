@@ -42,7 +42,7 @@ class ModelBuilder {
 
   ModelBuilder(const GraphViewer& graph_viewer);
 
-  common::Status Compile();
+  common::Status Compile(std::unique_ptr<Model>& model);
 
   int32_t GetNNAPIFeatureLevel() const;
 
@@ -94,9 +94,7 @@ class ModelBuilder {
       android::nn::wrapper::ExecutePreference pref) { exe_pref_ = pref; }
 
   // Accessors for members
-  Shaper& GetShaper() { return nnapi_model_.GetShaper(); }
-
-  Model& GetModel() { return nnapi_model_; }
+  Shaper& GetShaper() { return nnapi_model_->GetShaper(); }
 
   const std::unordered_map<std::string, uint32_t>&
   GetOperandIndices() const { return operand_indices_; }
@@ -120,7 +118,7 @@ class ModelBuilder {
  private:
   const NnApi* nnapi_{nullptr};
   const GraphViewer& graph_viewer_;
-  Model nnapi_model_;
+  std::unique_ptr<Model> nnapi_model_;
 
   uint32_t name_token_{0};
 
