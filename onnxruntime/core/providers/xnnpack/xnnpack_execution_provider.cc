@@ -50,8 +50,11 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWC
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, 11, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 12, MaxPool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 11, AveragePool);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, GlobalAveragePool);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Transpose);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Transpose);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, Add);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Add);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, Sub);
@@ -72,10 +75,10 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 6,
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 6, Tanh);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 14, HardSwish);
 
-
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, uint8_t, QLinearConv);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 10, int8_t, QLinearConv);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearAveragePool);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, 1, QLinearGlobalAveragePool);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider,
                                       kDynamicDomainByCreate, 1, QLinearSoftmax);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kDynamicDomainByCreate, 1, QLinearAdd);
@@ -86,38 +89,43 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
   static const BuildKernelCreateInfoFn function_table[] = {
-    BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
-    KERNEL_CREATE_INFO(11, Conv),
-    KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool),
-    KERNEL_CREATE_INFO(12, MaxPool),
-    KERNEL_CREATE_INFO(11, AveragePool),
-    // layout insensitive, use ONNX-domain directly
-    KERNEL_CREATE_INFO_ONNX(13, Softmax),
-    KERNEL_CREATE_INFO_ONNX(7, Add),
-    KERNEL_CREATE_INFO_ONNX(13, Add),
-    KERNEL_CREATE_INFO_ONNX(7, Sub),
-    KERNEL_CREATE_INFO_ONNX(7, Mul),
-    KERNEL_CREATE_INFO_ONNX(7, Div),
-    KERNEL_CREATE_INFO_ONNX(6, Abs),
-    KERNEL_CREATE_INFO_ONNX(11, Round),
-    KERNEL_CREATE_INFO_ONNX(6, Ceil),
-    KERNEL_CREATE_INFO_ONNX(6, Floor),
-    KERNEL_CREATE_INFO_ONNX(6, Neg),
-    KERNEL_CREATE_INFO_ONNX(6, Sqrt),
-    KERNEL_CREATE_INFO_ONNX(8, Min),
-    KERNEL_CREATE_INFO_ONNX(8, Max),
-    KERNEL_CREATE_INFO_ONNX(6, Elu),
-    KERNEL_CREATE_INFO_ONNX(6, LeakyRelu),
-    KERNEL_CREATE_INFO_ONNX(6, Sigmoid),
-    KERNEL_CREATE_INFO_ONNX(6, Tanh),
-    KERNEL_CREATE_INFO_ONNX(14, HardSwish),
-  BuildKernelCreateInfo<
-      ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax)>,
+      BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
+      KERNEL_CREATE_INFO(11, Conv),
+      KERNEL_CREATE_INFO_VERSIONED(11, 11, MaxPool),
+      KERNEL_CREATE_INFO(12, MaxPool),
+      KERNEL_CREATE_INFO(11, AveragePool),
+      KERNEL_CREATE_INFO(1, GlobalAveragePool),
+      // layout insensitive, use ONNX-domain directly
+      KERNEL_CREATE_INFO_ONNX(13, Softmax),
+      KERNEL_CREATE_INFO_ONNX(13, Transpose),
+      KERNEL_CREATE_INFO_ONNX(7, Add),
+      KERNEL_CREATE_INFO_ONNX(13, Add),
+      KERNEL_CREATE_INFO_ONNX(7, Sub),
+      KERNEL_CREATE_INFO_ONNX(7, Mul),
+      KERNEL_CREATE_INFO_ONNX(7, Div),
+      KERNEL_CREATE_INFO_ONNX(6, Abs),
+      KERNEL_CREATE_INFO_ONNX(11, Round),
+      KERNEL_CREATE_INFO_ONNX(6, Ceil),
+      KERNEL_CREATE_INFO_ONNX(6, Floor),
+      KERNEL_CREATE_INFO_ONNX(6, Neg),
+      KERNEL_CREATE_INFO_ONNX(6, Sqrt),
+      KERNEL_CREATE_INFO_ONNX(8, Min),
+      KERNEL_CREATE_INFO_ONNX(8, Max),
+      KERNEL_CREATE_INFO_ONNX(6, Elu),
+      KERNEL_CREATE_INFO_ONNX(6, LeakyRelu),
+      KERNEL_CREATE_INFO_ONNX(6, Sigmoid),
+      KERNEL_CREATE_INFO_ONNX(6, Tanh),
+      KERNEL_CREATE_INFO_ONNX(14, HardSwish),
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Transpose)>,
 
       //  quantization op
       KERNEL_CREATE_INFO_TYPED(10, uint8_t, QLinearConv),
       KERNEL_CREATE_INFO_TYPED(10, int8_t, QLinearConv),
       KERNEL_CREATE_INFO(1, QLinearAveragePool),
+      KERNEL_CREATE_INFO(1, QLinearGlobalAveragePool),
       KERNEL_CREATE_INFO_DYNAMIC(1, QLinearSoftmax),
       KERNEL_CREATE_INFO_DYNAMIC(1, QLinearAdd),
       KERNEL_CREATE_INFO_DYNAMIC(1, QLinearSub),
@@ -182,7 +190,8 @@ static bool RequestDynamicSchema(const NodeUnit& node_unit) {
   static const InlinedHashSet<std::string_view> dynamic_schema_set =
       {"QLinearSoftmax", "QLinearAdd", "QLinearSub", "QLinearMul"};
   std::string key = node_unit.UnitType() == NodeUnit::Type::QDQGroup
-                                                ? "QLinear" + node_unit.OpType() : node_unit.OpType();
+                        ? "QLinear" + node_unit.OpType()
+                        : node_unit.OpType();
   return dynamic_schema_set.contains(key);
 }
 

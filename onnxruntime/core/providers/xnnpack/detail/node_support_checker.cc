@@ -21,6 +21,7 @@
 #include "core/providers/xnnpack/nn/max_pool.h"
 #include "core/providers/xnnpack/nn/average_pool.h"
 #include "core/providers/xnnpack/nn/softmax.h"
+#include "core/providers/xnnpack/nn/transpose.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -93,7 +94,10 @@ bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
       {"QLinearConv", Conv::IsConvOnnxNodeSupported},
       {"MaxPool", MaxPool::IsMaxPoolOnnxNodeSupported},
       {"AveragePool", AveragePool::IsAveragePoolOnnxNodeSupported},
+      {"GlobalAveragePool", AveragePool::IsAveragePoolOnnxNodeSupported},
+      {"QLinearGlobalAveragePool", AveragePool::IsAveragePoolOnnxNodeSupported},
       {"Softmax", Softmax::IsSoftmaxOnnxNodeSupported},
+      {"Transpose", Transpose::IsOnnxNodeSupported},
       {"Add", ElementWiseOp::IsOnnxNodeSupported},
       {"Sub", ElementWiseOp::IsOnnxNodeSupported},
       {"Mul", ElementWiseOp::IsOnnxNodeSupported},
