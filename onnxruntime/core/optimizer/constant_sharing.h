@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#pragma once
+#ifdef ENABLE_TRAINING
 
-#include <memory>
+#pragma once
 
 #include "core/optimizer/graph_transformer.h"
 
@@ -31,8 +31,7 @@ class ConstantSharing : public GraphTransformer {
  private:
   template <typename T>
   bool ShareInitializer(Graph& graph, Node* node, int input_index,
-                        std::map<std::tuple<int32_t, int64_t, int>, NodeArg*>&
-                            type_value_plus_rank_to_shared_arg_map,
+                        std::map<std::string, NodeArg*>& type_value_plus_rank_to_shared_arg_map,
                         int32_t data_type) const;
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
@@ -41,3 +40,5 @@ class ConstantSharing : public GraphTransformer {
 };
 
 }  // namespace onnxruntime
+
+#endif
