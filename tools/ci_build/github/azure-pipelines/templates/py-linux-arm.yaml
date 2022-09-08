@@ -12,7 +12,7 @@ jobs:
   timeoutInMinutes: 240
   workspace:
   clean: all
-  pool: 'Linux-CPU'
+  pool: 'aiinfra-linux-ARM64-CPU-2019'
   steps:
     - checkout: self
       clean: true
