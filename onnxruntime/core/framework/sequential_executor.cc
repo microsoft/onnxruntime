@@ -17,7 +17,6 @@
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
-//#include "core/framework/session_scope.h"
 #include "core/framework/session_scope_profiler.h"
 
 namespace onnxruntime {
@@ -115,7 +114,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, gsl::span<
 
     Status compute_status;
     {
-      //KernelProfiler kernel_profiler(sess_profiler, op_kernel_context, *p_op_kernel);
+      KernelProfiler kernel_profiler(sess_profiler, op_kernel_context, *p_op_kernel);
 
       ORT_TRY {
 #ifdef ENABLE_TRAINING
