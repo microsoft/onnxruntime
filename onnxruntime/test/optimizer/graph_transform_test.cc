@@ -5370,8 +5370,8 @@ TEST_F(GraphTransformationTests, ConstantSharing_DivMul) {
     for (auto& node : graph.Nodes()) {
       if (node.OpType().compare("Mul") == 0) {
         if (!mul_initializer) {
-          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
           mul_initializer = node.InputDefs()[1];
+          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
         } else {
           ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
         }

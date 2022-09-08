@@ -5,6 +5,9 @@
 
 #pragma once
 
+#include <map>
+#include <string>
+
 #include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
