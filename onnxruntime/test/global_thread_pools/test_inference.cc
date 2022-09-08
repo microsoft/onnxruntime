@@ -79,13 +79,6 @@ static Ort::Session GetSessionObj(Ort::Env& env, T model_uri, int provider_type)
 #else
     return Ort::Session(nullptr);
 #endif
-  } else if (provider_type == 3) {
-#ifdef USE_NUPHAR
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
-    std::cout << "Running simple inference with nuphar provider" << std::endl;
-#else
-    return Ort::Session(nullptr);
-#endif
   } else {
     std::cout << "Running simple inference with default provider" << std::endl;
   }
