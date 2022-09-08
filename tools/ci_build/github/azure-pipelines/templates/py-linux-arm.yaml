@@ -11,7 +11,7 @@ jobs:
 - job: Linux_py_Wheels
   timeoutInMinutes: 240
   workspace:
-  clean: all
+    clean: all
   pool: 'aiinfra-linux-ARM64-CPU-2019'
   steps:
     - checkout: self
@@ -54,13 +54,13 @@ jobs:
                   ${{ parameters.build_py_parameters }}
 
     - task: PublishBuildArtifacts@1
-    displayName: 'Publish Artifact: ONNXRuntime python wheel'
-    inputs:
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
         PathtoPublish: '$(Build.BinariesDirectory)/Release/dist'
         ArtifactName: onnxruntime
 
     - template: component-governance-component-detection-steps.yml
-    parameters:
+      parameters:
         condition: 'succeeded'
 
     - template: clean-agent-build-directory-step.yml
