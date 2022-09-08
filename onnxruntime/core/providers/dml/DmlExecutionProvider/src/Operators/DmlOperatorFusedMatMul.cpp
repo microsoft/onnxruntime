@@ -27,12 +27,25 @@ public:
         const int32_t transBatchB = kernelInfo.GetOptionalAttribute<int32_t>(AttrName::TransBatchB, 0);
         const int32_t transB = kernelInfo.GetOptionalAttribute<int32_t>(AttrName::TransB, 0);
 
+        // As of now, CPU FusedMatMul has this extra validation 
+        // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/cpu/math/matmul_helper.h#L72
+        // Although, DML kernel can work without this validation, but adding this just to be in sync.
+        if (transBatchA || transBatchB)
+        {
+            ML_CHECK_VALID_ARGUMENT(inputShape0.size() > 2 && inputShape0.size() == inputShape1.size(),
+                  "Two inputs should have same rank and rank >= 3 if transBatchA or transBatchB is true");
+        }
+
         auto [sizesA, stridesA] = OperatorHelper::FusedMatMulSizeAndStride(inputShape0, transBatchA, transA);
 
         auto [sizesB, stridesB] = OperatorHelper::FusedMatMulSizeAndStride(inputShape1, transBatchB, transB);
 
         OperatorHelper::FusedMatMulShapeMapping(sizesA, stridesA, sizesB, stridesB, outputShape);
 
+        // At this point, we have manipulated input/output shapes and strides and 
+        // we do not care about actual input shapes present in the model (.onnx file).
+        // Create the TensorDesc with the manipulated input shapes becuase we don't want incorrect
+        // broadcasting to be happen inside TensorDesc constructor.
         std::vector<std::optional<uint32_t>> inputIndices = { 0, 1, std::nullopt };
         gsl::span<const uint32_t> inputShapes[2] = {sizesA, sizesB};
         gsl::span<const uint32_t> outputShapes[1] = {outputShape};

@@ -43,6 +43,8 @@ namespace Dml
             uint32_t minDimensionCount = NchwDimensionCount
             );
 
+        // This first tries to create TensorDesc with given input shape as orginal and desired shapes.
+        // If input shape is not present, then it will try to create TensorDesc with the input shape from the model (.onnx file)
         // inputShapes and kernelInputIndices should have same length. Same for outputShapes and kernelOutputIndices
         void InitializeWithShapes(
             const MLOperatorKernelCreationContext& kernelInfo,

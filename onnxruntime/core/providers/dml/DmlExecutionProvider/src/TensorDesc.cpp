@@ -210,18 +210,6 @@ gsl::span<const uint32_t> TensorDesc::GetStrides() const
     return { m_strides, m_strides + m_bufferTensorDesc.DimensionCount };
 }
 
-void TensorDesc::SetSizes(gsl::span<const uint32_t> sizes)
-{
-    if (!sizes.empty())
-    {
-        int idx = 0;
-        for (const auto size : sizes)
-        {
-            m_sizes[idx++] = size;
-        }
-    }
-}
-
 void TensorDesc::SetStrides(gsl::span<const uint32_t> strides)
 {
     if (!strides.empty())

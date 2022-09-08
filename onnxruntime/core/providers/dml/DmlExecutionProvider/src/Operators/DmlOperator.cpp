@@ -259,6 +259,7 @@ namespace Dml
                 auto edgeDesc = kernelInfo.GetInputEdgeDescription(*m_kernelInputIndices[i]);
                 assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
 
+                // prioritize the given input shapes
                 TensorDesc tensorDesc;
                 if (inputShapes.has_value() && i < (*inputShapes).size()) 
                 {
