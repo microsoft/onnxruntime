@@ -231,7 +231,7 @@ ONNX_OPERATOR_KERNEL_EX(Softmax, kOnnxDomain, 13, kXnnpackExecutionProvider,
                         Softmax);
 
 ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kDynamicDomainByCreate, 1, kXnnpackExecutionProvider,
-                        KernelDefBuilder(),  // dynamic schema
+                        KernelDefBuilder(),  // dynamic schema, take uint8_t
                         Softmax);
 
 }  // namespace xnnpack

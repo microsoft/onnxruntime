@@ -92,6 +92,12 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QDQAvgPool;
     else if (op_type == "Softmax")
       return QuantizedOpType::QDQSoftmax;
+    else if (op_type == "Add")
+      return QuantizedOpType::QDQAdd;
+    else if (op_type == "Sub")
+      return QuantizedOpType::QDQSub;
+    else if (op_type == "Mul")
+      return QuantizedOpType::QDQMul;
   } else if (node_unit.OpType() == "QLinearConv") {
     return QuantizedOpType::QLinearConv;
   }
@@ -111,6 +117,9 @@ static const std::unordered_map<QuantizedOpType, ONNXOpType> qdq_to_onnx_type_ma
     {QuantizedOpType::QDQAvgPool, "QLinearAveragePool"},
     {QuantizedOpType::QDQSoftmax, "QLinearSoftmax"},
     {QuantizedOpType::QDQMaxPool, "MaxPool"},
+    {QuantizedOpType::QDQAdd, "QLinearAdd"},
+    {QuantizedOpType::QDQSub, "QLinearSub"},
+    {QuantizedOpType::QDQMul, "QLinearMul"},
 };
 
 std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit) {
@@ -168,6 +177,23 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
   } else if (qtype == QuantizedOpType::QDQMaxPool) {
     // only one input for QDQMaxPool, Tensor:X
     def.inputs.push_back(inputs[0].node_arg.Name());
+  } else if (qtype == QuantizedOpType::QDQAdd ||
+             qtype == QuantizedOpType::QDQSub ||
+             qtype == QuantizedOpType::QDQMul) {
+    def.domain = kDynamicDomainByCreate;
+    def.since_version = 1;
+    std::for_each(inputs.cbegin(), inputs.cend(),
+                  [&def](const NodeUnitIODef& arg) {
+                    // keep the number of inputs the same by inserting an empty string for a missing optional input
+                    def.inputs.push_back(arg.node_arg.Name());
+                    const auto& quant_param = arg.quant_param.value();
+                    def.inputs.push_back(quant_param.scale.Name());
+                    def.inputs.push_back(quant_param.zero_point ? quant_param.zero_point->Name() : "");
+                  });
+    // y-scale y-zeropoint
+    const auto& y_quant_param = node_unit.Outputs()[0].quant_param.value();
+    def.inputs.push_back(y_quant_param.scale.Name());
+    def.inputs.push_back(y_quant_param.zero_point ? y_quant_param.zero_point->Name() : "");
   } else {
     // all qdq-types are enumerated
     ORT_ENFORCE(0, "unknown QDQ ops", def.name);

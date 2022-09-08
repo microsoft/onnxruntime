@@ -49,11 +49,17 @@ enum class QuantizedOpType : uint8_t {
   QLinearConv,
   QLinearMaxPool,
   QlinearAvgPool,
+  QLinearAdd,
+  QLinearMul,
+  QLinearSub,
   // QDQ operator
   QDQConv,
   QDQMaxPool,
   QDQAvgPool,
   QDQSoftmax,
+  QDQAdd,
+  QDQMul,
+  QDQSub,
   Unknown,
 };
 

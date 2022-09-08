@@ -15,6 +15,8 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 
 // each operator provides a helper to check if supported
+#include "core/providers/xnnpack/math/activation.h"
+#include "core/providers/xnnpack/math/math_elementwise_ops.h"
 #include "core/providers/xnnpack/nn/conv.h"
 #include "core/providers/xnnpack/nn/max_pool.h"
 #include "core/providers/xnnpack/nn/average_pool.h"
@@ -92,8 +94,24 @@ bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
       {"MaxPool", MaxPool::IsMaxPoolOnnxNodeSupported},
       {"AveragePool", AveragePool::IsAveragePoolOnnxNodeSupported},
       {"Softmax", Softmax::IsSoftmaxOnnxNodeSupported},
+      {"Add", ElementWiseOp::IsOnnxNodeSupported},
+      {"Sub", ElementWiseOp::IsOnnxNodeSupported},
+      {"Mul", ElementWiseOp::IsOnnxNodeSupported},
+      {"Div", ElementWiseOp::IsOnnxNodeSupported},
+      {"Abs", ElementWiseOp::IsOnnxNodeSupported},
+      {"Round", ElementWiseOp::IsOnnxNodeSupported},
+      {"Ceil", ElementWiseOp::IsOnnxNodeSupported},
+      {"Floor", ElementWiseOp::IsOnnxNodeSupported},
+      {"Sqrt", ElementWiseOp::IsOnnxNodeSupported},
+      {"Neg", ElementWiseOp::IsOnnxNodeSupported},
+      {"Max", ElementWiseOp::IsOnnxNodeSupported},
+      {"Min", ElementWiseOp::IsOnnxNodeSupported},
+      {"Elu", ActivationOp::IsOnnxNodeSupported},
+      {"LeakyRelu", ActivationOp::IsOnnxNodeSupported},
+      {"Sigmoid", ActivationOp::IsOnnxNodeSupported},
+      {"Tanh", ActivationOp::IsOnnxNodeSupported},
+      {"HardSwish", ActivationOp::IsOnnxNodeSupported},
   };
-
   bool supported = false;
 
   if (nodeunit.Domain() == onnxruntime::kOnnxDomain) {
