@@ -181,7 +181,7 @@ Status AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(KernelTypeStrRe
 
   ORT_RETURN_IF_ERROR(LoadKernelTypeStrResolverFromBuffer(resolver_with_required_ops,
                                                           kLayoutTransformationRequiredOpsKernelTypeStrResolverBytes));
-  kernel_type_str_resolver.Merge(resolver_with_required_ops);
+  kernel_type_str_resolver.Merge(std::move(resolver_with_required_ops));
   return Status::OK();
 }
 

@@ -35,6 +35,12 @@ using ArgTypeAndIndex = std::pair<ArgType, size_t>;
 using KernelTypeStrToArgsMap = InlinedHashMap<std::string, InlinedVector<ArgTypeAndIndex>>;
 using OpKernelTypeStrMap = InlinedHashMap<OpIdentifier, KernelTypeStrToArgsMap>;
 
+/**
+ * This class interface provides a way to resolve an op's kernel type string to its associated arguments.
+ *
+ * A 'kernel type string' is a string that is used in kernel def type constraints. In particular, it can be a named
+ * type parameter (such as 'T') specified in the op schema or it can be the name of an input or output parameter.
+ */
 class IKernelTypeStrResolver {
  public:
   /**
@@ -47,25 +53,60 @@ class IKernelTypeStrResolver {
                                       gsl::span<const ArgTypeAndIndex>& resolved_args) const = 0;
 };
 
+/**
+ * A basic implementation of IKernelTypeStrResolver.
+ *
+ * Supports loading information from op schemas in a full build and saving to/loading from an ORT format model
+ * representation.
+ */
 class KernelTypeStrResolver : public IKernelTypeStrResolver {
  public:
   Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
                               gsl::span<const ArgTypeAndIndex>& resolved_args) const override;
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+  /**
+   * Registers kernel type string matching info from an op schema.
+   * This will not overwrite an existing registration for the same op.
+   * @param op_schema The op schema to register.
+   * @param[out] registered Whether the op schema was registered or there was already an existing registration.
+   */
   Status RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema, bool* registered = nullptr);
 
+  /**
+   * Registers kernel type string matching info from an op schema from a node.
+   * @param node The node to register.
+   */
   Status RegisterNodeOpSchema(const Node& node);
 
+  /**
+   * Registers kernel type string matching info from op schemas from nodes in a graph.
+   * @param graph The graph to register.
+   */
   Status RegisterGraphNodeOpSchemas(const Graph& graph);
 
+  /**
+   * Saves to an ORT format model representation.
+   * @param builder The flatbuffers builder.
+   * @param[out] fbs_kernel_type_str_resolver The saved flatbuffers representation offset.
+   */
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                          flatbuffers::Offset<fbs::KernelTypeStrResolver>& fbs_kernel_type_str_resolver) const;
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+  /**
+   * Loads from an ORT format model representation.
+   * @param fbs_kernel_type_str_resolver The flatbuffers representation to load.
+   */
   Status LoadFromOrtFormat(const fbs::KernelTypeStrResolver& fbs_kernel_type_str_resolver);
 
-  void Merge(KernelTypeStrResolver& src);
+  /**
+   * Merges kernel type string matching info from another KernelTypeStrResolver.
+   * @param src The KernelTypeStrResolver to merge from.
+   */
+  void Merge(KernelTypeStrResolver src);
 
   const OpKernelTypeStrMap& GetOpKernelTypeStrMap() const { return op_kernel_type_str_map_; }
 
@@ -74,6 +115,11 @@ class KernelTypeStrResolver : public IKernelTypeStrResolver {
 };
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+/**
+ * An implementation of IKernelTypeStrResolver which registers kernel type string matching info from node op schemas as
+ * needed.
+ */
 class AutoRegisteringKernelTypeStrResolver : public IKernelTypeStrResolver {
  public:
   Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
@@ -85,6 +131,7 @@ class AutoRegisteringKernelTypeStrResolver : public IKernelTypeStrResolver {
   mutable KernelTypeStrResolver resolver_;
   mutable OrtMutex resolver_mutex_;
 };
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace onnxruntime

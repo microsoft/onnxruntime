@@ -232,7 +232,7 @@ Status KernelTypeStrResolver::LoadFromOrtFormat(const fbs::KernelTypeStrResolver
   return Status::OK();
 }
 
-void KernelTypeStrResolver::Merge(KernelTypeStrResolver& src) {
+void KernelTypeStrResolver::Merge(KernelTypeStrResolver src) {
   op_kernel_type_str_map_.merge(src.op_kernel_type_str_map_);
 }
 

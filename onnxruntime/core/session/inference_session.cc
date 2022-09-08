@@ -1055,7 +1055,6 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   ORT_RETURN_IF_ERROR(SaveModelMetadata(*tmp_model));
   model_ = std::move(tmp_model);
 
-  // TODO should kernel_type_str_resolver be required in the model?
   KernelTypeStrResolver kernel_type_str_resolver{};
   if (const auto* fbs_kernel_type_str_resolver = fbs_session->kernel_type_str_resolver();
       fbs_kernel_type_str_resolver != nullptr) {
