@@ -367,20 +367,21 @@ namespace OperatorHelper
 
     namespace MsftOperatorSet1
     {
-        static const int sc_sinceVer_FusedConv = 1;
-        static const int sc_sinceVer_FusedConvTranspose = 1;
-        static const int sc_sinceVer_FusedInstanceNormalization = 1;
-        static const int sc_sinceVer_FusedBatchNormalization = 1;
-        static const int sc_sinceVer_FusedMeanVarianceNormalization = 1;
-        static const int sc_sinceVer_FusedGemm = 1;
-        static const int sc_sinceVer_FusedMatMul = 1;
-        static const int sc_sinceVer_FusedAdd = 1;
-        static const int sc_sinceVer_FusedSum = 1;
+        static const int sc_sinceVer_DmlFusedConv = 1;
+        static const int sc_sinceVer_DmlFusedConvTranspose = 1;
+        static const int sc_sinceVer_DmlFusedInstanceNormalization = 1;
+        static const int sc_sinceVer_DmlFusedBatchNormalization = 1;
+        static const int sc_sinceVer_DmlFusedMeanVarianceNormalization = 1;
+        static const int sc_sinceVer_DmlFusedGemm = 1;
+        static const int sc_sinceVer_DmlFusedMatMul = 1;
+        static const int sc_sinceVer_DmlFusedAdd = 1;
+        static const int sc_sinceVer_DmlFusedSum = 1;
         static const int sc_sinceVer_QuantizeLinear = 1;
         static const int sc_sinceVer_DequantizeLinear = 1;
         static const int sc_sinceVer_ConvTransposeWithDynamicPads = 1;
         static const int sc_sinceVer_QLinearAdd = 1;
         static const int sc_sinceVer_Gelu = 1;
+        static const int sc_sinceVer_FusedMatMul = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper

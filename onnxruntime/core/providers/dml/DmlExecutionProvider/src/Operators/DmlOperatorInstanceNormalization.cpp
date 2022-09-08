@@ -63,6 +63,6 @@ public:
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(InstanceNormalization, DmlOperatorInstanceNormalization);
-DML_OP_DEFINE_CREATION_FUNCTION(FusedInstanceNormalization, DmlOperatorInstanceNormalization);
+DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedInstanceNormalization, DmlOperatorInstanceNormalization);
 
 } // namespace Dml

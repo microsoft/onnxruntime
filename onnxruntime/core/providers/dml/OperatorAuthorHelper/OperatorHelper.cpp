@@ -550,6 +550,81 @@ namespace OperatorHelper
         inputShape1.insert(inputShape1.begin(), outputShape.begin(), outputShape.end() - 2);
     }
 
+    void FusedMatMulShapeMapping(
+        std::vector<DimensionType>& inputShape0,
+        std::vector<DimensionType>& inputStride0,
+        std::vector<DimensionType>& inputShape1,
+        std::vector<DimensionType>& inputStride1,
+        std::vector<DimensionType>& outputShape)
+    {
+        // Get the padded input shapes and undo the effect of padding removal from the output shape
+        if (inputShape1.size() == 1)
+        {
+            inputShape1.push_back(1);
+            inputStride1.push_back(0);
+            outputShape.push_back(1);
+        }
+
+        if (inputShape0.size() == 1)
+        {
+            inputShape0.insert(inputShape0.begin(), 1);
+            inputStride0.insert(inputStride0.begin(), 0);
+            outputShape.insert(outputShape.end() - 1, 1);
+        }
+
+        // Broadcast the extra dimensions of each input, then add the truncated matrix dimensions
+        BroadcastTensorShapeAndSetStrides(inputShape0, inputStride0, inputShape1, inputStride1);
+    }
+
+    std::pair<std::vector<uint32_t>, std::vector<uint32_t>> FusedMatMulSizeAndStride(
+        gsl::span<const uint32_t> sizes, 
+        int32_t transBatch,
+        int32_t trans)
+    {
+        const uint32_t dimensionCount = sizes.size();
+        std::vector<uint32_t> newStrides(dimensionCount), newSizes(dimensionCount);
+
+        // Calculate packed strides.
+        uint32_t stride = 1;
+        for (int i = dimensionCount - 1; i >= 0; i--)
+        {
+            newStrides[i] = stride;
+            stride *= sizes[i];
+        }
+
+        int idx = 0;
+        for (auto& size : sizes)
+        {
+            newSizes[idx++] = size;
+        }
+
+        // According to contrib ops shape inference 
+        // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/contrib_ops/contrib_defs.cc#L215
+        // `transBatch` needs to be applied first and then `trans`.
+        if (transBatch)
+        {
+            uint32_t secondLastStride = newStrides[dimensionCount - 2];
+            uint32_t secondLastSize = newSizes[dimensionCount - 2];
+
+            for (int i = dimensionCount - 2; i > 0; i--)
+            {
+                newStrides[i] = newStrides[i - 1];
+                newSizes[i] = newSizes[i - 1];
+            }
+
+            newStrides[0] = secondLastStride;
+            newSizes[0] = secondLastSize;
+        }
+
+        if (trans)
+        {
+            std::swap(newStrides[dimensionCount - 2], newStrides[dimensionCount - 1]);
+            std::swap(newSizes[dimensionCount - 2], newSizes[dimensionCount - 1]);
+        }
+
+        return std::make_pair(newSizes, newStrides);
+    }
+
     std::vector<EdgeShapes> GetOutputShapeAsInputShapeHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
         assert(shapeInfo.GetInputCount() > m_inputTensorIndex);
@@ -615,6 +690,83 @@ namespace OperatorHelper
         }
 
         return outputShape;
+    }
+
+    void BroadcastTensorShapeAndSetStrides(
+        std::vector<DimensionType>& inputShape0,
+        std::vector<DimensionType>& inputStride0,
+        std::vector<DimensionType>& inputShape1,
+        std::vector<DimensionType>& inputStride1
+        )
+    {
+        if (inputShape0 != inputShape1)
+        {
+
+            auto outputRank = std::max(inputShape0.size(), inputShape1.size());
+            
+            
+            // Walk backwards through both input shapes and broadcast each dimension
+
+            // ignore the last 2 dimensions (matrix dimensions)
+            auto inDim0Iter = inputShape0.rbegin() + 2;
+            auto inDim1Iter = inputShape1.rbegin() + 2;
+            
+            auto inStride0Iter = inputStride0.rbegin() + 2;
+            auto inStride1Iter = inputStride1.rbegin() + 2;
+            outputRank -= 2; 
+
+            std::vector<DimensionType> newInputShape(outputRank);
+            std::vector<DimensionType> newInputStride0(outputRank), newInputStride1(outputRank);
+
+            while (outputRank-- > 0)
+            {
+                DimensionType inDimension0 = 1;
+                DimensionType inStride0 = 0;
+                if (inDim0Iter != inputShape0.rend())
+                {
+                    inDimension0 = *inDim0Iter;
+                    inStride0 = *inStride0Iter;
+                    ++inDim0Iter;
+                    ++inStride0Iter;
+                }
+
+                DimensionType inDimension1 = 1;
+                DimensionType inStride1 = 0;
+                if (inDim1Iter != inputShape1.rend())
+                {
+                    inDimension1 = *inDim1Iter;
+                    inStride1 = *inStride1Iter;
+                    ++inDim1Iter;
+                    ++inStride1Iter;
+                }
+
+                // 0-sized dimensions indicate an empty tensor and shouldn't be broadcasted to higher dimensions
+                if (inDimension0 == 0 || inDimension1 == 0)
+                {
+                    inDimension0 = 0;
+                    inDimension1 = 0;
+                }
+
+                ML_CHECK_VALID_ARGUMENT((inDimension0 == inDimension1) || (inDimension0 == 1) || (inDimension1 == 1));
+                auto broadcastedDimension = std::max(inDimension0, inDimension1);
+                
+                newInputShape[outputRank] = broadcastedDimension;
+                newInputStride0[outputRank] = (broadcastedDimension != inDimension0) ? 0 : inStride0;
+                newInputStride1[outputRank] = (broadcastedDimension != inDimension1) ? 0 : inStride1;
+            }
+
+            inputShape0.erase(inputShape0.begin(), inputShape0.end() - 2);
+            inputShape1.erase(inputShape1.begin(), inputShape1.end() - 2);
+
+            inputShape0.insert(inputShape0.begin(), newInputShape.begin(), newInputShape.end());
+            inputShape1.insert(inputShape1.begin(), newInputShape.begin(), newInputShape.end());
+
+            inputStride0.erase(inputStride0.begin(), inputStride0.end() - 2);
+            inputStride1.erase(inputStride1.begin(), inputStride1.end() - 2);
+
+            inputStride0.insert(inputStride0.begin(), newInputStride0.begin(), newInputStride0.end());
+            inputStride1.insert(inputStride1.begin(), newInputStride1.begin(), newInputStride1.end());
+        }
     }
 
     void ConvolutionHelperBase::InitializeKernelAndShapes(const IShapeInformationAdapter& shapeInformation)
@@ -1484,6 +1636,70 @@ namespace OperatorHelper
         auto inputShape1 = shapeInfo.GetInputTensorShape(m_bTensorIndex);
         ML_CHECK_VALID_ARGUMENT(inputShape0.size() >= 1);
         ML_CHECK_VALID_ARGUMENT(inputShape1.size() >= 1);
+
+        std::vector<uint32_t> outputMatrixDims;
+
+        // Modify the input and truncated output shapes per the above comments.
+        // The extra dimensions of the output beyond the two matrix dimensions
+        // will be computed afterward by broadcasting.
+        if (inputShape0.size() == 1)
+        {
+            inputShape0.insert(inputShape0.begin(), 1);
+        }
+        else
+        {
+            outputMatrixDims.push_back(inputShape0[inputShape0.size() - 2]);
+        }
+
+        if (inputShape1.size() == 1)
+        {
+            inputShape1.push_back(1);
+        }
+        else
+        {
+            outputMatrixDims.push_back(inputShape1[inputShape1.size() - 1]);
+        }
+
+        // Remove the matrix dimensions from each input, resulting in broadcastable shapes
+        std::vector<uint32_t> batchDims0(inputShape0.begin(), inputShape0.end() - 2);
+        std::vector<uint32_t> batchDims1(inputShape1.begin(), inputShape1.end() - 2);
+
+        // Broadcast the extra dimensions of each input, then add the truncated matrix dimensions
+        std::vector<uint32_t> outputDims = BroadcastTensorShape(batchDims0, batchDims1);
+        for (uint32_t matrixDim : outputMatrixDims)
+        {
+            outputDims.push_back(matrixDim);
+        }
+
+        return {std::move(outputDims)};
+    }
+
+    std::vector<EdgeShapes> FusedMatMulHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() == 2);
+
+        // Following numpy.matmul for shape inference:
+        // https://docs.scipy.org/doc/numpy/reference/generated/numpy.matmul.html
+        // The behavior depends on the arguments in the following way.
+        // * If both arguments are 2 - D they are multiplied like conventional matrices.
+        // * If either argument is N - D, N > 2, it is treated as a stack of matrices residing in the last two indexes and broadcast accordingly.
+        // * If the first argument is 1 - D, it is promoted to a matrix by prepending a 1 to its dimensions. After matrix multiplication the prepended 1 is removed.
+        // * If the second argument is 1 - D, it is promoted to a matrix by appending a 1 to its dimensions. After matrix multiplication the appended 1 is removed.
+
+        auto inputShape0 = shapeInfo.GetInputTensorShape(0);
+        auto inputShape1 = shapeInfo.GetInputTensorShape(1);
+        ML_CHECK_VALID_ARGUMENT(inputShape0.size() >= 1);
+        ML_CHECK_VALID_ARGUMENT(inputShape1.size() >= 1);
+
+        auto [sizesA, stridesA] = FusedMatMulSizeAndStride(inputShape0,
+                                                           shapeInfo.GetOptionalAttribute(AttrName::TransBatchA, -1),
+                                                           shapeInfo.GetOptionalAttribute(AttrName::TransA, -1));
+        inputShape0 = sizesA;
+
+        auto [sizesB, stridesB] = FusedMatMulSizeAndStride(inputShape1,
+                                                           shapeInfo.GetOptionalAttribute(AttrName::TransBatchB, -1),
+                                                           shapeInfo.GetOptionalAttribute(AttrName::TransB, -1));
+        inputShape1 = sizesB;
 
         std::vector<uint32_t> outputMatrixDims;
 

@@ -210,6 +210,31 @@ gsl::span<const uint32_t> TensorDesc::GetStrides() const
     return { m_strides, m_strides + m_bufferTensorDesc.DimensionCount };
 }
 
+void TensorDesc::SetSizes(gsl::span<const uint32_t> sizes)
+{
+    if (!sizes.empty())
+    {
+        int idx = 0;
+        for (const auto size : sizes)
+        {
+            m_sizes[idx++] = size;
+        }
+    }
+}
+
+void TensorDesc::SetStrides(gsl::span<const uint32_t> strides)
+{
+    if (!strides.empty())
+    {
+        m_bufferTensorDesc.Strides = strides.data();
+        int idx = 0;
+        for (auto& stride : strides)
+        {
+            m_strides[idx++] = stride;
+        }
+    }
+}
+
 DML_TENSOR_DESC TensorDesc::GetDmlDesc()
 {
     if (m_tensorType == DML_TENSOR_TYPE_INVALID)
@@ -217,6 +242,8 @@ DML_TENSOR_DESC TensorDesc::GetDmlDesc()
         return { m_tensorType, nullptr };
     }
 
+    // If the object ,on which GetDmlDesc() is called, is created by copy constructor then we need to 
+    // update DML_BUFFER_TENSOR_DESC.Sizes and DML_BUFFER_TENSOR_DESC.Strides pointer.
     m_bufferTensorDesc.Sizes = m_sizes;
     if (m_bufferTensorDesc.Strides)
     {

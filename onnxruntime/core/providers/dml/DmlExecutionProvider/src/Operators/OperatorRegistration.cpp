@@ -191,6 +191,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(ParametricSoftplus);
 DML_OP_EXTERN_CREATION_FUNCTION(Affine);
 DML_OP_EXTERN_CREATION_FUNCTION(Dropout);
 DML_OP_EXTERN_CREATION_FUNCTION(MatMul);
+DML_OP_EXTERN_CREATION_FUNCTION(FusedMatMul);
 DML_OP_EXTERN_CREATION_FUNCTION(Cast);
 DML_OP_EXTERN_CREATION_FUNCTION(CastLike15);
 DML_OP_EXTERN_CREATION_FUNCTION(MemcpyFromHost);
@@ -205,15 +206,15 @@ DML_OP_EXTERN_CREATION_FUNCTION(Tan);
 DML_OP_EXTERN_CREATION_FUNCTION(Acos);
 DML_OP_EXTERN_CREATION_FUNCTION(Asin);
 DML_OP_EXTERN_CREATION_FUNCTION(Atan);
-DML_OP_EXTERN_CREATION_FUNCTION(FusedConv);
-DML_OP_EXTERN_CREATION_FUNCTION(FusedConvTranspose);
-DML_OP_EXTERN_CREATION_FUNCTION(FusedInstanceNormalization);
-DML_OP_EXTERN_CREATION_FUNCTION(FusedBatchNormalization);
-DML_OP_EXTERN_CREATION_FUNCTION(FusedMeanVarianceNormalization);
-DML_OP_EXTERN_CREATION_FUNCTION(FusedGemm);
-DML_OP_EXTERN_CREATION_FUNCTION(FusedMatMul);
-DML_OP_EXTERN_CREATION_FUNCTION(FusedAdd);
-DML_OP_EXTERN_CREATION_FUNCTION(FusedSum);
+DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedConv);
+DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedConvTranspose);
+DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedInstanceNormalization);
+DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedBatchNormalization);
+DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedMeanVarianceNormalization);
+DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedGemm);
+DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedMatMul);
+DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedAdd);
+DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedSum);
 DML_OP_EXTERN_CREATION_FUNCTION(QuantizeLinear);
 DML_OP_EXTERN_CREATION_FUNCTION(DequantizeLinear);
 DML_OP_EXTERN_CREATION_FUNCTION(Sign);
@@ -657,7 +658,6 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  ParametricSoftplus,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Dropout,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      9,  Shrink,                             typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
-    {REG_INFO_MS(   1,  Gelu,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
 
     // Uncategorized
     {REG_INFO(      7,  MatMul,                             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
@@ -677,16 +677,20 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     // Shape-1, Shape-13, Shape-15 rely on CPU.
     // Size-1 relies on CPU.
 
-    // Fused operators
-    {REG_INFO_MSDML(1,  FusedConv,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedConvTranspose,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedInstanceNormalization,         typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedBatchNormalization,            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedMeanVarianceNormalization,     typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedGemm,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedMatMul,                        typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedAdd,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO_MSDML(1,  FusedSum,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported,     requiredConstantCpuInputs(), 2)},
+    // DmlFused operators
+    {REG_INFO_MSDML(1,  DmlFusedConv,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  DmlFusedConvTranspose,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  DmlFusedInstanceNormalization,         typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  DmlFusedBatchNormalization,            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  DmlFusedMeanVarianceNormalization,     typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  DmlFusedGemm,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  DmlFusedMatMul,                        typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  DmlFusedAdd,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MSDML(1,  DmlFusedSum,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported,     requiredConstantCpuInputs(), 2)},
+
+    // Contrib operators
+    {REG_INFO_MS(   1,  Gelu,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  FusedMatMul,                        typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     
     {REG_INFO(     10,  IsInf,                              typeNameListTwo,                supportedTypeListIsInf,                 DmlGraphSupport::Supported)},
     {REG_INFO(     10,  Mod,                                typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},
