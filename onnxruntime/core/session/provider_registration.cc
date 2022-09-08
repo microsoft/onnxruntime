@@ -127,16 +127,6 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nnapi,
 }
 #endif
 
-#ifndef USE_NUPHAR
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nuphar,
-                    _In_ OrtSessionOptions* options, int allow_unaligned_buffers, _In_ const char* settings) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(allow_unaligned_buffers);
-  ORT_UNUSED_PARAMETER(settings);
-  return CreateNotEnabledStatus("Nuphar");
-}
-#endif
-
 #ifndef USE_TVM
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tvm,
                     _In_ OrtSessionOptions* options, _In_ const char* settings) {
