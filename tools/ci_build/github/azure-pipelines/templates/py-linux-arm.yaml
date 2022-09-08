@@ -1,0 +1,66 @@
+parameters:
+- name: build_py_parameters  
+  type: string
+  default: ''
+
+- name: PythonManylinuxDir 
+  type: string
+  
+
+jobs:
+- job: Linux_py_Wheels
+  timeoutInMinutes: 240
+  workspace:
+  clean: all
+  pool: 'Linux-CPU'
+  steps:
+    - checkout: self
+      clean: true
+      submodules: recursive
+
+    - template: set-python-manylinux-variables-step.yml
+
+    - template: get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) BASEIMAGE=arm64v8/centos:7"
+        Repository: onnxruntimecpubuilpythonarm64
+
+    - template: set-nightly-build-option-variable-step.yml
+
+    - task: CmdLine@2
+      displayName: 'Build Python Wheel'
+      inputs:
+        script: |
+            mkdir -p $HOME/.onnx
+            docker run --rm \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              onnxruntimecpubuilpythonarm64 \
+                ${{ parameters.PythonManylinuxDir }}/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build --cmake_generator Ninja \
+                  --config Release --update --build \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --enable_lto \
+                  --build_wheel \
+                  --enable_onnx_tests \
+                  ${{ parameters.build_py_parameters }}
+
+    - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifact: ONNXRuntime python wheel'
+    inputs:
+        PathtoPublish: '$(Build.BinariesDirectory)/Release/dist'
+        ArtifactName: onnxruntime
+
+    - template: component-governance-component-detection-steps.yml
+    parameters:
+        condition: 'succeeded'
+
+    - template: clean-agent-build-directory-step.yml
