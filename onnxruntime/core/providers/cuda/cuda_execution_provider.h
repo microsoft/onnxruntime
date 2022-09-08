@@ -74,7 +74,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   // Release all buffers added by
   // AddDeferredReleaseCPUPtr using
   // GPU callback (so it's async).
-  void EnqueueDeferredRelease();
+  Status EnqueueDeferredRelease();
 
   template <typename T>
   IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {

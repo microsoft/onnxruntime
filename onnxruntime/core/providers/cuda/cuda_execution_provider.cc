@@ -227,7 +227,9 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
-  EnqueueDeferredRelease();
+  // Prevent memory leak when people don't call
+  // OnRunStart and OnRunEnd when calling CudaKernel's.
+  ORT_IGNORE_RETURN_VALUE(EnqueueDeferredRelease());
 
   // clean up thread local context caches
   {
@@ -385,7 +387,7 @@ static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
   delete info;
 }
 
-void CUDAExecutionProvider::EnqueueDeferredRelease() {
+Status CUDAExecutionProvider::EnqueueDeferredRelease() {
   // Release CPU buffers allocated for CUDA kernels (type: CudaKernel).
   // They have to be released outside CUDA kernels because they must be alive
   // during asynchronous GPU computation even after the CPU part (e.g,
@@ -410,12 +412,13 @@ void CUDAExecutionProvider::EnqueueDeferredRelease() {
       cpu_buffers_info->buffers[i] = buffers.at(i);
     }
     cpu_buffers_info->n_buffers = buffers.size();
-    cudaLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
+    CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info));
   }
   // All buffers are scheduled for release.
   // Let's clear releated information so that
   // those buffers won't be released twice.
   deferred_release_buffer_pool_.clear();
+  return Status::OK();
 }
 
 Status CUDAExecutionProvider::OnRunStart() {
@@ -441,7 +444,9 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   }
 
   // Enqueue deferred CPU memory release on related streams.
-  EnqueueDeferredRelease();
+  // This will release all deferred-release CPU buffers allocated
+  // before calling OnRunEnd.
+  ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
 
   if (sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
@@ -452,7 +457,7 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   //  because the per thread cuda graph needs to be maintained and replayed for
   //  the next run.
   // The reason of PerThreadContextCache()->find(this) != PerThreadContextCache()->end():
-  //  In exterme cases (e.g., 1-op graph and that op fallbacks to CPU),
+  //  In extreme cases (e.g., 1-op graph and that op fallbacks to CPU),
   //  PerThreadContext won't be created and there isbe nothing to
   //  release. This didn't happen before because we always call
   //  GetPerThreadContext in OnRunStart.
