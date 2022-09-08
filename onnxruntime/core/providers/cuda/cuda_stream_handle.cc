@@ -10,7 +10,7 @@ struct CudaStreamBundle {
 };
 
 struct StreamPool {
-  StreamPool(){};
+  StreamPool() = default;
   ~StreamPool() {
     for (const auto& s : streams_) {
       cudaStreamDestroy(s.cuda_stream_);
