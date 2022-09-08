@@ -80,9 +80,8 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         visited_node_args.insert(input_def);
 
         // Ignore if not constant initializers,
-        const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-        if (!(tensor_proto = graph.GetConstantInitializer(input_def->Name(), true)) ||
-            excluded_initializers_.find(input_def->Name()) != excluded_initializers_.end()) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = graph.GetConstantInitializer(input_def->Name(), true);
+        if (!tensor_proto || excluded_initializers_.find(input_def->Name()) != excluded_initializers_.end()) {
           continue;
         }
 

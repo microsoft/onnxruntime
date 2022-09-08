@@ -211,7 +211,7 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, I
     const MLFloat16* val = float_const.data<MLFloat16>();
     data.reserve(data.size() + gsl::narrow<size_t>(float_const.size()));
     for (int64_t i = 0; i < float_const.size(); i++) {
-      data.push_back(float(val[i]));
+      data.push_back(static_cast<float>(val[i]));
     }
   } else {
     return false;
