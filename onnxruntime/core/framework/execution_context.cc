@@ -24,7 +24,7 @@ class DeviceStreamCollectionImpl {
       }
     }
     // only clean the streams that is owned by current context
-    for (auto& stream : device_streams_containers) {
+    /*for (auto& stream : device_streams_containers) {
       if (stream) {
         for (auto& ep : eps_) {
           auto& allocators = ep->GetAllocators();
@@ -40,7 +40,7 @@ class DeviceStreamCollectionImpl {
           }
         }
       }
-    }
+    }*/
   }
 
   void SetDeviceStream(size_t idx, std::unique_ptr<Stream> stream) {
