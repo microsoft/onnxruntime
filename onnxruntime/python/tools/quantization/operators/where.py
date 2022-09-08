@@ -67,4 +67,5 @@ class QDQWhere(QDQOperatorBase):
             and self.quantizer.is_tensor_quantized(node.input[2])
             and not self.disable_qdq_for_node_output
         ):
-            self.quantizer.quantize_tensor(output)
+            for output in node.output:
+                self.quantizer.quantize_tensor(output)
