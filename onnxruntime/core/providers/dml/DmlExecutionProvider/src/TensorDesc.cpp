@@ -32,9 +32,9 @@ TensorDesc::TensorDesc(
 
     m_bufferTensorDesc.GuaranteedBaseOffsetAlignment = guaranteedBaseOffsetAlignment;
     m_bufferTensorDesc.TotalTensorSizeInBytes = DMLCalcBufferTensorSize(
-        m_bufferTensorDesc.DataType, 
-        m_bufferTensorDesc.DimensionCount, 
-        m_sizes, 
+        m_bufferTensorDesc.DataType,
+        m_bufferTensorDesc.DimensionCount,
+        m_sizes,
         strides ? m_strides : nullptr
         );
 }
@@ -214,11 +214,12 @@ void TensorDesc::SetStrides(gsl::span<const uint32_t> strides)
 {
     if (!strides.empty())
     {
+        // TODO: Verify strides size does not overwrite memory of m_strides.
         m_bufferTensorDesc.Strides = strides.data();
-        int idx = 0;
-        for (auto& stride : strides)
+        int index = 0;
+        for (uint32_t stride : strides)
         {
-            m_strides[idx++] = stride;
+            m_strides[index++] = stride;
         }
     }
 }
@@ -230,8 +231,8 @@ DML_TENSOR_DESC TensorDesc::GetDmlDesc()
         return { m_tensorType, nullptr };
     }
 
-    // If the object ,on which GetDmlDesc() is called, is created by copy constructor then we need to 
-    // update DML_BUFFER_TENSOR_DESC.Sizes and DML_BUFFER_TENSOR_DESC.Strides pointer.
+    // Update the DML_BUFFER_TENSOR_DESC Sizes and Strides pointers to point internally to the TensorDesc fields.
+    // This update matters whether it was a new instance or a copy from via copy constructor from another TensorDesc.
     m_bufferTensorDesc.Sizes = m_sizes;
     if (m_bufferTensorDesc.Strides)
     {

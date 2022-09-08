@@ -64,7 +64,7 @@ namespace Dml
             auto kernelInputIndices = ReplaceUnusedEdgeIndicesWithSentinel(m_kernelInputIndices);
             properties.dmlInputCount = static_cast<uint32_t>(kernelInputIndices.size());
             properties.kernelInputIndices = kernelInputIndices.data();
-            
+
             auto kernelOutputIndices = ReplaceUnusedEdgeIndicesWithSentinel(m_kernelOutputIndices);
             properties.dmlOutputCount = static_cast<uint32_t>(kernelOutputIndices.size());
             properties.kernelOutputIndices = kernelOutputIndices.data();
@@ -88,7 +88,7 @@ namespace Dml
 
                 m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
             }
-            
+
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
 
             ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
@@ -183,7 +183,7 @@ namespace Dml
             else
             {
                 m_inputTensorDescs.push_back(CreateTensorDescFromInput(
-                    kernelInfo, 
+                    kernelInfo,
                     *m_kernelInputIndices[i],
                     TensorAxis::DoNotCoerce,
                     TensorAxis::W,
@@ -205,7 +205,7 @@ namespace Dml
             else
             {
                 m_outputTensorDescs.push_back(CreateTensorDescFromOutput(
-                    kernelInfo, 
+                    kernelInfo,
                     *m_kernelOutputIndices[i],
                     TensorAxis::DoNotCoerce,
                     TensorAxis::W,
@@ -261,28 +261,32 @@ namespace Dml
 
                 // prioritize the given input shapes
                 TensorDesc tensorDesc;
-                if (inputShapes.has_value() && i < (*inputShapes).size()) 
+                if (inputShapes.has_value() && i < (*inputShapes).size())
                 {
-                    tensorDesc = TensorDesc(edgeDesc.tensorDataType,
-                                            (*inputShapes)[i],  // desired
-                                            (*inputShapes)[i], //original
-                                            TensorAxis::DoNotCoerce,
-                                            TensorAxis::W,
-                                            TensorAxis::RightAligned,
-                                            minDimensionCount,
-                                            0);
+                    tensorDesc = TensorDesc(
+                        edgeDesc.tensorDataType,
+                        (*inputShapes)[i], // desired
+                        (*inputShapes)[i], // original
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        minDimensionCount,
+                        0
+                    );
                 }
                 else if (kernelInfo.HasTensorShapeDescription())
                 {
                     std::vector<uint32_t> actualTensorShape = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(*m_kernelInputIndices[i]);
-                    tensorDesc = TensorDesc(edgeDesc.tensorDataType,
-                                            actualTensorShape,  // desired
-                                            actualTensorShape, //original
-                                            TensorAxis::DoNotCoerce,
-                                            TensorAxis::W,
-                                            TensorAxis::RightAligned,
-                                            minDimensionCount,
-                                            0);
+                    tensorDesc = TensorDesc(
+                        edgeDesc.tensorDataType,
+                        actualTensorShape, // desired
+                        actualTensorShape, // original
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        minDimensionCount,
+                        0
+                    );
                 }
                 m_inputTensorDescs.push_back(tensorDesc);
             }
@@ -300,19 +304,20 @@ namespace Dml
             else
             {
                 std::optional<gsl::span<const uint32_t>> outputShape;
-                if (outputShapes.has_value() && i < (*outputShapes).size()) 
+                if (outputShapes.has_value() && i < (*outputShapes).size())
                 {
                     outputShape = (*outputShapes)[i];
                 }
 
                 m_outputTensorDescs.push_back(CreateTensorDescFromOutput(
-                    kernelInfo, 
+                    kernelInfo,
                     *m_kernelOutputIndices[i],
                     TensorAxis::DoNotCoerce,
                     TensorAxis::W,
                     TensorAxis::RightAligned,
                     outputShape,
-                    minDimensionCount));
+                    minDimensionCount
+                ));
             }
         }
     }
@@ -332,7 +337,7 @@ namespace Dml
     bool DmlOperator::AllowHalfPrecisionComputation() const
     {
         // Most of our operators work with float data, but some do not. In those cases
-        // no input params are float tensors. This function returns true if the operator 
+        // no input params are float tensors. This function returns true if the operator
         // works with at least one float16 tensor and has no tensors of float32 type
         bool usesFloat16Tensors = false;
 
@@ -565,7 +570,7 @@ namespace Dml
         }
 
         auto outputShape = outputShapeDescription.GetOutputTensorShape(index);
-        
+
         return TensorDesc(
             edgeDesc.tensorDataType,
             tensorShape ? *tensorShape : outputShape,
