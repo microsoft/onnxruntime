@@ -340,8 +340,15 @@ Status SequentialExecutor::Execute(const SessionState& session_state, gsl::span<
           ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
         }
 #endif
+        concurrency::ThreadPool* tp = dynamic_cast<OpKernelContext*>(&op_kernel_context)->GetOperatorThreadPool();
+        if (p_op_kernel->Info().GetExecutionProvider()->Type() == kXnnpackExecutionProvider) {
+          tp->DisableSpinning();
+        }
 
         compute_status = p_op_kernel->Compute(&op_kernel_context);
+        if (p_op_kernel->Info().GetExecutionProvider()->Type() == kXnnpackExecutionProvider) {
+          tp->EnableSpinning();
+        }
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {
