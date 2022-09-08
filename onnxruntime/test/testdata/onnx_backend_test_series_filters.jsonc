@@ -97,7 +97,10 @@
         "^test_gru_batchwise_cuda",
         "^test_div_uint8_cuda",
         "^test_add_uint8_cuda",
-        "^test_roialign_aligned_*"
+        "^test_roialign_aligned_*",
+        "^test_dft_axis_cpu",
+        "^test_dft_cpu",
+        "^test_dft_inverse_cpu"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
