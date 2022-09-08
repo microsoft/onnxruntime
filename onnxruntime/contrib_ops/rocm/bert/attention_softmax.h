@@ -189,6 +189,9 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
   // Input dimension is BxNxSxS*; blockIdx.y is batch index b; gridDim.x=N*S;  blockIdx.x is index within N*S;
   int index = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length + threadIdx.x;
 
+  // Mask all thread_data values to negative infinity to allow BlockReduce Max operation over all thread_data
+  // members with all invalid members set to a value that does not impact the final result. This is necessary
+  // to avoid the performance impact from using the valid_items interface.
   float thread_data = -ROCMRT_INF_F;
   if (threadIdx.x < all_sequence_length) {
     if (add_before_softmax == nullptr) {
@@ -242,6 +245,9 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
   }
   __syncthreads();
 
+  // Mask all thread_data_exp values to zero to allow BlockReduce Sum operation over all thread_data_exp
+  // members with all invalid members set to a value that does not impact the final result. This is necessary
+  // to avoid the performance impact from using the valid_items interface.
   float thread_data_exp = threadIdx.x < all_sequence_length ? expf(thread_data - max_block) : 0.0f;
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, hipcub::Sum());
 
