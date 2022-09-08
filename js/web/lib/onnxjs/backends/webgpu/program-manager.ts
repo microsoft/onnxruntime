@@ -4,6 +4,7 @@
 import {env} from 'onnxruntime-common';
 
 import {Logger, Profiler} from '../../instrument';
+import {WebGpuBackend} from '../backend-webgpu';
 
 import {Artifact, GpuData, ProgramInfo} from './types';
 
@@ -20,7 +21,7 @@ export class ProgramManager {
   repo: Map<unknown, Artifact>;  // this should be per-session object
   attributesBound: boolean;
 
-  constructor(private device: GPUDevice, public profiler: Readonly<Profiler>) {
+  constructor(private backend: WebGpuBackend, public profiler: Readonly<Profiler>) {
     this.repo = new Map();
     this.attributesBound = false;
   }
@@ -32,14 +33,11 @@ export class ProgramManager {
   }
   run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[],
       dispatchGroup: {x: number; y?: number; z?: number}): void {
-    const device = this.device;
+    const device = this.backend.device;
 
-    // TODO: should we create command encoder every time?
+    const computePassEncoder = this.backend.getComputePassEncoder();
 
-    const commandEncoder = device.createCommandEncoder();
-
-    const passEncoder = commandEncoder.beginComputePass();
-    passEncoder.setPipeline(buildArtifact.computePipeline);
+    computePassEncoder.setPipeline(buildArtifact.computePipeline);
     const entries = [];
     for (const input of inputs) {
       entries.push({binding: entries.length, resource: {buffer: input.buffer}});
@@ -48,20 +46,22 @@ export class ProgramManager {
       entries.push({binding: entries.length, resource: {buffer: output.buffer}});
     }
     const bindGroup = device.createBindGroup({layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries});
-    passEncoder.setBindGroup(0, bindGroup);
+    computePassEncoder.setBindGroup(0, bindGroup);
 
     const {x, y, z} = dispatchGroup;
-    passEncoder.dispatch(x, y, z);
+    computePassEncoder.dispatch(x, y, z);
 
-    passEncoder.endPass();
+    this.backend.pendingDispatchNumber++;
 
-    device.queue.submit([commandEncoder.finish()]);
+    if (this.backend.pendingDispatchNumber >= 16) {
+      this.backend.flush();
+    }
   }
   dispose(): void {
     // this.repo.forEach(a => this.glContext.deleteProgram(a.program));
   }
   build(programInfo: ProgramInfo): Artifact {
-    const device = this.device;
+    const device = this.backend.device;
 
     const shaderModule = device.createShaderModule({code: programInfo.shaderSource});
     if (env.debug) {

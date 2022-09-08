@@ -17,11 +17,11 @@ import {createTensorDataManager, TensorDataManager} from './tensor-data-manager'
 export class WebGpuSessionHandler implements SessionHandler {
   private initializers: Set<Tensor.Id>;
   readonly dataManager: TensorDataManager;
-  programManager: ProgramManager;
+  readonly programManager: ProgramManager;
 
   constructor(public readonly backend: WebGpuBackend, public readonly context: Session.Context) {
-    this.dataManager = createTensorDataManager(this.backend.device);
-    this.programManager = new ProgramManager(this.backend.device, this.context.profiler);
+    this.dataManager = createTensorDataManager(this.backend.gpuDataManager);
+    this.programManager = new ProgramManager(this.backend, this.context.profiler);
   }
 
   createInferenceHandler() {

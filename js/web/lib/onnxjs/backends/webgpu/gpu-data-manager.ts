@@ -7,6 +7,7 @@ import {Logger} from '../../instrument';
 
 import {sizeof, Tensor} from '../../tensor';
 import {ShapeUtil} from '../../util';
+import {WebGpuBackend} from '../backend-webgpu';
 import {GpuData, GpuDataId, GpuDataType} from './types';
 
 /**
@@ -57,7 +58,7 @@ class GpuDataManagerImpl implements GpuDataManager {
   // GPU Data ID => GPU Data ( read buffer )
   downloadCache: Map<GpuDataId, DownloadCacheValue>;
 
-  constructor(private device: GPUDevice) {
+  constructor(private backend: WebGpuBackend /* , private reuseBuffer: boolean */) {
     this.storageCache = new Map();
     this.downloadCache = new Map();
   }
@@ -75,7 +76,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     const size = calcNormalizedBufferSize(srcLength);
 
     // create gpu buffer
-    const gpuBuffer = this.device.createBuffer({mappedAtCreation: true, size, usage: GPUBufferUsage.STORAGE});
+    const gpuBuffer = this.backend.device.createBuffer({mappedAtCreation: true, size, usage: GPUBufferUsage.STORAGE});
 
     // copy (upload) data
     const arrayBuffer = gpuBuffer.getMappedRange();
@@ -104,7 +105,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     // create gpu buffer
     const gpuBuffer =
         // eslint-disable-next-line no-bitwise
-        this.device.createBuffer({size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC});
+        this.backend.device.createBuffer({size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC});
 
     const gpuData = {id: Guid.create(), type: GpuDataType.default, buffer: gpuBuffer};
     this.storageCache.set(gpuData.id, {gpuData, size: bufferLength});
@@ -146,20 +147,21 @@ class GpuDataManagerImpl implements GpuDataManager {
 
     Logger.verbose('GpuData', `Downloading data from GPU: {${id}}`);
 
-    const commandEncoder = this.device.createCommandEncoder();
-    const gpuReadBuffer =
+    const commandEncoder = this.backend.getCommandEncoder();
+    this.backend.endComputePass();
+    const gpuReadBuffer = this.backend.device.createBuffer(
         // eslint-disable-next-line no-bitwise
-        this.device.createBuffer({size: cachedData.size, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ});
+        {size: cachedData.size, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ});
     commandEncoder.copyBufferToBuffer(
         cachedData.gpuData.buffer /* source buffer */, 0 /* source offset */, gpuReadBuffer /* destination buffer */,
         0 /* destination offset */, cachedData.size /* size */
     );
-    const gpuCommands = commandEncoder.finish();
-    this.device.queue.submit([gpuCommands]);
+    this.backend.flush();
 
     await gpuReadBuffer.mapAsync(GPUMapMode.READ);
     return gpuReadBuffer.getMappedRange();
   }
 }
 
-export const createGpuDataManager = (device: GPUDevice): GpuDataManager => new GpuDataManagerImpl(device);
+export const createGpuDataManager = (...args: ConstructorParameters<typeof GpuDataManagerImpl>): GpuDataManager =>
+    new GpuDataManagerImpl(...args);

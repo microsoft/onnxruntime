@@ -26,7 +26,7 @@ export class WebGpuInferenceHandler implements InferenceHandler {
   dataManager: TensorDataManager;
 
   constructor(public session: WebGpuSessionHandler) {
-    this.dataManager = createTensorDataManager(session.backend.device);
+    this.dataManager = createTensorDataManager(session.backend.gpuDataManager);
   }
 
   private async uploadGpuData(tensor: Tensor, textureType: GpuDataType): Promise<GpuData> {
@@ -46,7 +46,7 @@ export class WebGpuInferenceHandler implements InferenceHandler {
       throw new Error(`Input size must be equal to ${program.inputTypes.length}.`);
     }
 
-    // create info for input
+    // create info for inputs
     const inputDatas: GpuData[] = [];
     for (let i = 0; i < program.inputTypes.length; ++i) {
       inputDatas[i] = await this.uploadGpuData(inputs[i], program.inputTypes[i]);
@@ -59,7 +59,7 @@ export class WebGpuInferenceHandler implements InferenceHandler {
         (typeof (program as ProgramInfoLoader).get === 'function' ? (program as ProgramInfoLoader).get() :
                                                                     (program as ProgramInfo));
 
-    // create texture info for outputs
+    // create info for outputs
     const outputDatas: GpuData[] = [];
     const outputTensors: Tensor[] = [];
     for (let i = 0; i < programInfo.outputs.length; ++i) {

@@ -3,11 +3,23 @@
 
 import {createView, Tensor} from '../../tensor';
 
-import {createGpuDataManager, GpuDataManager} from './gpu-data-manager';
+import {GpuDataManager} from './gpu-data-manager';
 import {GpuData, GpuDataId, GpuDataType} from './types';
 
 /**
  * manages Tensor ID -> Gpu Data ID
+ *
+ * A tensor ID is a unique ID representing a value(tensor), which is the graph's node's input or output.
+ * A GPU Data ID is a unique ID representing an abstract data on GPU memory. Specifically, for current WebGPU scenarios,
+ *   GPU Data is a storage buffer, and GPU Data ID is a handle to a storage buffer.
+ *
+ * - a value is different to the graph's edge. if a node's output is consumed by 2 other downstream nodes, there are
+ *   2 edges, but only one value.
+ *
+ * - a tensor ID maps to 0 or 1 GPU Data ID, depending on whether the data is available on GPU or not.
+ *
+ * - a GPU Data ID maps to 1 or more tensor ID.
+ *
  */
 export interface TensorDataManager {
   /**
@@ -124,5 +136,5 @@ class TensorDataManagerImpl implements TensorDataManager {
   }
 }
 
-export const createTensorDataManager = (device: GPUDevice): TensorDataManager =>
-    new TensorDataManagerImpl(createGpuDataManager(device));
+export const createTensorDataManager = (gpuDataManager: GpuDataManager): TensorDataManager =>
+    new TensorDataManagerImpl(gpuDataManager);

@@ -7,10 +7,19 @@ import {Backend, SessionHandler} from '../backend';
 import {Logger} from '../instrument';
 import {Session} from '../session';
 
+import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {WebGpuSessionHandler} from './webgpu/session-handler';
 
 export class WebGpuBackend implements Backend {
   device: GPUDevice;
+  gpuDataManager: GpuDataManager;
+
+  commandEncoder: GPUCommandEncoder|null = null;
+  computePassEncoder: GPUComputePassEncoder|null = null;
+  pendingDispatchNumber = 0;
+
+  // #region interface Backend
+
   async initialize(): Promise<boolean> {
     try {
       if (!navigator.gpu) {
@@ -25,6 +34,7 @@ export class WebGpuBackend implements Backend {
         return false;
       }
       this.device = await adapter.requestDevice();
+      this.gpuDataManager = createGpuDataManager(this);
 
       // TODO: set up flags
 
@@ -51,5 +61,35 @@ export class WebGpuBackend implements Backend {
   dispose(): void {
     // TODO: uninitialization
     // this.glContext.dispose();
+  }
+
+  // #endregion interface Backend
+
+  getCommandEncoder(): GPUCommandEncoder {
+    if (!this.commandEncoder) {
+      this.commandEncoder = this.device.createCommandEncoder();
+    }
+    return this.commandEncoder;
+  }
+
+  getComputePassEncoder(): GPUComputePassEncoder {
+    if (!this.computePassEncoder) {
+      this.computePassEncoder = this.getCommandEncoder().beginComputePass();
+    }
+    return this.computePassEncoder;
+  }
+
+  endComputePass(): void {
+    if (this.computePassEncoder) {
+      this.computePassEncoder.end();
+      this.computePassEncoder = null;
+    }
+  }
+
+  flush(): void {
+    this.endComputePass();
+    this.device.queue.submit([this.commandEncoder!.finish()]);
+    this.commandEncoder = null;
+    this.pendingDispatchNumber = 0;
   }
 }
