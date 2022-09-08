@@ -358,7 +358,7 @@ extends:
           ob_outputDirectory: '$(Build.BinariesDirectory)'
           ob_sdl_binskim_enabled: false
           ob_pipelineartifacts_enabled: false
-          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/snnn/onebranch') }}:
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}:
             ob_nugetPublishing_enabled: true          
         dependsOn:
         - NuGet_Packaging
