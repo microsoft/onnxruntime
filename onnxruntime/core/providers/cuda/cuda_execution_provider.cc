@@ -449,7 +449,8 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   // If cuda graph is enabled, the per thread context will not be released
   // because the per thread cuda graph needs to be maintained and replayed for
   // the next run.
-  if (!IsGraphCaptureEnabled()) {
+  if (!IsGraphCaptureEnabled() &&
+      PerThreadContextCache()->find(this) != PerThreadContextCache()->end()) {
     ReleasePerThreadContext();
   }
 
