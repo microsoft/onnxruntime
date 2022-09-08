@@ -341,12 +341,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, gsl::span<
         }
 #endif
         concurrency::ThreadPool* tp = dynamic_cast<OpKernelContext*>(&op_kernel_context)->GetOperatorThreadPool();
-        if (p_op_kernel->Info().GetExecutionProvider()->Type() == kXnnpackExecutionProvider) {
+        if (tp && p_op_kernel->Info().GetExecutionProvider()->Type() == kXnnpackExecutionProvider) {
           tp->DisableSpinning();
         }
 
         compute_status = p_op_kernel->Compute(&op_kernel_context);
-        if (p_op_kernel->Info().GetExecutionProvider()->Type() == kXnnpackExecutionProvider) {
+        if (tp && p_op_kernel->Info().GetExecutionProvider()->Type() == kXnnpackExecutionProvider) {
           tp->EnableSpinning();
         }
       }
