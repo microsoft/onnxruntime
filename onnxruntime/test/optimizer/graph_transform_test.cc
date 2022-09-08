@@ -27,7 +27,6 @@
 #include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
-#include "core/optimizer/constant_sharing.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_act_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
@@ -83,6 +82,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
 #ifdef ENABLE_TRAINING
+#include "core/optimizer/constant_sharing.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
 
@@ -5166,65 +5166,129 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
                          pre_graph_checker, post_graph_checker);
   }
 }
-#endif
+
+void CheckShapeEquality(const ONNX_NAMESPACE::TensorShapeProto* shape1,
+                        const ONNX_NAMESPACE::TensorShapeProto* shape2) {
+  EXPECT_NE(shape1, nullptr);
+  EXPECT_NE(shape2, nullptr);
+  if ((shape1 != nullptr) && (shape2 != nullptr)) {
+    EXPECT_EQ(shape1->dim_size(), shape2->dim_size()) << "Shapes do not have same rank";
+    auto min_dims = std::min(shape1->dim_size(), shape2->dim_size());
+    for (int i = 0; i < min_dims; ++i) {
+      auto dim1 = shape1->dim(i);
+      auto dim2 = shape2->dim(i);
+      EXPECT_EQ(dim1.has_dim_value(), dim2.has_dim_value());
+      if (dim1.has_dim_value()) {
+        EXPECT_EQ(dim1.dim_value(), dim2.dim_value());
+      }
+      EXPECT_EQ(dim1.has_dim_param(), dim2.has_dim_param());
+      if (dim1.has_dim_param()) {
+        EXPECT_EQ(dim1.dim_param(), dim2.dim_param());
+      }
+    }
+  }
+}
 
 TEST_F(GraphTransformationTests, ConstantSharing_AddClip) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count_pre.size(), 3U);
-    ASSERT_EQ(op_count_pre["Add"], 24);
-    ASSERT_EQ(op_count_pre["Clip"], 24);
+    ASSERT_EQ(op_count_pre.size(), 6U);
+    ASSERT_EQ(op_count_pre["Add"], 3);
+    ASSERT_EQ(op_count_pre["Clip"], 3);
+    ASSERT_EQ(op_count_pre["Sub"], 3);
+    ASSERT_EQ(op_count_pre["Mul"], 3);
     ASSERT_EQ(op_count_pre["Neg"], 1);
-    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 72U);
+    ASSERT_EQ(op_count_pre["Cast"], 1);
+    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 15U);
   };
 
   auto post_graph_checker = [&](Graph& graph) {
     const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
-    ASSERT_EQ(initialized_tensor_set.size(), 3U);
+    ASSERT_EQ(initialized_tensor_set.size(), 5U);
     const NodeArg* add_initializer = nullptr;
     const NodeArg* clip_min_initializer = nullptr;
     const NodeArg* clip_max_initializer = nullptr;
+    const NodeArg* sub_initializer = nullptr;
+    const NodeArg* mul_initializer = nullptr;
+
     for (auto& node : graph.Nodes()) {
       if (node.OpType().compare("Add") == 0) {
         if (!add_initializer) {
           add_initializer = node.InputDefs()[1];
+          const TensorShapeProto* s = add_initializer->Shape();
+          ASSERT_EQ(s->dim_size(), 0);
         } else {
           ASSERT_EQ(add_initializer, node.InputDefs()[1]);
+          CheckShapeEquality(add_initializer->Shape(), node.InputDefs()[1]->Shape());
         }
       } else if (node.OpType().compare("Clip") == 0) {
         if (!clip_min_initializer && !clip_max_initializer) {
           clip_min_initializer = node.InputDefs()[1];
           clip_max_initializer = node.InputDefs()[2];
+          const TensorShapeProto* s1 = clip_min_initializer->Shape();
+          const TensorShapeProto* s2 = clip_max_initializer->Shape();
+          ASSERT_EQ(s1->dim_size(), 0);
+          ASSERT_EQ(s2->dim_size(), 0);
         } else {
           ASSERT_EQ(clip_min_initializer, node.InputDefs()[1]);
           ASSERT_EQ(clip_max_initializer, node.InputDefs()[2]);
+          CheckShapeEquality(clip_min_initializer->Shape(), node.InputDefs()[1]->Shape());
+          CheckShapeEquality(clip_max_initializer->Shape(), node.InputDefs()[2]->Shape());
+        }
+      } else if (node.OpType().compare("Sub") == 0) {
+        if (!sub_initializer) {
+          sub_initializer = node.InputDefs()[1];
+          ASSERT_EQ(sub_initializer->Shape()->dim_size(), 0);
+        } else {
+          ASSERT_EQ(sub_initializer, node.InputDefs()[1]);
+          CheckShapeEquality(sub_initializer->Shape(), node.InputDefs()[1]->Shape());
+        }
+      } else if (node.OpType().compare("Mul") == 0) {
+        if (!mul_initializer) {
+          mul_initializer = node.InputDefs()[1];
+          const TensorShapeProto* s = mul_initializer->Shape();
+          ASSERT_EQ(s->dim_size(), 1);
+          auto dim1 = s->dim(0);
+          ASSERT_TRUE(s->dim(0).has_dim_value());
+          ASSERT_EQ(s->dim(0).dim_value(), 1);
+        } else {
+          ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+          CheckShapeEquality(mul_initializer->Shape(), node.InputDefs()[1]->Shape());
         }
       }
     }
 
     for (const auto& entry : initialized_tensor_set) {
       InlinedVector<int64_t> values;
-      bool require_constant = true;
+      const bool require_constant = true;
       NodeArg* initializer_node_arg = graph.GetNodeArg(entry.first);
       ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
-
-      if (entry.first.compare(add_initializer->Name())) {
+      if (entry.first.compare(add_initializer->Name()) == 0) {
         ASSERT_EQ(values.size(), 1);
         ASSERT_EQ(values[0], 256);
-      } else if (entry.first.compare(clip_min_initializer->Name())) {
+      } else if (entry.first.compare(clip_min_initializer->Name()) == 0) {
         ASSERT_EQ(values.size(), 1);
         ASSERT_EQ(values[0], 0);
-      } else if (entry.first.compare(clip_max_initializer->Name())) {
+      } else if (entry.first.compare(clip_max_initializer->Name()) == 0) {
         ASSERT_EQ(values.size(), 1);
-        ASSERT_EQ(values[0], 0);
+        ASSERT_EQ(values[0], 511);
+      } else if (entry.first.compare(sub_initializer->Name()) == 0) {
+        ASSERT_EQ(values.size(), 1);
+        ASSERT_EQ(values[0], 256);
+      } else if (entry.first.compare(mul_initializer->Name()) == 0) {
+        ASSERT_EQ(values.size(), 1);
+        ASSERT_EQ(values[0], 256);
       }
     }
 
     auto op_count = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count.size(), 3U);
-    ASSERT_EQ(op_count["Add"], 24);
-    ASSERT_EQ(op_count["Clip"], 24);
+    ASSERT_EQ(op_count.size(), 6U);
+    ASSERT_EQ(op_count["Add"], 3);
+    ASSERT_EQ(op_count["Clip"], 3);
+    ASSERT_EQ(op_count["Sub"], 3);
+    ASSERT_EQ(op_count["Mul"], 3);
     ASSERT_EQ(op_count["Neg"], 1);
+    ASSERT_EQ(op_count["Cast"], 1);
   };
 
   auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -5232,7 +5296,8 @@ TEST_F(GraphTransformationTests, ConstantSharing_AddClip) {
     auto* neg_out = builder.MakeIntermediate();
     builder.AddNode("Neg", {input_arg}, {neg_out});
 
-    for (size_t i = 0; i < 24; ++i) {
+    // test scalar int64_t values.
+    for (size_t i = 0; i < 3; ++i) {
       auto* add_initializer = builder.MakeScalarInitializer<int64_t>(256);
       auto* add_out = builder.MakeIntermediate();
       auto* clip_out = builder.MakeOutput();
@@ -5240,6 +5305,23 @@ TEST_F(GraphTransformationTests, ConstantSharing_AddClip) {
       auto* clip_max_initializer = builder.MakeScalarInitializer<int64_t>(511);
       builder.AddNode("Add", {neg_out, add_initializer}, {add_out});
       builder.AddNode("Clip", {add_out, clip_min_initializer, clip_max_initializer}, {clip_out});
+    }
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {neg_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
+
+    // test scalar int32_t values.
+    for (size_t i = 0; i < 3; ++i) {
+      auto* sub_initializer = builder.MakeScalarInitializer<int32_t>(256);
+      auto* sub_out = builder.MakeOutput();
+      builder.AddNode("Sub", {cast_out, sub_initializer}, {sub_out});
+    }
+
+    // test 1-D int32_t values.
+    for (size_t i = 0; i < 3; ++i) {
+      auto* mul_initializer = builder.MakeInitializer<int32_t>({1}, {256});
+      auto* mul_out = builder.MakeOutput();
+      builder.AddNode("Mul", {cast_out, mul_initializer}, {mul_out});
     }
   };
 
@@ -5288,6 +5370,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_DivMul) {
     for (auto& node : graph.Nodes()) {
       if (node.OpType().compare("Mul") == 0) {
         if (!mul_initializer) {
+          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
           mul_initializer = node.InputDefs()[1];
         } else {
           ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
@@ -5336,6 +5419,8 @@ TEST_F(GraphTransformationTests, ConstantSharing_DivMul) {
                          pre_graph_checker, post_graph_checker);
   }
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
