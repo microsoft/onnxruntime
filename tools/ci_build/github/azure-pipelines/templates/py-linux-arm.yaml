@@ -20,7 +20,7 @@ jobs:
         script: |
             sudo apt-get remove -y docker docker-engine docker.io containerd runc
             sudo sudo apt-get update
-            sudo apt-get install \
+            sudo apt-get install -y \
                 ca-certificates \
                 curl \
                 gnupg \
