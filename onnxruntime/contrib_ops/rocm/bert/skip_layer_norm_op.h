@@ -9,14 +9,14 @@
 #include <vector>
 
 #include "contrib_ops/rocm/bert/skip_layer_norm_impl_kernel.h"
-#include "contrib_ops/rocm/bert/tunable_op.h"
+#include "core/providers/rocm/tunable/tunable.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
 template <typename T>
-struct SkipLayerNormParams : OpParams {
+struct SkipLayerNormParams : onnxruntime::rocm::tunable::OpParams {
   SkipLayerNormParams(hipStream_t stream, T* output, const T* input,
                       const T* skip, const T* gamma, const T* beta,
                       const T* bias, float epsilon, const int ld,

@@ -7,7 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "contrib_ops/rocm/bert/tunable_op.h"
+#include "core/providers/rocm/tunable/tunable.h"
 #include "contrib_ops/rocm/bert/fast_gelu_impl_kernel.h"
 
 namespace onnxruntime {
@@ -15,7 +15,7 @@ namespace contrib {
 namespace rocm {
 
 template <typename T>
-struct FastGeluParams : OpParams {
+struct FastGeluParams : onnxruntime::rocm::tunable::OpParams {
   FastGeluParams(hipStream_t stream, const T* input, const T* bias, T* output, int input_length, int bias_length) :
     OpParams(stream), input(input), bias(bias), output(output), input_length(input_length), bias_length(bias_length) {}
 
@@ -56,7 +56,7 @@ Status FastGeluOp(const FastGeluParams<T>* params) {
   this->ops_.emplace_back(FastGeluOp<T, threads_per_block, 16>);
 
 template <typename T>
-class FastGeluTunableOp : public TunableOp<FastGeluParams<T>> {
+class FastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<FastGeluParams<T>> {
  public:
   FastGeluTunableOp() {
     ADD_OP(64);
