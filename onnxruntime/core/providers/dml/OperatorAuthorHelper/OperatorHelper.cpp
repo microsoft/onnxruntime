@@ -598,6 +598,7 @@ namespace OperatorHelper
         // `transBatch` needs to be applied first and then `trans`.
         if (transBatch)
         {
+            // TODO: Verify input sizes are valid.
             uint32_t secondLastStride = newStrides[dimensionCount - 2];
             uint32_t secondLastSize = newSizes[dimensionCount - 2];
 
@@ -699,10 +700,8 @@ namespace OperatorHelper
 
             auto outputRank = std::max(inputShape0.size(), inputShape1.size());
 
-
-            // Walk backwards through both input shapes and broadcast each dimension
-
-            // ignore the last 2 dimensions (matrix dimensions)
+            // Walk backwards through both input shapes and broadcast each dimension,
+            // ignoring the last 2 dimensions (matrix dimensions).
             auto inDim0Iter = inputShape0.rbegin() + 2;
             auto inDim1Iter = inputShape1.rbegin() + 2;
 
@@ -735,7 +734,9 @@ namespace OperatorHelper
                     ++inStride1Iter;
                 }
 
-                // 0-sized dimensions indicate an empty tensor and shouldn't be broadcasted to higher dimensions
+                // 0-sized dimensions indicate an empty tensor and shouldn't be broadcasted to higher dimensions.
+                // TODO: 0-sized dimensions are actually scalars and are broadcastable. Can this be made to work with
+                // scalars?
                 if (inDimension0 == 0 || inDimension1 == 0)
                 {
                     inDimension0 = 0;
@@ -1686,14 +1687,18 @@ namespace OperatorHelper
         ML_CHECK_VALID_ARGUMENT(inputShape0.size() >= 1);
         ML_CHECK_VALID_ARGUMENT(inputShape1.size() >= 1);
 
-        auto [sizesA, stridesA] = FusedMatMulSizeAndStride(inputShape0,
-                                                           shapeInfo.GetOptionalAttribute(AttrName::TransBatchA, -1),
-                                                           shapeInfo.GetOptionalAttribute(AttrName::TransA, -1));
+        auto [sizesA, stridesA] = FusedMatMulSizeAndStride(
+            inputShape0,
+            shapeInfo.GetOptionalAttribute(AttrName::TransBatchA, -1),
+            shapeInfo.GetOptionalAttribute(AttrName::TransA, -1)
+        );
         inputShape0 = sizesA;
 
-        auto [sizesB, stridesB] = FusedMatMulSizeAndStride(inputShape1,
-                                                           shapeInfo.GetOptionalAttribute(AttrName::TransBatchB, -1),
-                                                           shapeInfo.GetOptionalAttribute(AttrName::TransB, -1));
+        auto [sizesB, stridesB] = FusedMatMulSizeAndStride(
+            inputShape1,
+            shapeInfo.GetOptionalAttribute(AttrName::TransBatchB, -1),
+            shapeInfo.GetOptionalAttribute(AttrName::TransB, -1)
+        );
         inputShape1 = sizesB;
 
         std::vector<uint32_t> outputMatrixDims;
@@ -1719,11 +1724,11 @@ namespace OperatorHelper
             outputMatrixDims.push_back(inputShape1[inputShape1.size() - 1]);
         }
 
-        // Remove the matrix dimensions from each input, resulting in broadcastable shapes
+        // Remove the matrix dimensions from each input, resulting in broadcastable shapes.
         std::vector<uint32_t> batchDims0(inputShape0.begin(), inputShape0.end() - 2);
         std::vector<uint32_t> batchDims1(inputShape1.begin(), inputShape1.end() - 2);
 
-        // Broadcast the extra dimensions of each input, then add the truncated matrix dimensions
+        // Broadcast the extra dimensions of each input, then add the truncated matrix dimensions.
         std::vector<uint32_t> outputDims = BroadcastTensorShape(batchDims0, batchDims1);
         for (uint32_t matrixDim : outputMatrixDims)
         {
