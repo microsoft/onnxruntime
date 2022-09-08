@@ -20,7 +20,7 @@ class QWhere(QuantOperatorBase):
             zero_point_name,
             scale_name,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [1, 2])
+        ) = self.quantizer.quantize_activation(node, [1, 2])
 
         assert node.op_type == "Where"
         if quantized_input_names is None:
@@ -56,16 +56,16 @@ class QDQWhere(QDQOperatorBase):
         if self.quantizer.force_quantize_no_input_check:
 
             if not self.quantizer.is_tensor_quantized(node.input[1]):
-                self.quantizer.quantize_tensor(node.input[1])
+                self.quantizer.quantize_activation_tensor(node.input[1])
             if not self.quantizer.is_tensor_quantized(node.input[2]):
-                self.quantizer.quantize_tensor(node.input[2])
+                self.quantizer.quantize_activation_tensor(node.input[2])
             if not self.disable_qdq_for_node_output:
                 for output in node.output:
-                    self.quantizer.quantize_tensor(output)
+                    self.quantizer.quantize_activation_tensor(output)
         elif (
             self.quantizer.is_tensor_quantized(node.input[1])
             and self.quantizer.is_tensor_quantized(node.input[2])
             and not self.disable_qdq_for_node_output
         ):
             for output in node.output:
-                self.quantizer.quantize_tensor(output)
+                self.quantizer.quantize_activation_tensor(output)

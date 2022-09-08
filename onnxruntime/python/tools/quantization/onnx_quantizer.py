@@ -1046,7 +1046,7 @@ class ONNXQuantizer:
 
         # adjust tensor_ranges for input of Clip and Relu node
         for node in self.model.nodes():
-            if node.op_type not in ["Clip", "Relu"]:
+            if node.op_type not in ["Clip", "Relu", "Where"]:
                 continue
             if self.is_activation_symmetric:
                 continue
@@ -1054,15 +1054,21 @@ class ONNXQuantizer:
                 continue
             if len(self.model.input_name_to_nodes()[node.input[0]]) != 1:
                 continue
-            if node.input[0] not in self.tensors_range.keys() or node.output[0] not in self.tensors_range.keys():
-                continue
-            self.tensors_range[node.input[0]] = self.tensors_range[node.output[0]]
+            if node.op_type in ["Clip", "Relu"]:
+                if node.input[0] not in self.tensors_range.keys() or node.output[0] not in self.tensors_range.keys():
+                    continue
+                self.tensors_range[node.input[0]] = self.tensors_range[node.output[0]]
+            elif node.op_type == "Where":
+                min_range = min(self.tensors_range[node.input[1]][0], self.tensors_range[node.input[2]][0])
+                max_range = max(self.tensors_range[node.input[1]][1], self.tensors_range[node.input[2]][1])
+                self.tensors_range[node.output[0]] = [min_range, max_range]
+            quantization_params = {}
+            for tensor_name in self.tensors_range.keys():
+                rmin, rmax = self.tensors_range[tensor_name]
+                qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
 
-        quantization_params = {}
-        for tensor_name in self.tensors_range.keys():
-            rmin, rmax = self.tensors_range[tensor_name]
-            qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
+                quantization_params[tensor_name] = compute_scale_zp(
+                    rmin, rmax, qmin, qmax, self.is_activation_symmetric
+                )
 
-            quantization_params[tensor_name] = compute_scale_zp(rmin, rmax, qmin, qmax, self.is_activation_symmetric)
-
-        return quantization_params
+            return quantization_params
