@@ -357,7 +357,7 @@ extends:
         pool:
           type: windows
         variables:
-          ob_outputDirectory: '$(Build.BinariesDirectory)\merged'
+          ob_outputDirectory: '$(Build.BinariesDirectory)'
           ob_sdl_binskim_enabled: false
           ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/snnn/onebranch') }}:
             ob_nugetPublishing_enabled: true          
