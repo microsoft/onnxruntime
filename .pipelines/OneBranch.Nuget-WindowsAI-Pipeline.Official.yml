@@ -29,10 +29,8 @@ extends:
     git:
       submodules: false
     globalSdl: # https://aka.ms/obpipelines/sdl
-      # tsa:
-      #  enabled: true
-      # credscan:
-      #   suppressionsFile: $(Build.SourcesDirectory)\.config\CredScanSuppressions.json
+      tsa:
+        enabled: true      
       prefast:
         enabled: false
       cg:
@@ -359,6 +357,7 @@ extends:
         variables:
           ob_outputDirectory: '$(Build.BinariesDirectory)'
           ob_sdl_binskim_enabled: false
+          ob_pipelineartifacts_enabled: false
           ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/snnn/onebranch') }}:
             ob_nugetPublishing_enabled: true          
         dependsOn:
