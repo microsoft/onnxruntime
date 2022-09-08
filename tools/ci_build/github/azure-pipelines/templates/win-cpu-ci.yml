@@ -46,7 +46,7 @@ jobs:
     skipComponentGovernanceDetection: true
   workspace:
     clean: all
-  pool: 'Win-CPU-2019'
+  pool: 'Win-CPU-2019-Beta'
   timeoutInMinutes:  300
   steps:
   - task: UsePythonVersion@0
