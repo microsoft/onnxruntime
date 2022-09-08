@@ -31,6 +31,8 @@ jobs:
               "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
             sudo apt-get update
             sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+            USERNAME=$(id -u -n)
+            usermod -aG docker $USERNAME
     - template: get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
