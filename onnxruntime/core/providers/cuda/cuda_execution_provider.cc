@@ -149,6 +149,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   stream_ = stream;
 
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
+  CUBLAS_CALL_THROW(cublasLtCreate(&cublas_lt_handle_));
   CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
 
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
@@ -163,20 +164,9 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
-  // dtor shouldn't throw. if something went wrong earlier (e.g. out of CUDA memory) the handles
-  // here may be bad, and the destroy calls can throw.
-  // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
-  try {
-    CUBLAS_CALL(cublasDestroy(cublas_handle_));
-  } catch (const std::exception& ex) {
-    LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
-  }
-
-  try {
-    CUDNN_CALL(cudnnDestroy(cudnn_handle_));
-  } catch (const std::exception& ex) {
-    LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
-  }
+  ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(cublas_handle_)));
+  ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasLtDestroy(cublas_lt_handle_)));
+  ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(cudnn_handle_)));
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
@@ -265,7 +255,7 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   }
 
   if (!external_stream_ && stream_) {
-    CUDA_CALL(cudaStreamDestroy(stream_));
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
 }
 

@@ -30,7 +30,13 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   endif()
 
   message("Adding WebAssembly Source Files to XNNPACK")
-  set(wasm_src_patterns "${XNNPACK_DIR}/src/wasm-*.c"
+  set(wasm_src_patterns "${XNNPACK_DIR}/src/init.c"
+                        "${XNNPACK_DIR}/src/params-init.c"
+                        "${XNNPACK_DIR}/src/qu8-avgpool/9*-minmax-scalar-c1.c"
+                        "${XNNPACK_DIR}/src/u8-rmax/scalar.c"
+                        "${XNNPACK_DIR}/src/x8-zip/x*-scalar.c"
+                        "${XNNPACK_DIR}/src/x*-transposec/gen/2x4-scalar-int.c"
+                        "${XNNPACK_DIR}/src/wasm-*.c"
                         "${XNNPACK_DIR}/src/*-wasm-*.c"
                         "${XNNPACK_DIR}/src/*-wasm.c")
   set(wasm32_asm_src_patterns "${XNNPACK_DIR}/src/wasm_shr_*.S")

@@ -98,7 +98,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    past_sequence_length);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
-  if (!LaunchAttentionKernel(
+  ORT_RETURN_IF_ERROR(LaunchAttentionKernel(
           device_prop,
           Stream(),
           cublas,
@@ -117,11 +117,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
           nullptr == extra_add_qk ? nullptr : extra_add_qk->Data<T>(),
           work_space.get(),
           output->MutableData<T>(),
-          nullptr == present ? nullptr : present->MutableData<T>())) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
+          nullptr == present ? nullptr : present->MutableData<T>()));
 
   return Status::OK();
 }

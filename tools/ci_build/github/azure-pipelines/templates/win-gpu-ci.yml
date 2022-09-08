@@ -228,9 +228,9 @@ jobs:
            **/*.dll
 
 
-      #Manually set msBuildCommandline so that we can also set CAExcludePath
-      #build_dir must be a sub folder of $(Build.SourcesDirectory)
-      #TODO: move this step to a CPU-only machine to save GPU resources.
+      # Manually set msBuildCommandline so that we can also set CAExcludePath
+      # build_dir must be a sub folder of $(Build.SourcesDirectory)
+      # TODO: move this step to a CPU-only machine to save GPU resources.
       - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
         inputs:
