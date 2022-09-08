@@ -9,8 +9,10 @@
 #include "core/graph/graph.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
+
 #include "onnx/defs/schema.h"  // for ONNX_NAMESPACE::OpSchema
-#endif                         // !defined(ORT_MINIMAL_BUILD)
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace flatbuffers {
 class FlatBufferBuilder;
