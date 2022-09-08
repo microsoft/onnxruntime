@@ -50,9 +50,9 @@ class KernelRegistryManager {
    */
   std::vector<const KernelRegistry*> GetKernelRegistriesByProviderType(const std::string& type) const {
     std::vector<const KernelRegistry*> result;
-    for (auto& registry : custom_kernel_registries_) {
-      result.push_back(registry.get());
-    }
+    // for (auto& registry : custom_kernel_registries_) {
+    //   result.push_back(registry.get());
+    // }
     auto iter = provider_type_to_registry_.find(type);
     if (iter != provider_type_to_registry_.end()) result.push_back(iter->second.get());
     return result;
