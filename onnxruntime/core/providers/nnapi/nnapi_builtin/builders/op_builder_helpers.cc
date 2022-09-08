@@ -39,7 +39,8 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
 
       shaper.AddShape(output, output_dimen);
     }
-    output_shape = &shaper[output];
+    const auto shape = shaper[output];
+    output_shape = &shape;
   }
 
   const auto& operand_indices(model_builder.GetOperandIndices());
@@ -99,7 +100,8 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
 
       shaper.AddShape(output, output_dimen);
     }
-    output_shape = &shaper[output];
+    const auto shape = shaper[output];
+    output_shape = &shape;
   }
 
   const auto& operand_indices = model_builder.GetOperandIndices();

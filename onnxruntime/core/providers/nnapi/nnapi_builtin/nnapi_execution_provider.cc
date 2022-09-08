@@ -245,8 +245,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    std::unique_ptr<nnapi::Model> nnapi_model = std::make_unique<nnapi::Model>(graph_viewer);
-    nnapi::ModelBuilder builder(std::move(nnapi_model), graph_viewer);
+    nnapi::ModelBuilder builder(graph_viewer);
     builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
     builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
 
@@ -260,7 +259,8 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_ONLY);
     }
 
-    ORT_RETURN_IF_ERROR(builder.Compile(nnapi_model));
+    ORT_RETURN_IF_ERROR(builder.Compile());
+    std::unique_ptr<nnapi::Model> nnapi_model(&builder.GetModel());
 
     // Build map from input name to its index in input definitions
     {

@@ -815,7 +815,8 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   }
 
   std::string perm_name = model_builder.GetUniqueName(node_unit.Name() + input + "perm");
-  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiTranspose(model_builder, input, perm_name, perm, output, &shaper[output]));
+  const auto output_shape = shaper[output];
+  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiTranspose(model_builder, input, perm_name, perm, output, &output_shape));
 
   return Status::OK();
 }
@@ -944,8 +945,9 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   } else {
     // We still need to perform a reshape here
     std::string shape_name = model_builder.GetUniqueName(node_unit.Name() + input + "newshape");
+    const auto output_shape = shaper[output];
     ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape_name, shape, output,
-                                                            &shaper[output]));
+                                                            &output_shape));
   }
 
   return Status::OK();

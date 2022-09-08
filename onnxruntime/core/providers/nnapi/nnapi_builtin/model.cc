@@ -61,11 +61,15 @@ const android::nn::wrapper::OperandType& Model::GetInputType(const std::string& 
   return operand_types_.at(name);
 }
 
-android::nn::wrapper::OperandType Model::GetOutputType(const std::string& name, Execution& execution) const {
+android::nn::wrapper::OperandType Model::GetOutputType(const std::string& name, const Execution& execution) const {
   const auto& nnapi_output_name = onnx_to_nnapi_output_map_.at(name);
   const auto& output_type = operand_types_.at(nnapi_output_name);
+  // TODO: Before we validate if we actually need to get the shaper from execution (if we have dynamic shape outputs, shape can get updated in execution),
+  // we use shaper instance from Model class directly here for now.
+  /* android::nn::wrapper::OperandType type(
+      output_type.type, execution.GetShaper()[nnapi_output_name], output_type.operandType.scale, output_type.operandType.zeroPoint); */
   android::nn::wrapper::OperandType type(
-      output_type.type, execution.GetShaper()[nnapi_output_name], output_type.operandType.scale, output_type.operandType.zeroPoint);
+      output_type.type, shaper_[nnapi_output_name], output_type.operandType.scale, output_type.operandType.zeroPoint);
 
   return type;
 }
