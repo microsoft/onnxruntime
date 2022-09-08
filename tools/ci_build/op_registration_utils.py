@@ -239,3 +239,5 @@ def process_kernel_registration_file(
         else:
             registration_processor.process_other_line(line)
             offset += 1
+
+    return True

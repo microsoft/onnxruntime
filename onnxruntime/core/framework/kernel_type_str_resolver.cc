@@ -15,7 +15,7 @@ namespace onnxruntime {
 
 Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
                                                    gsl::span<const ArgTypeAndIndex>& resolved_args) const {
-  const auto op_id = OpIdentifier{node.Domain(), node.OpType(), node.SinceVersion()};
+  const auto op_id = utils::MakeOpId(node);
   const auto op_it = op_kernel_type_str_map_.find(op_id);
   ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(),
                 "Failed to find op_id: ", op_id.domain, ':', op_id.op_type, ':', op_id.since_version);
@@ -31,9 +31,11 @@ Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& op_schema, bool* registered_out) {
-  auto op_id = OpIdentifier{op_schema.domain(), op_schema.Name(), op_schema.SinceVersion()};
+  auto op_id = utils::MakeOpId(op_schema);
   if (Contains(op_kernel_type_str_map_, op_id)) {
-    if (registered_out) *registered_out = false;
+    if (registered_out) {
+      *registered_out = false;
+    }
     return Status::OK();
   }
 
@@ -90,11 +92,9 @@ Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& o
   ORT_RETURN_IF_ERROR(process_formal_params(ArgType::kInput));
   ORT_RETURN_IF_ERROR(process_formal_params(ArgType::kOutput));
 
-  const bool registered = op_kernel_type_str_map_.try_emplace(std::move(op_id),
-                                                              std::move(kernel_type_str_map))
-                              .second;
+  op_kernel_type_str_map_.emplace(std::move(op_id), std::move(kernel_type_str_map));
   if (registered_out) {
-    *registered_out = registered;
+    *registered_out = true;
   }
   return Status::OK();
 }

@@ -559,7 +559,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
   auto& func_mgr = partition_params.func_mgr.get();
   auto& fused_kernel_registry = partition_params.fused_kernel_registry.get();
   auto& fused_node_unique_id = partition_params.fused_node_unique_id.get();
-  auto transform_layout_function = partition_params.transform_layout_function;
+  const auto& transform_layout_function = partition_params.transform_layout_function;
 
   do {
     // process full graph with each EP

@@ -53,13 +53,14 @@ class KernelDef {
     return provider_type_;
   }
 
+  // TODO do we need both TypeConstraints() and EnabledTypeConstraints()?
   // type constraints with types supported by default
-  const std::map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
+  const std::unordered_map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
     return default_type_constraints_;
   }
 
   // type constraints with types supported in this build
-  const std::map<std::string, std::vector<MLDataType>>& EnabledTypeConstraints() const {
+  const std::unordered_map<std::string, std::vector<MLDataType>>& EnabledTypeConstraints() const {
     return enabled_type_constraints_;
   }
 
@@ -130,11 +131,10 @@ class KernelDef {
 
   // The data types that are supported by default for inputs/outputs.
   // Key is input/output/type constraint name defined in op schema, Value are supported types.
-  // note: std::map as we need the order to be deterministic for the hash
-  std::map<std::string, std::vector<MLDataType>> default_type_constraints_;
+  std::unordered_map<std::string, std::vector<MLDataType>> default_type_constraints_;
 
   // the type constraints that are supported in this build (enabled) for the kernel
-  std::map<std::string, std::vector<MLDataType>> enabled_type_constraints_;
+  std::unordered_map<std::string, std::vector<MLDataType>> enabled_type_constraints_;
 
   // An element <i, j> means that output j reuses the memory of input i.
   std::vector<std::pair<int, int>> inplace_map_;

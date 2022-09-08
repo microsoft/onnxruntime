@@ -14,10 +14,8 @@ namespace onnxruntime {
 
 template <typename StringType>
 struct BasicOpIdentifier {
-  using string_type = StringType;
-
-  string_type domain;
-  string_type op_type;
+  StringType domain;
+  StringType op_type;
   int since_version;
 
   friend constexpr bool operator<(const BasicOpIdentifier<StringType>& lhs,
@@ -31,7 +29,7 @@ struct BasicOpIdentifier {
   }
 
   size_t GetHash() const {
-    size_t h = std::hash<string_type>{}(domain);
+    size_t h = std::hash<StringType>{}(domain);
     HashCombine(op_type, h);
     HashCombine(since_version, h);
     return h;
@@ -43,7 +41,7 @@ struct BasicOpIdentifier {
   }
 
  private:
-  constexpr std::tuple<const string_type&, const string_type&, const int&> Tied() const {
+  constexpr std::tuple<const StringType&, const StringType&, const int&> Tied() const {
     return std::tie(domain, op_type, since_version);
   }
 };
