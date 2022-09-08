@@ -94,6 +94,7 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
 
   CUDNN_RETURN_IF_ERROR(cudnnGetRNNWeightSpaceSize(CudnnHandle(), rnn_desc, &weightspace_bytes));
   reorganized_w_data = GetScratchBuffer<void>(weightspace_bytes);
+  CUDA_RETURN_IF_ERROR(cudaMemset(reorganized_w_data.get(), 0, weightspace_bytes));
   ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(CudnnHandle(), rnn_desc, reorganized_w_data.get(), weightspace_bytes, W_data, R_data, B_data));
 
   return Status::OK();
