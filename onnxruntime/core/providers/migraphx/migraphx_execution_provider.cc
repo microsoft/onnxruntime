@@ -1162,12 +1162,19 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         }
       }
 
+      #ifdef MIGRAPHX_STREAM_SYNC
       mgx_state->e.set_async_stream(GetComputeStream());
+      #endif
       {
+        // lock to avoid race condition
         std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
 
+        #ifdef MIGRAPHX_STREAM_SYNC
         auto prog_outputs = prog.eval(m, mgx_state->e);
-
+        #else
+        auto prog_outputs = prog.eval(m);
+        HIP_CALL_THROW(hipDeviceSynchronize());
+        #endif
         // In case of input parameters are reused as output parameter call hipMemcpy
         auto output_num = prog_outputs.size();
         if (prog_output_indices.size() < output_num) {

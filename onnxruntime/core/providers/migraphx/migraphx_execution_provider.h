@@ -33,7 +33,9 @@ struct MIGraphXFuncState {
   bool no_input_shape = false;
   bool fp16_enable = false;
   bool dump_model_ops = false;
+  #ifdef MIGRAPHX_STREAM_SYNC
   migraphx::execution_environment e{};
+  #endif
 };
 
 // Logical device representation.
