@@ -122,6 +122,7 @@ TEST(QOrderedTest, MatMul_COL_16x64x32) {
                           false /* add bias */, false /* broadcast batch c */);
 }
 
+#ifndef _WIN32    
 TEST(QOrderedTest, MatMul_bias_COL_16x64x32) {
   std::vector<int64_t> shape_A = {16, 32};
   std::vector<int64_t> shape_B = {32, 64};
@@ -130,6 +131,7 @@ TEST(QOrderedTest, MatMul_bias_COL_16x64x32) {
                           1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
                           true /* add bias */, false /* broadcast batch c */);
 }
+#endif
 
 TEST(QOrderedTest, MatMul_addC_COL_16x64x32) {
   std::vector<int64_t> shape_A = {16, 32};
@@ -140,6 +142,7 @@ TEST(QOrderedTest, MatMul_addC_COL_16x64x32) {
                           false /* add bias */, false /* broadcast batch c */);
 }
 
+#ifndef _WIN32
 TEST(QOrderedTest, MatMul_bias_addC_COL_16x64x32) {
   std::vector<int64_t> shape_A = {16, 32};
   std::vector<int64_t> shape_B = {32, 64};
@@ -148,7 +151,8 @@ TEST(QOrderedTest, MatMul_bias_addC_COL_16x64x32) {
                           1.0f / 32.0f, 1.0f / 32.0f, 4.0f /*scaleC*/, 2.0f,
                           true /* add bias */, true /* broadcast batch c */);
 }
-
+#endif
+ 
 TEST(QOrderedTest, MatMul_COL_16x64x32_b3_1) {
   std::vector<int64_t> shape_A = {3, 16, 32};
   std::vector<int64_t> shape_B = {1, 32, 64};
@@ -158,6 +162,7 @@ TEST(QOrderedTest, MatMul_COL_16x64x32_b3_1) {
                           false /* add bias */, false /* broadcast batch c */);
 }
 
+#ifndef _WIN32
 TEST(QOrderedTest, MatMul_bias_COL_16x64x32_b2_1) {
   std::vector<int64_t> shape_A = {2, 16, 32};
   std::vector<int64_t> shape_B = {1, 32, 64};
@@ -166,6 +171,7 @@ TEST(QOrderedTest, MatMul_bias_COL_16x64x32_b2_1) {
                           1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
                           true /* add bias */, false /* broadcast batch c */);
 }
+#endif
 
 TEST(QOrderedTest, MatMul_addC_COL_16x64x32_b2_1) {
   std::vector<int64_t> shape_A = {2, 16, 32};
@@ -185,6 +191,7 @@ TEST(QOrderedTest, MatMul_addC_broadcastC_COL_16x64x32_b2_1) {
                           false /* add bias */, true /* broadcast batch c */);
 }
 
+#ifndef _WIN32    
 TEST(QOrderedTest, MatMul_addC_bias_COL_16x64x32_b2_1) {
   std::vector<int64_t> shape_A = {2, 16, 32};
   std::vector<int64_t> shape_B = {1, 32, 64};
@@ -193,6 +200,7 @@ TEST(QOrderedTest, MatMul_addC_bias_COL_16x64x32_b2_1) {
                           1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
                           true /* add bias */, false /* broadcast batch c */);
 }
+#endif
 
 TEST(QOrderedTest, MatMul_bias_addC_broadcastC_COL_16x64x32_b2_1) {
   std::vector<int64_t> shape_A = {2, 16, 32};
