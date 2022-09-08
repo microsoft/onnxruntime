@@ -20,6 +20,11 @@ resources:
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@templates
   parameters:
+    nugetPublishing:
+      feeds:      
+      - name: PublicPackages/ORT-Nightly
+        files_to_publish: '*.nupkg;!*.symbols.nupkg'
+        continueOnConflict: true
     git:
       submodules: false
     globalSdl: # https://aka.ms/obpipelines/sdl
@@ -346,3 +351,30 @@ extends:
             
         - script: |
             dir $(Build.SourcesDirectory)\unzipped\runtimes\win-x64\_native
+            
+      - job: NuGet_Publishing
+        pool:
+          type: windows
+        variables:
+          ob_outputDirectory: '$(Build.BinariesDirectory)\merged'
+          ob_sdl_binskim_enabled: false
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/snnn/onebranch') }}:
+            ob_nugetPublishing_enabled: true          
+        dependsOn:
+        - NuGet_Packaging
+        condition: succeeded()
+        steps:
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Pipeline Artifact'
+          inputs:
+            buildType: 'current'        
+            artifactName: 'drop_Windows_Build_NuGet_Packaging'
+            itemPattern: 'merged/**'
+            targetPath: '$(Build.BinariesDirectory)'
+            
+        - powershell: |
+           dir merged
+           Get-ChildItem -Path merged\M*.nupkg 
+           
+          workingDirectory: '$(Build.BinariesDirectory)'
+          displayName: 'PowerShell Script'
