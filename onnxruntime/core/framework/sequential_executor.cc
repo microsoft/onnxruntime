@@ -115,7 +115,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, gsl::span<
 
     Status compute_status;
     {
-      KernelProfiler kernel_profiler(sess_profiler, op_kernel_context, *p_op_kernel);
+      //KernelProfiler kernel_profiler(sess_profiler, op_kernel_context, *p_op_kernel);
 
       ORT_TRY {
 #ifdef ENABLE_TRAINING
