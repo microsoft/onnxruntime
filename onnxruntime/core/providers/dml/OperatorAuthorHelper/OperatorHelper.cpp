@@ -697,7 +697,6 @@ namespace OperatorHelper
     {
         if (inputShape0 != inputShape1)
         {
-
             auto outputRank = std::max(inputShape0.size(), inputShape1.size());
 
             // Walk backwards through both input shapes and broadcast each dimension,
