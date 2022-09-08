@@ -53,6 +53,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWC
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, Add);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Add);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, Sub);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, Mul);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, Div);
@@ -93,6 +94,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
     // layout insensitive, use ONNX-domain directly
     KERNEL_CREATE_INFO_ONNX(13, Softmax),
     KERNEL_CREATE_INFO_ONNX(7, Add),
+    KERNEL_CREATE_INFO_ONNX(13, Add),
     KERNEL_CREATE_INFO_ONNX(7, Sub),
     KERNEL_CREATE_INFO_ONNX(7, Mul),
     KERNEL_CREATE_INFO_ONNX(7, Div),

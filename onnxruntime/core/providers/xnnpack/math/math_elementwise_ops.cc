@@ -218,6 +218,7 @@ Status ElementWiseOp::Compute(OpKernelContext* context) const {
                               ElementWiseOp);
 
 REGISTER_MATH_OP_FLOAT(Add, 7);
+REGISTER_MATH_OP_FLOAT(Add, 13);
 REGISTER_MATH_OP_FLOAT(Sub, 7);
 REGISTER_MATH_OP_FLOAT(Mul, 7);
 REGISTER_MATH_OP_FLOAT(Div, 7);
