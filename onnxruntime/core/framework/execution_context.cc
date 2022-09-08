@@ -9,8 +9,12 @@ namespace onnxruntime {
 
 class DeviceStreamCollectionImpl {
  public:
-  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams), sess_state_(sess_state) {
+  DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams) {
     device_streams_.resize(num_streams, nullptr);
+    auto& providers = sess_state.GetExecutionProviders();
+    for (auto& ep : providers) {
+      eps_.push_back(ep);
+    }
   }
 
   virtual ~DeviceStreamCollectionImpl() {
@@ -20,10 +24,9 @@ class DeviceStreamCollectionImpl {
       }
     }
     // only clean the streams that is owned by current context
-    auto& providers = sess_state_.GetExecutionProviders();
     for (auto& stream : device_streams_containers) {
       if (stream) {
-        for (auto& ep : providers) {
+        for (auto& ep : eps_) {
           auto& allocators = ep->GetAllocators();
           for (auto& alloc : allocators) {
             if (alloc->Info().device == stream->device &&
@@ -61,7 +64,9 @@ class DeviceStreamCollectionImpl {
   size_t num_streams_;
   std::vector<Stream*> device_streams_;
   std::vector<std::unique_ptr<Stream>> device_streams_containers;
-  const SessionState& sess_state_;
+  // due to training's partial execution, the device streams collection may need to be hold
+  // with a different lifetime of session state, we need to hold the reference of EPs.
+  std::vector<std::shared_ptr<IExecutionProvider>> eps_;
 };
 
 DeviceStreamCollection::DeviceStreamCollection(size_t num_streams, const SessionState& sess_state) : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, sess_state)) {}
@@ -93,13 +98,11 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
                                    const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    size_t num_barriers,
                                    const logging::Logger& sess_logger,
-                                   const DeviceStreamCollection& device_streams_map,
-                                   const bool& terminate_flag,
+                                   const DeviceStreamCollection& device_stream_map,
                                    bool single_thread_mode) : session_state(&sess_state),
                                                               logger(&sess_logger),
-                                                              device_stream_map_(device_streams_map),
+                                                              device_stream_map_(device_stream_map),
                                                               count_down_barriers_(num_barriers),
-                                                              terminate_flag_(terminate_flag),
                                                               single_thread_mode_(single_thread_mode) {
   auto& device_streams = device_stream_map_.GetStreams();
 
@@ -113,6 +116,7 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
 
   // create frame
   frame = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, sess_state, &device_streams);
+
   // init barreris
   for (size_t i = 0; i < num_barriers; ++i) {
     count_down_barriers_[i].Set(2);
@@ -136,7 +140,11 @@ ExecutionFrame* ExecutionContext::GetExecutionFrame() { return frame.get(); }
 
 synchronize::Notification* ExecutionContext::GetNotification(size_t idx) { return notifications[idx].get(); }
 
-const bool& ExecutionContext::TerminateFlag() const { return terminate_flag_; }
+const bool* ExecutionContext::TerminateFlag() const {
+  if (!terminate_flag_)
+    ORT_THROW("Terminate flag is not set");
+  return terminate_flag_;
+}
 
 bool ExecutionContext::DecCountDownBarrier(size_t barrier_id) {
   return count_down_barriers_[barrier_id].Dec();
@@ -203,12 +211,57 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
     end = std::min(end, range->stream_pc_range[stream_idx].second);
 #endif
 
+  if (since > end && since < logic_stream->steps_.size()) {
+#ifdef ENABLE_TRAINING
+    // this is a special handle for training
+    // with ORTModule, we are partially execute the graph with a shared context.
+    // there is a case that in forward pass we want to trigger downstream which
+    // not in current range. We need to execute one step to consume the Barrier
+    // counter otherwise later in backward the downstream won't execute correctly.
+    // this is ugly, hopefully we won't need to worry about if deprecate ORTModule
+    // by Torch Dynamo.
+    if (!ctx.TaskStatus().IsOK()) {
+      ctx.CompleteTask();
+      return;
+    }
+    if (*ctx.TerminateFlag()) {
+      Status status_made = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
+      ctx.SetStatus(status_made);
+      ctx.CompleteTask();
+      return;
+    }
+    bool continue_flag = true;
+    Status status;
+    ORT_TRY {
+      status = logic_stream->steps_[since]->GetStepFun()(&ctx, stream_idx, continue_flag);
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
+      });
+    }
+    if (!status.IsOK()) {
+      // terminate it
+      ctx.SetStatus(status);
+      ctx.CompleteTask();
+      return;
+    }
+    if (continue_flag) {
+      ORT_THROW("Execute the barrier step in backward range passed! this is not expected.");
+    }
+    ctx.CompleteTask();
+    return;
+#else
+    ORT_THROW("Trigger execution beyond current range is not expected in inference build");
+#endif
+  }
+
   while (since < end) {
     if (!ctx.TaskStatus().IsOK()) {
       ctx.CompleteTask();
       return;
     }
-    if (ctx.TerminateFlag()) {
+    if (*ctx.TerminateFlag()) {
       Status status_made = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
       ctx.SetStatus(status_made);
       ctx.CompleteTask();
@@ -243,13 +296,13 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
 }
 
 void ScheduleDownstream(ExecutionContext& ctx,
-                        onnxruntime::NotificationIndex notification_index,
+                        size_t trigger,
                         bool single_thread_mode) {
   auto* ctx_ptr = &ctx;
   auto* plan = ctx.GetSessionState().GetExecutionPlan();
   auto& downstream_map = plan->downstream_map;
   auto* tp = single_thread_mode ? nullptr : ctx.GetSessionState().GetInterOpThreadPool();
-  auto it = downstream_map.find(notification_index);
+  auto it = downstream_map.find(trigger);
   if (it != downstream_map.end()) {
     for (auto downstream : it->second) {
       // increase the task count before schedule down-stream

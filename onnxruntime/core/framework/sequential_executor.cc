@@ -277,7 +277,7 @@ class KernelScope {
 #endif
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
                                         ,
-                                        dump_context_ {session_scope_.dump_context_.iteration, kernel_.Node().Index()}
+                                        dump_context_{session_scope_.dump_context_.iteration, kernel_.Node().Index()}
 #endif
   {
 #ifdef CONCURRENCY_VISUALIZER
@@ -410,8 +410,15 @@ class KernelScope {
 
 onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx) {
   auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
-  // auto* intra_tp = ctx.GetSessionState().GetThreadPool();
-
+  if (p_kernel->KernelDef().OpName() == "YieldOp") {
+    // Do not execute YieldOp (it is an no-op anyways).
+    // Decrement the reference count of tensors that are not needed beyond this point.
+    // REVEIW(codemzs): The current model assumes the intermediate tensors that are exported
+    // as graph outputs are owned by ORT, the risk of caller freeing the tensor or manipulating tensor
+    // memory lingers while the tensor is used downstream after the export.
+    ctx.RecycleNodeInputs(idx);
+    return Status::OK();
+  }
   // TODO: set terminate flag from run_option
   OpKernelContextInternal kernel_ctx(ctx.GetSessionState(),
                                      *ctx.GetExecutionFrame(),
@@ -488,7 +495,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger,
                                    const DeviceStreamCollection& device_streams,
-                                   const bool& terminate_flag,
+                                   const bool* terminate_flag,
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode) {
   auto* execution_plan = session_state.GetExecutionPlan();
@@ -511,12 +518,12 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                        execution_plan->num_barriers,
                        logger,
                        device_streams,
-                       terminate_flag,
                        single_thread_mode);
+  ctx.SetTerminateFlag(terminate_flag);
 #ifdef ENABLE_TRAINING
   if (only_execute_path_to_fetches) {
-    auto* range = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
-    ctx.SetCurrentRange(range);
+    auto* node_to_execute = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
+    ctx.SetNodeToExecute(node_to_execute);
   }
 #else
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches);
@@ -532,7 +539,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
       // execution context is initialized with number of valid streams
       // for invalid stream (0 steps), it doesn't count in number of tasks
       // so don't need to invoke CompleteTask here
-      //ctx.CompleteTask();
+      // ctx.CompleteTask();
     } else {
       concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
         RunSince(i, ctx, 0);
@@ -604,12 +611,14 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,
                                           const DeviceStreamCollection& device_streams,
-                                          const bool& terminate_flag,
+                                          const bool* terminate_flag,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache) {
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                        fetch_allocators, session_state, logger, device_streams, terminate_flag);
+                                        fetch_allocators, session_state, logger, device_streams);
+  ctx.SetTerminateFlag(terminate_flag);
+  auto* execution_plan = session_state.GetExecutionPlan();
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
@@ -618,14 +627,14 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
 
   ctx.SetOrtValueCache(std::move(cache));
 
-  auto* execution_plan = session_state.GetExecutionPlan();
-
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
 
   for (size_t i = 0; i < execution_plan->execution_plan.size(); ++i) {
     if (!execution_plan->execution_plan[i]->steps_.empty()) {
       concurrency::ThreadPool::Schedule(tp, [i, &ctx]() {
-        RunSince(i, ctx, 0);
+        auto* range = ctx.GetCurrentRange();
+        size_t start = !range ? 0 : range->stream_pc_range[i].first;
+        RunSince(i, ctx, start);
       });
     }
   }

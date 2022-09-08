@@ -28,7 +28,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create())                                                        \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                           \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),                      \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),                     \
       Class<T, Tin>);
 
 #define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version) \
@@ -40,7 +40,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
       kCudaExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),   \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),  \
       Class<T, Tin>);
 
 template <typename T, typename Tin>
@@ -102,7 +102,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
     ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
     onnxruntime::contrib::GetPermutationAndShape(true, logit_shape, new_shape, permutations);
     transpose_output = AllocateTensorInMLValue(logit.DataType(), new_shape, alloc);
-    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), Stream(ctx), permutations, logit, *transpose_output.GetMutable<Tensor>()));
+    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), OrtStream(ctx), permutations, logit, *transpose_output.GetMutable<Tensor>()));
     logit_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
   }
 
@@ -170,7 +170,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
     auto* transposed_data = (*transpose_output.GetMutable<Tensor>()).template MutableData<T>();
     transpose_output.GetMutable<Tensor>()->Reshape(log_prob->Shape());
     log_prob->Reshape(log_prob_shape);
-    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), Stream(ctx), permutations, *log_prob, *transpose_output.GetMutable<Tensor>()));
+    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), OrtStream(ctx), permutations, *log_prob, *transpose_output.GetMutable<Tensor>()));
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(log_prob_data, transposed_data, sizeof(T) * logit_shape.Size(), cudaMemcpyDeviceToDevice, Stream(ctx)));
     log_prob->Reshape(new_shape);
   }
@@ -229,7 +229,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
     ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
     onnxruntime::contrib::GetPermutationAndShape(true, probability_shape, new_shape, permutations);
     transpose_output = AllocateTensorInMLValue(log_prob.DataType(), new_shape, alloc);
-    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), Stream(ctx), permutations, log_prob, *transpose_output.GetMutable<Tensor>()));
+    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), OrtStream(ctx), permutations, log_prob, *transpose_output.GetMutable<Tensor>()));
     log_prob_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
   }
 
@@ -263,7 +263,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
         reduction_buffer.get(),
         buffer_size));
   } else {
-    const TBuf normalize_factor = static_cast<TBuf>(1.0f);
+    constexpr TBuf normalize_factor = static_cast<TBuf>(1.0f);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(TBuf), cudaMemcpyHostToDevice, Stream(ctx)));
   }
 
@@ -286,7 +286,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
     onnxruntime::contrib::GetPermutationAndShape(false, logit_shape, new_shape, permutations);
     transpose_output.GetMutable<Tensor>()->Reshape(d_logit->Shape());
     d_logit->Reshape(logit_shape);
-    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), Stream(ctx), permutations, *d_logit, *transpose_output.GetMutable<Tensor>()));
+    ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), OrtStream(ctx), permutations, *d_logit, *transpose_output.GetMutable<Tensor>()));
     auto* transposed_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(d_logit_data, transposed_data, sizeof(T) * probability_shape.Size(), cudaMemcpyDeviceToDevice, Stream(ctx)));
     d_logit->Reshape(new_shape);
@@ -316,7 +316,7 @@ INSTANTIATE_COMPUTE_SPARSE(SoftmaxCrossEntropyLossGrad, BFloat16, int64_t, kMSDo
                                     (*KernelDefBuilder::Create())                                     \
                                         .InputMemoryType(OrtMemTypeCPUInput, CpuInputIndex)           \
                                         .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-                                        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>())    \
+                                        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>())   \
                                         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
                                     ClassName<T, Tin>);
 

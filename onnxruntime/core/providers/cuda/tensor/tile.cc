@@ -54,12 +54,12 @@ ONNX_OPERATOR_KERNEL_EX(
                    num_of_copies_per_batch);                                                                  \
   } break
 
-#define CASE_TILE_BATCHED_MEMCPY(type)                                                                          \
-  case sizeof(type): {                                                                                          \
+#define CASE_TILE_BATCHED_MEMCPY(type)                                                                             \
+  case sizeof(type): {                                                                                             \
     TileBatchedMemcpyImpl(Stream(ctx), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), \
-                          reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data),                \
-                          num_of_elements_per_batch, input_shape.Size(), num_of_batch_copies,                   \
-                          num_of_copies_per_batch);                                                             \
+                          reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data),                   \
+                          num_of_elements_per_batch, input_shape.Size(), num_of_batch_copies,                      \
+                          num_of_copies_per_batch);                                                                \
   } break
 
 Status Tile::ComputeInternal(OpKernelContext* ctx) const {
@@ -95,8 +95,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
 
   // Repeat tensor has all 1s in it
   if (output_shape == input_shape) {
-    CUDA_CALL(cudaMemcpyAsync(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(ctx)));
-    return Status::OK();
+    return CUDA_CALL(cudaMemcpyAsync(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(ctx)));
   }
 
   bool is_batched_memcpy = false;

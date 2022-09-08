@@ -154,11 +154,10 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
         true,
         {default_memory_arena_cfg ? *default_memory_arena_cfg
                                   : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)},
-        //make it stream aware
+        // make it stream aware
         true,
         // enable cross stream sharing?
-        false
-        );
+        false);
 
     // CUDA malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
@@ -184,20 +183,8 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
-  // dtor shouldn't throw. if something went wrong earlier (e.g. out of CUDA memory) the handles
-  // here may be bad, and the destroy calls can throw.
-  // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
-  try {
-    CUBLAS_CALL(cublasDestroy(cublas_handle_));
-  } catch (const std::exception& ex) {
-    LOGS_DEFAULT(ERROR) << "cublasDestroy threw:" << ex.what();
-  }
-
-  try {
-    CUDNN_CALL(cudnnDestroy(cudnn_handle_));
-  } catch (const std::exception& ex) {
-    LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
-  }
+  ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(cublas_handle_)));
+  ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(cudnn_handle_)));
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
@@ -249,13 +236,12 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     if (info.external_allocator_info.UseExternalAllocator()) {
       use_ep_level_unified_stream_ = true;
       stream_ = nullptr;
-    } else if (info.enable_cuda_graph){
+    } else if (info.enable_cuda_graph) {
       // current cuda graph implementation only works with single stream
       // use EP level unified stream for all the reqeust
       CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
       use_ep_level_unified_stream_ = true;
-    }
-    else {
+    } else {
       stream_ = nullptr;
     }
   }
@@ -292,13 +278,23 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   }
 
   if (!external_stream_ && stream_) {
-    CUDA_CALL(cudaStreamDestroy(stream_));
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
 }
 
 std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
   return std::make_unique<profiling::CudaProfiler>();
 }
+
+// Suppressing warning "C26816: The pointer points to memory allocated on the stack." for
+// CUDAExecutionProvider::GetPerThreadContext().
+// While CUDAExecutionProvider::GetPerThreadContext() does return the result of dereferencing a local
+// std::shared_ptr<PerThreadContext>, the underlying PerThreadContext is owned by the CUDA EP and is not local to this
+// function.
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 26816)
+#endif
 
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {
   const auto& per_thread_context_cache = PerThreadContextCache();
@@ -338,6 +334,10 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
   return *context;
 }
 
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
+
 void CUDAExecutionProvider::ReleasePerThreadContext() const {
   const auto& per_thread_context_cache = PerThreadContextCache();
 
@@ -364,7 +364,7 @@ AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) co
       // here is a hack to return another allocator instance.
       // need to fix this in the future.
       return CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
-                                            info_.external_allocator_info, info_.default_memory_arena_cfg);
+                                 info_.external_allocator_info, info_.default_memory_arena_cfg);
     }
   }
 
@@ -405,7 +405,7 @@ Status CUDAExecutionProvider::OnRunStart() {
       }
     }
   }
-  //create per thread context cache
+  // create per thread context cache
   auto& per_thread_context_cache = GetPerThreadContext();
   if (IsGraphCaptureEnabled() && per_thread_context_cache.IsGraphCaptureAllowed() && !per_thread_context_cache.IsGraphCaptured()) {
     LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
@@ -2523,20 +2523,12 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 }
 
 void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  if (use_ep_level_unified_stream_)
-    RegisterCudaStreamHandles(stream_handle_registry, 
-        OrtDevice::GPU, 
-        stream_, 
-        use_ep_level_unified_stream_,
-        GetPerThreadContext().CudnnHandle(),
-        GetPerThreadContext().CublasHandle());
-  else
-    RegisterCudaStreamHandles(stream_handle_registry,
-                              OrtDevice::GPU,
-                              stream_,
-                              use_ep_level_unified_stream_,
-                              nullptr,
-                              nullptr);
+  RegisterCudaStreamHandles(stream_handle_registry,
+                            OrtDevice::GPU,
+                            stream_,
+                            use_ep_level_unified_stream_,
+                            GetPerThreadContext().CudnnHandle(),
+                            GetPerThreadContext().CublasHandle());
 }
 
 }  // namespace onnxruntime

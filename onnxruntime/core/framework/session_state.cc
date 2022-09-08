@@ -53,22 +53,21 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
   StreamCommandHandleRegistryImpl() = default;
 
  private:
-
   InlinedHashMap<std::string, WaitNotificationFn> notification_wait_map_;
   InlinedHashMap<OrtDevice::DeviceType, CreateStreamFn> create_stream_map_;
 };
 
 SessionState::SessionState(Graph& graph,
-             const ExecutionProviders& execution_providers,
-             bool enable_mem_pattern,
-             concurrency::ThreadPool* thread_pool,
-             concurrency::ThreadPool* inter_op_thread_pool,
-             const DataTransferManager& data_transfer_mgr,
-             const logging::Logger& logger,
-             profiling::Profiler& profiler,
-             bool use_deterministic_compute,
-             bool enable_mem_reuse,
-             PrepackedWeightsContainer* prepacked_weights_container)
+                           const ExecutionProviders& execution_providers,
+                           bool enable_mem_pattern,
+                           concurrency::ThreadPool* thread_pool,
+                           concurrency::ThreadPool* inter_op_thread_pool,
+                           const DataTransferManager& data_transfer_mgr,
+                           const logging::Logger& logger,
+                           profiling::Profiler& profiler,
+                           bool use_deterministic_compute,
+                           bool enable_mem_reuse,
+                           PrepackedWeightsContainer* prepacked_weights_container)
     : graph_(graph),
       execution_providers_(execution_providers),
       logger_(logger),
@@ -80,7 +79,7 @@ SessionState::SessionState(Graph& graph,
       use_deterministic_compute_(use_deterministic_compute),
       enable_mem_reuse_(enable_mem_reuse),
       prepacked_weights_container_(prepacked_weights_container),
-      stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>()){
+      stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>()) {
   SetupAllocators();
 }
 
@@ -697,61 +696,61 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
     int node_index = node_index_info.GetNodeOffset(step_index);
     auto* node = graph_viewer_->GetNode(step_index);
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
-                        static_cast<int>(node->ImplicitInputDefs().size());
+                       static_cast<int>(node->ImplicitInputDefs().size());
     // allocate output
     for (int i = 0, end = static_cast<int>(node->OutputDefs().size()); i < end; ++i) {
-    const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
-    if (ml_value_idx == NodeIndexInfo::kInvalidEntry ||
-        (std::find(exe_plan->activation_allocation_order.begin(),
-                    exe_plan->activation_allocation_order.end(), ml_value_idx) !=
-            exe_plan->activation_allocation_order.end()))
+      const auto ml_value_idx = node_index_info.GetMLValueIndex(output_start + i);
+      if (ml_value_idx == NodeIndexInfo::kInvalidEntry ||
+          (std::find(exe_plan->activation_allocation_order.begin(),
+                     exe_plan->activation_allocation_order.end(), ml_value_idx) !=
+           exe_plan->activation_allocation_order.end()))
         continue;
-    const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
-    if (!ml_type->IsTensorType())
+      const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
+      if (!ml_type->IsTensorType())
         continue;
 
-    auto* ep = GetExecutionProviders().Get(*node);
-    auto device_id = exe_plan->allocation_plan[ml_value_idx].location.device.Id();
-    auto ep_main_allocator = ep->GetAllocator(device_id, OrtMemType::OrtMemTypeDefault);
-    ORT_ENFORCE(ep_main_allocator);
-    if (exe_plan->allocation_plan[ml_value_idx].location != ep_main_allocator->Info())
-      continue;
+      auto* ep = GetExecutionProviders().Get(*node);
+      auto device_id = exe_plan->allocation_plan[ml_value_idx].location.device.Id();
+      auto ep_main_allocator = ep->GetAllocator(device_id, OrtMemType::OrtMemTypeDefault);
+      ORT_ENFORCE(ep_main_allocator);
+      if (exe_plan->allocation_plan[ml_value_idx].location != ep_main_allocator->Info())
+        continue;
 
-    const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-    size_t size = 0;
-    TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
+      const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+      size_t size = 0;
+      TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
 
-    // Plan memory if conditions are met.
-    if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
-        ml_data_type != DataTypeImpl::GetType<std::string>() && size != 0) {
+      // Plan memory if conditions are met.
+      if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
+          ml_data_type != DataTypeImpl::GetType<std::string>() && size != 0) {
         size_t aligned_size = 0;
         if (!IAllocator::CalcMemSizeForArrayWithAlignment<kAllocAlignment>(size, ml_data_type->Size(), &aligned_size)) {
-        return Status(ONNXRUNTIME, FAIL, "Size overflow");
+          return Status(ONNXRUNTIME, FAIL, "Size overflow");
         }
 
         ORT_ENFORCE(exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate);
 
         const auto& counter = exe_plan->allocation_plan[ml_value_idx].program_counter;
         ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, aligned_size));
-    }
+      }
     }
 
     // release nodes
     auto& release_actions = exe_plan->node_release_list[step_index];
     for (auto it = release_actions.begin(); it != release_actions.end(); ++it) {
-    auto& action = exe_plan->release_actions[*it];
-    //if the value consumed by multiple stream, we can't pre-release it statically.
-    if (action.ref_count != 1)
+      auto& action = exe_plan->release_actions[*it];
+      // if the value consumed by multiple stream, we can't pre-release it statically.
+      if (action.ref_count != 1)
         continue;
 
-    auto ml_value_idx = action.value_index;
-    const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
-    if (!ml_type->IsTensorType())
+      auto ml_value_idx = action.value_index;
+      const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
+      if (!ml_type->IsTensorType())
         continue;
-    const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
-    if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
+      const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+      if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
         ORT_RETURN_IF_ERROR(mem_planner.TraceFree(static_cast<int>(ml_value_idx)));
-    }
+      }
     }
   }
 
@@ -986,7 +985,7 @@ void SessionState::UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_id
   sorted_idxs.reserve(fetch_mlvalue_idxs.size());
   sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
-  if (to_be_executed_range_.find(sorted_idxs) != to_be_executed_range_.end())
+  if (to_be_executed_nodes_.find(sorted_idxs) != to_be_executed_nodes_.end())
     return;
 
   // Get the nodes generating the fetches.
@@ -1007,41 +1006,18 @@ void SessionState::UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_id
   graph_.ReverseDFSFrom(
       nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
 
-  //global start, end doesn't matters
-  ProgramRegion range;
-
-  auto* plan = GetExecutionPlan();
-  for (auto& stream : plan->execution_plan) {
-    size_t cur = 0;
-    while (cur < stream->step_node_index.size() &&
-           reachable_nodes.find(stream->step_node_index[cur]) == reachable_nodes.end()) {
-      cur++;
-    }
-    size_t start = cur;
-    while (cur < stream->step_node_index.size() &&
-           reachable_nodes.find(stream->step_node_index[cur]) != reachable_nodes.end()) {
-      cur++;
-    }
-    size_t end = cur;
-    while (cur < stream->step_node_index.size()) {
-      if (reachable_nodes.find(stream->step_node_index[cur]) != reachable_nodes.end()) {
-        ORT_THROW("Non-continue execution happened, not expected");
-      }
-      cur++;
-    }
-    range.stream_pc_range.push_back({start, end});
-  }
-  to_be_executed_range_.emplace(std::move(sorted_idxs), std::move(range));
+  // global start, end doesn't matters
+  to_be_executed_nodes_.emplace(std::move(sorted_idxs), std::move(reachable_nodes));
 }
 
-const ProgramRegion* SessionState::GetToBeExecutedRange(
+const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedRange(
     gsl::span<int const> fetch_mlvalue_idxs) const {
   InlinedVector<int> sorted_idxs;
   sorted_idxs.reserve(fetch_mlvalue_idxs.size());
   sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
-  auto it = to_be_executed_range_.find(sorted_idxs);
-  return (it != to_be_executed_range_.end()) ? &it->second : nullptr;
+  auto it = to_be_executed_nodes_.find(sorted_idxs);
+  return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
 }
 #endif
 
@@ -1557,7 +1533,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
 
-  SequentialPlannerContext context(ExecutionMode::ORT_SEQUENTIAL, ExecutionOrder::DEFAULT, true);
+  SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
                                                     subgraphs_kernel_create_info_maps,

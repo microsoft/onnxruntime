@@ -25,7 +25,9 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
   std::vector<std::string> bw_feed_names;
 
   size_t break_point = 0;
-  for (auto node_index : session_state.GetGraphViewer().GetNodesInTopologicalOrder()) {
+  auto* plan = session_state.GetExecutionPlan();
+  auto& training_node_execution_order = plan->node_execution_order_in_training;
+  for (auto node_index : training_node_execution_order) {
     if (session_state.GetKernel(node_index)->KernelDef().OpName() == "YieldOp") {
       auto& node = *(session_state.GetGraphViewer().GetGraph().GetNode(node_index));
       for (const auto& node_arg : node.InputDefs()) {
@@ -41,7 +43,7 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
   }
 
   fw_program_counter_end_ = break_point;
-  bw_program_counter_end_ = session_state.GetGraphViewer().GetNodesInTopologicalOrder().size();
+  bw_program_counter_end_ = training_node_execution_order.size();
 
   CreateAndInitializeFeedsFetchesManager(session_state, fw_feed_names, fw_fetches_names, fw_outputs_device_info,
                                          fw_feeds_fetches_manager_);

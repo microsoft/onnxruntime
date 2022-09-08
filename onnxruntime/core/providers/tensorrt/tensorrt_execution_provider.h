@@ -175,6 +175,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int (*engine_decryption_)(const char*, char*, size_t*);
   int (*engine_encryption_)(const char*, char*, size_t);
 
+  std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>> contexts_;
@@ -210,5 +211,15 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   should be protected by a lock when invoked by multiple threads concurrently.
   */
   std::unique_lock<OrtMutex> GetApiLock() const;
+
+  /**Check the graph is the subgraph of control flow op*/
+  bool IsSubGraphOfControlFlowOp(const GraphViewer& graph) const;
+
+  /**Check whether all the nodes of the graph are assigned to specific ep*/ 
+  bool AllNodesAssignedToSpecificEP(const GraphViewer& graph, const std::string& provider_type) const;
+
+  /**Check whether all the nodes of subgraph are supported*/
+  bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
+
 };
 }  // namespace onnxruntime

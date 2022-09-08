@@ -41,7 +41,7 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
   TensorShapeVector axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
   int index = 0;
   for (int i = 0; i < input_count; ++i) {
-    auto input = p.inputs[i];
+    const auto& input = p.inputs[i];
     concat_sizes[i] = input.tensor->Shape()[p.axis];
     input_ptr_cpuspan[i] = input.tensor->DataRaw();
     for (int j = 0; j < input.tensor->Shape()[p.axis]; ++j) {
@@ -56,7 +56,7 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
   auto element_bytes = p.output_tensor->DataType()->Size();
   int block_size_inside_axis_dim = static_cast<int>(p.output_axis_pitch / p.output_tensor->Shape()[p.axis]);
   int block_size_including_axis_dim = static_cast<int>(p.output_axis_pitch);
-  if (std::all_of(concat_sizes.begin(), concat_sizes.end(), [&] (int64_t i) {return i == concat_sizes[0];})) {
+  if (std::all_of(concat_sizes.begin(), concat_sizes.end(), [&](int64_t i) { return i == concat_sizes[0]; })) {
     if (input_count <= 32) {
       // pass by value to avoid host-to-device copy on same stream
       TArray<const void*, 32> input_table(input_count);

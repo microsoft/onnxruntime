@@ -115,8 +115,8 @@ struct TernaryElementwisePreparation {
         auto offset = out_rank - rank;
         for (auto i = offset; i < out_rank; ++i) {
           // the stride for broadcast dimension is kept as 0
-          if (shape.GetDims()[i - offset] != 1) {
-            padded_strides[i] = pitches[i - offset];
+          if (shape.GetDims()[gsl::narrow_cast<size_t>(i) - offset] != 1) {
+            padded_strides[i] = pitches[gsl::narrow_cast<size_t>(i) - offset];
           }
         }
       }

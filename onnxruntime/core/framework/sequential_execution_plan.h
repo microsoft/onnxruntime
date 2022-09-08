@@ -36,7 +36,7 @@ struct AllocPlanPerValue {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   IntervalT life_interval{0, 0};
   IntervalT allocate_interval{0, 0};
-  OrtValueIndex inplace_reuse{-1}; //No in-place reuse
+  OrtValueIndex inplace_reuse{-1};  // No in-place reuse
 #endif
 #ifdef ENABLE_TRAINING
   // is_strided_tensor indicates if this OrtValue is strided tensor.
@@ -101,19 +101,19 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   std::vector<OrtValueIndex> activation_allocation_order;
 
   class ExecutionStep {
-  public:
-   virtual ~ExecutionStep() {}
-   virtual StepCommandFn GetStepFun() = 0;
-   virtual std::string Dump() const = 0;
+   public:
+    virtual ~ExecutionStep() {}
+    virtual StepCommandFn GetStepFun() = 0;
+    virtual std::string Dump() const = 0;
   };
 
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
     const OrtDevice& device_;
 #ifdef ENABLE_TRAINING
-    std::vector<NodeIndex> step_node_index;
+    std::vector<NodeIndex> step_pc;
 #endif
-  public:
+   public:
     LogicStream(const OrtDevice& device) : device_(device) {}
   };
 
