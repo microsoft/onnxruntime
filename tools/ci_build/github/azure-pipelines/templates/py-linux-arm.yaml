@@ -32,7 +32,7 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
             USERNAME=$(id -u -n)
-            usermod -aG docker $USERNAME
+            sudo usermod -aG docker $USERNAME
     - template: get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
