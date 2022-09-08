@@ -13,7 +13,8 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4"  --gen_doc validate --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4"  --gen_doc validate --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52 --use_dml
+        # Note DML is built along with CUDA so that operator documentation generation via gen_opkernel_doc.py can include the full list of kernels, but DML is not actually executed or tested in this job.
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
