@@ -9,6 +9,7 @@ trigger: none
 variables:
   CDP_DEFINITION_BUILD_COUNT: $[counter('', 0)]
   DEBIAN_FRONTEND: noninteractive
+  ComponentDetection.Timeout: 1200
 
 resources:
   repositories: 
