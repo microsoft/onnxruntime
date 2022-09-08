@@ -922,16 +922,4 @@ stages:
       - template: py-linux-arm.yaml
         parameters:
           build_py_parameters: ${{ parameters.build_py_parameters }}
-          PythonManylinuxDir: /opt/python/cp37-cp37m
-      - template: py-linux-arm.yaml
-        parameters:
-          build_py_parameters: ${{ parameters.build_py_parameters }}
-          PythonManylinuxDir: /opt/python/cp38-cp38
-      - template: py-linux-arm.yaml
-        parameters:
-          build_py_parameters: ${{ parameters.build_py_parameters }}
-          PythonManylinuxDir: /opt/python/cp39-cp39
-      - template: py-linux-arm.yaml
-        parameters:
-          build_py_parameters: ${{ parameters.build_py_parameters }}
-          PythonManylinuxDir: /opt/python/cp310-cp310
+

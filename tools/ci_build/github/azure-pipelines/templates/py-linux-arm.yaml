@@ -3,10 +3,6 @@ parameters:
   type: string
   default: ''
 
-- name: PythonManylinuxDir 
-  type: string
-  
-
 jobs:
 - job: Linux_py_Wheels
   timeoutInMinutes: 240
@@ -43,7 +39,7 @@ jobs:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimecpubuilpythonarm64 \
-                ${{ parameters.PythonManylinuxDir }}/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release --update --build \
                   --skip_submodule_sync \
@@ -51,7 +47,34 @@ jobs:
                   --enable_lto \
                   --build_wheel \
                   --enable_onnx_tests \
-                  ${{ parameters.build_py_parameters }}
+                  ${{ parameters.build_py_parameters }} && \
+                /opt/python/cp38-cp38 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build --cmake_generator Ninja \
+                  --config Release --update --build \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --enable_lto \
+                  --build_wheel \
+                  --enable_onnx_tests \
+                  ${{ parameters.build_py_parameters }} && \
+                /opt/python/cp39-cp39 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build --cmake_generator Ninja \
+                  --config Release --update --build \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --enable_lto \
+                  --build_wheel \
+                  --enable_onnx_tests \
+                  ${{ parameters.build_py_parameters }} && \
+                /opt/python/cp310-cp310 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build --cmake_generator Ninja \
+                  --config Release --update --build \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --enable_lto \
+                  --build_wheel \
+                  --enable_onnx_tests \
+                  ${{ parameters.build_py_parameters }} && \
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
