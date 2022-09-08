@@ -373,7 +373,7 @@ struct CpuBuffersInfo {
   size_t n_buffers;
 };
 
-void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
+static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
   auto info = reinterpret_cast<CpuBuffersInfo*>(raw_info);
   // Uncomment the following line to check if all previous stream
   // operations are done correctly.
@@ -440,15 +440,22 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
     }
   }
 
+  // Enqueue deferred CPU memory release on related streams.
   EnqueueDeferredRelease();
 
   if (sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
   }
 
-  // If cuda graph is enabled, the per thread context will not be released
-  // because the per thread cuda graph needs to be maintained and replayed for
-  // the next run.
+  // The reason of !IsGraphCaptureEnabled():
+  //  If cuda graph is enabled, the per thread context will not be released
+  //  because the per thread cuda graph needs to be maintained and replayed for
+  //  the next run.
+  // The reason of PerThreadContextCache()->find(this) != PerThreadContextCache()->end():
+  //  In exterme cases (e.g., 1-op graph and that op fallbacks to CPU),
+  //  PerThreadContext won't be created and there isbe nothing to
+  //  release. This didn't happen before because we always call
+  //  GetPerThreadContext in OnRunStart.
   if (!IsGraphCaptureEnabled() &&
       PerThreadContextCache()->find(this) != PerThreadContextCache()->end()) {
     ReleasePerThreadContext();

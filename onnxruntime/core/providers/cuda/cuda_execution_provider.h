@@ -61,9 +61,19 @@ class CUDAExecutionProvider : public IExecutionProvider {
   // Add CPU buffer to a buffer pool.
   // They can and only can be released
   // by calling EuqueueDeferredRelease.
+  // A common pattern is
+  //  1. auto buffer = AllocateBufferOnCPUPinned<char>(128);
+  //  2. Some GPU kernel calls on GPU stream from GetComputeStream.
+  //  3. Call AddDeferredReleaseCPUPtr(buffer.release());
+  //  4. Call EnqueueDeferredRelease();
+  // so that the allocated "buffer" in (1) will be released
+  // only after all GPU kernels in (2) are finished.
+  // (4) is done in OnRunEnd, so the user doesn't need to call
+  // it in most cases.
   void AddDeferredReleaseCPUPtr(void* p);
   // Release all buffers added by
-  // AddDeferredReleaseCPUPtr.
+  // AddDeferredReleaseCPUPtr using
+  // GPU callback (so it's async).
   void EnqueueDeferredRelease();
 
   template <typename T>
