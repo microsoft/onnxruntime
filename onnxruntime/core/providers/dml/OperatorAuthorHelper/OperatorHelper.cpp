@@ -1720,10 +1720,7 @@ namespace OperatorHelper
 
         // Broadcast the extra dimensions of each input, then add the truncated matrix dimensions.
         std::vector<uint32_t> outputDims = BroadcastTensorShape(batchDims0, batchDims1);
-        for (uint32_t matrixDim : outputMatrixDims)
-        {
-            outputDims.push_back(matrixDim);
-        }
+        outputDims.insert(outputDims.end(), outputMatrixDims.begin(), outputMatrixDims.end());
 
         return {std::move(outputDims)};
     }

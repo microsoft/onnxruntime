@@ -18,6 +18,8 @@ std::vector<DimensionType> BroadcastTensorShape(
     gsl::span<const DimensionType> inputShape0,
     gsl::span<const DimensionType> inputShape1);
 
+// This won't allocate extra memory, if required. This expects
+// caller to make the size of all containers to be same
 void BroadcastTensorShapeAndSetStrides(
     gsl::span<DimensionType> inputShape0,
     gsl::span<DimensionType> inputStride0,
