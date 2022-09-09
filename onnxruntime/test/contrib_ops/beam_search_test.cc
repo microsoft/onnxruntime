@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <gsl/gsl>
 #include <memory>
 #include <vector>
-#include <gsl/gsl>
 #include "gtest/gtest.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -107,9 +107,6 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
 
   std::vector<int64_t> expected_output_shape{input_ids_shape[0], num_return_sequences[0], max_length[0]};
 
-  // python convert_generation.py --model_type gpt2 -m hf-internal-testing/tiny-random-gpt2 --output tiny_gpt2_beamsearch_fp16.onnx
-  //        -p fp16 --use_gpu --max_length 20
-
   std::vector<int32_t> expected_output{
       0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620, 131, 131, 131, 181, 638, 638, 638, 638,
       41, 554, 74, 622, 206, 222, 75, 223, 221, 198, 224, 572, 292, 292, 292, 292, 292, 292, 292, 292,
@@ -155,6 +152,10 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
 #ifdef USE_CUDA
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
 #endif
+
+    // The ONNX model is generated like the following:
+    //   python convert_generation.py --model_type gpt2 -m hf-internal-testing/tiny-random-gpt2 \
+   //          --output tiny_gpt2_beamsearch_fp16.onnx  -p fp16 --use_gpu --max_length 20
     Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch_fp16.onnx"), session_options);
 
     auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
