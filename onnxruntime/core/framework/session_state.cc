@@ -1137,9 +1137,11 @@ static void ComputeConstantInitializerUseCount(const Graph& graph, InlinedHashMa
 }
 
 using NodePlacementMap = std::unordered_map<std::string, std::vector<std::string>>;
+using NodePlacementSet = std::unordered_set<std::string>;
 
 static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
-                                                 NodePlacementMap& node_placements) {
+                                                 NodePlacementMap& node_placements,
+                                                 NodePlacementSet& node_placement_set) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
     if (node_provider.empty()) {
@@ -1147,6 +1149,8 @@ static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_ver
                              "Could not find an implementation for ",
                              node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(), "'");
     }
+
+    node_placement_set.insert(node_provider);
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (is_verbose) {  // TODO: should we disable this if the number of nodes is above a certain threshold?
@@ -1159,7 +1163,8 @@ static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_ver
     if (node.ContainsSubgraph()) {
       const auto subgraphs = node.GetSubgraphs();
       for (const auto& subgraph : subgraphs) {
-        ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements));
+        ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements,
+                                                               node_placement_set));
       }
     }
   }
@@ -1167,8 +1172,10 @@ static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_ver
   return Status::OK();
 }
 
-static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger& logger) {
+static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger& logger,
+                                             const ExecutionProviders& providers) {
   NodePlacementMap node_placements{};
+  NodePlacementSet node_placement_set{};
 #if !defined(ORT_MINIMAL_BUILD)
   const bool is_verbose_mode = logger.GetSeverity() == logging::Severity::kVERBOSE;
 #else
@@ -1176,7 +1183,7 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   const bool is_verbose_mode = false;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements));
+  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements, node_placement_set));
 
 #if !defined(ORT_MINIMAL_BUILD)
   // print placement info
@@ -1196,6 +1203,18 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+  // Silent fallback from GPU/NPU to CPU nodes can cause performance issues due to memory copies and frequent stalls.
+  // If the user explicitly included the CPU provider anyway, then remain silent, but if it was implicitly added,
+  // and unexpected fallback happened to a non-preferred provider, warn the user.
+  size_t explicit_provider_count = providers.NumProviders() - providers.GetCpuProviderWasImplicitlyAdded() ? 1 : 0;
+  if (node_placement_set.size() > explicit_provider_count) {
+    LOGS(logger, WARNING) << "Some nodes were not assigned to the preferred execution providers which could decrease performance.";
+    if (!is_verbose_mode)
+    {
+      LOGS(logger, WARNING) << "Rerun with verbose output on a non-minimal build to see and verify node assignments.";
+    }
+  }
+
   return Status::OK();
 }
 
@@ -1213,10 +1232,10 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   if (serialized_session_state) {
     ORT_RETURN_IF_ERROR(LoadFromOrtFormat(*serialized_session_state, kernel_registry_manager));
     // LoadFromOrtFormat() may assign node EPs so check afterwards
-    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_));
+    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_, execution_providers_));
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
-    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_));
+    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_, execution_providers_));
     ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
 #else
     ORT_UNUSED_PARAMETER(graph_location);
