@@ -73,7 +73,7 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
 #endif
 
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/tiny_gpt2_beamsearch.onnx"), session_options);
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx"), session_options);
   auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
                                  output_names, 1);
 
@@ -154,8 +154,8 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
 #endif
 
     // The ONNX model is generated like the following:
-    //   python convert_generation.py --model_type gpt2 -m hf-internal-testing/tiny-random-gpt2 \
-   //          --output tiny_gpt2_beamsearch_fp16.onnx  -p fp16 --use_gpu --max_length 20
+    // python convert_generation.py --model_type gpt2 -m hf-internal-testing/tiny-random-gpt2
+    //        --output tiny_gpt2_beamsearch_fp16.onnx  -p fp16 --use_gpu --max_length 20
     Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch_fp16.onnx"), session_options);
 
     auto ort_outputs = session.Run(Ort::RunOptions{}, input_names, ort_inputs.data(), ort_inputs.size(),
