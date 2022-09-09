@@ -2,11 +2,13 @@
 set -e -x
 
 PYTHON_EXES=("/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10")
-
+CURRENT_DIR=$(pwd)
 if ! [ -x "$(command -v protoc)" ]; then
   mkdir -p /tmp/src
   cd /tmp/src
-  ./install_protobuf.sh
+  $CURRENT_DIR/install_protobuf.sh
+  cd /
+  rm -rf /tmp/src
 fi
 
 export ONNX_ML=1
