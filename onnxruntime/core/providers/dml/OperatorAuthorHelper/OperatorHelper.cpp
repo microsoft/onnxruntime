@@ -614,17 +614,6 @@ namespace OperatorHelper
 
             std::rotate(newSizes.begin(), newSizes.end() - 2, newSizes.end() - 1);
             std::rotate(newStrides.begin(), newStrides.end() - 2, newStrides.end() - 1);
-            /*uint32_t secondLastStride = newStrides[dimensionCount - 2];
-            uint32_t secondLastSize = newSizes[dimensionCount - 2];
-
-            for (int i = dimensionCount - 2; i > 0; i--)
-            {
-                newStrides[i] = newStrides[i - 1];
-                newSizes[i] = newSizes[i - 1];
-            }
-
-            newStrides[0] = secondLastStride;
-            newSizes[0] = secondLastSize;*/
         }
 
         if (transpose)
