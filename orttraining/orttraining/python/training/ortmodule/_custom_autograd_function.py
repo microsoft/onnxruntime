@@ -59,8 +59,6 @@ def enable_custom_autograd_support(to_enable=True):
             # Clear all gradient functions, to avoid a deadlock issue.
             # Check the called function for more detailed comments.
             atexit.register(torch_interop_utils.clear_all_grad_fns)
-            # Clear all non-tensor object reference (for example, ProcessGroup passed to PythonOp).
-            atexit.register(_clear_nontensor_object_references)
 
         try:
             # This is for the latest Pytorch nightly after this commit:
