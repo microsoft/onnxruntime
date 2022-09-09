@@ -148,6 +148,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
     capabilities = current_ep.GetCapability(graph_viewer,
                                             kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type));
     // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
+
     InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
     for (const auto& capability : capabilities) {
       for (auto node_index : capability->sub_graph->nodes) {
@@ -172,6 +173,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
   return Status::OK();
 }
 
