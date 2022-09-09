@@ -55,6 +55,10 @@ def build_torch_cpp_extensions():
     is_gpu_available = (torch.version.cuda is not None or torch.version.hip is not None) and (
         ortmodule.ONNXRUNTIME_CUDA_VERSION is not None or ortmodule.ONNXRUNTIME_ROCM_VERSION is not None
     )
+
+    # Docker build don't have CUDA support, but Torch C++ extensions with CUDA may be forced
+    force_cuda = bool(os.environ.get("ONNXRUNTIME_FORCE_CUDA", False))
+
     os.chdir(ortmodule.ORTMODULE_TORCH_CPP_DIR)
 
     # Extensions might leverage CUDA/ROCM versions internally
@@ -71,7 +75,7 @@ def build_torch_cpp_extensions():
     ############################################################################
     # Pytorch CPP Extensions that DO require CUDA/ROCM
     ############################################################################
-    if is_gpu_available:
+    if is_gpu_available or force_cuda:
         for ext_setup in _list_cuda_extensions():
             _install_extension(ext_setup.split(os.sep)[-2], ext_setup, ortmodule.ORTMODULE_TORCH_CPP_DIR)
 

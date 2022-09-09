@@ -90,14 +90,14 @@ public class OnnxTensor implements OnnxValue {
         case BOOL:
           return getBool(OnnxRuntime.ortApiHandle, nativeHandle);
         case STRING:
-          return getString(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
+          return getString(OnnxRuntime.ortApiHandle, nativeHandle);
         case UNKNOWN:
         default:
           throw new OrtException("Extracting the value of an invalid Tensor.");
       }
     } else {
       Object carrier = info.makeCarrier();
-      getArray(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, carrier);
+      getArray(OnnxRuntime.ortApiHandle, nativeHandle, carrier);
       if ((info.type == OnnxJavaType.STRING) && (info.shape.length != 1)) {
         // We read the strings out from native code in a flat array and then reshape
         // to the desired output shape.
@@ -284,13 +284,12 @@ public class OnnxTensor implements OnnxValue {
 
   private native long getLong(long apiHandle, long nativeHandle, int onnxType) throws OrtException;
 
-  private native String getString(long apiHandle, long nativeHandle, long allocatorHandle)
-      throws OrtException;
+  private native String getString(long apiHandle, long nativeHandle) throws OrtException;
 
   private native boolean getBool(long apiHandle, long nativeHandle) throws OrtException;
 
-  private native void getArray(
-      long apiHandle, long nativeHandle, long allocatorHandle, Object carrier) throws OrtException;
+  private native void getArray(long apiHandle, long nativeHandle, Object carrier)
+      throws OrtException;
 
   private native void close(long apiHandle, long nativeHandle);
 

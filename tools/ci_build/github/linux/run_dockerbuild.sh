@@ -102,20 +102,16 @@ elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
             --dockerfile $DOCKER_FILE --context .
-else
+elif [[ $BUILD_DEVICE = "openvino"* ]]; then
         BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.8"
-
-        if [ $BUILD_DEVICE = "openvino" ]; then
-           IMAGE="$BUILD_OS-openvino"
-           DOCKER_FILE=Dockerfile.ubuntu_openvino
-           BUILD_ARGS+=" --build-arg OPENVINO_VERSION=${OPENVINO_VERSION}"
-        else
-           IMAGE="$BUILD_OS"
-           DOCKER_FILE=Dockerfile.ubuntu
-        fi
+        IMAGE="$BUILD_OS-openvino"
+        DOCKER_FILE=Dockerfile.ubuntu_openvino
+        BUILD_ARGS+=" --build-arg OPENVINO_VERSION=${OPENVINO_VERSION}"
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
                 --docker-build-args="${BUILD_ARGS}" \
                 --dockerfile $DOCKER_FILE --context .
+else
+  exit 1
 fi
 
 if [[ $NEED_BUILD_SHARED_LIB = true ]]; then
