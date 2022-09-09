@@ -580,17 +580,17 @@ namespace OperatorHelper
         inputStride1.insert(inputStride1.begin(), (broadcastedRank - inputStride1.size()), 0);
 
         BroadcastTensorShapeAndSetStrides(
-            gsl::make_span(inputShape0).subspan(0, broadcastedRank - 2),
-            gsl::make_span(inputStride0).subspan(0, broadcastedRank - 2),
-            gsl::make_span(inputShape1).subspan(0, broadcastedRank - 2),
-            gsl::make_span(inputStride1).subspan(0, broadcastedRank - 2)
+            gsl::make_span(inputShape0.data(), broadcastedRank - 2),
+            gsl::make_span(inputStride0.data(), broadcastedRank - 2),
+            gsl::make_span(inputShape1.data(), broadcastedRank - 2),
+            gsl::make_span(inputStride1.data(), broadcastedRank - 2)
         );
     }
 
     std::pair<std::vector<uint32_t>, std::vector<uint32_t>> FusedMatMulSizeAndStride(
         gsl::span<const uint32_t> sizes,
         int32_t transBatch,
-        int32_t trans)
+        int32_t transpose)
     {
         const uint32_t dimensionCount = sizes.size();
         std::vector<uint32_t> newStrides(dimensionCount);
@@ -606,7 +606,7 @@ namespace OperatorHelper
 
         // According to contrib ops shape inference
         // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/contrib_ops/contrib_defs.cc#L215
-        // `transBatch` needs to be applied first and then `trans`.
+        // `transBatch` needs to be applied first and then `transpose`.
         if (transBatch)
         {
             ML_CHECK_VALID_ARGUMENT(dimensionCount > 2, 
@@ -624,7 +624,7 @@ namespace OperatorHelper
             newSizes[0] = secondLastSize;
         }
 
-        if (trans)
+        if (transpose)
         {
             std::swap(newStrides[dimensionCount - 2], newStrides[dimensionCount - 1]);
             std::swap(newSizes[dimensionCount - 2], newSizes[dimensionCount - 1]);
@@ -742,7 +742,8 @@ namespace OperatorHelper
                 ML_CHECK_VALID_ARGUMENT((inDimension0 == inDimension1) || (inDimension0 == 1) || (inDimension1 == 1));
                 auto broadcastedDimension = std::max(inDimension0, inDimension1);
 
-                inputShape0[rank] = inputShape1[rank] = broadcastedDimension;
+                inputShape0[rank] = broadcastedDimension;
+                inputShape1[rank] = broadcastedDimension;
                 inputStride0[rank] = (broadcastedDimension != inDimension0) ? 0 : inStride0;
                 inputStride1[rank] = (broadcastedDimension != inDimension1) ? 0 : inStride1;
 
