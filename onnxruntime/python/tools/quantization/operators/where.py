@@ -54,7 +54,6 @@ class QDQWhere(QDQOperatorBase):
         node = self.node
         assert node.op_type == "Where"
         if self.quantizer.force_quantize_no_input_check:
-
             if not self.quantizer.is_tensor_quantized(node.input[1]):
                 self.quantizer.quantize_activation_tensor(node.input[1])
             if not self.quantizer.is_tensor_quantized(node.input[2]):
