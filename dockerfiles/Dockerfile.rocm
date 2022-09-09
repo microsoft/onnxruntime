@@ -2,13 +2,17 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------
-# Dockerfile to run ONNXRuntime with MIGraphX integration
+# Dockerfile to run ONNXRuntime with ROCm integration
 #--------------------------------------------------------------------------
 
-FROM ubuntu:18.04
+FROM mcr.microsoft.com/mirror/docker/library/ubuntu:20.04
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=main
+
+# Register the ROCm package repository
+ARG ROCM_VERSION=5.2.3
+ARG AMDGPU_VERSION=22.20.3
 
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get clean && apt-get update && apt-get install -y locales
@@ -17,26 +21,77 @@ RUN update-locale LANG=en_US.UTF-8
 ENV LC_ALL C.UTF-8
 ENV LANG C.UTF-8
 
-# Install rocm
-RUN apt-get update && apt-get install -y gnupg2 --no-install-recommends curl && \
-  curl -sL http://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - && \
-  sh -c 'echo deb [arch=amd64] http://repo.radeon.com/rocm/apt/4.5.2/ ubuntu main > /etc/apt/sources.list.d/rocm.list'
+# Install ROCm
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl libnuma-dev gnupg \
+  && curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - \
+  && printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ ubuntu main" | tee /etc/apt/sources.list.d/rocm.list \
+  && printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu focal main" | tee /etc/apt/sources.list.d/amdgpu.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends \
+  sudo \
+  wget \
+  git \
+  libelf1 \
+  kmod \
+  file \
+  python3 \
+  python3-pip \
+  build-essential && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update &&\
-    apt-get install -y sudo git bash build-essential rocm-dev libpython3.6-dev python3-pip miopen-hip rocblas half aria2 libnuma-dev
+# Split ROCm packages installation into multiple steps, otherwise, it will create a huge layer,
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  rocm-llvm && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
-RUN aria2c -q -d /tmp -o cmake-3.20.0-linux-x86_64.tar.gz \
-https://github.com/Kitware/CMake/releases/download/v3.20.0/cmake-3.20.0-linux-x86_64.tar.gz &&\
-tar -zxf /tmp/cmake-3.20.0-linux-x86_64.tar.gz --strip=1 -C /usr
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  rocfft-dev && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
-# Install yapf
-RUN pip3 install yapf==0.28.0 numpy
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  rocblas-dev && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
-ENV PATH /opt/miniconda/bin:/code/cmake-3.20.0-linux-x86_64/bin:${PATH}
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  rocsparse-dev rocsolver-dev rocrand-dev && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
-RUN apt-get update &&\
-    apt-get install -y rocrand rccl hipsparse hipfft hipcub hipblas rocthrust
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  miopen-hip-dev && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
+
+# Finally, install the meta packages of ROCm
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  rocm-dev rocm-libs && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  hipify-clang && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 109 render
+
+# CMake
+ENV CMAKE_VERSION=3.22.1
+RUN cd /usr/local && \
+    wget -q -O - https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz | tar zxf -
+
+# Conda
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && \
+    /bin/bash ~/miniconda.sh -b -p /opt/miniconda && \
+    rm ~/miniconda.sh && \
+    /opt/miniconda/bin/conda clean -ya
+
+ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+RUN pip install numpy "wheel>=0.35.1"
 
 WORKDIR /code
 
