@@ -10,6 +10,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace onnxruntime;
 
@@ -74,7 +75,15 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
   } else if (strcmp(provider_name, "XNNPACK") == 0) {
 #if defined(USE_XNNPACK)
+    // If Xnnpack is enabled and user don't give a specific value, we need to set it same as cpu threadpool size
+    if (provider_options.find("thread_num") == provider_options.end()) {
+      provider_options["thread_num"] = std::to_string(options->value.intra_op_param.thread_pool_size);
+    }
     options->provider_factories.push_back(XnnpackProviderFactoryCreator::Create(provider_options));
+    // XNNPACK owns its own threadpool, so we have to disable ort-threadpool's spinning feature
+    // otherwise it will cause contention.
+    status = onnxruntime::ToOrtStatus(options->value.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigAllowIntraOpSpinning, "0"));
 #else
     status = create_not_supported_status();
 #endif
@@ -98,9 +107,9 @@ static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
  * Stubs for the publicly exported static registration functions for EPs that are referenced in the C# bindings
  * and are not implemented in provider_bridge_ort.cc.
  *
- * NOTE: The nuget packages that the C# bindings will use are all for full builds, so we don't need to allow for 
+ * NOTE: The nuget packages that the C# bindings will use are all for full builds, so we don't need to allow for
  * provider_bridge_ort.cc being excluded in a minimal build.
- * 
+ *
  * These are required when building an iOS app using Xamarin as all external symbols must be defined at compile time.
  * In that case a static ORT library is used and the symbol needs to exist but doesn't need to be publicly exported.
  * TODO: Not sure if we need to purely limit to iOS builds, so limit to __APPLE__ for now
