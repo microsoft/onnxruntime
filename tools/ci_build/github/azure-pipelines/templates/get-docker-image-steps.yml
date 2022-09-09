@@ -21,13 +21,11 @@ steps:
 - ${{ if contains(parameters.Dockerfile, 'manylinux') }}:
     - checkout: manylinux
     - script: |
-        set -e -x
         mv manylinux onnxruntime
         mv onnxruntime ..
         cd ..
         rmdir $(Build.SourcesDirectory)
         mv onnxruntime $(Build.SourcesDirectory)
-        ls
       displayName: "Move Manylinux source code to ORT folder"
 
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, true) }}:
