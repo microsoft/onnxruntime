@@ -1057,13 +1057,11 @@ class ONNXQuantizer:
             if node.input[0] not in self.tensors_range.keys() or node.output[0] not in self.tensors_range.keys():
                 continue
             self.tensors_range[node.input[0]] = self.tensors_range[node.output[0]]
-            quantization_params = {}
-            for tensor_name in self.tensors_range.keys():
-                rmin, rmax = self.tensors_range[tensor_name]
-                qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
+        quantization_params = {}
+        for tensor_name in self.tensors_range.keys():
+            rmin, rmax = self.tensors_range[tensor_name]
+            qmin, qmax = get_qmin_qmax_for_qType(self.activation_qType, symmetric=self.is_activation_symmetric)
 
-                quantization_params[tensor_name] = compute_scale_zp(
-                    rmin, rmax, qmin, qmax, self.is_activation_symmetric
-                )
+            quantization_params[tensor_name] = compute_scale_zp(rmin, rmax, qmin, qmax, self.is_activation_symmetric)
 
-            return quantization_params
+        return quantization_params
