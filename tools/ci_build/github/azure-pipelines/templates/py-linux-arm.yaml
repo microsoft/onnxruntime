@@ -20,6 +20,7 @@ jobs:
         Context: tools/ci_build/github/linux/docker/inference/x64/python/cpu
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=arm64v8/centos:7"
         Repository: onnxruntimecpubuilpythonarm64
+        UseImageCacheContainerRegistry: false
 
     - template: set-nightly-build-option-variable-step.yml
 
