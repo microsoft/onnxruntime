@@ -572,7 +572,7 @@ Status TopK<11, int64_t>::Compute(OpKernelContext* p_op_kernel_context) const {
 }
 
 // Register necessary kernels
-// spec https://github.com/onnx/onnx/blob/master/docs/Operators.md#TopK
+// spec https://github.com/onnx/onnx/blob/main/docs/Operators.md#TopK
 
 #define REGISTER_TOPK_VERSIONED_TYPED_KERNEL(OPSET1, OPSET2, TYPE)                                           \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(TopK, OPSET1, OPSET2, TYPE,                                       \

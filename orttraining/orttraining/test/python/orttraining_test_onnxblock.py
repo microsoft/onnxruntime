@@ -478,12 +478,13 @@ def test_adamw_optimizer_execution():
             "learning_rate": np.full(1, learning_rate, dtype=np.float32),
             "step": np.full(1, step, dtype=np.int64),
             "params": [],
+            "gradients": [],
             "first_order_moments": [],
             "second_order_moments": [],
         }
-        for name, param in pt_model.named_parameters():
+        for _, param in pt_model.named_parameters():
             ort_inputs["params"].append(_to_numpy(copy.deepcopy(param)))
-            ort_inputs[f"{name}_grad"] = _to_numpy(copy.deepcopy(param.grad))
+            ort_inputs["gradients"].append(_to_numpy(copy.deepcopy(param.grad)))
             ort_inputs["first_order_moments"].append(_to_numpy(torch.zeros_like(param)))
             ort_inputs["second_order_moments"].append(_to_numpy(torch.zeros_like(param)))
 
@@ -696,30 +697,30 @@ def test_grad_clipping_execution():
 
     # Prepare the onnx model with only grad clipping
     onnx_model = onnx.ModelProto()
-    onnx_model.graph.name = "AdamW Optimizer Model"
+    onnx_model.graph.name = "ClipGradNorm Model"
     onnx_model.producer_name = "grad clipping test"
     onnx_model.opset_import.extend(onnxblock.optim.optim._OPSET_IMPORTS)
     onnx_model.ir_version = onnx.IR_VERSION
 
     class GradClippingModel(onnxblock.Model):
         def __init__(self, max_norm):
+            super().__init__()
             self._grad_clip = onnxblock.optim.ClipGradNorm(max_norm)
 
-        def build(self, *grad_names):
-            return self._grad_clip(*grad_names)
+        def build(self, grads_name):
+            return self._grad_clip(grads_name)
 
-    grad_names = []
-    for name, param in pt_model.named_parameters():
-        grad_names.append(f"{name}_grad")
-
-        onnx_model.graph.input.append(
-            onnx.helper.make_tensor_value_info(grad_names[-1], onnx.TensorProto.FLOAT, param.shape)
-        )
+    onnx_model.graph.input.append(
+        onnx.helper.make_tensor_sequence_value_info("gradients", onnx.TensorProto.FLOAT, None)
+    )
 
     grad_clip = GradClippingModel(2.5)
-
     with onnxblock.onnx_model(onnx_model):
-        ort_output_names = grad_clip(*grad_names)
+        ort_output_names = grad_clip("gradients")
+
+    onnx_model.graph.output.append(
+        onnx.helper.make_tensor_sequence_value_info(ort_output_names, onnx.TensorProto.FLOAT, None)
+    )
 
     def mse_loss(prediction, target):
         loss = torch.nn.MSELoss()
@@ -732,16 +733,16 @@ def test_grad_clipping_execution():
         loss = mse_loss(pt_model(x), target)
         loss.backward()
 
-        ort_inputs = {}
-        for name, param in pt_model.named_parameters():
-            ort_inputs[f"{name}_grad"] = _to_numpy(copy.deepcopy(param.grad))
+        ort_inputs = {"gradients": []}
+        for _, param in pt_model.named_parameters():
+            ort_inputs["gradients"].append(_to_numpy(copy.deepcopy(param.grad)))
 
         torch.nn.utils.clip_grad_norm_(pt_model.parameters(), 2.5)
 
         # Then no error occurs when executing the model
         ort_session = onnxruntime.InferenceSession(onnx_fo.name, providers=C.get_available_providers())
-        ort_outs = ort_session.run(ort_output_names, ort_inputs)
+        ort_outs = ort_session.run([ort_output_names], ort_inputs)
 
         # assert all the gradients are close
-        for ort_grad, pt_param in zip(ort_outs, pt_model.parameters()):
+        for ort_grad, pt_param in zip(ort_outs[0], pt_model.parameters()):
             assert np.allclose(ort_grad, _to_numpy(pt_param.grad))

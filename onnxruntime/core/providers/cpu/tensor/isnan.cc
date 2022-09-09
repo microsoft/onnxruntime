@@ -9,7 +9,7 @@
 #include "Eigen/src/Core/arch/Default/Half.h"
 
 namespace onnxruntime {
-// https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsNaN
+// https://github.com/onnx/onnx/blob/main/docs/Operators.md#IsNaN
 #define ADD_TYPED_ISNAN_OP_9(data_type)                                   \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                               \
       IsNaN,                                                              \

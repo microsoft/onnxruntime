@@ -11,7 +11,7 @@
 #include "core/providers/op_kernel_type_control.h"
 
 namespace onnxruntime {
-// https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsInf
+// https://github.com/onnx/onnx/blob/main/docs/Operators.md#IsInf
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
