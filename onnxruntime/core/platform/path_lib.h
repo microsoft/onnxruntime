@@ -253,7 +253,7 @@ void LoopDir(const std::string& dir_name, T func) {
     auto e = errno;
     char buf[1024];
     char* msg;
-#if defined(__GLIBC__) && defined(_GNU_SOURCE) && !defined(__ANDROID__)
+#if defined(__GLIBC__) && defined(_GNU_SOURCE) 
     msg = strerror_r(e, buf, sizeof(buf));
 #else
     if (strerror_r(e, buf, sizeof(buf)) != 0) {
