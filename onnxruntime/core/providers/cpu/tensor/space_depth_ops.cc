@@ -18,7 +18,9 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<uint8_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>()})
         .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
     SpaceToDepth);
 
@@ -27,7 +29,9 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<uint8_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>()})
         .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
     SpaceToDepth);
 
@@ -36,7 +40,9 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     1, 10,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<uint8_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>()})
         .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
     DepthToSpace);
 
@@ -46,7 +52,9 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<uint8_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>()})
         .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
     DepthToSpace);
 
@@ -55,7 +63,9 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<uint8_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>()})
         .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
     DepthToSpace);
 
@@ -119,6 +129,14 @@ Status SpaceToDepth::Compute(OpKernelContext* context) const {
     SpaceDepthOpCpuImpl<double>(input, output, permutation, batch,
                                 input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_,
                                 blocksize_, blocksize_, input_depth, input_height / blocksize_, input_width / blocksize_);
+  } else if (input.IsDataType<uint8_t>()) {
+    SpaceDepthOpCpuImpl<uint8_t>(input, output, permutation, batch,
+                                 input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_,
+                                 blocksize_, blocksize_, input_depth, input_height / blocksize_, input_width / blocksize_);
+  } else if (input.IsDataType<int8_t>()) {
+    SpaceDepthOpCpuImpl<int8_t>(input, output, permutation, batch,
+                                input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_,
+                                blocksize_, blocksize_, input_depth, input_height / blocksize_, input_width / blocksize_);
   } else {
     // user will not see this as the kernel doesn't claim support for types other than float and double
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input type in SpaceToDepth op: ", input.DataType());
@@ -163,6 +181,14 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
                                input_depth / blocksize_ / blocksize_, input_height, blocksize_, input_width, blocksize_);
   } else if (input.IsDataType<double>()) {
     SpaceDepthOpCpuImpl<double>(input, output, permutation, batch,
+                                dim1, blocksize_, dim3, input_height, input_width,
+                                input_depth / blocksize_ / blocksize_, input_height, blocksize_, input_width, blocksize_);
+  } else if (input.IsDataType<uint8_t>()) {
+    SpaceDepthOpCpuImpl<uint8_t>(input, output, permutation, batch,
+                                 dim1, blocksize_, dim3, input_height, input_width,
+                                 input_depth / blocksize_ / blocksize_, input_height, blocksize_, input_width, blocksize_);
+  } else if (input.IsDataType<int8_t>()) {
+    SpaceDepthOpCpuImpl<int8_t>(input, output, permutation, batch,
                                 dim1, blocksize_, dim3, input_height, input_width,
                                 input_depth / blocksize_ / blocksize_, input_height, blocksize_, input_width, blocksize_);
   } else {

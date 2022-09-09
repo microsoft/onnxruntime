@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/status.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
@@ -31,6 +32,13 @@ class SpaceDepthBase {
     input_height = input_shape[2];
     input_width = input_shape[3];
 
+    return ComputeOutputShape(input_depth, input_height, input_width,
+                              output_depth, output_height, output_width, is_space_to_depth);
+  }
+
+  Status ComputeOutputShape(int64_t input_depth, int64_t input_height, int64_t input_width,
+                            int64_t& output_depth, int64_t& output_height, int64_t& output_width,
+                            bool is_space_to_depth) const {
     if (is_space_to_depth) {  // SpaceToDepth op
       if ((input_height % this->blocksize_) != 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "SpaceToDepth requires input height to be a multiple of block_size");
@@ -53,10 +61,8 @@ class SpaceDepthBase {
       output_height = input_height * blocksize_;
       output_width = input_width * blocksize_;
     }
-
     return Status::OK();
   }
-
   int64_t blocksize_;
 };
 

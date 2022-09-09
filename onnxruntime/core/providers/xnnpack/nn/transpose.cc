@@ -29,16 +29,16 @@ Transpose::Transpose(const OpKernelInfo& info) : OpKernel{info}, TransposeBase(i
     op_type_ = OpComputeType::op_compute_type_qu8; // use to represent 8bit quantized data
   } else {
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*input_defs[0]->TypeAsProto()));
-    ORT_THROW("unsupported Conv in Transpose, we have FLOAT|UINT8, but got ", stype);
+    ORT_THROW("unsupported dtype in Transpose, we have FLOAT|UINT8, but got ", stype);
   }
 
 
   xnn_status xstatus = xnn_status_invalid_state;
   struct xnn_operator* p = nullptr;
-  if (op_type_ == OpComputeType::op_compute_type_qu8) {
-    xstatus = xnn_create_transpose_nd_x8(0, &p);
-  } else if (op_type_ == OpComputeType::op_compute_type_fp32) {
+  if (op_type_ == OpComputeType::op_compute_type_fp32) {
     xstatus = xnn_create_transpose_nd_x32(0, &p);
+  } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
+    xstatus = xnn_create_transpose_nd_x8(0, &p);
   }
   ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_Transpose_nc_",
               OpTypeToString(op_type_), " failed. Status:", xstatus);
@@ -66,22 +66,22 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
     return Status::OK();
 
   xnn_status xstatus = xnn_status_invalid_state;
-  if (op_type_ == OpComputeType::op_compute_type_qu8) {
+  if (op_type_ == OpComputeType::op_compute_type_fp32) {
+    xstatus = xnn_setup_transpose_nd_x32(op0_.get(), X.Data<float>(), Y.MutableData<float>(),
+                                         rank, input1_shape.data(), p_perm->data(), nullptr);
+  } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
     xstatus = xnn_setup_transpose_nd_x8(
         op0_.get(), X.DataRaw(), Y.MutableDataRaw(),
         rank, input1_shape.data(), p_perm->data(), nullptr);
   }
-  else if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    xstatus = xnn_setup_transpose_nd_x32(op0_.get(), X.Data<float>(), Y.MutableData<float>(),
-                                         rank, input1_shape.data(), p_perm->data(), nullptr);
-  }
+
   if (xstatus != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_convolution2d_nhwc_",
-                           OpTypeToString(op_type_), " returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_transpose_nd_",
+                           OpTypeToString(op_type_), " returned ", xstatus);
   }
   xstatus = xnn_run_operator(op0_.get(), nullptr);
   if (xstatus != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", xstatus);
   }
 
   return Status::OK();

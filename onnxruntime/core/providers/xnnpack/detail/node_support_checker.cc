@@ -18,10 +18,12 @@
 #include "core/providers/xnnpack/math/activation.h"
 #include "core/providers/xnnpack/math/math_elementwise_ops.h"
 #include "core/providers/xnnpack/nn/conv.h"
+#include "core/providers/xnnpack/nn/depth_to_space.h"
 #include "core/providers/xnnpack/nn/max_pool.h"
 #include "core/providers/xnnpack/nn/average_pool.h"
 #include "core/providers/xnnpack/nn/softmax.h"
 #include "core/providers/xnnpack/nn/transpose.h"
+#include "core/providers/xnnpack/nn/channel_shuffle.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -86,6 +88,21 @@ const NodeUnit* ClipReluChecker(const NodeUnit& node_unit,
   return fuse_with;
 }
 
+const NodeUnit* ChannelShuffleChecker(const NodeUnit& node_unit, const GraphViewer& graph,
+                                      const std::unordered_map<const Node*, const NodeUnit*>& supported_node_unit_map) {
+  const NodeUnit* fuse_with{nullptr};
+  const Node& node = node_unit.GetNode();
+  do {
+    if (!ChanneShuffle::IsOnnxNodeSupported(node_unit, graph)) {
+      break;
+    }
+    const auto& input0 = *node.InputNodesBegin();
+    // we can't support fusion three nodes together
+    fuse_with = fuse_with ? supported_node_unit_map.at(&input0) : fuse_with;
+  } while (false);
+
+  return fuse_with;
+}
 }  // namespace
 
 bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
@@ -98,6 +115,7 @@ bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
       {"QLinearGlobalAveragePool", AveragePool::IsAveragePoolOnnxNodeSupported},
       {"Softmax", Softmax::IsSoftmaxOnnxNodeSupported},
       {"Transpose", Transpose::IsOnnxNodeSupported},
+      {"DepthToSpace", DepthToSpace::IsOnnxNodeSupported},
       {"Add", ElementWiseOp::IsOnnxNodeSupported},
       {"Sub", ElementWiseOp::IsOnnxNodeSupported},
       {"Mul", ElementWiseOp::IsOnnxNodeSupported},
@@ -132,6 +150,7 @@ const NodeUnit* NodeSupportChecker::IsNodeSupportedWithFusion(const NodeUnit& no
   static std::unordered_map<std::string, FuseCheckerFn> checkers{
       {"Clip", ClipReluChecker},  // fusion of Conv+Clip or MaxPool+Clip
       {"Relu", ClipReluChecker},  // fusion of Conv+Relu or MaxPool+Relu
+      {"Reshape", ChannelShuffleChecker},
   };
 
   const NodeUnit* fuse_with{nullptr};

@@ -362,6 +362,41 @@ TEST(XnnpackEP, TestQDQSoftMax_axisLast) {
                "xnnpack_qdq_test_graph_softmax",
                {ExpectedEPNodeAssignment::All});
 }
+
+TEST(XnnpackEP, TestDepthToSpace_f32) {
+  const std::vector<int64_t> input_shape = {1, 8, 2, 3};
+  int64_t block_size = 2;
+  auto modelCreater_f32 = [input_shape, block_size](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape,
+                                               std::numeric_limits<float>::min(),
+                                               std::numeric_limits<float>::max());
+    auto* output_arg = builder.MakeOutput();
+    // add SoftMax
+    Node& softmax_node = builder.AddNode("DepthToSpace", {input_arg}, {output_arg});
+    softmax_node.AddAttribute("blocksize", block_size);
+    // softmax_node.AddAttribute("mode", "DCR");
+  };
+  RunModelTest(modelCreater_f32,
+               "xnnpack_test_graph_DepthToSpace_f32",
+               {ExpectedEPNodeAssignment::Some});
+}
+
+TEST(XnnpackEP, TestDepthToSpace_u8) {
+  const std::vector<int64_t> input_shape = {1, 8, 2, 3};
+  int64_t block_size = 2;
+  auto modelCreater_u8 = [input_shape, block_size](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
+                                                 std::numeric_limits<uint8_t>::min(),
+                                                 std::numeric_limits<uint8_t>::max());
+    auto* output_arg = builder.MakeOutput();
+    // add SoftMax
+    Node& softmax_node = builder.AddNode("DepthToSpace", {input_arg}, {output_arg});
+    softmax_node.AddAttribute("blocksize", block_size);
+  };
+  RunModelTest(modelCreater_u8,
+               "xnnpack_test_graph_DepthToSpace_u8",
+               {ExpectedEPNodeAssignment::Some});
+}
 #endif
 
 }  // namespace test
