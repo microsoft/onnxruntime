@@ -640,8 +640,9 @@ void BFCArena::FreeAndMaybeCoalesce(BFCArena::ChunkHandle h) {
 
   // This chunk is no longer in-use, consider coalescing the chunk
   // with adjacent chunks.
-  ChunkHandle chunk_to_reassign = Coalesce(h);
-  InsertFreeChunkIntoBin(chunk_to_reassign);
+  /*ChunkHandle chunk_to_reassign = Coalesce(h);
+  InsertFreeChunkIntoBin(chunk_to_reassign);*/
+  InsertFreeChunkIntoBin(h);
 }
 
 BFCArena::ChunkHandle BFCArena::Coalesce(ChunkHandle h) {
