@@ -16,8 +16,8 @@ jobs:
 
     - template: get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/Dockerfile.manylinux2014_cpu
-        Context: tools/ci_build/github/linux/docker/inference/x64/python
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2014_cpu
+        Context: tools/ci_build/github/linux/docker/inference/x64/python/cpu
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=arm64v8/centos:7"
         Repository: onnxruntimecpubuilpythonarm64
         UseImageCacheContainerRegistry: false
