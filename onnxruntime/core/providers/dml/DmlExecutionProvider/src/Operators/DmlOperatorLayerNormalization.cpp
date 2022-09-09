@@ -13,18 +13,25 @@ public:
     :   DmlOperator(kernelCreationContext)
     {
         std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2};
-        DmlOperator::Initialize(kernelCreationContext, kernelInputIndices);
+
+        // Initialize Input, Scale and Bias tensors with same dimension count as Input tensor
+        // because DML MVN1 has a validation which requires all 3 needs to have same dimension count
+        // due to historical artifact.
+        DmlOperator::Initialize(
+            kernelCreationContext, 
+            kernelInputIndices,
+            std::nullopt,
+            std::nullopt,
+            std::nullopt,
+            kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0));
 
         const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
 
         int32_t onnxAxis = kernelCreationContext.GetOptionalAttribute<int32_t>(AttrName::Axis, -1);
         uint32_t inputDimCount = kernelCreationContext.GetTensorShapeDescription().GetInputTensorDimensionCount(0);
         onnxAxis = OperatorHelper::HandleNegativeAxis(onnxAxis, inputDimCount);
-        std::vector<int32_t> onnxAxes(inputDimCount - onnxAxis);
+        std::vector<uint32_t> onnxAxes(inputDimCount - onnxAxis);
         std::iota(onnxAxes.begin(), onnxAxes.end(), onnxAxis);
-
-        std::vector<uint32_t> dmlAxes;
-        GetDmlAdjustedAxes(onnxAxes, inputDimCount, m_inputTensorDescs.front().GetDimensionCount(), /*out*/ dmlAxes);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -34,8 +41,8 @@ public:
         operatorDesc.ScaleTensor = &inputDescs[1];
         operatorDesc.BiasTensor = inputDescs[2].Desc != nullptr ? &inputDescs[2] : nullptr;
         operatorDesc.OutputTensor = outputDescs.data();
-        operatorDesc.Axes = dmlAxes.data();
-        operatorDesc.AxisCount = gsl::narrow_cast<uint32_t>(dmlAxes.size());
+        operatorDesc.Axes = onnxAxes.data();
+        operatorDesc.AxisCount = gsl::narrow_cast<uint32_t>(onnxAxes.size());
         operatorDesc.NormalizeVariance = true;
         operatorDesc.Epsilon = epsilon;
         operatorDesc.FusedActivation = nullptr;
@@ -49,6 +56,7 @@ void CALLBACK QueryLayerNormalization(IMLOperatorSupportQueryContextPrivate* con
 {
     *isSupported = true;
 
+    // Mean and InvStdDev are not supported outputs.
     if (context->GetOutputCount() > 1)
     {
         *isSupported = false;
@@ -57,5 +65,6 @@ void CALLBACK QueryLayerNormalization(IMLOperatorSupportQueryContextPrivate* con
 }
 
 DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization, DmlOperatorLayerNormalization);
+DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization17, DmlOperatorLayerNormalization);
 
 } // namespace Dml

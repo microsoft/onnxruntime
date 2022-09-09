@@ -97,6 +97,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(InstanceNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(BatchNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(BatchNormalization15);
 DML_OP_EXTERN_CREATION_FUNCTION(LayerNormalization);
+DML_OP_EXTERN_CREATION_FUNCTION(LayerNormalization17);
 DML_OP_EXTERN_CREATION_FUNCTION(LRN);
 DML_OP_EXTERN_CREATION_FUNCTION(MeanVarianceNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(LpNormalization);
@@ -408,6 +409,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     14,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryBatchNormalization)},  // v14 adds training_mode attribute
     {REG_INFO(     15,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryBatchNormalization)},  // v15 adds differing types for scale and bias vs input.
     {REG_INFO(      7,  LayerNormalization,                 typeNameListLayerNorm,          supportedTypeListLayerNormalization,    DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
+    {REG_INFO_VER( 17,  LayerNormalization,                 typeNameListLayerNorm,          supportedTypeListLayerNormalization,    DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
     {REG_INFO(      7,  LRN,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     13,  LRN,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  MeanVarianceNormalization,          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
