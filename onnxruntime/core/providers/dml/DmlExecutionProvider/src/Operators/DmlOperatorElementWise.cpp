@@ -756,7 +756,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(IsInf,            DmlOperatorElementwiseIsInf);
 DML_OP_DEFINE_CREATION_FUNCTION(Round,            DmlOperatorElementwiseRound);
 
 // Fused operators:
-DML_OP_DEFINE_CREATION_FUNCTION(FusedAdd,         DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_ADD1_OPERATOR_DESC>);
-DML_OP_DEFINE_CREATION_FUNCTION(FusedSum,         DmlOperatorElementwiseBinaryLoop<DML_ELEMENT_WISE_ADD1_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedAdd,         DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_ADD1_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedSum,         DmlOperatorElementwiseBinaryLoop<DML_ELEMENT_WISE_ADD1_OPERATOR_DESC>);
 
 } // namespace Dml
