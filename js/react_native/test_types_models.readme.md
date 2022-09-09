@@ -8,7 +8,7 @@ run:
 ```bash
 python -m onnxruntime.tools.convert_onnx_models_to_ort \
   --optimization_style Fixed \
-  --output ./react_native/android/src/androidTest/res/raw \
+  --output_dir ./react_native/android/src/androidTest/res/raw \
   ./node/test/testdata
 ```
 

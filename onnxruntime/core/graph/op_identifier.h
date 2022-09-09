@@ -8,7 +8,11 @@
 #include <string_view>
 #include <tuple>
 
+#include "core/common/common.h"
 #include "core/common/hash_combine.h"
+#include "core/common/status.h"
+#include "core/common/string_utils.h"
+#include "core/common/parse_string.h"
 
 namespace onnxruntime {
 
@@ -18,15 +22,19 @@ struct BasicOpIdentifier {
   StringType op_type;
   int since_version;
 
-  friend constexpr bool operator<(const BasicOpIdentifier<StringType>& lhs,
-                                  const BasicOpIdentifier<StringType>& rhs) {
+  // comparison
+
+  friend constexpr bool operator<(const BasicOpIdentifier& lhs,
+                                  const BasicOpIdentifier& rhs) {
     return lhs.Tied() < rhs.Tied();
   }
 
-  friend constexpr bool operator==(const BasicOpIdentifier<StringType>& lhs,
-                                   const BasicOpIdentifier<StringType>& rhs) {
+  friend constexpr bool operator==(const BasicOpIdentifier& lhs,
+                                   const BasicOpIdentifier& rhs) {
     return lhs.Tied() == rhs.Tied();
   }
+
+  // hash computation
 
   size_t GetHash() const {
     size_t h = std::hash<StringType>{}(domain);
@@ -35,15 +43,35 @@ struct BasicOpIdentifier {
     return h;
   }
 
-  friend std::ostream& operator<<(std::ostream& os, const BasicOpIdentifier<StringType>& op_id) {
-    os << op_id.domain << ':' << op_id.op_type << ':' << op_id.since_version;
+  // string conversion
+
+  std::string ToString() const {
+    return MakeString(domain, kStringRepresentationDelimiter,
+                      op_type, kStringRepresentationDelimiter,
+                      since_version);
+  }
+
+  static Status LoadFromString(std::string_view op_id_str, BasicOpIdentifier& op_id) {
+    const auto components = utils::SplitString(op_id_str, kStringRepresentationDelimiter, true);
+    ORT_RETURN_IF_NOT(components.size() == 3, "Invalid OpIdentifier string: ", op_id_str);
+    int since_version{};
+    ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(components[2], since_version),
+                      "Failed to parse since_version from ", components[2]);
+    op_id = BasicOpIdentifier{StringType{components[0]}, StringType{components[1]}, since_version};
+    return Status::OK();
+  }
+
+  friend std::ostream& operator<<(std::ostream& os, const BasicOpIdentifier& op_id) {
+    os << op_id.ToString();
     return os;
   }
 
  private:
-  constexpr std::tuple<const StringType&, const StringType&, const int&> Tied() const {
+  constexpr auto Tied() const {
     return std::tie(domain, op_type, since_version);
   }
+
+  static constexpr std::string_view kStringRepresentationDelimiter = ":";
 };
 
 using OpIdentifier = BasicOpIdentifier<std::string>;

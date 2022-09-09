@@ -121,26 +121,10 @@ Status KernelTypeStrResolver::RegisterGraphNodeOpSchemas(const Graph& graph) {
 Status KernelTypeStrResolver::SaveToOrtFormat(
     fb::FlatBufferBuilder& builder,
     fb::Offset<fbs::KernelTypeStrResolver>& fbs_kernel_type_str_resolver) const {
-  // Note: For the top level map, we can't use FlatBufferBuilder::CreateVectorOfSortedTables since the key is not a
-  // scalar or string.
-  // However, sorting the entries is still desirable so that we get a deterministic saved representation.
-  // To accomplish that, we use a sorted container of iterators to access the entries.
-  InlinedVector<OpKernelTypeStrMap::const_iterator> sorted_op_kernel_type_str_map_its{};
-  sorted_op_kernel_type_str_map_its.reserve(op_kernel_type_str_map_.size());
-  for (auto it = op_kernel_type_str_map_.begin(); it != op_kernel_type_str_map_.end(); ++it) {
-    sorted_op_kernel_type_str_map_its.push_back(it);
-  }
-  std::sort(sorted_op_kernel_type_str_map_its.begin(), sorted_op_kernel_type_str_map_its.end(),
-            [](OpKernelTypeStrMap::const_iterator a, OpKernelTypeStrMap::const_iterator b) {
-              return a->first < b->first;
-            });
-
   std::vector<fb::Offset<fbs::OpIdKernelTypeStrArgsEntry>> fbs_op_kernel_type_str_args{};
   fbs_op_kernel_type_str_args.reserve(op_kernel_type_str_map_.size());
 
-  for (const auto& op_kernel_type_str_map_it : sorted_op_kernel_type_str_map_its) {
-    const auto& [op_id, kernel_type_str_map] = *op_kernel_type_str_map_it;
-
+  for (const auto& [op_id, kernel_type_str_map] : op_kernel_type_str_map_) {
     std::vector<fb::Offset<fbs::KernelTypeStrArgsEntry>> fbs_kernel_type_str_args{};
     fbs_kernel_type_str_args.reserve(kernel_type_str_map.size());
 
@@ -163,7 +147,7 @@ Status KernelTypeStrResolver::SaveToOrtFormat(
       fbs_kernel_type_str_args.push_back(fbs_kernel_type_str_args_entry);
     }
 
-    fb::Offset<fbs::OpIdentifier> fbs_op_id{};
+    fb::Offset<flatbuffers::String> fbs_op_id{};
     ORT_RETURN_IF_ERROR(fbs::utils::SaveOpIdentifierOrtFormat(builder, op_id, fbs_op_id));
 
     auto fbs_op_kernel_type_str_args_entry = fbs::CreateOpIdKernelTypeStrArgsEntry(
@@ -175,7 +159,7 @@ Status KernelTypeStrResolver::SaveToOrtFormat(
 
   fbs_kernel_type_str_resolver = fbs::CreateKernelTypeStrResolver(
       builder,
-      builder.CreateVector(fbs_op_kernel_type_str_args));
+      builder.CreateVectorOfSortedTables(&fbs_op_kernel_type_str_args));
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)

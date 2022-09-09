@@ -1024,8 +1024,8 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   // Check version mismatch, for now we will only proceed when runtime version matches the model's ort version
   const auto* fbs_ort_model_version = fbs_session->ort_version();
   ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
-  ORT_RETURN_IF_NOT(IsOrtModelVersionSupported(fbs_ort_model_version->str()),
-                    "The ORT format model version [", fbs_ort_model_version->str(),
+  ORT_RETURN_IF_NOT(IsOrtModelVersionSupported(fbs_ort_model_version->string_view()),
+                    "The ORT format model version [", fbs_ort_model_version->string_view(),
                     "] is not supported in this build ", ORT_VERSION);
 
   const auto* fbs_model = fbs_session->model();

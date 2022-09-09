@@ -19,29 +19,26 @@ class FlatBufferBuilder;
 
 template <typename T>
 struct Offset;
+
+struct String;
 }  // namespace flatbuffers
 
 namespace onnxruntime {
 
-namespace fbs {
-
-struct OpIdentifier;
-
-namespace utils {
+namespace fbs::utils {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
 Status SaveOpIdentifierOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  const onnxruntime::OpIdentifier& op_id,
-                                 flatbuffers::Offset<fbs::OpIdentifier>& fbs_op_id);
+                                 flatbuffers::Offset<flatbuffers::String>& fbs_op_id_str);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-Status LoadOpIdentifierOrtFormat(const fbs::OpIdentifier& fbs_op_id,
+Status LoadOpIdentifierOrtFormat(const flatbuffers::String& fbs_op_id_str,
                                  onnxruntime::OpIdentifier& op_id);
 
-}  // namespace utils
-}  // namespace fbs
+}  // namespace fbs::utils
 
 namespace utils {
 

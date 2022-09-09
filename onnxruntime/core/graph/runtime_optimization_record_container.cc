@@ -73,10 +73,10 @@ static Status SaveRuntimeOptimizationRecordToOrtFormat(
 
   const auto& produced_op_ids = runtime_optimization_record.produced_op_ids;
 
-  std::vector<flatbuffers::Offset<fbs::OpIdentifier>> fbs_produced_op_id_vector;
+  std::vector<flatbuffers::Offset<flatbuffers::String>> fbs_produced_op_id_vector;
   fbs_produced_op_id_vector.reserve(produced_op_ids.size());
   for (const auto& produced_op_id : produced_op_ids) {
-    flatbuffers::Offset<fbs::OpIdentifier> fbs_produced_op_id;
+    flatbuffers::Offset<flatbuffers::String> fbs_produced_op_id;
     ORT_RETURN_IF_ERROR(fbs::utils::SaveOpIdentifierOrtFormat(builder, produced_op_id, fbs_produced_op_id));
     fbs_produced_op_id_vector.push_back(fbs_produced_op_id);
   }

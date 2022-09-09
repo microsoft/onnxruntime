@@ -180,13 +180,6 @@ table Attribute {
   graphs:[Graph];
 }
 
-/// see corresponding type in onnxruntime/core/graph/op_identifier.h
-table OpIdentifier {
-  domain:string;
-  op_type:string;
-  since_version:int32;
-}
-
 // runtime optimizations
 
 /// nodes to consider for a runtime optimization
@@ -213,7 +206,7 @@ table RuntimeOptimizationRecord {
   action_id:string;
   nodes_to_optimize_indices:NodesToOptimizeIndices;
   produced_nodes:[DeprecatedNodeIndexAndKernelDefHash] (deprecated);
-  produced_op_ids:[OpIdentifier];
+  produced_op_ids:[string];
 }
 
 table RuntimeOptimizationRecordContainerEntry {
@@ -299,7 +292,7 @@ table KernelTypeStrArgsEntry {
 }
 
 table OpIdKernelTypeStrArgsEntry {
-  op_id:OpIdentifier;  // this is effectively the key, but only scalars/strings are supported for the key attribute
+  op_id:string (key);
   kernel_type_str_args:[KernelTypeStrArgsEntry];
 }
 

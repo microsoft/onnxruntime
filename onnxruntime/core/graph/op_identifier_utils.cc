@@ -12,21 +12,17 @@ namespace onnxruntime::fbs::utils {
 
 Status SaveOpIdentifierOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  const onnxruntime::OpIdentifier& op_id,
-                                 flatbuffers::Offset<fbs::OpIdentifier>& fbs_op_id) {
-  const auto fbs_domain = builder.CreateSharedString(op_id.domain);
-  const auto fbs_op_type = builder.CreateSharedString(op_id.op_type);
-  fbs_op_id = fbs::CreateOpIdentifier(builder, fbs_domain, fbs_op_type, op_id.since_version);
+                                 flatbuffers::Offset<flatbuffers::String>& fbs_op_id_str) {
+  const auto op_id_str = op_id.ToString();
+  fbs_op_id_str = builder.CreateSharedString(op_id_str);
   return Status::OK();
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-Status LoadOpIdentifierOrtFormat(const fbs::OpIdentifier& fbs_op_id,
+Status LoadOpIdentifierOrtFormat(const flatbuffers::String& fbs_op_id_str,
                                  onnxruntime::OpIdentifier& op_id) {
-  std::string domain, op_type;
-  LoadStringFromOrtFormat(domain, fbs_op_id.domain());
-  LoadStringFromOrtFormat(op_type, fbs_op_id.op_type());
-  op_id = onnxruntime::OpIdentifier{std::move(domain), std::move(op_type), fbs_op_id.since_version()};
+  ORT_RETURN_IF_ERROR(onnxruntime::OpIdentifier::LoadFromString(fbs_op_id_str.string_view(), op_id));
   return Status::OK();
 }
 
