@@ -572,8 +572,20 @@ namespace OperatorHelper
             outputShape.insert(outputShape.end() - 1, 1);
         }
 
+        auto broadcastedRank = std::max(inputShape0.size(), inputShape1.size());
+        inputShape0.insert(inputShape0.begin(), (broadcastedRank - inputShape0.size()), 1);
+        inputStride0.insert(inputStride0.begin(), (broadcastedRank - inputStride0.size()), 0);
+
+        inputShape1.insert(inputShape1.begin(), (broadcastedRank - inputShape1.size()), 1);
+        inputStride1.insert(inputStride1.begin(), (broadcastedRank - inputStride1.size()), 0);
+
         // Broadcast the extra dimensions of each input, then add the truncated matrix dimensions.
-        BroadcastTensorShapeAndSetStrides(inputShape0, inputStride0, inputShape1, inputStride1);
+        BroadcastTensorShapeAndSetStrides(
+            gsl::make_span(inputShape0).subspan(0, broadcastedRank - 2),
+            gsl::make_span(inputStride0).subspan(0, broadcastedRank - 2),
+            gsl::make_span(inputShape1).subspan(0, broadcastedRank - 2),
+            gsl::make_span(inputStride1).subspan(0, broadcastedRank - 2)
+        );
     }
 
     std::pair<std::vector<uint32_t>, std::vector<uint32_t>> FusedMatMulSizeAndStride(
@@ -583,7 +595,7 @@ namespace OperatorHelper
     {
         const uint32_t dimensionCount = sizes.size();
         std::vector<uint32_t> newStrides(dimensionCount);
-        std::vector<uint32_t> newSizes(sizes);
+        std::vector<uint32_t> newSizes(sizes.begin(), sizes.end());
 
         // Calculate packed strides.
         uint32_t stride = 1;
@@ -598,7 +610,8 @@ namespace OperatorHelper
         // `transBatch` needs to be applied first and then `trans`.
         if (transBatch)
         {
-            // TODO: Verify input sizes are valid.
+            ML_CHECK_VALID_ARGUMENT(dimensionCount > 2, 
+                "FusedMatMul operator: Tensor size should be more than 2, if attribute transBatch is true");
             uint32_t secondLastStride = newStrides[dimensionCount - 2];
             uint32_t secondLastSize = newSizes[dimensionCount - 2];
 
@@ -689,53 +702,38 @@ namespace OperatorHelper
     }
 
     void BroadcastTensorShapeAndSetStrides(
-        std::vector<DimensionType>& inputShape0,
-        std::vector<DimensionType>& inputStride0,
-        std::vector<DimensionType>& inputShape1,
-        std::vector<DimensionType>& inputStride1
+        gsl::span<DimensionType> inputShape0,
+        gsl::span<DimensionType> inputStride0,
+        gsl::span<DimensionType> inputShape1,
+        gsl::span<DimensionType> inputStride1
         )
     {
         if (inputShape0 != inputShape1)
         {
-            auto outputRank = std::max(inputShape0.size(), inputShape1.size());
+            ML_CHECK_VALID_ARGUMENT(
+                inputShape0.size() == inputShape1.size() && 
+                inputShape0.size() == inputStride0.size() &&
+                inputStride0.size() == inputStride1.size(),
+                "Size of inputShape0, inputStride0, inputShape1 and inputStride1 should be same while broadcasting");
 
             // Walk backwards through both input shapes and broadcast each dimension,
             // ignoring the last 2 dimensions (matrix dimensions).
-            auto inDim0Iter = inputShape0.rbegin() + 2;
-            auto inDim1Iter = inputShape1.rbegin() + 2;
+            auto rank = inputShape0.size();
+            auto inDim0Iter = inputShape0.rbegin();
+            auto inDim1Iter = inputShape1.rbegin();
 
-            auto inStride0Iter = inputStride0.rbegin() + 2;
-            auto inStride1Iter = inputStride1.rbegin() + 2;
-            outputRank -= 2;
-
-            std::vector<DimensionType> newInputShape(outputRank);
-            std::vector<DimensionType> newInputStride0(outputRank), newInputStride1(outputRank);
-
-            while (outputRank-- > 0)
+            auto inStride0Iter = inputStride0.rbegin();
+            auto inStride1Iter = inputStride1.rbegin();
+            
+            while (rank-- > 0)
             {
-                DimensionType inDimension0 = 1;
-                DimensionType inStride0 = 0;
-                if (inDim0Iter != inputShape0.rend())
-                {
-                    inDimension0 = *inDim0Iter;
-                    inStride0 = *inStride0Iter;
-                    ++inDim0Iter;
-                    ++inStride0Iter;
-                }
+                DimensionType inDimension0 = *inDim0Iter;
+                DimensionType inStride0 = *inStride0Iter;
 
-                DimensionType inDimension1 = 1;
-                DimensionType inStride1 = 0;
-                if (inDim1Iter != inputShape1.rend())
-                {
-                    inDimension1 = *inDim1Iter;
-                    inStride1 = *inStride1Iter;
-                    ++inDim1Iter;
-                    ++inStride1Iter;
-                }
+                DimensionType inDimension1 = *inDim1Iter;
+                DimensionType inStride1 = *inStride1Iter;
 
                 // 0-sized dimensions indicate an empty tensor and shouldn't be broadcasted to higher dimensions.
-                // TODO: 0-sized dimensions are actually scalars and are broadcastable. Can this be made to work with
-                // scalars?
                 if (inDimension0 == 0 || inDimension1 == 0)
                 {
                     inDimension0 = 0;
@@ -745,22 +743,15 @@ namespace OperatorHelper
                 ML_CHECK_VALID_ARGUMENT((inDimension0 == inDimension1) || (inDimension0 == 1) || (inDimension1 == 1));
                 auto broadcastedDimension = std::max(inDimension0, inDimension1);
 
-                newInputShape[outputRank] = broadcastedDimension;
-                newInputStride0[outputRank] = (broadcastedDimension != inDimension0) ? 0 : inStride0;
-                newInputStride1[outputRank] = (broadcastedDimension != inDimension1) ? 0 : inStride1;
+                inputShape0[rank] = inputShape1[rank] = broadcastedDimension;
+                inputStride0[rank] = (broadcastedDimension != inDimension0) ? 0 : inStride0;
+                inputStride1[rank] = (broadcastedDimension != inDimension1) ? 0 : inStride1;
+
+                ++inDim0Iter;
+                ++inStride0Iter;
+                ++inDim1Iter;
+                ++inStride1Iter;
             }
-
-            inputShape0.erase(inputShape0.begin(), inputShape0.end() - 2);
-            inputShape1.erase(inputShape1.begin(), inputShape1.end() - 2);
-
-            inputShape0.insert(inputShape0.begin(), newInputShape.begin(), newInputShape.end());
-            inputShape1.insert(inputShape1.begin(), newInputShape.begin(), newInputShape.end());
-
-            inputStride0.erase(inputStride0.begin(), inputStride0.end() - 2);
-            inputStride1.erase(inputStride1.begin(), inputStride1.end() - 2);
-
-            inputStride0.insert(inputStride0.begin(), newInputStride0.begin(), newInputStride0.end());
-            inputStride1.insert(inputStride1.begin(), newInputStride1.begin(), newInputStride1.end());
         }
     }
 

@@ -19,10 +19,10 @@ std::vector<DimensionType> BroadcastTensorShape(
     gsl::span<const DimensionType> inputShape1);
 
 void BroadcastTensorShapeAndSetStrides(
-    std::vector<DimensionType>& inputShape0,
-    std::vector<DimensionType>& inputStride0,
-    std::vector<DimensionType>& inputShape1,
-    std::vector<DimensionType>& inputStride1);
+    gsl::span<DimensionType> inputShape0,
+    gsl::span<DimensionType> inputStride0,
+    gsl::span<DimensionType> inputShape1,
+    gsl::span<DimensionType> inputStride1);
 
 // Find all the occurrences of a value, and return the array indices (in ascending order).
 //

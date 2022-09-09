@@ -214,7 +214,7 @@ void TensorDesc::SetStrides(gsl::span<const uint32_t> strides)
 {
     if (!strides.empty())
     {
-        // TODO: Verify strides size does not overwrite memory of m_strides.
+        ML_CHECK_VALID_ARGUMENT(strides.size() <= std::size(m_strides));
         m_bufferTensorDesc.Strides = strides.data();
         int index = 0;
         for (uint32_t stride : strides)
