@@ -579,7 +579,6 @@ namespace OperatorHelper
         inputShape1.insert(inputShape1.begin(), (broadcastedRank - inputShape1.size()), 1);
         inputStride1.insert(inputStride1.begin(), (broadcastedRank - inputStride1.size()), 0);
 
-        // Broadcast the extra dimensions of each input, then add the truncated matrix dimensions.
         BroadcastTensorShapeAndSetStrides(
             gsl::make_span(inputShape0).subspan(0, broadcastedRank - 2),
             gsl::make_span(inputStride0).subspan(0, broadcastedRank - 2),
