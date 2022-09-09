@@ -19,7 +19,7 @@ from .operators.qdq_base_operator import QDQOperatorBase
 from .operators.resize import QDQResize, QResize
 from .operators.softmax import QDQSoftmax, QLinearSoftmax
 from .operators.split import QDQSplit, QSplit
-from .operators.where import QDQWhere, QWhere
+from .operators.where import QDQWhere, QLinearWhere
 from .quant_utils import QuantizationMode
 
 CommonOpsRegistry = {
@@ -58,7 +58,7 @@ QLinearOpsRegistry = {
     "AveragePool": QLinearPool,
     "Concat": QLinearConcat,
     "Softmax": QLinearSoftmax,
-    "Where": QWhere,
+    "Where": QLinearWhere,
 }
 QLinearOpsRegistry.update(CommonOpsRegistry)
 

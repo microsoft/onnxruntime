@@ -5,7 +5,7 @@ from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
 
-class QWhere(QuantOperatorBase):
+class QLinearWhere(QuantOperatorBase):
     def should_quantize(self):
         return True
 
