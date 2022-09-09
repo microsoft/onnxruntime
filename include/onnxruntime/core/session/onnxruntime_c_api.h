@@ -30,7 +30,7 @@
 *
 * This value is used by some API functions to behave as this version of the header expects.
 */
-#define ORT_API_VERSION 11
+#define ORT_API_VERSION 13
 
 #ifdef __cplusplus
 extern "C" {
@@ -227,6 +227,16 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
 } OrtErrorCode;
 
+typedef enum OrtOpAttrType {
+  ORT_OP_ATTR_UNDEFINED = 0,
+  ORT_OP_ATTR_INT,
+  ORT_OP_ATTR_INTS,
+  ORT_OP_ATTR_FLOAT,
+  ORT_OP_ATTR_FLOATS,
+  ORT_OP_ATTR_STRING,
+  ORT_OP_ATTR_STRINGS,
+} OrtOpAttrType;
+
 //! @}
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
@@ -257,6 +267,8 @@ ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
+ORT_RUNTIME_CLASS(Op);
+ORT_RUNTIME_CLASS(OpAttr);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -483,7 +495,7 @@ typedef struct OrtTensorRTProviderOptions {
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
   // This is the legacy struct and don't add new fields here.
-  // For new field that can be represented by string, please add it in include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h   
+  // For new field that can be represented by string, please add it in include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h
   // For non-string field, need to create a new separate api to handle it.
 } OrtTensorRTProviderOptions;
 
@@ -492,9 +504,9 @@ typedef struct OrtTensorRTProviderOptions {
 * \see OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
 */
 typedef struct OrtMIGraphXProviderOptions {
-  int device_id;                                // hip device id.
-  int migraphx_fp16_enable;                     // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
-  int migraphx_int8_enable;                     // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int device_id;             // hip device id.
+  int migraphx_fp16_enable;  // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_int8_enable;  // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -503,7 +515,9 @@ typedef struct OrtMIGraphXProviderOptions {
 */
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
-  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, use_compiled_network{}, blob_dump_path{}, context{} {}
+  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{},
+                                 num_of_threads{}, use_compiled_network{}, blob_dump_path{},
+                                 context{}, enable_opencl_throttling{}, enable_dynamic_shapes{} {}
 #endif
   /** \brief Device type string
   *
@@ -516,10 +530,15 @@ typedef struct OrtOpenVINOProviderOptions {
   unsigned char use_compiled_network;  ///< 0 = disabled, nonzero = enabled
   const char* blob_dump_path;          // path is set to empty by default
   void* context;
+  unsigned char enable_opencl_throttling; ///< 0 = disabled, nonzero = enabled
+  unsigned char enable_dynamic_shapes;  ///< 0 = disabled, nonzero = enabled
 } OrtOpenVINOProviderOptions;
 
 struct OrtApi;
 typedef struct OrtApi OrtApi;
+
+struct OrtTrainingApi;
+typedef struct OrtTrainingApi OrtTrainingApi;
 
 /** \brief The helper interface to get the right version of OrtApi
 *
@@ -3303,6 +3322,183 @@ struct OrtApi {
   */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
                   _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
+
+ /** \brief Replace initialized Tensors with external data with the data provided in initializers.
+  *
+  * The function will find the initialized TensorProtos with external data in the graph with the provided names and
+  * replace them with the provided tensors. The API verifies that the TensorProto being replaced
+  * has an external data reference and has the same name, dimensions and data type as its replacement. The replacement
+  * will occur before any of the optimizations take place. The data will be copied into the graph
+  * since TensorProto can't refer to the user provided buffers.
+  *
+  * Once the model has been loaded, the OrtValue(s) added to SessionOptions instance will be removed
+  * from the internal SessionOptions copy to save memory, the user provided buffers can then be deallocated
+  * and the SessionOptions instance that refers to them can be destroyed.
+  *
+  * \param[in] options
+  * \param[in] initializer_names Array of null terminated UTF-8 encoded strings of the initializers names.
+  * \param[in] initializers Array of ::OrtValue type
+  * \param[in] initializers_num Number of elements in the initializer_names and initializers
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
+                  _In_reads_(input_len) const char* const* initializer_names,
+                  _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
+
+  /** \brief: Create attribute of onnxruntime operator
+  *
+  * \param[in] name Name of the attribute
+  * \param[in] data Data content of the attribute
+  * \param[in] len Number of bytes stored in data
+  * \param[in] type Data type
+  * \param[out] op_attr Attribute that has been created, which must be released by OrtApi::ReleaseOpAttr
+  *
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(CreateOpAttr,
+                  _In_ const char* name,
+                  _In_ const void* data,
+                  _In_ int len,
+                  _In_ OrtOpAttrType type,
+                  _Outptr_ OrtOpAttr** op_attr);
+
+  /* \brief: Release op attribute
+  *
+  * \param[in] opAttr Attribute created by OrtApi::CreateOpAttr
+  *
+  * \since Version 1.12.
+  */
+  ORT_CLASS_RELEASE(OpAttr);
+
+  /** \brief: Create onnxruntime native operator
+  *
+  * \param[in] info Kernel info
+  * \param[in] op_name Operator name
+  * \param[in] domain Operator domain
+  * \param[in] version Operator opset version
+  * \param[in] type_constraint_names Name of the type contraints, such as "T" or "T1"
+  * \param[in] type_constraint_values Type of each contraints
+  * \param[in] type_constraint_count Number of contraints
+  * \param[in] attr_values Attributes used to initialize the operator
+  * \param[in] attr_count Number of the attributes
+  * \param[in] input_count Number of inputs
+  * \param[in] output_count Number of outputs
+  * \param[out] ort_op Operator that has been created
+  *
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(CreateOp,
+                  _In_ const OrtKernelInfo* info,
+                  _In_ const char* op_name,
+                  _In_ const char* domain,
+                  _In_ int version,
+                  _In_opt_ const char** type_constraint_names,
+                  _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
+                  _In_opt_ int type_constraint_count,
+                  _In_opt_ const OrtOpAttr* const* attr_values,
+                  _In_opt_ int attr_count,
+                  _In_ int input_count,
+                  _In_ int output_count,
+                  _Outptr_ OrtOp** ort_op);
+
+  /** \brief: Invoke the operator created by OrtApi::CreateOp
+  * The inputs must follow the order as specified in onnx specification
+  *
+  * \param[in] context Kernel context
+  * \param[in] ort_op Operator that has been created
+  * \param[in] input_values Array of inputs
+  * \param[in] input_count Number of inputs
+  * \param[in] output_values Array of outputs
+  * \param[in] output_count Number of outputs
+  *
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(InvokeOp,
+                  _In_ const OrtKernelContext* context,
+                  _In_ const OrtOp* ort_op,
+                  _In_ const OrtValue* const* input_values,
+                  _In_ int input_count,
+                  _Inout_ OrtValue* const* output_values,
+                  _In_ int output_count);
+
+  /* \brief: Release an onnxruntime operator
+  *
+  * \param[in] Op Operator created by OrtApi::CreateOp
+  *
+  * \since Version 1.12.
+  */
+  ORT_CLASS_RELEASE(Op);
+
+  /** \brief: Append execution provider to the session options.
+   * \param[in] options
+   * \param[in] provider_name - provider to add.
+   * \param[in] provider_options_keys - keys to configure the provider options
+   * \param[in] provider_options_values - values to configure the provider options
+   * \param[in] num_keys - number of keys passed in
+   *
+   * Currently supported providers:
+   *   SNPE
+   *   XNNPACK
+   *
+   * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
+   *       that should be used to add it.
+   *
+   * SNPE supported keys:
+   *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
+   *   "DSP", "DSP_FIXED8_TF", "AIP_FIXED_TF", "AIP_FIXED8_TF".
+   *   Mapping to SNPE Runtime_t definition: CPU, CPU_FLOAT32 => zdl::DlSystem::Runtime_t::CPU;
+   *   GPU, GPU_FLOAT32_16_HYBRID => zdl::DlSystem::Runtime_t::GPU;
+   *   GPU_FLOAT16 => zdl::DlSystem::Runtime_t::GPU_FLOAT16;
+   *   DSP, DSP_FIXED8_TF => zdl::DlSystem::Runtime_t::DSP.
+   *   AIP_FIXED_TF, AIP_FIXED8_TF => zdl::DlSystem::Runtime_t::AIP_FIXED_TF.
+   *   "priority": execution priority, options: "low", "normal".
+   *   "buffer_type": ITensor or user buffers, options: "ITENSOR", user buffer with different types - "TF8", "TF16", "UINT8", "FLOAT".
+   *   "ITENSOR" -- default, ITensor which is float only.
+   *   "TF8" -- quantized model required, "FLOAT" -- for both quantized or non-quantized model
+   *   If SNPE is not available (due to a non Snpe enabled build or its dependencies not being installed), this function will fail.
+   *
+   * XNNPACK supported keys:
+   *   None currently
+   *
+   * \since Version 1.12.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* options,
+                  _In_ const char* provider_name,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /* \brief: Get a copy of kernel info
+  *
+  * \param[in] info Kernel info
+  * \param[out] info_copy Copy of kernel info
+  *
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(CopyKernelInfo,
+                  _In_ const OrtKernelInfo* info,
+                  _Outptr_ OrtKernelInfo** info_copy);
+
+  /* \brief: Release kernel info
+  *
+  * \param[in] KernelInfo A copy of kernel info returned by CopyKernelInfo
+  *
+  * \since Version 1.12.
+  */
+  ORT_CLASS_RELEASE(KernelInfo);
+
+  /* \brief: Get the training C Api
+  *
+  * \since Version 1.13
+  */
+  const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version) NO_EXCEPTION;
+
+#ifdef __cplusplus
+  OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
+#endif
 };
 
 /*
@@ -3311,7 +3507,6 @@ struct OrtApi {
  *   2 Create an OrtCustomOp structure for each op and add them to the domain
  *   3 Call OrtAddCustomOpDomain to add the custom domain of ops to the session options
 */
-#define OrtCustomOpApi OrtApi
 
 // Specifies some characteristics of inputs/outputs of custom ops:
 // Specify if the inputs/outputs are one of:
@@ -3372,7 +3567,6 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOpt
  * \param device_id HIP device id, starts from zero.
 */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id);
-
 
 #ifdef __cplusplus
 }

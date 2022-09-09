@@ -8,7 +8,7 @@
                "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
             }
          }
-      },   
+      },
       {
         "component": {
           "Type": "maven",
@@ -19,7 +19,7 @@
       {
         "component": {
           "Type": "maven",
-          "maven": { "GroupId": "com.google.protobuf", "ArtifactId": "protobuf-java", "Version": "3.9.2" },
+          "maven": { "GroupId": "com.google.protobuf", "ArtifactId": "protobuf-java", "Version": "3.20.1" },
           "DevelopmentDependency": true
         }
       },
@@ -46,7 +46,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "d721d320bd2f66d342d24b71600fe1f5e222e952",
+               "commitHash": "3425ed846308a456f98404c79f6df1693bed6377",
                "repositoryUrl": "https://github.com/apache/tvm.git"
             },
             "comments": "needed for TVM EP"

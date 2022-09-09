@@ -248,7 +248,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     NodeAttributes ln_attrs = ln_node.GetAttributes();
     NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
     if (epsilon != ln_attrs.end()) {
-      skip_layer_norm_node.AddAttribute("epsilon", epsilon->second);
+      skip_layer_norm_node.AddAttributeProto(epsilon->second);
     } else {
       skip_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultSkipLayerNormEpsilon);
     }

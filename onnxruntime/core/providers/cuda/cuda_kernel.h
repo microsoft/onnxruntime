@@ -88,11 +88,7 @@ class CudaKernel : public OpKernel {
       }
     }
 
-    CudaAsyncBuffer(const CudaKernel* op_kernel, const std::vector<T>& vec) : CudaAsyncBuffer(op_kernel, vec.size()) {
-      memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
-    }
-
-    CudaAsyncBuffer(const CudaKernel* op_kernel, const TensorShapeVector& vec) : CudaAsyncBuffer(op_kernel, vec.size()) {
+    CudaAsyncBuffer(const CudaKernel* op_kernel, gsl::span<T const> vec) : CudaAsyncBuffer(op_kernel, vec.size()) {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 
@@ -137,6 +133,10 @@ class CudaKernel : public OpKernel {
 
   inline cublasHandle_t CublasHandle() const {
     return provider_->PerThreadCublasHandle();
+  }
+
+  inline cublasLtHandle_t CublasLtHandle() const {
+    return provider_->PerThreadCublasLtHandle();
   }
 
   inline cudnnHandle_t CudnnHandle() const {

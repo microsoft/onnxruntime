@@ -55,6 +55,10 @@ bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, con
   if (add_init.size() > 1) {
     return false;
   }
+  // handle edge case where the total size of the initializer is 0
+  if (add_init.size() == 0) {
+    return true;
+  }
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       if (*add_init.data<float>() != 0.f) {

@@ -65,6 +65,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 providerOptionsDict["cudnn_conv_algo_search"] = "DEFAULT";
                 providerOptionsDict["do_copy_in_default_stream"] = "1";
                 providerOptionsDict["cudnn_conv_use_max_workspace"] = "1";
+                providerOptionsDict["cudnn_conv1d_pad_to_nc1d"] = "1";
                 cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
                 var resultProviderOptionsDict = new Dictionary<string, string>();
@@ -83,6 +84,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 value = resultProviderOptionsDict["do_copy_in_default_stream"];
                 Assert.Equal("1", value);
                 value = resultProviderOptionsDict["cudnn_conv_use_max_workspace"];
+                Assert.Equal("1", value);
+                value = resultProviderOptionsDict["cudnn_conv1d_pad_to_nc1d"];
                 Assert.Equal("1", value);
 
                 // test correctness of provider options
@@ -226,6 +229,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" },
+                { "cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose" },    
                 { "coreml_Imputer-LogisticRegression_sklearn_load_breast_cancer", "Can't determine model file name" },
                 { "mask_rcnn_keras", "Model should be edited to remove the extra outputs" },
                 { "test_strnormalizer_export_monday_casesensintive_lower", "ElementType not currently supported"},
@@ -301,7 +305,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_min_uint16", "node test error"},
                 { "test_adam_multiple", "node test error"},
                 { "test_loop13_seq", "node test error"},
-                { "test_convtranspose_autopad_same", "node test error"},
                 { "test_training_dropout_default_mask", "node test error"},
                 { "test_min_int8", "node test error"},
                 { "test_identity_sequence", "data type not supported"},
@@ -337,6 +340,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_optional_get_element_sequence", "not implemented yet"},
                 { "test_optional_has_element", "not implemented yet"},
                 { "test_optional_has_element_empty", "not implemented yet"},
+                { "test_identity_opt", "opset16 version not implemented yet"},
+                { "test_if_opt", "opset16 version not implemented yet"},
+                { "test_loop16_seq_none", "opset16 version not implemented yet"},
+                { "test_sequence_map_extract_shapes", "sequence type is not supported in test infra." },
+                { "test_sequence_map_identity_1_sequence_1_tensor", "sequence type is not supported in test infra." },
+                { "test_sequence_map_identity_1_sequence_1_tensor_expanded", "sequence type is not supported in test infra." },
+                { "test_sequence_map_add_1_sequence_1_tensor", "sequence type is not supported in test infra." },
+                { "test_sequence_map_identity_1_sequence_expanded", "sequence type is not supported in test infra." },
+                { "test_sequence_map_identity_2_sequences", "sequence type is not supported in test infra." },
+                { "test_sequence_map_add_2_sequences_expanded", "sequence type is not supported in test infra." },
+                { "test_sequence_map_identity_2_sequences_expanded", "sequence type is not supported in test infra." },
+                { "test_sequence_map_extract_shapes_expanded", "sequence type is not supported in test infra." },
+                { "test_sequence_map_add_1_sequence_1_tensor_expanded", "sequence type is not supported in test infra." },
+                { "test_sequence_map_add_2_sequences", "sequence type is not supported in test infra." },
+                { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." }
             };
 
             // The following models fails on nocontribops win CI
@@ -512,6 +530,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                     {
                                         Assert.Equal(result.AsTensor<float>(), outputValue.AsTensor<float>(), new FloatComparer());
                                     }
+                                    else if (outputMeta.ElementType == typeof(double))
+                                    {
+                                        Assert.Equal(result.AsTensor<double>(), outputValue.AsTensor<double>(), new DoubleComparer());
+                                    }
                                     else if (outputMeta.ElementType == typeof(int))
                                     {
                                         Assert.Equal(result.AsTensor<int>(), outputValue.AsTensor<int>(), new ExactComparer<int>());
@@ -554,12 +576,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                     }
                                     else
                                     {
-                                        Assert.True(false, "The TestPretrainedModels does not yet support output of type " + nameof(outputMeta.ElementType));
+                                        Assert.True(false, $"{nameof(TestPreTrainedModels)} does not yet support output of type {outputMeta.ElementType}");
                                     }
                                 }
                                 else
                                 {
-                                    Assert.True(false, "TestPretrainedModel cannot handle non-tensor outputs yet");
+                                    Assert.True(false, $"{nameof(TestPreTrainedModels)} cannot handle non-tensor outputs yet");
                                 }
                             }
                         }

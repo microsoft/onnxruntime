@@ -409,7 +409,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     nchwc_conv_W_arg = filters_it->second;
   } else {
     Initializer conv_W{*conv_W_tensor_proto, graph_.ModelPath()};
-    const auto& conv_W_dims = conv_W.dims();
+    const auto conv_W_dims = conv_W.dims();
 
     int64_t reordered_filter_size = nchwc_output_channels * filter_input_channels;
     for (size_t i = 2; i < 4; i++) {
@@ -1042,7 +1042,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
     }
 
     Initializer sizes{*sizes_tensor_proto, graph_.ModelPath()};
-    auto* sizes_data = sizes.template data<int64_t>();
+    auto* sizes_data = sizes.data<int64_t>();
 
     // The sizes data can only be used if the input shape is static and the
     // effective scaling must be an integer.
@@ -1072,7 +1072,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
     }
 
     Initializer scales{*scales_tensor_proto, graph_.ModelPath()};
-    auto* scales_data = scales.template data<float>();
+    auto* scales_data = scales.data<float>();
 
     // Cast the scales to integers and verify that the scales are positive and
     // round trip back to floating point.

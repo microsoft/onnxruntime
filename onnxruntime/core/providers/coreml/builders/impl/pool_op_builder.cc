@@ -17,14 +17,13 @@ namespace coreml {
 
 class PoolOpBuilder : public BaseOpBuilder {
   // Add operator related
-#ifdef __APPLE__
  private:
+#ifdef __APPLE__
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 #endif
 
   // Operator support related
- private:
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
@@ -42,7 +41,6 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& input_defs = node.InputDefs();
 
   bool is_global_pooling = false;
-  bool is_average_pool = false;
   if (op_type == "GlobalAveragePool") {
     is_global_pooling = true;
     coreml_pool->set_type(COREML_SPEC::PoolingLayerParams_PoolingType_AVERAGE);
@@ -50,7 +48,6 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     is_global_pooling = true;
     coreml_pool->set_type(COREML_SPEC::PoolingLayerParams_PoolingType_MAX);
   } else if (op_type == "AveragePool") {
-    is_average_pool = true;
     coreml_pool->set_type(COREML_SPEC::PoolingLayerParams_PoolingType_AVERAGE);
   } else if (op_type == "MaxPool") {
     coreml_pool->set_type(COREML_SPEC::PoolingLayerParams_PoolingType_MAX);

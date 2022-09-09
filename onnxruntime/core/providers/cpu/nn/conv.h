@@ -29,7 +29,7 @@ class Conv<float> : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override;
-
+  
  protected:
   MLAS_ACTIVATION activation_;
 

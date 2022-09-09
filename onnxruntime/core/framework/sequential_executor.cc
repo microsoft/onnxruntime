@@ -59,6 +59,7 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
                                       size_t& total_output_sizes, const std::string& node_name, std::string& output_type_shape) {
   // Calculate total output sizes for this operation.
   std::stringstream ss;
+  int added_type_shapes = 0;
   ss << "[";
   total_output_sizes = 0;
   ORT_UNUSED_PARAMETER(node_name);
@@ -71,15 +72,16 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
 #if defined(TRACE_EXECUTION)
       const TensorShape& tensor_shape = tensor.Shape();
       std::cout << node_name << " output[" << i << "]"
-                         << " size=" << tensor_size
-                         << " shape=" << tensor_shape.ToString()
-                         << " element_size=" << tensor.DataType()->Size()
-                         << "\n";
+                << " size=" << tensor_size
+                << " shape=" << tensor_shape.ToString()
+                << " element_size=" << tensor.DataType()->Size()
+                << "\n";
 #endif
       total_output_sizes += tensor_size;
       auto shape_str = tensor.Shape().ToString();
-      ss << "{\"" << DataTypeImpl::ToString(tensor.DataType()) << "\":["
-         << shape_str.substr(1, shape_str.size() - 2) << "]" << (i == output_count - 1 ? "}" : "},");
+      ss << (added_type_shapes++ > 0 ? "," : "")
+         << "{\"" << DataTypeImpl::ToString(tensor.DataType()) << "\":["
+         << shape_str.substr(1, shape_str.size() - 2) << "]}";
     }
   }
   ss << "]";
@@ -93,6 +95,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   // Calculate total input sizes for this operation.
   std::stringstream ss;
   ss << "[";
+  int added_type_shapes = 0;
   input_activation_sizes = 0;
   input_parameter_sizes = 0;
   ORT_UNUSED_PARAMETER(node_name);
@@ -124,8 +127,9 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
         input_activation_sizes += tensor_size;
       }
       auto shape_str = p_tensor->Shape().ToString();
-      ss << "{\"" << DataTypeImpl::ToString(p_tensor->DataType()) << "\":["
-         << shape_str.substr(1, shape_str.size() - 2) << "]" << (i == input_count - 1 ? "}" : "},");
+      ss << (added_type_shapes++ > 0 ? "," : "")
+         << "{\"" << DataTypeImpl::ToString(p_tensor->DataType()) << "\":["
+         << shape_str.substr(1, shape_str.size() - 2) << "]}";
     }
   }
   ss << "]";
@@ -137,8 +141,8 @@ static Status ReleaseNodeMLValues(ExecutionFrame& frame,
                                   const SequentialExecutionPlan::NodeExecutionPlan& node_exec_plan,
                                   const logging::Logger& logger);
 
-Status SequentialExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
-                                   const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+Status SequentialExecutor::Execute(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
+                                   gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
                                    const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                    const logging::Logger& logger) {
@@ -204,10 +208,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    size_t program_counter = 0;
-    utils::NodeDumpContext dump_context { session_state.GetGraphExecutionCounter(), program_counter };
+  size_t program_counter = 0;
+  utils::NodeDumpContext dump_context{session_state.GetGraphExecutionCounter(), program_counter};
 #endif
-
 
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
@@ -355,10 +358,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       std::ostringstream ss;
       ss << "Non-zero status code returned while running " << node.OpType() << " node. Name:'" << node.Name()
          << "' Status Message: " << compute_status.ErrorMessage();
-      //If the computation failed, we still can record the memory consumption
+      // If the computation failed, we still can record the memory consumption
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-      MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                  MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+      session_state.GetMemoryProfiler()->CreateEvents(
+          "dynamic activations_" + std::to_string(session_state.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+          session_state.GetMemoryProfiler()->GetAndIncreasePid(),
+          MemoryInfo::MapType::DynamicActivation, "", 0);
 #endif
       const auto msg_string = ss.str();
       LOGS(logger, ERROR) << msg_string;
@@ -476,9 +481,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   VLOGS(logger, 1) << "Done with execution.";
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
-  MemoryInfo::MemoryInfoProfile::Clear();
+  session_state.GetMemoryProfiler()->CreateEvents(
+      "dynamic activations_" + std::to_string(session_state.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+      session_state.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+  session_state.GetMemoryProfiler()->Clear();
 #endif
 
   if (frame.HasMemoryPatternPlanner()) {
@@ -491,8 +497,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     if (all_tensors) {
-      auto mem_patterns = std::make_unique<MemoryPatternGroup>();
-      ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
+      MemoryPatternGroup mem_patterns;
+      ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns));
       ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(feeds, std::move(mem_patterns)));
     }
   }

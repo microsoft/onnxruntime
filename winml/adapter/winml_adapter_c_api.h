@@ -14,6 +14,7 @@
 
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ExecutionProvider);
+ORT_RUNTIME_CLASS(ThreadPool);
 
 struct WinmlAdapterApi;
 typedef struct WinmlAdapterApi WinmlAdapterApi;
@@ -43,6 +44,37 @@ struct OrtProfilerEventRecord {
 };
 
 typedef void(ORT_API_CALL* OrtProfilingFunction)(const OrtProfilerEventRecord* event_record);
+
+enum class ThreadPoolType : uint8_t {
+  INTRA_OP,
+  INTER_OP
+};
+
+struct OrtThreadPoolOptions {
+  //0: Use default setting. (All the physical cores or half of the logical cores)
+  //1: Don't create thread pool
+  //n: Create a thread pool with n threads.
+  int thread_pool_size = 0;
+  //If it is true and thread_pool_size = 0, populate the thread affinity information in ThreadOptions.
+  //Otherwise if the thread_options has affinity information, we'll use it and set it.
+  //In the other case, don't set affinity
+  bool auto_set_affinity = false;
+  //If it is true, the thread pool will spin a while after the queue became empty.
+  bool allow_spinning = true;
+  //It it is non-negative, thread pool will split a task by a decreasing block size
+  //of remaining_of_total_iterations / (num_of_threads * dynamic_block_base_)
+  int dynamic_block_base_ = 0;
+
+  unsigned int stack_size = 0;
+  //Index is thread id, value is processor ID
+  //If the vector is empty, no explict affinity binding
+  size_t* affinity_vec = nullptr;
+  size_t affinity_vec_len = 0;
+  const ORTCHAR_T* name = nullptr;
+
+  // Set or unset denormal as zero
+  bool set_denormal_as_zero = false;
+};
 
 struct WinmlAdapterApi {
   /**
@@ -237,7 +269,8 @@ struct WinmlAdapterApi {
     * c-abi, WinML uses this so that it can perform optimizations prior to loading the model, and initializing.
     * Moreover, WinML needs a new api to support the OrtModel type, and prevent the parsing model protobufs again on session creation. 
     */
-  OrtStatus*(ORT_API_CALL* CreateSessionWithoutModel)(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateSessionWithoutModel)(_In_ OrtEnv* env, _In_ const OrtSessionOptions* options,
+   _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session)NO_EXCEPTION;
 
   /**
     * SessionGetExecutionProvider
@@ -471,5 +504,11 @@ struct WinmlAdapterApi {
       bool promote_unlinked_outputs,
       _In_ const char* const join_node_prefix)NO_EXCEPTION;
 
+  OrtStatus*(ORT_API_CALL* CreateThreadPool)(
+      _In_ ThreadPoolType type,
+      _In_ OrtThreadPoolOptions* params,
+      _Outptr_ OrtThreadPool** out)NO_EXCEPTION;
+
   ORT_CLASS_RELEASE(Model);
+  ORT_CLASS_RELEASE(ThreadPool);
 };

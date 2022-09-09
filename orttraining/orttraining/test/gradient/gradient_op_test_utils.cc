@@ -116,7 +116,6 @@ void GradientOpTester::Run(
         kCudaExecutionProvider,
         kRocmExecutionProvider,
         kDnnlExecutionProvider,
-        kNupharExecutionProvider,
         kTensorrtExecutionProvider,
     };
     bool has_run = false;
@@ -147,8 +146,6 @@ void GradientOpTester::Run(
           execution_provider = DefaultCudaExecutionProvider();
         else if (entry->Type() == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider(1);
-        else if (entry->Type() == onnxruntime::kNupharExecutionProvider)
-          execution_provider = DefaultNupharExecutionProvider();
         else if (entry->Type() == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         // skip if execution provider is disabled
@@ -173,8 +170,6 @@ void GradientOpTester::Run(
           execution_provider = DefaultCudaExecutionProvider();
         else if (provider_type == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider();
-        else if (provider_type == onnxruntime::kNupharExecutionProvider)
-          execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kRocmExecutionProvider)
@@ -202,24 +197,15 @@ void GradientOpTester::Run(
           const KernelCreateInfo* kci;
           auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);
           if (!st.IsOK()) {
-            auto* node_func = node.GetFunctionBody();
-            if (!node_func) {
+            // The goal here is unclear. It seems best to leave it to the Session
+            // creation to figure out whether the model can be executed using some
+            // valid execution-provider. Removed the logic here for partially inlining
+            // functions, as function-inlining requires other pre-conditions like
+            // Graph::Resolve etc, and it appears it is not being used anyway.
+            if (!node.CanBeInlined()) {
               valid = false;
-            } else {
-              for (auto& sub_node : node_func->Body().Nodes()) {
-                if (sub_node.OpType() != "Constant") {
-                  auto sub_reg = execution_provider->GetKernelRegistry();
-                  const KernelCreateInfo* sub_kci;
-                  st = sub_reg->TryFindKernel(sub_node, execution_provider->Type(), &sub_kci);
-                  if (!st.IsOK()) {
-                    valid = false;
-                    break;
-                  }
-                }
-              }
-            }
-            if (!valid)
               break;
+            }
           }
         }
 

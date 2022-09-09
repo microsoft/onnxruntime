@@ -78,6 +78,8 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
 static std::unordered_set<std::string> INVERTIBLE_OPS{"LayerNormalization",
                                                       "Relu"};
 
+static const std::unordered_set<size_t> CAST_STOP_EDGE{0};
+
 class GradientGraphBuilder {
  public:
   /**
@@ -101,6 +103,10 @@ class GradientGraphBuilder {
 
   const std::unordered_set<std::string>& GetNonDifferentiableYNodeArgNames() const {
     return non_differentiable_y_node_arg_names_;
+  }
+
+  const std::unordered_map<std::string, std::vector<int64_t>>& GetPythonOpInputRequireGradInfo() const {
+    return python_op_input_require_grad_info_;
   }
 
  private:
@@ -138,6 +144,18 @@ class GradientGraphBuilder {
   // Tracks tensors that are stashed in the forward pass for later use in backward pass.
   std::unordered_set<std::string> stashed_tensors_;
 
+  // Tracks PythonOps' inputs requires_grads info.
+  // Example: python_op_input_require_grad_info_[python_op_name] = [0, 1, 0].
+  //   The 2nd input of PythonOp with name "python_op_name" is differentiable.
+  //   The 1st and 3rd inputs are not differentiable.
+  std::unordered_map<std::string, std::vector<int64_t>> python_op_input_require_grad_info_;
+
+  const std::unordered_set<int64_t> GRAD_ALLOWED_TYPES{
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+      ONNX_NAMESPACE::TensorProto_DataType_DOUBLE,
+      ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16,
+  };
   const std::unordered_set<size_t>* GetStopGradientEdges(const Node& node) const;
 
   /**
@@ -165,7 +183,7 @@ class GradientGraphBuilder {
   */
   Status CheckNodeArgsReachable() const;
 
-  /** 
+  /**
   Check if node is reachable from the 'y_node_args_'
    **/
   bool IsReachable(const Node* node) const {

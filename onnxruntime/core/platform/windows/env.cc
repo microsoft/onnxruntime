@@ -16,7 +16,6 @@ limitations under the License.
 
 #include "core/platform/env.h"
 
-#include <Shlwapi.h>
 #include <Windows.h>
 
 #include <fstream>
@@ -40,6 +39,23 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 namespace onnxruntime {
 
 namespace {
+
+class UnmapFileParam {
+ public:
+  void* addr;
+  size_t len;
+};
+
+static void UnmapFile(void* param) noexcept {
+  UnmapFileParam* p = reinterpret_cast<UnmapFileParam*>(param);
+  bool ret = UnmapViewOfFile(p->addr);
+  if (!ret) {
+    const auto error_code = GetLastError();
+    LOGS_DEFAULT(ERROR) << "unmap view of file failed. error code: " << error_code
+                        << " error msg: " << std::system_category().message(error_code);
+  }
+  delete p;
+}
 
 std::wstring Basename(const std::wstring& path) {
   auto basename_index = path.find_last_of(L"/\\") + 1;  // results in 0 if no separator is found
@@ -207,8 +223,9 @@ class WindowsEnv : public Env {
         ret.push_back(buffer[i].ProcessorMask);
       }
     }
-    if (ret.empty())
+    if (ret.empty()){
       return generate_vector_of_n(std::thread::hardware_concurrency());
+    }
     return ret;
   }
 
@@ -320,8 +337,95 @@ class WindowsEnv : public Env {
     return Status::OK();
   }
 
+  /**
   Status MapFileIntoMemory(_In_z_ const ORTCHAR_T*, FileOffsetType, size_t, MappedMemoryPtr&) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "MapFileIntoMemory is not implemented on Windows.");
+  }*/
+
+  Status MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
+                           FileOffsetType offset,
+                           size_t length,
+                           MappedMemoryPtr& mapped_memory) const override {
+    ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
+    ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
+
+    if (length == 0) {
+      mapped_memory = MappedMemoryPtr{};
+      return Status::OK();
+    }
+
+#if WINVER >= _WIN32_WINNT_WIN8
+    wil::unique_hfile file_handle{
+        CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};
+#else
+    wil::unique_hfile file_handle{
+        CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
+#endif
+    if (file_handle.get() == INVALID_HANDLE_VALUE) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+          "open file ", ToUTF8String(Basename(file_path)),
+          " fail, errcode = ", error_code,
+          " - ", std::system_category().message(error_code));
+    }
+
+#if NTDDI_VERSION >= NTDDI_WIN10_RS5 && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
+    wil::unique_hfile file_mapping_handle{
+        CreateFileMapping2(file_handle.get(),
+                           nullptr,
+                           FILE_MAP_READ,
+                           PAGE_READONLY,
+                           SEC_COMMIT,
+                           0,
+                           nullptr,
+                           nullptr,
+                           0)};
+#else
+    wil::unique_hfile file_mapping_handle{
+        CreateFileMappingW(file_handle.get(),
+                           nullptr,
+                           PAGE_READONLY,
+                           0,
+                           0,
+                           nullptr)};
+#endif
+    if (file_mapping_handle.get() == INVALID_HANDLE_VALUE) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+          "open file mapping ", ToUTF8String(Basename(file_path)),
+          " fail, errcode = ", error_code,
+          " - ", std::system_category().message(error_code));
+    }
+
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+
+    static const DWORD page_size = sysinfo.dwPageSize;
+    static const DWORD allocation_granularity = sysinfo.dwAllocationGranularity;
+    const FileOffsetType offset_to_page = offset % static_cast<FileOffsetType>(page_size);
+    const size_t mapped_length = length + static_cast<size_t>(offset_to_page);
+    const FileOffsetType mapped_offset = offset - offset_to_page;
+    if (mapped_offset % allocation_granularity != 0) {
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+          "mapped offset must be a multiple of the allocation granularity",
+          " , mapped_offset = ", mapped_offset,
+          " , allocation_granularity = ", allocation_granularity,
+          " , errcode = ", error_code,
+          " - ", std::system_category().message(error_code));
+    }
+
+    void* const mapped_base = MapViewOfFile(file_mapping_handle.get(),
+                                            FILE_MAP_READ,
+                                            0,
+                                            static_cast<DWORD>(mapped_offset),
+                                            mapped_length);
+
+    mapped_memory =
+        MappedMemoryPtr{reinterpret_cast<char*>(mapped_base) + offset_to_page,
+                        OrtCallbackInvoker{OrtCallback{UnmapFile, new UnmapFileParam{mapped_base, mapped_length}}}};
+
+    return Status::OK();
   }
 
   bool FolderExists(const std::wstring& path) const override {
@@ -544,22 +648,21 @@ class WindowsEnv : public Env {
 #endif
     if (!*handle) {
       const auto error_code = GetLastError();
-      LPVOID lpMsgBuf;
+      static constexpr DWORD bufferLength = 64 * 1024;
+      std::wstring s(bufferLength, '\0');
       FormatMessageW(
-          FORMAT_MESSAGE_ALLOCATE_BUFFER |
               FORMAT_MESSAGE_FROM_SYSTEM |
               FORMAT_MESSAGE_IGNORE_INSERTS,
           NULL,
           error_code,
           MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-          (LPWSTR)&lpMsgBuf,
+          (LPWSTR)s.data(),
           0, NULL);
       std::wostringstream oss;
-      oss << L"LoadLibrary failed with error " << error_code << L" \"" << (LPWSTR)lpMsgBuf << L"\" when trying to load \"" << wlibrary_filename << L"\"";
+      oss << L"LoadLibrary failed with error " << error_code << L" \"" << s.c_str() << L"\" when trying to load \"" << wlibrary_filename << L"\"";
       std::wstring errmsg = oss.str();
       // TODO: trim the ending '\r' and/or '\n'
       common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
-      LocalFree(lpMsgBuf);
       return status;
     }
     return Status::OK();
@@ -577,22 +680,21 @@ class WindowsEnv : public Env {
     *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
     if (!*symbol) {
       const auto error_code = GetLastError();
-      LPVOID lpMsgBuf;
+      static constexpr DWORD bufferLength = 64 * 1024;
+      std::wstring s(bufferLength, '\0');
       FormatMessageW(
-          FORMAT_MESSAGE_ALLOCATE_BUFFER |
               FORMAT_MESSAGE_FROM_SYSTEM |
               FORMAT_MESSAGE_IGNORE_INSERTS,
           NULL,
           error_code,
           MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-          (LPWSTR)&lpMsgBuf,
+          (LPWSTR)s.data(),
           0, NULL);
       std::wostringstream oss;
-      oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: " << error_code << L" \"" << (LPWSTR)lpMsgBuf << L"\"";
+      oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: " << error_code << L" \"" << s.c_str() << L"\"";
       std::wstring errmsg = oss.str();
       // TODO: trim the ending '\r' and/or '\n'
       common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
-      LocalFree(lpMsgBuf);
       return status;
     }
     return Status::OK();

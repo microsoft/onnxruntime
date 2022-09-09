@@ -1,3 +1,6 @@
+// Copyright (C) 2019-2022 Intel Corporation
+// Licensed under the MIT License
+
 #pragma once
 #include <unordered_set>
 
@@ -11,7 +14,8 @@ enum versionNum {
   V_2021_1,
   V_2021_2,
   V_2021_3,
-  V_2021_4
+  V_2021_4,
+  V_2022_1
 };
 
 using VersionNum = enum versionNum;

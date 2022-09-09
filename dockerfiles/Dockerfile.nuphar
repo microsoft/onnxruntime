@@ -7,7 +7,7 @@ FROM ubuntu:18.04
 
 ARG PYTHON_VERSION=3.6
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
-ARG ONNXRUNTIME_SERVER_BRANCH=master
+ARG ONNXRUNTIME_SERVER_BRANCH=main
 
 ENV DEBIAN_FRONTEND noninteractive
 

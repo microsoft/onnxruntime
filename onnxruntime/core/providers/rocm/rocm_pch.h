@@ -11,7 +11,7 @@
 #include <hip/hip_runtime.h>
 #include <rocblas.h>
 #include <hipsparse.h>
-#include <hiprand.h>
+#include <hiprand/hiprand.h>
 #include <miopen/miopen.h>
 #include <hipfft.h>
 

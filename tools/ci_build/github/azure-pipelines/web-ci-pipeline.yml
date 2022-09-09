@@ -29,3 +29,4 @@ stages:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: false
     PoolName: 'Win-CPU-2019'
+    BuildStaticLib: true

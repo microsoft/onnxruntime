@@ -10,6 +10,7 @@ constexpr const char* kConstant = "Constant";
 constexpr const char* kFunctionOp = "_kFunctionOp";
 constexpr const char* kConstantValue = "value";
 constexpr const char* kOnnxDomain = "";
+// NOTE: Node::Init converts kOnnxDomainAlias to kOnnxDomain, so all Node instances use kOnnxDomain.
 constexpr const char* kOnnxDomainAlias = "ai.onnx";
 constexpr const char* kMLDomain = "ai.onnx.ml";
 constexpr const char* kMSDomain = "com.microsoft";
@@ -37,7 +38,9 @@ constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
 constexpr const char* kArmNNExecutionProvider = "ArmNNExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kCoreMLExecutionProvider = "CoreMLExecutionProvider";
+constexpr const char* kSnpeExecutionProvider = "SNPEExecutionProvider";
 constexpr const char* kTvmExecutionProvider = "TvmExecutionProvider";
+constexpr const char* kXnnpackExecutionProvider = "XnnpackExecutionProvider";
 
 constexpr const char* kExecutionProviderSharedLibraryPath = "shared_lib_path";
 constexpr const char* kExecutionProviderSharedLibraryEntry = "provider_factory_entry_point";

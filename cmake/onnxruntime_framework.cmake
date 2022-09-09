@@ -57,8 +57,9 @@ if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
   endif()
 endif()
-if (onnxruntime_ENABLE_TRAINING)
+if (onnxruntime_ENABLE_ATEN)
   # DLPack is a header-only dependency
+  target_compile_definitions(onnxruntime_framework PRIVATE ENABLE_ATEN)
   set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
   target_include_directories(onnxruntime_framework PRIVATE ${DLPACK_INCLUDE_DIR})
 endif()
@@ -69,7 +70,7 @@ if (onnxruntime_USE_MIMALLOC)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  target_link_libraries(onnxruntime_framework absl::raw_hash_set absl::hash absl::city)
+  target_link_libraries(onnxruntime_framework ${ABSEIL_LIBS})
 endif()
 
 set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
@@ -97,6 +98,14 @@ endif()
 
 if (WIN32)
   target_compile_definitions(onnxruntime_framework PRIVATE _SCL_SECURE_NO_WARNINGS)
+endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_framework
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/framework  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)

@@ -71,12 +71,15 @@ function(bundle_static_library bundled_target_name)
     add_dependencies(bundling_target ${target_name})
   endforeach()
 
-  add_library(${bundled_target_name} STATIC IMPORTED)
+  add_library(${bundled_target_name} STATIC IMPORTED GLOBAL)
+  set_target_properties(${bundled_target_name}
+    PROPERTIES
+      IMPORTED_LOCATION ${bundled_target_full_name})
   foreach(target_name IN ITEMS ${ARGN})
-    set_target_properties(${bundled_target_name}
-      PROPERTIES
-        IMPORTED_LOCATION ${bundled_target_full_name}
-        INTERFACE_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:${target_name},INTERFACE_INCLUDE_DIRECTORIES>)
+    set_property(TARGET ${bundled_target_name} APPEND
+      PROPERTY INTERFACE_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:${target_name},INTERFACE_INCLUDE_DIRECTORIES>)
+    set_property(TARGET ${bundled_target_name} APPEND
+      PROPERTY INTERFACE_COMPILE_DEFINITIONS $<TARGET_PROPERTY:${target_name},INTERFACE_COMPILE_DEFINITIONS>)
   endforeach()
   add_dependencies(${bundled_target_name} bundling_target)
 endfunction()
@@ -105,40 +108,47 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_mlas
       onnxruntime_optimizer
       onnxruntime_providers
+      ${PROVIDERS_XNNPACK}
       onnxruntime_session
       onnxruntime_util
       re2::re2
     )
 
-    file(GLOB_RECURSE onnxruntime_webassembly_test_src CONFIGURE_DEPENDS
-      "${ONNXRUNTIME_ROOT}/test/wasm/test_main.cc"
-      "${ONNXRUNTIME_ROOT}/test/wasm/test_inference.cc"
-    )
-
-    source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_webassembly_test_src})
-
-    add_executable(onnxruntime_webassembly_test
-      ${onnxruntime_webassembly_test_src}
-    )
-
-    set_target_properties(onnxruntime_webassembly_test PROPERTIES LINK_FLAGS
-      "-s ALLOW_MEMORY_GROWTH=1 -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1"
-    )
-
-    target_link_libraries(onnxruntime_webassembly_test PUBLIC
-      onnxruntime_webassembly
-      GTest::gtest
-    )
-
-    find_program(NODE_EXECUTABLE node required)
-    if (NOT NODE_EXECUTABLE)
-      message(FATAL_ERROR "Node is required for a test")
+    if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+      bundle_static_library(onnxruntime_webassembly tensorboard)
     endif()
 
-    add_test(NAME onnxruntime_webassembly_test
-      COMMAND ${NODE_EXECUTABLE} onnxruntime_webassembly_test.js
-      WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_webassembly_test>
-    )
+    if (onnxruntime_BUILD_UNIT_TESTS)
+      file(GLOB_RECURSE onnxruntime_webassembly_test_src CONFIGURE_DEPENDS
+        "${ONNXRUNTIME_ROOT}/test/wasm/test_main.cc"
+        "${ONNXRUNTIME_ROOT}/test/wasm/test_inference.cc"
+      )
+
+      source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_webassembly_test_src})
+
+      add_executable(onnxruntime_webassembly_test
+        ${onnxruntime_webassembly_test_src}
+      )
+
+      set_target_properties(onnxruntime_webassembly_test PROPERTIES LINK_FLAGS
+        "-s ALLOW_MEMORY_GROWTH=1 -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1"
+      )
+
+      target_link_libraries(onnxruntime_webassembly_test PUBLIC
+        onnxruntime_webassembly
+        GTest::gtest
+      )
+
+      find_program(NODE_EXECUTABLE node required)
+      if (NOT NODE_EXECUTABLE)
+        message(FATAL_ERROR "Node is required for a test")
+      endif()
+
+      add_test(NAME onnxruntime_webassembly_test
+        COMMAND ${NODE_EXECUTABLE} onnxruntime_webassembly_test.js
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_webassembly_test>
+      )
+    endif()
 else()
   file(GLOB_RECURSE onnxruntime_webassembly_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/wasm/api.cc"
@@ -162,15 +172,25 @@ else()
     onnxruntime_mlas
     onnxruntime_optimizer
     onnxruntime_providers
+    ${PROVIDERS_XNNPACK}
     onnxruntime_session
     onnxruntime_util
     re2::re2
   )
+  if (onnxruntime_USE_XNNPACK)
+    target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
+  endif()
+
+  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+    target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
+  endif()
 
   set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
 
   set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "             \
                         -s \"EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}\" \
+                        -s \"EXPORTED_FUNCTIONS=_malloc,_free\"                     \
+                        -s MAXIMUM_MEMORY=4294967296                                \
                         -s WASM=1                                                   \
                         -s NO_EXIT_RUNTIME=0                                        \
                         -s ALLOW_MEMORY_GROWTH=1                                    \
@@ -179,9 +199,15 @@ else()
                         -s LLD_REPORT_UNDEFINED                                     \
                         -s VERBOSE=0                                                \
                         -s NO_FILESYSTEM=1                                          \
-                        -s MALLOC=${onnxruntime_WEBASSEMBLY_MALLOC}                 \
                         --closure 1                                                 \
                         --no-entry")
+
+  if (onnxruntime_EMSCRIPTEN_SETTINGS)
+    foreach(setting IN LISTS onnxruntime_EMSCRIPTEN_SETTINGS)
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS
+      " -s ${setting}")
+    endforeach()
+  endif()
 
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=1 -s DEMANGLE_SUPPORT=1")
@@ -199,19 +225,17 @@ else()
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmThreaded -s USE_PTHREADS=1")
     if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmSimdThreaded -s USE_PTHREADS=1")
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd-threaded")
     else()
-      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmThreaded -s USE_PTHREADS=1")
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-threaded")
     endif()
   else()
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasm")
     if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmSimd")
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd")
     else()
-      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasm")
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm")
     endif()
   endif()

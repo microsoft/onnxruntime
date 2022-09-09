@@ -2,16 +2,17 @@
 # Licensed under the MIT License.
 
 import onnx
+
 from ..onnx_model_utils import get_producer_consumer_maps, iterate_graph_per_graph_func
 
 
 def _duplicate_dq_nodes_with_multiple_consumers(graph: onnx.GraphProto, **kwargs):
-    updated_graphs = kwargs['updated_graphs']
-    node_to_consumers = kwargs['node_to_consumers']
-    validate_updates = kwargs['validate_updates']
+    updated_graphs = kwargs["updated_graphs"]
+    node_to_consumers = kwargs["node_to_consumers"]
+    validate_updates = kwargs["validate_updates"]
 
     nodes_to_update = []
-    for node in filter(lambda node: node.op_type == 'DequantizeLinear', graph.node):
+    for node in filter(lambda node: node.op_type == "DequantizeLinear", graph.node):
         # node providing graph output won't have consumer nodes
         consumers = node_to_consumers[node] if node in node_to_consumers else []
         if len(consumers) > 1:
@@ -19,15 +20,16 @@ def _duplicate_dq_nodes_with_multiple_consumers(graph: onnx.GraphProto, **kwargs
                 # TODO: If this does ever occur, as long as it's only consumed in one subgraph we could leave that
                 # value as is (no need to handle recursing into the subgraph) and update the consumers in this
                 # graph only
-                raise IndexError("DequantizeLinear node output is consumed by a subgraph. "
-                                 "This is not currently supported.")
+                raise IndexError(
+                    "DequantizeLinear node output is consumed by a subgraph. " "This is not currently supported."
+                )
 
             nodes_to_update.append(node)
 
     if validate_updates:
         if nodes_to_update:
             # internal error. we somehow missed an update in the first pass when validate_upates was false
-            raise ValueError('Graph still has DequantizeLinear nodes with multiple consumers.')
+            raise ValueError("Graph still has DequantizeLinear nodes with multiple consumers.")
 
         return
 
@@ -51,11 +53,11 @@ def _duplicate_dq_nodes_with_multiple_consumers(graph: onnx.GraphProto, **kwargs
                     duplicate = onnx.NodeProto()
                     duplicate.CopyFrom(node)
                     # update node name for debugging. use the global dup idx for node duplication
-                    duplicate.name += f'/qdq_utils_dup_{dup_idx}'
+                    duplicate.name += f"/qdq_utils_dup_{dup_idx}"
 
                     # update output. use the local idx for value duplication
                     orig_output = node.output[0]
-                    new_output = f'{orig_output}/qdq_utils_dup_{idx}'
+                    new_output = f"{orig_output}/qdq_utils_dup_{idx}"
                     duplicate.output[0] = new_output
 
                     # update input on the consumer node.
@@ -73,25 +75,33 @@ def _duplicate_dq_nodes_with_multiple_consumers(graph: onnx.GraphProto, **kwargs
 
 
 def fix_dq_nodes_with_multiple_consumers(model):
-    '''
+    """
     Update a model if any DequantizeLinear nodes have multiple consumers.
     The QDQ node unit processing is overly complicated if this is the case, as the DQ node would be in multiple units,
     and the units may end up in different partitions at runtime.
     :param model: QDQ model to update
-    '''
+    """
     node_to_producers, node_to_consumers = get_producer_consumer_maps(model.graph)
 
     updated_graphs = []  # list of GraphProto instances that were updated_graphs
-    iterate_graph_per_graph_func(model.graph, _duplicate_dq_nodes_with_multiple_consumers,
-                                 node_to_consumers=node_to_consumers, validate_updates=False,
-                                 updated_graphs=updated_graphs)
+    iterate_graph_per_graph_func(
+        model.graph,
+        _duplicate_dq_nodes_with_multiple_consumers,
+        node_to_consumers=node_to_consumers,
+        validate_updates=False,
+        updated_graphs=updated_graphs,
+    )
 
     if updated_graphs:
         updated_graphs = []
         node_to_producers, node_to_consumers = get_producer_consumer_maps(model.graph)
-        iterate_graph_per_graph_func(model.graph, _duplicate_dq_nodes_with_multiple_consumers,
-                                     node_to_consumers=node_to_consumers, validate_updates=True,
-                                     updated_graphs=updated_graphs)
+        iterate_graph_per_graph_func(
+            model.graph,
+            _duplicate_dq_nodes_with_multiple_consumers,
+            node_to_consumers=node_to_consumers,
+            validate_updates=True,
+            updated_graphs=updated_graphs,
+        )
 
         # validate with check and by running shape inference.
         onnx.checker.check_model(model)

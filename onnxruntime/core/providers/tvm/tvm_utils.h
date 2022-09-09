@@ -4,13 +4,17 @@
 #ifndef TVM_UTILS_H
 #define TVM_UTILS_H
 
+#include <string>
+
 #include "tvm_common.h"
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/ortdevice.h"
 #include "core/common/common.h"
 
+
 namespace onnxruntime {
+namespace tvm {
 
 inline DLDataType GetDataType(ONNXTensorElementDataType type) {
   if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
@@ -50,6 +54,9 @@ inline DLDevice GetDLDevice(const OrtDevice& device) {
   return context;
 }
 
-}  // namespace onnxruntime
+std::string readFromFile(const std::string& file_path);
+
+}   // namespace tvm
+}   // namespace onnxruntime
 
 #endif // TVM_UTILS_H

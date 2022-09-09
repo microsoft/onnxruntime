@@ -142,13 +142,208 @@ TensorProto ToDimensionOneFloatTensor(float value) {
   return t;
 }
 
-TensorProto ToDimensionOneTensor(int32_t value) {
-  auto t = ToTensor(std::vector<int32_t>({value}));
+template <typename T>
+TensorProto ToDimensionOneTensor(T value) {
+  auto t = ToTensor(std::vector<T>({value}));
   t.add_dims(1);
   return t;
 }
 
-bool BuildContextDependentFunctionBodyNllLossInternal(
+bool SCELossInternalFunBuilder(
+    const FunctionBodyBuildContext& ctx,
+    const OpSchema& schema,
+    FunctionProto& functionProto) {
+  bool hasWeight = ctx.hasInput(2);
+  bool hasIgnoreIndex = ctx.hasInput(3);
+
+  FunctionBuilder builder(functionProto);
+
+  builder
+      .Const("Shape3D", std::vector<int64_t>({0, 0, -1}))
+      .Add(R"(
+        X_NCD = Reshape (scores, Shape3D)
+        X_NDC = Transpose <perm = [0, 2, 1]> (X_NCD)
+        X_LogSM = LogSoftmax <axis = 2> (X_NDC)
+        X_LogSM_NCD = Transpose <perm = [0, 2, 1]> (X_LogSM)
+        X_shape = Shape (scores)
+        X_Log = Reshape (X_LogSM_NCD, X_shape)
+      )");
+
+  if (ctx.hasOutput(1)) {
+    builder.Add("log_prob = Identity (X_Log)");
+  }
+
+  if (hasWeight)
+    if (hasIgnoreIndex)
+      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights, ignore_index)");
+    else
+      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights)");
+  else if (hasIgnoreIndex)
+    builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
+  else
+    builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
+
+  schema.BuildFunction(functionProto);
+  return true;
+}
+
+bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+  bool mean_reduction = true;
+  auto* reduction_attr = ctx.getAttribute("reduction");
+  if ((reduction_attr != nullptr) && (reduction_attr->s() != "mean"))
+    mean_reduction = false;
+
+  // ignore_index is an attribute for original op, and an input for newer _internal op.
+  bool has_ignore_index =
+      ignore_index_as_attr ? (ctx.getAttribute("ignore_index") != nullptr) : ctx.hasInput(4);
+  bool has_weight = ctx.hasInput(3);
+
+  FunctionBuilder builder(functionProto);
+
+  // Inputs:
+  // dY : scalar (if reduced) or [B, d1, d2, ...]
+  // log_prob : [B, C, d1, d2, ...]
+  // weight : [C]
+  // label : [B, d1, d2, ...]
+
+  // We decompose the forward propagation into two steps, for doing the backward prop.
+  // Step 1: loss = Neg(Logsoftmax(prediction-for-true-label))
+  // Step 2: y = Reduce (loss), adjusting for weights and ignore_index
+
+  // Backward-prop for Step 2: compute d_loss from dY
+  builder.Add(R"(
+                zero_int64 = Constant <value = int64 {0}> ()
+                zero_label = CastLike (zero_int64, label)
+                axes1 = Constant <value = int64[1] {1}> ()
+            )");
+
+  if (has_ignore_index) {
+    if (ignore_index_as_attr)
+      builder.Add("ignored_index_value = Constant <value_int : int = @ignore_index>()");
+    else
+      builder.Add("ignored_index_value = Identity (ignore_index)");
+    builder.Add(R"(
+                  ignored_index = CastLike (ignored_index_value, label)
+                  ignored_BD = Equal (label, ignored_index)
+              )");
+    if (has_weight) {
+      // label values are in the range [0,C) U {ignored_index}, where ignored_index may be outside the range [0,C).
+      // adj_label_BD is used so we can safely index into tensor-dimensions of size [C]
+      builder.Add(R"(
+                    adj_label_BD = Where (ignored_BD, zero_label, label)
+                    weight_BD = Gather (weight, adj_label_BD)
+                    zero_weight = CastLike (zero_int64, weight)
+                    adj_weight_BD = Where (ignored_BD, zero_weight, weight_BD)
+                )");
+      if (mean_reduction) {
+        builder.Add(R"(
+                      sum_weights = ReduceSum <keepdims = 0> (adj_weight_BD)
+                      grad = Div (adj_weight_BD, sum_weights)
+                      d_loss = Mul (grad, dY)
+                  )");
+      } else {
+        builder.Add("d_loss = Mul (adj_weight_BD, dY)");
+      }
+    } else {
+      builder.Add(R"(
+                    not_ignored_BD = Not (ignored_BD)
+                    adj_weight_BD = CastLike (not_ignored_BD, dY)
+                )");
+      if (mean_reduction) {
+        builder.Add(R"(
+                      sum_weights = ReduceSum <keepdims = 0> (adj_weight_BD)
+                      grad = Div (adj_weight_BD, sum_weights)
+                      d_loss = Mul (grad, dY)
+                  )");
+      } else {
+        builder.Add("d_loss = Mul (adj_weight_BD, dY)");
+      }
+    }
+  } else {
+    if (has_weight) {
+      builder.Add("elt_weight = Gather (weight, label)");
+      if (mean_reduction) {
+        // backward-prop for y = ReduceSum (loss * elt_weight) / ReduceSum(elt_weight)
+        builder.Add(R"(
+                      sum_weights = ReduceSum <keepdims = 0> (elt_weight)
+                      grad = Div (elt_weight, sum_weights)
+                      d_loss = Mul(grad, dY)
+                  )");
+      } else {
+        // common backward-prop for y = ReduceSum(loss * elt_weight) and y = loss * elt_weight
+        builder.Add("d_loss = Mul(elt_weight, dY)");
+      }
+    } else {
+      if (mean_reduction) {
+        // backward-prop for y = ReduceSum (loss) / Size(label)
+        builder.Add(R"(
+                      count = Size(label)
+                      count_T = CastLike (count, dY)
+                      d_div = Div (dY, count_T)
+                      BD = Shape (label)
+                      d_loss = Expand (d_div, BD)
+                  )");
+      } else {
+        // common backward-prop for y = ReduceSum(loss) and y = loss
+        builder.Add(R"(
+                      BD = Shape (label)
+                      d_loss = Expand (dY, BD)
+                  )");
+      }
+    }
+  }
+
+  // Step 2: Compute d_logits from d_loss
+  // The gradient is essentially "probability - (1 if true-label else 0)", complicated
+  // by the reshaping for the general case.
+  builder.Add(R"(
+                d_loss_B1Dopt = Unsqueeze (d_loss, axes1)
+                reshape_arg = Constant < value = int64[3] {0, 0, -1} > ()
+                d_loss_B1D = Reshape (d_loss_B1Dopt, reshape_arg)
+                orig_shape = Shape (log_prob)
+                log_prob_BCD = Reshape (log_prob, reshape_arg)
+                prob_BCD = Exp (log_prob_BCD)
+            )");
+
+  // Encoding using OneHot operation:
+  // builder.Add(R"(
+  //               label_BD = Flatten (label) # convert from [B, d1, d2, ...] to [B, D = d1 * d2 * ...]
+
+  //               zero_one = Constant < value = int32[2] {0, 1}>()
+  //               zero_one_typed = CastLike (zero_one, prob_BCD)
+  //               C1d = Shape <start = 1, end = 2> (prob_BCD)
+  //               C = Squeeze(C1d)
+  //               one_hot_label_BCD = OneHot <axis=1> (label_BD, C, zero_one_typed)
+  //           )");
+
+  // Alternative encoding without using OneHot:
+  builder.Add(R"(
+              # Compute: one_hot_label_BCD [b, c, d] = (label [b, d] == c)
+              B1D_shape = Constant < value = int64[3] {0, 1, -1} > ()
+              label_B1D = Reshape (label, B1D_shape) # convert from [B, d1, d2, ...] to [B, 1, D = d1 * d2 * ...]
+              one_int64 = Constant < value = int64 {1}>()
+              C1d = Shape <start = 1, end = 2> (prob_BCD)
+              C = Squeeze(C1d)
+              index = Range (zero_int64, C, one_int64)
+              index_typed = CastLike (index, label_B1D)
+              shape_1C1 = Constant < value = int64[3] {1, -1, 1} > ()
+              index_1C1 = Reshape (index_typed, shape_1C1) # reshape index to have shape [1, C, 1]
+              # use equality comparison with broadcast between shapes [B, 1, D] and [1, C, 1]
+              one_hot_label_BCD = Equal (label_B1D, index_1C1)
+            )");
+
+  builder.Add(R"(
+                adj_BCD = CastLike (one_hot_label_BCD, prob_BCD)
+                grad_BCD = Sub (prob_BCD, adj_BCD)
+                d_logits_BCD = Mul (d_loss_B1D, grad_BCD)
+                d_logits = Reshape (d_logits_BCD, orig_shape)
+            )");
+  schema.BuildFunction(functionProto);
+  return true;
+};
+
+bool BuildNllLossInternalFunctionHelper(
+    int64_t opset_version,
     const FunctionBodyBuildContext& ctx,
     const OpSchema& schema,
     FunctionProto& functionProto) {
@@ -158,7 +353,17 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
   }
   auto input_type = ctx.getInputType(0)->tensor_type().elem_type();
   bool float_input = input_type == TensorProto_DataType_FLOAT;
+  auto reduction_attr = ctx.getAttribute("reduction");
+  std::string reduction = (reduction_attr == nullptr) ? std::string("mean") : reduction_attr->s();
   std::vector<FunctionBodyHelper::NodeDef> body;
+  // Helpers to specify axis value of 1 for Squeeze/Unsqueeze ops.
+  // It must be specified as an attribute for opsets <= 12, and as an input from opset-13 onwards.
+  std::vector<FunctionBodyHelper::AttributeProtoWrapper> axis_attr = {};
+  if (opset_version <= 12)
+    axis_attr.push_back(MakeAttribute("axes", std::vector<int64_t>({1})));
+  auto make_input = [opset_version](const char* arg) {
+    return (opset_version <= 12) ? std::vector<std::string>{arg} : std::vector<std::string>{arg, "const_one_64"};
+  };
   body.push_back(
       {{"const_zero"},
        "Constant",
@@ -171,11 +376,18 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
        {},
        {MakeAttribute("value", ToDimensionOneTensor(1))}});
 
+  if (opset_version > 12)
+    body.push_back(
+        {{"const_one_64"},
+         "Constant",
+         {},
+         {MakeAttribute("value", ToDimensionOneTensor(int64_t(1)))}});
+
   body.push_back(
       {{"expanded_target"},
        "Unsqueeze",
-       {"target"},
-       {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+       make_input("target"),
+       axis_attr});
 
   if (!ctx.hasInput(3)) {
     body.push_back(
@@ -192,19 +404,19 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
          {"loss_NCdd", "const_zero", "const_one", "const_one"}});
 
     if (!ctx.hasInput(2)) {
-      if (ctx.getAttribute("reduction")->s() == "none") {
+      if (reduction == "none") {
         body.push_back(
             {{"loss"},
              "Squeeze",
-             {"loss_N1dd"},
-             {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+             make_input("loss_N1dd"),
+             axis_attr});
       } else {
         body.push_back(
             {{"loss_Ndd"},
              "Squeeze",
-             {"loss_N1dd"},
-             {MakeAttribute("axes", std::vector<int64_t>({1}))}});
-        if (ctx.getAttribute("reduction")->s() == "mean") {
+             make_input("loss_N1dd"),
+             axis_attr});
+        if (reduction == "mean") {
           body.push_back(
               {{"loss"},
                "ReduceMean",
@@ -223,14 +435,14 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
       body.push_back(
           {{"loss_unweighted"},
            "Squeeze",
-           {"loss_N1dd"},
-           {MakeAttribute("axes", std::vector<int64_t>({1}))}});
-      if (ctx.getAttribute("reduction")->s() == "none") {
+           make_input("loss_N1dd"),
+           axis_attr});
+      if (reduction == "none") {
         body.push_back({{"loss"}, "Mul", {"loss_unweighted", "weight_gather"}});
       } else {
         body.push_back(
             {{"loss_Ndd"}, "Mul", {"loss_unweighted", "weight_gather"}});
-        if (ctx.getAttribute("reduction")->s() == "mean") {
+        if (reduction == "mean") {
           body.push_back(
               {{"loss_sum"},
                "ReduceSum",
@@ -301,8 +513,8 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
       body.push_back(
           {{"squeeze_mask"},
            "Squeeze",
-           {"mask"},
-           {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+           make_input("mask"),
+           axis_attr});
 
       body.push_back(
           {{"const_one_float"},
@@ -334,21 +546,21 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
       body.push_back(
           {{"weight_gather"},
            "Squeeze",
-           {"weight_gather_temp_1"},
-           {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+           make_input("weight_gather_temp_1"),
+           axis_attr});
     }
 
     body.push_back(
         {{"loss_unweighted"},
          "Squeeze",
-         {"loss_N1dd"},
-         {MakeAttribute("axes", std::vector<int64_t>({1}))}});
-    if (ctx.getAttribute("reduction")->s() == "none") {
+         make_input("loss_N1dd"),
+         axis_attr});
+    if (reduction == "none") {
       body.push_back({{"loss"}, "Mul", {"loss_unweighted", "weight_gather"}});
     } else {
       body.push_back(
           {{"loss_Ndd"}, "Mul", {"loss_unweighted", "weight_gather"}});
-      if (ctx.getAttribute("reduction")->s() == "mean") {
+      if (reduction == "mean") {
         body.push_back(
             {{"loss_sum"},
              "ReduceSum",
@@ -370,14 +582,18 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
     }
   }
 
-  auto func_nodes = FunctionBodyHelper::BuildNodes(body);
-  for (const auto& node : func_nodes) {
-    auto new_node = functionProto.add_node();
-    new_node->CopyFrom(node);
-  }
+  OperatorSetIdProto onnx_opset;
+  onnx_opset.set_domain("");
+  onnx_opset.set_version(opset_version);
+  return FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset});
+}
 
-  schema.BuildFunction(functionProto);
-  return true;
+template <int64_t opset_version>
+bool BuildNllLossInternalFunction(
+    const FunctionBodyBuildContext& ctx,
+    const OpSchema& schema,
+    FunctionProto& functionProto) {
+  return BuildNllLossInternalFunctionHelper(opset_version, ctx, schema, functionProto);
 }
 
 // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
@@ -777,7 +993,7 @@ void RegisterTrainingOpSchemas() {
           static_cast<int64_t>(0))
       .TypeConstraint(
           "I",
-          {"tensor(int64)"},
+          {"tensor(int32)", "tensor(int64)"},
           "Constrain input shape to integer tensors.")
       .TypeConstraint(
           "T",
@@ -1047,6 +1263,160 @@ void RegisterTrainingOpSchemas() {
           {"tensor(bool)"},
           "Constrain types to boolean tensors.");
 
+  /**
+   * AdamWOptimizer operator, taking multiple parameters as inputs (seq<tensor>).
+   * Ideally, a group of parameters sharing same learning rate (or other meta data) can use one single AdamWOptimizer.
+   * Implementation-wise, this bring opportunities for achieving better performance.
+   *
+   * The differences with AdamOptimizer:
+   * > Different inputs.
+   *
+   *   AdamWOptimizer can accept multiple parameters and other states related to them as inputs (seq<tensor>).
+   *   This make multi-tensor-apply applicable to the GPU implementation. Existing LambOptimizer has similar
+   *   capability, while it is using many fixed-length optional vardaric inputs, which is not a clean op definition.
+   *
+   *   AdamOptimizer takes one single parameter and its other states.
+   *
+   * > Different computation.
+   *
+   *   Despite of normal adam computation, for better perf in ORTTrainer, AdamOptimizer also fused gradient norm
+   *   clipping in its implementation. This sometimes makes it hard to align the optimizer with other frameworks during
+   *   model onboarding, on the other hand, the fusion did not bring very significant gains actually.
+   *
+   *   AdamWOptimizer has simplified definitions, excludes inputs/attributes not related to optimizer computations.
+   *
+   * AdamWOptimizer is recommended for new usage, AdamOptimizer is left as it is to support existing ORTTrainer
+   * solutions.
+   */
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AdamWOptimizer)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "lr", "The learning rate.", "T1")
+      .Input(1, "step", "The update count of weights. It should be a scalar.", "T2")
+      .Input(2, "weights", "Sequence of weights to optimize.", "S_WEIGHT")
+      .Input(3, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
+      .Input(4, "momentums_1", "Sequence of exponentially averaged historical gradients.", "S_MOMENT")
+      .Input(5, "momentums_2", "Sequence of exponentially averaged historical squared gradients.", "S_MOMENT")
+      .Input(6, "update_signal",
+             "This signal indicates if weight updates are skipped, applicable to gradient infinity check"
+             " in mixed precision training. ",
+             "T_BOOL", OpSchema::Optional)
+      .Output(0, "updated_flag", "Whether gradient is applied or not.", "T2")
+      .Output(1, "updated_weights", "Sequence of weights after optimize.", "S_WEIGHT", OpSchema::Optional)
+      .Output(2, "updated_momentums_1", "Sequence of momentum_1 after optimize.", "S_MOMENT", OpSchema::Optional)
+      .Output(3, "updated_momentums_2", "Sequence of momentum_2 after optimize.", "S_MOMENT", OpSchema::Optional)
+      .Attr(
+          "alpha",
+          "Coefficient of previously accumulated gradient in running average.",
+          AttributeProto::FLOAT,
+          0.9f)
+      .Attr(
+          "beta",
+          "Coefficient of previously accumulated squared-gradient in running average.",
+          AttributeProto::FLOAT,
+          0.999f)
+      .Attr(
+          "epsilon",
+          "Small scalar to avoid dividing by zero.",
+          AttributeProto::FLOAT,
+          1e-8f)
+      .Attr(
+          "weight_decay",
+          "weight decay coefficient.",
+          AttributeProto::FLOAT,
+          1e-2f)
+      .Attr(
+          "correct_bias",
+          "Whether or not to correct bias, enabled by default.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "adam_mode",
+          "Modes for applying bias correction and weight decay (default 0) "
+          "0 : Weight decay is applied before weight is updated."
+          "  Computation aligned with Torch AdamW. In this mode, "
+          "  correct_bias should be 1 to keep aligned with PyTorch."
+          "1 : Weight decay is applied after weight is updated."
+          "    Computation is aligned with Huggingface AdamW.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)"},
+          "Constrain learning rate to float")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int64)"},
+          "Constrain step count to 64-bit integer")
+      .TypeConstraint(
+          "S_WEIGHT",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain weights' types.")
+      .TypeConstraint(
+          "S_GRAD",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain gradients' types.")
+      .TypeConstraint(
+          "S_MOMENT",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain momentums' types.")
+      .TypeConstraint(
+          "T_BOOL",
+          {"tensor(bool)"},
+          "Constrain types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        size_t num_of_outputs = ctx.getNumOutputs();
+        std::unordered_map<size_t, size_t> output_to_input_index_map{{0, 1}, {1, 2}, {2, 4}, {3, 5}};
+        assert(output_to_input_index_map.size() >= num_of_outputs);
+
+        size_t sequence_source_input_index = 0;  // Be noted: 0 is invalid for sequence source input index
+        for (size_t output_index = 0; output_index < num_of_outputs; ++output_index) {
+          auto& input_index = output_to_input_index_map[output_index];
+          propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
+
+          // All 3 sequence inputs/outputs should have same shapes, searched for the first available shape
+          // and use it to infer output shapes.
+          if (output_index > 0 && sequence_source_input_index == 0 && hasInputShape(ctx, input_index)) {
+            sequence_source_input_index = input_index;
+          }
+        }
+
+        for (size_t output_index = 1; sequence_source_input_index > 1 && output_index < num_of_outputs;
+             ++output_index) {
+          propagateShapeFromInputToOutput(ctx, sequence_source_input_index, output_index);
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(InplaceClipGradNorm)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "InplaceClipGradNorm operator, taking multiple gradients as inputs (seq<tensor>). "
+          "InplaceClipGradNorm should be used in conjunction with optimizers that accept seq<tensor> "
+          "gradients as input, since this op takes a sequence of tensors as input and outputs a sequence of tensors "
+          "there by avoiding the need for SequenceConstruct (and making any unnecessary copy)."
+          "Please note that the gradient clipping happens inplace.")
+      .Input(0, "gradients", "Sequence of gradients computed in this iteration.", "S_GRAD")
+      .Output(0, "clipped_gradients", "Gradients after being clipped as per given inputs and attributes.", "S_GRAD")
+      .Attr(
+          "max_norm",
+          "Coefficient of previously accumulated gradient in running average.",
+          AttributeProto::FLOAT,
+          1.0f)
+      .Attr(
+          "norm_type",
+          "Type of normalization to perform during execution of clip grad norm."
+          "Currently, the only norm supported is the frobenius norm (which is also the default).",
+          AttributeProto::STRING,
+          std::string("fro"))
+      .TypeConstraint(
+          "S_GRAD",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain gradients' types.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulator)
@@ -1071,6 +1441,45 @@ void RegisterTrainingOpSchemas() {
           "Constrain types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulatorV2)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "In-place accumulator for tensors. Differs from older op by adding `overwrite_flag` for reset, "
+          "and making output buffer as optional. Set the `overwrite_flag` to false for gradient accumulation "
+          "and to True for overwriting the accumulation buffer during gradient computation "
+          "(equivalent to reset grad + train step)")
+      .Input(0, "accumulation_buffer", "historical result of accumulator", "T")
+      .Input(1, "value", "the value that will be added to the accumulator", "T_GRAD")
+      .Input(2, "overwrite_flag", "Indicates if tensor should be overwritten. Default is accumulation",
+             "T_BOOL", OpSchema::Optional)
+      .Output(0, "updated_flag", "Whether the update was completed", "T_BOOL")
+      .Output(1, "accumulation_buffer_out", "updated result of accumulator", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T_GRAD",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T_BOOL",
+          {"tensor(bool)"},
+          "Constrain types to boolean tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+        ONNX_NAMESPACE::TensorShapeProto updated_shape;
+        updated_shape.add_dim()->set_dim_value(1);
+        updateOutputShape(ctx, 0, updated_shape);
+        if (ctx.getNumOutputs() == 2) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          if (hasNInputShapes(ctx, 1)) {
+            propagateShapeFromInputToOutput(ctx, 0, 1);
+          }
+        }
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ZeroGradient)
@@ -1447,6 +1856,10 @@ Example 4:
         propagateElemTypeFromInputToOutput(ctx, 1, 0);
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            return SCELossGradFunBuilder(true, ctx, schema, functionProto);
+          })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
@@ -1492,6 +1905,10 @@ Example 4:
         if (attr_proto) {
           keep_dims = attr_proto->i();
         }
+        int64_t noop_with_empty_axes = 0;
+        if (auto* noop_with_empty_axes_attr = ctx.getAttribute("noop_with_empty_axes")) {
+          noop_with_empty_axes = noop_with_empty_axes_attr->i();
+        }
         auto& input_shape = ctx.getInputType(0)->tensor_type().shape();
         int64_t input_ndim = input_shape.dim_size();
         auto output_shape =
@@ -1505,9 +1922,9 @@ Example 4:
         }
 
         for (int i = 0; i < input_ndim; ++i) {
-          // axes empty means reduce all dim
-          if (!axes.empty() &&
-              std::find(axes.begin(), axes.end(), i) == axes.end()) {
+          if ((axes.empty() && noop_with_empty_axes) ||
+              (!axes.empty() &&  // axes empty means reduce all dim
+               std::find(axes.begin(), axes.end(), i) == axes.end())) {
             auto dim = output_shape->add_dim();
             dim->CopyFrom(input_shape.dim(i));
           } else {
@@ -1724,41 +2141,115 @@ Example 4:
               value is specified for ratio. In general, it is unclear why we need the training_mode as an
               input here, since the Gradient will be used only for training.
             */
-            OperatorSetIdProto onnx_opset_13;
-            onnx_opset_13.set_domain("");
-            onnx_opset_13.set_version(13);
-
             auto* tp = ctx.getInputType(0);
             if ((tp == nullptr) || (!tp->has_tensor_type()))
               return false;
             auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
-            if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)
-              return false;  // ONNX op Where doesn't support bfloat16 yet.
+
+            FunctionBuilder builder(functionProto);
+            builder
+                .AddOpset("", 16)
+                .Const("C0", ToTensor(0.0f, elem_type))
+                .Const("C1", ToTensor(1.0f, elem_type));
 
             if (ctx.hasInput(2)) {
               // ratio specified.
-              std::vector<FunctionBodyHelper::NodeDef> body{
-                  ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
-                  ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
-                  {{"ratio_elem_type"}, "Cast", {"ratio"}, {MakeAttribute("to", int64_t(elem_type))}},
-                  {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
-                  {{"scaled_dy"}, "Div", {"dy", "scale"}},
-                  {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
-
-              return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+              builder.Add("ratio_elem_type = Cast(ratio)", "to", int64_t(elem_type));
             } else {
               // ratio not specified. Use a value of 0.5
-              std::vector<FunctionBodyHelper::NodeDef> body{
-                  ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
-                  ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
-                  ONNX_NAMESPACE::Const("ratio_elem_type", 0.5f, elem_type),
-                  {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
-                  {{"scaled_dy"}, "Div", {"dy", "scale"}},
-                  {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
-
-              return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+              builder.Const("ratio_elem_type", ToTensor(0.5f, elem_type));
             }
+            builder.Add(R"(
+                  scale = Sub (C1, ratio_elem_type)
+                  scaled_dy = Div (dy, scale)
+                  dx = Where (mask, scaled_dy, C0)
+                )");
+
+            schema.BuildFunction(functionProto);
+            return true;
           });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BitmaskDropoutGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("BitmaskDropoutGrad")
+      .AllowUncheckedAttributes()
+      .Input(0, "dy", "The gradient tensor from output.", "T")
+      .Input(1, "mask", "The mask output of the dropout. ", "T3")
+      .Input(2, "ratio",
+             "Same value as the ratio input supplied to the dropout op with value in [0, 1). "
+             "If this input is not specified, a default value of 0.5 is used.",
+             "T1", OpSchema::Optional)
+      .Input(3, "training_mode",
+             "Same value as the training_mode input supplied to the dropout op. "
+             "If this input is not specified, a default value of false is used.",
+             "T2", OpSchema::Optional)
+      .Output(0, "dx", "Gradient of the input.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint("T2", {"tensor(bool)"}, "Constrain 'training_mode' type to boolean tensor.")
+      .TypeConstraint("T3", {"tensor(uint32)"}, "Constrain 'mask' type to bit-packed uint32 tensor.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasSoftmaxDropout)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "dropout_output, mask, softmax_output = Dropout(Softmax(data + bias), ratio), "
+          "Intended to specialize the Add + Softmax + Dropout pattern commonly found in transformer models.")
+      .Attr("axis", "apply softmax to elements for dimensions axis or higher", AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Attr("is_inner_broadcast",
+            "true if broadcast bias across input for dimensions broadcast_axis to axis-1, "
+            "otherwise broadcast bias across input for dimensions 0 to broadcast_axis-1",
+            AttributeProto::INT)
+      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.",
+            AttributeProto::INT, OPTIONAL_VALUE)
+      .AllowUncheckedAttributes()
+      .Input(0, "data", "The input data as Tensor.", "T")
+      .Input(1, "bias", "The bias (or mask) as Tensor.", "T")
+      .Input(2, "ratio",
+             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
+             "or if it was set to 0, the output would be a simple copy of the input. "
+             "If it's non-zero, output will be a random dropout of the scaled input, which is typically "
+             "the case during training. It is an optional value, if not specified it will default to 0.5.",
+             "T1", OpSchema::Optional)
+      .Output(0, "dropout_output", "The dropout output.", "T")
+      .Output(1, "mask", "The output mask of dropout.", "tensor(bool)")
+      .Output(2, "softmax_output", "The Softmax output for backward.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input 'ratio' types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+        propagateElemTypeFromInputToOutput(ctx, 0, 2);
+        if (hasNInputShapes(ctx, 1)) {
+          propagateShapeFromInputToOutput(ctx, 0, 1);
+          propagateShapeFromInputToOutput(ctx, 0, 2);
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxDropoutGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Gradient of BiasSoftmaxDropout Op.")
+      .Attr("axis", "apply softmax to elements for dimensions axis or higher", AttributeProto::INT)
+      .AllowUncheckedAttributes()
+      .Input(0, "dy", "The gradient tensor from output.", "T")
+      .Input(1, "mask", "The mask output of the dropout.", "tensor(bool)")
+      .Input(2, "softmax_y", "The output of Softmax.", "T")
+      .Input(3, "ratio",
+             "Same value as the ratio input supplied to the dropout op with value in [0, 1). "
+             "If this input is not specified, a default value of 0.5 is used.",
+             "T1", OpSchema::Optional)
+      .Output(0, "dx", "Gradient of the input.", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input 'ratio' types to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)
       .SetDomain(kMSDomain)
@@ -2187,22 +2678,26 @@ Example 4:
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
             AttributeProto::INT, static_cast<int64_t>(-1))
       .AllowUncheckedAttributes()
-      .Input(0, "Y_grad", "The gradient tensor from output.", "T")
+      .Input(0, "Y_grad", "The gradient tensor from output.", "V")
       .Input(1, "X", "Input data tensor from the forward path", "T")
-      .Input(2, "scale", "Scale tensor.", "T")
+      .Input(2, "scale", "Scale tensor.", "V")
       .Input(3, "mean", "mean of X.", "U")
       .Input(4, "inv_std_dev", "inverse std deviation of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
-      .Output(1, "scale_grad", "Gradient of the scale.", "T")
-      .Output(2, "bias_grad", "Gradient of the bias.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "V")
+      .Output(2, "bias_grad", "Gradient of the bias.", "V")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          "Constrain input X and its gradient's type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)", "tensor(bfloat16)"},
+          {"tensor(float)", "tensor(double)"},
           "Constrain mean and inv_std_var to float tensors.")
+      .TypeConstraint(
+          "V",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain output Y, scale, bias and their gradients' type to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 1, 0);
         propagateShapeFromInputToOutput(ctx, 1, 0);
@@ -2216,40 +2711,53 @@ Example 4:
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
             FunctionBuilder builder(functionProto);
 
-            auto* tp = ctx.getInputType(0);
-            if ((tp == nullptr) || (!tp->has_tensor_type()))
+            auto* tp0 = ctx.getInputType(0);
+            if ((tp0 == nullptr) || (!tp0->has_tensor_type()))
               return false;
-            int64_t T = tp->tensor_type().elem_type();
+            int64_t V = tp0->tensor_type().elem_type();
+
+            auto* tp1 = ctx.getInputType(1);
+            if (!tp1 || !tp1->has_tensor_type()) {
+              return false;
+            }
+            int64_t T = tp1->tensor_type().elem_type();
+
+            auto* tp3 = ctx.getInputType(3);
+            if (!tp3 || !tp3->has_tensor_type()) {
+              return false;
+            }
+            int64_t U = tp3->tensor_type().elem_type();
 
             // Requirements/assumptions:
-            // Inputs Y_grad and X are of shape [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]] and type T
-            // Input scale is of shape [d[axis], ..., d[rank-1]] and type U
-            // Inputs mean and inv_std_dev are of shape [d[0], ..., d[axis-1], 1, ..., 1] (same rank as X)
-            // and type U.
+            // Inputs Y_grad and X are of shape [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]]
+            // Input scale is of shape [d[axis], ..., d[rank-1]]
+            // Inputs mean and inv_std_dev are of shape [d[0], ..., d[axis-1], 1, ..., 1] (same rank as X).
+            // Cast to type U for calculation for better precision.
             //
             auto axis_ref_attr = MakeRefAttribute("axis", AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
             builder
                 .AddOpset("", 15)
-                .Add("cast_mean = Cast (mean)", "to", T)
-                .Add("cast_inv_std_dev = Cast(inv_std_dev)", "to", T)
-                .Add("x_2d = Flatten (X)", axis_ref_attr)
-                .Add("Y_grad_2d = Flatten (Y_grad)", axis_ref_attr)
-                .Add("mean_2d = Flatten (cast_mean)", axis_ref_attr)
-                .Add("inv_std_dev_2d = Flatten (cast_inv_std_dev)", axis_ref_attr)
+                .Add("cast_x = Cast (X)", "to", U)
+                .Add("x_2d = Flatten (cast_x)", axis_ref_attr)
+                .Add("cast_y_grad = Cast (Y_grad)", "to", U)
+                .Add("Y_grad_2d = Flatten (cast_y_grad)", axis_ref_attr)
+                .Add("mean_2d = Flatten (mean)", axis_ref_attr)
+                .Add("inv_std_dev_2d = Flatten (inv_std_dev)", axis_ref_attr)
+                .Add("cast_scale = Cast (scale)", "to", U)
                 .Add(R"ONNX(
                   shape_x = Shape (X)
                   bias_scale_shape = Shape (scale)
-                  scale_2d = Flatten <axis = 0> (scale)
+                  scale_2d = Flatten <axis = 0> (cast_scale)
 
                   axis_0 = Constant <value = int64[1] {0}> ()
                   bias_grad_2d = ReduceSum (Y_grad_2d, axis_0)
-                  bias_grad = Reshape (bias_grad_2d, bias_scale_shape)
+                  bias_grad_u = Reshape (bias_grad_2d, bias_scale_shape)
 
                   deviation = Sub (x_2d, mean_2d)
                   normalized_deviation = Mul(deviation, inv_std_dev_2d)
                   scale_grad_rows = Mul (Y_grad_2d, normalized_deviation)
                   scale_grad_2d = ReduceSum (scale_grad_rows, axis_0)
-                  scale_grad = Reshape (scale_grad_2d, bias_scale_shape)
+                  scale_grad_u = Reshape (scale_grad_2d, bias_scale_shape)
                   normalized_layer_grad = Mul (Y_grad_2d, scale_2d)
 
                   B = Mul (normalized_layer_grad, inv_std_dev_2d)
@@ -2259,8 +2767,11 @@ Example 4:
                   nd_mean_C = Mul (normalized_deviation, mean_C)
                   mean_diff_B = Sub (B, mean_B)
                   X_grad_2D = Sub (mean_diff_B, nd_mean_C)
-                  X_grad = Reshape (X_grad_2D, shape_x)
-                )ONNX");
+                  X_grad_u = Reshape (X_grad_2D, shape_x)
+                )ONNX")
+                .Add("bias_grad = Cast (bias_grad_u)", "to", V)
+                .Add("scale_grad = Cast (scale_grad_u)", "to", V)
+                .Add("X_grad = Cast (X_grad_u)", "to", T);
             schema.BuildFunction(functionProto);
             return true;
           });
@@ -2274,20 +2785,24 @@ Example 4:
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
             AttributeProto::INT, static_cast<int64_t>(-1))
       .AllowUncheckedAttributes()
-      .Input(0, "Y_grad", "The gradient tensor from output.", "T")
+      .Input(0, "Y_grad", "The gradient tensor from output.", "V")
       .Input(1, "X", "Input data tensor from the forward path", "T")
-      .Input(2, "scale", "Scale tensor.", "T")
+      .Input(2, "scale", "Scale tensor.", "V")
       .Input(3, "inv_std_var", "inverse std variance of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
-      .Output(1, "scale_grad", "Gradient of the scale.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "V")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          "Constrain input X and its gradient's type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)"},
-          "Constrain mean and inv_std_var to float tensors.");
+          {"tensor(float)", "tensor(double)"},
+          "Constrain mean and inv_std_var to float tensors.")
+      .TypeConstraint(
+          "V",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain output Y, scale and their gradients' type to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InvertibleLayerNormalizationGrad)
       .SetDomain(kMSDomain)
@@ -2298,22 +2813,26 @@ Example 4:
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
             AttributeProto::INT, static_cast<int64_t>(-1))
       .AllowUncheckedAttributes()
-      .Input(0, "Y_grad", "The gradient tensor from output.", "T")
-      .Input(1, "Y", "Output data tensor from the forward path", "T")
-      .Input(2, "scale", "Scale tensor.", "T")
-      .Input(3, "bias", "Bias tensor.", "T")
+      .Input(0, "Y_grad", "The gradient tensor from output.", "V")
+      .Input(1, "Y", "Output data tensor from the forward path", "V")
+      .Input(2, "scale", "Scale tensor.", "V")
+      .Input(3, "bias", "Bias tensor.", "V")
       .Input(4, "inv_std_var", "inverse std variance of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
-      .Output(1, "scale_grad", "Gradient of the scale.", "T")
-      .Output(2, "bias_grad", "Gradient of the bias.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "V")
+      .Output(2, "bias_grad", "Gradient of the bias.", "V")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input X and its gradient's type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)"},
-          "Constrain mean and inv_std_var to float tensors.");
+          {"tensor(float)", "tensor(double)"},
+          "Constrain mean and inv_std_var to float tensors.")
+      .TypeConstraint(
+          "V",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain output Y, scale, bias and their gradients' type to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BatchNormalizationGrad)
       .SetDomain(kMSDomain)
@@ -2993,23 +3512,6 @@ Return true if all elements are true and false otherwise.
         }
       });
 
-#ifdef ENABLE_TRAINING
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
-      .SetDomain(kPytorchAtenDomain)
-      .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("ATen")
-      .Input(0, "inputs", "ATen Op inputs.", "T", OpSchema::Variadic,
-             /*is_homogeneous*/ false,
-             /*min_arity*/ 1)
-      .Output(0, "outputs", "ATen Op outputs.", "T", OpSchema::Variadic,
-              /*is_homogeneous*/ false,
-              /*min_arity*/ 1)
-      .Attr("operator", "Name of ATen operator.", AttributeProto::STRING)
-      .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
-      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.");
-#endif
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(PythonOp)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -3046,9 +3548,11 @@ Return true if all elements are true and false otherwise.
           AttributeProto::STRING)
       .Attr(
           "input_requires_grads",
-          "Flags to indicate whether the torch.autograd.apply's inputs require gradients (including flags for both tensor"
-          " and non-tensor inputs)",
-          AttributeProto::INTS)
+          "Flags to indicate whether the torch.autograd.apply's inputs require gradients "
+          "(including flags for both tensor and non-tensor inputs). If not provided, all value in the vector is 0,"
+          "which means all inputs don't require grad. Frontend needs this info to call into torch correctly.",
+          AttributeProto::INTS,
+          false)
       // Input Pytorch tensors.
       .Attr(
           "input_tensor_types",
@@ -3123,10 +3627,6 @@ Return true if all elements are true and false otherwise.
           "",
           AttributeProto::INTS,
           false)
-      .Attr(
-          "output_tensor_requires_grads",
-          "Flags to indicate which output has gradient",
-          AttributeProto::INTS)
       .Attr(
           "output_tensor_types",
           "Output types of autograd.Function.apply.",
@@ -3218,10 +3718,7 @@ Return true if all elements are true and false otherwise.
       .Input(
           1,
           "inputs",
-          "There are 2*N inputs: "
-          "  N gradient inputs (as inputs of autograd.Function.backward) + "
-          "  N forward run activations of autograd.Function.apply."
-          "The N forward run inputs are used as control dependency between PythonOpGrad and PythonOp",
+          "The gradient inputs (as inputs of autograd.Function.backward).",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -3256,11 +3753,6 @@ Return true if all elements are true and false otherwise.
           AttributeProto::INTS,
           false)
       .Attr(
-          "input_tensor_requires_grads",
-          "Flags to indicate which inputs have gradients (including only tensor inputs)."
-          "This attribute is mostly used for input checks for better robustness.",
-          AttributeProto::INTS)
-      .Attr(
           "output_tensor_types",
           "Output types of autograd.Function.backward outputs (including only tensor outputs).",
           AttributeProto::INTS,
@@ -3294,14 +3786,10 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(input_tensor_types_proto, "PythonOpGrad's must have \"input_tensor_types\" attribute.");
         // Check if the inferred input types match those described in the
         // "input_tensor_types" attributes.
-        const auto input_tensor_requires_grads = ctx.getAttribute("input_tensor_requires_grads");
-        // Expected input schema: [ctx, grad_input_1, ..., grad_input_N, unused_1, ..., unused_M]
-        // "unused" inputs are just control inputs and they are not used actual computation.
+        // Expected input schema: [ctx, grad_input_1, ..., grad_input_N]
         // Other variables are used to invoke autograd.Function.backward(ctx, grad_input1, ..., grad_input_N).
         // The "input_count" here means 1 + N.
-        const auto input_count = input_tensor_requires_grads->ints().size();
-        ORT_ENFORCE(input_tensor_types_proto->ints_size() == input_count - 1,
-                    "PythonOp's input list should have one more element than \"input_tensor_types\" attribute.");
+        const auto input_count = input_tensor_types_proto->ints().size() + 1;
         // The first input is a pointer which points to
         // a Python object created by torch.autograd.Function.apply.
         // For details, see how we interpret it in PythonOpGrad implementation.
@@ -3386,6 +3874,7 @@ Return true if all elements are true and false otherwise.
           propagateShapeFromInputToOutput(ctx, 0, 1);
         }
       })
+      .SetContextDependentFunctionBodyBuilder(SCELossInternalFunBuilder)
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternal)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossInternalGrad)
@@ -3412,6 +3901,10 @@ Return true if all elements are true and false otherwise.
         propagateElemTypeFromInputToOutput(ctx, 1, 0);
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            return SCELossGradFunBuilder(false, ctx, schema, functionProto);
+          })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternalGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal)
@@ -3436,7 +3929,33 @@ Return true if all elements are true and false otherwise.
                       "Constrain input and output types to float tensors.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain target to integer types")
       .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
-      .SetContextDependentFunctionBodyBuilder(BuildContextDependentFunctionBodyNllLossInternal)
+      .SetContextDependentFunctionBodyBuilder(BuildNllLossInternalFunction<12>)
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { propagateElemTypeFromInputToOutput(ctx, 0, 0); })
+      .SetDoc(R"DOC(NegativeLogLikelihoodLossInternal)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal2)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("reduction", reduction_doc, AttributeProto::STRING, std::string("mean"))
+      .Input(0, "input", "Input tensor of shape (N, C) or (N, C, d1, d2, ..., dk).", "T")
+      .Input(1, "target",
+             "Target tensor of shape (N) or (N, d1, d2, ..., dk). Target element value shall be in range of [0, C). "
+             "If ignore_index is specified, it may have a value outside [0, C) and the target values should either be "
+             "in the range [0, C) or have the value ignore_index.",
+             "Tind")
+      .Input(2, "weight",
+             "Optional rescaling weight tensor. "
+             "If given, it has to be a tensor of size C. Otherwise, it is treated as if having all ones.",
+             "T", OpSchema::Optional)
+      .Input(3, "ignore_index",
+             "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.",
+             "I", OpSchema::Optional)
+      .Output(0, "loss", "The negative log likelihood loss", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain target to integer types")
+      .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
+      .SetContextDependentFunctionBodyBuilder(BuildNllLossInternalFunction<13>)
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { propagateElemTypeFromInputToOutput(ctx, 0, 0); })
       .SetDoc(R"DOC(NegativeLogLikelihoodLossInternal)DOC");
 }

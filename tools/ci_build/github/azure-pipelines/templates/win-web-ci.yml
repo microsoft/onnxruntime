@@ -15,6 +15,11 @@ parameters:
   type: string
   default: 'Win-CPU-2019'
 
+- name: PackageName
+  displayName: 'Package name'
+  type: string
+  default: 'NPM_packages'
+
 jobs:
 - job: build_onnxruntime_web
   pool: ${{ parameters.PoolName }}
@@ -158,7 +163,7 @@ jobs:
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - task: PublishPipelineArtifact@0
     inputs:
-      artifactName: 'NPM_packages'
+      artifactName: '${{ parameters.PackageName }}'
       targetPath: '$(Build.ArtifactStagingDirectory)'
     displayName: 'Publish Pipeline Artifact'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))

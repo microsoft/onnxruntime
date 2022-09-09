@@ -13,12 +13,6 @@ namespace {
 constexpr auto k_dot = ORT_TSTR(".");
 constexpr auto k_dotdot = ORT_TSTR("..");
 
-#ifdef _WIN32
-constexpr PathChar k_preferred_path_separator = ORT_TSTR('\\');
-#else  // POSIX
-constexpr PathChar k_preferred_path_separator = ORT_TSTR('/');
-#endif
-
 constexpr std::array<PathChar, 2> k_valid_path_separators{
     ORT_TSTR('/'), ORT_TSTR('\\')};
 

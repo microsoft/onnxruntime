@@ -140,7 +140,7 @@ struct AlgoSearch<T_BwdDataPerf> {
     static constexpr int num_algos = CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT;
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing cuDNN convolution backward data algorithms.");
     int perf_count;
-    std::unique_ptr<T_BwdDataPerf[]> candidates(new T_BwdDataPerf[num_algos]);
+    std::unique_ptr<T_BwdDataPerf[]> candidates = std::make_unique<T_BwdDataPerf[]>(num_algos);
     if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {
       CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardDataAlgorithm_v7(args.handle, args.w_desc, args.y_tensor,
                                                                         args.conv_desc, args.x_tensor, num_algos,
@@ -180,7 +180,7 @@ struct AlgoSearch<T_BwdFilterPerf> {
     // NOTE: - 1 because ALGO_WINOGRAD is not implemented.
     static constexpr int num_algos = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT - 1;
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing cuDNN convolution backward filter algorithms.");
-    std::unique_ptr<T_BwdFilterPerf[]> candidates(new T_BwdFilterPerf[num_algos]);
+    std::unique_ptr<T_BwdFilterPerf[]> candidates = std::make_unique<T_BwdFilterPerf[]>(num_algos);
     int perf_count;
     if (args.params.algo_mode == OrtCudnnConvAlgoSearchHeuristic) {
       CUDNN_RETURN_IF_ERROR(cudnnGetConvolutionBackwardFilterAlgorithm_v7(args.handle, args.x_tensor, args.y_tensor,
@@ -222,7 +222,7 @@ class AlgoIterator {
 
   Status TryAll(const CUDAExecutionProvider* provider, std::function<Status(const T_Perf& perf)> f) {
     auto& cache = AlgoSearch<T_Perf>::Cache();
-    
+
     if (T_Perf algo_perf; cache.Find(args_.params, &algo_perf) && f(algo_perf) == Status::OK()) {
       return Status::OK();
     }
@@ -292,20 +292,32 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
       strides.resize(rank, 1);
     }
 
-    // cuDNN only takes 4D or 5D x tensor, so pad dimensions if needed.
-    if (rank < 2) {
-      x_dims.push_back(1);
-      dy_dims.push_back(1);
-      w_dims.push_back(1);
-      pads.insert(pads.begin() + rank, 0);
-      pads.insert(pads.end(), 0);
-      kernel_shape.push_back(1);
-      strides.push_back(1);
-      dilations.push_back(1);
-    }
-
     const CUDAExecutionProvider* cuda_ep =
         static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
+
+    // cuDNN only takes 4D or 5D x tensor, so pad dimensions if needed.
+    if (rank < 2) {
+      if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+        x_dims.insert(x_dims.begin() + 2, 1);
+        dy_dims.insert(dy_dims.begin() + 2, 1);
+        w_dims.insert(w_dims.begin() + 2, 1);
+        pads.insert(pads.begin() + rank, 0);
+        pads.insert(pads.begin(), 0);
+        kernel_shape.insert(kernel_shape.begin(), 1);
+        strides.insert(strides.begin(), 1);
+        dilations.insert(dilations.begin(), 1);
+      } else {
+        x_dims.push_back(1);
+        dy_dims.push_back(1);
+        w_dims.push_back(1);
+        pads.insert(pads.begin() + rank, 0);
+        pads.insert(pads.end(), 0);
+        kernel_shape.push_back(1);
+        strides.push_back(1);
+        dilations.push_back(1);
+      }
+    }
+
     memset(&args_.params, 0, sizeof(ConvParams));
     args_.params.device_id = static_cast<int8_t>(cuda_ep->GetDeviceId());
     args_.params.data_type = CudnnTensor::GetDataType<CudaT>();

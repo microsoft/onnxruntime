@@ -16,7 +16,7 @@ describe('UnitTests - InferenceSession.create()', () => {
   const modelBuffer = fs.readFileSync(modelPath);
   const createAny: any = InferenceSession.create;
 
-  //#region test bad arguments
+  // #region test bad arguments
   it('BAD CALL - no argument', async () => {
     await assert.rejects(async () => {
       await createAny();
@@ -68,7 +68,7 @@ describe('UnitTests - InferenceSession.create()', () => {
       await InferenceSession.create(new Uint8Array(0));
     }, {name: 'Error', message: /No graph was found in the protobuf/});
   });
-  //#endregion
+  // #endregion
 
   it('metadata: inputNames', async () => {
     const session = await InferenceSession.create(modelPath);
@@ -91,7 +91,7 @@ describe('UnitTests - InferenceSession.run()', () => {
     sessionAny = session;
   });
 
-  //#region test bad input(feeds)
+  // #region test bad input(feeds)
   it('BAD CALL - input type mismatch (null)', async () => {
     await assert.rejects(async () => {
       await sessionAny.run(null);
@@ -117,9 +117,9 @@ describe('UnitTests - InferenceSession.run()', () => {
       await sessionAny.run({'data_1': input0});  // correct name should be 'data_0'
     }, {name: 'Error', message: /input 'data_0' is missing/});
   });
-  //#endregion
+  // #endregion
 
-  //#region test fetches overrides
+  // #region test fetches overrides
   it('run() - no fetches', async () => {
     const result = await session!.run({'data_0': input0});
     assertTensorEqual(result.softmaxout_1, expectedOutput0);
@@ -142,9 +142,9 @@ describe('UnitTests - InferenceSession.run()', () => {
     assert.strictEqual(softmaxout_1.data.byteOffset, preAllocatedOutputBuffer.byteOffset);
     assertTensorEqual(result.softmaxout_1, expectedOutput0);
   });
-  //#endregion
+  // #endregion
 
-  //#region test bad output(fetches)
+  // #region test bad output(fetches)
   it('BAD CALL - fetches type mismatch (null)', async () => {
     await assert.rejects(async () => {
       await sessionAny.run({'data_0': input0}, null);
@@ -176,7 +176,7 @@ describe('UnitTests - InferenceSession.run()', () => {
       await sessionAny.run({'data_0': input0}, ['im_a_wrong_output_name']);
     }, {name: 'RangeError', message: /'fetches'/});
   });
-  //#endregion
+  // #endregion
 
   it('BAD CALL - options type mismatch (number)', async () => {
     await assert.rejects(async () => {

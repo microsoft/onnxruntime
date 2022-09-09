@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <winapifamily.h>
 
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_GAMES)
 
 static_assert(sizeof(bool) == 1, "Unsupported size for bool type");
 

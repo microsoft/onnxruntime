@@ -69,6 +69,40 @@ __global__ void NonZeroOutputPositionsKernel(
   }
 }
 
+
+constexpr int MAX_DIMS = 16;
+
+template <typename InputT, int THREADS_PER_BLOCK>
+__global__ void UnRolledNonZeroOutputPositionsKernel(
+    const InputT* x, int64_t x_size, int x_rank, const TArray<fast_divmod> x_strides,
+    const int* prefix_counts, int nonzero_elements, int64_t* results) {
+  typedef cub::BlockScan<int, THREADS_PER_BLOCK> BlockScanT;
+  __shared__ typename BlockScanT::TempStorage temp_storage;
+
+  int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
+  // const cub::CastOp<bool> cast_to_bool; not supported on amd hipcub
+  int nz = 0;
+  if (index < x_size && bool(x[index])) ++nz;
+  int pos_in_block = 0;
+  BlockScanT(temp_storage).InclusiveSum(nz, pos_in_block);
+
+  int result_position = ((blockIdx.x == 0) ? 0 : prefix_counts[blockIdx.x - 1]) + pos_in_block - nz;
+
+  if (index < x_size && bool(x[index])) {
+    int remain = (int)index, dim = 0;
+    int rp = result_position;
+    #pragma unroll
+    for (int axis = 0; axis < MAX_DIMS; ++axis) {
+      if (axis == x_rank) {
+        break;
+      }
+      x_strides[axis].divmod(remain, dim, remain);
+      results[rp] = (int64_t)dim;
+      rp += nonzero_elements;
+    }
+  }
+}
+
 template <typename InputT>
 cudaError_t NonZeroCountEachBlock(cudaStream_t stream, const InputT* x, int64_t x_size, int* count_in_blocks) {
   int num_blocks = NonZeroCalcBlockCount(x_size);
@@ -82,9 +116,15 @@ cudaError_t NonZeroOutputPositions(
     cudaStream_t stream, const InputT* x, int64_t x_size, int x_rank, const TArray<fast_divmod>& x_strides,
     const int* prefix_counts, int nonzero_elements, int64_t* results) {
   int num_blocks = NonZeroCalcBlockCount(x_size);
-  NonZeroOutputPositionsKernel<InputT, NONZERO_THREADS_PER_BLOCK><<<num_blocks, NONZERO_THREADS_PER_BLOCK, 0, stream>>>(
+  if (x_rank > MAX_DIMS) {
+    NonZeroOutputPositionsKernel<InputT, NONZERO_THREADS_PER_BLOCK><<<num_blocks, NONZERO_THREADS_PER_BLOCK, 0, stream>>>(
       x, x_size, x_rank, x_strides,
       prefix_counts, nonzero_elements, results);
+  } else {
+    UnRolledNonZeroOutputPositionsKernel<InputT, NONZERO_THREADS_PER_BLOCK><<<num_blocks, NONZERO_THREADS_PER_BLOCK, 0, stream>>>(
+      x, x_size, x_rank, x_strides,
+      prefix_counts, nonzero_elements, results);
+  }
   return cudaSuccess;
 }
 

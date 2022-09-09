@@ -38,12 +38,12 @@ static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const Node
 }
 }  // namespace
 
-InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                               const std::string& provider_type,
-                                               gsl::span<const KernelRegistry* const> kernel_registries,
-                                               gsl::span<const NodeIndex> tentative_nodes) {
+std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                   const std::string& provider_type,
+                                                   gsl::span<const KernelRegistry* const> kernel_registries,
+                                                   gsl::span<const NodeIndex> tentative_nodes) {
   // automatic conversion from const std::vector&
-  gsl::span<const NodeIndex> ordered_nodes = graph.GetNodesInTopologicalOrder();
+  const auto& ordered_nodes = graph.GetNodesInTopologicalOrder();
   InlinedVector<size_t> node_id_to_order_map(graph.MaxNodeIndex());
   for (size_t id = 0, limit = ordered_nodes.size(); id < limit; ++id) {
     const NodeIndex& node_id = ordered_nodes[id];
@@ -55,7 +55,7 @@ InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& g
     return node_id_to_order_map[n1] > node_id_to_order_map[n2];
   };
 
-  std::priority_queue<NodeIndex, InlinedVector<NodeIndex>, decltype(greater_order_comp)> candidates(greater_order_comp);
+  std::priority_queue<NodeIndex, std::vector<NodeIndex>, decltype(greater_order_comp)> candidates(greater_order_comp);
 
   InlinedHashSet<const NodeArg*> cpu_output_args;
 
@@ -95,10 +95,10 @@ InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& g
         }));
   }
 
-  gsl::span<const NodeArg* const> graph_inputs = graph.GetInputs();
+  const auto& graph_inputs = graph.GetInputs();
   InlinedHashSet<NodeIndex> visited;
   visited.reserve(candidates.size());
-  InlinedHashSet<NodeIndex> cpu_nodes;
+  std::unordered_set<NodeIndex> cpu_nodes;
   cpu_nodes.reserve(candidates.size());
   // The algo below is trying to identity a subgraph that only depends on cpu tensors.
   // Usually it is a subgraph that doing shape calculation based on a GPU tensor, then reshape it back.

@@ -14,7 +14,9 @@ struct NnApi;
 namespace onnxruntime {
 namespace nnapi {
 
+#if defined(__ANDROID__)
 #define USENNAPISHAREDMEM 1
+#endif
 
 class Execution;
 

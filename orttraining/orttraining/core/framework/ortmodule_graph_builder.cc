@@ -199,7 +199,8 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
   GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "",
                                           gradient_graph_config, *logger_);
 
-  const std::unordered_set<std::string>& non_differentiable_output_names = grad_graph_builder.GetNonDifferentiableYNodeArgNames();
+  const std::unordered_set<std::string>& non_differentiable_output_names =
+      grad_graph_builder.GetNonDifferentiableYNodeArgNames();
   for (size_t i = 0; i < graph_info_.user_output_names.size(); ++i) {
     if (non_differentiable_output_names.count(graph_info_.user_output_names[i]) > 0) {
       graph_info_.output_grad_indices_non_differentiable.emplace_back(i);
@@ -207,6 +208,8 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
   }
 
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
+
+  UpdatePythonOpInputsRequireGradInfo(grad_graph_builder.GetPythonOpInputRequireGradInfo());
 
   return Status::OK();
 }
@@ -442,6 +445,28 @@ void OrtModuleGraphBuilder::FindModuleOutputNeededForBackward() {
       if (id_to_exec_order[n->Index()] > yield_node_order) {
         graph_info_.module_output_indices_requires_save_for_backward.emplace_back(i);
         break;
+      }
+    }
+  }
+}
+
+void OrtModuleGraphBuilder::UpdatePythonOpInputsRequireGradInfo(
+    const std::unordered_map<std::string, std::vector<int64_t>>& python_op_input_require_grad_info) {
+  Graph& gradient_graph = gradient_model_->MainGraph();
+  // Input require grad info are not alwarys correct after torch export.
+  // So we update the info here according to ORT gradient graph.
+  // Be noted: we only update PythonOp that is differentiable.
+  GraphViewer gradient_graph_viewer(gradient_graph);
+  const auto& gradient_node_topology_list = gradient_graph_viewer.GetNodesInTopologicalOrder();
+  for (auto node_index : gradient_node_topology_list) {
+    auto& node = *gradient_graph.GetNode(node_index);
+    if (node.OpType() == "PythonOp") {
+      if (python_op_input_require_grad_info.find(node.Name()) != python_op_input_require_grad_info.end()) {
+        auto input_requires_grads_attr = graph_utils::GetNodeAttribute(node, "input_requires_grads");
+        if (input_requires_grads_attr != nullptr) {
+          node.ClearAttribute("input_requires_grads");
+        }
+        node.AddAttribute("input_requires_grads", python_op_input_require_grad_info.at(node.Name()));
       }
     }
   }

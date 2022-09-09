@@ -1,20 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 
-#if defined(CPUIDINFO_ARCH_X86)
-#include <memory>
-#if defined(_MSC_VER)
-#include <intrin.h>
-#elif defined(__GNUC__)
-#include <cpuid.h>
-#endif
+#ifdef __linux__
+
+#include <unistd.h>
+#include <sys/syscall.h>
+#if !defined(__NR_getcpu)
+#include <asm-generic/unistd.h>
 #endif
 
-#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_SUPPORTED) && defined(__linux__)
+#if defined(CPUIDINFO_ARCH_ARM)
+
 #include <sys/auxv.h>
 #include <asm/hwcap.h>
 // N.B. Support building with older versions of asm/hwcap.h that do not define
@@ -23,20 +22,40 @@
 #define HWCAP_ASIMDDP (1 << 20)
 #endif
 
-#endif
+#endif // ARM
 
-#include <mutex>
+#endif // Linux
 
 #if _WIN32
+
+#include "Windows.h"
+
 #define HAS_WINDOWS_DESKTOP WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+
+#ifndef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
+#define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
 #endif
-#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED) && (!_WIN32 || defined(HAS_WINDOWS_DESKTOP))
+
+#endif // _WIN32
+
+#if defined(CPUINFO_SUPPORTED)
 #include <cpuinfo.h>
-#endif
+#else
+#include "core/common/cpuid_uarch.h"
+#endif  // CPUINFO_SUPPORTED
+
 
 namespace onnxruntime {
 
-#if defined(CPUIDINFO_ARCH_X86)
+#ifdef CPUIDINFO_ARCH_X86
+
+#include <memory>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#elif defined(__GNUC__)
+#include <cpuid.h>
+#endif
+
 static inline void GetCPUID(int function_id, int data[4]) {  // NOLINT
 #if defined(_MSC_VER)
   __cpuid(reinterpret_cast<int*>(data), function_id);
@@ -56,82 +75,157 @@ static inline int XGETBV() {
   return eax;
 #endif
 }
-#endif  // CPUIDINFO_ARCH_X86
 
+void CPUIDInfo::X86Init() {
+  int data[4] = {-1};
+  GetCPUID(0, data);
 
-CPUIDInfo::CPUIDInfo() {
-#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
+  int num_IDs = data[0];
+  if (num_IDs >= 1) {
+    GetCPUID(1, data);
+    if (data[2] & (1 << 27)) {
+      constexpr int AVX_MASK = 0x6;
+      constexpr int AVX512_MASK = 0xE6;
+      int value = XGETBV();
+      bool has_sse2 = (data[3] & (1 << 26));
+      has_sse3_ = (data[2] & 0x1);
+      has_sse4_1_ = (data[2] & (1 << 19));
+      bool has_ssse3 = (data[2] & (1 << 9));
+      has_avx_ = has_sse2 && has_ssse3 && (data[2] & (1 << 28)) && ((value & AVX_MASK) == AVX_MASK);
+      bool has_avx512 = (value & AVX512_MASK) == AVX512_MASK;
+      has_f16c_ = has_avx_ && (data[2] & (1 << 29)) && (data[3] & (1 << 26));
+
+      if (num_IDs >= 7) {
+        GetCPUID(7, data);
+        has_avx2_ = has_avx_ && (data[1] & (1 << 5));
+        has_avx512f_ = has_avx512 && (data[1] & (1 << 16));
+        // Add check for AVX512 Skylake since tensorization GEMM need intrinsics from avx512bw/avx512dq.
+        // avx512_skylake = avx512f | avx512vl | avx512cd | avx512bw | avx512dq
+        has_avx512_skylake_ = has_avx512 && (data[1] & ((1 << 16) | (1 << 17) | (1 << 28) | (1 << 30) | (1 << 31)));
+        is_hybrid_ = (data[3] & (1 << 15));
+      }
+    }
+  }
+}
+
+#endif /* CPUIDINFO_ARCH_X86 */
+
+#if defined(CPUIDINFO_ARCH_ARM)
+#ifdef __linux__
+
+void CPUIDInfo::ArmLinuxInit() {
+  // Pytorch CPUINFO only works on ARM linux or android
+  // Assuming no hyper-threading, no NUMA groups
+#ifdef CPUINFO_SUPPORTED
   pytorch_cpuinfo_init_ = cpuinfo_initialize();
   if (!pytorch_cpuinfo_init_) {
     LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
+    return;
   }
+#else
+  pytorch_cpuinfo_init_ = false;
 #endif
 
-#if defined(CPUIDINFO_ARCH_X86)
-    int data[4] = {-1};
-    GetCPUID(0, data);
-
-    int num_IDs = data[0];
-    if (num_IDs >= 1) {
-      GetCPUID(1, data);
-      if (data[2] & (1 << 27)) {
-        constexpr int AVX_MASK = 0x6;
-        constexpr int AVX512_MASK = 0xE6;
-        int value = XGETBV();
-        bool has_sse2 = (data[3] & (1 << 26));
-        has_sse3_ = (data[2] & 0x1);
-        has_sse4_1_ = (data[2] & (1 << 19));
-        bool has_ssse3 = (data[2] & (1 << 9));
-        has_avx_ = has_sse2 && has_ssse3 && (data[2] & (1 << 28)) && ((value & AVX_MASK) == AVX_MASK);
-        bool has_avx512 = (value & AVX512_MASK) == AVX512_MASK;
-        has_f16c_ = has_avx_ && (data[2] & (1 << 29)) && (data[3] & (1 << 26));
-
-        if (num_IDs >= 7) {
-          GetCPUID(7, data);
-          has_avx2_ = has_avx_ && (data[1] & (1 << 5));
-          has_avx512f_ = has_avx512 && (data[1] & (1 << 16));
-          // Add check for AVX512 Skylake since tensorization GEMM need intrinsics from avx512bw/avx512dq.
-          // avx512_skylake = avx512f | avx512vl | avx512cd | avx512bw | avx512dq
-          has_avx512_skylake_ = has_avx512 && (data[1] & ((1 << 16) | (1 << 17) | (1 << 28) | (1 << 30) | (1 << 31)));
-          is_hybrid_ = (data[3] & (1 << 15));
-        }
+  if (pytorch_cpuinfo_init_) {
+    is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
+    has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+    const uint32_t core_cnt = cpuinfo_get_cores_count();
+    core_uarchs_.resize(core_cnt, cpuinfo_uarch_unknown);
+    is_armv8_narrow_ld_.resize(core_cnt, false);
+    for (uint32_t c = 0; c < core_cnt; c++) {
+      const struct cpuinfo_processor* proc = cpuinfo_get_processor(c);
+      if (proc == nullptr) {
+        continue;
+      }
+      const struct cpuinfo_core* corep = proc->core;
+      if (corep == nullptr) {
+        continue;
+      }
+      auto coreid = proc->linux_id;
+      auto uarch = corep->uarch;
+      core_uarchs_[coreid] = uarch;
+      if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
+          uarch == cpuinfo_uarch_cortex_a55) {
+        is_armv8_narrow_ld_[coreid] = true;
       }
     }
-#endif
-
-#if defined(CPUIDINFO_ARCH_ARM)
-#ifdef HWCAP_ASIMDDP
-
-    // only works on ARM linux or android, does not work on Windows
-    if (pytorch_cpuinfo_init_) {
-      is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
-      has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
-    } else {
-      has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
-    }
-
-#elif defined(_WIN32)
-    // TODO implement hardware feature detection in windows.
-    is_hybrid_ = true;
-#endif
-#endif
-
+  } else {
+    has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
+  }
 }
 
-int32_t CPUIDInfo::GetCurrentUarch() const {
-#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
-  if (!pytorch_cpuinfo_init_) {
-    return -1;
-  }
-  const auto uarchIdx = cpuinfo_get_current_uarch_index();
-  const struct cpuinfo_uarch_info* uarch_info = cpuinfo_get_uarch(uarchIdx);
-  if (uarch_info == NULL) {
-    return -1;
-  }
-  return uarch_info->uarch;
+#elif defined(_WIN32)
 
+void CPUIDInfo::ArmWindowsInit() {
+
+#pragma region Application Family or OneCore Family
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
+  // Read MIDR from windows registry
+  // TODO!! Don't support multiple processor group yet!!
+  constexpr int MAX_CORES = 64;
+  constexpr int MAX_VALUE_NAME = 4096;
+
+  CHAR midrKey[MAX_VALUE_NAME] = "";  // buffer for processor registry name
+  uint32_t lastUarch = cpuinfo_uarch_unknown;
+  for (int i = 0; i < MAX_CORES - 1; i++) {
+    snprintf(midrKey, MAX_VALUE_NAME, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\%d", i);
+    uint64_t midrVal;
+    unsigned long midrSize = sizeof(uint64_t);
+
+    /*
+     * ARM lists for each coprocessor register 5 fields: op0/op1/CRn/CRm/op2. 
+     * You need to put those numbers through the ARM64_SYSREG macro:
+     * 
+     * #define ARM64_SYSREG(op0, op1, crn, crm, op2) \
+     *    (((op0 & 1) << 14) |                       \
+     *     ((op1 & 7) << 11) |                       \
+     *     ((crn & 15) << 7) |                       \
+     *     ((crm & 15) << 3) |                       \
+     *     ((op2 & 7) << 0))
+     *
+     * For the CP value of MIDR, op0 = 3 and the others are all = 0, so we come up with 0x4000,
+     */
+    auto retCode = ::RegGetValueA(HKEY_LOCAL_MACHINE, midrKey, "CP 4000", RRF_RT_REG_QWORD, nullptr, &midrVal, &midrSize);
+    if (retCode != ERROR_SUCCESS) {
+      break;
+    }
+    uint32_t uarch = cpuinfo_uarch_unknown;
+    decodeMIDR((uint32_t)midrVal, &uarch);
+    core_uarchs_.push_back(uarch);
+    if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
+        uarch == cpuinfo_uarch_cortex_a55) {
+      is_armv8_narrow_ld_.push_back(true);
+    } else {
+      is_armv8_narrow_ld_.push_back(false);
+    }
+
+    if (i == 0) {
+      lastUarch = uarch;
+    } else if (lastUarch != uarch) {
+      is_hybrid_ = true;
+      lastUarch = uarch;
+    }
+  }
+#endif /* Application Family or OneCore Family */
+
+  has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
+}
+
+#endif /* (arm or arm64) and windows */
+#endif /* arm or arm64*/
+
+uint32_t CPUIDInfo::GetCurrentCoreIdx() const {
+#ifdef _WIN32
+  return GetCurrentProcessorNumber();
+#elif defined(__linux__)
+  uint32_t coreIdx = 0xFFFFFFFF;
+  if (syscall(__NR_getcpu, &coreIdx, NULL, NULL) != 0) {
+    // failed to detect current core id. give up
+    return 0xFFFFFFFF;
+  }
+  return coreIdx;
 #else
-  return -1;
+  return 0xFFFFFFFF;  // don't know how to get core index
 #endif
 }
 

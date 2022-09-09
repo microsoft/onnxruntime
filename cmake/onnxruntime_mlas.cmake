@@ -48,6 +48,7 @@ function(setup_mlas_source_for_windows)
 
       set(mlas_platform_preprocess_srcs
         ${MLAS_SRC_DIR}/arm64/ConvSymS8KernelDot.asm
+        ${MLAS_SRC_DIR}/arm64/ConvSymS8KernelDotLd64.asm
         ${MLAS_SRC_DIR}/arm64/ConvSymU8KernelDot.asm
         ${MLAS_SRC_DIR}/arm64/ConvSymS8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/ConvSymU8KernelNeon.asm
@@ -277,6 +278,7 @@ else()
         enable_language(ASM)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelDot.S
+          ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelDotLd64.S
           ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelDot.S
           ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelNeon.S
@@ -507,4 +509,12 @@ if (WIN32)
   if (onnxruntime_ENABLE_STATIC_ANALYSIS)
     target_compile_options(onnxruntime_mlas PRIVATE  "/analyze:stacksize 131072")
   endif()
+endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_mlas
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

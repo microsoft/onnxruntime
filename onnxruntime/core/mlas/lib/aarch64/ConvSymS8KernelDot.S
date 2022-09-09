@@ -18,7 +18,6 @@ Abstract:
 #include "asmmacro.h"
 #include "AssembleDotProduct.h"
 
-        .equ    .LMLAS_CONV_SYM_FLAG_INPUT_DIRECT,      1
         .equ    .LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE, 2
 
 //
@@ -46,24 +45,17 @@ Routine Description:
 
 Arguments:
 
-    Input (x0) - Points to the input buffer.
-
-        If MLAS_CONV_SYM_FLAG_INPUT_DIRECT is set, then the input buffer points
-        directly at the input tensor.
-
-        If MLAS_CONV_SYM_FLAG_INPUT_DIRECT is clear, then the input buffer is an
-        indirection buffer. Every pointer in the indirection buffer points at a
-        InputChannels length vector (either from the input tensor or a vector of
-        padding values). These are grouped in batches of length KernelSize.
-        These batches are then repeated OutputCount times.
+    Input (x0) - Points to the indirection buffer. Every pointer in the indirection
+        buffer points at a InputChannels length vector (either from the input tensor
+        or a vector of padding values). These are grouped in batches of length
+        KernelSize.  These batches are then repeated OutputCount times.
 
     Filter (x1) - Points to the filter buffer.
 
     Output (x2) - Points the output buffer.
 
     KernelSize (x3/x9) - Size of the kernel (most commonly. 3x3=9, 5x5=25).
-
-        If MLAS_CONV_SYM_FLAG_INPUT_DIRECT is set, then kernel size should be 1.
+                         Must be > 1
 
     InputChannels (x4/x7) - Number of input channels.
 
@@ -88,21 +80,20 @@ Return Value:
 
         stp     d8,d9,[sp,#-.LConvSymFrame_SavedRegisters]!
         ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]
-        ldr     w10,[sp,#.LConvSymFrame_KernelFlags]
-        stp     d10,d11,[sp,#16]
-        stp     x19,x20,[sp,#32]
-
+        str     d10,[sp,#16]
         cmp     x7,2                    // OutputCount < 2 ?
+        str     d11,[sp,#24]
         add     x16,x2,x5               // x16 -> C1
+        str     x19,[sp,#32]
         lsl     x3,x3,#3                // KernelSize * sizeof(int8_t*)
         csel    x16,x2,x16,lo           // if OutputCount < 2  x16/C1 -> C0
-        mov     x20,x4
         add     x4,x4,3                 // InputChannels align to 4
         add     x17,x16,x5              // x17 -> C2
         ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
         csel    x17,x16,x17,ls          // if OutputCount <= 2  x17/C2 -> C1
         bic     x4,x4,3
         cmp     x7,4                    // OutputCount < 4 ?
+        ldr     w10,[sp,#.LConvSymFrame_KernelFlags]
         add     x5,x17,x5               // x5 -> C3
         ldr     x19,[x8,#.LConvSymPostProcessParams_Scale]
         csel    x5,x17,x5,lo            // if OutputCount < 4  x5/C3 -> C2
@@ -127,23 +118,6 @@ OutputChannelLoop:
         mov     x9,x3                   // restore KernelSize * sizeof(int8_t*)
 
 KernelSizeLoop:
-        tst     w10,#.LMLAS_CONV_SYM_FLAG_INPUT_DIRECT
-        beq     InputIndirection
-
-InputDirect:
-        cmp     x16,x2
-        mov     x12,x0                  // x12 -> A0
-        add     x13,x0,x20              // x13 -> A1 = A0 + input channels
-        csel    x13,x0,x13,eq
-        cmp     x17,x16
-        add     x14,x0,x20,lsl#1        // x14 -> A2
-        csel    x14,x13,x14,eq
-        cmp     x5,x17
-        add     x15,x13,x20,lsl#1       // x15 -> A3
-        csel    x15,x14,x15,eq
-        b       FinishLoadAPtr
-
-InputIndirection:
         ldr     x12,[x0]                // x12 -> A0
         cmp     x16,x2
         b.eq    SkipLoadA1              // C1==C0 -> A0=A1=A2=A3
@@ -365,12 +339,10 @@ InChLoopEpilogue:
         SdotByElement    27, 6,11,1
         SdotByElement    28, 7, 8,1
         SdotByElement    29, 7, 9,1
+        tst     x7,15
         SdotByElement    30, 7,10,1
         SdotByElement    31, 7,11,1
-
-        tst     x7,15
         b.ne    InChannels8             // 4 ~ 12 InputChannels
-
         subs    x9,x9,8                 // KernelSize-=1
         b.hi    KernelSizeLoop
 
@@ -482,7 +454,7 @@ AccumulatorsToFloat:
         b.hi    OutputChannelLoop
 
 ExitKernel:
-        ldp     x19,x20,[sp,#32]
+        ldr     x19,[sp,#32]
         ldp     d10,d11,[sp,#16]
         ldp     d8,d9,[sp],#.LConvSymFrame_SavedRegisters
         ret
@@ -538,7 +510,7 @@ InChannels4:
         ldr     s1,[x13],4
         ldr     s2,[x14],4
         ldr     s3,[x15],4
-        ldr     q5, [x1], 16
+        ldr     q5,[x1],16
         SdotByElement    16, 4, 0,0
         SdotByElement    17, 4, 1,0
         ldp     q6, q7, [x1], 32

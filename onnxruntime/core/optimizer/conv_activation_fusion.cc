@@ -8,6 +8,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
+#include "core/graph/node_attr_utils.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/selectors_actions/actions.h"
 
@@ -42,6 +43,21 @@ bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
   return data_type == actual_data_type;
 }
 
+bool ConvFusionDataTypeCheck(const Node& conv_node) {
+  // TODO(hasesh): The CPU and CUDA EP only support float type for the Conv+Activation
+  // and the Conv+Add+Relu fusions.
+  // Assess the support level for the other compatible EPs and if they also
+  // only support float, remove the EP check altogether.
+  const std::string_view node_ep = conv_node.GetExecutionProviderType();
+  if (node_ep == kCudaExecutionProvider || node_ep == kCpuExecutionProvider) {
+    if (!HasElementDataType(*conv_node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 class ConvActivation : public NodeSelector {
  public:
   ConvActivation() = default;
@@ -73,12 +89,12 @@ class ConvActivation : public NodeSelector {
       return false;
     };
 
+    if (!ConvFusionDataTypeCheck(node)) {
+      return std::nullopt;
+    }
+
     // check EP type and activation
     if (node_ep == kCudaExecutionProvider) {
-      if (!HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
-        return std::nullopt;
-      }
-
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Relu", {6, 13, 14})) {
         return std::nullopt;
       }
@@ -111,6 +127,10 @@ class ConvAddRelu : public NodeSelector {
       return std::nullopt;
     }
 
+    if (!ConvFusionDataTypeCheck(node)) {
+      return std::nullopt;
+    }
+
     const auto* add_node = GetLoneConsumerNode(graph_viewer, node);
     if (!add_node ||
         !graph_utils::IsSupportedOptypeVersionAndDomain(*add_node, "Add", {6, 7, 13, 14}) ||
@@ -137,23 +157,6 @@ class ConvAddRelu : public NodeSelector {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace actions {
-// TODO refactor to lift common logic from Node::AddAttribute()
-void SetStringAttribute(std::string name, std::string value, NodeAttributes& attributes) {
-  ONNX_NAMESPACE::AttributeProto a{};
-  a.set_name(name);
-  a.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
-  a.set_s(std::move(value));
-  attributes.insert_or_assign(std::move(name), std::move(a));
-};
-
-void SetFloatsAttribute(std::string name, gsl::span<float> value, NodeAttributes& attributes) {
-  ONNX_NAMESPACE::AttributeProto a{};
-  a.set_name(name);
-  a.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_FLOATS);
-  a.mutable_floats()->Assign(value.begin(), value.end());
-  attributes.insert_or_assign(std::move(name), std::move(a));
-};
-
 using NTO = NodesToOptimize;
 
 class FuseConvActivation : public ReplaceWithNew {
@@ -169,7 +172,7 @@ class FuseConvActivation : public ReplaceWithNew {
     ORT_ENFORCE(activation != nullptr, "Expected activation node.");
 
     const auto& activation_op_type = activation->OpType();
-    SetStringAttribute("activation", activation_op_type, extra_fused_conv_attributes);
+    utils::SetNodeAttribute(utils::MakeAttribute("activation", activation_op_type), extra_fused_conv_attributes);
 
     InlinedVector<float> activation_params;
     if (activation_op_type == "LeakyRelu") {
@@ -190,7 +193,8 @@ class FuseConvActivation : public ReplaceWithNew {
     }
 
     if (!activation_params.empty()) {
-      SetFloatsAttribute("activation_params", activation_params, extra_fused_conv_attributes);
+      utils::SetNodeAttribute(utils::MakeAttribute("activation_params", activation_params),
+                              extra_fused_conv_attributes);
     }
 
     return extra_fused_conv_attributes;
@@ -215,7 +219,7 @@ class FuseConvAddRelu : public ReplaceWithNew {
 
   NodeAttributes ExtraAttributes(const RuntimeState&) const override {
     NodeAttributes extra_fused_conv_attributes;
-    SetStringAttribute("activation", "Relu", extra_fused_conv_attributes);
+    utils::SetNodeAttribute(utils::MakeAttribute("activation", "Relu"), extra_fused_conv_attributes);
     return extra_fused_conv_attributes;
   }
 

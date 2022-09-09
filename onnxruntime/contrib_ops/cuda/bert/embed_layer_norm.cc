@@ -43,8 +43,8 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* segment_embedding = context->Input<Tensor>(4);  // optional. nullptr if it's distill-bert
   const Tensor* gamma = context->Input<Tensor>(5);
   const Tensor* beta = context->Input<Tensor>(6);
-  const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
-  const Tensor* position_ids = context->Input<Tensor>(8); // optional. nullptr if not provided
+  const Tensor* mask = context->Input<Tensor>(7);          // optional. nullptr if not provided
+  const Tensor* position_ids = context->Input<Tensor>(8);  // optional. nullptr if not provided
 
   const auto& input_dims = input_ids->Shape().GetDims();
   int64_t hidden_size = word_embedding->Shape()[1];
@@ -61,33 +61,27 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   int sequence_length = static_cast<int>(input_dims[1]);
   size_t element_size = sizeof(T);
 
-  if (!LaunchEmbedLayerNormKernel(
+  return LaunchEmbedLayerNormKernel(
           Stream(),
-          output->template MutableData<T>(),
-          mask_index->template MutableData<int32_t>(),
-          input_ids->template Data<int32_t>(),
-          nullptr == segment_ids ? nullptr : segment_ids->template Data<int32_t>(),
-          nullptr == mask ? nullptr : mask->template Data<int32_t>(),
-          gamma->template Data<T>(),
-          beta->template Data<T>(),
-          word_embedding->template Data<T>(),
-          position_embedding->template Data<T>(),
-          nullptr == segment_embedding ? nullptr : segment_embedding->template Data<T>(),
+          output->MutableData<T>(),
+          mask_index->MutableData<int32_t>(),
+          input_ids->Data<int32_t>(),
+          nullptr == segment_ids ? nullptr : segment_ids->Data<int32_t>(),
+          nullptr == mask ? nullptr : mask->Data<int32_t>(),
+          gamma->Data<T>(),
+          beta->Data<T>(),
+          word_embedding->Data<T>(),
+          position_embedding->Data<T>(),
+          nullptr == segment_embedding ? nullptr : segment_embedding->Data<T>(),
           epsilon_,
           static_cast<int>(hidden_size),
           batch_size,
           sequence_length,
           element_size,
-          embedding_sum == nullptr ? nullptr : embedding_sum->template MutableData<T>(),
-          position_ids == nullptr ? nullptr : position_ids->template Data<int32_t>())) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+          embedding_sum == nullptr ? nullptr : embedding_sum->MutableData<T>(),
+          position_ids == nullptr ? nullptr : position_ids->Data<int32_t>());
 }
 
-}  //namespace cuda
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

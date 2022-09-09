@@ -11,15 +11,13 @@ import subprocess
 import time
 import typing
 
-from ..run import run
 from ..platform_helpers import is_windows
-
+from ..run import run
 
 _log = logging.getLogger("util.android")
 
 
-SdkToolPaths = collections.namedtuple(
-    "SdkToolPaths", ["emulator", "adb", "sdkmanager", "avdmanager"])
+SdkToolPaths = collections.namedtuple("SdkToolPaths", ["emulator", "adb", "sdkmanager", "avdmanager"])
 
 
 def get_sdk_tool_paths(sdk_root: str):
@@ -41,34 +39,33 @@ def get_sdk_tool_paths(sdk_root: str):
         return None
 
     return SdkToolPaths(
-        emulator=resolve_path(
-            [os.path.join(sdk_root, "emulator")],
-            filename("emulator", "exe")),
-        adb=resolve_path(
-            [os.path.join(sdk_root, "platform-tools")],
-            filename("adb", "exe")),
+        emulator=resolve_path([os.path.join(sdk_root, "emulator")], filename("emulator", "exe")),
+        adb=resolve_path([os.path.join(sdk_root, "platform-tools")], filename("adb", "exe")),
         sdkmanager=resolve_path(
-            [os.path.join(sdk_root, "tools", "bin"),
-             os.path.join(sdk_root, "cmdline-tools", "tools", "bin")],
-            filename("sdkmanager", "bat")),
+            [os.path.join(sdk_root, "tools", "bin"), os.path.join(sdk_root, "cmdline-tools", "tools", "bin")],
+            filename("sdkmanager", "bat"),
+        ),
         avdmanager=resolve_path(
-            [os.path.join(sdk_root, "tools", "bin"),
-             os.path.join(sdk_root, "cmdline-tools", "tools", "bin")],
-            filename("avdmanager", "bat")))
+            [os.path.join(sdk_root, "tools", "bin"), os.path.join(sdk_root, "cmdline-tools", "tools", "bin")],
+            filename("avdmanager", "bat"),
+        ),
+    )
 
 
-def create_virtual_device(
-        sdk_tool_paths: SdkToolPaths,
-        system_image_package_name: str,
-        avd_name: str):
-    run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name,
-        input=b"y")
+def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_name: str, avd_name: str):
+    run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name, input=b"y")
 
-    run(sdk_tool_paths.avdmanager, "create", "avd",
-        "--name", avd_name,
-        "--package", system_image_package_name,
+    run(
+        sdk_tool_paths.avdmanager,
+        "create",
+        "avd",
+        "--name",
+        avd_name,
+        "--package",
+        system_image_package_name,
         "--force",
-        input=b"no")
+        input=b"no",
+    )
 
 
 _process_creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if is_windows() else 0
@@ -100,30 +97,36 @@ def _stop_process_with_pid(pid: int):
 
 
 def start_emulator(
-        sdk_tool_paths: SdkToolPaths,
-        avd_name: str,
-        extra_args: typing.Optional[typing.Sequence[str]] = None) -> subprocess.Popen:
-    with contextlib.ExitStack() as emulator_stack, \
-         contextlib.ExitStack() as waiter_stack:
+    sdk_tool_paths: SdkToolPaths, avd_name: str, extra_args: typing.Optional[typing.Sequence[str]] = None
+) -> subprocess.Popen:
+    with contextlib.ExitStack() as emulator_stack, contextlib.ExitStack() as waiter_stack:
         emulator_args = [
-            sdk_tool_paths.emulator, "-avd", avd_name,
-            "-memory", "4096",
-            "-timezone", "America/Los_Angeles",
+            sdk_tool_paths.emulator,
+            "-avd",
+            avd_name,
+            "-memory",
+            "4096",
+            "-timezone",
+            "America/Los_Angeles",
             "-no-snapshot",
             "-no-audio",
             "-no-boot-anim",
-            "-no-window"]
+            "-no-window",
+        ]
         if extra_args is not None:
             emulator_args += extra_args
 
-        emulator_process = emulator_stack.enter_context(
-            _start_process(*emulator_args))
+        emulator_process = emulator_stack.enter_context(_start_process(*emulator_args))
         emulator_stack.callback(_stop_process, emulator_process)
 
         waiter_process = waiter_stack.enter_context(
             _start_process(
-                sdk_tool_paths.adb, "wait-for-device", "shell",
-                "while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82"))
+                sdk_tool_paths.adb,
+                "wait-for-device",
+                "shell",
+                "while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 82",
+            )
+        )
         waiter_stack.callback(_stop_process, waiter_process)
 
         # poll subprocesses

@@ -10,10 +10,13 @@ from ...debug_options import DebugOptions
 # nn.Module's in this set are considered exportable to ONNX.
 # For other nn.Module's, torch.onnx.export is called to check if
 # they are exportable.
-_force_exportable_set = set([torch.nn.Linear, torch.nn.Identity,  torch.nn.modules.linear.NonDynamicallyQuantizableLinear])
+_force_exportable_set = set(
+    [torch.nn.Linear, torch.nn.Identity, torch.nn.modules.linear.NonDynamicallyQuantizableLinear]
+)
+
 
 class HierarchicalORTModule(torch.nn.Module):
-    '''
+    """
     Recursively wraps submodules of `module` as ORTModule whenever possible
     Similarly to ORTModule, the actual wrapping happens in its first `forward` call during Pytorch-to-ONNX export.
     Supported computation is delegated to ONNX Runtime and unsupported computation is still done by PyTorch.
@@ -46,7 +49,7 @@ class HierarchicalORTModule(torch.nn.Module):
         m = HierarchicalORTModule(Foo())
         y = m(x)
 
-    '''
+    """
 
     def __init__(self, module, debug_options=None):
         self._initialized = False
@@ -97,12 +100,17 @@ class HierarchicalORTModule(torch.nn.Module):
                 # Check if this leaf module is exportable.
                 for args in module_arg_pool[module]:
                     try:
-                        with tempfile.NamedTemporaryFile(prefix='sub-module') as temp:
+                        with tempfile.NamedTemporaryFile(prefix="sub-module") as temp:
                             torch.onnx.export(
-                                module, args, temp, opset_version=ortmodule.ONNX_OPSET_VERSION,
-                                do_constant_folding=False, export_params=False,
+                                module,
+                                args,
+                                temp,
+                                opset_version=ortmodule.ONNX_OPSET_VERSION,
+                                do_constant_folding=False,
+                                export_params=False,
                                 keep_initializers_as_inputs=True,
-                                training=torch.onnx.TrainingMode.TRAINING)
+                                training=torch.onnx.TrainingMode.TRAINING,
+                            )
                     except Exception as e:
                         exportable = False
 
@@ -131,12 +139,17 @@ class HierarchicalORTModule(torch.nn.Module):
                     module_exportable = True
                     for args in module_arg_pool[module]:
                         try:
-                            with tempfile.NamedTemporaryFile(prefix='sub-module') as temp:
+                            with tempfile.NamedTemporaryFile(prefix="sub-module") as temp:
                                 torch.onnx.export(
-                                    module, args, temp, opset_version=ortmodule.ONNX_OPSET_VERSION,
-                                    do_constant_folding=False, export_params=False,
+                                    module,
+                                    args,
+                                    temp,
+                                    opset_version=ortmodule.ONNX_OPSET_VERSION,
+                                    do_constant_folding=False,
+                                    export_params=False,
                                     keep_initializers_as_inputs=True,
-                                    training=torch.onnx.TrainingMode.TRAINING)
+                                    training=torch.onnx.TrainingMode.TRAINING,
+                                )
                         except Exception as e:
                             # If this module is not exportable for one arg
                             # group, we say this module is not exportable.
@@ -179,17 +192,13 @@ class HierarchicalORTModule(torch.nn.Module):
                     # Let's wrap them one-by-one.
                     for name1, sub1 in sub._modules.items():
                         if is_supported(sub1):
-                            sub._modules[name1] = ORTModule(
-                                sub1,
-                                debug_options=self._debug_options)
+                            sub._modules[name1] = ORTModule(sub1, debug_options=self._debug_options)
                         else:
                             recursive_wrap(sub1)
                 else:
                     if is_supported(sub):
                         # Just wrap it as ORTModule when possible.
-                        sub_dict[name] = ORTModule(
-                            sub,
-                            debug_options=self._debug_options)
+                        sub_dict[name] = ORTModule(sub, debug_options=self._debug_options)
                     else:
                         # This sub-module is not exportable to ONNX
                         # Let's check its sub-modules.

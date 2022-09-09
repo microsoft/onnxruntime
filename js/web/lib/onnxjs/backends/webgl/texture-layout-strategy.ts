@@ -3,6 +3,7 @@
 
 import {Logger} from '../../instrument';
 import {assert} from '../../util';
+
 /** Layout preferences */
 export interface WidthHeightPrefs {
   breakAxis?: number;

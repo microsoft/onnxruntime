@@ -123,9 +123,12 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id
   // make sure that some nodes are assigned to the EP, otherwise this test is pointless...
   const auto& graph2 = session_object2.GetGraph();
   auto ep_nodes = CountAssignedNodes(graph2, provider_type);
-  if (params.verify_entire_graph_use_ep) {
+  if (params.ep_node_assignment == ExpectedEPNodeAssignment::All) {
     // Verify the entire graph is assigned to the EP
     ASSERT_EQ(ep_nodes, graph2.NumberOfNodes()) << "Not all nodes were assigned to " << provider_type;
+  } else if (params.ep_node_assignment == ExpectedEPNodeAssignment::None) {
+    // Check if expected failure path is correctly handled by ep. (only used in NNAPI EP QDQ model test case for now)
+    ASSERT_EQ(ep_nodes, 0) << "No nodes are supposed to be assigned to " << provider_type;
   } else {
     ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type;
   }
@@ -134,6 +137,10 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(output_names, expected_fetches, fetches, params);
+
+  if (params.graph_verifier) {
+    (*params.graph_verifier)(graph2);
+  }
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)

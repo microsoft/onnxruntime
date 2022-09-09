@@ -274,7 +274,7 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
         if (src_dims[i] != 1) {
           auto dims_span = gsl::make_span(src_dims);
           ORT_ENFORCE(src_dims[i] == 1, "Dimension of input ", i, " must be 1 instead of ", src_dims[i],
-                      ". shape=", dims_span);
+                      ". shape=", TensorShape(dims_span));
         }
         ++j;
         continue;

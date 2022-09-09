@@ -11,7 +11,8 @@
 #include <algorithm>
 #include <thread>
 
-#include <gtest/gtest.h>
+#include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 #include "core/common/common.h"
 #include "core/graph/constants.h"
@@ -111,14 +112,6 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #else
     return;
 #endif
-  } else if (provider_type == 3) {
-#ifdef USE_NUPHAR
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options,
-                                                                      /*allow_unaligned_buffers*/ 1, ""));
-    std::cout << "Running simple inference with nuphar provider" << std::endl;
-#else
-    return;
-#endif
   } else {
     std::cout << "Running simple inference with default provider" << std::endl;
   }
@@ -139,7 +132,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     // Now run
     auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-    //without preallocated output tensor
+    // without preallocated output tensor
     RunSession<OutT>(default_allocator.get(),
                      session,
                      inputs,
@@ -147,11 +140,11 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                      expected_dims_y,
                      expected_values_y,
                      nullptr);
-    //with preallocated output tensor
+    // with preallocated output tensor
     Ort::Value value_y = Ort::Value::CreateTensor<float>(default_allocator.get(),
                                                          expected_dims_y.data(), expected_dims_y.size());
 
-    //test it twice
+    // test it twice
     for (int i = 0; i != 2; ++i)
       RunSession<OutT>(default_allocator.get(),
                        session,
@@ -167,6 +160,9 @@ static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
 static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
 #ifndef ORT_NO_RTTI
 static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.onnx");
+#endif
+#if !defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
+static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequence_tensor.onnx");
 #endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
@@ -402,6 +398,35 @@ TEST(CApiTest, custom_op_handler) {
 #endif
 }
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
+// disable test in reduced-op-build since TOPK and GRU are excluded there
+TEST(CApiTest, standalone_op_handler) {
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+#ifdef USE_CUDA
+  StandaloneCustomOp standalone_op{onnxruntime::kCudaExecutionProvider, nullptr};
+#else
+  StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider, nullptr};
+#endif
+
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&standalone_op);
+
+#ifdef USE_CUDA
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr);
+#else
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+#endif
+}
+#endif
+
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 // test enabled ort-customops negpos
 TEST(CApiTest, test_enable_ort_customops_negpos) {
@@ -489,7 +514,7 @@ TEST(CApiTest, test_enable_ort_customops_stringlower) {
 }
 #endif
 
-//test custom op which accepts float and double as inputs
+// test custom op which accepts float and double as inputs
 TEST(CApiTest, varied_input_custom_op_handler) {
   std::vector<Input> inputs(2);
   inputs[0].name = "X";
@@ -741,10 +766,10 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 }
 #endif
 
-//It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
+// It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
 #if defined(__ANDROID__)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
-//To accomodate a reduced op build pipeline
+// To accomodate a reduced op build pipeline
 #elif defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
 TEST(CApiTest, DISABLED_test_custom_op_library) {
 #else
@@ -777,7 +802,7 @@ TEST(CApiTest, test_custom_op_library) {
 #elif defined(__APPLE__)
   lib_name = "libcustom_op_library.dylib";
 #else
-lib_name = "./libcustom_op_library.so";
+  lib_name = "./libcustom_op_library.so";
 #endif
 
   void* library_handle = nullptr;
@@ -891,7 +916,7 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
   std::vector<float> expected_values_y = {0.1f, 0.1f, 0.1f};
   bool failed = false;
   try {
-    //only test model loading, exception expected
+    // only test model loading, exception expected
     TestInference<float>(*ort_env, model_uri, inputs, "Y", expected_dims_y, expected_values_y, 0,
                          nullptr, nullptr, nullptr, true);
   } catch (const Ort::Exception& e) {
@@ -1140,18 +1165,17 @@ TEST(CApiTest, cuda_graph) {
   // Enable cuda graph in cuda provider option.
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
   ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
-  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+  std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)>
+      rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
   std::vector<const char*> keys{"enable_cuda_graph"};
   std::vector<const char*> values{"1"};
-  ASSERT_TRUE(api.UpdateCUDAProviderOptions(
-    rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
+  ASSERT_TRUE(api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
 
   Ort::SessionOptions session_options;
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
-    static_cast<OrtSessionOptions*>(session_options),
-    rel_cuda_options.get()) == nullptr);
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_cuda_options.get()) == nullptr);
 
-  
   // Create IoBinding for inputs and outputs.
   struct CudaMemoryDeleter {
     explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
@@ -1202,20 +1226,22 @@ TEST(CApiTest, cuda_graph) {
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values;
   cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
-  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
+  ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Replay the captured CUDA graph
   session.Run(Ort::RunOptions(), binding);
   cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
-  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
+  ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Change the input and replay the CUDA graph again.
   x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
   cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+  binding.SynchronizeInputs();
+
   session.Run(Ort::RunOptions(), binding);
   cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
   expected_y = {10.0f, 40.0f, 90.0f, 160.0f, 250.0f, 360.0f};
-  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
+  ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Clean up
   binding.ClearBoundInputs();
@@ -1396,9 +1422,10 @@ TEST(CApiTest, override_initializer) {
   size_t init_count = session.GetOverridableInitializerCount();
   ASSERT_EQ(init_count, 1U);
 
-  char* f1_init_name = session.GetOverridableInitializerName(0, allocator.get());
-  ASSERT_TRUE(strcmp("F1", f1_init_name) == 0);
-  allocator->Free(f1_init_name);
+  {
+    auto f1_init_name = session.GetOverridableInitializerNameAllocated(0, allocator.get());
+    ASSERT_TRUE(strcmp("F1", f1_init_name.get()) == 0);
+  }
 
   Ort::TypeInfo init_type_info = session.GetOverridableInitializerTypeInfo(0);
   ASSERT_EQ(ONNX_TYPE_TENSOR, init_type_info.GetONNXType());
@@ -1440,10 +1467,10 @@ TEST(CApiTest, end_profiling) {
   session_options_1.EnableProfiling("profile_prefix");
 #endif
   Ort::Session session_1(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_1);
-  char* profile_file = session_1.EndProfiling(allocator.get());
-
-  ASSERT_TRUE(std::string(profile_file).find("profile_prefix") != std::string::npos);
-  allocator->Free(profile_file);
+  {
+    auto profile_file = session_1.EndProfilingAllocated(allocator.get());
+    ASSERT_TRUE(std::string(profile_file.get()).find("profile_prefix") != std::string::npos);
+  }
   // Create session with profiling disabled
   Ort::SessionOptions session_options_2;
 #ifdef _WIN32
@@ -1452,9 +1479,10 @@ TEST(CApiTest, end_profiling) {
   session_options_2.DisableProfiling();
 #endif
   Ort::Session session_2(*ort_env, MODEL_WITH_CUSTOM_MODEL_METADATA, session_options_2);
-  profile_file = session_2.EndProfiling(allocator.get());
-  ASSERT_TRUE(std::string(profile_file) == std::string());
-  allocator->Free(profile_file);
+  {
+    auto profile_file = session_2.EndProfilingAllocated(allocator.get());
+    ASSERT_TRUE(std::string(profile_file.get()) == std::string());
+  }
 }
 
 TEST(CApiTest, get_profiling_start_time) {
@@ -1492,50 +1520,49 @@ TEST(CApiTest, model_metadata) {
     // Fetch model metadata
     auto model_metadata = session.GetModelMetadata();
 
-    char* producer_name = model_metadata.GetProducerName(allocator.get());
-    ASSERT_TRUE(strcmp("Hari", producer_name) == 0);
-    allocator.get()->Free(producer_name);
+    {
+      auto producer_name = model_metadata.GetProducerNameAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("Hari", producer_name.get()) == 0);
+    }
 
-    char* graph_name = model_metadata.GetGraphName(allocator.get());
-    ASSERT_TRUE(strcmp("matmul test", graph_name) == 0);
-    allocator.get()->Free(graph_name);
+    {
+      auto graph_name = model_metadata.GetGraphNameAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("matmul test", graph_name.get()) == 0);
+    }
 
-    char* domain = model_metadata.GetDomain(allocator.get());
-    ASSERT_TRUE(strcmp("", domain) == 0);
-    allocator.get()->Free(domain);
+    {
+      auto domain = model_metadata.GetDomainAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("", domain.get()) == 0);
+    }
 
-    char* description = model_metadata.GetDescription(allocator.get());
-    ASSERT_TRUE(strcmp("This is a test model with a valid ORT config Json", description) == 0);
-    allocator.get()->Free(description);
+    {
+      auto description = model_metadata.GetDescriptionAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("This is a test model with a valid ORT config Json", description.get()) == 0);
+    }
 
-    char* graph_description = model_metadata.GetGraphDescription(allocator.get());
-    ASSERT_TRUE(strcmp("graph description", graph_description) == 0);
-    allocator.get()->Free(graph_description);
+    {
+      auto graph_description = model_metadata.GetGraphDescriptionAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("graph description", graph_description.get()) == 0);
+    }
 
     int64_t version = model_metadata.GetVersion();
     ASSERT_TRUE(version == 1);
 
-    int64_t num_keys_in_custom_metadata_map;
-    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(),
-                                                                              num_keys_in_custom_metadata_map);
-    ASSERT_TRUE(num_keys_in_custom_metadata_map == 2);
+    {
+      auto custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeysAllocated(allocator.get());
+      ASSERT_EQ(custom_metadata_map_keys.size(), 2U);
+    }
 
-    allocator.get()->Free(custom_metadata_map_keys[0]);
-    allocator.get()->Free(custom_metadata_map_keys[1]);
-    allocator.get()->Free(custom_metadata_map_keys);
-
-    char* lookup_value_1 = model_metadata.LookupCustomMetadataMap("ort_config", allocator.get());
-    ASSERT_TRUE(strcmp(lookup_value_1,
+    auto lookup_value_1 = model_metadata.LookupCustomMetadataMapAllocated("ort_config", allocator.get());
+    ASSERT_TRUE(strcmp(lookup_value_1.get(),
                        "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, "
                        "\"graph_optimization_level\": 99, \"enable_profiling\": 1}}") == 0);
-    allocator.get()->Free(lookup_value_1);
 
-    char* lookup_value_2 = model_metadata.LookupCustomMetadataMap("dummy_key", allocator.get());
-    ASSERT_TRUE(strcmp(lookup_value_2, "dummy_value") == 0);
-    allocator.get()->Free(lookup_value_2);
+    auto lookup_value_2 = model_metadata.LookupCustomMetadataMapAllocated("dummy_key", allocator.get());
+    ASSERT_TRUE(strcmp(lookup_value_2.get(), "dummy_value") == 0);
 
     // key doesn't exist in custom metadata map
-    char* lookup_value_3 = model_metadata.LookupCustomMetadataMap("key_doesnt_exist", allocator.get());
+    auto lookup_value_3 = model_metadata.LookupCustomMetadataMapAllocated("key_doesnt_exist", allocator.get());
     ASSERT_TRUE(lookup_value_3 == nullptr);
   }
 
@@ -1549,21 +1576,20 @@ TEST(CApiTest, model_metadata) {
     auto model_metadata = session.GetModelMetadata();
 
     // Model description is empty
-    char* description = model_metadata.GetDescription(allocator.get());
-    ASSERT_TRUE(strcmp("", description) == 0);
-    allocator.get()->Free(description);
+    {
+      auto description = model_metadata.GetDescriptionAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("", description.get()) == 0);
+    }
 
     // Graph description is empty
-    char* graph_description = model_metadata.GetGraphDescription(allocator.get());
-    ASSERT_TRUE(strcmp("", graph_description) == 0);
-    allocator.get()->Free(graph_description);
+    {
+      auto graph_description = model_metadata.GetGraphDescriptionAllocated(allocator.get());
+      ASSERT_TRUE(strcmp("", graph_description.get()) == 0);
+    }
 
     // Model does not contain custom metadata map
-    int64_t num_keys_in_custom_metadata_map;
-    char** custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeys(allocator.get(),
-                                                                              num_keys_in_custom_metadata_map);
-    ASSERT_TRUE(num_keys_in_custom_metadata_map == 0);
-    ASSERT_TRUE(custom_metadata_map_keys == nullptr);
+    auto custom_metadata_map_keys = model_metadata.GetCustomMetadataMapKeysAllocated(allocator.get());
+    ASSERT_TRUE(custom_metadata_map_keys.empty());
   }
 }
 
@@ -1746,7 +1772,7 @@ TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
 
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-  // create session 1
+  // create session 1 (using model path)
   Ort::Session session1(*ort_env, MATMUL_MODEL_URI, session_options, prepacked_weights_container);
   RunSession<float>(default_allocator.get(),
                     session1,
@@ -1756,8 +1782,18 @@ TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
                     expected_values_y,
                     nullptr);
 
-  // create session 2
-  Ort::Session session2(*ort_env, MATMUL_MODEL_URI, session_options, prepacked_weights_container);
+  // create session 2 (using model bytes)
+  std::ifstream model_file_stream(MATMUL_MODEL_URI, std::ios::in | std::ios::binary);
+  ASSERT_TRUE(model_file_stream.good());
+
+  model_file_stream.seekg(0, std::ios::end);
+  size_t size = model_file_stream.tellg();
+  model_file_stream.seekg(0, std::ios::beg);
+  std::vector<char> file_contents(size, 0);
+  model_file_stream.read(&file_contents[0], size);
+  model_file_stream.close();
+
+  Ort::Session session2(*ort_env, file_contents.data(), size, session_options, prepacked_weights_container);
   RunSession<float>(default_allocator.get(),
                     session2,
                     inputs,
@@ -1928,7 +1964,7 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
   Ort::Session session(*ort_env, model_uri.c_str(), session_options);
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-  //without preallocated output tensor
+  // without preallocated output tensor
   RunSession(default_allocator.get(),
              session,
              inputs,
@@ -1954,7 +1990,7 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
 
   std::vector<const char*> keys{
       "device_id", "gpu_mem_limit", "arena_extend_strategy",
-      "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace"};
+      "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "cudnn_conv1d_pad_to_nc1d"};
 
   std::vector<const char*> values{
       "0", "1024", "kSameAsRequested",
@@ -1967,13 +2003,17 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
 
   char* cuda_options_str = nullptr;
   ASSERT_TRUE(api.GetCUDAProviderOptionsAsString(rel_cuda_options.get(), allocator, &cuda_options_str) == nullptr);
-  std::string s(cuda_options_str, strnlen(cuda_options_str, 2048));
+  std::string s;
+  if (cuda_options_str != nullptr) {
+    s = std::string(cuda_options_str, strnlen(cuda_options_str, 2048));
+  }
   ASSERT_TRUE(s.find("device_id=0") != std::string::npos);
   ASSERT_TRUE(s.find("gpu_mem_limit=1024") != std::string::npos);
   ASSERT_TRUE(s.find("arena_extend_strategy=kSameAsRequested") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv_algo_search=DEFAULT") != std::string::npos);
   ASSERT_TRUE(s.find("do_copy_in_default_stream=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv_use_max_workspace=1") != std::string::npos);
+  ASSERT_TRUE(s.find("cudnn_conv1d_pad_to_nc1d") != std::string::npos);
 
   ASSERT_TRUE(api.AllocatorFree(allocator, (void*)cuda_options_str) == nullptr);
 
@@ -2099,5 +2139,45 @@ TEST(CApiTest, GitHubIssue10179) {
       thread.join();
     }
   }
+}
+
+#endif
+
+// Reduced Ops build doesn't support If (16) yet
+#if !defined(REDUCED_OPS_BUILD) && defined(USE_CUDA)
+TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
+  const auto* model_path = SEQUENCE_MODEL_URI_2;
+  Ort::SessionOptions session_options{};
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  Ort::Session session{*ort_env, model_path, session_options};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names{"cond"};
+  bool input_data[] = {false};
+  std::vector<int64_t> input_dims{};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<bool>(info, input_data, 1U, input_dims.data(), 0));
+  const char* output_names[] = {"sequence"};
+
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
+                                                    ort_inputs.data(), ort_inputs.size(),
+                                                    output_names, countof(output_names));
+
+  // There is no need to check the contents of the output, we are just checking to see if the
+  // model runs without crashing
+}
+
+#endif
+
+// Reduced Ops build doesn't support OptionalHasElement (16) yet
+#if !defined(REDUCED_OPS_BUILD) && !defined(DISABLE_OPTIONAL_TYPE)
+TEST(CApiTest, GH_11717) {
+  const auto* model_path = TSTR("testdata/gh_issue_11717.onnx");
+
+  Ort::SessionOptions session_options{};
+  // Just check if the model loads fine without a segmentation fault
+  // in the default CPU EP
+  EXPECT_NO_THROW(Ort::Session session(*ort_env, model_path, session_options));
 }
 #endif

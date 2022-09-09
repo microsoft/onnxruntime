@@ -114,6 +114,22 @@ MlasGetPreferredBufferAlignment(
     void
     );
 
+#ifdef MLAS_TARGET_AMD64_IX86
+
+/**
+ * @brief Return whether the current CPU has over saturation problem
+ *        when computing u8s8 matrix multiplication
+ * https://www.intel.com/content/www/us/en/develop/documentation/onednn-developer-guide-and-reference/top/advanced-topics/nuances-of-int8-computations.html
+*/
+bool
+MLASCALL
+MlasPlatformU8S8Overflow(
+    void
+    );
+
+#endif
+
+
 //
 // Activation routines.
 //
@@ -739,6 +755,7 @@ struct MLAS_CONV_PARAMETERS {
     size_t InputSize;
     size_t OutputSize;
     size_t K;
+    float Beta;
     MLAS_CONV_ALGORITHM Algorithm;
     ptrdiff_t ThreadCount;
     union {
@@ -752,25 +769,23 @@ struct MLAS_CONV_PARAMETERS {
     } u;
 };
 
-void
-MLASCALL
-MlasConvPrepare(
-    MLAS_CONV_PARAMETERS* Parameters,
-    size_t Dimensions,
-    size_t BatchCount,
-    size_t GroupCount,
-    size_t InputChannels,
-    const int64_t* InputShape,
-    const int64_t* KernelShape,
-    const int64_t* DilationShape,
-    const int64_t* Padding,
-    const int64_t* StrideShape,
-    const int64_t* OutputShape,
-    size_t FilterCount,
-    const MLAS_ACTIVATION* Activation,
-    size_t* WorkingBufferSize,
-    MLAS_THREADPOOL* ThreadPool
-    );
+void MLASCALL
+MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
+                size_t Dimensions,
+                size_t BatchCount,
+                size_t GroupCount,
+                size_t InputChannels,
+                const int64_t* InputShape,
+                const int64_t* KernelShape,
+                const int64_t* DilationShape,
+                const int64_t* Padding,
+                const int64_t* StrideShape,
+                const int64_t* OutputShape,
+                size_t FilterCount,
+                const MLAS_ACTIVATION* Activation,
+                size_t* WorkingBufferSize,
+                float Beta,
+                MLAS_THREADPOOL* ThreadPool);
 
 void
 MLASCALL
@@ -829,6 +844,55 @@ MlasConvSymFixupInputZeroPoint(
     int32_t zero_point_value,
     bool InputIsSigned
     );
+
+//
+// Convolution operators (or maybe others in the future) need to do their
+// own job partition. Since filters (right hand side B matrix) is usually
+// small in size, activations are divided horizontally. We need to provide
+// kernel stride units to facilitate the divide.
+//
+
+int32_t
+MlasConvSymGetKernelOutputCount(
+    bool InputIsSigned
+    );
+
+int32_t
+MlasConvSymDepthwiseGetKernelOutputCnt(
+    bool InputIsSigned
+    );
+
+/**
+ * @brief Returns the stride M of depthwise conv kernel
+ * 
+ * Most optimized path is Symmetric conv. See 
+ * MlasConvSymDepthwiseGetKernelOutputCnt(bool)
+ * 
+ * These kernels are implemented in qdwconv.cpp using
+ * intrincic, all of them with stride val 1. We use
+ * a slightly bigger value to improve cache reuse.
+ *
+ * This needs to be changed if we optimize depthwise
+ * kernels.
+ * 
+ * @return
+*/
+inline
+int32_t
+MlasConvDepthwiseGetKernelOutputCnt()
+{
+    return 4;
+}
+
+int32_t
+MlasSymmQgemmGetKernelOutputCnt();
+
+int32_t
+MlasQgemmGetKernelOutputCnt(
+    bool AIsSigned,
+    bool BIsSigned
+    );
+
 
 struct MLAS_CONV_SYM_PARAMS {
     const void* InputDirect;

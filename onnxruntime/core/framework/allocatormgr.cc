@@ -13,9 +13,15 @@ namespace onnxruntime {
 using namespace common;
 
 namespace {
-//It assumes max(OrtMemType) <= 1, min(OrtMemType) = -2
-inline int MakeKey(int id, OrtMemType mem_type) {
-  return id << 2 | (mem_type + 2);
+int32_t MakeKey(OrtMemType mem_type, OrtDevice device) {
+  // shorten device id so we can fit everything
+  uint8_t short_device = gsl::narrow<uint8_t>(device.Id());
+  // and convert mem_type. OrtMemType weirdly uses -2 as the first value so we offset by that before narrowing
+  uint8_t ort_mem_type = gsl::narrow<uint8_t>(mem_type + 2);
+
+  // NOTE: OrtMemType is the type of memory for a kernel's input/output
+  //       OrtDevice.MemType is the device memory type.
+  return int32_t(device.Type()) << 24 | int32_t(device.MemType()) << 16 | short_device << 8 | ort_mem_type;
 }
 }  // namespace
 
@@ -43,17 +49,17 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
         arena_extend_str = ArenaExtendStrategy::kNextPowerOfTwo;
         break;
       default:
-        LOGS_DEFAULT(ERROR) << "Received invalid value of arena_extend_strategy " << info.arena_cfg.arena_extend_strategy;
+        LOGS_DEFAULT(ERROR) << "Received invalid value of arena_extend_strategy "
+                            << info.arena_cfg.arena_extend_strategy;
         return nullptr;
     }
 
-    return AllocatorPtr(
-        std::make_unique<BFCArena>(std::move(device_allocator),
-                                   max_mem,
-                                   arena_extend_str,
-                                   initial_chunk_size_bytes,
-                                   max_dead_bytes_per_chunk,
-                                   initial_growth_chunk_size_bytes));
+    return AllocatorPtr(std::make_unique<BFCArena>(std::move(device_allocator),
+                                                   max_mem,
+                                                   arena_extend_str,
+                                                   initial_chunk_size_bytes,
+                                                   max_dead_bytes_per_chunk,
+                                                   initial_growth_chunk_size_bytes));
   } else {
     return device_allocator;
   }
@@ -62,30 +68,27 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
 // Update allocator in the provider if already present; ignore if not.
 void AllocatorManager::ReplaceAllocator(AllocatorPtr allocator) {
   const auto& info = allocator->Info();
-  auto ite = mem_info_set_.find(info);
-  if (ite != mem_info_set_.end()) {
-    const int key = MakeKey(info.id, info.mem_type);
-    allocators_[key] = allocator;
+  auto iter = allocators_.find(MakeKey(info.mem_type, info.device));
+  if (iter != allocators_.end()) {
+    iter->second = allocator;
   }
 }
 
 void AllocatorManager::InsertAllocator(AllocatorPtr allocator) {
   const OrtMemoryInfo& info = allocator->Info();
-  auto ite = mem_info_set_.find(info);
-  if (ite != mem_info_set_.end()) {
-    ORT_THROW("duplicated allocator");
+  int32_t key = MakeKey(info.mem_type, info.device);
+  auto iter = allocators_.find(key);
+  if (iter != allocators_.end()) {
+    ORT_THROW("Duplicate allocator for OrtMemType:", info.mem_type, " device:", info.device.ToString(),
+              " Existing allocator: ", iter->second->Info().name,
+              " New allocator: ", allocator->Info().name);
   }
-  const int key = MakeKey(info.id, info.mem_type);
-  allocators_.insert({key, allocator});
-  mem_info_set_.insert(ite, info);
-  allocator_list_.push_back(allocator);
+
+  allocators_[key] = allocator;
 }
 
-AllocatorPtr AllocatorManager::GetAllocator(int id, OrtMemType mem_type) const {
-  auto iter = allocators_.find(MakeKey(id, mem_type));
-  if (iter != allocators_.end()) {
-    return iter->second;
-  }
-  return nullptr;
+AllocatorPtr AllocatorManager::GetAllocator(OrtMemType mem_type, OrtDevice device) const {
+  auto iter = allocators_.find(MakeKey(mem_type, device));
+  return iter != allocators_.end() ? iter->second : nullptr;
 }
 }  // namespace onnxruntime

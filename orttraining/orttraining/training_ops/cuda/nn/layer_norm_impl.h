@@ -28,22 +28,22 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, typename U, bool simplified>
+template <typename T, typename U, typename V, bool simplified>
 void HostLayerNormGradient(
     const cudaDeviceProp& prop,
     cudaStream_t stream,
-    const T* dout,
+    const V* dout,
     const T* input,
-    const T* output,
-    const T* gamma,
-    const T* beta,
+    const V* output,
+    const V* gamma,
+    const V* beta,
     const U* mean,
     const U* invvar,
     int64_t n1,
     int64_t n2,
     T* grad_input,
-    T* grad_gamma,
-    T* grad_beta,
+    V* grad_gamma,
+    V* grad_beta,
     U* part_grad_gamma,
     U* part_grad_beta,
     const int part_size);

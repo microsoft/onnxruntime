@@ -1,10 +1,23 @@
 # cleans $(Agent.BuildDirectory) unconditionally on multiple platforms
 
 steps:
-- script: rd /S /Q $(Agent.BuildDirectory)
-  displayName: Clean build files (Windows)
-  condition: eq(variables['Agent.OS'], 'Windows_NT') # and always()
-- script: rm -rf $(Agent.BuildDirectory)
-  displayName: Clean build files (POSIX)
-  condition: not(eq(variables['Agent.OS'], 'Windows_NT')) # and always()
-  continueOnError: true  # continuing on error for this step, since linux build folder is somehow getting permission issue
+- task: PublishTestResults@2
+  displayName: 'Publish unit test results'
+  inputs:
+    testResultsFiles: '**/*.results.xml'
+    searchFolder: '$(Build.BinariesDirectory)'
+    testRunTitle: 'Unit Test Run'
+  condition: succeededOrFailed()
+
+- template: component-governance-component-detection-steps.yml
+  parameters :
+    condition : 'succeeded'
+
+- task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+  displayName: 'Clean Agent Directories'
+  condition: always()
+
+- script: docker image prune -f
+  displayName: Clean docker images
+  condition: eq(variables['Agent.OS'], 'Linux')
+  continueOnError: true

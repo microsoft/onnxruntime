@@ -1,9 +1,8 @@
-import onnx
-import numpy as np
-from onnx import helper
-from onnx import TensorProto
-from onnx import OperatorSetIdProto
 from enum import Enum
+
+import numpy as np
+import onnx
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 
 def GenerateModel(model_name):
@@ -21,23 +20,24 @@ def GenerateModel(model_name):
     ]
 
     initializers = [  # initializers
-        helper.make_tensor('pow_in_2', TensorProto.FLOAT, [], [2]),
-        helper.make_tensor('const_0', TensorProto.FLOAT16, [], [0]),
-        helper.make_tensor('gamma', TensorProto.FLOAT16, [4], [1, 2, 3, 4]),
-        helper.make_tensor('beta', TensorProto.FLOAT16, [4], [1, 2, 3, 4]),
+        helper.make_tensor("pow_in_2", TensorProto.FLOAT, [], [2]),
+        helper.make_tensor("const_0", TensorProto.FLOAT16, [], [0]),
+        helper.make_tensor("gamma", TensorProto.FLOAT16, [4], [1, 2, 3, 4]),
+        helper.make_tensor("beta", TensorProto.FLOAT16, [4], [1, 2, 3, 4]),
     ]
 
     graph = helper.make_graph(
         nodes,
-        "LayerNormWithCast2",  #name
+        "LayerNormWithCast2",  # name
         [  # inputs
-            helper.make_tensor_value_info('A', TensorProto.FLOAT16, [16, 32, 4]),
+            helper.make_tensor_value_info("A", TensorProto.FLOAT16, [16, 32, 4]),
         ],
         [  # outputs
-            helper.make_tensor_value_info('C', TensorProto.FLOAT16, [16, 32, 4]),
+            helper.make_tensor_value_info("C", TensorProto.FLOAT16, [16, 32, 4]),
         ],
-        initializers)
-    
+        initializers,
+    )
+
     onnxdomain = OperatorSetIdProto()
     onnxdomain.version = 12
     # The empty string ("") or absence of this field implies the operator set that is defined as part of the ONNX specification.
@@ -51,4 +51,4 @@ def GenerateModel(model_name):
     onnx.save(model, model_name)
 
 
-GenerateModel('layer_norm_with_cast_2.onnx')
+GenerateModel("layer_norm_with_cast_2.onnx")

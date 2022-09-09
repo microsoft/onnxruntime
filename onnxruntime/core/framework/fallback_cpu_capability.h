@@ -18,9 +18,9 @@ namespace onnxruntime {
   @param kernel_registries Kernel registries for the target EP
   @param tentative_nodes Nodes that are tentative to be placed on on target EP
   */
-InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
-                                               const std::string& provider_type,
-                                               gsl::span<const KernelRegistry* const> kernel_registries,
-                                               gsl::span<const NodeIndex> tentative_nodes);
+  std::unordered_set<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
+                                                    const std::string& provider_type,
+                                                    gsl::span<const KernelRegistry* const> kernel_registries,
+                                                    gsl::span<const NodeIndex> tentative_nodes);
 
 }  // namespace onnxruntime

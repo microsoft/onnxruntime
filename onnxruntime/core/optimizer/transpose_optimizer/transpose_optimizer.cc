@@ -1412,7 +1412,7 @@ static bool HandleTile(HandlerArgs& args) {
 
 constexpr HandlerInfo tile_handler = {&FirstInput, &HandleTile};
 
-// Helper to remove cancelling Transpose -> Transpose or 
+// Helper to remove cancelling Transpose -> Transpose or
 // Transpose -> Reshape nodes.
 static void RemoveCancelingTransposeNodes(HandlerArgs& args) {
   // Input to 1st transpose
@@ -1491,7 +1491,7 @@ static bool HandleTranspose(HandlerArgs& args) {
 constexpr HandlerInfo transpose_handler = {&FirstInput, &HandleTranspose, /*transposes_outputs*/ false};
 
 static bool HandleReshape(HandlerArgs& args) {
-  // We check for a very specific case where Transpose is replaced by Reshape 
+  // We check for a very specific case where Transpose is replaced by Reshape
   // for performance. For example Transpose(input {1, 1, 1, X}, perm{0, 3, 2, 1}) can be replaced by Reshape
   // Reshape(input{1, 1, 1, X}, shape{1, X, 1, 1})
   // During transpose optimization we need to detect such reshape nodes so that we can remove them if possible.
@@ -1502,7 +1502,7 @@ static bool HandleReshape(HandlerArgs& args) {
     return false;
   }
 
-  // Check only 1 dim is not equal to 1. This is to validate that tranpose and reshape are truly canceling nodes 
+  // Check only 1 dim is not equal to 1. This is to validate that tranpose and reshape are truly canceling nodes
   // and can be therefore removed.
   int num_dims_not_equal_to_1 = 0;
   for (int i = 0; i < 4; i++) {
@@ -1521,7 +1521,7 @@ static bool HandleReshape(HandlerArgs& args) {
   }
 
   // Check whether transpose cancels with reshape node
-  // We check if shape of transpose node's input matches the shape data 
+  // We check if shape of transpose node's input matches the shape data
   // provided for reshape node.
   auto reshape_output_shape = DataInt64(*shape_data);
   if (reshape_output_shape != transpose_input_shape) {
@@ -1691,7 +1691,19 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Split", split_handler},
     {"Shape", shape_handler},
     {"Pad", pad_handler},
+// The CUDA Resize kernel assumes that the input is NCHW and
+// Resize can't be supported in ORT builds with CUDA enabled.
+// TODO: Enable this once the CUDA Resize kernel is implemented
+// "generically" (i.e.) aligning with the generic nature of the
+// ONNX spec.
+// See https://github.com/microsoft/onnxruntime/pull/10824 for
+// a similar fix applied to the CPU Resize kernel.
+// Per tests included in #10824, the ROCM EP also generates
+// incorrect results when this handler is used, so the Resize 
+// handler is not enabled even for those builds.
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
     {"Resize", resize_handler},
+#endif
     {"ReduceSum", reduce_sum_handler},
 
     {"ReduceLogSum", reduce_op_handler},
@@ -1756,6 +1768,30 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops
   return nullptr;
 }
 
+// Some op should be optimized any time there is a transpose as input and a handler is available.
+static bool CanNodeSkipCostCheck(const OptimizerCtx& ctx, const api::NodeRef& node) {
+  if (node.IsOp("Transpose")) {
+    return true;
+  }
+  if (node.IsOp("MaxPool")) {
+    // Inclusion of MaxPool is a hack because it has higher perf in the NHWC variant when supported.
+    return true;
+  }
+  if (node.IsOp("Resize")) {
+    // Resize is included because it has higher perf in the NHWC variant when
+    // the input X is 4D int8 tensor and the mode is linear
+    auto X_value_info = ctx.graph.GetValueInfo(node.Inputs()[0]);
+    auto X_shape = X_value_info->Shape();
+    auto X_dtype = X_value_info->DType();
+    auto mode = node.GetAttributeString("mode");
+    if (X_shape && X_shape->size() == 4 && (X_dtype == api::DataType::UINT8 || X_dtype == api::DataType::INT8) &&
+        mode && *mode == "linear") {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Finds a handler for the node and estimates the cost of pushing a transpose. Does so if deemed beneficial.
 bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& node,
                       const std::vector<int64_t>& perm, size_t transpose_input_index,
@@ -1771,9 +1807,7 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
     return false;
   }
 
-  // Transpose and MaxPool should be optimized any time there is a transpose as input and a handler is available.
-  // Inclusion of MaxPool is a hack because it has higher perf in the NHWC variant when supported.
-  if (!ctx.skip_cost_check && !node.IsOp("Transpose") && !node.IsOp("MaxPool")) {
+  if (!ctx.skip_cost_check && !CanNodeSkipCostCheck(ctx, node)) {
     // We require the input cost (number of transposes before the op) and the total cost to strictly decrease.
     // Strict decrease of the input cost ensures the optimization is stable, since the total cost decrease is just an
     // estimate (the transpose after the op may or may not cancel with a subsequent transpose). We don't want
@@ -1812,14 +1846,22 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
 // Returns nullopt if graph opset is unsupported.
 std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allow_extended_ops,
                                                  const std::string& provider_type, OptimizerMode mode,
-                                                 const std::unordered_set<std::string_view>& layout_sensitive_ops) {
+                                                 const std::unordered_set<std::string_view>& layout_sensitive_ops,
+                                                 std::string& error_msg) {
   auto opset = graph.Opset("");
   if (opset == std::nullopt) {
     opset = graph.Opset("ai.onnx");
   }
+
   if (opset == std::nullopt || *opset > kMaxSupportedOpset || *opset < kMinSupportedOpset) {
+    // if the model doesn't have an ONNX opset that's fine as there are no ops we'd move around
+    if (opset.has_value()) {
+      error_msg = "Unsupported ONNX opset";
+    }
+
     return std::nullopt;
   }
+
   if (allow_extended_ops) {
     auto ms_opset = graph.Opset("com.microsoft");
     if (ms_opset == std::nullopt || *ms_opset != 1) {
@@ -1836,7 +1878,8 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allo
 
 // Performs optimization. General algorithm: iterate over nodes in topological order. If a node has a transpose
 // as input, push it through if the transpose cost does not increase and is likely to decrease.
-bool OptimizeImpl(OptimizerCtx& ctx) {
+OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
+  OptimizeResult result{};
   const std::vector<std::unique_ptr<api::NodeRef>> nodes = ctx.graph.Nodes();
 
   std::unordered_set<std::string> outputs_leading_to_transpose;
@@ -1867,12 +1910,31 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
   }
 
   bool changed = false;
+  bool have_dq = false;
+  // if nodes are assigned we only process those that match the EP in the context
+  bool ignore_assigned_nodes = ctx.provider_type.empty();
+
   // Optimize graph. Nodes will be modified during iteration, but nodes are never deleted before we reach them.
   // New transpose nodes are inserted, but always as an input to an existing node.
   for (size_t i = 0; i < nodes.size(); ++i) {
     api::NodeRef& node = *nodes[i];
+    if (node.OpType() == "DequantizeLinear") {
+      have_dq = true;
+    }
+
+    // it's not clear how we should handle assignment of new Transpose nodes created during optimization, so ignore.
+    // e.g. we may need to transpose the input of a node we move a Transpose past. if that node is assigned to
+    // an EP that doesn't support Transpose, the new node should use the CPU EP. but if that node is assigned to
+    // an EP that does support the Transpose we should assign the new node to that EP.
+    // as we do not know what each EP supports, it's safer to not optimize in order to maintain the EP assignments
+    // made during partitioning.
+    if (ignore_assigned_nodes && !node.GetExecutionProviderType().empty()) {
+      continue;
+    }
+
     if (ctx.mode == OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM &&
-        ctx.layout_sensitive_ops.count(node.OpType()) && node.GetExecutionProviderType() != ctx.provider_type) {
+        ctx.layout_sensitive_ops.count(node.OpType()) &&
+        node.GetExecutionProviderType() != ctx.provider_type) {
       // If the current op is layout sensitive and it is not assigned to the given provider
       // then do not process transpose.
       continue;
@@ -1898,32 +1960,46 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
     }
   }
 
-  // Currently limiting the second optimization pass to layout transform mode
-  // TODO: Enable this for both the modes.
-  if (ctx.mode == OptimizerMode::OPTIMIZE_TRANSPOSE) {
-    return changed;
+  if (!have_dq) {
+    result.graph_modified = changed;
+    return result;
   }
 
   // Run second optimization pass.
-  // If any transpose succeeds a DQ node, move it above the DQ node.
-  // In case of QDQ models this helps to preserve the QDQ node unit
+  // If any transpose succeeds a DQ node, move it above the DQ node if it's not part of a QDQ node group.
+  // In QDQ models this helps to preserve the QDQ node group when a Transpose was pushed across a DQ into
+  // an existing QDQ node group.
   // In all other scenarios this is beneficial as well because moving transpose above DQ node is more efficient as
   // transpose node now handles less data.
   auto graph_nodes = ctx.graph.Nodes();
   for (size_t i = 1; i < graph_nodes.size(); i++) {
-    if (graph_nodes[i]->OpType() == "Transpose") {
+    const auto& node = *graph_nodes[i];
+
+    // TODO: if we want to handle this we need to propagate the assigned EP to the new Transpose node.
+    if (ignore_assigned_nodes && !node.GetExecutionProviderType().empty()) {
+      continue;
+    }
+
+    if (node.OpType() == "Transpose") {
       auto& transpose_node = *graph_nodes[i];
       auto dq_node = ctx.graph.GetNodeProducingOutput(transpose_node.Inputs()[0]);
       if (!dq_node || dq_node->OpType() != "DequantizeLinear") {
         continue;
       }
 
-      auto consumers = ctx.graph.GetValueConsumers(transpose_node.Outputs()[0]);
-      bool is_part_of_qdq_unit = std::find_if(consumers->nodes.cbegin(), consumers->nodes.cend(),
-                                              [](const std::unique_ptr<api::NodeRef>& node) {
-                                                return node->OpType() == "QuantizeLinear";
-                                              }) != consumers->nodes.cend();
-      if (is_part_of_qdq_unit) {
+      // Check if Transpose node is the only consumer of dq node
+      auto consumers_of_dq_node = ctx.graph.GetValueConsumers(dq_node->Outputs()[0]);
+      if (!consumers_of_dq_node->comprehensive || consumers_of_dq_node->nodes.size() > 1) {
+        continue;
+      }
+
+      auto consumers_of_transpose_node = ctx.graph.GetValueConsumers(transpose_node.Outputs()[0]);
+      bool is_part_of_qdq_group = std::find_if(consumers_of_transpose_node->nodes.cbegin(),
+                                               consumers_of_transpose_node->nodes.cend(),
+                                               [](const std::unique_ptr<api::NodeRef>& node) {
+                                                 return node->OpType() == "QuantizeLinear";
+                                               }) != consumers_of_transpose_node->nodes.cend();
+      if (is_part_of_qdq_group) {
         continue;
       }
 
@@ -1932,9 +2008,13 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
       if (!perm.has_value()) {
         continue;
       }
-      if (!HandleQuantizeDequantizeScale(ctx.graph, *perm, *dq_node, ctx.opset)) {
+
+      // we're moving the Transpose to before the DQ, so we need to use the inverse permutations to update the axis
+      // attribute correctly when doing per-axis dequantization
+      if (!HandleQuantizeDequantizeScale(ctx.graph, InvertPerm(*perm), *dq_node, ctx.opset)) {
         continue;
       }
+
       TransposeFirstInput(ctx, *dq_node, *perm);
 
       // remove existing transpose node
@@ -1944,25 +2024,36 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
       changed = true;
     }
   }
-  return changed;
+
+  result.graph_modified = changed;
+  return result;
 }
 
 const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
   // List of all layout sensitive ops defined in ONNX standard.
   static std::unordered_set<std::string_view> layout_sensitive_ops = {"Conv", "QLinearConv", "BatchNormalization",
                                                                       "AveragePool", "GlobalAveragePool", "MaxPool",
-                                                                      "GlobalMaxPool", "LRN"};
+                                                                      "GlobalMaxPool", "LRN", "GridSample",
+                                                                      "DepthToSpace", "SpaceToDepth"};
 
   return layout_sensitive_ops;
 }
 
-bool Optimize(api::GraphRef& graph, bool allow_extended_ops,
-              const std::string& provider_type, OptimizerMode mode,
-              const std::unordered_set<std::string_view>& layout_sensitive_ops) {
-  auto ctx = MakeOptimizerContext(graph, allow_extended_ops, provider_type, mode, layout_sensitive_ops);
+OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops,
+                        const std::string& provider_type, OptimizerMode mode,
+                        const std::unordered_set<std::string_view>& layout_sensitive_ops) {
+  OptimizeResult result{};
+
+  std::string error_msg;
+  auto ctx = MakeOptimizerContext(graph, allow_extended_ops, provider_type, mode, layout_sensitive_ops, error_msg);
   if (ctx == std::nullopt) {
-    return false;
+    if (!error_msg.empty()) {
+      result.error_msg = error_msg;
+    }
+
+    return result;
   }
+
   return OptimizeImpl(*ctx);
 }
 

@@ -174,6 +174,13 @@ KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace rocm
 }  // namespace contrib
 
+namespace contrib {
+namespace snpe {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace snpe
+}  // namespace contrib
+
 using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 
 // Naming convention for operator kernel classes
@@ -185,6 +192,9 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
 
 #define ONNX_CPU_OPERATOR_ML_KERNEL(name, ver, builder, ...) \
   ONNX_OPERATOR_KERNEL_EX(name, kMLDomain, ver, kCpuExecutionProvider, builder, __VA_ARGS__)
+
+#define ONNX_CPU_OPERATOR_MS_KERNEL(name, ver, builder, ...) \
+    ONNX_OPERATOR_KERNEL_EX(name, kMSDomain, ver, kCpuExecutionProvider, builder, __VA_ARGS__)
 
 #define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                                            \
   class ONNX_OPERATOR_KERNEL_CLASS_NAME(provider, domain, ver, name);                                                 \

@@ -3,11 +3,12 @@
 
 import Long from 'long';
 import {onnx} from 'onnx-proto';
-import {onnxruntime} from './ort-schema/ort-generated';
-import ortFbs = onnxruntime.experimental.fbs;
 
+import {onnxruntime} from './ort-schema/ort-generated';
 import {Tensor} from './tensor';
 import {decodeUtf8String, LongUtil} from './util';
+
+import ortFbs = onnxruntime.experimental.fbs;
 
 export declare namespace Attribute {
   export interface DataTypeMap {

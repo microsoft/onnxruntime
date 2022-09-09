@@ -114,6 +114,39 @@ LearningModelDevice::SharedHandleInitialized() {
   return m_deviceCache->SharedHandleInitialized();
 }
 
+STDMETHODIMP
+LearningModelDevice::GetThreadPool(_winml::IThreading** thread_pool) {
+  m_threadPool.copy_to(thread_pool);
+  return S_OK;
+}
+
+STDMETHODIMP
+LearningModelDevice::CacheThreadPool(_winml::IThreading* thread_pool) {
+  m_threadPool.copy_from(thread_pool);
+  return S_OK;
+}
+
+uint32_t LearningModelDevice::NumberOfIntraOpThreads() {
+  if (IsCpuDevice()) {
+    return std::thread::hardware_concurrency();
+  } else {
+    // GPU sessions should not rely on intra op threads.
+    // Creating a large thread pool is unnecessary and wasteful, and can cause
+    // thread competition in the process.
+    return 1;
+  }
+}
+
+bool LearningModelDevice::AllowSpinning() {
+  if (IsCpuDevice()) {
+    return true;
+  } else {
+    // GPU sessions should not run operators on cpu threads.
+    // CPU threads created should not spin, as it will drain cpu resources unnecessarily.
+    return false;
+  }
+}
+
 }  // namespace WINMLP 
 
 namespace WINML::factory_implementation {

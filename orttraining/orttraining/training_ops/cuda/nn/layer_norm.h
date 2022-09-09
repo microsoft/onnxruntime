@@ -4,18 +4,7 @@
 
 namespace onnxruntime {
 namespace cuda {
-template <typename T, typename U>
-class LayerNorm final : public CudaKernel {
- public:
-  LayerNorm(const OpKernelInfo& op_kernel_info);
-  Status ComputeInternal(OpKernelContext* ctx) const override;
-
- private:
-  int64_t axis_;
-  double epsilon_;
-};
-
-template <typename T, typename U, bool simplified>
+template <typename T, typename U, typename V, bool simplified>
 class LayerNormGrad final : public CudaKernel {
  public:
   LayerNormGrad(const OpKernelInfo& op_kernel_info);
@@ -25,7 +14,7 @@ class LayerNormGrad final : public CudaKernel {
   int64_t axis_;
 };
 
-template <typename T, typename U>
+template <typename T, typename U, typename V>
 class InvertibleLayerNormGrad final : public CudaKernel {
  public:
   InvertibleLayerNormGrad(const OpKernelInfo& op_kernel_info);

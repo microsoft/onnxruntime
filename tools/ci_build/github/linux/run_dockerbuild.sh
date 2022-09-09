@@ -53,7 +53,7 @@ done
 
 EXIT_CODE=1
 DEFAULT_PYTHON_VER="3.8"
-		
+
 PYTHON_VER=${PYTHON_VER:=$DEFAULT_PYTHON_VER}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
@@ -91,37 +91,27 @@ elif [ $BUILD_DEVICE = "gpu" ]; then
         if [[ $ORTMODULE_BUILD = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -u"
         fi
-        INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -v 11.3"
+        INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -v 11.6"
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.3.1-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
+            --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.6.2-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
             --dockerfile Dockerfile.ubuntu_gpu_training --context .
 elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
-        if [ $BUILD_DEVICE = "tensorrt-v7.1" ]; then
-            # TensorRT container release 20.07
-            IMAGE="$BUILD_OS-cuda11.0-cudnn8.0-tensorrt7.1"
-            DOCKER_FILE=Dockerfile.ubuntu_tensorrt7_1
-        else
-            # TensorRT container release 21.12
-            IMAGE="$BUILD_OS-cuda11.5-cudnn8.3-tensorrt8.2"
-            DOCKER_FILE=Dockerfile.ubuntu_tensorrt
-        fi
+        IMAGE="$BUILD_OS-cuda11.6-cudnn8.4-tensorrt8.4"
+        DOCKER_FILE=Dockerfile.ubuntu_tensorrt
+
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
             --dockerfile $DOCKER_FILE --context .
-else
+elif [[ $BUILD_DEVICE = "openvino"* ]]; then
         BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.8"
-        
-        if [ $BUILD_DEVICE = "openvino" ]; then
-           IMAGE="$BUILD_OS-openvino"
-           DOCKER_FILE=Dockerfile.ubuntu_openvino
-           BUILD_ARGS+=" --build-arg OPENVINO_VERSION=${OPENVINO_VERSION}"
-        else
-           IMAGE="$BUILD_OS"
-           DOCKER_FILE=Dockerfile.ubuntu
-        fi
+        IMAGE="$BUILD_OS-openvino"
+        DOCKER_FILE=Dockerfile.ubuntu_openvino
+        BUILD_ARGS+=" --build-arg OPENVINO_VERSION=${OPENVINO_VERSION}"
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
                 --docker-build-args="${BUILD_ARGS}" \
                 --dockerfile $DOCKER_FILE --context .
+else
+  exit 1
 fi
 
 if [[ $NEED_BUILD_SHARED_LIB = true ]]; then
@@ -145,8 +135,7 @@ else
     RUNTIME="--gpus all"
 fi
 
-DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
-                      --volume $SOURCE_ROOT:/onnxruntime_src \
+DOCKER_RUN_PARAMETER="--volume $SOURCE_ROOT:/onnxruntime_src \
                       --volume $BUILD_DIR:/build \
                       --volume /data/models:/build/models:ro \
                       --volume /data/onnx:/data/onnx:ro \
@@ -155,17 +144,10 @@ DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
 if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
 fi
-
-$DOCKER_CMD rm -f "onnxruntime-$BUILD_DEVICE" || true
-$DOCKER_CMD run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
+# Though this command has a yocto version argument, none of our ci build pipelines use yocto.
+$DOCKER_CMD run $RUNTIME --rm $DOCKER_RUN_PARAMETER \
     -e NIGHTLY_BUILD \
     -e $ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV \
     "onnxruntime-$IMAGE" \
     /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
-    -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS -y $YOCTO_VERSION &
-wait $!
-
-EXIT_CODE=$?
-
-set -e
-exit $EXIT_CODE
+    -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS -y $YOCTO_VERSION

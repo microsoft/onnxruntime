@@ -71,7 +71,7 @@ void addIoBindingMethods(pybind11::module& m) {
         Py_DECREF(dtype);
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
-        auto ml_type = NumpyTypeToOnnxRuntimeType(type_num);
+        auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
         OrtValue ml_value;
         Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
 
@@ -124,7 +124,7 @@ void addIoBindingMethods(pybind11::module& m) {
         Py_DECREF(dtype);
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
-        auto ml_type = NumpyTypeToOnnxRuntimeType(type_num);
+        auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
         OrtValue ml_value;
         Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
 
