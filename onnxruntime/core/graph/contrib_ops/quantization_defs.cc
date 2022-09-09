@@ -54,7 +54,7 @@ void CheckFitsInsideBoundingBox(const ONNX_NAMESPACE::TensorShapeProto& input_sh
     numel *= dim.dim_value();
   }
 
-  auto is_custom_bfp = bfp_type == BFPType::Custom_BFP_0 || bfp_type == BFPType::Custom_BFP_0;
+  auto is_custom_bfp = bfp_type == BFPType::Custom_BFP_0 || bfp_type == BFPType::Custom_BFP_1;
   if (all_dim_values && !is_custom_bfp && numel > static_cast<int64_t>(get_bounding_box_size(bfp_type))) {
     fail_shape_inference("The number of elements in the bounding box dimensions exceeds the bounding box size.")
   }

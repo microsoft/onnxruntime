@@ -158,6 +158,14 @@ TEST(QuantizeBFPTest, CheckFitsInsideBoundingBoxTest) {
     onnxruntime::contrib::CheckFitsInsideBoundingBox(input_shape, bounding_box_dims,
                                                      onnxruntime::contrib::BFPType::Custom_BFP_0);
   }
+
+  {
+    ONNX_NAMESPACE::TensorShapeProto input_shape;
+    google::protobuf::RepeatedField<int64_t> bounding_box_dims;
+    // should succeed since the check is skipped for custom BFP types
+    onnxruntime::contrib::CheckFitsInsideBoundingBox(input_shape, bounding_box_dims,
+                                                     onnxruntime::contrib::BFPType::Custom_BFP_1);
+  }
 }
 }  // namespace test
 }  // namespace onnxruntime
