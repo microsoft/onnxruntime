@@ -6,6 +6,7 @@
 namespace onnxruntime {
 
 // Combine hash value `seed` with hash value `h`, updating `seed` in place.
+// TODO find a better implementation? e.g., see a more recent version of boost::hash_combine()
 inline void HashCombineWithHashValue(size_t h, size_t& seed) {
   seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
