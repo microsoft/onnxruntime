@@ -16,7 +16,7 @@ do
 done
 if [ -f "/tmp/protobuf_install_manifest.txt" ]; then
   echo "Uninstalling protobuf..."
-  xargs rm < /tmp/protobuf_install_manifest.txt
+  xargs rm -f < /tmp/protobuf_install_manifest.txt
   rm /tmp/protobuf_install_manifest.txt
 fi
 
