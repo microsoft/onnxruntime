@@ -78,7 +78,7 @@ def main():
             shutil.rmtree(str(dest))
 
         shutil.copytree(str(manylinux_build_scripts_folder), str(dest))
-        shutil.copyfile(str(Path(args.manylinux_src) / "docker"  / "manylinux-entrypoint"), str(dest / "manylinux-entrypoint"))
+        shutil.copyfile(str(Path(args.manylinux_src) / "docker"  / "manylinux-entrypoint"), str(Path(args.context) / "manylinux-entrypoint"))
         run("patch", "-p1", "-i", str((Path(SCRIPT_DIR) / "github"/ "linux" /"docker" / "manylinux.patch").resolve()), cwd=str(dest))
 
     if use_container_registry:
