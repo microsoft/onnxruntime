@@ -34,9 +34,10 @@ function GetFile {
   return $?
 }
 
-GetFile https://github.com/protocolbuffers/protobuf/archive/v3.18.1.tar.gz /tmp/src/v3.18.1.tar.gz
-tar -xf /tmp/src/v3.18.1.tar.gz -C /tmp/src
-cd /tmp/src/protobuf-3.18.1
+aria2c -q -o protobuf_src.tar.gz https://github.com/protocolbuffers/protobuf/archive/v3.18.1.tar.gz 
+tar -xf protobuf_src.tar.gz
+cd protobuf-3.18.1
 cmake ./cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
 make -j$(getconf _NPROCESSORS_ONLN)
 make install
+cp install_manifest.txt /tmp/protobuf_install_manifest.txt
