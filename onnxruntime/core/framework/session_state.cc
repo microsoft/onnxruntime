@@ -1209,8 +1209,7 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   size_t explicit_provider_count = providers.NumProviders() - providers.GetCpuProviderWasImplicitlyAdded() ? 1 : 0;
   if (node_placement_set.size() > explicit_provider_count) {
     LOGS(logger, WARNING) << "Some nodes were not assigned to the preferred execution providers which could decrease performance.";
-    if (!is_verbose_mode)
-    {
+    if (!is_verbose_mode) {
       LOGS(logger, WARNING) << "Rerun with verbose output on a non-minimal build to see and verify node assignments.";
     }
   }
