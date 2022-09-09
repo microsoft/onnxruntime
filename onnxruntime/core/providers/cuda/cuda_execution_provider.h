@@ -41,6 +41,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().CublasHandle();
   }
 
+  cublasLtHandle_t PerThreadCublasLtHandle() {
+    return GetPerThreadContext().CublasLtHandle();
+  }
+
   cudnnHandle_t PerThreadDefaultCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
   }
@@ -50,7 +54,23 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().template GetConstOnes<T>(count, stream);
   }
 
+  // Add CPU buffer to a buffer pool.
+  // They can and only can be released
+  // by calling EuqueueDeferredRelease.
+  // A common pattern is
+  //  1. auto buffer = AllocateBufferOnCPUPinned<char>(128);
+  //  2. Some GPU kernel calls on GPU stream from GetComputeStream.
+  //  3. Call AddDeferredReleaseCPUPtr(buffer.release());
+  //  4. Call EnqueueDeferredRelease();
+  // so that the allocated "buffer" in (1) will be released
+  // only after all GPU kernels in (2) are finished.
+  // (4) is done in OnRunEnd, so the user doesn't need to call
+  // it in most cases.
   void AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream);
+  // Release all buffers added by
+  // AddDeferredReleaseCPUPtr using
+  // GPU callback (so it's async).
+  Status EnqueueDeferredRelease();
 
   // GPU scratch buffer need to be allocated on stream
   template <typename T>
@@ -105,21 +125,19 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool external_stream_ = false;
   // only used when set user external stream or cuda graph
   cudaStream_t stream_ = nullptr;
+
   bool use_ep_level_unified_stream_ = false;
-
-  // because within a single iteration GPU kernels may executed on multiple streams,
-  // we can't use an unified event to guard the deferred cpu ptrs.
-  // change the design to each cpu ptr has an event,
-  // cuda EP check the event status and release ptrs in the RunStart.
-  // Ideally there should be a worker thread that keep query those events and release
-  // once the event is done, but we don't want to pay the cost of additional thread.
-  struct DeferredReleaseCPUPtr {
-    void* cpu_ptr;
-    cudaEvent_t kernel_complete_event;
-  };
-
-  std::vector<DeferredReleaseCPUPtr> deferred_release_cpu_ptrs;
-  OrtMutex deferred_release_cpu_ptr_mutex_;
+  // deferred_release_buffer_pool_[my_stream] store all CPU buffers associated with
+  // CUDA kernels running on my_stream (type: cudaStream_t).
+  // Buffers' release is enqueued as a CUDA callback onto the associated stream (aka
+  // stream returned by GetComputeStream when calling AddDeferredReleaseCPUPtr) in OnRunEnd.
+  // Those are pointers allocated by AllocateBufferOnCPUPinned and should be released
+  // by CPU Allocator's Free function.
+  std::unordered_map<void*, std::vector<void*>> deferred_release_buffer_pool_;
+  // To add a pointer to deferred_release_buffer_pool_, we need a mutex because
+  // different threads may create CPU buffers at the same time. Releasing
+  // buffers also needs this mutex.
+  OrtMutex deferred_release_mutex_;
 
   class PerThreadContext final {
    public:
@@ -133,6 +151,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
+    }
+
+    cublasLtHandle_t CublasLtHandle() const {
+      return cublas_lt_handle_;
     }
 
     template <typename T>
@@ -174,6 +196,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
    private:
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
+    cublasLtHandle_t cublas_lt_handle_ = nullptr;
 
     std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;

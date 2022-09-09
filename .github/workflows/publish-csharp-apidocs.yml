@@ -5,17 +5,32 @@ on:
       - main
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
     - uses: actions/checkout@v3
     - name: Setup .NET
       uses: actions/setup-dotnet@v2
       with:
-        dotnet-version: 6.0.x
+        dotnet-version: 5.0.x
     - name: Restore dependencies
       run: dotnet restore csharp/ApiDocs/ApiDocs.csproj
-    - name: Build
-      run: dotnet build csharp/ApiDocs/ApiDocs.csproj --no-restore
+    - name: Download DocFX
+      run: |
+        mkdir -p build/docfx
+        Invoke-WebRequest -Uri "https://github.com/dotnet/docfx/releases/download/v${env:DOCFXVERSION}/docfx.zip" -OutFile "build/docfx/docfx.zip"
+        [System.IO.Compression.ZipFile]::ExtractToDirectory("build/docfx/docfx.zip", "build/docfx" )
+        cd build/docfx
+        ls
+      env:
+        DOCFXVERSION: 2.59.3
+    - name: Install NuGet
+      uses: nuget/setup-nuget@v1
+    - name: Build Documentation
+      run: |
+        ls
+        build/docfx/docfx.exe metadata csharp/ApiDocs/docfx.json
+        dotnet build csharp/ApiDocs/ApiDocs.csproj --no-restore
+        build/docfx/docfx.exe build csharp/ApiDocs/docfx.json
     - name: Set commit ID
       id: vars
       run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
@@ -25,10 +40,10 @@ jobs:
         clean: false
     - name: Move API docs into target area
       run: |
-        rm -rf docs/api/csharp
-        mv csharp/ApiDocs/csharp docs/api
-        rm -r csharp/ApiDocs
-        rm -r csharp/src
+        if (Test-Path -Path docs/api/csharp) {rmdir docs/api/csharp /q /s} 
+        MOVE csharp/ApiDocs/csharp docs/api
+        rm -r -fo csharp/ApiDocs
+        rm -r -fo csharp/src
     - name: Git Checkin
       run: git add .
     - name: Create Pull Request

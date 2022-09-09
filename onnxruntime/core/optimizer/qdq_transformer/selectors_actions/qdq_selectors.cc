@@ -180,11 +180,20 @@ bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  for (size_t q_idx = 1; q_idx < q_nodes.size(); q_idx++) {
+    if (dt_output != q_nodes[q_idx]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type()) {
+      return false;
+    }
+  }
   return dt_input == dt_output;
 }
 
-void VariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
+void InputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.num_input_defs = 1;  // set to 1 as the first input is variadic
+}
+
+void OutputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
+  builder.num_output_defs = 1;  // set to 1 as the first output is variadic
 }
 
 bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,

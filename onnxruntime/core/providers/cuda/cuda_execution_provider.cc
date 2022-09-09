@@ -170,6 +170,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUDA_CALL_THROW(cudaSetDevice(device_id));
 
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
+  CUBLAS_CALL_THROW(cublasLtCreate(&cublas_lt_handle_));
   CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
 
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
@@ -184,6 +185,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(cublas_handle_)));
+  ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasLtDestroy(cublas_lt_handle_)));
   ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(cudnn_handle_)));
 }
 
@@ -252,20 +254,9 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
-  auto cpu_alloc = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  {
-    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-    if (!deferred_release_cpu_ptrs.empty()) {
-      // iterate from the end
-
-      for (int i = static_cast<int>(deferred_release_cpu_ptrs.size()) - 1; i >= 0; i--) {
-        CUDA_CALL_THROW(cudaEventSynchronize(deferred_release_cpu_ptrs[i].kernel_complete_event));
-        cpu_alloc->Free(deferred_release_cpu_ptrs[i].cpu_ptr);
-        CUDA_CALL_THROW(cudaEventDestroy(deferred_release_cpu_ptrs[i].kernel_complete_event));
-        deferred_release_cpu_ptrs.erase(deferred_release_cpu_ptrs.begin() + i);
-      }
-    }
-  }
+  // Prevent memory leak when people don't call
+  // OnRunStart and OnRunEnd when calling CudaKernel's.
+  ORT_IGNORE_RETURN_VALUE(EnqueueDeferredRelease());
 
   // clean up thread local context caches
   {
@@ -377,39 +368,96 @@ Status CUDAExecutionProvider::Sync() const {
 }
 
 void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream) {
-  // TODO: event reusing?
-  cudaEvent_t kernel_complete_event;
-  CUDA_CALL_THROW(cudaEventCreate(&kernel_complete_event, cudaEventDisableTiming));
-  CUDA_CALL_THROW(cudaEventRecord(kernel_complete_event, stream));
-  // the push_back is not thread safe
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  deferred_release_cpu_ptrs.push_back({p, kernel_complete_event});
+  // when not running in InferenceSession (e.g. Test)
+  // it's OK to not remember the deferred release ptr
+  // as the actual memory will be cleaned in arena allocator dtor
+
+  // This function should only record pointers returned by
+  // AllocateBufferOnCPUPinned.
+
+  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
+  auto it = deferred_release_buffer_pool_.find(stream);
+  if (it != deferred_release_buffer_pool_.end()) {
+    it->second.push_back(p);
+  } else {
+    deferred_release_buffer_pool_[stream] = {p};
+  }
+}
+
+struct CpuBuffersInfo {
+  // This struct stores the information needed
+  // to release CPU buffers allocated for GPU kernels.
+  // It's used to enqueue their release after
+  // associated GPU kernels in a CUDA stream.
+
+  // This is a CPU allocator in CUDA EP.
+  // It must be the one used to allocate the
+  // following pointers.
+  AllocatorPtr allocator;
+  // buffers[i] is the i-th pointer added by
+  // AddDeferredReleaseCPUPtr for a specific
+  // CUDA stream. For example, this fields
+  // should contain all values in
+  // deferred_release_buffer_pool_[my_stream]
+  // when release my_stream's buffers.
+  void** buffers;
+  // CPU buffer buffers[i].
+  // Number of buffer points in "buffers".
+  size_t n_buffers;
+};
+
+static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
+  auto info = reinterpret_cast<CpuBuffersInfo*>(raw_info);
+  // Uncomment the following line to check if all previous stream
+  // operations are done correctly.
+  // checkCudaErrors(tmp->status);
+  for (size_t i = 0; i < info->n_buffers; ++i) {
+    info->allocator->Free(info->buffers[i]);
+  }
+  delete[] info->buffers;
+  delete info;
+}
+
+Status CUDAExecutionProvider::EnqueueDeferredRelease() {
+  // Release CPU buffers allocated for CUDA kernels (type: CudaKernel).
+  // They have to be released outside CUDA kernels because they must be alive
+  // during asynchronous GPU computation even after the CPU part (e.g,
+  // CudaKernel::ComputeInternal) already return.
+  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
+  for (auto it = deferred_release_buffer_pool_.begin(); it != deferred_release_buffer_pool_.end(); ++it) {
+    // it->first: a CUDA stream.
+    // it->second: CPU buffers associated with kernels running on it->first.
+    // This iteration enqueues a callback to release all buffers
+    // in it->second on it->first.
+
+    auto stream = static_cast<cudaStream_t>(it->first);
+    auto& buffers = it->second;
+    // Allocate a heap object to extend the lifetime of allocator and buffer pointers
+    // until the end of callback (aka ReleaseCpuBufferCallback).
+    auto cpu_buffers_info = new CpuBuffersInfo;
+    // This allocator must be the same to the allocator
+    // used in AllocateBufferOnCPUPinned.
+    cpu_buffers_info->allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+    cpu_buffers_info->buffers = new void*[buffers.size()];
+    for (size_t i = 0; i < buffers.size(); ++i) {
+      cpu_buffers_info->buffers[i] = buffers.at(i);
+    }
+    cpu_buffers_info->n_buffers = buffers.size();
+    CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info));
+  }
+  // All buffers are scheduled for release.
+  // Let's clear releated information so that
+  // those buffers won't be released twice.
+  deferred_release_buffer_pool_.clear();
+  return Status::OK();
 }
 
 Status CUDAExecutionProvider::OnRunStart() {
   // always set CUDA device when session::Run() in case it runs in a worker thread
   CUDA_RETURN_IF_ERROR(cudaSetDevice(GetDeviceId()));
-  auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
-  // check if cudaEvents has passed for deferred release
-  // note that we need to take a mutex in case of multi-threaded Run()
-  {
-    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-    if (!deferred_release_cpu_ptrs.empty()) {
-      // iterate from the end
-      for (int i = static_cast<int>(deferred_release_cpu_ptrs.size()) - 1; i >= 0; i--) {
-        if (cudaSuccess == cudaEventQuery(deferred_release_cpu_ptrs[i].kernel_complete_event)) {
-          cpu_alloc->Free(deferred_release_cpu_ptrs[i].cpu_ptr);
-          CUDA_RETURN_IF_ERROR(cudaEventDestroy(deferred_release_cpu_ptrs[i].kernel_complete_event));
-          deferred_release_cpu_ptrs.erase(deferred_release_cpu_ptrs.begin() + i);
-        }
-      }
-    }
-  }
-  // create per thread context cache
-  auto& per_thread_context_cache = GetPerThreadContext();
-  if (IsGraphCaptureEnabled() && per_thread_context_cache.IsGraphCaptureAllowed() && !per_thread_context_cache.IsGraphCaptured()) {
+  if (IsGraphCaptureEnabled() && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured()) {
     LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
-    per_thread_context_cache.CaptureBegin();
+    GetPerThreadContext().CaptureBegin();
   }
   return Status::OK();
 }
@@ -426,14 +474,26 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
     }
   }
 
-  if (sync_stream && use_ep_level_unified_stream_) {
+  // Enqueue deferred CPU memory release on related streams.
+  // This will release all deferred-release CPU buffers allocated
+  // before calling OnRunEnd.
+  ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
+
+  if (sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(stream_)));
   }
 
-  // If cuda graph is enabled, the per thread context will not be released
-  // because the per thread cuda graph needs to be maintained and replayed for
-  // the next run.
-  if (!IsGraphCaptureEnabled()) {
+  // The reason of !IsGraphCaptureEnabled():
+  //  If cuda graph is enabled, the per thread context will not be released
+  //  because the per thread cuda graph needs to be maintained and replayed for
+  //  the next run.
+  // The reason of PerThreadContextCache()->find(this) != PerThreadContextCache()->end():
+  //  In extreme cases (e.g., 1-op graph and that op fallbacks to CPU),
+  //  PerThreadContext won't be created and there isbe nothing to
+  //  release. This didn't happen before because we always call
+  //  GetPerThreadContext in OnRunStart.
+  if (!IsGraphCaptureEnabled() &&
+      PerThreadContextCache()->find(this) != PerThreadContextCache()->end()) {
     ReleasePerThreadContext();
   }
 

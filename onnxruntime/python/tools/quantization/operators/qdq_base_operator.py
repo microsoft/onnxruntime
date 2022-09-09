@@ -21,4 +21,4 @@ class QDQOperatorBase:
             tensors_to_quantize = itertools.chain(node.input, node.output)
 
         for tensor_name in tensors_to_quantize:
-            self.quantizer.quantize_tensor(tensor_name)
+            self.quantizer.quantize_activation_tensor(tensor_name)

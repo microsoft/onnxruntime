@@ -16,7 +16,7 @@ class QSplit(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [0])
+        ) = self.quantizer.quantize_activation(node, [0])
         if quantized_input_names is None:
             return super().quantize()
 
@@ -57,7 +57,7 @@ class QDQSplit(QDQOperatorBase):
         assert node.op_type == "Split"
 
         if not self.quantizer.is_tensor_quantized(node.input[0]):
-            self.quantizer.quantize_tensor(node.input[0])
+            self.quantizer.quantize_activation_tensor(node.input[0])
         if not self.disable_qdq_for_node_output:
             for output in node.output:
-                self.quantizer.quantize_tensor(output, node.input[0])
+                self.quantizer.quantize_activation_tensor(output, node.input[0])
