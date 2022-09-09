@@ -587,7 +587,7 @@ namespace OperatorHelper
         );
     }
 
-    std::pair<std::vector<uint32_t>, std::vector<uint32_t>> FusedMatMulSizeAndStride(
+    std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(
         gsl::span<const uint32_t> sizes,
         int32_t transBatch,
         int32_t transpose)
@@ -611,7 +611,10 @@ namespace OperatorHelper
         {
             ML_CHECK_VALID_ARGUMENT(dimensionCount > 2, 
                 "FusedMatMul operator: Tensor size should be more than 2, if attribute transBatch is true");
-            uint32_t secondLastStride = newStrides[dimensionCount - 2];
+
+            std::rotate(newSizes.begin(), newSizes.end() - 2, newSizes.end() - 1);
+            std::rotate(newStrides.begin(), newStrides.end() - 2, newStrides.end() - 1);
+            /*uint32_t secondLastStride = newStrides[dimensionCount - 2];
             uint32_t secondLastSize = newSizes[dimensionCount - 2];
 
             for (int i = dimensionCount - 2; i > 0; i--)
@@ -621,7 +624,7 @@ namespace OperatorHelper
             }
 
             newStrides[0] = secondLastStride;
-            newSizes[0] = secondLastSize;
+            newSizes[0] = secondLastSize;*/
         }
 
         if (transpose)
@@ -1677,14 +1680,14 @@ namespace OperatorHelper
         ML_CHECK_VALID_ARGUMENT(inputShape0.size() >= 1);
         ML_CHECK_VALID_ARGUMENT(inputShape1.size() >= 1);
 
-        auto [sizesA, stridesA] = FusedMatMulSizeAndStride(
+        auto [sizesA, stridesA] = GetFusedMatMulSizesAndStrides(
             inputShape0,
             shapeInfo.GetOptionalAttribute(AttrName::TransBatchA, -1),
             shapeInfo.GetOptionalAttribute(AttrName::TransA, -1)
         );
         inputShape0 = sizesA;
 
-        auto [sizesB, stridesB] = FusedMatMulSizeAndStride(
+        auto [sizesB, stridesB] = GetFusedMatMulSizesAndStrides(
             inputShape1,
             shapeInfo.GetOptionalAttribute(AttrName::TransBatchB, -1),
             shapeInfo.GetOptionalAttribute(AttrName::TransB, -1)

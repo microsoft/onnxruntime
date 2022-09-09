@@ -36,9 +36,9 @@ public:
                   "Two inputs should have same rank and rank >= 3 if transBatchA or transBatchB is true");
         }
 
-        auto [sizesA, stridesA] = OperatorHelper::FusedMatMulSizeAndStride(inputShape0, transBatchA, transA);
+        auto [sizesA, stridesA] = OperatorHelper::GetFusedMatMulSizesAndStrides(inputShape0, transBatchA, transA);
 
-        auto [sizesB, stridesB] = OperatorHelper::FusedMatMulSizeAndStride(inputShape1, transBatchB, transB);
+        auto [sizesB, stridesB] = OperatorHelper::GetFusedMatMulSizesAndStrides(inputShape1, transBatchB, transB);
 
         OperatorHelper::FusedMatMulShapeMapping(sizesA, stridesA, sizesB, stridesB, outputShape);
 
