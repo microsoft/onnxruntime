@@ -151,7 +151,6 @@ RUN sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords yes/g' /etc/ssh/sshd
 ENTRYPOINT service ssh restart && /bin/bash
 
 # Add model and scripts
-ADD model ${WORKSPACE_DIR}/model
 ADD script ${WORKSPACE_DIR}/script
 RUN chmod a+x ${WORKSPACE_DIR}/script/run_bert.sh
 
