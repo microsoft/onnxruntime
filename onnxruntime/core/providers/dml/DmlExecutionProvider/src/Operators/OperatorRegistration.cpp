@@ -96,6 +96,8 @@ DML_OP_EXTERN_CREATION_FUNCTION(RoiAlign10);
 DML_OP_EXTERN_CREATION_FUNCTION(InstanceNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(BatchNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(BatchNormalization15);
+DML_OP_EXTERN_CREATION_FUNCTION(LayerNormalization);
+DML_OP_EXTERN_CREATION_FUNCTION(LayerNormalization17);
 DML_OP_EXTERN_CREATION_FUNCTION(LRN);
 DML_OP_EXTERN_CREATION_FUNCTION(MeanVarianceNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(LpNormalization);
@@ -266,9 +268,11 @@ DML_OP_EXTERN_QUERY_FUNCTION(EinSum);
 DML_OP_EXTERN_QUERY_FUNCTION(RecurrentNeuralNetwork);
 DML_OP_EXTERN_QUERY_FUNCTION(BatchNormalization);
 DML_OP_EXTERN_QUERY_FUNCTION(Pad);
+DML_OP_EXTERN_QUERY_FUNCTION(LayerNormalization);
 
 constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
 constexpr static std::array<const char*, 2> typeNameListTwo = { "T1", "T2" };
+constexpr static std::array<const char*, 2> typeNameListLayerNorm = { "T", "U" };
 constexpr static std::array<const char*, 3> typeNameListThree = { "T1", "T2", "T3" };
 constexpr static std::array<const char*, 4> typeNameListFour = { "T1", "T2", "T3", "T4" };
 constexpr static std::array<const char*, 2> typeNameListTopK = { "T", "I" };
@@ -324,6 +328,7 @@ constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListIntege
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListInteger8 = {SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8 };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRoiAlign = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64 };
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListArgMinMax = {SupportedTensorDataTypes::Float16to32|SupportedTensorDataTypes::Ints8to64};
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLayerNormalization = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float32};
 
 constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListQLinearMatMul = {
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
@@ -403,6 +408,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      9,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},  // v9 just removes 'spatial' attribute.
     {REG_INFO(     14,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryBatchNormalization)},  // v14 adds training_mode attribute
     {REG_INFO(     15,  BatchNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryBatchNormalization)},  // v15 adds differing types for scale and bias vs input.
+    {REG_INFO(      7,  LayerNormalization,                 typeNameListLayerNorm,          supportedTypeListLayerNormalization,    DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
+    {REG_INFO_VER( 17,  LayerNormalization,                 typeNameListLayerNorm,          supportedTypeListLayerNormalization,    DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
     {REG_INFO(      7,  LRN,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     13,  LRN,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  MeanVarianceNormalization,          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
