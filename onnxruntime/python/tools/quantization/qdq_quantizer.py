@@ -128,7 +128,7 @@ class QDQQuantizer(ONNXQuantizer):
         # Register the chosen dynamic subgraph compute quantization parameter function based on symmetric and qtype
         if not static:
             self.compute_quantization_parameters_function = self.create_dynamic_subgraph_function(
-                self.input_qType, self.is_activation_symmetric
+                self.activation_qType, self.is_activation_symmetric
             )
             self.model.model.functions.append(self.compute_quantization_parameters_function)
 
@@ -715,7 +715,7 @@ class QDQQuantizer(ONNXQuantizer):
                             )
                         # Here we add dynamic subgraph, if we found no static params
                         # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
-                        qType = self.input_qType
+                        qType = self.activation_qType
                         if self.model.is_graph_output(tensor_name):  # Changes name to quantize output correctly
                             (
                                 scale_name,

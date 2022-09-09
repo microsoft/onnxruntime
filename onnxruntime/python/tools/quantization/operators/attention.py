@@ -82,12 +82,12 @@ class QDQAttention(QDQOperatorBase):
         node = self.node
         assert node.op_type == "Attention"
 
-        self.quantizer.quantize_tensor(node.input[0])
-        self.quantizer.quantize_tensor(node.input[1])
+        self.quantizer.quantize_activation_tensor(node.input[0])
+        self.quantizer.quantize_activation_tensor(node.input[1])
         # self.quantizer.tensors_to_quantize.append(node.input[0])
         # self.quantizer.tensors_to_quantize.append(node.input[1])
         if not self.disable_qdq_for_node_output:
-            self.quantizer.quantize_tensor(node.output[0])
+            self.quantizer.quantize_activation_tensor(node.output[0])
             # self.quantizer.tensors_to_quantize.append(node.output[0])
 
         # TODO: Test disable output
