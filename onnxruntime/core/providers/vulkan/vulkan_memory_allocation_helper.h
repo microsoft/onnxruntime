@@ -7,24 +7,7 @@
 
 #include "vulkan_common.h"
 
-#include "core/framework/allocator.h"
-
 namespace onnxruntime {
-
-class VulkanAllocator : IAllocator {
- public:
-  VulkanAllocator(const VkDevice& logical_device, size_t memory_type_index);
-
-  void* Alloc(size_t size) override;
-
-  void Free(void* ptr) override;
-
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanAllocator);
-
- private:
-  const VkDevice& logical_device_;
-  size_t memory_type_index_;
-};
 
 class VulkanMemory {
  public:
@@ -52,22 +35,37 @@ class VulkanMemory {
   VkDeviceSize size_;
 };
 
-class VulkanMemoryPool {
+class VulkanDeviceAllocator {
  public:
-  VulkanMemoryPool(const VkDevice& logical_device,
+  VulkanDeviceAllocator(const VkDevice& logical_device, size_t memory_type_index);
+
+  void* Alloc(size_t size);
+
+  void Free(void* ptr);
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanDeviceAllocator);
+
+ private:
+  const VkDevice& logical_device_;
+  size_t memory_type_index_;
+};
+
+class VulkanMemoryAllocationHelper {
+ public:
+  VulkanMemoryAllocationHelper(const VkDevice& logical_device,
                    VkPhysicalDeviceMemoryProperties physical_device_memory_props,
                    uint32_t queue_family_index_);
 
-  virtual ~VulkanMemoryPool() = default;
+  virtual ~VulkanMemoryAllocationHelper() = default;
 
   const VkDevice& GetLogicalDevice() {
     return logical_device_;
   }
 
-  // <VulkanMemory* , offset>
-  std::pair<void*, int> Alloc(const VkMemoryRequirements& requirements, VkFlags alloc_flags);
+  // Allocate and free device memory
+  std::pair<void*, int> AllocDeviceMemory(const VkMemoryRequirements& requirements, VkFlags alloc_flags);
 
-  void Free(std::pair<void*, int>& memory);
+  void FreeDeviceMemory(std::pair<void*, int>& memory);
 
   // Allocate and free VkBuffer
   VkBuffer AllocVkBuffer(size_t size, VkBufferUsageFlags flags, VkSharingMode shared);
@@ -79,11 +77,10 @@ class VulkanMemoryPool {
 
   void FreeVkImage(VkImage image);
 
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanMemoryPool);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanMemoryAllocationHelper);
 
  private:
-  std::vector<std::unique_ptr<VulkanAllocator>> allocators_;
-
+  std::vector<std::unique_ptr<VulkanDeviceAllocator>> device_allocators_;
   const VkDevice& logical_device_;
   VkPhysicalDeviceMemoryProperties physical_device_memory_props_;
   uint32_t queue_family_index_;

@@ -4,15 +4,20 @@
 #pragma once
 
 #include "vulkan_common.h"
-#include "vulkan_memory_pool.h"
+#include "vulkan_memory_allocation_helper.h"
 #include "vulkan_image.h"
+
+#include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
+#include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 
 class VulkanTensor {
  public:
-  VulkanTensor(const Tensor* tensor, VulkanMemoryPool& memory_pool, const VkPhysicalDeviceLimits& limits);
+  VulkanTensor(const TensorShape& tensor_shape, MLDataType data_type,
+               VulkanMemoryAllocationHelper& memory_alloc_helper,
+               const VkPhysicalDeviceLimits& memory_limits);
 
   virtual ~VulkanTensor() = default;
 
@@ -24,12 +29,12 @@ class VulkanTensor {
     return blocks_;
   }
 
-  const VulkanImage* Image(size_t index = 0) const {
+  const VulkanImage* Get(size_t index = 0) const {
     return images_[index].get();
   }
 
   // N, H, W, C
-  static std::array<int64_t, 4> TensorShapeFormat(const Tensor* input);
+  static std::array<int64_t, 4> TensorShapeFormat(const TensorShape& tensor_shape);
 
   static int64_t GetAlignSize(const Tensor* tensor);
 

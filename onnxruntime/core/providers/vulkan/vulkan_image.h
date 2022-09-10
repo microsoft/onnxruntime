@@ -4,18 +4,18 @@
 #pragma once
 
 #include "vulkan_common.h"
-#include "vulkan_memory_pool.h"
+#include "vulkan_memory_allocation_helper.h"
 #include "core/framework/data_types.h"
 
 namespace onnxruntime {
 
 class VulkanImage {
  public:
-  VulkanImage(VulkanMemoryPool& memory_pool, const std::vector<int64_t>& dims,
+  VulkanImage(VulkanMemoryAllocationHelper& memory_alloc_helper, const std::vector<int64_t>& dims,
               MLDataType data_type);
 
-  VulkanImage(VulkanMemoryPool& memory_pool, int64_t w, int64_t h, MLDataType data_type)
-      : VulkanImage(memory_pool, std::vector<int64_t>{w, h}, data_type) {
+  VulkanImage(VulkanMemoryAllocationHelper& memory_alloc_helper, int64_t w, int64_t h, MLDataType data_type)
+      : VulkanImage(memory_alloc_helper, std::vector<int64_t>{w, h}, data_type) {
   }
 
   virtual ~VulkanImage();
@@ -66,7 +66,7 @@ class VulkanImage {
 
  private:
   const VkDevice& logical_device_;
-  VulkanMemoryPool& memory_pool_;
+  VulkanMemoryAllocationHelper& memory_alloc_helper_;
 
   std::tuple<VkImageType, int64_t, int64_t, int64_t, VkFormat> image_info_;
   std::pair<VkImage, VkImageView> image_and_view_;

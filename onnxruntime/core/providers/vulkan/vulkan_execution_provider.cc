@@ -3,6 +3,17 @@
 
 #include "vulkan_execution_provider.h"
 
+#include "core/common/common.h"
+//#include "core/framework/op_kernel.h"
+#include "core/framework/kernel_registry.h"
+
+namespace {
+struct KernelRegistryAndStatus {
+  std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
+  onnxruntime::Status st;
+};
+}  // namespace
+
 namespace onnxruntime {
 
 VulkanInstance::VulkanInstance() {
@@ -53,7 +64,16 @@ VkInstance VulkanInstance::Get() const {
   return vulkan_instance_;
 }
 
-VulkanExecutionProvider::VulkanExecutionProvider() : IExecutionProvider{onnxruntime::kVulkanExecutionProvider} {
+AllocatorPtr VulkanExecutionProvider::CreateVulkanAllocator() {
+  VulkanMemoryAllocationHelper memory_alloc_helper(vulkan_logical_device_, vulkan_device_memory_properties_, vulkan_queue_family_index_);
+  AllocatorCreationInfo device_info{[&memory_alloc_helper, this](int) { return std::make_unique<VulkanAllocator>(info_, memory_alloc_helper, vulkan_device_properties_.limits); },
+                                    info_.device_id, /*no arena*/ false};
+
+  return CreateAllocator(device_info);
+}
+
+VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderInfo& info)
+    : IExecutionProvider{onnxruntime::kVulkanExecutionProvider}, info_(info) {
   vulkan_instance_ = std::make_shared<VulkanInstance>();
 
   // Look for physical devices that Vulkan can be used against
@@ -73,9 +93,7 @@ VulkanExecutionProvider::VulkanExecutionProvider() : IExecutionProvider{onnxrunt
     ORT_THROW("Received nullptr for Vulkan Physical device");
   }
 
-  // TODO: Should the device id be made configurable ?
-  // Currently, we are picking the first one returned back in the enumeration
-  vulkan_physical_device_ = vulkan_physical_devices[0];
+  vulkan_physical_device_ = vulkan_physical_devices[info_.device_id];
 
   // Poll the physical device to see if it contains a compute queue family
   uint32_t total_queue_families = 0;
@@ -139,14 +157,18 @@ VulkanExecutionProvider::VulkanExecutionProvider() : IExecutionProvider{onnxrunt
   VK_CALL_RETURNS_VOID(vkGetPhysicalDeviceProperties(vulkan_physical_device_, &vulkan_device_properties_));
   VK_CALL_RETURNS_VOID(vkGetPhysicalDeviceMemoryProperties(vulkan_physical_device_, &vulkan_device_memory_properties_));
   VK_CALL_RETURNS_VOID(vkGetDeviceQueue(vulkan_logical_device_, vulkan_queue_family_index_, 0, &vulkan_queue_));
+
+  // Insert the allocator
+
+  InsertAllocator(CreateVulkanAllocator());
 }
 
 VulkanExecutionProvider::~VulkanExecutionProvider() {
   // NOTES:
-  // Physical device is implicitly destroyed when the vulkan instance is destroyed
+  // (1) Physical device is implicitly destroyed when the vulkan instance is destroyed
   // finally, so there is nothing to add here wrt to that
 
-  // Device queues are implicitly destroyed when logical device is destroyed
+  // (2) Device queues are implicitly destroyed when logical device is destroyed
 
   if (VK_NULL_HANDLE != vulkan_logical_device_) {
     vkDestroyDevice(vulkan_logical_device_, nullptr);
@@ -154,4 +176,64 @@ VulkanExecutionProvider::~VulkanExecutionProvider() {
   }
 }
 
+void VulkanExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
+  OrtDevice vulkan_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info_.device_id};
+
+  auto vulkan_alloc = GetAllocator(vulkan_device.Id(), OrtMemTypeDefault);
+
+  if (!vulkan_alloc) {
+    vulkan_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, vulkan_device);
+
+    if (!vulkan_alloc) {
+      vulkan_alloc = CreateVulkanAllocator();
+
+      allocator_manager.InsertAllocator(vulkan_alloc);
+    }
+  } else {
+    // enable sharing of our allocator from the EP
+    allocator_manager.InsertAllocator(vulkan_alloc);
+  }
+}
+
+// Forward declarations of op kernels
+class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kVulkanExecutionProvider, kOnnxDomain, 6, 12, float, Relu);
+
+template <>
+KernelCreateInfo BuildKernelCreateInfo<void>() {
+  return {};
+}
+
+Status RegisterVulkanOnnxOperatorKernels(KernelRegistry& kernel_registry) {
+  static const BuildKernelCreateInfoFn function_table[] = {
+      BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kVulkanExecutionProvider, kOnnxDomain, 6, 12, float, Relu)>,
+  };
+
+  for (auto& function_table_entry : function_table) {
+    KernelCreateInfo info = function_table_entry();
+    if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+      ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status RegisterVulkanKernels(KernelRegistry& kernel_registry) {
+  ORT_RETURN_IF_ERROR(RegisterVulkanOnnxOperatorKernels(kernel_registry));
+  return Status::OK();
+}
+
+KernelRegistryAndStatus GetVulkanKernelRegistry() {
+  KernelRegistryAndStatus ret;
+  ret.st = RegisterVulkanKernels(*ret.kernel_registry);
+  return ret;
+}
+
+std::shared_ptr<KernelRegistry> VulkanExecutionProvider::GetKernelRegistry() const {
+  static KernelRegistryAndStatus k = GetVulkanKernelRegistry();
+  // throw if the registry failed to initialize
+  ORT_THROW_IF_ERROR(k.st);
+  return k.kernel_registry;
+}
 }  // namespace onnxruntime

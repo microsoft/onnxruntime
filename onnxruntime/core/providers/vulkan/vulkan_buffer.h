@@ -4,13 +4,13 @@
 #pragma once
 
 #include "vulkan_common.h"
-#include "vulkan_memory_pool.h"
+#include "vulkan_memory_allocation_helper.h"
 
 namespace onnxruntime {
 
 class VulkanBuffer {
  public:
-  VulkanBuffer(VulkanMemoryPool& memory_pool, size_t size,
+  VulkanBuffer(VulkanMemoryAllocationHelper& memory_alloc_helper, size_t size,
                const void* host_data = nullptr,
                VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                VkSharingMode shared = VK_SHARING_MODE_EXCLUSIVE,
@@ -35,7 +35,7 @@ class VulkanBuffer {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanBuffer);
 
  private:
-  VulkanMemoryPool& memory_pool_;
+  VulkanMemoryAllocationHelper& memory_alloc_helper_;
   std::pair<void*, int> memory_;
   VkBuffer buffer_;
   size_t size_;

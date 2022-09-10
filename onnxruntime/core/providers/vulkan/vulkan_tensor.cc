@@ -9,8 +9,7 @@ namespace onnxruntime {
 #define ROUND_UP(x, y) (((x) + (y) - (1)) / (y) * (y))
 #define ALIGN_UP4(x) ROUND_UP((x), 4)
 
-std::array<int64_t, 4> VulkanTensor::TensorShapeFormat(const Tensor* input) {
-  const auto& tensor_shape = input->Shape();
+std::array<int64_t, 4> VulkanTensor::TensorShapeFormat(const TensorShape& tensor_shape) {
   auto rank = tensor_shape.GetDims().size();
 
   int64_t N = -1;
@@ -55,13 +54,15 @@ int64_t VulkanTensor::GetAlignSize(const Tensor* tensor) {
   return ALIGN_UP4(element_size);
 }
 
-VulkanTensor::VulkanTensor(const Tensor* tensor, VulkanMemoryPool& memory_pool, const VkPhysicalDeviceLimits& limits) {
-  auto nhwc = TensorShapeFormat(tensor);
+VulkanTensor::VulkanTensor(const TensorShape& tensor_shape, MLDataType data_type,
+                           VulkanMemoryAllocationHelper& memory_alloc_helper,
+                           const VkPhysicalDeviceLimits& memory_limits) {
+  auto nhwc = TensorShapeFormat(tensor_shape);
 
   auto width = UP_DIV(nhwc[3], 4) * nhwc[2];
   auto height = nhwc[0] * nhwc[1];
 
-  int64_t unit = limits.maxImageDimension2D;
+  int64_t unit = memory_limits.maxImageDimension2D;
   blocks_[0] = UP_DIV(width, unit);
   blocks_[1] = UP_DIV(height, unit);
 
@@ -80,9 +81,9 @@ VulkanTensor::VulkanTensor(const Tensor* tensor, VulkanMemoryPool& memory_pool, 
 
       auto w_real = x_finish - x_start;
 
-      images_[y * blocks_[0] + x] = std::make_shared<VulkanImage>(memory_pool,
+      images_[y * blocks_[0] + x] = std::make_shared<VulkanImage>(memory_alloc_helper,
                                                                   std::vector<int64_t>{w_real, h_real},
-                                                                  tensor->DataType());
+                                                                  data_type);
     }
   }
 }

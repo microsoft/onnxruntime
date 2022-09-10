@@ -22,9 +22,9 @@ static VkResult CreateImageView(const VkDevice& logical_device,
   return vkCreateImageView(logical_device, &info, nullptr, &image_view);
 }
 
-VulkanImage::VulkanImage(VulkanMemoryPool& memory_pool, const std::vector<int64_t>& image_dims,
+VulkanImage::VulkanImage(VulkanMemoryAllocationHelper& memory_alloc_helper, const std::vector<int64_t>& image_dims,
                          MLDataType data_type)
-    : logical_device_(memory_pool.GetLogicalDevice()), memory_pool_(memory_pool) {
+    : logical_device_(memory_alloc_helper.GetLogicalDevice()), memory_alloc_helper_(memory_alloc_helper) {
   if (data_type != DataTypeImpl::GetType<float>()) {
     ORT_THROW("Only creating float Vulkan images is currently supported");
   }
@@ -57,12 +57,13 @@ VulkanImage::VulkanImage(VulkanMemoryPool& memory_pool, const std::vector<int64_
     view_type = VK_IMAGE_VIEW_TYPE_3D;
   }
 
+  // TODO: Support more image format types based on data type
   VkFormat image_format = VK_FORMAT_R32G32B32A32_SFLOAT;
 
   image_info_ = std::make_tuple(image_type, image_width, image_height, image_depth, image_format);
 
   // Allocate VkImage
-  image_and_view_.first = memory_pool_.AllocVkImage(image_info_);
+  image_and_view_.first = memory_alloc_helper_.AllocVkImage(image_info_);
 
   image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
   image_access_flags_ = VK_ACCESS_SHADER_READ_BIT;
@@ -73,7 +74,7 @@ VulkanImage::VulkanImage(VulkanMemoryPool& memory_pool, const std::vector<int64_
   VK_CALL_RETURNS_VOID(vkGetImageMemoryRequirements(logical_device_, image_and_view_.first, &image_memory_requirements));
 
   // Allocate the necessary memory
-  image_memory_ = memory_pool_.Alloc(image_memory_requirements, 0);
+  image_memory_ = memory_alloc_helper_.AllocDeviceMemory(image_memory_requirements, 0);
 
   auto* vulkan_memory = static_cast<VulkanMemory*>(image_memory_.first);
 
@@ -89,11 +90,11 @@ VulkanImage::~VulkanImage() {
   VK_CALL_RETURNS_VOID(vkDestroyImageView(logical_device_, image_and_view_.second, nullptr));
 
   // Free the VkImage via the memory pool
-  memory_pool_.FreeVkImage(std::move(image_and_view_.first));
+  memory_alloc_helper_.FreeVkImage(std::move(image_and_view_.first));
 
   // Free the actual device memory backing the VkImage
   if (nullptr != image_memory_.first) {
-    memory_pool_.Free(image_memory_);
+    memory_alloc_helper_.FreeDeviceMemory(image_memory_);
   }
 }
 
@@ -103,7 +104,7 @@ void VulkanImage::Release() {
   }
 
   // Free the image
-  memory_pool_.Free(image_memory_);
+  memory_alloc_helper_.FreeDeviceMemory(image_memory_);
 
   image_memory_.first = nullptr;
 

@@ -16,6 +16,8 @@ class VulkanSemaphore {
     return semaphore_;
   }
 
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanSemaphore);
+
  private:
   const VkDevice& logical_device_;
   VkSemaphore semaphore_;

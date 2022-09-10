@@ -23,10 +23,11 @@ class VulkanFence {
 
   bool SupportFenceFd() const;
 
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanFence);
+
  private:
   VkResult RawWait() const;
 
- private:
   const VkDevice& logical_device_;
   VkFence fence_;
 };

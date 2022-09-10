@@ -46,6 +46,9 @@ constexpr size_t kAllocAlignment = 256;
 
 // forward declaration
 class SessionState;
+class TensorShape;
+class DataTypeImpl;
+using MLDataType = const DataTypeImpl*;
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
@@ -58,6 +61,8 @@ class IAllocator {
   @remarks Use SafeInt when calculating the size of memory to allocate using Alloc.
   */
   virtual void* Alloc(size_t size) = 0;
+
+  virtual void* Alloc(const TensorShape& /*shape*/, MLDataType /*data_type*/) { return nullptr; }
 
   virtual void Free(void* p) = 0;
 

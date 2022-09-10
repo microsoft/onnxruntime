@@ -4,7 +4,11 @@
 #pragma once
 
 #include "vulkan_common.h"
+#include "vulkan_execution_provider_info.h"
+#include "vulkan_execution_provider.h"
+#include "vulkan_allocator.h"
 
+#include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 
@@ -23,12 +27,21 @@ class VulkanInstance {
 };
 
 class VulkanExecutionProvider : public IExecutionProvider {
-  VulkanExecutionProvider();
+  explicit VulkanExecutionProvider(const VulkanExecutionProviderInfo& info);
+
   ~VulkanExecutionProvider();
+
+  void RegisterAllocator(AllocatorManager& allocator_manager) override;
+
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanExecutionProvider);
 
  private:
+  AllocatorPtr CreateVulkanAllocator();
+
+  const VulkanExecutionProviderInfo& info_;
   std::shared_ptr<VulkanInstance> vulkan_instance_;
   VkPhysicalDevice vulkan_physical_device_;
   uint32_t vulkan_queue_family_index_;
@@ -37,5 +50,8 @@ class VulkanExecutionProvider : public IExecutionProvider {
   VkQueue vulkan_queue_;
   VkPhysicalDeviceMemoryProperties vulkan_device_memory_properties_;
 };
+
+// Registers all available Vulkan kernels
+Status RegisterVulkanKernels(KernelRegistry& kernel_registry);
 
 }  // namespace onnxruntime

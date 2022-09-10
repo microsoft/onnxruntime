@@ -5,21 +5,21 @@
 
 namespace onnxruntime {
 
-VulkanBuffer::VulkanBuffer(VulkanMemoryPool& memory_pool, size_t size, const void* host_data,
+VulkanBuffer::VulkanBuffer(VulkanMemoryAllocationHelper& memory_alloc_helper, size_t size, const void* host_data,
                            VkBufferUsageFlags buffer_usage_flags, VkSharingMode shared, VkFlags requirements_mask)
-    : memory_pool_(memory_pool) {
+    : memory_alloc_helper_(memory_alloc_helper) {
   ORT_ENFORCE(size > 0);
   size_ = size;
   shared_ = shared;
-  buffer_ = memory_pool.AllocVkBuffer(size, buffer_usage_flags, shared);
+  buffer_ = memory_alloc_helper_.AllocVkBuffer(size, buffer_usage_flags, shared);
   buffer_usage_flags_ = buffer_usage_flags;
 
-  const auto& device = memory_pool.GetLogicalDevice();
+  const auto& device = memory_alloc_helper_.GetLogicalDevice();
 
   VkMemoryRequirements memory_requirements;
   VK_CALL_RETURNS_VOID(vkGetBufferMemoryRequirements(device, buffer_, &memory_requirements));
 
-  memory_ = memory_pool_.Alloc(memory_requirements, requirements_mask);
+  memory_ = memory_alloc_helper_.AllocDeviceMemory(memory_requirements, requirements_mask);
   auto* device_memory = static_cast<VulkanMemory*>(memory_.first);
 
   if (nullptr != host_data) {
@@ -33,7 +33,7 @@ VulkanBuffer::VulkanBuffer(VulkanMemoryPool& memory_pool, size_t size, const voi
 }
 
 VulkanBuffer::~VulkanBuffer() {
-  memory_pool_.FreeVkBuffer(buffer_);
+  memory_alloc_helper_.FreeVkBuffer(buffer_);
 
   Release();
 }
@@ -43,7 +43,7 @@ void* VulkanBuffer::Map(int start, int size) const {
     size = static_cast<int>(size_);
   }
 
-  const auto& device = memory_pool_.GetLogicalDevice();
+  const auto& device = memory_alloc_helper_.GetLogicalDevice();
 
   auto* device_memory = static_cast<VulkanMemory*>(memory_.first);
 
@@ -55,7 +55,7 @@ void* VulkanBuffer::Map(int start, int size) const {
 }
 
 void VulkanBuffer::Unmap() const {
-  const auto& device = memory_pool_.GetLogicalDevice();
+  const auto& device = memory_alloc_helper_.GetLogicalDevice();
 
   auto* device_memory = static_cast<VulkanMemory*>(memory_.first);
 
@@ -68,7 +68,7 @@ void VulkanBuffer::Release() {
   }
 
   memory_released_ = true;
-  memory_pool_.Free(memory_);
+  memory_alloc_helper_.FreeDeviceMemory(memory_);
 }
 
 }  // namespace onnxruntime
