@@ -18,7 +18,7 @@ namespace nnapi {
 
 #pragma region Model
 
-Model::Model(const GraphViewer& graph_viewer) : nnapi_(NnApiImplementation()){};
+Model::Model() : nnapi_(NnApiImplementation()){};
 
 Model::~Model() {
   nnapi_->ANeuralNetworksCompilation_free(compilation_);

@@ -57,7 +57,6 @@ class Model {
 #endif
 
  public:
-  Model(const GraphViewer& graph_viewer);
   ~Model();
   Model(const Model&) = delete;
   Model& operator=(const Model&) = delete;
@@ -145,8 +144,6 @@ class Model {
                  const android::nn::wrapper::OperandType& operand_type);
 
   void AddScalarOutput(const std::string& output_name);
-
-  void SetShaper(const Shaper& shaper) { shaper_ = shaper; }
 
   Shaper& GetShaper() { return shaper_; }
 
