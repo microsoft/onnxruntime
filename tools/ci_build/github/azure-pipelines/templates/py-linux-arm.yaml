@@ -13,20 +13,20 @@ jobs:
     - checkout: self
       clean: true
       submodules: recursive
+    
+    - template: set-nightly-build-option-variable-step.yml
 
     - template: get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2014_cpu
         Context: tools/ci_build/github/linux/docker/inference/x64/python/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=arm64v8/centos:7"
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=arm64v8/centos:7 --build-arg PLATFORM=aarch64"
         Repository: onnxruntimecpubuilpythonarm64
-
-    - template: set-nightly-build-option-variable-step.yml
 
     - task: CmdLine@2
       displayName: 'Build Python Wheel'
       inputs:
-        script: |            
+        script: |
             mkdir -p $HOME/.onnx
             docker run --rm \
               --volume /data/onnx:/data/onnx:ro \
@@ -34,50 +34,15 @@ jobs:
               --volume $(Build.BinariesDirectory):/build \
               --volume /data/models:/build/models:ro \
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -w /onnxruntime_src \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimecpubuilpythonarm64 \
-                /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build --cmake_generator Ninja \
-                  --config Release --update --build \
-                  --skip_submodule_sync \
-                  --parallel \
-                  --enable_lto \
-                  --build_wheel \
-                  --enable_onnx_tests \
-                  ${{ parameters.build_py_parameters }} && \
-                /opt/python/cp38-cp38 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build --cmake_generator Ninja \
-                  --config Release --update --build \
-                  --skip_submodule_sync \
-                  --parallel \
-                  --enable_lto \
-                  --build_wheel \
-                  --enable_onnx_tests \
-                  ${{ parameters.build_py_parameters }} && \
-                /opt/python/cp39-cp39 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build --cmake_generator Ninja \
-                  --config Release --update --build \
-                  --skip_submodule_sync \
-                  --parallel \
-                  --enable_lto \
-                  --build_wheel \
-                  --enable_onnx_tests \
-                  ${{ parameters.build_py_parameters }} && \
-                /opt/python/cp310-cp310 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build --cmake_generator Ninja \
-                  --config Release --update --build \
-                  --skip_submodule_sync \
-                  --parallel \
-                  --enable_lto \
-                  --build_wheel \
-                  --enable_onnx_tests \
-                  ${{ parameters.build_py_parameters }} && \
-
+              onnxruntimecpubuilpythonarm64 /bin/bash tools/ci_build/github/linux/build_linux_arm64_python_package.sh
+                
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
-        PathtoPublish: '$(Build.BinariesDirectory)/Release/dist'
+        PathtoPublish: '$(Build.BinariesDirectory)/dist'
         ArtifactName: onnxruntime
 
     - template: component-governance-component-detection-steps.yml
