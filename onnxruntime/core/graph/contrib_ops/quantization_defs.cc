@@ -1131,5 +1131,89 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
                                   .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
                                   .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
                                   .TypeAndShapeInferenceFunction(EmbedLayerNormalizationShapeInference));
+
+  constexpr const char* QOrderedMatMul_ver1_doc = R"DOC(TODO)DOC";
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedMatMul, 1,
+                              OpSchema()
+                                  .SetDoc(QOrderedMatMul_ver1_doc)
+                                  .Attr("order_A", "cublasLt order of matrix A. Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .Attr("order_B", "cublasLt order of matrix B. Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .Attr("order_Y",
+                                        "cublasLt order of matrix Y and optional matrix C. Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .Input(0, "A", "3-dimensional matrix A", "Q")
+                                  .Input(1, "scale_A", "scale of the input A", "S")
+                                  .Input(2, "B", "2-dimensional matrix B", "Q")
+                                  .Input(3, "scale_B", "scale of the input B", "S")
+                                  .Input(4, "scale_Y", "scale of the output Y", "S")
+                                  .Input(5, "bias", "1d bias", "S", OpSchema::Optional)
+                                  .Input(6, "C",
+                                         "3d or 2d matrix C. if 2d expand to 3d first. "
+                                         "Shape[0] should be 1 or same as A.shape[0] ",
+                                         "Q", OpSchema::Optional)
+                                  .Input(7, "scale_C", "scale of the input A", "S", OpSchema::Optional)
+                                  .Output(0, "Y", "Matrix multiply results from A * B", "Q")
+                                  .TypeConstraint("Q", {"tensor(int8)"},
+                                                  "Constrain input and output types to int8 tensors.")
+                                  .TypeConstraint("S", {"tensor(float)"}, "Constrain bias and scales to float32")
+                                  .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                    propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                    ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 2);
+                                  }));
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedLayerNormalization, 1,
+                              OpSchema()
+                                  .SetDoc("QOrderedLayerNormalization")
+                                  .Attr("axis",
+                                        "The first normalization dimension: normalization "
+                                        "will be performed along dimensions axis "
+                                        ": rank(inputs).",
+                                        AttributeProto::INT,
+                                        static_cast<int64_t>(-1))
+                                  .Attr("epsilon", "The epsilon value to use to avoid division by zero.",
+                                        AttributeProto::FLOAT, 1e-5f)
+                                  .Attr("order_X", "cublasLt order of input X. Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .Attr("order_Y",
+                                        "cublasLt order of matrix Y, must be same as order_X. "
+                                        "Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .AllowUncheckedAttributes()
+                                  .Input(0, "X", "Input data tensor from the previous layer.", "Q")
+                                  .Input(1, "scale_X", "scale of the quantized X", "S")
+                                  .Input(2, "scale", "Scale tensor, i.e., gamma vector.", "F")
+                                  .Input(3, "B", "Bias tensor.", "F", OpSchema::Optional)
+                                  .Input(4, "scale_Y", "scale of the quantized X", "S")
+                                  .Output(0, "Y", "Output data tensor.", "Q")
+                                  .TypeConstraint("F", {"tensor(float16)", "tensor(float)"},
+                                                  "Constrain input gamma and bias could be float16/float tensors. "
+                                                  "float may get better precision, float16 runs faster.")
+                                  .TypeConstraint("S", {"tensor(float)"}, "quantization scale must be float tensors.")
+                                  .TypeConstraint("Q", {"tensor(int8)"}, "quantization tensor must be int8 tensors.")
+                                  .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                    propagateShapeAndTypeFromFirstInput(ctx);
+                                    propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  }));
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedGelu, 1,
+                              OpSchema()
+                                  .SetDoc(R"DOC(Ordered Quantize Gelu.)DOC")
+                                  .Attr("order_X", "cublasLt order of input X. Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .Attr("order_Y",
+                                        "cublasLt order of matrix Y, must be same as order_X. "
+                                        "Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .Input(0, "X", "N-dimensional input A", "Q")
+                                  .Input(1, "scale_X", "scale of the input A", "S")
+                                  .Input(2, "scale_Y", "scale of the output Y", "S")
+                                  .Output(0, "Y", "Output of the Gelu", "Q")
+                                  .TypeConstraint("Q", {"tensor(int8)"},
+                                                  "Constrain input and output types to int8 tensors.")
+                                  .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32")
+                                  .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
   }  // namespace contrib
 }  // namespace onnxruntime

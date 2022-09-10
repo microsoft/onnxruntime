@@ -6,7 +6,5 @@
 /**/packages/
 /**/bin/
 /**/obj/
-_site
-dest
 csharp
 *.txt
