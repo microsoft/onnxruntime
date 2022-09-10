@@ -18,7 +18,7 @@ namespace nnapi {
 
 #pragma region Model
 
-Model::Model(const GraphViewer& graph_viewer) : nnapi_(NnApiImplementation()), shaper_{graph_viewer} {};
+Model::Model(const GraphViewer& graph_viewer) : nnapi_(NnApiImplementation()){};
 
 Model::~Model() {
   nnapi_->ANeuralNetworksCompilation_free(compilation_);
@@ -35,6 +35,7 @@ void Model::AddOutput(const std::string& onnx_output_name,
                       const android::nn::wrapper::OperandType& operand_type) {
   LOGS_DEFAULT(VERBOSE) << "Model::AddOutput output name " << onnx_output_name
                         << " shape " << Shape2String(operand_type.dimensions);
+  shaper_.AddShape(onnx_output_name, operand_type.dimensions);
 
   output_names_.push_back(onnx_output_name);
   onnx_to_nnapi_output_map_.emplace(onnx_output_name, nnapi_output_name);
@@ -70,7 +71,6 @@ android::nn::wrapper::OperandType Model::GetOutputType(const std::string& name, 
       output_type.type, execution.GetShaper()[nnapi_output_name], output_type.operandType.scale, output_type.operandType.zeroPoint); */
   android::nn::wrapper::OperandType type(
       output_type.type, shaper_[nnapi_output_name], output_type.operandType.scale, output_type.operandType.zeroPoint);
-
   return type;
 }
 
@@ -164,10 +164,10 @@ Status Execution::SetInputBuffers(const std::vector<InputBuffer>& inputs) {
   for (size_t i = 0; i < inputs.size(); i++) {
     const auto& input(inputs[i]);
     ORT_RETURN_IF_ERROR(SetInputBuffer(static_cast<int32_t>(i), input));
-    ORT_RETURN_IF_ERROR(shaper_.UpdateShape(input.name, input.type.dimensions));
+    // ORT_RETURN_IF_ERROR(shaper_.UpdateShape(input.name, input.type.dimensions));
   }
 
-  ORT_RETURN_IF_ERROR(shaper_.UpdateDynamicDimensions());
+  // ORT_RETURN_IF_ERROR(shaper_.UpdateDynamicDimensions());
   return Status::OK();
 }
 

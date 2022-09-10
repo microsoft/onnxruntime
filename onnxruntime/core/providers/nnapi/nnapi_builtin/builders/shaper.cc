@@ -9,14 +9,13 @@
 namespace onnxruntime {
 namespace nnapi {
 
-Shaper::Shaper(const GraphViewer& graph_viewer)
-    : graph_viewer_(&graph_viewer) {}
-
 void Shaper::AddShape(const std::string& name, const Shape& shape) {
   shape_map_[name] = shape;
 }
 
-Status Shaper::UpdateShape(const std::string& name, const Shape& new_shape) {
+// TODO: Commented out these update shape methods for now due to the lack of dynamic shape support
+// in NNAPI EP.
+/* Status Shaper::UpdateShape(const std::string& name, const Shape& new_shape) {
   const Shape& old_shape = (*this)[name];
   if (old_shape != new_shape) {
     ORT_RETURN_IF_NOT(Product(old_shape) == 0 || !old_shape.empty(),
@@ -31,9 +30,8 @@ Status Shaper::UpdateShape(const std::string& name, const Shape& new_shape) {
 Status Shaper::UpdateDynamicDimensions() {
   for (auto& shape_op : shape_ops_)
     ORT_RETURN_IF_ERROR(shape_op(*this));
-
   return Status::OK();
-}
+} */
 
 }  // namespace nnapi
 }  // namespace onnxruntime
