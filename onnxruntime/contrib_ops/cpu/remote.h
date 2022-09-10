@@ -12,8 +12,8 @@ namespace contrib {
 class RemoteCall : public OpKernel {
  public:
   RemoteCall(const OpKernelInfo& info) : OpKernel(info) {
-    info.GetAttrOrDefault<std::string>("uri", uri_);
-    info.GetAttrOrDefault<std::string>("key", key_);
+    uri_ = info.GetAttrOrDefault<std::string>("uri", "");
+    key_ = info.GetAttrOrDefault<std::string>("key", "");
   };
 
   common::Status Compute(OpKernelContext* context) const override;

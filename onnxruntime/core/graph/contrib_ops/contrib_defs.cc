@@ -1371,6 +1371,14 @@ activation and leaky_relu_alpha.)DOC")
                                   }
                                 }));
 
+ONNX_MS_OPERATOR_SET_SCHEMA(RemoteCall, 1,
+                            OpSchema()
+                                .SetDoc(R"DOC(Call remote endpoint.)DOC")
+                                .Input(0, "X", "X", "tensor(float)")
+                                .Output(0, "Y", "Y", "tensor(float)")
+                                .Attr("uri", "endpoint uri", AttributeProto::STRING)
+                                .Attr("key", "credential key", AttributeProto::STRING));
+
 ONNX_MS_OPERATOR_SET_SCHEMA(ExpandDims, 1,
                             OpSchema()
                                 .Input(0, "X", "input", "T")

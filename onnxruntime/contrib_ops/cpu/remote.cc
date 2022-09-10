@@ -8,6 +8,14 @@
 namespace onnxruntime {
 namespace contrib {
 
+ONNX_OPERATOR_KERNEL_EX(
+    RemoteCall,  //name
+    kMSDomain,
+    1,
+    kCpuExecutionProvider,
+    KernelDefBuilder(),
+    RemoteCall);
+
 struct memory {
   char* response = {};
   size_t size = {};
@@ -82,15 +90,22 @@ common::Status RemoteCall::Compute(OpKernelContext* context) const {
   void* output{};
   InvokeHttpEndPoint(uri_.c_str(), key_.c_str(), input_string.c_str(), input_string.size(), &output, output_len);
   ORT_ENFORCE(output && output_len);  // todo - capture http error code and return
-  std::stringstream in_stream{std::string{
-      static_cast<char*>(output), output_len}};
+  std::string output_string{static_cast<char*>(output), output_len};
+  std::stringstream in_stream{output_string};
 
+  //std::stringstream in_stream {
+  //  std::string {
+  //        static_cast<char*>(input_string.data()), input_string.size()}};
   int output_index{0};
   while (true) {
     ONNX_NAMESPACE::TensorProto output_proto;
     if (output_proto.ParseFromIstream(&in_stream)) {
-      auto* output_tensor = context->Output(output_index++, TensorShape{output_proto.dims()});
-      memcpy(output_tensor->MutableDataRaw(), output_proto.raw_data().c_str(), output_proto.ByteSizeLong());
+      TensorShape shape{output_proto.dims()};
+      size_t total_bytes = shape.Size() << 2;
+      std::cout << "total bytes: " << total_bytes << std::endl;
+      auto* output_tensor = context->Output(output_index++, shape);
+      memcpy(output_tensor->MutableDataRaw(), output_proto.raw_data().c_str(), total_bytes);
+      break; //todo - enable multi tensors later
     } else {
       break;
     }
