@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "precomp.h"
+#include "DmlDFT.h"
 #include "OperatorRegistration.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorVersions.h"
@@ -829,6 +830,8 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             static_cast<uint32_t>(information.requiredConstantCpuInputs.second)
         ));
     }
+
+    GpuDFTOperatorFactory::RegisterDFTKernel(registry);
 }
 
 } // namespace Dml
