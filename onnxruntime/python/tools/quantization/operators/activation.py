@@ -1,7 +1,7 @@
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -53,11 +53,11 @@ class QLinearActivation(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [0])
+        ) = self.quantizer.quantize_activation(node, [0])
         if not data_found or quantized_input_names is None:
             return super().quantize()
 
-        qlinear_activation_output = node.output[0] + "_quantized"
+        qlinear_activation_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         qlinear_activation_name = ""
         if node.name != "":
             qlinear_activation_name = node.name + "_quant"
@@ -112,7 +112,7 @@ class QDQRemovableActivation(QDQOperatorBase):
         ):
             self.quantizer.remove_node(self.node)
         else:
-            self.quantizer.quantize_tensor(node.input[0])
+            self.quantizer.quantize_activation_tensor(node.input[0])
 
         if not self.disable_qdq_for_node_output:
-            self.quantizer.quantize_tensor(node.output[0])
+            self.quantizer.quantize_activation_tensor(node.output[0])

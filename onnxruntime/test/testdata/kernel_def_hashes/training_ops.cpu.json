@@ -274,5 +274,9 @@
     [
         "InPlaceAccumulatorV2 com.microsoft CPUExecutionProvider",
         12968279839987729832
+    ],
+    [
+        "InplaceClipGradNorm com.microsoft CPUExecutionProvider",
+        10251631611024722504
     ]
 ]
