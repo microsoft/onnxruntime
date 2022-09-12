@@ -288,9 +288,8 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                                                  const std::vector<const KernelRegistry*>& kernel_registries,
-                                                                                  const IKernelTypeStrResolver& kernel_type_str_resolver) const {
-  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries, kernel_type_str_resolver);
+                                                                                  const IKernelLookup& kernel_lookup) const {
+  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup);
 }
 // !!! This API will be deprecated soon.
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,

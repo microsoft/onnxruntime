@@ -8,6 +8,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/func_kernel.h"
+#include "core/framework/kernel_lookup.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
 #include "core/graph/function.h"
@@ -145,11 +146,12 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
                        capabilities.end());
   };
 
+  const KernelLookup kernel_lookup{kernel_registry_mgr.GetKernelTypeStrResolver(),
+                                   kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type)};
+
   {
-    GraphViewer graph_viewer(graph);
-    capabilities = current_ep.GetCapability(graph_viewer,
-                                            kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type),
-                                            kernel_registry_mgr.GetKernelTypeStrResolver());
+    const GraphViewer graph_viewer(graph);
+    capabilities = current_ep.GetCapability(graph_viewer, kernel_lookup);
     remove_empty_capabilities(capabilities);
 
     if (capabilities.empty()) {
@@ -186,10 +188,9 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
     const NodeIndex end_node = graph.MaxNodeIndex();
 
     capabilities.clear();
-    GraphViewer graph_viewer(graph);
-    capabilities = current_ep.GetCapability(graph_viewer,
-                                            kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type),
-                                            kernel_registry_mgr.GetKernelTypeStrResolver());
+
+    const GraphViewer graph_viewer(graph);
+    capabilities = current_ep.GetCapability(graph_viewer, kernel_lookup);
     remove_empty_capabilities(capabilities);
 
     // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities

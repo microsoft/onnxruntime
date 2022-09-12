@@ -8,6 +8,8 @@
 #include <vector>
 #include <unordered_map>
 
+#include "gsl/gsl"
+
 #include "core/common/status.h"
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/graph/graph_viewer.h"
@@ -50,10 +52,10 @@ class KernelRegistryManager {
    * Search kernel registry by provider type.
    * @param type provider type string
    * @return It returns all the possible results. The returned value may contain garbage that doesn't belong to
-   *         this provider. Caller should do the filtering. The returned value won't have any nullptrs.
+   *         this provider. Caller should do the filtering.
    */
-  std::vector<const KernelRegistry*> GetKernelRegistriesByProviderType(const std::string& type) const {
-    std::vector<const KernelRegistry*> result;
+  std::vector<gsl::not_null<const KernelRegistry*>> GetKernelRegistriesByProviderType(const std::string& type) const {
+    std::vector<gsl::not_null<const KernelRegistry*>> result;
     for (auto& registry : custom_kernel_registries_) {
       result.push_back(registry.get());
     }

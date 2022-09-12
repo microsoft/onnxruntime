@@ -1,0 +1,46 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include "gsl/gsl"
+
+#include "core/framework/execution_provider.h"  // for IExecutionProvider::IKernelLookup
+#include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_type_str_resolver.h"
+#include "core/framework/op_kernel.h"
+#include "core/graph/graph.h"
+
+namespace onnxruntime {
+
+/**
+ * Utility class for performing kernel lookup.
+ * Primary usage pattern is to be created during graph partitioning and passed to IExecutionProvider::GetCapability().
+ */
+class KernelLookup : public IExecutionProvider::IKernelLookup {
+ public:
+  KernelLookup(const IKernelTypeStrResolver& kernel_type_str_resolver,
+               gsl::span<const gsl::not_null<const KernelRegistry*>> kernel_registries)
+      : kernel_type_str_resolver_{kernel_type_str_resolver},
+        kernel_registries_{kernel_registries} {
+  }
+
+  const KernelCreateInfo* LookUpKernel(const Node& node, const std::string& execution_provider_type) const override {
+    const KernelCreateInfo* kernel_create_info{};
+    for (const auto registry : kernel_registries_) {
+      const auto lookup_status = registry->TryFindKernel(node, execution_provider_type, kernel_type_str_resolver_,
+                                                         &kernel_create_info);
+      if (lookup_status.IsOK() && kernel_create_info != nullptr) {
+        return kernel_create_info;
+      }
+    }
+
+    return nullptr;
+  }
+
+ private:
+  const IKernelTypeStrResolver& kernel_type_str_resolver_;
+  const gsl::span<const gsl::not_null<const KernelRegistry*>> kernel_registries_;
+};
+
+}  // namespace onnxruntime

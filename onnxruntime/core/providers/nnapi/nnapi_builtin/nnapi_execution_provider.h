@@ -21,8 +21,7 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_view,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/,
-                const IKernelTypeStrResolver& /*kernel_type_str_resolver*/) const override;
+                const IKernelLookup& /*kernel_lookup*/) const override;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,

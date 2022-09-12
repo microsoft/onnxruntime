@@ -28,17 +28,14 @@ AllocatorPtr IExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type
 
 std::vector<std::unique_ptr<ComputeCapability>>
 IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                  const std::vector<const KernelRegistry*>& kernel_registries,
-                                  const IKernelTypeStrResolver& kernel_type_str_resolver) const {
+                                  const IKernelLookup& kernel_lookup) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
-  for (auto& node : graph.Nodes()) {
-    for (auto registry : kernel_registries) {
-      if (KernelRegistry::HasImplementationOf(*registry, node, Type(), kernel_type_str_resolver)) {
-        std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
-        sub_graph->nodes.push_back(node.Index());
-        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
-        break;
-      }
+  for (const auto& node : graph.Nodes()) {
+    if (const KernelCreateInfo* kernel_create_info = kernel_lookup.LookUpKernel(node, Type());
+        kernel_create_info != nullptr) {
+      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+      sub_graph->nodes.push_back(node.Index());
+      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
 

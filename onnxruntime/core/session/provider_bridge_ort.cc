@@ -279,10 +279,10 @@ struct ProviderHostImpl : ProviderHost {
   // IExecutionProvider (direct)
   AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) override { return p->IExecutionProvider::GetAllocator(id, mem_type); }
   void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::InsertAllocator(allocator); }
-  std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-                                                                                    const std::vector<const KernelRegistry*>& kernel_registries,
-                                                                                    const IKernelTypeStrResolver& kernel_type_str_resolver) override {
-    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_registries, kernel_type_str_resolver);
+  std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
+      const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
+      const IExecutionProvider::IKernelLookup& kernel_lookup) override {
+    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
   }
 
   // !!! this api will be deprecated soon

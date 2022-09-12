@@ -97,7 +97,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const Node& node,
 }
 
 bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type) {
-  std::vector<const KernelRegistry*> kernel_registries = r.GetKernelRegistriesByProviderType(provider_type);
+  const auto kernel_registries = r.GetKernelRegistriesByProviderType(provider_type);
   return std::any_of(kernel_registries.begin(), kernel_registries.end(), [&](const KernelRegistry* kernel_registry) {
     return KernelRegistry::HasImplementationOf(*kernel_registry, node, provider_type, r.GetKernelTypeStrResolver());
   });

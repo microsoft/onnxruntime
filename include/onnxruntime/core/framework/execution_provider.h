@@ -15,11 +15,10 @@
 
 namespace onnxruntime {
 class GraphViewer;
-class Node;
 struct ComputeCapability;
 class KernelRegistry;
-class KernelRegistryManager;
-
+struct KernelCreateInfo;
+class Node;
 }  // namespace onnxruntime
 #else
 #include <memory>
@@ -32,8 +31,6 @@ class KernelRegistryManager;
 #include "core/framework/provider_options.h"
 
 namespace onnxruntime {
-
-class IKernelTypeStrResolver;
 
 /**
    Logical device representation.
@@ -92,6 +89,20 @@ class IExecutionProvider {
   }
 
   /**
+   * Interface for performing kernel lookup within kernel registries.
+   * Abstracts away lower-level details about kernel registries and kernel matching.
+   */
+  class IKernelLookup {
+   public:
+    /**
+     * Given `node` and the specified `execution_provider_type`, try to find a matching kernel.
+     * The return value is non-null if and only if a matching kernel was found.
+     */
+    virtual const KernelCreateInfo* LookUpKernel(const Node& node,
+                                                 const std::string& execution_provider_type) const = 0;
+  };
+
+  /**
      Get execution provider's capability for the specified <graph>.
      Return a bunch of IndexedSubGraphs <*this> execution provider can run if
      the sub-graph contains only one node or can fuse to run if the sub-graph
@@ -103,8 +114,7 @@ class IExecutionProvider {
   */
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                const std::vector<const KernelRegistry*>& kernel_registries,
-                const IKernelTypeStrResolver& kernel_type_str_resolver) const;
+                const IKernelLookup& kernel_lookup) const;
 
   /**
      Get kernel registry per execution provider type.
