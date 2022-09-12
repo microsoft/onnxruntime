@@ -366,7 +366,7 @@ Status ModelBuilder::RegisterModelOutputs() {
     ORT_RETURN_IF(shape_proto == nullptr, "shape_proto cannot be null for output: ", output_name);
     if (shape_proto->dim_size() == 0) {
       // In NNAPI scalar output must have {1} shape
-      const auto& output_shape = nnapi_model_->GetShaper()[output_name];
+      const auto& output_shape = GetShapeInfoFromNodeArg(graph_viewer_, output_name);
       ORT_RETURN_IF_NOT(output_shape.size() == 1 && output_shape[0] == 1,
                         "scalar output [", output_name, "] must have {1} shape, ",
                         " actual shape, ", Shape2String(output_shape));
