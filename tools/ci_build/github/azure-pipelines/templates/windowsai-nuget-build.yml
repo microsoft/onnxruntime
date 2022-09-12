@@ -7,9 +7,9 @@ steps:
   - template: telemetry-steps.yml
 
   - task: UsePythonVersion@0
-    inputs: 
-      versionSpec: '3.7' 
-      addToPath: true 
+    inputs:
+      versionSpec: '3.7'
+      addToPath: true
       ${{ if eq(parameters.BuildArch, 'x64') }}:
         architecture: ${{ parameters.BuildArch }}
       ${{ if eq(parameters.BuildArch, 'x86') }}:
@@ -77,14 +77,13 @@ steps:
 
   - ${{ if and(eq(parameters.BuildArch, 'x64'), eq(parameters.Runtime, 'dynamic')) }}:
     - script: |
-        mklink  /D /J $(Build.BinariesDirectory)\RelWithDebInfo\models $(Build.BinariesDirectory)\models
         DIR dist\ /S /B > wheel_filename_file
         set /p WHEEL_FILENAME=<wheel_filename_file
         del wheel_filename_file
         python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
         set PATH=%PATH%;$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo
         @echo %PATH%
-        python $(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --config RelWithDebInfo --enable_lto --disable_rtti %BUILD_ARCH_SWITCH%
+        python $(Build.SourcesDirectory)\tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --config RelWithDebInfo --enable_lto --enable_onnx_tests --disable_rtti %BUILD_ARCH_SWITCH%
       workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
       displayName: 'Run Unit Tests'
       env:
@@ -100,7 +99,7 @@ steps:
         searchFolder: '$(Build.BinariesDirectory)'
         testRunTitle: 'Unit Test Run'
       condition: succeededOrFailed()
-  
+
   - ${{ if eq(parameters.Runtime, 'dynamic') }}:
     - script: |
        xcopy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\winml_test_api.exe $(Build.ArtifactStagingDirectory)\test_artifact\
@@ -135,7 +134,7 @@ steps:
       ${{ if eq(parameters.BuildArch, 'arm') }}:
         arguments: 'x64'
       modifyEnvironment: true
-   
+
   - ${{ if eq(parameters.BuildArch, 'x64') }}:
     - script: msbuild Microsoft.AI.MachineLearning.Interop.csproj /p:Configuration=RelWithDebInfo /p:Platform="Any CPU" /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) -restore
       workingDirectory: '$(Build.SourcesDirectory)\csharp\src\Microsoft.AI.MachineLearning.Interop'
