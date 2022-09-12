@@ -57,7 +57,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // bias shape (3 * hidden_size)
   const auto& bias_shape = bias->Shape();
-  int hidden_size = static_cast<int>(bias_shape[0]) / 3;
+  int hidden_size;
+
+  if (qkv_hidden_sizes_.size() == 0) {
+    hidden_size = static_cast<int>(bias_shape[0]) / 3;
+  } else {
+    hidden_size = static_cast<int>(qkv_hidden_sizes_[2]);
+  }
 
   int head_size = hidden_size / num_heads_;
 

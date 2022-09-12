@@ -76,7 +76,7 @@ Status QkvToContext(
     const int batch_size,
     const int sequence_length,
     const int num_heads,
-    const int head_size,
+    int head_size,
     const size_t element_size,
     const T* input,
     const T* bias,
@@ -111,6 +111,10 @@ Status QkvToContext(
                            input, bias, scratch3,
                            enable_half4);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  }
+
+  if (qkv_hidden_sizes_.size() != 0) {
+    head_size = static_cast<int>(qkv_hidden_sizes[2]);
   }
 
   // now scratch3 has Q, K, V: each has size BxNxSxH
