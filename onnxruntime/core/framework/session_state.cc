@@ -1206,7 +1206,7 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   // Silent fallback from GPU/NPU to CPU nodes can cause performance issues due to memory copies and frequent stalls.
   // If the user explicitly included the CPU provider anyway, then remain silent, but if it was implicitly added,
   // and unexpected fallback happened to a non-preferred provider, warn the user.
-  size_t explicit_provider_count = providers.NumProviders() - providers.GetCpuProviderWasImplicitlyAdded() ? 1 : 0;
+  size_t explicit_provider_count = providers.NumProviders() - (providers.GetCpuProviderWasImplicitlyAdded() ? 1 : 0);
   if (node_placement_set.size() > explicit_provider_count) {
     LOGS(logger, WARNING) << "Some nodes were not assigned to the preferred execution providers which may or may not have an negative impact on performance. e.g. ORT explicitly assigns shape related ops to CPU to improve perf.";
     if (!is_verbose_mode) {
