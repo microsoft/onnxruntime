@@ -452,7 +452,7 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
   p.dy1 = scale_data;
   p.dy2 = p.dy1 + output_height;
 
-  p.dx1 = p.dy1 + 2 * output_height;
+  p.dx1 = p.dy1 + 2UL * output_height;  // 2UL is to make prefast happy
   p.dx2 = p.dx1 + output_width;
 
   // Start processing
