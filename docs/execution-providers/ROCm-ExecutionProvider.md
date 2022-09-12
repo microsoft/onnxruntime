@@ -17,6 +17,20 @@ The [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_t
 * TOC placeholder
 {:toc}
 
+## Install
+
+Pre-built binaries of ONNX Runtime with ROCm EP are published for most language bindings. Please reference [Install ORT](../install).
+
+## Requirements
+
+
+|ONNX Runtime|ROCm|
+|---|---|
+|master|5.2.3|
+|1.12|5.2.3|
+|1.12|5.2|
+
+
 ## Build
 For build instructions, please see the [BUILD page](../build/eps.md#amd-rocm). 
 
@@ -36,3 +50,11 @@ The C API details are [here](../get-started/with-c.md).
 ### Python
 Python APIs details are [here](https://onnxruntime.ai/docs/api/python/api_summary.html).
 
+## Configuration Options
+The ROCm Execution Provider supports the following configuration options.
+
+## Samples
+
+### Python
+
+### C/C++
