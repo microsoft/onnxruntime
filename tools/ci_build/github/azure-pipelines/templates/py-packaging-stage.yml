@@ -254,25 +254,7 @@ stages:
           SourceFolder: '$(Build.BinariesDirectory)'
           Contents: 'Release/dist/*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: CmdLine@2
-        displayName: 'Build Python Documentation'
-        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
-        inputs:
-          script: |
-            mkdir -p $HOME/.onnx
-            docker run --rm \
-              --volume /data/onnx:/data/onnx:ro \
-              --volume $(Build.SourcesDirectory):/onnxruntime_src \
-              --volume $(Build.BinariesDirectory):/build \
-              --volume /data/models:/build/models:ro \
-              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-              -e NIGHTLY_BUILD \
-              -e BUILD_BUILDNUMBER \
-              onnxruntimecpubuild \
-                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/*.whl && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install ; /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release " ;
-          workingDirectory: $(Build.SourcesDirectory)
-
+      
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
         condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
@@ -417,22 +399,25 @@ stages:
             PythonVersion: '3.10'
             MsbuildPlatform: x64
             buildArch: x64
-          Python37_x86:
-            PythonVersion: '3.7'
-            MsbuildPlatform: Win32
-            buildArch: x86
-          Python38_x86:
-            PythonVersion: '3.8'
-            MsbuildPlatform: Win32
-            buildArch: x86
-          Python39_x86:
-            PythonVersion: '3.9'
-            MsbuildPlatform: Win32
-            buildArch: x86
-          Python310_x86:
-            PythonVersion: '3.10'
-            MsbuildPlatform: Win32
-            buildArch: x86
+          # Training build cannot support Win32 for now because one or more of its python
+          # dependencies does not support Win32. So, don't build a training package for Win32
+          ${{ if not(contains(parameters.build_py_parameters, '--enable_training')) }}:
+            Python37_x86:
+              PythonVersion: '3.7'
+              MsbuildPlatform: Win32
+              buildArch: x86
+            Python38_x86:
+              PythonVersion: '3.8'
+              MsbuildPlatform: Win32
+              buildArch: x86
+            Python39_x86:
+              PythonVersion: '3.9'
+              MsbuildPlatform: Win32
+              buildArch: x86
+            Python310_x86:
+              PythonVersion: '3.10'
+              MsbuildPlatform: Win32
+              buildArch: x86
       variables:
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         EnvSetupScript: setup_env.bat
@@ -465,7 +450,7 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.0
+          python -m pip install -q setuptools wheel numpy==1.21.6
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
@@ -584,7 +569,7 @@ stages:
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
-        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7'))), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7'))), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
@@ -611,22 +596,22 @@ stages:
         matrix:
           Python37_GPU:
             PythonVersion: '3.7'
-            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_gpu.bat
             EP_NAME: gpu
           Python38_GPU:
             PythonVersion: '3.8'
-            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_gpu.bat
             EP_NAME: gpu
           Python39_GPU:
             PythonVersion: '3.9'
-            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_gpu.bat
             EP_NAME: gpu
           Python310_GPU:
             PythonVersion: '3.10'
-            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_gpu.bat
             EP_NAME: gpu
           Python37_dml:
@@ -670,7 +655,7 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - script: |
-          python -m pip install -q setuptools wheel numpy==1.21.0
+          python -m pip install -q setuptools wheel numpy==1.21.6
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
@@ -788,7 +773,7 @@ stages:
 
       - task: TSAUpload@2
         displayName: 'TSA upload'
-        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         inputs:
           GdnPublishTsaOnboard: false
           GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
@@ -865,7 +850,7 @@ stages:
 
   - ${{ if eq(parameters.enable_mac_silicon, true) }}:
     - job: MacOS_silicon_py_Wheels
-      timeoutInMinutes: 90
+      timeoutInMinutes: 120
       workspace:
         clean: all
       pool:
@@ -992,7 +977,7 @@ stages:
               --volume $(Build.BinariesDirectory):/build \
               -w /tmp/a \
               quay.io/pypa/$(Image) \
-                /usr/bin/bash -c  "$(PYTHON_EXE) -m pip install numpy==1.21.0 && $(PYTHON_EXE) /onnxruntime_src/tools/ci_build/build.py \
+                /usr/bin/bash -c  "$(PYTHON_EXE) -m pip install numpy==1.21.6 && $(PYTHON_EXE) /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
                   --config Release \
                   --skip_submodule_sync \

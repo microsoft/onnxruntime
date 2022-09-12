@@ -25,6 +25,7 @@ class TreeEnsembleCommonAttributes {
   AGGREGATE_FUNCTION aggregate_function_;
   int64_t n_nodes_;
   int64_t max_tree_depth_;
+  int64_t max_feature_id_;
   int64_t n_trees_;
   bool same_mode_;
   bool has_missing_tracks_;
@@ -196,12 +197,16 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(int parall
   nodes_.resize(n_nodes_);
   roots_.clear();
   std::unordered_map<TreeNodeElementId, TreeNodeElement<ThresholdType>*, TreeNodeElementId::hash_fn> idi;
+  max_feature_id_ = 0;
 
   for (i = 0, limit = nodes_treeids.size(); i < limit; ++i) {
     TreeNodeElement<ThresholdType>& node = nodes_[i];
     node.id.tree_id = static_cast<int>(nodes_treeids[i]);
     node.id.node_id = static_cast<int>(nodes_nodeids[i]);
     node.feature_id = static_cast<int>(nodes_featureids[i]);
+    if (node.feature_id > max_feature_id_) {
+      max_feature_id_ = node.feature_id;
+    }
     if (nodes_values_as_tensor.empty()) {
       node.value = static_cast<ThresholdType>(nodes_values[i]);
     } else {
@@ -303,7 +308,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(int parall
 template <typename InputType, typename ThresholdType, typename OutputType>
 Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::compute(OpKernelContext* ctx,
                                                                          const Tensor* X,
-                                                                         Tensor* Y, 
+                                                                         Tensor* Y,
                                                                          Tensor* label) const {
   switch (aggregate_function_) {
     case AGGREGATE_FUNCTION::AVERAGE:
@@ -341,15 +346,22 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::compute(OpKerne
 
 template <typename InputType, typename ThresholdType, typename OutputType>
 template <typename AGG>
-void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concurrency::ThreadPool* ttp, 
+void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concurrency::ThreadPool* ttp,
                                                                           const Tensor* X, Tensor* Z,
                                                                           Tensor* label, const AGG& agg) const {
+  if (X->Shape().NumDimensions() > 2) {
+    ORT_THROW("TreeEnsemble only works on 1D, 2D tensors.");
+  }
   int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
-  OutputType* z_data = Z->template MutableData<OutputType>();
+  int64_t C = X->Shape().NumDimensions() == 2 ? X->Shape()[1] : 1;
+  if (max_feature_id_ >= C) {
+    ORT_THROW("One path in the graph requests feature ", max_feature_id_, " but input tensor has ", C, " features.");
+  }
+  OutputType* z_data = Z->MutableData<OutputType>();
 
-  const InputType* x_data = X->template Data<InputType>();
-  int64_t* label_data = label == nullptr ? nullptr : label->template MutableData<int64_t>();
+  const InputType* x_data = X->Data<InputType>();
+  int64_t* label_data = label == nullptr ? nullptr : label->MutableData<int64_t>();
   auto max_num_threads = concurrency::ThreadPool::DegreeOfParallelism(ttp);
 
   if (n_targets_or_classes_ == 1) {
@@ -792,7 +804,7 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(
 template <typename InputType, typename ThresholdType, typename OutputType>
 Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::compute(OpKernelContext* ctx,
                                                                                    const Tensor* X,
-                                                                                   Tensor* Z, 
+                                                                                   Tensor* Z,
                                                                                    Tensor* label) const {
   if (classlabels_strings_.empty()) {
     this->ComputeAgg(
@@ -814,8 +826,8 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::compu
             this->post_transform_, this->base_values_,
             class_labels_, binary_case_,
             weights_are_all_positive_));
-    const int64_t* plabel = label_int64.template Data<int64_t>();
-    std::string* labels = label->template MutableData<std::string>();
+    const int64_t* plabel = label_int64.Data<int64_t>();
+    std::string* labels = label->MutableData<std::string>();
     for (size_t i = 0; i < (size_t)N; ++i)
       labels[i] = classlabels_strings_[plabel[i]];
   }

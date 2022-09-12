@@ -46,8 +46,8 @@ Params<T> GetTensorQuantizationParams(const Tensor* scale_tensor,
                                       const Tensor* zero_point_tensor) {
   ORT_STATIC_ASSERT_QUANTIZATION_TYPES(T)
   return Params<T>(
-      *(scale_tensor->template Data<float>()),
-      *(zero_point_tensor->template Data<T>()));
+      *(scale_tensor->Data<float>()),
+      *(zero_point_tensor->Data<T>()));
 }
 
 // Quantizes a given float value with provided quantization params.

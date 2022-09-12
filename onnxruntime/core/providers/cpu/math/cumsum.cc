@@ -60,9 +60,9 @@ Status GetAxis(const Tensor* axis_tensor, int64_t input_rank, int64_t& axis_out)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor should be 0D or 1D");
 
   if (axis_tensor->IsDataType<int32_t>()) {
-    axis_out = static_cast<int64_t>(axis_tensor->template Data<int32_t>()[0]);
+    axis_out = static_cast<int64_t>(axis_tensor->Data<int32_t>()[0]);
   } else if (axis_tensor->IsDataType<int64_t>()) {
-    axis_out = axis_tensor->template Data<int64_t>()[0];
+    axis_out = axis_tensor->Data<int64_t>()[0];
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor should be of type `int32_t` or `int64_t`");
   }

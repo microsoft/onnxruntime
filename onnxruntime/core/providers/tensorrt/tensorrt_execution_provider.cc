@@ -32,10 +32,7 @@
 #define LIBFUNC(lib, fn) dlsym((lib), (fn))
 #endif
 
-#define CUDA_RETURN_IF_ERROR(expr)               \
-  ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error executing ", #expr))
+#define CUDA_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDA_CALL(expr))
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
@@ -103,6 +100,9 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
             case nvinfer1::DataType::kINT32:
               weight = static_cast<const int32_t*>(trt_weights.values)[k];
               break;
+            default:
+              LOGS_DEFAULT(ERROR) << "Found unsupported datatype!";
+              return false;
           }
           max_weight = std::max(max_weight, std::abs(weight));
         }
@@ -165,12 +165,12 @@ void Impl_Cast(
 }  // namespace cuda
 
 template <>
-bool CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
+Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
   return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
 }
 
 template <>
-bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
+void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
 
@@ -448,7 +448,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   if (!external_stream_ && stream_) {
-    CUDA_CALL(cudaStreamDestroy(stream_));
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
 }
 
@@ -552,6 +552,46 @@ Status TensorrtExecutionProvider::SetComputeStream(void* stream) {
   return Status::OK();
 }
 
+// Check the graph is the subgraph of control flow op
+bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const GraphViewer& graph) const {
+  if (graph.IsSubgraph()) {
+    const auto& node = graph.ParentNode();
+    if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+
+// Check whether all the nodes of the graph are assigned to specific ep 
+bool TensorrtExecutionProvider::AllNodesAssignedToSpecificEP(const GraphViewer& graph, const std::string& provider_type) const {
+  const int number_of_ort_nodes = graph.NumberOfNodes();
+  std::vector<size_t> nodes_vector(number_of_ort_nodes);
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  for (const auto& index : nodes_vector) {
+    const auto& node = graph.GetNode(node_index[index]);
+    if (node->GetExecutionProviderType() != provider_type) {
+      return false;
+    }
+  }
+
+  return number_of_ort_nodes != 0;
+}
+
+// Check whether all the nodes of subgraph are supported
+bool TensorrtExecutionProvider::IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const {
+  int number_of_trt_nodes = 0;
+    for (const auto& group : supported_nodes_vector) {
+    if (!group.first.empty()) {
+      number_of_trt_nodes += static_cast<int>(group.first.size());
+      }
+    }
+
+  return number_of_trt_nodes == number_of_ort_nodes;
+}
+
 std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, const GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::unordered_set<size_t> node_set;
@@ -616,7 +656,14 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     if (node->GetOutputEdgesCount() > node->OutputDefs().size()) {
       for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
         const auto& node_idx = it->GetNode().Index();
-        const auto& output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+        const onnxruntime::NodeArg* output;
+        // The dst_arg_index from GetDstArgIndex() could be the index for explicit/implicit input defs of the node.
+        // We need to get the correct input index accordingly. (See Graph::BuildConnections() in graph.cc for more details)
+        if (it->GetDstArgIndex() < static_cast<int>(it->GetNode().InputDefs().size())) {
+          output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
+        } else {
+          output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex() - static_cast<int>(it->GetNode().InputDefs().size())];
+        }
         if (node_set.find(node_idx) != node_set.end()) {
           const auto& iter = fused_inputs.find(output);
           if (iter != fused_inputs.end()) {
@@ -757,7 +804,29 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
               subgraph_output_names.push_back(name);
             }
           }
-          graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
+
+          // If the node has subgraph, it's possible that the ORT graph of that subgraph and the GraphProto in the node attributes are not in sync because of graph optimization.
+          // Therefore, we need to force GraphProto attributes to be updated in order to get the valid GraphProto.
+          if (node->GetAttributes().size() > 0) {
+            auto node_proto = ONNX_NAMESPACE::NodeProto::Create();
+            // we need to update any GraphProto attributes for subgraphs so that any changes made by things
+            // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
+            node->ToProto(*node_proto, /* update_subgraphs */ true);
+            const int num_attributes = node_proto->attribute_size();
+            auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
+            node_attributes->reserve(num_attributes);
+
+            for (int i = 0; i < num_attributes; ++i) {
+              auto& attr = node_proto->attribute(i);
+              node_attributes->emplace(attr.name(), attr);
+            }
+
+            // The GraphProto attributes are the updated ones.
+            graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, node_attributes.get(), node->Domain());
+          } else {
+            // The GraphProto attributes are the original ones.
+            graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
+          }
         }
 
         ORT_ENFORCE(graph_build.Resolve().IsOK());
@@ -897,6 +966,10 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
         input_to_nodes_map[input->Name()].insert(node_name);
       }
 
+      for (const auto& input : node->ImplicitInputDefs()) {
+        input_to_nodes_map[input->Name()].insert(node_name);
+      }
+
       for (const auto& output : node->OutputDefs()) {
         node_to_outputs_map[node_name].insert(output->Name());
       }
@@ -970,7 +1043,41 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
-  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{nodes_vector, false}};
+
+  std::vector<size_t> filtered_nodes_vector;
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  for (const auto& index : nodes_vector) {
+    const auto& node = graph.GetNode(node_index[index]);
+
+    /* If current node is control flow op, we take different approach based on following four cases:
+     * 
+     * (1) control flow op is supported by TRT, and its subgraphs are all supported by TRT. Assign this node to TRT.
+     * (2) control flow op is supported by TRT, but not all its subgraphs supported by TRT. Don't assign this node to TRT.
+     * (3) control flow op is not supported by TRT, but its subgraphs all supported by TRT. Don't assign this node to TRT.
+     * (4) control flow op is not supported by TRT, and not all its subgraphs supported by TRT. Don't assign this node to TRT.
+     *
+     * For cases 2, 3, 4, even though the control flow op is not assigned to TRT, any portion of its subgraphs that can run in TRT will be still fused and assigned to TRT EP.
+     */
+    if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
+      auto sub_graphs = node->GetSubgraphs();
+      if (sub_graphs.size() != 0) {
+        bool all_subgraphs_are_supported = true;
+        for (auto sub_graph : sub_graphs) {
+          if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kTensorrtExecutionProvider)) {
+            all_subgraphs_are_supported = false;
+            break;
+          }
+        }
+        if (!all_subgraphs_are_supported) {
+        // if not all its subgraphs are supported, we need to exclude this control flow op
+          continue;
+        }
+      }
+    }
+    filtered_nodes_vector.push_back(index);
+  }
+
+  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{filtered_nodes_vector, false}};
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
   if (early_termination) {
@@ -1007,6 +1114,52 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  // Handle the case where the graph is subgraph of control flow op.
+  // The purpose is to make control flow op as well as its subgraphs run on TRT.
+  // Here we need to check whether subgraph is fully supported by TRT and don't fuse the nodes of the subgraph until control flow op level.
+  if (IsSubGraphOfControlFlowOp(graph) && IsSubGraphFullySupported(supported_nodes_vector, number_of_ort_nodes)) {
+    const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+    bool all_subgraphs_are_supported = true;
+
+    // "If" control flow op has two subgraph bodies, "then" body and "else" body respectively.
+    // Check its parent node's another subgraph to see whether that subgraph is also fully supported by TRT.
+    if (graph.ParentNode()->OpType() == "If") {
+      all_subgraphs_are_supported = false;
+      SubGraphCollection_t subgraph_supported_nodes_vector;
+      auto sub_graphs = graph.ParentNode()->GetSubgraphs();
+      for (auto sub_graph : sub_graphs) {
+        if (sub_graph.get() != &graph.GetGraph()) {
+          auto sub_graph_veiwer = sub_graph->CreateGraphViewer();
+          const int number_of_ort_subgraph_nodes = sub_graph_veiwer->NumberOfNodes();
+          std::vector<size_t> subgraph_nodes_vector(number_of_ort_subgraph_nodes);
+          std::iota(std::begin(subgraph_nodes_vector), std::end(subgraph_nodes_vector), 0);
+          SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
+          bool subgraph_early_termination = false;
+          subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination);
+          all_subgraphs_are_supported = IsSubGraphFullySupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
+          break;
+        }
+      }
+    }
+
+    if (all_subgraphs_are_supported) {
+      // We want the subgraph nodes to be assigned to TRT EP but don't want them to be fused until later at the control flow op level.
+      // Simply request the subgraph nodes with a single ComputeCapability for each with no MetaDef (i.e. what the default implementation for IExecutionProvider::GetCapability does). 
+      for (const auto& group : supported_nodes_vector) {
+        if (!group.first.empty()) {
+          for (const auto& index : group.first) {
+            std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
+            sub_graph->Nodes().push_back(node_index[index]);
+            result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+          }
+        }
+      }
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
+      return result;
+    }    
+  } 
+
   int number_of_trt_nodes = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
@@ -1078,7 +1231,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
     std::unordered_map<std::string, size_t> output_indexes(num_outputs);
     std::unordered_map<std::string, size_t> output_types(num_outputs);
-    bool update_engine_cache = false;
 
     // Initialize shape range for dynamic shape tensors
     bool has_dynamic_shape = false;
@@ -1163,15 +1315,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       }
     }
 
-    // If engine cache enable is set,
-    // load and deserialize TRT engine cache regardless of the graph has dynamic shape input or not
+    // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
+    // be built at runtime
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
     tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
-    if (engine_cache_enable_) {
+    if (!has_dynamic_shape) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
-      if (engine_file) {
+      if (engine_cache_enable_ && engine_file) {
         engine_file.seekg(0, std::ios::end);
         size_t engine_size = engine_file.tellg();
         engine_file.seekg(0, std::ios::beg);
@@ -1183,7 +1335,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not deserialize engine from cache: " + engine_cache_path);
         }
-      } else if (engine_decryption_enable_ && !engine_file) {
+      } else if (engine_decryption_enable_ && engine_cache_enable_ && !engine_file) {
         // Decrypt engine
         size_t engine_size = 0;
         if (!engine_decryption_(engine_cache_path.c_str(), nullptr, &engine_size)) {
@@ -1202,42 +1354,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
         }
-      }
-
-      if (trt_engine != nullptr) {
-        // Build context
-        if (context_memory_sharing_enable_) {
-          size_t mem_size = trt_engine->getDeviceMemorySize();
-          if (mem_size > max_ctx_mem_size_) {
-            max_ctx_mem_size_ = mem_size;
-            context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_);
-          }
-          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
-        } else {
-          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
-        }
-        if (trt_context == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
-        }
-      }
-
-      // If graph has dynamic shape input,
-      // load and deserialize TRT engine profile cache
-      if (has_dynamic_shape) {
-        const std::string profile_cache_path = cache_path + ".profile";
-        std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
-        if (profile_file) {
-          input_shape_ranges = DeserializeProfile(profile_file);
-        }
-      }
-    }
-
-    // If (1) engine cache enable is not set or (2) first time enable engine cache and no engine cache is present,
-    // build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
-    // be built at runtime
-    if (!has_dynamic_shape) {
-      if (trt_engine == nullptr) {
+      } else {
         // Set INT8 per tensor dynamic range
         if (int8_enable_ && trt_builder->platformHasFastInt8() && int8_calibration_cache_available_) {
           trt_config->setInt8Calibrator(nullptr);
@@ -1256,25 +1373,38 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                  "TensorRT EP could not build engine for fused node: " + fused_node.Name());
         }
-
-        if (engine_cache_enable_)
-          update_engine_cache = true;
-
-        // Build context
-        if (context_memory_sharing_enable_) {
-          size_t mem_size = trt_engine->getDeviceMemorySize();
-          if (mem_size > max_ctx_mem_size_) {
-            max_ctx_mem_size_ = mem_size;
-            context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_);
+        if (engine_cache_enable_) {
+          nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
+          size_t engine_size = serializedModel->size();
+          if (engine_decryption_enable_) {
+            // Encrypt engine
+            if (!engine_encryption_(engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not call engine encryption function encrypt");
+            }
+          } else {
+            std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
+            file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
           }
-          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
-        } else {
-          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+          serializedModel->destroy();
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
         }
-        if (trt_context == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
+      }
+
+      // Build context
+      if (context_memory_sharing_enable_) {
+        size_t mem_size = trt_engine->getDeviceMemorySize();
+        if (mem_size > max_ctx_mem_size_) {
+          max_ctx_mem_size_ = mem_size;
+          context_memory_ = IAllocator::MakeUniquePtr<void>(allocator_, max_ctx_mem_size_);
         }
+        trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
+      } else {
+        trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+      }
+      if (trt_context == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
       }
     }
 
@@ -1322,53 +1452,18 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), nullptr, allocator_, context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_,
-            dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_, update_engine_cache};
+            dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_};
       *state = p.release();
       return 0;
     };
 
     // Release function state
     compute_info.release_state_func = [](FunctionState state) {
-      if (state) {
-        // Serialize and save engine to cache
-        //
-        // Note: only save engine to file if engine cache enable is set and engine is being updated due to input shape changed
-        // or engine file is not previously existed
-        TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
-        if (trt_state->update_engine_cache) {
-          // Serialize engine
-          const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
-          const std::string engine_cache_path = cache_path + ".engine";
-          nvinfer1::IHostMemory* serializedModel = trt_state->engine->get()->serialize();
-          size_t engine_size = serializedModel->size();
-          if (trt_state->engine_decryption_enable) {
-            // Encrypt engine
-            if (!trt_state->engine_encryption(engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
-              delete static_cast<TensorrtFuncState*>(state);
-              ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                                 "TensorRT EP could not call engine encryption function encrypt"));
-            }
-          } else {
-            std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
-            file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
-          }
-          serializedModel->destroy();
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
-
-          // Serialize engine profile if needed
-          if (!trt_state->input_shape_ranges.empty()) {
-            const std::string profile_cache_path = cache_path + ".profile";
-            SerializeProfile(profile_cache_path, trt_state->input_shape_ranges);
-            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
-          }
-        }
-
         delete static_cast<TensorrtFuncState*>(state);
-      }
     };
 
     // Create compute function
-    compute_info.compute_func = [this](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
@@ -1390,6 +1485,81 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
 
       cudaStream_t stream = static_cast<cudaStream_t>(this->GetComputeStream());
+
+      // Load serialized engine
+      const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
+      const std::string engine_cache_path = cache_path + ".engine";
+      const std::string profile_cache_path = cache_path + ".profile";
+      if (trt_state->engine_cache_enable && trt_engine == nullptr) {
+        std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
+        std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
+        if (engine_file && profile_file) {
+          // Deserialize profile
+          shape_ranges = DeserializeProfile(profile_file);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
+          // Deserialize engine
+          trt_state->context->reset();
+          trt_state->engine->reset();
+          engine_file.seekg(0, std::ios::end);
+          size_t engine_size = engine_file.tellg();
+          engine_file.seekg(0, std::ios::beg);
+          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+          engine_file.read((char*)engine_buf.get(), engine_size);
+          *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
+              trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+          if (trt_state->engine == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
+          }
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
+          trt_engine = trt_state->engine->get();
+          if (trt_state->context_memory_sharing_enable) {
+            *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+                trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
+          } else {
+            *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+                trt_state->engine->get()->createExecutionContext());
+          }
+          if (trt_state->context == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
+          }
+          trt_context = trt_state->context->get();
+        } else if (trt_state->engine_decryption_enable && !engine_file && profile_file) {
+          shape_ranges = DeserializeProfile(profile_file);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + profile_cache_path;
+          // Decrypt engine
+          size_t engine_size = 0;
+          if (!trt_state->engine_decryption(engine_cache_path.c_str(), nullptr, &engine_size)) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP could not get engine buffer size");
+          }
+          std::unique_ptr<char[]> engine_buf{new char[engine_size]};
+          if (!trt_state->engine_decryption(engine_cache_path.c_str(), &engine_buf[0], &engine_size)) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP could not call engine decryption function decrypt");
+          }
+          // Deserialize engine
+          trt_state->context->reset();
+          trt_state->engine->reset();
+          *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_state->runtime->deserializeCudaEngine(engine_buf.get(), engine_size, nullptr));
+          if (trt_state->engine == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                   "TensorRT EP could not deserialize engine from encrypted cache: " + engine_cache_path);
+          }
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] DeSerialized " + engine_cache_path;
+          trt_engine = trt_state->engine->get();
+          if (trt_state->context_memory_sharing_enable) {
+            *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+                trt_state->engine->get()->createExecutionContextWithoutDeviceMemory());
+          } else {
+            *(trt_state->context) = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(
+                trt_state->engine->get()->createExecutionContext());
+          }
+          if (trt_state->context == nullptr) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
+          }
+          trt_context = trt_state->context->get();
+        }
+      }
 
       for (int i = 0, end = num_inputs; i < end; ++i) {
         auto input = trt_state->network->get()->getInput(i);
@@ -1567,6 +1737,26 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
         }
         trt_engine = trt_state->engine->get();
+        if (trt_state->engine_cache_enable) {
+          // Serialize engine profile
+          SerializeProfile(profile_cache_path, shape_ranges);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
+
+          // Serialize engine
+          nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
+          size_t engine_size = serializedModel->size();
+          if (trt_state->engine_decryption_enable) {
+            // Encrypt engine
+            if (!trt_state->engine_encryption(engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), engine_size)) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not call engine encryption function encrypt");
+            }
+          } else {
+            std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
+            file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
+          }
+          serializedModel->destroy();
+        }
 
         // Build context
         if (trt_state->context_memory_sharing_enable) {
@@ -1580,10 +1770,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to create context.");
         }
         trt_context = trt_state->context->get();
-
-        if (trt_state->engine_cache_enable)
-          trt_state->update_engine_cache = true;
-        trt_state->input_shape_ranges = shape_ranges;
       }
 
       // Get input and output binding names
@@ -1673,6 +1859,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = const_cast<int8_t*>(input_tensor_ptr);
+            }
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
+            auto input_tensor_ptr = ort.GetTensorData<uint8_t>(input_tensor);
+            if (input_tensor_ptr == nullptr) {
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(uint8_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
+            } else {
+              buffers[binding_index] = const_cast<uint8_t*>(input_tensor_ptr);
             }
             break;
           }
@@ -1803,6 +1999,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             auto output_tensor_ptr = ort.GetTensorMutableData<int8_t>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
               scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(int8_t)));
+              buffers[binding_index] = scratch_buffers.back().get();
+            } else {
+              buffers[binding_index] = output_tensor_ptr;
+            }
+            break;
+          }
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: {
+            auto output_tensor_ptr = ort.GetTensorMutableData<uint8_t>(output_tensor[i]);
+            if (output_tensor_ptr == nullptr) {
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(uint8_t)));
               buffers[binding_index] = scratch_buffers.back().get();
             } else {
               buffers[binding_index] = output_tensor_ptr;

@@ -105,72 +105,24 @@ class FusionUtils:
         else:
             return value == expected_value
 
-    def get_dtype(self, shape_infer_helper, input_or_output_name: str) -> int:
-        """Get data type of an input or output.
-
-        Args:
-            shape_infer_helper (SymbolicShapeInferenceHelper): object of symbolic shape inference
-            input_or_output_name (str): name of input or output
-
-        Returns:
-            int: tensor data type
-        """
-        dtype = self.model.get_dtype(input_or_output_name)
-        if dtype is not None:
-            return dtype
-
-        if shape_infer_helper:
-            tensor_proto = shape_infer_helper.known_vi_[input_or_output_name]
-            if tensor_proto.type.tensor_type.HasField("elem_type"):
-                return tensor_proto.type.tensor_type.elem_type
-
-        return None
-
-    def remove_cascaded_cast_nodes(self):
-        """Remove Cast node that are overrided by another Cast node like  --> Cast --> Cast -->
-        Note that this shall be used carefully since it might introduce semantic change.
-        For example, float -> int -> float could get different value than the original float value.
-        So, it is recommended to used only in post-processing of mixed precision conversion.
-        """
-        removed_count = 0
-        for node in self.model.nodes():
-            if node.op_type == "Cast":
-                parent = self.model.get_parent(node, 0)
-                if parent and parent.op_type == "Cast":
-                    node.input[0] = parent.input[0]
-                    removed_count += 1
-
-        if removed_count > 0:
-            logger.info(f"Removed {removed_count} cascaded Cast nodes")
-            self.model.prune_graph()
-
-    def remove_useless_cast_nodes(self):
-        """Remove cast nodes that are not needed: input and output has same data type."""
-        shape_infer = self.model.infer_runtime_shape(update=True)
-        if shape_infer is None:
-            return
-
+    def remove_identity_nodes(self):
+        """Remove Identity nodes, except those right before graph output."""
         nodes_to_remove = []
         for node in self.model.nodes():
-            if node.op_type == "Cast":
-                input_dtype = self.get_dtype(shape_infer, node.input[0])
-                output_dtype = self.get_dtype(shape_infer, node.output[0])
-                if input_dtype and input_dtype == output_dtype:
+            if node.op_type == "Identity":
+                if node.output[0] not in self.model.get_graphs_output_names():
+                    self.model.replace_input_of_all_nodes(node.output[0], node.input[0])
                     nodes_to_remove.append(node)
 
         if nodes_to_remove:
-            graph_input_names = set(self.model.get_graphs_input_names())
-            graph_output_names = set(self.model.get_graphs_output_names())
-            for node in nodes_to_remove:
-                if bool(set(node.output) & graph_output_names):
-                    if not bool(set(node.input) & graph_input_names):
-                        self.model.replace_output_of_all_nodes(node.input[0], node.output[0])
-                    else:
-                        continue
-                else:
-                    self.model.replace_input_of_all_nodes(node.output[0], node.input[0])
-                self.model.remove_node(node)
-        logger.info(f"Removed {len(nodes_to_remove)} Cast nodes with output type same as input")
+            self.model.remove_nodes(nodes_to_remove)
+            logger.info(f"Removed {len(nodes_to_remove)} Identity nodes")
+
+    def remove_cascaded_cast_nodes(self):
+        self.model.remove_cascaded_cast_nodes()
+
+    def remove_useless_cast_nodes(self):
+        self.model.remove_useless_cast_nodes()
 
     def remove_useless_reshape_nodes(self):
         """Remove reshape node that is not needed based on symbolic shape inference: input and output has same shape"""

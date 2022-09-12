@@ -42,10 +42,6 @@ namespace onnxruntime {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
 
-// Using statements for common classes that we refer to in ONNXRuntime very often.
-// TODO(Task:137) Remove 'using' statements from header files
-using common::Status;
-
 #ifdef _WIN32
 #define ORT_UNUSED_PARAMETER(x) (x)
 #else
@@ -276,12 +272,6 @@ std::wstring ToWideString(const std::string& s);
 inline std::wstring ToWideString(const std::wstring& s) { return s; }
 #else
 inline std::string ToWideString(const std::string& s) { return s; }
-#endif
-
-#if ((__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)))
-#define ORT_IF_CONSTEXPR if constexpr
-#else
-#define ORT_IF_CONSTEXPR if
 #endif
 
 constexpr size_t kMaxStrLen = 2048;

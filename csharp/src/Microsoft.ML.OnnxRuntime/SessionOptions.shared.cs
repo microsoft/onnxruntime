@@ -11,7 +11,7 @@ namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
     /// Graph optimization level to use with SessionOptions
-    ///  [https://github.com/microsoft/onnxruntime/blob/master/docs/ONNX_Runtime_Graph_Optimizations.md]
+    ///  [https://github.com/microsoft/onnxruntime/blob/main/docs/ONNX_Runtime_Graph_Optimizations.md]
     /// </summary>
     public enum GraphOptimizationLevel
     {
@@ -408,13 +408,13 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     providerOptions = new Dictionary<string, string>();
                 }
-                
+
                 var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(
                     providerOptions.Keys.ToArray(), n => n, cleanupList);
 
                 var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(
                     providerOptions.Values.ToArray(), n => n, cleanupList);
-                
+
                 NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider(
                     handle, epArray[0], keysArray, valuesArray, (UIntPtr)providerOptions.Count));
             }
@@ -426,7 +426,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// (Deprecated) Loads a DLL named 'libraryPath' and looks for this entry point:
         /// OrtStatus* RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api);
         /// It then passes in the provided session options to this function along with the api base.
-        /// Deprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle 
+        /// Deprecated in favor of RegisterCustomOpLibraryV2() because it provides users with the library handle
         /// to release when all sessions relying on it are destroyed
         /// </summary>
         /// <param name="libraryPath">path to the custom op library</param>
@@ -589,7 +589,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (!_enableProfiling && value)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableProfiling(handle, NativeMethods.GetPlatformSerializedString(ProfileOutputPathPrefix)));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtEnableProfiling(handle, NativeOnnxValueHelper.GetPlatformSerializedString(ProfileOutputPathPrefix)));
                     _enableProfiling = true;
                 }
                 else if (_enableProfiling && !value)
@@ -615,7 +615,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 if (value != _optimizedModelFilePath)
                 {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetOptimizedModelFilePath(handle, NativeMethods.GetPlatformSerializedString(value)));
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtSetOptimizedModelFilePath(handle, NativeOnnxValueHelper.GetPlatformSerializedString(value)));
                     _optimizedModelFilePath = value;
                 }
             }

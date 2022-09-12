@@ -80,10 +80,8 @@ __global__ void SkipLayerNormKernelSmall(
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;  // grid_size = n / ld
 
   using VecT = aligned_vector<T, ILP>;
-  __shared__ T mu;      // mean
-  __shared__ T rsigma;  // 1 / std.dev.
 
-  T input_v[ILP], skip_v[ILP], bias_v[ILP], output_v[ILP];
+  T input_v[ILP], skip_v[ILP], bias_v[ILP];
 
   VecT* input_val = reinterpret_cast<VecT*>(&input_v);
   *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
@@ -114,7 +112,7 @@ __global__ void SkipLayerNormKernelSmall(
 }
 
 template <typename T>
-bool LaunchSkipLayerNormKernel(
+Status LaunchSkipLayerNormKernel(
     hipStream_t stream, T* output, const T* input, const T* skip, const T* gamma,
     const T* beta, const T* bias, float epsilon, const int ld, const int element_count,
     size_t element_size) {
@@ -180,18 +178,16 @@ bool LaunchSkipLayerNormKernel(
   return HIP_CALL(hipPeekAtLastError());
 }
 
-template bool LaunchSkipLayerNormKernel<float>(hipStream_t stream, float* output, const float* input,
-                                               const float* skip, const float* gamma, const float* beta,
-                                               const float* bias, float epsilon, const int ld,
-                                               const int element_count, size_t element_size);
+template Status LaunchSkipLayerNormKernel<float>(hipStream_t stream, float* output, const float* input,
+                                                 const float* skip, const float* gamma, const float* beta,
+                                                 const float* bias, float epsilon, const int ld,
+                                                 const int element_count, size_t element_size);
 
-template bool LaunchSkipLayerNormKernel<half>(hipStream_t stream, half* output, const half* input,
-                                               const half* skip, const half* gamma, const half* beta,
-                                               const half* bias, float epsilon, const int ld,
-                                               const int element_count, size_t element_size);
+template Status LaunchSkipLayerNormKernel<half>(hipStream_t stream, half* output, const half* input,
+                                                const half* skip, const half* gamma, const half* beta,
+                                                const half* bias, float epsilon, const int ld,
+                                                const int element_count, size_t element_size);
 
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
-
-

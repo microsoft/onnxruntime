@@ -11,14 +11,15 @@ import random
 import tempfile
 import warnings
 from collections import OrderedDict, namedtuple
-from distutils.version import LooseVersion
 from inspect import signature
 from time import sleep
 from unittest.mock import patch
 
 import _test_helpers
+import onnx
 import pytest
 import torch
+from packaging.version import Version
 
 # Import autocasting libs
 from torch.cuda import amp
@@ -38,7 +39,7 @@ from onnxruntime.training.ortmodule import (
 )
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 
-DEFAULT_OPSET = 14
+DEFAULT_OPSET = 15
 
 
 # PyTorch model definitions for tests
@@ -389,6 +390,7 @@ def run_before_tests():
 
 def _get_bert_for_sequence_classification_model(
     device,
+    is_training=False,
     output_attentions=False,
     output_hidden_states=False,
     return_dict=True,
@@ -413,6 +415,10 @@ def _get_bert_for_sequence_classification_model(
         config=config,
     ).to(device)
 
+    if is_training:
+        model.train()
+    else:
+        model.eval()
     return model
 
 
@@ -1095,7 +1101,7 @@ def test_export_correctness_pool2d(pool_type, stride):
             torch.bfloat16,
             marks=[
                 pytest.mark.skipif(
-                    LooseVersion(torch.__version__) < LooseVersion("1.10.0"),
+                    Version(torch.__version__) < Version("1.10.0"),
                     reason="PyTorch 1.9 incompatible",
                 )
             ],
@@ -1141,7 +1147,7 @@ def test_gradient_correctness_minmax(operator, dim, keepdim, data_type):
 # Before 1.10 (excluded), Torch's min/max(x,y) will assign dY to y's dX if value from x and y are equal.
 # From 1.10, both x and y's dX will be dY/2. ORT follows this distribution logic, so skip below test if Torch version
 # is lower than 1.10.
-@pytest.mark.skipif(LooseVersion(torch.__version__) < LooseVersion("1.10.0"), reason="PyTorch 1.9 incompatible")
+@pytest.mark.skipif(Version(torch.__version__) < Version("1.10.0"), reason="PyTorch 1.9 incompatible")
 @pytest.mark.parametrize("operator", ["min", "max"])
 def test_gradient_correctness_minmax_two_tensors(operator):
     func = getattr(torch, operator)
@@ -1322,12 +1328,67 @@ def test_gradient_correctness_reducesum(dim, keepdim):
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
+# Before PyTorch 1.11.0, the exporter will fail to register symbolic with non-empty domain.
+@pytest.mark.skipif(Version(torch.__version__) < Version("1.11.0"), reason="PyTorch 1.10 incompatible")
+@pytest.mark.parametrize("dim", [0, 1, -1])
+@pytest.mark.parametrize("chunks", [1, 3])
+def test_gradient_correctness_chunk(dim, chunks):
+    class NeuralNetChunk(torch.nn.Module):
+        def __init__(self, dim):
+            super(NeuralNetChunk, self).__init__()
+            self.dim = dim
+
+        def forward(self, input):
+            return input.chunk(chunks, dim=self.dim)
+
+    device = "cuda"
+    pt_model = NeuralNetChunk(dim).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=(chunks > 1), onnx_prefix="chunk_model"))
+
+    def run_step(model, input):
+        results = model(input)
+        loss = results[0].sum()
+        for i in range(1, len(results)):
+            loss = loss + results[i].sum()
+        loss.backward()
+        return results
+
+    N, D, H = 16, 17, 18
+    for _ in range(10):
+        pt_input = torch.rand((N, D, H), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        pt_results = run_step(pt_model, pt_input)
+        ort_results = run_step(ort_model, ort_input)
+
+        assert len(ort_results) == len(pt_results)
+        for i in range(len(ort_results)):
+            _test_helpers.assert_values_are_close(ort_results[i], pt_results[i])
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+    if chunks > 1:
+        assert os.path.exists(os.path.join(os.getcwd(), "chunk_model_torch_exported_training.onnx"))
+        assert os.path.exists(os.path.join(os.getcwd(), "chunk_model_optimized_training.onnx"))
+        assert os.path.exists(os.path.join(os.getcwd(), "chunk_model_optimized_pre_grad_training.onnx"))
+        assert os.path.exists(os.path.join(os.getcwd(), "chunk_model_execution_model_training.onnx"))
+        model = onnx.load(os.path.join(os.getcwd(), "chunk_model_torch_exported_training.onnx"))
+        has_split = False
+        for node in model.graph.node:
+            if node.op_type == "Split":
+                has_split = True
+                break
+        assert has_split
+        os.remove(os.path.join(os.getcwd(), "chunk_model_torch_exported_training.onnx"))
+        os.remove(os.path.join(os.getcwd(), "chunk_model_optimized_training.onnx"))
+        os.remove(os.path.join(os.getcwd(), "chunk_model_optimized_pre_grad_training.onnx"))
+        os.remove(os.path.join(os.getcwd(), "chunk_model_execution_model_training.onnx"))
+
+
 # In PyTorch 1.11.0, there is issue during reduce node shape handling for exporter, so any sub-graph that
 # contains ReduceProd will fail to run, for example, "sec,sm->ecm", "sec,ecm->sm".
 # Currently skip these cases and test_gradient_correctness_einsum_2,
 # will enable these tests again once the issue in PyTorch is fixed.
 skip_torch_1_11 = pytest.mark.skipif(
-    LooseVersion(torch.__version__) >= LooseVersion("1.11.0"), reason="PyTorch 1.11 incompatible"
+    Version(torch.__version__) >= Version("1.11.0"), reason="PyTorch 1.11 incompatible"
 )
 
 
@@ -1572,39 +1633,6 @@ def test_numpy_T(input_shape):
     ort_prediction = run_step(ort_model, ort_input)
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
-
-
-def test_gradient_correctness_bce_with_logits():
-    class NeuralNetBCEWithLogitsLoss(torch.nn.Module):
-        def __init__(self, input_size, hidden_size):
-            super(NeuralNetBCEWithLogitsLoss, self).__init__()
-            self.linear = torch.nn.Linear(input_size, hidden_size)
-
-        def forward(self, input, target):
-            loss_fct = torch.nn.BCEWithLogitsLoss()
-            return loss_fct(self.linear(input), target)
-
-    N, D, H = 16, 256, 128
-    device = "cuda"
-    pt_model = NeuralNetBCEWithLogitsLoss(D, H).to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model))
-
-    def run_step(model, input, target):
-        prediction = model(input, target)
-        loss = prediction.sum()
-        loss.backward()
-        return prediction
-
-    for _ in range(10):
-        pt_input = torch.rand((N, D), device=device, requires_grad=True)
-        ort_input = copy.deepcopy(pt_input)
-        pt_target = torch.rand((N, H), device=device)
-        ort_target = copy.deepcopy(pt_target)
-        pt_prediction = run_step(pt_model, pt_input, pt_target)
-        ort_prediction = run_step(ort_model, ort_input, ort_target)
-
-        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
-        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
 def test_gradient_correctness_cast_chain():
@@ -1989,7 +2017,7 @@ def test_bert_inputs_with_dynamic_shape():
 
     # create pytorch model with dropout disabled
     pt_model = _get_bert_for_sequence_classification_model(
-        "cuda", hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0
+        "cuda", is_training=True, hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0
     )
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -3735,7 +3763,7 @@ def test_primitive_inputs(bool_argument, int_argument, float_argument):
     input1 = torch.randn(N, D_in, device=device)
     pt_out = pt_model(input1, bool_argument, int_argument, float_argument)
     ort_out = ort_model(input1, bool_argument, int_argument, float_argument)
-    _test_helpers.assert_values_are_close(pt_out, ort_out)
+    _test_helpers.assert_values_are_close(pt_out, ort_out, rtol=1e-03, atol=1e-04)
 
 
 @pytest.mark.parametrize("bool_arguments", [(True, False), (False, True)])
@@ -4688,7 +4716,7 @@ def test_ortmodule_ortmodule_method_attribute_copy():
     assert type(out2.grad_fn).__name__ == "_ORTModuleFunctionBackward"
     assert (
         type(out3.grad_fn).__name__ == "AddmmBackward0"
-        if LooseVersion(torch.__version__) >= LooseVersion("1.10.0")
+        if Version(torch.__version__) >= Version("1.10.0")
         else "AddmmBackward"
     )
 
@@ -5056,7 +5084,7 @@ def test_sigmoid_grad_opset13():
     old_opst_cst = ortmodule.ONNX_OPSET_VERSION
     old_opset = os.getenv("ORTMODULE_ONNX_OPSET_VERSION", None)
     os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = "13"
-    assert ortmodule.ONNX_OPSET_VERSION == 14
+    assert ortmodule.ONNX_OPSET_VERSION == 15
 
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -5086,7 +5114,7 @@ def test_sigmoid_grad_opset13():
     ortmodule.ONNX_OPSET_VERSION = old_opst_cst
 
 
-@pytest.mark.parametrize("opset_version", [12, 13, 14])
+@pytest.mark.parametrize("opset_version", [12, 13, 14, 15])
 def test_opset_version_change(opset_version):
     device = "cuda"
 
@@ -5311,3 +5339,21 @@ def test_squeeze_custom_symbolic_registry():
     _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
     _test_helpers.assert_values_are_close(pt_loss, ort_loss)
     _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+def test_eval_model_mode():
+    device = "cuda"
+    n, d_in, h_size, d_out = 64, 2, 2, 2
+    origin_model = NeuralNetSinglePositionalArgument(d_in, h_size, d_out).to(device)
+    x = torch.randn(n, d_in, device=device)
+    ort_model = ORTModule(origin_model)
+    for initial_mode in (True, False):
+        model = copy.deepcopy(ort_model)
+        model.train(initial_mode)
+        for step in range(10):
+            for new_mode in (True, False):
+                model.train(new_mode)
+                model(x)
+                assert model.training == new_mode
+                assert model._torch_module.is_training() == new_mode
+                assert model._torch_module._flattened_module.training == new_mode

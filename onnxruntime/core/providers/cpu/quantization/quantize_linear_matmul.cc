@@ -85,9 +85,9 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   if (y->Shape().Size() == 0)
     return Status::OK();
 
-  const auto* b_scale_data = b_scale->template Data<float>();
-  auto a_scale_data = *(a_scale->template Data<float>());
-  auto y_scale_data = *(y_scale->template Data<float>());
+  const auto* b_scale_data = b_scale->Data<float>();
+  auto a_scale_data = *(a_scale->Data<float>());
+  auto y_scale_data = *(y_scale->Data<float>());
 
   const int64_t output_scale_size = b_scale->Shape().Size();
   std::vector<float> output_scales(output_scale_size);
@@ -107,7 +107,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
   auto gemm_output_data = alloc->Alloc(SafeInt<size_t>(gemm_shape.M) *
                                        gemm_shape.N * sizeof(int32_t) * num_gemms);
-  BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(alloc));
+  BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(std::move(alloc)));
   auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
 
   std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_params(num_gemms);

@@ -76,8 +76,8 @@ struct TensorCheck {
       expected = expected_sorted.Data<T>();
       output = output_sorted.Data<T>();
     } else {
-      expected = expected_tensor.template Data<T>();
-      output = output_tensor.template Data<T>();
+      expected = expected_tensor.Data<T>();
+      output = output_tensor.Data<T>();
     }
 
     for (int i = 0; i < size; ++i) {
@@ -110,8 +110,8 @@ struct TensorCheck<uint8_t> {
       expected = expected_sorted.Data<uint8_t>();
       output = output_sorted.Data<uint8_t>();
     } else {
-      expected = expected_tensor.template Data<uint8_t>();
-      output = output_tensor.template Data<uint8_t>();
+      expected = expected_tensor.Data<uint8_t>();
+      output = output_tensor.Data<uint8_t>();
     }
 
     // For uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
@@ -161,8 +161,8 @@ struct TensorCheck<double> {
       expected = expected_sorted.Data<double>();
       output = output_sorted.Data<double>();
     } else {
-      expected = expected_tensor.template Data<double>();
-      output = output_tensor.template Data<double>();
+      expected = expected_tensor.Data<double>();
+      output = output_tensor.Data<double>();
     }
 
     double threshold = 0.001;
@@ -219,8 +219,8 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
     expected = expected_sorted.Data<TypeToCheck>();
     output = output_sorted.Data<TypeToCheck>();
   } else {
-    expected = expected_tensor.template Data<TypeToCheck>();
-    output = output_tensor.template Data<TypeToCheck>();
+    expected = expected_tensor.Data<TypeToCheck>();
+    output = output_tensor.Data<TypeToCheck>();
   }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -274,8 +274,8 @@ struct TensorCheck<MLFloat16> {
                   const Tensor& output_tensor,
                   const std::string& provider_type,
                   const CheckParams& params) const {
-    auto* expected = expected_tensor.template Data<MLFloat16>();
-    auto* output = output_tensor.template Data<MLFloat16>();
+    auto* expected = expected_tensor.Data<MLFloat16>();
+    auto* output = output_tensor.Data<MLFloat16>();
     auto size = output_tensor.Shape().Size();
 
     std::vector<float> f_expected(size);
@@ -313,8 +313,8 @@ struct TensorCheck<BFloat16> {
                   const Tensor& output_tensor,
                   const std::string& provider_type,
                   const CheckParams& params) const {
-    auto* expected = expected_tensor.template Data<BFloat16>();
-    auto* output = output_tensor.template Data<BFloat16>();
+    auto* expected = expected_tensor.Data<BFloat16>();
+    auto* output = output_tensor.Data<BFloat16>();
     auto size = output_tensor.Shape().Size();
 
     std::vector<float> f_expected(size);
@@ -1010,7 +1010,6 @@ void OpTester::Run(
         kCpuExecutionProvider,
         kCudaExecutionProvider,
         kDnnlExecutionProvider,
-        kNupharExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
         kDmlExecutionProvider,
@@ -1028,6 +1027,10 @@ void OpTester::Run(
 
     if (execution_providers) {
       for (auto& entry : *execution_providers) {
+        // Be noted, entry in execution providers passed in OpTester will be std::moved in the first OpTester::Run(),
+        // To make the error more obvious to debug (instead of a segment fault), we do check explicitly here.
+        ASSERT_TRUE(entry) << "Execution provider entry invalid.";
+
         if (entry->Type() == kDmlExecutionProvider) {
           so.enable_mem_pattern = false;
           so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
@@ -1098,8 +1101,6 @@ void OpTester::Run(
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
           execution_provider = DefaultOpenVINOExecutionProvider();
-        else if (provider_type == onnxruntime::kNupharExecutionProvider)
-          execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
@@ -1134,7 +1135,6 @@ void OpTester::Run(
           node.SetExecutionProviderType(provider_type);
           if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
-              provider_type == onnxruntime::kNupharExecutionProvider ||
               // provider_type == onnxruntime::kTvmExecutionProvider ||
               provider_type == onnxruntime::kNnapiExecutionProvider ||
               provider_type == onnxruntime::kCoreMLExecutionProvider ||

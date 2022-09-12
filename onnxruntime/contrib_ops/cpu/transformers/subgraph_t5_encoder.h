@@ -16,8 +16,8 @@ class T5EncoderSubgraph : public Subgraph {
       const onnxruntime::Node& node_in,
       const std::string& attribute_name,
       const GraphViewer& subgraph_in) : Subgraph(node_in, attribute_name, subgraph_in) {
-        first_present_output_index_ = 2;
-      }
+    first_present_output_index_ = 2;
+  }
 
   // Create inputs for first inference of subgraph.
   Status CreateInitialFeeds(
@@ -27,8 +27,8 @@ class T5EncoderSubgraph : public Subgraph {
       int pad_token_id,
       int start_token_id,
       std::vector<OrtValue>& feeds,
-      const BeamSearchDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
-      const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+      const GenerationDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
+      const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
       IAllocatorUniquePtr<char>& buffer,
       OrtValue& expanded_decoder_input_ids);
 

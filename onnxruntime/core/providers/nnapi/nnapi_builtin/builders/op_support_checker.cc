@@ -8,10 +8,11 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 #include "core/providers/common.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
-#include "helper.h"
-
+#include "core/optimizer/initializer.h"
 namespace onnxruntime {
 namespace nnapi {
 
@@ -183,18 +184,10 @@ static bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initial
                             << " zero point dimension " << zero_dim;
       return false;
     }
-
-    std::vector<uint8_t> unpacked_tensor;
-    auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, model_path, unpacked_tensor);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Qlinear[Conv/MatMul] error when unpack zero tensor: " << zero_point_name
-                          << ", error msg: " << status.ErrorMessage();
-      return false;
-    }
-
+    Initializer unpacked_tensor(zero_tensor, model_path);
     // Verify all onnx weight zero point(s) are 0(s)
-    const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.data());
-    for (size_t i = 0; i < unpacked_tensor.size(); i++) {
+    auto zero_points = unpacked_tensor.DataAsSpan<int8_t>();
+    for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
       if (zero_points[i] != 0) {
         LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul]  only support 0 as zero point, "
                               << "zero_points[" << i << "] has value: " << zero_points[i];
@@ -345,7 +338,7 @@ class BaseOpSupportChecker : public IOpSupportChecker {
       const OpSupportCheckParams& params) const;
 
   virtual int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 15; }
+  virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 17; }
 
   // Check if this node_unit's type is supported
   // SingleNode type NodeUnit is supported
@@ -730,13 +723,8 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
   }
 
   const auto& perm_tensor = *initializers.at(perm_name);
-  std::vector<uint8_t> unpacked_tensor;
-  auto status = onnxruntime::utils::UnpackInitializerData(perm_tensor, unpacked_tensor);
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Error while unpacking perm_tensor: " << status.ErrorMessage();
-    return false;
-  }
-  const int64_t* raw_perm = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+  Initializer unpacked_tensor(perm_tensor);
+  auto raw_perm = unpacked_tensor.DataAsSpan<int64_t>();
   const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
 
   NodeAttrHelper helper(node_unit);
@@ -1431,6 +1419,16 @@ int GemmOpSupportChecker::GetMinSupportedOpSet(const NodeUnit& node_unit) const 
 
 bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& params) const {
+  // check batch matmul first, then fall back to checking single gemm/matmul
+  {
+    const bool is_supported_batch_matmul =
+        op_builder_helpers::IsSupportedBatchMatMul(node_unit, params.android_feature_level);
+    LOGS_DEFAULT(VERBOSE) << "Supported batch matmul: [" << is_supported_batch_matmul << "]";
+    if (is_supported_batch_matmul) {
+      return true;
+    }
+  }
+
   const auto& op_type = node_unit.OpType();
   const auto& inputs = node_unit.Inputs();
   const bool is_qlinear_matmul = op_type == "QLinearMatMul";
@@ -1985,13 +1983,8 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
     // We want to check if the scales or sizes are not trying to resize on N/C channels here
     if (inputs.size() == 3) {  // we are using scales
       const auto& scales_tensor = *initializers.at(inputs[2].node_arg.Name());
-      std::vector<uint8_t> unpacked_tensor;
-      auto status = onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor);
-      if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "Error while unpacking scales_tensor: " << status.ErrorMessage();
-        return false;
-      }
-      const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
+      Initializer unpacked_tensor(scales_tensor);
+      auto scales_data = unpacked_tensor.DataAsSpan<float>();
       float scale_n = scales_data[0];
       float scale_c = IsNodeLayoutNHWC(node_unit) ? scales_data[3] : scales_data[1];
       if (scale_n != 1.0f || scale_c != 1.0f) {
@@ -2004,15 +1997,9 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       // we are using sizes
       const auto& sizes_name = inputs[3].node_arg.Name();
       const auto& sizes_tensor = *initializers.at(sizes_name);
-      std::vector<uint8_t> unpacked_tensor;
-      auto status = onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor);
-      if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "Error while unpacking sizes_tensor: " << status.ErrorMessage();
-        return false;
-      }
-
+      Initializer unpacked_tensor(sizes_tensor);
       int channel_idx = IsNodeLayoutNHWC(node_unit) ? 3 : 1;
-      const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+      auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
       uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
       uint32_t size_c = SafeInt<uint32_t>(sizes_data[channel_idx]);
       if (size_n != input_shape[0] || size_c != input_shape[channel_idx]) {
@@ -2138,10 +2125,22 @@ bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
     return false;
   }
 
+  // Here in GatherOpSupportChecker::IsOpSupportedImpl, we removed the restriction that 2nd input "indices" must be an initializer
+  // to accommodate the support for some models such as mobileBERT. It doesn't need to be an initializer for int32 as NNAPI Gather
+  // uses int32 for indices so the type matches.
+  // However, we still require indices of other types to be an initializer as we convert the data to int32 during model building.
+  // TODO: We could potentially support non-initializer inputs for the other types if we inserted a cast.
   const auto& indices_name = inputs[1].node_arg.Name();
-  if (!Contains(initializers, indices_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known";
+
+  int32_t indices_type;
+  if (!GetType(node_unit.Inputs()[1].node_arg, indices_type))
     return false;
+
+  if (indices_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    if (!Contains(initializers, indices_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known.";
+      return false;
+    }
   }
 
   return true;
@@ -2329,20 +2328,12 @@ bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initiali
     }
 
     const ONNX_NAMESPACE::TensorProto& pads_initializer = *pads_initializer_it->second;
-    std::vector<uint8_t> unpacked_tensor;
-    auto status = onnxruntime::utils::UnpackInitializerData(pads_initializer, unpacked_tensor);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Error while unpacking pads initializer: " << status.ErrorMessage();
-      return false;
-    }
-
-    int64_t pad_value;
-    ORT_ENFORCE(unpacked_tensor.size() % sizeof(pad_value) == 0);
-    for (size_t i = 0; i < unpacked_tensor.size(); i += sizeof(pad_value)) {
-      memcpy(&pad_value, &unpacked_tensor[i], sizeof(pad_value));
-      if (pad_value < 0) {
+    Initializer unpacked_tensor(pads_initializer);
+    auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
+    for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
+      if (tensor_data[i] < 0) {
         LOGS_DEFAULT(VERBOSE) << "Negative pad value is not supported: pads["
-                              << i / sizeof(pad_value) << "] = " << pad_value;
+                              << i << "] = " << tensor_data[i];
         return false;
       }
     }

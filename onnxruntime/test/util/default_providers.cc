@@ -115,15 +115,6 @@ std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_are
   return nullptr;
 }
 
-std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_unaligned_buffers) {
-#ifdef USE_NUPHAR
-  return NupharProviderFactoryCreator::Create(allow_unaligned_buffers, "")->CreateProvider();
-#else
-  ORT_UNUSED_PARAMETER(allow_unaligned_buffers);
-  return nullptr;
-#endif
-}
-
 // std::unique_ptr<IExecutionProvider> DefaultTvmExecutionProvider() {
 // #ifdef USE_TVM
 //   return TVMProviderFactoryCreator::Create("")->CreateProvider();

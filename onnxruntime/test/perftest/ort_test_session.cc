@@ -1,5 +1,8 @@
 #include "ort_test_session.h"
+#include <algorithm>
+#include <limits>
 #include <set>
+#include <type_traits>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -51,12 +54,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");
-#endif
-  } else if (provider_name == onnxruntime::kNupharExecutionProvider) {
-#ifdef USE_NUPHAR
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
-#else
-    ORT_THROW("Nuphar is not supported in this build\n");
 #endif
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
@@ -386,7 +383,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       if (key == "runtime") {
         std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
         if (supported_runtime.find(value) == supported_runtime.end()) {
-          ORT_THROW(R"(Wrong configuration value for the key 'runtime'. 
+          ORT_THROW(R"(Wrong configuration value for the key 'runtime'.
 select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)");
         }
       } else if (key == "priority") {
@@ -394,7 +391,7 @@ select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)"
       } else if (key == "buffer_type") {
         std::set<std::string> supported_buffer_type = {"TF8", "TF16", "UINT8", "FLOAT", "ITENSOR"};
         if (supported_buffer_type.find(value) == supported_buffer_type.end()) {
-          ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'. 
+          ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'.
 select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         }
       } else {
@@ -563,7 +560,81 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   }
 }
 
-bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
+template <typename T>
+static void FillTensorDataTyped(Ort::Value& tensor, size_t count, int32_t seed = -1, T value = T{}) {
+  T* data = tensor.GetTensorMutableData<T>();
+
+  bool random_init = false;
+
+  if (seed >= 0) {
+    random_init = true;
+
+    std::default_random_engine engine;
+    engine.seed(seed);
+    if constexpr (std::is_same<T, float>::value) {
+      T max_value = 5.0f;
+      const std::uniform_real_distribution<float>::param_type p(0, static_cast<float>(max_value));
+      std::uniform_real_distribution<T> dist;
+      for (size_t i = 0; i < count; ++i) {
+        data[i] = dist(engine, p);
+      }
+    } else if constexpr (std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value) {
+      T max_value = std::numeric_limits<T>::max();
+      const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(max_value));
+      std::uniform_int_distribution<int> dist;
+      for (size_t i = 0; i < count; ++i) {
+        data[i] = static_cast<T>(dist(engine, p));
+      }
+    } else {
+      random_init = false;
+      fprintf(stdout, " this type of data won't be random initialized\n");
+    }
+  }
+  if (!random_init) {
+    std::fill_n(data, count, value);
+  }
+}
+
+// seed=-1 means we keep the initialized it with a constant value "T{}"
+// in some case, we want to check the results for multi-runs, with the given we can recap the input data
+// another reason is that, the input would be always 255/-127 for uint8_t or int8_t types of input.
+// which will produce all zero outputs.
+static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
+  const auto type_and_shape = tensor.GetTensorTypeAndShapeInfo();
+  const auto count = type_and_shape.GetElementCount();
+  const auto element_type = type_and_shape.GetElementType();
+
+#define CASE_FOR_TYPE(T)                         \
+  case Ort::TypeToTensorType<T>::type: {         \
+    FillTensorDataTyped<T>(tensor, count, seed); \
+  } break
+
+  switch (element_type) {
+    CASE_FOR_TYPE(Ort::Float16_t);
+    CASE_FOR_TYPE(Ort::BFloat16_t);
+    CASE_FOR_TYPE(float);
+    CASE_FOR_TYPE(double);
+    CASE_FOR_TYPE(int8_t);
+    CASE_FOR_TYPE(int16_t);
+    CASE_FOR_TYPE(int32_t);
+    CASE_FOR_TYPE(int64_t);
+    CASE_FOR_TYPE(uint8_t);
+    CASE_FOR_TYPE(uint16_t);
+    CASE_FOR_TYPE(uint32_t);
+    CASE_FOR_TYPE(uint64_t);
+    CASE_FOR_TYPE(bool);
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
+      // string tensors are already initialized to contain empty strings
+      // see onnxruntime::Tensor::Init()
+      break;
+    default:
+      ORT_THROW("Unsupported tensor data type: ", element_type);
+  }
+
+#undef CASE_FOR_TYPE
+}
+
+bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
   // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
@@ -582,6 +653,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
       auto allocator = static_cast<OrtAllocator*>(Ort::AllocatorWithDefaultOptions());
       Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
                                                          input_node_dim.size(), tensor_info.GetElementType());
+      InitializeTensorWithSeed(seed, input_tensor);
       PreLoadTestData(0, i, std::move(input_tensor));
     }
   }
