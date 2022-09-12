@@ -26,6 +26,9 @@ class KernelRegistry {
 
   Status Register(KernelCreateInfo&& create_info);
 
+  // TODO(edgchen1) for TryFindKernel(), consider using `out` != nullptr as indicator of whether kernel was found and
+  // Status as an indication of failure
+
   // Check if an execution provider can create kernel for a node and return the kernel if so
   Status TryFindKernel(const Node& node, ProviderType exec_provider,
                        const IKernelTypeStrResolver& kernel_type_str_resolver,

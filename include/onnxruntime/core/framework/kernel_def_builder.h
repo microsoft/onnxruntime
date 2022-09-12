@@ -53,7 +53,8 @@ class KernelDef {
     return provider_type_;
   }
 
-  // TODO do we need both TypeConstraints() and EnabledTypeConstraints()?
+  // TODO(edgchen1) do we need both TypeConstraints() and EnabledTypeConstraints()?
+
   // type constraints with types supported by default
   const std::unordered_map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
     return default_type_constraints_;
