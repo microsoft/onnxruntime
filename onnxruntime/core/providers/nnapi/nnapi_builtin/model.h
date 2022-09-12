@@ -165,12 +165,15 @@ class Execution {
   };
 
  public:
-  explicit Execution(ANeuralNetworksExecution& execution, const Shaper& shaper);
+  explicit Execution(ANeuralNetworksExecution& execution /* , const Shaper& shaper */);
   ~Execution();
   Execution(const Execution&) = delete;
   Execution& operator=(const Execution&) = delete;
 
-  const Shaper& GetShaper() const { return shaper_; }
+  // TODO: Before we validate if we actually need to keep a shaper instance for Execution (if we have dynamic shape
+  // outputs, shape can get updated during execution),
+  // we commented out Shaper here for now.
+  /* const Shaper& GetShaper() const { return shaper_; } */
 
   // Set the input/output data buffers
   // These need to be called before calling Predict()
@@ -187,7 +190,7 @@ class Execution {
 
   const NnApi* nnapi_{nullptr};
   ANeuralNetworksExecution* execution_;
-  Shaper shaper_;
+  /* Shaper shaper_; */
 };
 
 }  // namespace nnapi

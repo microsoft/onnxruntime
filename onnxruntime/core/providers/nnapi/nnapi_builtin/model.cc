@@ -103,7 +103,7 @@ Status Model::PrepareForExecution(std::unique_ptr<Execution>& execution) {
   RETURN_STATUS_ON_ERROR(
       nnapi_->ANeuralNetworksExecution_create(compilation_, &nnapi_execution));
 
-  execution.reset(new Execution(*nnapi_execution, shaper_));
+  execution.reset(new Execution(*nnapi_execution /*, shaper_*/));
   return Status::OK();
 }
 
@@ -150,10 +150,9 @@ Model::NNMemory::NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size)
 
 #pragma region Execution
 
-Execution::Execution(ANeuralNetworksExecution& execution, const Shaper& shaper)
+Execution::Execution(ANeuralNetworksExecution& execution /*, const Shaper& shaper */)
     : nnapi_(NnApiImplementation()),
-      execution_(&execution),
-      shaper_(shaper) {
+      execution_(&execution) {
 }
 
 Execution::~Execution() {
