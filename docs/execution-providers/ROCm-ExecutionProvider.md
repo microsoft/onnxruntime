@@ -57,4 +57,15 @@ For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tun
 
 ### Python
 
-### C/C++
+```python
+import onnxruntime as ort
+
+model_path = '<path to model>'
+
+providers = [
+    'ROCmExecutionProvider'
+    'CPUExecutionProvider',
+]
+
+session = ort.InferenceSession(model_path, providers=providers)
+```
