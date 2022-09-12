@@ -53,6 +53,9 @@ Python APIs details are [here](https://onnxruntime.ai/docs/api/python/api_summar
 ## Configuration Options
 The ROCm Execution Provider supports the following configuration options.
 
+## Performance Tuning
+For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../performance/tune-performance.md)
+
 ## Samples
 
 ### Python
