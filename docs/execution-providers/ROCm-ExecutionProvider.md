@@ -6,10 +6,10 @@ nav_order: 6
 redirect_from: /docs/reference/execution-providers/ROCm-ExecutionProvider
 ---
 
-# MIGraphX Execution Provider
+# ROCm Execution Provider
 {: .no_toc }
 
-The [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) execution provider uses AMD's Deep Learning graph optimization engine to accelerate ONNX model on AMD GPUs. 
+The [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_to_Install_ROCm.html#_How_to_Install) execution provider uses AMD's Deep Learning graph optimization engine to accelerate ONNX model on AMD GPUs. 
 
 ## Contents
 {: .no_toc }
@@ -18,7 +18,7 @@ The [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) execution p
 {:toc}
 
 ## Build
-For build instructions, please see the [BUILD page](../build/eps.md#amd-migraphx). 
+For build instructions, please see the [BUILD page](../build/eps.md#amd-rocm). 
 
 ## Usage
 
