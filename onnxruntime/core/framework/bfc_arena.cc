@@ -164,11 +164,11 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   static constexpr float kBackpedalFactor = 0.9f;
   // Try allocating less memory.
   while (mem_addr == nullptr) {
-    // kBackpedalFactor is float, bytes is size_t. The result of bytes * kBackpedalFactor is float. When we cast it to
-    // size_t, which is a smaller type, it could loss data. This is what C4244 complains. The "static_cast<size_t>" here
-    // is to suppress the warning. C26451 suggest we may change kBackpedalFactor to double to get better accuary. But if
-    // we do that, AMD GPU CI build pipeline will have an "out-of-memory" error. So I choose to keep this piece of code
-    // untouched and disable the warning first.
+  // kBackpedalFactor is float, bytes is size_t. The result of bytes * kBackpedalFactor is float. When we cast it to
+  // size_t, which is a smaller type, it could loss data. This is what C4244 complains. The "static_cast<size_t>" here 
+  // is to suppress the warning. C26451 suggest we may change kBackpedalFactor to double to get better accuary. But if
+  // we do that, AMD GPU CI build pipeline will have an "out-of-memory" error. So I choose to keep this piece of code
+  // untouched and disable the warning first.
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26451)
@@ -243,7 +243,7 @@ BFCArena::ChunkHandle BFCArena::AllocateChunk() {
 
 void BFCArena::DeallocateChunk(ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
-  // clean the stream / timestamp when deallocate chunk
+  //clean the stream / timestamp when deallocate chunk
   c->stream = nullptr;
   c->stream_timestamp = 0;
   c->next = free_chunks_list_;
@@ -300,7 +300,7 @@ size_t BFCArena::AllocatedSize(const void* ptr) {
 }
 
 void* BFCArena::AllocateRawInternal(size_t num_bytes,
-                                    bool dump_log_on_failure,
+                                    bool dump_log_on_failure, 
                                     Stream* stream,
                                     bool enable_cross_stream_reusing,
                                     WaitNotificationFn wait_fn) {
@@ -323,12 +323,12 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   if (!chunk && enable_cross_stream_reusing) {
     chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, true);
     if (chunk->stream && stream && chunk->stream != stream) {
-      auto notificaiton = chunk->stream->CreateNotification(1);
-      notificaiton->ActivateAndUpdate();
-      if (wait_fn)
-        wait_fn(*stream, *notificaiton);
-      stream->UpdateStreamClock(notificaiton->stream_clock_);
-      // it should be ok to release the notification now, as the wait is already launch to stream.
+        auto notificaiton = chunk->stream->CreateNotification(1);
+        notificaiton->ActivateAndUpdate();
+        if (wait_fn)
+          wait_fn(*stream, *notificaiton);
+        stream->UpdateStreamClock(notificaiton->stream_clock_);
+        // it should be ok to release the notification now, as the wait is already launch to stream.
     }
   }
   if (chunk != nullptr) {
@@ -380,8 +380,8 @@ void BFCArena::GetStats(AllocatorStats* stats) {
 }
 
 BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
-                                        size_t num_bytes, Stream* stream,
-                                        bool enable_cross_stream_reusing) {
+                             size_t num_bytes, Stream* stream, 
+                             bool enable_cross_stream_reusing) {
   // First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {
     // Start searching from the first bin for the smallest chunk that fits
@@ -445,10 +445,6 @@ void BFCArena::SplitChunk(BFCArena::ChunkHandle h, size_t num_bytes) {
 
   // Create a new chunk starting num_bytes after c
   BFCArena::Chunk* new_chunk = ChunkFromHandle(h_new_chunk);
-  // set the new chunk's stream and timestamp
-  new_chunk->stream = c->stream;
-  new_chunk->stream_timestamp = c->stream_timestamp;
-
   new_chunk->ptr = static_cast<void*>(static_cast<char*>(c->ptr) + num_bytes);
   region_manager_.set_handle(new_chunk->ptr, h_new_chunk);
 
@@ -562,6 +558,7 @@ void BFCArena::DeallocateRawInternal(void* ptr) {
 
   // Consider coalescing it.
   FreeAndMaybeCoalesce(h);
+  
 }
 
 // Merges h1 and h2 when Chunk(h1)->next is h2 and Chunk(h2)->prev is c1.
@@ -789,18 +786,19 @@ void BFCArena::DumpMemoryLog(size_t num_bytes) {
 }
 
 StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocator,
-                                   size_t total_memory,
-                                   bool enable_cross_stream_sharing,
-                                   ArenaExtendStrategy arena_extend_strategy,
-                                   int initial_chunk_size_bytes,
-                                   int max_dead_bytes_per_chunk,
-                                   int initial_growth_chunk_size_bytes) : BFCArena(std::move(resource_allocator),
-                                                                                   total_memory,
-                                                                                   arena_extend_strategy,
-                                                                                   initial_chunk_size_bytes,
-                                                                                   max_dead_bytes_per_chunk,
-                                                                                   initial_growth_chunk_size_bytes),
-                                                                          enable_cross_stream_reusing_(enable_cross_stream_sharing) {
+    size_t total_memory,
+    bool enable_cross_stream_sharing,
+    ArenaExtendStrategy arena_extend_strategy,
+    int initial_chunk_size_bytes,
+    int max_dead_bytes_per_chunk,
+    int initial_growth_chunk_size_bytes) : 
+    BFCArena(std::move(resource_allocator), 
+             total_memory, 
+             arena_extend_strategy, 
+             initial_chunk_size_bytes, 
+             max_dead_bytes_per_chunk, 
+             initial_growth_chunk_size_bytes), enable_cross_stream_reusing_(enable_cross_stream_sharing) {
+
 }
 
 void* StreamAwareArena::AllocOnStream(size_t size, Stream* current_stream, WaitNotificationFn wait_fn) {
@@ -823,8 +821,8 @@ void StreamAwareArena::ReleaseStreamBuffers(Stream* stream) {
     }
   }
 
-  // FreeAndMaybeCoalesce
-  // since a set of chunks are set to nullptr, merge them if possibe
+  //FreeAndMaybeCoalesce
+  //since a set of chunks are set to nullptr, merge them if possibe
   for (const auto& region : region_manager_.regions()) {
     ChunkHandle region_begin_chunk = region_manager_.get_handle(region.ptr());
     ChunkHandle h = region_begin_chunk;
