@@ -1,5 +1,3 @@
-import numpy as np
-
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
 
