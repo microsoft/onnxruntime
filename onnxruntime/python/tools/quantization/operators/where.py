@@ -1,8 +1,8 @@
 import onnx
 
-from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 
 
 class QLinearWhere(QuantOperatorBase):
@@ -33,25 +33,6 @@ class QLinearWhere(QuantOperatorBase):
         qlinear_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         qlinear_output_name = node.name + "_quant" if node.name != "" else ""
 
-        kwargs = {}
-        for attribute in node.attribute:
-            kwargs.update(attribute_to_kwarg(attribute))
-        kwargs["domain"] = ms_domain
-
-        input_names = [
-            output_scale_name,
-            output_zp_name,
-            q_input_names[0],
-            scale_names[0],
-            zero_point_names[0],
-            q_input_names[1],
-            scale_names[1],
-            zero_point_names[1],
-        ]
-        quantized_node = onnx.helper.make_node(
-            "QLinear" + node.op_type, input_names, [qlinear_output], qlinear_output_name, **kwargs
-        )
-        nodes.append(quantized_node)
         q_output = QuantizedValue(
             node.output[0],
             qlinear_output,
@@ -61,7 +42,28 @@ class QLinearWhere(QuantOperatorBase):
         )
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 
+        kwargs = {}
+        for attribute in node.attribute:
+            kwargs.update(attribute_to_kwarg(attribute))
+        kwargs["domain"] = ms_domain
+
+        qlconcat_inputs = [
+            node.input[0],
+            q_input_names[0],
+            scale_names[0],
+            zero_point_names[0],
+            q_input_names[1],
+            scale_names[1],
+            zero_point_names[1],
+            output_scale_name,
+            output_zp_name,
+        ]
+        qlconcat_node = onnx.helper.make_node(
+            "QLinearWhere", qlconcat_inputs, [qlinear_output], qlinear_output_name, **kwargs
+        )
+
         self.quantizer.new_nodes += nodes
+        self.quantizer.new_nodes += [qlconcat_node]
 
 
 class QDQWhere(QDQOperatorBase):
