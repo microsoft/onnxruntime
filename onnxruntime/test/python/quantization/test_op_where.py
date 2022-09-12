@@ -83,7 +83,7 @@ class TestWhereModel(unittest.TestCase):
             extra_options=extra_options,
         )
         qnode_counts = {
-            "Where": 1,
+            "QLinearWhere": 1,
             "QuantizeLinear": 2,
             "DequantizeLinear": 1,
         }

@@ -1,6 +1,6 @@
 import onnx
 
-from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -11,41 +11,56 @@ class QLinearWhere(QuantOperatorBase):
 
     def quantize(self):
         node = self.node
+        assert node.op_type == "Where"
         if not self.quantizer.force_quantize_no_input_check:
             self.quantizer.new_nodes += [node]
             return
-
         (
-            quantized_input_names,
-            zero_point_name,
-            scale_name,
+            data_found,
+            output_scale_name,
+            output_zp_name,
+            _,
+            _,
+        ) = self.quantizer._get_quantization_params(node.output[0])
+        (
+            q_input_names,
+            zero_point_names,
+            scale_names,
             nodes,
         ) = self.quantizer.quantize_activation(node, [1, 2])
-
-        assert node.op_type == "Where"
-        if quantized_input_names is None:
+        if not data_found or q_input_names is None:
             return super().quantize()
-        quantized_output_names = [node.output[0] + TENSOR_NAME_QUANT_SUFFIX]
-        q_output = QuantizedValue(
-            node.output[0],
-            quantized_output_names[0],
-            scale_name[0],
-            zero_point_name[0],
-            QuantizedValueType.Input,
-        )
-        self.quantizer.quantized_value_map[node.output[0]] = q_output
-        quantized_node_name = ""
-        if node.name != "":
-            quantized_node_name = node.name + "_quant"
+        qlinear_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
+        qlinear_output_name = node.name + "_quant" if node.name != "" else ""
 
         kwargs = {}
         for attribute in node.attribute:
             kwargs.update(attribute_to_kwarg(attribute))
-        input_names = [node.input[0], quantized_input_names[0], quantized_input_names[1]]
+        kwargs["domain"] = ms_domain
+
+        input_names = [
+            output_scale_name,
+            output_zp_name,
+            q_input_names[0],
+            scale_names[0],
+            zero_point_names[0],
+            q_input_names[1],
+            scale_names[1],
+            zero_point_names[1],
+        ]
         quantized_node = onnx.helper.make_node(
-            node.op_type, input_names, quantized_output_names, quantized_node_name, **kwargs
+            "QLinear" + node.op_type, input_names, [qlinear_output], qlinear_output_name, **kwargs
         )
         nodes.append(quantized_node)
+        q_output = QuantizedValue(
+            node.output[0],
+            qlinear_output,
+            output_scale_name,
+            output_zp_name,
+            QuantizedValueType.Input,
+        )
+        self.quantizer.quantized_value_map[node.output[0]] = q_output
+
         self.quantizer.new_nodes += nodes
 
 
