@@ -9,12 +9,9 @@
 namespace onnxruntime {
 namespace nnapi {
 
-void Shaper::AddShape(const std::string& name, const Shape& shape) {
-  shape_map_[name] = shape;
-}
-
 // TODO: Commented out these update shape methods for now due to the lack of dynamic shape support
-// in NNAPI EP.
+// in NNAPI EP for now. Can be enhanced and reused in the future when more dynamic shape support is available.
+
 /* Status Shaper::UpdateShape(const std::string& name, const Shape& new_shape) {
   const Shape& old_shape = (*this)[name];
   if (old_shape != new_shape) {

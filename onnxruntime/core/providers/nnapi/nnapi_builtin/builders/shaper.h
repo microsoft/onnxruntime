@@ -22,7 +22,9 @@ class Shaper {
  public:
   using Shape = std::vector<uint32_t>;
 
-  void AddShape(const std::string& name, const Shape& shape);
+  void AddShape(const std::string& name, const Shape& shape) {
+    shape_map_[name] = shape;
+  }
 
   inline const Shape& operator[](const std::string& key) const {
     return shape_map_.at(key);
@@ -34,12 +36,16 @@ class Shaper {
   // Only perform this when the NNAPI model is finalized!
   // TODO: Commented out these update shape methods for now due to the lack of dynamic shape support
   // in NNAPI EP.
-  /* common::Status UpdateShape(const std::string& name, const Shape& new_shape);
+  /*
+  common::Status UpdateShape(const std::string& name, const Shape& new_shape);
   common::Status UpdateDynamicDimensions();
- */
+  */
+
  private:
   std::unordered_map<std::string, Shape> shape_map_;
+  /*
   std::vector<std::function<common::Status(Shaper&)>> shape_ops_;
+   */
 };
 
 }  // namespace nnapi

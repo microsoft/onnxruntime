@@ -399,7 +399,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
                                                 &output_buffer));
             output_buffer_byte_size = model_output_type.GetOperandBlobByteSize();
           } else {
-            // This output is dynamic (size unknown), will need to allocate a buffer for the result
+            // This output is dynamic (size unknown), will need allocate a buffer for the result
             // and copy the content to ORT output tensors after the execution (will know output shape after the execution)
             output_buffer_byte_size = model->GetDynamicOutputBufferSize() * model_output_type.GetElementByteSize();
             std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[output_buffer_byte_size]);
