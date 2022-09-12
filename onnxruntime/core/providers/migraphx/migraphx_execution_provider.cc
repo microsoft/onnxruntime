@@ -12,6 +12,7 @@
 #include "hip_fence.h"
 #include "gpu_data_transfer.h"
 #include "migraphx_call.h"
+#include "migraphx_inc.h"
 
 #include <fstream>
 #include <algorithm>
@@ -1162,15 +1163,12 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         }
       }
 
-      #ifdef MIGRAPHX_STREAM_SYNC
-      mgx_state->e.set_async_stream(GetComputeStream());
-      #endif
       {
         // lock to avoid race condition
         std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
 
         #ifdef MIGRAPHX_STREAM_SYNC
-        auto prog_outputs = prog.eval(m, mgx_state->e);
+        auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(GetComputeStream()));
         #else
         auto prog_outputs = prog.eval(m);
         HIP_CALL_THROW(hipDeviceSynchronize());
@@ -1199,5 +1197,35 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
   return Status::OK();
 }
+
+#ifdef MIGRAPHX_STREAM_SYNC
+
+Status MIGraphXExecutionProvider::Sync() const {
+  HIP_CALL_THROW(hipDeviceSynchronize());
+  return Status::OK();
+}
+
+Status MIGraphXExecutionProvider::OnRunStart()
+{
+  return Status::OK();
+}
+
+Status MIGraphXExecutionProvider::OnRunEnd(bool sync_stream) {
+  // record deferred release event on default stream, and release per_thread_context
+  // auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
+  //HIP_RETURN_IF_ERROR(hipEventRecord(current_deferred_release_event, static_cast<hipStream_t>(GetComputeStream())));
+
+  if (sync_stream) {
+    HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
+  }
+
+  //ReleasePerThreadContext();
+  //std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
+  //deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
+
+  return Status::OK();
+}
+
+#endif
 
 }  // namespace onnxruntime

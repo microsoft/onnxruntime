@@ -33,9 +33,6 @@ struct MIGraphXFuncState {
   bool no_input_shape = false;
   bool fp16_enable = false;
   bool dump_model_ops = false;
-  #ifdef MIGRAPHX_STREAM_SYNC
-  migraphx::execution_environment e{};
-  #endif
 };
 
 // Logical device representation.
@@ -43,6 +40,14 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
  public:
   explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
   ~MIGraphXExecutionProvider() = default;
+
+#ifdef MIGRAPHX_STREAM_SYNC
+  Status Sync() const override;
+
+  Status OnRunStart() override;
+
+  Status OnRunEnd(bool sync_stream) override;
+#endif
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
