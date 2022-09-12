@@ -80,7 +80,7 @@ class Module:
 
     def get_model(self):
         """
-        Returns the model to be passed to initialize the Optimizer.
+        Returns the module class to be passed to initialize the Optimizer.
         """
         return self._model
 

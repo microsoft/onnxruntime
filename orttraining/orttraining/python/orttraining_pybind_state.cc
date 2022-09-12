@@ -34,6 +34,7 @@
 
 #ifdef ENABLE_TRAINING_ON_DEVICE
 #include "orttraining/training_api/include/checkpoint.h"
+
 #endif
 
 PYBIND11_MAKE_OPAQUE(onnxruntime::OrtValueCache);
@@ -821,19 +822,19 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
         });
-
 #ifdef ENABLE_TRAINING_ON_DEVICE
   py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module Class.)pbdoc");
-  training_module.def(py::init([](const std::string model_uri, const std::string ckpt_uri, std::optional<std::string> eval_model_uri) {
-                   onnxruntime::training::api::CheckpointState state;
-                   auto checkpoint_to_load_path = ckpt_uri;
-                   ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
+  training_module
+      .def(py::init([](const std::string model_uri, const std::string ckpt_uri, std::optional<std::string> eval_model_uri) {
+        onnxruntime::training::api::CheckpointState state;
+        auto checkpoint_to_load_path = ckpt_uri;
+        ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
 
-                   onnxruntime::SessionOptions session_option;
-                   return std::make_unique<onnxruntime::training::api::Module>(model_uri,
-                                                                               state.module_checkpoint_state.named_parameters, session_option,
-                                                                               GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>(), eval_model_uri);
-                 }))
+        onnxruntime::SessionOptions session_option;
+        return std::make_unique<onnxruntime::training::api::Module>(model_uri,
+                                                                    state.module_checkpoint_state.named_parameters, session_option,
+                                                                    GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>(), eval_model_uri);
+      }))
       .def("train_step", [](onnxruntime::training::api::Module* model, std::vector<OrtValue>& inputs, std::vector<OrtValue>& outputs) -> void {
         ORT_THROW_IF_ERROR(model->TrainStep(inputs, outputs));
       })

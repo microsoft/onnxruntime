@@ -7,6 +7,6 @@
 from . import loss, optim
 from .building_blocks import Block
 from .checkpoint_utils import load_checkpoint_to_model, save_checkpoint
-from .engine import Module, TrainingOptimizer
+from .engine import Module, Optimizer
 from .model import Model, TrainingModel
 from .model_accessor import onnx_model

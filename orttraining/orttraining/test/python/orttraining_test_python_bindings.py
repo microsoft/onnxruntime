@@ -8,7 +8,7 @@ import torch
 import onnxruntime.training.onnxblock as onnxblock
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
-from onnxruntime.training.onnxblock import Module, TrainingOptimizer
+from onnxruntime.training.onnxblock import Module, Optimizer
 
 
 class SimpleNet(torch.nn.Module):
@@ -143,6 +143,7 @@ def test_eval_step():
     trainable_params, non_trainable_params = simple_model.parameters()
 
     # Generating random data for testing.
+    # TODO : add utility function to convert python to OrtValueVector.
     inputs = torch.randn(64, 784).numpy()
     labels = torch.randint(high=10, size=(64,), dtype=torch.int32).numpy()
     forward_inputs = OrtValueVector()
@@ -195,9 +196,9 @@ def test_optimizer_step():
         optimizer_file_path = os.path.join(temp_dir, "optimizer.onnx")
         onnx.save(optimizer_model, optimizer_file_path)
 
-        # Create a Training Module and Training Optimizer.
+        # Create a Module and Optimizer.
         model = Module(model_file_path, checkpoint_file_path)
-        optimizer = TrainingOptimizer(optimizer_file_path, model)
+        optimizer = Optimizer(optimizer_file_path, model)
 
         model.train()
         model(forward_inputs)
