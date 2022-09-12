@@ -217,5 +217,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
 
+  void SetGraphOuterScopeValues(Graph* build_graph, const Graph* graph) const;
+
 };
 }  // namespace onnxruntime

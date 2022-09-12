@@ -742,6 +742,61 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   return sub_graph;
 }
 
+void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* build_graph, const Graph* graph) const {
+
+  // iterate all the nodes and recurse into inner most subgraph first
+  for (int i = 0; i < build_graph->MaxNodeIndex(); ++i) {
+    auto build_graph_node = build_graph->GetNode(i);
+
+    if (build_graph_node == nullptr) {
+      continue;
+    }
+
+    auto build_subgraph_map = build_graph_node->GetAttributeNameToMutableSubgraphMap();
+    const Node* graph_node = nullptr;
+    std::unordered_map<std::string, gsl::not_null<const Graph*>> subgraph_map;
+
+    for (int j = 0; j < graph->MaxNodeIndex(); ++j) {
+      if (graph->GetNode(j) && graph->GetNode(j)->Name() == build_graph_node->Name()) {
+        graph_node = graph->GetNode(j);
+        subgraph_map = graph_node->GetAttributeNameToSubgraphMap();
+        break;
+      }
+    }
+
+    for (auto& entry : build_subgraph_map) {
+      auto attr_name = entry.first;
+      Graph* subgraph = entry.second;
+      if (subgraph_map.find(attr_name) != subgraph_map.end()) {
+        // recurse into subgraph
+        const Graph* graph_subgraph = subgraph_map.at(attr_name);
+        SetGraphOuterScopeValues(subgraph, graph_subgraph);
+      }
+    }
+  }
+
+  // "outer scope node arg" will not be set in the top level graph, only in subgraph.
+  //if (build_graph->ParentNode()) {
+  if (graph->ParentNode()) {
+
+    //std::cout << "Parent Node:" << graph->ParentNode()->Name() << std::endl;
+    //std::cout << "implicit inputs:" << std::endl;
+
+    for (const auto& input : graph->ParentNode()->ImplicitInputDefs()) {
+
+      // Set outer scope value for current subgraph.
+      //
+      // The node arg in parent node's implicit inputs could be used for parent node's other subgraph, for example "If" node since it has two subgraphs.
+      // So we need to make sure that the node arg is used in current subgraph only.
+      // (GetNodeArg searches for specific node arg in all node args in the graph)
+      if (build_graph->GetNodeArg(input->Name())) {
+        build_graph->AddOuterScopeNodeArg(input->Name());
+        //std::cout << input->Name() << std::endl;
+      }
+    }
+  }
+}
+
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
                                                                  const GraphViewer& graph, bool* early_termination) const {
   // Return if iterations are exceeding predefined number
