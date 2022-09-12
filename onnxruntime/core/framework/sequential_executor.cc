@@ -17,7 +17,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
-#include "core/framework/session_scope_profiler.h"
+#include "core/framework/session_profiler.h"
 
 namespace onnxruntime {
 

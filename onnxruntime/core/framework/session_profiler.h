@@ -339,6 +339,7 @@ struct MemSessProfiler : public ISessProfiler {
   MemoryProfiler& profiler_;
 
 #ifdef ANOTHER_SESS_PROFILER
+  ISessProfiler& GetAnotherSessProfiler() override { return another_sess_profiler_; }
   ANOTHER_SESS_PROFILER another_sess_profiler_;
 #endif
 };
@@ -389,6 +390,7 @@ struct PerfSessProfiler : public ISessProfiler {
   bool enabled_;
   TimePoint sess_start_;
 #ifdef ANOTHER_SESS_PROFILER
+  ISessProfiler& GetAnotherSessProfiler() override { return another_sess_profiler_; }
   ANOTHER_SESS_PROFILER another_sess_profiler_;
 #endif
 };
@@ -483,6 +485,7 @@ class TraceSessProfiler : public ISessProfiler {
     std::cout << std::make_pair(&seq_exec_plan, &sess_state_) << std::endl;
   }
 #ifdef ANOTHER_SESS_PROFILER
+  ISessProfiler& GetAnotherSessProfiler() override { return another_sess_profiler_; }
   ANOTHER_SESS_PROFILER another_sess_profiler_;
 #endif
 };
@@ -573,6 +576,7 @@ class InstrumentSessProfiler : public ISessProfiler {
   {
   }
 #ifdef ANOTHER_SESS_PROFILER
+  ISessProfiler& GetAnotherSessProfiler() override { return another_sess_profiler_; }
   ANOTHER_SESS_PROFILER another_sess_profiler_;
 #endif
 };
@@ -625,6 +629,7 @@ struct SessProfiler : public ISessProfiler {
   }
 
 #ifdef ANOTHER_SESS_PROFILER
+  ISessProfiler& GetAnotherSessProfiler() override { return another_sess_profiler_; }
   ANOTHER_SESS_PROFILER another_sess_profiler_;
 #endif
 };
