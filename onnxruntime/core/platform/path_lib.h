@@ -227,22 +227,22 @@ inline std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_strin
 #elif defined(_AIX)
 inline OrtFileType DTToFileTypeAIX(struct stat st) {
     switch (st.st_mode & _S_IFMT) {
-	case S_IFBLK:
-		return OrtFileType::TYPE_BLK;
-	case S_IFCHR:
-		return OrtFileType::TYPE_CHR;
-	case S_IFDIR:
-		return OrtFileType::TYPE_DIR;
-	case S_IFIFO:
-		return OrtFileType::TYPE_FIFO;
-	case S_IFLNK:
-		return OrtFileType::TYPE_LNK;
-	case S_IFREG:
-		return OrtFileType::TYPE_REG;
-	/* No Socket type */
-	default:
-		return OrtFileType::TYPE_UNKNOWN;
-	}
+    case S_IFBLK:
+        return OrtFileType::TYPE_BLK;
+    case S_IFCHR:
+        return OrtFileType::TYPE_CHR;
+    case S_IFDIR:
+        return OrtFileType::TYPE_DIR;
+    case S_IFIFO:
+        return OrtFileType::TYPE_FIFO;
+    case S_IFLNK:
+        return OrtFileType::TYPE_LNK;
+    case S_IFREG:
+        return OrtFileType::TYPE_REG;
+    /* No Socket type */
+    default:
+        return OrtFileType::TYPE_UNKNOWN;
+    }
 }
 
 template <typename T>

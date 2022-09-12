@@ -110,6 +110,7 @@ Status BlackmanWindow::Compute(OpKernelContext* ctx) const {
   return create_cosine_sum_window(ctx, data_type_, a0, a1, a2, is_periodic_);
 }
 
+// 'hz' is a #define in AIX, hence using hz1
 static inline double hz_to_mel_scale(double hz1) { return 2595 * std::log10(1 + hz1 / 700); }
 
 static inline double mel_scale_to_hz(double mels) { return 700 * (pow(10, (mels / 2595)) - 1); }
@@ -161,6 +162,7 @@ struct CreateMelWeightMatrix {
 
     // Convert each point from mel scale back to hertz, and then compute the corresponding index in the fft
     for (size_t i = 0; i < frequency_bins.size(); i++) {
+      // 'hz' is a #define in AIX, hence using hz1
       auto hz1 = mel_scale_to_hz(low_frequency_mel + mel_step * i);
       frequency_bins[i] = static_cast<size_t>(std::floor(((dft_length + 1) * hz1) / sample_rate));
     }
