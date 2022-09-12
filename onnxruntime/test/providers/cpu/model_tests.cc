@@ -23,10 +23,6 @@
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #endif
 
-#ifdef USE_NUPHAR
-#include "core/providers/nuphar/nuphar_provider_factory.h"
-#endif
-
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_provider_factory.h"
 #endif
@@ -166,6 +162,7 @@ TEST_P(ModelTest, Run) {
       {"bitshift_left_uint16", "BitShift(11) uint16 support not enabled currently"},
       {"maxunpool_export_with_output_shape",
        "Invalid output in ONNX test. See https://github.com/onnx/onnx/issues/2398"},
+      {"cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose"},
       {"training_dropout", "result differs", {}},               // Temporary, subsequent PR will remove this.
       {"training_dropout_default", "result differs", {}},       // Temporary, subsequent PR will remove this.
       {"training_dropout_default_mask", "result differs", {}},  // Temporary, subsequent PR will remove this.
@@ -184,7 +181,7 @@ TEST_P(ModelTest, Run) {
       {"castlike_FLOAT_to_BFLOAT16_expanded", "type error", {}},
       {"castlike_FLOAT_to_STRING", "type error", {}},
       {"castlike_FLOAT_to_STRING_expanded", "type error", {}},
-      {"convtranspose_autopad_same", "type error", {}},
+      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"onnx180", "onnx181", "onnx190"}},
       {"gru_batchwise", "type error", {}},
       {"lstm_batchwise", "type error", {}},
       {"optional_get_element", "type error", {}},
@@ -256,13 +253,6 @@ TEST_P(ModelTest, Run) {
   // Instead of list all these testcases, we can use following keyword set to filter out testcases wchich contain
   // specific keyword.
   std::set<std::string> broken_tests_keyword_set = {};
-
-  if (provider_name == "nuphar") {
-    // https://msdata.visualstudio.com/Vienna/_workitems/edit/1000703
-    broken_tests.insert({"fp16_test_tiny_yolov2", "Computed value is off by a bit more than tol."});
-    broken_tests.insert({"keras2coreml_Repeat_ImageNet", "this test fails with Nuphar EP."});
-    broken_tests.insert({"fp16_coreml_FNS-Candy", "this test fails with Nuphar EP."});
-  }
 
   if (provider_name == "nnapi") {
     broken_tests.insert({"scan9_sum", "Error with the extra graph"});
@@ -654,11 +644,6 @@ TEST_P(ModelTest, Run) {
         ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Dnnl(ortso, false));
       }
 #endif
-#ifdef USE_NUPHAR
-      else if (provider_name == "nuphar") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Nuphar(ortso, 1, ""));
-      }
-#endif
       else if (provider_name == "tensorrt") {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
           OrtTensorRTProviderOptionsV2 params{0, 0,       nullptr, 1000, 1, 1 << 30,
@@ -836,9 +821,6 @@ TEST_P(ModelTest, Run) {
 #endif
 #ifdef USE_DNNL
   provider_names.push_back(ORT_TSTR("dnnl"));
-#endif
-#ifdef USE_NUPHAR
-  provider_names.push_back(ORT_TSTR("nuphar"));
 #endif
 // For any non-Android system, NNAPI will only be used for ort model converter
 #if defined(USE_NNAPI) && defined(__ANDROID__)

@@ -47,6 +47,19 @@ contrib_ops_excluded_files = [
     "quantization/attention_quantization_impl.cu",
     "quantization/attention_quantization_impl.cuh",
     "quantization/quantize_dequantize_linear.cc",
+    "quantization/qordered_ops/qordered_common.cuh",
+    "quantization/qordered_ops/qordered_layer_norm.h",
+    "quantization/qordered_ops/qordered_layer_norm.cc",
+    "quantization/qordered_ops/qordered_layer_norm_impl.h",
+    "quantization/qordered_ops/qordered_layer_norm_impl.cu",
+    "quantization/qordered_ops/qordered_matmul.h",
+    "quantization/qordered_ops/qordered_matmul.cc",
+    "quantization/qordered_ops/qordered_matmul_utils.h",
+    "quantization/qordered_ops/qordered_matmul_utils.cc",
+    "quantization/qordered_ops/qordered_unary_ops.h",
+    "quantization/qordered_ops/qordered_unary_ops.cc",
+    "quantization/qordered_ops/qordered_unary_ops_impl.h",
+    "quantization/qordered_ops/qordered_unary_ops_impl.cu",
     "tensor/crop.cc",
     "tensor/crop.h",
     "tensor/crop_impl.cu",
@@ -93,6 +106,7 @@ provider_excluded_files = [
     "math/matmul.cc",
     "math/softmax_impl.cu",
     "math/softmax_warpwise_impl.cuh",
+    "math/softmax_common.cc",
     "math/softmax.cc",
     "nn/conv.cc",
     "nn/conv.h",
@@ -111,7 +125,6 @@ provider_excluded_files = [
     "rnn/rnn_impl.h",
     "shared_inc/cuda_call.h",
     "shared_inc/fpgeneric.h",
-    "shared_inc/softmax.h",
     "cuda_allocator.cc",
     "cuda_allocator.h",
     "cuda_call.cc",
@@ -129,6 +142,8 @@ provider_excluded_files = [
     "cuda_kernel.h",
     "cuda_pch.cc",
     "cuda_pch.h",
+    "cuda_profiler.cc",
+    "cuda_profiler.h",
     "cuda_provider_factory.cc",
     "cuda_provider_factory.h",
     "cuda_utils.cu",
@@ -146,8 +161,6 @@ training_ops_excluded_files = [
     "collective/adasum_kernels.cc",
     "collective/adasum_kernels.h",
     "math/div_grad.cc",  # miopen API differs from cudnn, no double type support
-    "math/softmax_grad_impl.cu",  # warp size differences
-    "math/softmax_grad.cc",  # miopen API differs from cudnn, no double type support
     "nn/batch_norm_grad.cc",  # no double type support
     "nn/batch_norm_grad.h",  # miopen API differs from cudnn
     "nn/batch_norm_internal.cc",  # miopen API differs from cudnn, no double type support

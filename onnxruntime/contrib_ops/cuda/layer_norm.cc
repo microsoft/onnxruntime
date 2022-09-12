@@ -43,7 +43,7 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   typedef typename ToCudaType<T>::MappedType CudaT;
   typedef typename ToCudaType<U>::MappedType CudaU;
   typedef typename ToCudaType<V>::MappedType CudaV;
-  //Inputs
+  // Inputs
   const Tensor* X = ctx->Input<Tensor>(0);
   const Tensor* scale = ctx->Input<Tensor>(1);
   const Tensor* bias = ctx->Input<Tensor>(2);
@@ -64,7 +64,7 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   Tensor* Y = ctx->Output(0, x_shape);
   auto Y_data = reinterpret_cast<CudaV*>(Y->MutableData<V>());
 
-  //Mean and variance
+  // Mean and variance
   std::vector<int64_t> mean_inv_std_var_dim;
   for (int i = 0; i < static_cast<int>(x_shape.NumDimensions()); ++i) {
     if (i < axis) {
@@ -98,6 +98,6 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   return Status::OK();
 }
 
-}  //namespace cuda
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

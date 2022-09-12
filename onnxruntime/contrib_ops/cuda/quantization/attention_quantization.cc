@@ -151,7 +151,9 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   } else {
     dequant_scale = input_scale * weight_scale;
   }
+
   // scale back and bias
+  // TODO(tianleiwu): fuse Dequantize with Add bias and Transpose.
   ORT_RETURN_IF_ERROR(CudaDequantizeWithBias(Stream(),
                                              gemm_buffer_quantized.get(),
                                              reinterpret_cast<const CudaT*>(bias->Data<T>()),
@@ -164,32 +166,28 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   Tensor* present_tensor = GetPresent(context, past_tensor, batch_size, head_size, sequence_length, past_sequence_length);
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
-  auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
-  if (!LaunchAttentionKernel(
+
+  auto work_space = GetScratchBuffer<void>(workSpaceSize);
+  return LaunchAttentionKernel(
           GetDeviceProp(),
           Stream(),
-          reinterpret_cast<const CudaT*>(gemm_buffer.get()),
-          nullptr == mask_index ? nullptr : mask_index->Data<int>(),
-          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
-          output->MutableData<T>(),
+          cublas,
+          element_size,
           batch_size,
           sequence_length,
           num_heads_,
           head_size,
-          temp_buffer.get(),
-          cublas,
-          element_size,
-          is_unidirectional_,
           past_sequence_length,
+          is_unidirectional_,
+          reinterpret_cast<const void*>(gemm_buffer.get()),
+          nullptr,  // bias has been added
+          nullptr == mask_index ? nullptr : mask_index->Data<int>(),
+          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
           nullptr == past_tensor ? nullptr : past_tensor->Data<T>(),
-          nullptr, // TODO: support add_qk in quantized attention
-          nullptr == present_tensor ? nullptr : present_tensor->MutableData<T>())) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+          nullptr,  // TODO: support add_qk in quantized attention
+          work_space.get(),
+          output->MutableData<T>(),
+          nullptr == present_tensor ? nullptr : present_tensor->MutableData<T>());
 }
 
 }  // namespace cuda
