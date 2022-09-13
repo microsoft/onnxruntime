@@ -184,6 +184,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
+
+#ifdef ENABLE_TRAINING
+      transformers.emplace_back(std::make_unique<ConstantSharing>());
+#endif
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>());
@@ -194,10 +198,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
       }
-
-#ifdef ENABLE_TRAINING
-      transformers.emplace_back(std::make_unique<ConstantSharing>());
-#endif
 
       // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
       // shouldn't affect the end result - just easier to debug any issue if it's last.

@@ -5380,11 +5380,20 @@ TEST_F(GraphTransformationTests, ConstantSharing_DivMul) {
 
     for (const auto& entry : initialized_tensor_set) {
       if (entry.first.compare(mul_initializer->Name()) == 0) {
-        InlinedVector<float> values;
-        bool require_constant = true;
-        ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *mul_initializer, values, require_constant));
-        ASSERT_EQ(values.size(), 1);
-        ASSERT_EQ(values[0], 1.0f);
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+        int32_t data_type = tensor_proto->data_type();
+        onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
+        ASSERT_EQ(float_const.size(), 1);
+        float float_const_value;
+        if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+          float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
+        } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+          float_const_value = *(float_const.data<float>());
+        } else {
+          ASSERT_TRUE(false);
+        }
+
+        ASSERT_EQ(float_const_value, 1.0f);
       }
     }
 

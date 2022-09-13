@@ -59,12 +59,6 @@ bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_nam
 bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, InlinedVector<int64_t>& data,
                                  bool require_constant = true);
 
-/** Get values of an float tensor from initializer, and append them to a vector.
-@remarks only support float and MLFloat16 tensor. This function does not clear vector before appending.
-*/
-bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, InlinedVector<float>& data,
-                                 bool require_constant = true);
-
 /** Check Shape of node input or output.
 @remarks when expected dim value > 0, the dim is expected to known and match the dim value.
          when dim value <= 0, we do not check this dim.
@@ -74,7 +68,8 @@ bool ValidateShape(const NodeArg& node_arg, const std::initializer_list<int64_t>
 /** Compare Shape of node input or output.
 @remarks exactly compare two TensorShapeProtos. Return true if they are same
 */
-bool CompareShape(const ONNX_NAMESPACE::TensorShapeProto& node_arg_shape, const ONNX_NAMESPACE::TensorShapeProto& node_arg_other_shape);
+bool CompareShape(const ONNX_NAMESPACE::TensorShapeProto& node_arg_shape,
+                  const ONNX_NAMESPACE::TensorShapeProto& node_arg_other_shape);
 
 /** Check check whether each dimension is known for shape of node_arg
 @returns false when shape is nullptr, or total dimension is not same as expected_dim_size length,

@@ -165,12 +165,10 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, I
   if (require_constant && !graph_utils::IsConstantInitializer(graph, input_arg.Name(), true)) {
     return false;
   }
-
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
     return false;
   }
-
   Initializer init_const{*tensor_proto, graph.ModelPath()};
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
@@ -186,37 +184,6 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, I
   } else {
     return false;
   }
-
-  return true;
-}
-
-bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, InlinedVector<float>& data,
-                                 bool require_constant) {
-  if (require_constant && !graph_utils::IsConstantInitializer(graph, input_arg.Name(), true)) {
-    return false;
-  }
-
-  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
-  if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
-    return false;
-  }
-
-  Initializer float_const{*tensor_proto, graph.ModelPath()};
-  const auto data_type = tensor_proto->data_type();
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    const float* val = float_const.data<float>();
-    data.reserve(data.size() + gsl::narrow<size_t>(float_const.size()));
-    data.insert(data.end(), val, val + float_const.size());
-  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    const MLFloat16* val = float_const.data<MLFloat16>();
-    data.reserve(data.size() + gsl::narrow<size_t>(float_const.size()));
-    for (int64_t i = 0; i < float_const.size(); i++) {
-      data.push_back(static_cast<float>(val[i]));
-    }
-  } else {
-    return false;
-  }
-
   return true;
 }
 
