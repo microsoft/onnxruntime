@@ -27,7 +27,7 @@ that you have the certain part of the model, you are allowed to skip it with par
 
 1. no_encoder (skip converting encoder)
 2. no_decoder (skip converting decoder)
-3, no_chain (skip cobining encoder/decoder with beam seach)
+3. no_chain (skip combining encoder/decoder with beam search)
 4. no_inference (skip final inference)
 
 ### All Steps
@@ -101,7 +101,7 @@ python export.py -m facebook/bart-base --no_encoder --no_decoder --no_chain
 | --min_length | N/A | int | Default to 20. minimum length of generated sequence. |
 | --output | -o | string | default name is onnx_models. output directory under model_dir |
 | --input_text | -i | string | input a paragraph of text or use default text in export.py |
-| --num_beams | N/A | int | default to 5 |
+| --num_beams | -b | int | default to 5 |
 | --spm_path | -s | string | tokenizer model from sentencepice. Use huggingface tokenizer if this is not provided |
 | --repetition_penalty | N/A | int | default to 1 |
 | --no_repeat_ngram_size | N/A | int | default to 3 |

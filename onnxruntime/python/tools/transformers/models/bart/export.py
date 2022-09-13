@@ -35,12 +35,11 @@ def user_command():
     parent_parser.add_argument("-i", "--input_text", type=str, default=None, help="input text")
     parent_parser.add_argument("-s", "--spm_path", type=str, default=None, help="tokenizer model from sentencepice")
     parent_parser.add_argument("-v", "--vocab_path", type=str, help="vocab dictionary")
-    parent_parser.add_argument("-nb", "--num_beams", type=int, default=5, help="default to 5")
+    parent_parser.add_argument("-b", "--num_beams", type=int, default=5, help="default to 5")
     parent_parser.add_argument("--repetition_penalty", type=float, default=1.0, help="default to 1.0")
     parent_parser.add_argument("--no_repeat_ngram_size", type=int, default=3, help="default to 3")
     parent_parser.add_argument("--early_stopping", type=bool, default=False, help="default to False")
-    parent_parser.add_argument("--opset_version", type=int, default=14, help="default to 14")
-    parent_parser.add_argument("--cuda", action="store_true", help="use CUDA")
+    parent_parser.add_argument("--opset_version", type=int, default=14, help="minimum is 14")
 
     parent_parser.add_argument("--no_encoder", action="store_true")
     parent_parser.add_argument("--no_decoder", action="store_true")
@@ -64,16 +63,16 @@ def user_command():
 if __name__ == "__main__":
 
     args = user_command()
+    if args.opset_version < 14:
+        raise ValueError(f"The minimum supported opset version is 14! The given one was {args.opset_version}.")
+
     isExist = os.path.exists(args.output)
     if not isExist:
         os.makedirs(args.output)
 
-    if args.cuda and torch.cuda.is_available():
-        args.device = "cuda"
-        logger.info("ENV: CUDA ...")
-    else:
-        args.device = "cpu"
-        logger.info("ENV: CPU ...")
+    # beam search op only supports CPU for now
+    args.device = "cpu"
+    logger.info("ENV: CPU ...")
 
     if not args.input_text:
         args.input_text = (

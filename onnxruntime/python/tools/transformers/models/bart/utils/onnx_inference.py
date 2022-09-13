@@ -72,7 +72,7 @@ def run_inference(args):
         model_path = os.path.join(args.output, "model_final.onnx")
         sess_options = SessionOptions()
         sess_options.log_severity_level = 4
-        sess = InferenceSession(model_path, sess_options, providers=["CPUExecutionProvider", "CUDAExecutionProvider"])
+        sess = InferenceSession(model_path, sess_options, providers=["CPUExecutionProvider"])
         start_time = time.time()
         out = sess.run(None, ort_inputs)
         time_cost = time.time() - start_time
