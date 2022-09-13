@@ -248,8 +248,8 @@ def parse_arguments(argv=None):
         "--sequence_lengths",
         nargs="+",
         type=int,
-        default=[64, 128, 192, 256, 384],
-        help="Sequence lengths for onnx model inputs. It could have multiple values in latency test.",
+        default=[384],
+        help="Sequence lengths for onnx model inputs. It could have multiple values.",
     )
 
     parser.add_argument("-t", "--total", type=int, default=0, help="Total samples to test. 0 means all samples.")
