@@ -222,7 +222,7 @@ Status Module::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool tr
   ORT_ENFORCE(nullptr != init_tensor);
   auto expected_buffer_size = static_cast<int64_t>(GetParametersSize(trainable_only));
   ORT_ENFORCE(init_tensor->Shape().Size() == expected_buffer_size,
-              "Parameters buffer size incorrect. Expected:",expected_buffer_size,
+              "Parameters buffer size incorrect. Expected:", expected_buffer_size,
               ", Actual:", init_tensor->Shape().Size());
 
   const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();
@@ -265,7 +265,7 @@ Status Module::CopyBufferToParameters(OrtValue& parameters_buffer, const bool tr
   ORT_ENFORCE(nullptr != init_tensor);
   auto expected_buffer_size = static_cast<int64_t>(GetParametersSize(trainable_only));
   ORT_ENFORCE(init_tensor->Shape().Size() == expected_buffer_size,
-              "Parameters buffer size incorrect. Expected:",expected_buffer_size,
+              "Parameters buffer size incorrect. Expected:", expected_buffer_size,
               ", Actual:", init_tensor->Shape().Size());
 
   const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();

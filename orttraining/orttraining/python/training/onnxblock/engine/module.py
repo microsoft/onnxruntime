@@ -1,3 +1,5 @@
+import torch
+
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
 
@@ -81,6 +83,25 @@ class Module:
         Returns the module class to be passed to initialize the Optimizer.
         """
         return self._model
+
+    def get_contagious_parameters(self):
+        """
+        Returns an ORTvalue that contains the buffer output of the Module's parameters.
+        """
+
+        arr = torch.zeros(self._model.get_parameters_size(False)).numpy()
+        output = C.OrtValue.ortvalue_from_numpy(
+            arr,
+            C.OrtDevice(
+                C.OrtDevice.cpu(),
+                C.OrtDevice.default_memory(),
+                0,
+            ),
+        )
+
+        self._model.copy_parameters_to_buffer(output)
+
+        return output
 
     def save_checkpoint(self, ckpt_uri):
         """

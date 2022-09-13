@@ -34,6 +34,7 @@
 
 #ifdef ENABLE_TRAINING_ON_DEVICE
 #include "orttraining/training_api/include/checkpoint.h"
+#include "orttraining/training_api/include/on_device_utils.h"
 
 #endif
 
@@ -844,6 +845,12 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("parameters", [](onnxruntime::training::api::Module* model) -> std::unordered_map<std::string, std::shared_ptr<onnxruntime::training::api::Parameter>> {
         return model->NamedParameters();
       })
+      .def("copy_parameters_to_buffer", [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
+        ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output));
+      })
+      .def("get_parameters_size", [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
+        return model->GetParametersSize(trainable_only);
+      })
       .def("reset_grad", [](onnxruntime::training::api::Module* model) -> void {
         ORT_THROW_IF_ERROR(model->ResetGrad());
       })
@@ -907,7 +914,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
           return py::bytes(model_proto_str);
         });
-
+  m.def("get_delta_as_list",
+        [](const OrtValue output_params, const OrtValue old_output_params, OrtValue& output) {
+          ORT_THROW_IF_ERROR(onnxruntime::training::api::GetParametersDifference(output_params, old_output_params, output));
+        });
   m.def("get_optimized_model",
         [](const py::bytes& serialized_model,
            const std::unordered_set<std::string>& graph_entities_that_require_gradients) {

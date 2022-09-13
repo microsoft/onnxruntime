@@ -10,3 +10,4 @@ from .checkpoint_utils import load_checkpoint_to_model, save_checkpoint
 from .engine import Module, Optimizer
 from .model import Model, TrainingModel
 from .model_accessor import onnx_model
+from .on_device_utils import get_delta_as_list

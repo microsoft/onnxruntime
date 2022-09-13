@@ -2,6 +2,7 @@ import io
 import os
 import tempfile
 
+import numpy as np
 import onnx
 import torch
 
@@ -242,3 +243,47 @@ def test_training_module_checkpoint():
 
         # TODO : Load checkpoint to a zeroed model and assert parameters are different.
         assert os.path.exists(checkpoint_save_path)
+
+def test_get_delta_as_list():
+    # Initialize Models
+    simple_model, onnx_model, optimizer_model, _ = _create_training_models()
+    trainable_params, non_trainable_params = simple_model.parameters()
+
+    # Generating random data for testing.
+    inputs = torch.randn(64, 784).numpy()
+    labels = torch.randint(high=10, size=(64,), dtype=torch.int32).numpy()
+    forward_inputs = OrtValueVector()
+    forward_inputs.reserve(2)
+    forward_inputs.push_back(OrtValue.ortvalue_from_numpy(inputs)._ortvalue)
+    forward_inputs.push_back(OrtValue.ortvalue_from_numpy(labels)._ortvalue)
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save models & checkpoint files to load them later.
+        checkpoint_file_path = os.path.join(temp_dir, "checkpoint")
+        onnxblock.save_checkpoint((trainable_params, non_trainable_params), checkpoint_file_path)
+
+        model_file_path = os.path.join(temp_dir, "training_model.onnx")
+        onnx.save(onnx_model, model_file_path)
+
+        optimizer_file_path = os.path.join(temp_dir, "optimizer.onnx")
+        onnx.save(optimizer_model, optimizer_file_path)
+
+        # Create a Module and Optimizer.
+        model = Module(model_file_path, checkpoint_file_path)
+        optimizer = Optimizer(optimizer_file_path, model)
+
+        old_output_params = model.get_contagious_parameters()
+        print(old_output_params.numpy())
+
+        model.train()
+        model(forward_inputs)
+        optimizer.step()
+
+        output_params = model.get_contagious_parameters()
+        print(output_params.numpy())
+
+        delta = onnxblock.get_delta_as_list(output_params, old_output_params)
+        print(delta.numpy())
+        print(old_output_params.numpy()[0] , output_params.numpy()[0])
+        print(np.float32(old_output_params.numpy()[0]) - np.float32(output_params.numpy()[0]), delta.numpy()[0])
+        # TODO : Check if parameters changed from before and after optimizer step.
