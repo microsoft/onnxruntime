@@ -63,7 +63,7 @@ import onnxruntime as ort
 model_path = '<path to model>'
 
 providers = [
-    'ROCmExecutionProvider'
+    'ROCmExecutionProvider',
     'CPUExecutionProvider',
 ]
 
