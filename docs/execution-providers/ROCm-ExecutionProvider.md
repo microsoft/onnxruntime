@@ -1,0 +1,71 @@
+---
+title: ROCm (AMD)
+description: Instructions to execute ONNX Runtime with the AMD ROCm execution provider
+parent: Execution Providers
+nav_order: 6
+redirect_from: /docs/reference/execution-providers/ROCm-ExecutionProvider
+---
+
+# ROCm Execution Provider
+{: .no_toc }
+
+The [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_to_Install_ROCm.html#_How_to_Install) execution provider uses AMD's Deep Learning graph optimization engine to accelerate ONNX model on AMD GPUs. 
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
+
+## Install
+
+Pre-built binaries of ONNX Runtime with ROCm EP are published for most language bindings. Please reference [Install ORT](../install).
+
+## Requirements
+
+
+|ONNX Runtime|ROCm|
+|---|---|
+|master|5.2.3|
+|1.12|5.2.3|
+|1.12|5.2|
+
+
+## Build
+For build instructions, please see the [BUILD page](../build/eps.md#amd-rocm). 
+
+## Usage
+
+### C/C++
+
+```c++
+Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
+Ort::SessionOptions sf;
+int device_id = 0;
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCm(sf, device_id));
+```
+
+The C API details are [here](../get-started/with-c.md).
+
+### Python
+Python APIs details are [here](https://onnxruntime.ai/docs/api/python/api_summary.html).
+
+## Performance Tuning
+For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../performance/tune-performance.md)
+
+## Samples
+
+### Python
+
+```python
+import onnxruntime as ort
+
+model_path = '<path to model>'
+
+providers = [
+    'ROCmExecutionProvider',
+    'CPUExecutionProvider',
+]
+
+session = ort.InferenceSession(model_path, providers=providers)
+```
