@@ -866,8 +866,7 @@ GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order, const s
 
 std::vector<std::unique_ptr<ComputeCapability>>
 MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                         const std::vector<const KernelRegistry*>& /*kernel_registries*/,
-                                         const IKernelTypeStrResolver& /*kernel_type_str_resolver*/) const {
+                                         const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   auto model = graph_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();

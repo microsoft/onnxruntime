@@ -224,11 +224,9 @@ struct ProviderHostImpl : ProviderHost {
   std::string demangle(const std::string& name) override { return onnxruntime::profiling::demangle(name); }
 
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                     const std::string& provider_type,
-                                                     gsl::span<const KernelRegistry* const> kernel_registries,
-                                                     const IKernelTypeStrResolver& kernel_type_str_resolver,
+                                                     const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                      gsl::span<const NodeIndex> tentative_nodes) override {
-    return onnxruntime::GetCpuPreferredNodes(graph, provider_type, kernel_registries, kernel_type_str_resolver, tentative_nodes);
+    return onnxruntime::GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
   }
 
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }

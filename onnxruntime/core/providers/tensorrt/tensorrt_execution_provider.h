@@ -124,8 +124,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/,
-                const IKernelTypeStrResolver& /*kernel_type_str_resolver*/) const override;
+                const IKernelLookup& /*kernel_lookup*/) const override;
 
   int GetDeviceId() const { return device_id_; }
 
@@ -212,7 +211,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   /**Check the graph is the subgraph of control flow op*/
   bool IsSubGraphOfControlFlowOp(const GraphViewer& graph) const;
 
-  /**Check whether all the nodes of the graph are assigned to specific ep*/ 
+  /**Check whether all the nodes of the graph are assigned to specific ep*/
   bool AllNodesAssignedToSpecificEP(const GraphViewer& graph, const std::string& provider_type) const;
 
   /**Check whether all the nodes of subgraph are supported*/

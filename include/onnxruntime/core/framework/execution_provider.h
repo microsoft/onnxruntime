@@ -95,11 +95,10 @@ class IExecutionProvider {
   class IKernelLookup {
    public:
     /**
-     * Given `node` and the specified `execution_provider_type`, try to find a matching kernel.
+     * Given `node`, try to find a matching kernel for this EP.
      * The return value is non-null if and only if a matching kernel was found.
      */
-    virtual const KernelCreateInfo* LookUpKernel(const Node& node,
-                                                 const std::string& execution_provider_type) const = 0;
+    virtual const KernelCreateInfo* LookUpKernel(const Node& node) const = 0;
   };
 
   /**
@@ -109,8 +108,8 @@ class IExecutionProvider {
      contains more than one node. The node indexes contained in sub-graphs may
      have overlap, and it's ONNXRuntime's responsibility to do the partition
      and decide whether a node will be assigned to <*this> execution provider.
-     `kernel_type_str_resolver` can be used to look up kernels in
-     `kernel_registries`.
+     For kernels registered in a kernel registry, `kernel_lookup` can be used
+     to find a matching kernel for this EP.
   */
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -120,13 +119,13 @@ class IExecutionProvider {
      Get kernel registry per execution provider type.
      The KernelRegistry share pointer returned is shared across sessions.
 
-     NOTE: this is a tricky but final solution to achieve following goals,
+     NOTE: this approach was taken to achieve the following goals,
      1. The execution provider type based kernel registry should be shared
      across sessions.
      Only one copy of this kind of kernel registry exists in ONNXRuntime
      with multiple sessions/models.
      2. Adding an execution provider into ONNXRuntime does not need to touch ONNXRuntime
-     frameowrk/session code.
+     framework/session code.
      3. onnxruntime (framework/session) does not depend on any specific
      execution provider lib.
   */

@@ -10,6 +10,7 @@
 #include "core/providers/dml/OperatorAuthorHelper/Attributes.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorHelper.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorVersions.h"
+#include "core/framework/kernel_lookup.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/graph/graph_utils.h"
@@ -64,8 +65,6 @@ namespace Dml
     
     void GraphTransformer::PerformOperatorFusion(onnxruntime::Graph* graph, bool* modified) const
     {
-        onnxruntime::KernelRegistry* registry = m_providerImpl->GetKernelRegistry().get();
-
         struct NodeToAdd
         {
             std::string name;
@@ -86,6 +85,10 @@ namespace Dml
         std::vector<NodeToAdd> nodesToAdd;
 
         const auto kernel_type_str_resolver = onnxruntime::AutoRegisteringKernelTypeStrResolver{};
+        gsl::not_null<const onnxruntime::KernelRegistry*> registry = m_providerImpl->GetKernelRegistry().get();
+        const auto kernel_lookup = onnxruntime::KernelLookup{onnxruntime::kDmlExecutionProvider,
+                                                             gsl::make_span(&registry, 1),
+                                                             kernel_type_str_resolver};
 
         for (auto& node : graph->Nodes())
         {
@@ -94,8 +97,7 @@ namespace Dml
 
             if (!IsNodeSupportedByDml(
                 node,
-                *registry,
-                kernel_type_str_resolver,
+                kernel_lookup,
                 m_providerImpl->GetSupportedDeviceDataTypeMask(),
                 *m_providerImpl->GetInternalRegistrationInfoMap().get()
                 ))
@@ -118,9 +120,7 @@ namespace Dml
 
             // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
             // which occurs in IExecutionProvider::GetCapability.
-            if (!onnxruntime::KernelRegistry::HasImplementationOf(*registry, outputNode,
-                                                                  onnxruntime::kDmlExecutionProvider,
-                                                                  kernel_type_str_resolver))
+            if (!kernel_lookup.LookUpKernel(outputNode))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;

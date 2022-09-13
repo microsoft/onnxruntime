@@ -247,16 +247,13 @@ namespace Dml
 
     bool IsNodeSupportedByDml(
         const onnxruntime::Node& node,
-        const onnxruntime::KernelRegistry& registry,
-        const onnxruntime::IKernelTypeStrResolver& kernel_type_str_resolver,
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         const InternalRegistrationInfoMap& internalRegInfoMap
         )
     {
-        const onnxruntime::KernelCreateInfo* createInfo;
-        Status st = registry.TryFindKernel(node, onnxruntime::kDmlExecutionProvider, kernel_type_str_resolver,
-                                           &createInfo);
-        if (!st.IsOK())
+        const onnxruntime::KernelCreateInfo* createInfo = kernel_lookup.LookUpKernel(node);
+        if (!createInfo)
         {
             return false;
         }
@@ -286,8 +283,7 @@ namespace Dml
     void GetRegistrationProperties(
         const onnxruntime::GraphViewer& graph,
         const onnxruntime::Node& node,
-        const std::vector<const onnxruntime::KernelRegistry*>& dmlRegistries,
-        const onnxruntime::IKernelTypeStrResolver& kernel_type_str_resolver,
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         const InternalRegistrationInfoMap& internalRegInfoMap,
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap,
@@ -302,68 +298,60 @@ namespace Dml
 
         // Find the highest priority DML registry supporting this node, and get its highest-priority
         // registration.  Determine if that registration supports usage as a graph node.
-        for (auto registry : dmlRegistries)
+
+        if (IsNodeSupportedByDml(node, kernel_lookup, supportedDeviceDataTypeMask,
+                                 internalRegInfoMap))
         {
-            if (IsNodeSupportedByDml(node, *registry, kernel_type_str_resolver, supportedDeviceDataTypeMask,
-                                     internalRegInfoMap))
+            *isDmlNode = true;
+
+            // Get the kernel creation info for the registration, and check if it carries the property
+            // set during registration of kernels that support DML graph node usage.
+            auto graphNodeProperty = dmlNodePropertyMap.insert(std::make_pair(&node, GraphNodeProperties()));
+
+            // Ensure that shape information is known statically for the inputs and outputs of the node,
+            // which is required for MLGraph compilation.
+            const onnxruntime::KernelCreateInfo* createInfo = kernel_lookup.LookUpKernel(node);
+            assert(createInfo != nullptr);  // since IsNodeSupportedByDml() returned true
+
+            auto regInfoIter = internalRegInfoMap.find(createInfo->kernel_def.get());
+            if (regInfoIter != internalRegInfoMap.end())
             {
-                *isDmlNode = true;
+                auto internalRegInfo = regInfoIter->second;
 
-                // Get the kernel creation info for the registration, and check if it carries the property
-                // set during registration of kernels that support DML graph node usage.
-                auto graphNodeProperty = dmlNodePropertyMap.insert(std::make_pair(&node, GraphNodeProperties()));
-
-                // Ensure that shape information is known statically for the inputs and outputs of the node,
-                // which is required for MLGraph compilation.
-                const onnxruntime::KernelCreateInfo* createInfo;
-                if (!registry->TryFindKernel(node, onnxruntime::kDmlExecutionProvider, kernel_type_str_resolver,
-                                             &createInfo).IsOK())
+                if (internalRegInfo && internalRegInfo->graphNodeFactoryRegistration)
                 {
-                    continue;
-                }
-
-                auto regInfoIter = internalRegInfoMap.find(createInfo->kernel_def.get());
-                if (regInfoIter != internalRegInfoMap.end())
-                {
-                    auto internalRegInfo = regInfoIter->second;
-
-                    if (internalRegInfo && internalRegInfo->graphNodeFactoryRegistration)
+                    bool requiredCpuInputsConstant = true;
+                    for (uint32_t inputIndex : internalRegInfo->requiredConstantCpuInputs)
                     {
-                        bool requiredCpuInputsConstant = true;
-                        for (uint32_t inputIndex : internalRegInfo->requiredConstantCpuInputs)
+                        if (inputIndex >= node.InputDefs().size() || !node.InputDefs()[inputIndex]->Exists())
                         {
-                            if (inputIndex >= node.InputDefs().size() || !node.InputDefs()[inputIndex]->Exists())
-                            {
-                                continue;
-                            }
-
-                            const onnx::TensorProto* tensor = nullptr;
-                            const std::string& inputName = node.InputDefs()[inputIndex]->Name();
-
-                            if (!graph.GetInitializedTensor(inputName, tensor))
-                            {
-                                requiredCpuInputsConstant = false;
-                                break;
-                            }
-
-                            requiredInitializerMap.insert(inputName);
+                            continue;
                         }
 
-                        std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
-                        if (requiredCpuInputsConstant &&
-                            TryGetStaticInputShapes( node, graphNodeProperty.first->second.inputShapes) &&
-                            !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes, internalRegInfo->requiredConstantCpuInputs) &&
-                            TryGetStaticOutputShapes(node, graphNodeProperty.first->second.outputShapes) &&
-                            !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes, internalRegInfo->requiredConstantCpuInputs) &&
-                            (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
+                        const onnx::TensorProto* tensor = nullptr;
+                        const std::string& inputName = node.InputDefs()[inputIndex]->Name();
+
+                        if (!graph.GetInitializedTensor(inputName, tensor))
                         {
-                            *isDmlGraphNode = true;
-                            graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
+                            requiredCpuInputsConstant = false;
+                            break;
                         }
+
+                        requiredInitializerMap.insert(inputName);
+                    }
+
+                    std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
+                    if (requiredCpuInputsConstant &&
+                        TryGetStaticInputShapes( node, graphNodeProperty.first->second.inputShapes) &&
+                        !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes, internalRegInfo->requiredConstantCpuInputs) &&
+                        TryGetStaticOutputShapes(node, graphNodeProperty.first->second.outputShapes) &&
+                        !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes, internalRegInfo->requiredConstantCpuInputs) &&
+                        (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
+                    {
+                        *isDmlGraphNode = true;
+                        graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
                     }
                 }
-
-                break;
             }
         }
     }
@@ -612,8 +600,7 @@ namespace Dml
     BuildPartitions(
         const onnxruntime::GraphViewer& graph,
         const InternalRegistrationInfoMap& internalRegInfoMap,
-        const std::vector<const onnxruntime::KernelRegistry*>& registries,
-        const onnxruntime::IKernelTypeStrResolver& kernel_type_str_resolver,
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
@@ -670,8 +657,7 @@ namespace Dml
             GetRegistrationProperties(
                 graph,
                 node,
-                registries,
-                kernel_type_str_resolver,
+                kernel_lookup,
                 supportedDeviceDataTypeMask,
                 internalRegInfoMap,
                 &nodeNameToPartitionMap,
@@ -791,8 +777,7 @@ namespace Dml
     PartitionGraph(
         const onnxruntime::GraphViewer& graph,
         const InternalRegistrationInfoMap& internalRegInfoMap,
-        const std::vector<const onnxruntime::KernelRegistry*>& registries,
-        const onnxruntime::IKernelTypeStrResolver& kernel_type_str_resolver,
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const std::string& partitionKernelPrefix
@@ -807,8 +792,7 @@ namespace Dml
         std::vector<std::unique_ptr<GraphPartition>> partitions = BuildPartitions(
             graph,
             internalRegInfoMap,
-            registries,
-            kernel_type_str_resolver,
+            kernel_lookup,
             supportedDeviceDataTypeMask,
             graphNodePropertyMap,
             requiredInitializerMap);

@@ -5,11 +5,11 @@
 #include <list>
 #include <memory>
 #include <variant>
-#include <vector>
 #include <unordered_map>
 
 #include "gsl/gsl"
 
+#include "core/common/inlined_containers.h"
 #include "core/common/status.h"
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/graph/graph_viewer.h"
@@ -54,8 +54,8 @@ class KernelRegistryManager {
    * @return It returns all the possible results. The returned value may contain garbage that doesn't belong to
    *         this provider. Caller should do the filtering.
    */
-  std::vector<gsl::not_null<const KernelRegistry*>> GetKernelRegistriesByProviderType(const std::string& type) const {
-    std::vector<gsl::not_null<const KernelRegistry*>> result;
+  InlinedVector<gsl::not_null<const KernelRegistry*>> GetKernelRegistriesByProviderType(const std::string& type) const {
+    InlinedVector<gsl::not_null<const KernelRegistry*>> result;
     for (auto& registry : custom_kernel_registries_) {
       result.push_back(registry.get());
     }

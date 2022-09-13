@@ -342,11 +342,9 @@ std::string GetEnvironmentVar(const std::string& var_name) {
 }
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                   const std::string& provider_type,
-                                                   gsl::span<const KernelRegistry* const> kernel_registries,
-                                                   const IKernelTypeStrResolver& kernel_type_str_resolver,
+                                                   const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                    gsl::span<const NodeIndex> tentative_nodes) {
-  return g_host->GetCpuPreferredNodes(graph, provider_type, kernel_registries, kernel_type_str_resolver, tentative_nodes);
+  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
 }
 
 namespace profiling {

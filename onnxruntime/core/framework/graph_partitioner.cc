@@ -146,8 +146,10 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
                        capabilities.end());
   };
 
-  const KernelLookup kernel_lookup{kernel_registry_mgr.GetKernelTypeStrResolver(),
-                                   kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type)};
+  const auto kernel_registries_for_ep = kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type);
+  const KernelLookup kernel_lookup{ep_type,
+                                   kernel_registries_for_ep,
+                                   kernel_registry_mgr.GetKernelTypeStrResolver()};
 
   {
     const GraphViewer graph_viewer(graph);
