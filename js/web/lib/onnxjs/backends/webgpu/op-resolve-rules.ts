@@ -6,6 +6,7 @@ import {OpSet} from '../../opset';
 import * as binaryOps from './ops/binary-op';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
+import {depthToSpace, parseDepthToSpaceAttributes} from './ops/depth-to-space';
 import {gather, parseGatherAttributes} from './ops/gather';
 import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
 import {matMul, parseMatMulAttributes} from './ops/matmul';
@@ -31,7 +32,7 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Clip', '', '11+', unaryOps.clipV11], ['Concat', '', '4+', concat, parseConcatAttributes],
   ['Conv', '', '1+', conv, parseConvAttributes], ['Cos', '', '7+', unaryOps.cos], ['Div', '', '7+', binaryOps.div],
   // ['Dropout', '', '7+', unaryOps.identity],
-  // ['DepthToSpace', '', '1+', depthToSpace, parseDepthToSpaceAttributes],
+  ['DepthToSpace', '', '1+', depthToSpace, parseDepthToSpaceAttributes],
   // ['Equal', '', '7+', binaryOps.equal],
   ['Elu', '', '6+', unaryOps.elu, unaryOps.parseEluAttributes], ['Exp', '', '6+', unaryOps.exp],
   // ['Flatten', '', '1+', flatten, parseFlattenAttributes],
@@ -55,8 +56,7 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['Or', '', '7+', binaryOps.or],
   // ['Pad', '', '2-10', padV2, parsePadAttributesV2],
   // ['Pad', '', '11+', padV11, parsePadAttributesV11],
-  ['Pow', '', '7+', binaryOps.pow],
-  // ['PRelu', '', '7+', binaryOps.pRelu],
+  ['Pow', '', '7+', binaryOps.pow], ['PRelu', '', '7+', binaryOps.pRelu],
   // ['ReduceLogSum', '', '1+', reduceLogSum, parseReduceAttributes],
   // ['ReduceMax', '', '1+', reduceMax, parseReduceAttributes],
   // ['ReduceMean', '', '1+', reduceMean, parseReduceAttributes],

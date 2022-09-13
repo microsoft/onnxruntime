@@ -207,8 +207,17 @@ export const mul = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Pro
 export const pow = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
     handler.run(createBinaryOpProgramInfoLoader(inputs, 'Pow', 'pow'), inputs);
 
-// export const pRelu = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createBinaryProgramInfoLoader(handler, inputs, glslPRelu()), inputs)];
+export const pRelu = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> => handler.run(
+    createBinaryOpProgramInfoLoader(inputs, 'PRelu', {
+      scalar: (a, b) => `select((${a}), (${a}) * (${b}), (${a}) < 0.0)`,
+      vector: (a, b) => `vec4(
+          select((${a}.x), (${a}.x) * (${b}.x), (${a}.x) < 0.0),
+          select((${a}.y), (${a}.y) * (${b}.y), (${a}.y) < 0.0),
+          select((${a}.z), (${a}.z) * (${b}.z), (${a}.z) < 0.0),
+          select((${a}.w), (${a}.w) * (${b}.w), (${a}.w) < 0.0)
+        )`
+    }),
+    inputs);
 
 export const sub = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
     handler.run(createBinaryOpProgramInfoLoader(inputs, 'Sub', (a, b) => `${a}-${b}`), inputs);
