@@ -454,8 +454,11 @@ function run(config: Test.Config) {
     // STEP 5. use Karma to run test
     npmlog.info('TestRunnerCli.Run', '(5/5) Running karma to start test runner...');
     const karmaCommand = path.join(npmBin, 'karma');
-    const browser =
-        getBrowserNameFromEnv(args.env, args.bundleMode === 'perf' ? 'perf' : args.debug ? 'debug' : 'test');
+    const browser = getBrowserNameFromEnv(
+        args.env,
+        args.bundleMode === 'perf' ? 'perf' :
+            args.debug             ? 'debug' :
+                                     'test');
     const karmaArgs = ['start', `--browsers ${browser}`];
     if (args.debug) {
       karmaArgs.push('--log-level info --timeout-mocha 9999999');
