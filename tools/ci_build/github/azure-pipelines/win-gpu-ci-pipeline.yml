@@ -58,7 +58,6 @@ stages:
         ORT_EP_NAME: DML
         MachinePool: onnxruntime-Win2019-GPU-dml
 
-
 - stage: kernelDocumentation
   dependsOn: []
   jobs:
