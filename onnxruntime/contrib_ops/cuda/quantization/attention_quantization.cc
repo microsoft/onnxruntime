@@ -168,7 +168,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
-  if (!LaunchAttentionKernel(
+  return LaunchAttentionKernel(
           GetDeviceProp(),
           Stream(),
           cublas,
@@ -187,13 +187,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
           nullptr,  // TODO: support add_qk in quantized attention
           work_space.get(),
           output->MutableData<T>(),
-          nullptr == present_tensor ? nullptr : present_tensor->MutableData<T>())) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+          nullptr == present_tensor ? nullptr : present_tensor->MutableData<T>());
 }
 
 }  // namespace cuda

@@ -40,8 +40,8 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 8)
-  message(FATAL_ERROR  "GCC version must not less than 8")
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 7)
+  message(FATAL_ERROR  "GCC version must not less than 7")
 endif()
 
 # Options
@@ -65,8 +65,6 @@ option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
-
-option(onnxruntime_USE_NUPHAR_TVM "Build TVM for code generation for NUPHAR EP" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
@@ -77,7 +75,7 @@ option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_BUILD_APPLE_FRAMEWORK "Build a macOS/iOS framework" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
-option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
+
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_USE_TENSORRT_BUILTIN_PARSER "Use TensorRT builtin parser" OFF)
@@ -85,6 +83,7 @@ option(onnxruntime_TENSORRT_PLACEHOLDER_BUILDER "Instantiate Placeholder TensorR
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code coverage" OFF)
+option(onnxruntime_DONT_VECTORIZE "Do not vectorize operations in Eigen" OFF)
 
 #It's preferred to turn it OFF when onnxruntime is dynamically linked to PROTOBUF. But Tensort always required the full version of protobuf.
 cmake_dependent_option(onnxruntime_USE_FULL_PROTOBUF "Link to libprotobuf instead of libprotobuf-lite when this option is ON" OFF "NOT onnxruntime_USE_TENSORRT" ON)
@@ -516,6 +515,10 @@ add_definitions(-DEIGEN_MPL2_ONLY)
 if (MSVC)
   add_definitions(-DEIGEN_HAS_CONSTEXPR -DEIGEN_HAS_VARIADIC_TEMPLATES -DEIGEN_HAS_CXX11_MATH -DEIGEN_HAS_CXX11_ATOMIC
           -DEIGEN_STRONG_INLINE=inline)
+endif()
+
+if ( onnxruntime_DONT_VECTORIZE )
+  add_definitions(-DEIGEN_DONT_VECTORIZE=1)
 endif()
 
 if (onnxruntime_CROSS_COMPILING)
@@ -1131,6 +1134,8 @@ else()
   check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
   check_cxx_compiler_flag(-Wformat-truncation HAS_FORMAT_TRUNCATION)
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
+  check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
+  check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
 
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -1149,6 +1154,13 @@ else()
   endif()
   if (HAS_UNDEFINED_VAR_TEMPLATE)
     list(APPEND ORT_WARNING_FLAGS -Wno-undefined-var-template)
+  endif()
+  if (HAS_DEPRECATED_BUILTINS)
+    list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-builtins)
+  endif()
+
+  if (HAS_ENUM_CONSTEXPR_CONVERSION)
+    target_compile_options(${PROTOBUF_LIB} PRIVATE "-Wno-enum-constexpr-conversion")
   endif()
 endif()
 
@@ -1201,11 +1213,6 @@ if (onnxruntime_USE_SNPE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_SNPE=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES snpe)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_SNPE=1)
-endif()
-if (onnxruntime_USE_NUPHAR)
-    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_NUPHAR=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NUPHAR=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
 endif()
 if (onnxruntime_USE_TVM)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_TVM=1)
@@ -1463,67 +1470,6 @@ endif()
 if (onnxruntime_USE_DNNL)
   include(dnnl)
 endif()
-
-# NUPHAR EP
-if (onnxruntime_USE_NUPHAR_TVM)
-  if (NOT TARGET tvm)
-    message(STATUS "Include TVM(*).")
-    include(tvm)
-  endif()
-  if (onnxruntime_USE_CUDA)
-    set(USE_CUDA ON CACHE BOOL "Only defined for TVM")
-  endif()
-  if (onnxruntime_USE_LLVM)
-    set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
-    add_definitions(-DUSE_NUPHAR_TVM_WITH_LLVM)
-  endif()
-
-  message(STATUS "tvm_SOURCE_DIR=${tvm_SOURCE_DIR}")
-  message(STATUS "tvm_BINARY_DIR=${tvm_BINARY_DIR}")
-  add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
-
-  set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
-  set_target_properties(tvm_topi PROPERTIES FOLDER ${tvm_SOURCE_DIR})
-  set_target_properties(tvm_runtime PROPERTIES FOLDER ${tvm_SOURCE_DIR})
-
-  set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
-    ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
-    ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
-    $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
-
-  add_definitions(-DUSE_NUPHAR_TVM)
-
-  set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
-
-  # needs to link with stdc++fs in Linux
-  if (UNIX)
-    if (NOT APPLE)
-      set(FS_STDLIB stdc++fs)
-    endif()
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
-
-  if (WIN32 AND MSVC)
-    # wd4100: identifier' : unreferenced formal parameter
-    # wd4244: conversion from 'int' to 'char', possible loss of data
-    # wd4251: class X needs to have dll-interface to be used by clients of class Y
-    # wd4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
-    # wd4275: non dll-interface class X used as base for dll-interface class Y
-    # wd4389: signed/unsigned mismatch
-    # wd4456: declaration of X hides previous local declaration
-    set(DISABLED_WARNINGS_FOR_TVM "/wd4100" "/wd4244" "/wd4251" "/wd4267" "/wd4275" "/wd4389" "/wd4456")
-  else()
-    set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=ignored-qualifiers" "-Wno-unused-parameter" "-Wno-ignored-qualifiers")
-    list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=unused-parameter")
-    if (HAS_CATCH_VALUE)
-      #TODO: send a PR to TVM and fix it
-      list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=catch-value")
-    endif()
-  endif()
-
-endif(onnxruntime_USE_NUPHAR_TVM)
 
 # TVM EP
 if (onnxruntime_USE_TVM)
@@ -2044,9 +1990,7 @@ set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product
 set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
 
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
-if (onnxruntime_USE_NUPHAR_TVM)
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_codegen_tvm)
-endif()
+
 if (onnxruntime_ENABLE_EAGER_MODE)
   if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
     message(
