@@ -260,9 +260,9 @@ export class WebGLInferenceHandler implements InferenceHandler {
   }
 
   private getTextureData(tensorId: Tensor.Id, isPacked = false): TextureData|undefined {
-    return this.session.isInitializer(tensorId) ? this.session.getTextureData(tensorId, isPacked) :
-        isPacked                                ? this.packedTextureDataCache.get(tensorId) :
-                                                  this.unpackedTextureDataCache.get(tensorId);
+    return this.session.isInitializer(tensorId) ?
+        this.session.getTextureData(tensorId, isPacked) :
+        isPacked ? this.packedTextureDataCache.get(tensorId) : this.unpackedTextureDataCache.get(tensorId);
   }
   setTextureData(tensorId: Tensor.Id, td: TextureData, isPacked = false): void {
     if (this.session.isInitializer(tensorId)) {

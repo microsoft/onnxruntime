@@ -179,10 +179,6 @@ NS_ASSUME_NONNULL_BEGIN
     const size_t nameCount = getCount();
 
     Ort::AllocatorWithDefaultOptions allocator;
-    auto deleter = [ortAllocator = static_cast<OrtAllocator*>(allocator)](void* p) {
-      ortAllocator->Free(ortAllocator, p);
-    };
-
     NSMutableArray<NSString*>* result = [NSMutableArray arrayWithCapacity:nameCount];
 
     for (size_t i = 0; i < nameCount; ++i) {

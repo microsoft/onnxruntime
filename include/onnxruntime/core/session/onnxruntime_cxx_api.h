@@ -447,7 +447,7 @@ struct ModelMetadata : Base<OrtModelMetadata> {
    *
    * \param allocator to allocate memory for the copy of the string returned
    * \return a instance std::vector of smart pointers that would deallocate the buffers when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
+   *  The OrtAllocator instance must be valid at the point of memory release.
    */
   std::vector<AllocatedStringPtr> GetCustomMetadataMapKeysAllocated(OrtAllocator* allocator) const;  ///< Wraps OrtApi::ModelMetadataGetCustomMetadataMapKeys
 

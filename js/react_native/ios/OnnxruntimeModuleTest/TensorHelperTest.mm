@@ -147,10 +147,10 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
   std::unique_ptr<Ort::Session> session{new Ort::Session(*ortEnv, [dataPath UTF8String], sessionOptions)};
 
   Ort::AllocatorWithDefaultOptions ortAllocator;
-  std::vector<<Ort::AllocatedStringPtr> names;
+  std::vector << Ort::AllocatedStringPtr > names;
 
   names.reserve(session->GetInputCount() + session->GetOutputCount());
-  
+
   std::vector<const char *> inputNames;
   inputNames.reserve(session->GetInputCount());
   for (size_t i = 0; i < session->GetInputCount(); ++i) {
