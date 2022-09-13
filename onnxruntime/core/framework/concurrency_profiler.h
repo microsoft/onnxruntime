@@ -47,7 +47,7 @@ struct ConcurrencyKernelProfiler : public IKernelProfiler {
   ConcurrencyKernelProfiler(ISessProfiler& sess_profiler,
                             const OpKernelContextInternal& context,
                             const OpKernel& kernel) : IKernelProfiler(sess_profiler, context, kernel),
-                                                      series_(dynamic_cast<ConcurrencySessProfiler&>(sess_profiler).series_),
+                                                      series_(static_cast<ConcurrencySessProfiler&>(sess_profiler).series_),
                                                       span_(series_, "%s.%d",
                                                             kernel.Node().OpType().c_str(),
                                                             kernel.Node().Index())

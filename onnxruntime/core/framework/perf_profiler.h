@@ -107,7 +107,7 @@ struct PerfKernelProfiler : public IKernelProfiler {
   PerfKernelProfiler(ISessProfiler& sess_profiler,
                      const OpKernelContextInternal& context,
                      const OpKernel& kernel) : IKernelProfiler(sess_profiler, context, kernel),
-                                               perf_sess_profiler_(dynamic_cast<PerfSessProfiler&>(sess_profiler))
+                                               perf_sess_profiler_(static_cast<PerfSessProfiler&>(sess_profiler))
 #ifdef ANOTHER_KERNEL_PROFILER
                                                ,
                                                another_kernel_profiler_(sess_profiler.GetAnotherSessProfiler(), context, kernel)

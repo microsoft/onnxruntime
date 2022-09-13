@@ -55,7 +55,7 @@ struct NVTXKernelProfiler : public IKernelProfiler {
   NVTXKernelProfiler(ISessProfiler& sess_profiler,
                      const OpKernelContextInternal& context,
                      const OpKernel& kernel) : IKernelProfiler(sess_profiler, context, kernel),
-                                               sess_profiler_(dynamic_cast<NVTXSessProfiler&>(sess_profiler)),
+                                               sess_profiler_(static_cast<NVTXSessProfiler&>(sess_profiler)),
                                                node_compute_range_(MakeString(kernel.Node().OpType(), ".",
                                                                               kernel.Node().Index(), "(",
                                                                               kernel.Node().Name(), ")"),

@@ -35,7 +35,7 @@ struct DumpKernelProfiler : public IKernelProfiler {
   DumpKernelProfiler(ISessProfiler& sess_profiler,
                      const OpKernelContextInternal& context,
                      const OpKernel& kernel) : IKernelProfiler(sess_profiler, context, kernel),
-                                               sess_profiler_(dynamic_cast<DumpSessProfiler&>(sess_profiler)),
+                                               sess_profiler_(static_cast<DumpSessProfiler&>(sess_profiler)),
                                                dump_ctx_ { DumpSessProfiler::iteration, kernel.Node().Index() }
 #ifdef ANOTHER_KERNEL_PROFILER
   ,
