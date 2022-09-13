@@ -297,7 +297,6 @@ jobject convertToValueInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTypeInfo
     }
     case ONNX_TYPE_UNKNOWN:
     case ONNX_TYPE_OPAQUE:
-    case ONNX_TYPE_SPARSETENSOR:
     default: {
       throwOrtException(jniEnv,convertErrorCode(ORT_NOT_IMPLEMENTED),"Invalid ONNXType found.");
       return NULL;
@@ -924,16 +923,12 @@ jobject createJavaSparseTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAl
     OrtSparseFormat format;
     checkOrtStatus(jniEnv,api,api->GetSparseTensorFormat(tensor, &format));
     jint sparseTensorInt = convertFromOrtSparseFormat(format);
-    char *sparseTensorTypeClassName = "ai/onnxruntime/OnnxSparseTensor$SparseTensorType";
-    jclass clazz = (*jniEnv)->FindClass(jniEnv, sparseTensorTypeClassName);
-    jmethodID sparseTensorTypeMapFromInt = (*jniEnv)->GetStaticMethodID(jniEnv, clazz, "mapFromInt", "(I)Lai/onnxruntime/OnnxSparseTensor$SparseTensorType;");
-    jobject sparseTensorType = (*jniEnv)->CallStaticObjectMethod(jniEnv,clazz,sparseTensorTypeMapFromInt,sparseTensorInt);
 
     // Construct the ONNXTensor object
     char *tensorClassName = "ai/onnxruntime/OnnxSparseTensor";
-    clazz = (*jniEnv)->FindClass(jniEnv, tensorClassName);
-    jmethodID tensorConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "(JJLai/onnxruntime/OnnxSparseTensor$SparseTensorType;Lai/onnxruntime/TensorInfo;)V");
-    jobject javaSparseTensor = (*jniEnv)->NewObject(jniEnv, clazz, tensorConstructor, (jlong) tensor, (jlong) allocator, sparseTensorType, tensorInfo);
+    jclass clazz = (*jniEnv)->FindClass(jniEnv, tensorClassName);
+    jmethodID tensorConstructor = (*jniEnv)->GetMethodID(jniEnv, clazz, "<init>", "(JJILai/onnxruntime/TensorInfo;)V");
+    jobject javaSparseTensor = (*jniEnv)->NewObject(jniEnv, clazz, tensorConstructor, (jlong) tensor, (jlong) allocator, sparseTensorInt, tensorInfo);
 
     return javaSparseTensor;
 }

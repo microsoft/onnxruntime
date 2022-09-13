@@ -38,9 +38,15 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @param sparseType The sparsity type.
    * @param info The tensor info.
    */
-  OnnxSparseTensor(
-      long nativeHandle, long allocatorHandle, SparseTensorType sparseType, TensorInfo info) {
-    this(nativeHandle, allocatorHandle, sparseType, info, null, null, null);
+  OnnxSparseTensor(long nativeHandle, long allocatorHandle, int sparseType, TensorInfo info) {
+    this(
+        nativeHandle,
+        allocatorHandle,
+        SparseTensorType.mapFromInt(sparseType),
+        info,
+        null,
+        null,
+        null);
   }
 
   /**
@@ -184,7 +190,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   @Override
   public SparseTensor<? extends Buffer> getValue() throws OrtException {
     Buffer buffer = getValuesBuffer();
-    long[] indicesShape = getIndicesShape(OnnxRuntime.ortApiHandle, allocatorHandle, nativeHandle);
+    long[] indicesShape = getIndicesShape(OnnxRuntime.ortApiHandle, nativeHandle);
     switch (sparseTensorType) {
       case COO:
         return new COOTensor(
@@ -203,8 +209,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
             info.type,
             buffer.remaining());
       case BLOCK_SPARSE:
-        long[] valuesShape =
-            getValuesShape(OnnxRuntime.ortApiHandle, allocatorHandle, nativeHandle);
+        long[] valuesShape = getValuesShape(OnnxRuntime.ortApiHandle, nativeHandle);
         return new BlockSparseTensor(
             (IntBuffer) getIndicesBuffer(),
             indicesShape,
@@ -385,7 +390,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The indices shape.
    */
   public long[] getIndicesShape() {
-    return getIndicesShape(OnnxRuntime.ortApiHandle, allocatorHandle, nativeHandle);
+    return getIndicesShape(OnnxRuntime.ortApiHandle, nativeHandle);
   }
 
   /**
@@ -395,7 +400,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    */
   public long[] getInnerIndicesShape() {
     if (sparseTensorType == SparseTensorType.CSRC) {
-      return getInnerIndicesShape(OnnxRuntime.ortApiHandle, allocatorHandle, nativeHandle);
+      return getInnerIndicesShape(OnnxRuntime.ortApiHandle, nativeHandle);
     } else {
       throw new IllegalStateException(
           "Inner indices are only available for CSRC sparse tensors, this sparse tensor is "
@@ -409,39 +414,35 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The values shape.
    */
   public long[] getValuesShape() {
-    return getValuesShape(OnnxRuntime.ortApiHandle, allocatorHandle, nativeHandle);
+    return getValuesShape(OnnxRuntime.ortApiHandle, nativeHandle);
   }
 
   /**
    * Gets the shape of the (outer) indices.
    *
    * @param apiHandle The OrtApi pointer.
-   * @param allocatorHandle The memory allocator pointer.
    * @param nativeHandle The OrtSparseTensor pointer.
    * @return The indices shape.
    */
-  private native long[] getIndicesShape(long apiHandle, long allocatorHandle, long nativeHandle);
+  private native long[] getIndicesShape(long apiHandle, long nativeHandle);
 
   /**
    * Gets the shape of the inner indices.
    *
    * @param apiHandle The OrtApi pointer.
-   * @param allocatorHandle The memory allocator pointer.
    * @param nativeHandle The OrtSparseTensor pointer.
    * @return The inner indices shape.
    */
-  private native long[] getInnerIndicesShape(
-      long apiHandle, long allocatorHandle, long nativeHandle);
+  private native long[] getInnerIndicesShape(long apiHandle, long nativeHandle);
 
   /**
    * Gets the shape of the values.
    *
    * @param apiHandle The OrtApi pointer.
-   * @param allocatorHandle The memory allocator pointer.
    * @param nativeHandle The OrtSparseTensor pointer.
    * @return The values shape.
    */
-  private native long[] getValuesShape(long apiHandle, long allocatorHandle, long nativeHandle);
+  private native long[] getValuesShape(long apiHandle, long nativeHandle);
 
   /**
    * Wraps the indices in a direct byte buffer.

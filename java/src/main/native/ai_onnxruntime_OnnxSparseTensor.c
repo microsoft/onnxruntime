@@ -4,6 +4,7 @@
  */
 #include <jni.h>
 #include <math.h>
+#include <stdlib.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "OrtJniUtil.h"
 #include "ai_onnxruntime_OnnxSparseTensor.h"
@@ -147,14 +148,13 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getValuesBuffer
 /*
  * Class:     ai_onnxruntime_OnnxSparseTensor
  * Method:    getInnerIndicesShape
- * Signature: (JJJ)[J;
+ * Signature: (JJ)[J;
  */
 JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndicesShape
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jlong handle) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     const OrtValue* value = (const OrtValue*) handle;
-    OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
     // Extract the info
     OrtTensorTypeAndShapeInfo* info;
@@ -163,8 +163,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndicesSh
     // Extract the shape
     size_t numDim;
     checkOrtStatus(jniEnv,api,api->GetDimensionsCount(info,&numDim));
-    int64_t* dimensions;
-    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(int64_t)*numDim,(void**)&dimensions));
+    int64_t* dimensions = malloc(sizeof(int64_t)*numDim);
     checkOrtStatus(jniEnv,api,api->GetDimensions(info, dimensions, numDim));
 
     // Free the info
@@ -174,7 +173,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndicesSh
     jlongArray shape = (*jniEnv)->NewLongArray(jniEnv, safecast_size_t_to_jsize(numDim));
     (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, safecast_size_t_to_jsize(numDim), (jlong*)dimensions);
     // Free the dimensions array
-    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)dimensions));
+    free((void*)dimensions);
     dimensions = NULL;
 
     return shape;
@@ -183,14 +182,13 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndicesSh
 /*
  * Class:     ai_onnxruntime_OnnxSparseTensor
  * Method:    getIndicesShape
- * Signature: (JJJ)[J;
+ * Signature: (JJ)[J;
  */
 JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesShape
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jlong handle) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     const OrtValue* value = (const OrtValue*) handle;
-    OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
     // Get the indices format
     OrtSparseFormat format;
@@ -219,8 +217,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesShape
     // Extract the shape
     size_t numDim;
     checkOrtStatus(jniEnv,api,api->GetDimensionsCount(info,&numDim));
-    int64_t* dimensions;
-    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(int64_t)*numDim,(void**)&dimensions));
+    int64_t* dimensions = malloc(sizeof(int64_t)*numDim);
     checkOrtStatus(jniEnv,api,api->GetDimensions(info, dimensions, numDim));
 
     // Free the info
@@ -230,7 +227,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesShape
     jlongArray shape = (*jniEnv)->NewLongArray(jniEnv, safecast_size_t_to_jsize(numDim));
     (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, safecast_size_t_to_jsize(numDim), (jlong*)dimensions);
     // Free the dimensions array
-    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)dimensions));
+    free((void*)dimensions);
     dimensions = NULL;
 
     return shape;
@@ -239,14 +236,13 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesShape
 /*
  * Class:     ai_onnxruntime_OnnxSparseTensor
  * Method:    getValuesShape
- * Signature: (JJJ)[J;
+ * Signature: (JJ)[J;
  */
 JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getValuesShape
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong allocatorHandle, jlong handle) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
     const OrtValue* value = (const OrtValue*) handle;
-    OrtAllocator* allocator = (OrtAllocator*) allocatorHandle;
 
     // Extract the info
     OrtTensorTypeAndShapeInfo* info;
@@ -255,8 +251,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getValuesShape
     // Extract the shape
     size_t numDim;
     checkOrtStatus(jniEnv,api,api->GetDimensionsCount(info,&numDim));
-    int64_t* dimensions;
-    checkOrtStatus(jniEnv,api,api->AllocatorAlloc(allocator,sizeof(int64_t)*numDim,(void**)&dimensions));
+    int64_t* dimensions = malloc(sizeof(int64_t)*numDim);
     checkOrtStatus(jniEnv,api,api->GetDimensions(info, dimensions, numDim));
 
     // Free the info
@@ -267,7 +262,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getValuesShape
     (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, safecast_size_t_to_jsize(numDim), (jlong*)dimensions);
 
     // Free the dimensions array
-    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)dimensions));
+    free((void*)dimensions);
     dimensions = NULL;
 
     return shape;

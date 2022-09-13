@@ -481,7 +481,7 @@ public final class OrtUtil {
     return (int) (size / 0.75 + 1);
   }
 
-  /** 
+  /**
    * Prepares a buffer, either copying it if it's not direct, or computing it's size and position if
    * it is.
    *
