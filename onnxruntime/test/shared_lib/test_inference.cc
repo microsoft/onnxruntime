@@ -228,7 +228,8 @@ TEST(CApiTest, dim_param) {
   // reading 1st dimension only so don't need to malloc int64_t* or const char** values for the Get*Dimensions calls
   int64_t dim_value = 0;
   const char* dim_param = nullptr;
-  in0_ttsi.GetDimensions(&dim_value, 1);
+  auto dims = in0_ttsi.GetShape();
+  if (!dims.empty()) dim_value = dims[0];
   in0_ttsi.GetSymbolicDimensions(&dim_param, 1);
   ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
   ASSERT_EQ(strcmp(dim_param, "n"), 0) << "Expected 'n'. Got: " << dim_param;
@@ -238,7 +239,10 @@ TEST(CApiTest, dim_param) {
   auto num_output_dims = out0_ttsi.GetDimensionsCount();
   ASSERT_EQ(num_output_dims, 1u);
 
-  out0_ttsi.GetDimensions(&dim_value, 1);
+  dim_value = 0;
+  dims = out0_ttsi.GetShape();
+  if (!dims.empty()) dim_value = dims[0];
+  
   out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
   ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
   ASSERT_EQ(strcmp(dim_param, ""), 0);

@@ -9,17 +9,41 @@
 
 namespace Ort {
 
-inline void ThrowOnError(const OrtApi& ort, OrtStatus* status) {
-  if (status) {
-    std::string error_message = ort.GetErrorMessage(status);
-    OrtErrorCode error_code = ort.GetErrorCode(status);
-    ort.ReleaseStatus(status);
-    ORT_CXX_API_THROW(std::move(error_message), error_code);
+namespace detail {
+inline void ThrowStatus(const Status& st) {
+  std::string error_message = st.GetErrorMessage();
+  OrtErrorCode error_code = st.GetErrorCode();
+  ORT_CXX_API_THROW(std::move(error_message), error_code);
+}
+}  // namespace detail
+
+inline void ThrowOnError(OrtStatus* ort_status) {
+  if (ort_status) {
+    Ort::Status st(ort_status);
+    detail::ThrowStatus(st);
   }
 }
 
-inline void ThrowOnError(OrtStatus* status) {
-  ThrowOnError(GetApi(), status);
+inline void ThrowOnError(const Status& st) {
+  if (st) {
+    detail::ThrowStatus(st);
+  }
+}
+
+inline Status::Status(OrtStatus* status) : Base<OrtStatus>{status} {
+}
+
+inline Status::Status(const std::exception& e) {
+  p_ = GetApi().CreateStatus(ORT_FAIL, e.what());
+}
+
+inline std::string Status::GetErrorMessage() const {
+  std::string message(GetApi().GetErrorMessage(p_));
+  return message;
+}
+
+inline OrtErrorCode Status::GetErrorCode() const {
+  return GetApi().GetErrorCode(p_);
 }
 
 // This template converts a C++ type into it's ONNXTensorElementDataType
@@ -131,6 +155,12 @@ inline int MemoryInfo::GetDeviceId() const {
   int id = 0;
   ThrowOnError(GetApi().MemoryInfoGetId(*this, &id));
   return id;
+}
+
+inline OrtMemoryInfoDeviceType MemoryInfo::GetDeviceType() const {
+  OrtMemoryInfoDeviceType type;
+  GetApi().MemoryInfoGetDeviceType(p_, &type);
+  return type;
 }
 
 inline OrtMemType MemoryInfo::GetMemoryType() const {
@@ -352,7 +382,7 @@ inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(GetApi().CreateCustomOpDomain(domain, &p_));
 }
 
-inline void CustomOpDomain::Add(OrtCustomOp* op) {
+inline void CustomOpDomain::Add(const OrtCustomOp* op) {
   ThrowOnError(GetApi().CustomOpDomain_Add(p_, op));
 }
 
@@ -799,7 +829,7 @@ inline void TensorTypeAndShapeInfo::GetSymbolicDimensions(const char** values, s
 
 inline std::vector<int64_t> TensorTypeAndShapeInfo::GetShape() const {
   std::vector<int64_t> out(GetDimensionsCount(), 0);
-  GetDimensions(out.data(), out.size());
+  ThrowOnError(GetApi().GetDimensions(p_, out.data(), out.size()));
   return out;
 }
 
@@ -1054,9 +1084,21 @@ T* Value::GetTensorMutableData() {
 }
 
 template <typename T>
-const T* Value::GetTensorData() const {
+inline const T* Value::GetTensorData() const {
   T* out;
   ThrowOnError(GetApi().GetTensorMutableData(p_, (void**)&out));
+  return out;
+}
+
+inline void* Value::GetTensorMutableRawData() {
+  void* out;
+  ThrowOnError(GetApi().GetTensorMutableData(p_, &out));
+  return out;
+}
+
+inline const void* Value::GetTensorRawData() const {
+  void* out;
+  ThrowOnError(GetApi().GetTensorMutableData(p_, &out));
   return out;
 }
 
@@ -1089,24 +1131,176 @@ inline TensorTypeAndShapeInfo Value::GetTensorTypeAndShapeInfo() const {
   return TensorTypeAndShapeInfo{output};
 }
 
+inline Unowned<const MemoryInfo> Value::GetTensorMemoryInfo() const {
+  const OrtMemoryInfo* mem_info;
+  ThrowOnError(GetApi().GetTensorMemoryInfo(p_, &mem_info));
+  return Unowned<const MemoryInfo>(mem_info);
+}
+
 //
-// Custom OP API Inlines
+// Custom OP Inlines
 //
+inline KernelContext::KernelContext(OrtKernelContext* context) : ctx_(context) {
+}
+
+inline size_t KernelContext::GetInputCount() const {
+  size_t out;
+  Ort::ThrowOnError(GetApi().KernelContext_GetInputCount(ctx_, &out));
+  return out;
+}
+
+inline size_t KernelContext::GetOutputCount() const {
+  size_t out;
+  Ort::ThrowOnError(GetApi().KernelContext_GetOutputCount(ctx_, &out));
+  return out;
+}
+
+inline Unowned<const Value> KernelContext::GetInput(size_t index) const {
+  const OrtValue* out;
+  Ort::ThrowOnError(GetApi().KernelContext_GetInput(ctx_, index, &out));
+  return Unowned<const Value>{out};
+}
+
+inline Unowned<Value> KernelContext::GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const {
+  OrtValue* out;
+  Ort::ThrowOnError(GetApi().KernelContext_GetOutput(ctx_, index, dim_values, dim_count, &out));
+  return Unowned<Value>(out);
+}
+
+inline Unowned<Value> KernelContext::GetOutput(size_t index, const std::vector<int64_t>& dims) const {
+  OrtValue* out;
+  Ort::ThrowOnError(GetApi().KernelContext_GetOutput(ctx_, index, dims.data(), dims.size(), &out));
+  return Unowned<Value>(out);
+}
+
+inline void* KernelContext::GetGPUComputeStream() const {
+  void* out;
+  Ort::ThrowOnError(GetApi().KernelContext_GetGPUComputeStream(ctx_, &out));
+  return out;
+}
+
+inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType type) {
+  Ort::ThrowOnError(GetApi().CreateOpAttr(name, data, len, type, &p_));
+}
+
+inline KernelInfo::KernelInfo(OrtKernelInfo* info) : Base<OrtKernelInfo>{info} {}
+
+inline KernelInfo KernelInfo::Copy() const {
+  OrtKernelInfo* info_copy;
+  Ort::ThrowOnError(GetApi().CopyKernelInfo(p_, &info_copy));
+  return KernelInfo{info_copy};
+}
+
+template <>
+inline float KernelInfo::GetAttribute<float>(const char* name) const {
+  float out;
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_float(p_, name, &out));
+  return out;
+}
+
+template <>
+inline int64_t KernelInfo::GetAttribute<int64_t>(const char* name) const {
+  int64_t out;
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_int64(p_, name, &out));
+  return out;
+}
+
+template <>
+inline std::string KernelInfo::GetAttribute<std::string>(const char* name) const {
+  size_t size = 0;
+  // Feed nullptr for the data buffer to query the true size of the string attribute
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_string(p_, name, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_string(p_, name, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+  return out;
+}
+
+template <>
+inline std::vector<float> KernelInfo::GetAttributes(const char* name) const {
+  size_t size = 0;
+  // Feed nullptr for the data buffer to query the true size of the attribute
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_float(p_, name, nullptr, &size));
+
+  std::vector<float> out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_float(p_, name, out.data(), &size));
+  return out;
+}
+
+template <>
+inline std::vector<int64_t> KernelInfo::GetAttributes(const char* name) const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the attribute
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_int64(p_, name, nullptr, &size));
+
+  std::vector<int64_t> out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_int64(p_, name, out.data(), &size));
+  return out;
+}
+
+inline Op::Op(OrtOp* p) : Base<OrtOp>(p) {}
+
+inline Op Op::Create(const OrtKernelInfo* info, const char* op_name, const char* domain, int version,
+                     const char** type_constraint_names,
+                     const ONNXTensorElementDataType* type_constraint_values,
+                     size_t type_constraint_count,
+                     const OpAttr* attr_values, size_t attr_count,
+                     size_t input_count, size_t output_count) {
+  static_assert(sizeof(OpAttr) == sizeof(OrtOpAttr*),
+                "OpAttr's is expected to be just an array of OrtOpAttr in memory so we can reinterpret safely");
+  auto attr_input_values = reinterpret_cast<const OrtOpAttr**>(const_cast<OpAttr*>(attr_values));
+  OrtOp* op;
+  Ort::ThrowOnError(GetApi().CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values,
+                                      static_cast<int>(type_constraint_count),
+                                      attr_input_values,
+                                      static_cast<int>(attr_count),
+                                      static_cast<int>(input_count),
+                                      static_cast<int>(output_count), &op));
+  return Op{op};
+}
+
+inline void Op::Invoke(const OrtKernelContext* context,
+                       const Value* input_values,
+                       size_t input_count,
+                       Value* output_values,
+                       size_t output_count) {
+  static_assert(sizeof(Value) == sizeof(OrtValue*),
+                "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
+  auto ort_input_values = reinterpret_cast<const OrtValue**>(const_cast<Value*>(input_values));
+  auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
+  Ort::ThrowOnError(GetApi().InvokeOp(context, p_, ort_input_values, static_cast<int>(input_count),
+                                      ort_output_values, static_cast<int>(output_count)));
+}
+
+inline void Op::Invoke(const OrtKernelContext* context,
+                       const OrtValue* const* input_values,
+                       size_t input_count,
+                       OrtValue* const* output_values,
+                       size_t output_count) {
+  Ort::ThrowOnError(GetApi().InvokeOp(context, p_, input_values, static_cast<int>(input_count),
+                                      output_values, static_cast<int>(output_count)));
+}
+
 inline void CustomOpApi::ThrowOnError(OrtStatus* status) {
-  Ort::ThrowOnError(api_, status);
+  Ort::ThrowOnError(status);
 }
 
 template <>
 inline float CustomOpApi::KernelInfoGetAttribute<float>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   float out;
-  ThrowOnError(api_.KernelInfoGetAttribute_float(info, name, &out));
+  Ort::ThrowOnError(api_.KernelInfoGetAttribute_float(info, name, &out));
   return out;
 }
 
 template <>
 inline int64_t CustomOpApi::KernelInfoGetAttribute<int64_t>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   int64_t out;
-  ThrowOnError(api_.KernelInfoGetAttribute_int64(info, name, &out));
+  Ort::ThrowOnError(api_.KernelInfoGetAttribute_int64(info, name, &out));
   return out;
 }
 
@@ -1120,10 +1314,10 @@ inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const O
 
   if (status == nullptr) {
     out.resize(size);
-    ThrowOnError(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
+    Ort::ThrowOnError(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
     out.resize(size - 1);  // remove the terminating character '\0'
   } else {
-    ThrowOnError(status);
+    Ort::ThrowOnError(status);
   }
   return out;
 }
@@ -1138,9 +1332,9 @@ inline std::vector<float> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKern
 
   if (status == nullptr) {
     out.resize(size);
-    ThrowOnError(api_.KernelInfoGetAttributeArray_float(info, name, out.data(), &size));
+    Ort::ThrowOnError(api_.KernelInfoGetAttributeArray_float(info, name, out.data(), &size));
   } else {
-    ThrowOnError(status);
+    Ort::ThrowOnError(status);
   }
   return out;
 }
@@ -1155,65 +1349,67 @@ inline std::vector<int64_t> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKe
 
   if (status == nullptr) {
     out.resize(size);
-    ThrowOnError(api_.KernelInfoGetAttributeArray_int64(info, name, out.data(), &size));
+    Ort::ThrowOnError(api_.KernelInfoGetAttributeArray_int64(info, name, out.data(), &size));
   } else {
-    ThrowOnError(status);
+    Ort::ThrowOnError(status);
   }
   return out;
 }
 inline OrtTensorTypeAndShapeInfo* CustomOpApi::GetTensorTypeAndShape(_In_ const OrtValue* value) {
   OrtTensorTypeAndShapeInfo* out;
-  ThrowOnError(api_.GetTensorTypeAndShape(value, &out));
+  Ort::ThrowOnError(api_.GetTensorTypeAndShape(value, &out));
   return out;
 }
 
 inline size_t CustomOpApi::GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info) {
   size_t out;
-  ThrowOnError(api_.GetTensorShapeElementCount(info, &out));
+  Ort::ThrowOnError(api_.GetTensorShapeElementCount(info, &out));
   return out;
 }
 
 inline ONNXTensorElementDataType CustomOpApi::GetTensorElementType(const OrtTensorTypeAndShapeInfo* info) {
   ONNXTensorElementDataType out;
-  ThrowOnError(api_.GetTensorElementType(info, &out));
+  Ort::ThrowOnError(api_.GetTensorElementType(info, &out));
   return out;
 }
 
 inline size_t CustomOpApi::GetDimensionsCount(_In_ const OrtTensorTypeAndShapeInfo* info) {
   size_t out;
-  ThrowOnError(api_.GetDimensionsCount(info, &out));
+  Ort::ThrowOnError(api_.GetDimensionsCount(info, &out));
   return out;
 }
 
 inline void CustomOpApi::GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length) {
-  ThrowOnError(api_.GetDimensions(info, dim_values, dim_values_length));
+  Ort::ThrowOnError(api_.GetDimensions(info, dim_values, dim_values_length));
 }
 
 inline void CustomOpApi::SetDimensions(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count) {
-  ThrowOnError(api_.SetDimensions(info, dim_values, dim_count));
+  Ort::ThrowOnError(api_.SetDimensions(info, dim_values, dim_count));
 }
 
 template <typename T>
 inline T* CustomOpApi::GetTensorMutableData(_Inout_ OrtValue* value) {
   T* data;
-  ThrowOnError(api_.GetTensorMutableData(value, reinterpret_cast<void**>(&data)));
+  Ort::ThrowOnError(api_.GetTensorMutableData(value, reinterpret_cast<void**>(&data)));
   return data;
 }
 
 inline const OrtMemoryInfo* CustomOpApi::GetTensorMemoryInfo(_In_ const OrtValue* value) {
   const OrtMemoryInfo* mem_info;
-  ThrowOnError(api_.GetTensorMemoryInfo(value, &mem_info));
+  Ort::ThrowOnError(api_.GetTensorMemoryInfo(value, &mem_info));
   return mem_info;
 }
 
 template <typename T>
 inline const T* CustomOpApi::GetTensorData(_Inout_ const OrtValue* value) {
-  return GetTensorMutableData<T>(const_cast<OrtValue*>(value));
+  return GetTensorData<T>(value);
 }
 
 inline std::vector<int64_t> CustomOpApi::GetTensorShape(const OrtTensorTypeAndShapeInfo* info) {
-  std::vector<int64_t> output(GetDimensionsCount(info));
-  GetDimensions(info, output.data(), output.size());
+  size_t out;
+  Ort::ThrowOnError(api_.GetDimensionsCount(info, &out));
+  std::vector<int64_t> output(out);
+  Ort::ThrowOnError(api_.GetDimensions(info, output.data(), out));
   return output;
 }
 
@@ -1223,32 +1419,32 @@ inline void CustomOpApi::ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo
 
 inline size_t CustomOpApi::KernelContext_GetInputCount(const OrtKernelContext* context) {
   size_t out;
-  ThrowOnError(api_.KernelContext_GetInputCount(context, &out));
+  Ort::ThrowOnError(api_.KernelContext_GetInputCount(context, &out));
   return out;
 }
 
 inline const OrtValue* CustomOpApi::KernelContext_GetInput(const OrtKernelContext* context, _In_ size_t index) {
   const OrtValue* out;
-  ThrowOnError(api_.KernelContext_GetInput(context, index, &out));
+  Ort::ThrowOnError(api_.KernelContext_GetInput(context, index, &out));
   return out;
 }
 
 inline size_t CustomOpApi::KernelContext_GetOutputCount(const OrtKernelContext* context) {
   size_t out;
-  ThrowOnError(api_.KernelContext_GetOutputCount(context, &out));
+  Ort::ThrowOnError(api_.KernelContext_GetOutputCount(context, &out));
   return out;
 }
 
 inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index,
                                                       _In_ const int64_t* dim_values, size_t dim_count) {
   OrtValue* out;
-  ThrowOnError(api_.KernelContext_GetOutput(context, index, dim_values, dim_count, &out));
+  Ort::ThrowOnError(api_.KernelContext_GetOutput(context, index, dim_values, dim_count, &out));
   return out;
 }
 
 inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelContext* context) {
   void* out;
-  ThrowOnError(api_.KernelContext_GetGPUComputeStream(context, &out));
+  Ort::ThrowOnError(api_.KernelContext_GetGPUComputeStream(context, &out));
   return out;
 }
 
@@ -1257,7 +1453,7 @@ inline OrtOpAttr* CustomOpApi::CreateOpAttr(_In_ const char* name,
                                             _In_ int len,
                                             _In_ OrtOpAttrType type) {
   OrtOpAttr* op_attr{};
-  ThrowOnError(api_.CreateOpAttr(name, data, len, type, &op_attr));
+  Ort::ThrowOnError(api_.CreateOpAttr(name, data, len, type, &op_attr));
   return op_attr;
 }
 
@@ -1277,8 +1473,8 @@ inline OrtOp* CustomOpApi::CreateOp(_In_ const OrtKernelInfo* info,
                                     _In_ int input_count,
                                     _In_ int output_count) {
   OrtOp* ort_op{};
-  ThrowOnError(api_.CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values,
-                             type_constraint_count, attr_values, attr_count, input_count, output_count, &ort_op));
+  Ort::ThrowOnError(api_.CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values,
+                                  type_constraint_count, attr_values, attr_count, input_count, output_count, &ort_op));
   return ort_op;
 }
 
@@ -1288,7 +1484,7 @@ inline void CustomOpApi::InvokeOp(_In_ const OrtKernelContext* context,
                                   _In_ int input_count,
                                   _Inout_ OrtValue* const* output_values,
                                   _In_ int output_count) {
-  ThrowOnError(api_.InvokeOp(context, ort_op, input_values, input_count, output_values, output_count));
+  Ort::ThrowOnError(api_.InvokeOp(context, ort_op, input_values, input_count, output_values, output_count));
 }
 
 inline void CustomOpApi::ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op) {
@@ -1297,7 +1493,7 @@ inline void CustomOpApi::ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op) {
 
 inline OrtKernelInfo* CustomOpApi::CopyKernelInfo(_In_ const OrtKernelInfo* info) {
   OrtKernelInfo* info_copy{};
-  ThrowOnError(api_.CopyKernelInfo(info, &info_copy));
+  Ort::ThrowOnError(api_.CopyKernelInfo(info, &info_copy));
   return info_copy;
 }
 

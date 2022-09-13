@@ -390,4 +390,6 @@ ORT_API(void, ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy);
 
 ORT_API(const OrtTrainingApi*, GetTrainingApi, uint32_t version);
 
+ORT_API(void, MemoryInfoGetDeviceType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
+
 }  // namespace OrtApis

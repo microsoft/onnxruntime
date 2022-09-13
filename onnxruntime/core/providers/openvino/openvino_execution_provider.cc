@@ -161,9 +161,9 @@ common::Status OpenVINOExecutionProvider::Compile(
     compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
       try {
-        function_state->backend_manager->Compute(*api, context);
-      } catch (const char* msg) {
-        return common::Status(common::ONNXRUNTIME, common::FAIL, msg);
+        function_state->backend_manager->Compute(context);
+      } catch (const std::exception& ex) {
+        return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
       }
       return Status::OK();
     };

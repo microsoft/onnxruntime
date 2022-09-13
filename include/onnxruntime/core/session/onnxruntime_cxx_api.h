@@ -117,6 +117,10 @@ ORT_DEFINE_RELEASE(ModelMetadata);
 ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(IoBinding);
 ORT_DEFINE_RELEASE(ArenaCfg);
+ORT_DEFINE_RELEASE(Status);
+ORT_DEFINE_RELEASE(OpAttr);
+ORT_DEFINE_RELEASE(Op);
+ORT_DEFINE_RELEASE(KernelInfo);
 
 #undef ORT_DEFINE_RELEASE
 
@@ -217,9 +221,10 @@ struct Base {
     return p;
   }
 
- protected:
   Base(const Base&) = delete;
   Base& operator=(const Base&) = delete;
+
+ protected:
   Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
   void operator=(Base&& v) noexcept {
     OrtRelease(p_);
@@ -233,14 +238,24 @@ struct Base {
 };
 
 /** \brief Wraps an object that inherits from Ort::Base and stops it from deleting the contained pointer on destruction
- *
+ *  This is useful when you want to wrap a native C object pointer so you can use it with the C++ API, but you do not
+ *  want the C++ API to delete the pointer on destruction. Wrap it to Ort::Unowned<Ort::XXX> for non-const pointers and
+ *  Ort::Unowned<const Ort::XXX> const pointers.
+ * 
  * This has the effect of making it not own the memory held by Ort::Base.
  */
 template <typename T>
 struct Unowned : T {
-  Unowned(typename T::contained_type* p) : T{p} {}
-  Unowned(Unowned&& v) : T{v.p_} {}
+  using Type = typename T::contained_type;
+  Unowned(Type* p) : T{p} {}
+  Unowned(const Type* p) : T{const_cast<Type*>(p)} {}
+  Unowned(Unowned&& v) : T{v.p_} { v.p_ = nullptr; }
+  Unowned& operator=(Unowned&&) = delete;
   ~Unowned() { this->release(); }
+  template <typename R = T>
+  std::enable_if_t<std::is_const<R>::value, R>& operator*() const { return *this; }
+  template <typename R = T>
+  std::enable_if_t<!std::is_const<R>::value, R>& operator*() { return *this; }
 };
 
 struct AllocatorWithDefaultOptions;
@@ -267,6 +282,18 @@ struct AllocatedFree {
  *  must eclipse the lifespan of AllocatedStringPtr instance
  */
 using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
+
+/** \brief The Status that holds ownership of OrtStatus received from C API
+ *  Use it to safely destroy OrtStatus* returned from the C API. Use appropriate
+ *  constructors to construct an instance of a Status object from exceptions.
+ */
+struct Status : Base<OrtStatus> {
+  explicit Status(std::nullptr_t) {}      ///< Create an empty object, must be assigned a valid one to be used
+  explicit Status(OrtStatus* status);     ///< Takes ownership of OrtStatus instance returned from the C API. Must be non-null
+  explicit Status(const std::exception&); ///< Create status instance out of exception
+  std::string GetErrorMessage() const;
+  OrtErrorCode GetErrorCode() const;
+};
 
 /** \brief The Env (Environment)
  *
@@ -307,7 +334,8 @@ struct CustomOpDomain : Base<OrtCustomOpDomain> {
   /// \brief Wraps OrtApi::CreateCustomOpDomain
   explicit CustomOpDomain(const char* domain);
 
-  void Add(OrtCustomOp* op);  ///< Wraps CustomOpDomain_Add
+  // This does not take ownership of the op, simply registers it.
+  void Add(const OrtCustomOp* op);  ///< Wraps CustomOpDomain_Add
 };
 
 struct RunOptions : Base<OrtRunOptions> {
@@ -560,8 +588,15 @@ struct TensorTypeAndShapeInfo : Base<OrtTensorTypeAndShapeInfo> {
   ONNXTensorElementDataType GetElementType() const;  ///< Wraps OrtApi::GetTensorElementType
   size_t GetElementCount() const;                    ///< Wraps OrtApi::GetTensorShapeElementCount
 
-  size_t GetDimensionsCount() const;                                           ///< Wraps OrtApi::GetDimensionsCount
-  void GetDimensions(int64_t* values, size_t values_count) const;              ///< Wraps OrtApi::GetDimensions
+  size_t GetDimensionsCount() const;  ///< Wraps OrtApi::GetDimensionsCount
+
+  /** \deprecated use GetShape() returning std::vector
+   * [[deprecated]]
+   * This interface is unsafe to use
+   */
+  [[deprecated("use GetShape()")]]
+  void GetDimensions(int64_t* values, size_t values_count) const;  ///< Wraps OrtApi::GetDimensions
+
   void GetSymbolicDimensions(const char** values, size_t values_count) const;  ///< Wraps OrtApi::GetSymbolicDimensions
 
   std::vector<int64_t> GetShape() const;  ///< Uses GetDimensionsCount & GetDimensions to return a std::vector of the shape
@@ -889,11 +924,35 @@ struct Value : Base<OrtValue> {
   ///   for sparse tensors</param>
   void GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const;
 
+  /// <summary>
+  /// Returns a non-const typed pointer to an OrtValue/Tensor contained buffer
+  /// No type checking is performed, the caller must ensure the type matches the tensor type.
+  /// </summary>
+  /// <typeparam name="T"></typeparam>
+  /// <returns>non-const pointer to data, no copies made</returns>
   template <typename T>
   T* GetTensorMutableData();  ///< Wraps OrtApi::GetTensorMutableData
 
+  /// <summary>
+  /// Returns a const typed pointer to the tensor contained data.
+  /// No type checking is performed, the caller must ensure the type matches the tensor type.
+  /// </summary>
+  /// <typeparam name="T"></typeparam>
+  /// <returns>const pointer to data, no copies made</returns>
   template <typename T>
   const T* GetTensorData() const;  ///< Wraps OrtApi::GetTensorMutableData
+
+  /// <summary>
+  /// Returns a non-typed pointer to a tensor contained data.
+  /// </summary>
+  /// <returns>const pointer to data, no copies made</returns>
+  const void* GetTensorRawData() const;
+  
+  /// <summary>
+  /// Returns a non-typed con-const pointer to a tensor contained data.
+  /// </summary>
+  /// <returns>pointer to data, no copies made</returns>
+  void* GetTensorMutableRawData();
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
@@ -928,6 +987,13 @@ struct Value : Base<OrtValue> {
   TensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;
 
   /// <summary>
+  /// This API returns information about the memory allocation used to hold data.
+  /// MemoryInfo is owned by the underlying OrtValue and must not be released.
+  /// </summary>
+  /// <returns>Non owning instance of MemoryInfo</returns>
+  Unowned<const MemoryInfo> GetTensorMemoryInfo() const;
+
+  /// <summary>
   /// The API returns a byte length of UTF-8 encoded string element
   /// contained in either a tensor or a spare tensor values.
   /// </summary>
@@ -949,7 +1015,12 @@ struct Value : Base<OrtValue> {
   void FillStringTensorElement(const char* s, size_t index);
 };
 
-// Represents native memory allocation
+/// <summary>
+/// Represents native memory allocation coming from one of the
+/// OrtAllocators registered with OnnxRuntime.
+/// Use it to wrap an allocation made by an allocator
+/// so it can be automatically released when no longer needed.
+/// </summary>
 struct MemoryAllocation {
   MemoryAllocation(OrtAllocator* allocator, void* p, size_t size);
   ~MemoryAllocation();
@@ -987,13 +1058,14 @@ struct AllocatorWithDefaultOptions {
 struct MemoryInfo : Base<OrtMemoryInfo> {
   static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
 
-  explicit MemoryInfo(std::nullptr_t) {}
+  explicit MemoryInfo(std::nullptr_t) {} // No instance is created
   explicit MemoryInfo(OrtMemoryInfo* p) : Base<OrtMemoryInfo>{p} {}  ///< Used for interop with the C API
   MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
 
   std::string GetAllocatorName() const;
   OrtAllocatorType GetAllocatorType() const;
   int GetDeviceId() const;
+  OrtMemoryInfoDeviceType GetDeviceType() const;
   OrtMemType GetMemoryType() const;
 
   bool operator==(const MemoryInfo& o) const;
@@ -1049,43 +1121,230 @@ struct ArenaCfg : Base<OrtArenaCfg> {
 // Custom OPs (only needed to implement custom OPs)
 //
 
+/// <summary>
+/// This struct provides life time management for custom op attribute
+/// </summary>
+struct OpAttr : Base<OrtOpAttr> {
+  OpAttr(const char* name, const void* data, int len, OrtOpAttrType type);
+};
+
+/// <summary>
+/// This class wraps a raw pointer OrtKernelContext* that is being passed
+/// to the custom kernel Compute() method. Use it to safely access context
+/// attributes, input and output parameters with exception safety guarantees.
+/// See usage example in onnxruntime/test/testdata/custom_op_library/custom_op_library.cc
+/// </summary>
+struct KernelContext {
+  explicit KernelContext(OrtKernelContext* context);
+  size_t GetInputCount() const;
+  size_t GetOutputCount() const;
+  Unowned<const Value> GetInput(size_t index) const;
+  Unowned<Value> GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
+  Unowned<Value> GetOutput(size_t index, const std::vector<int64_t>& dims) const;
+  void* GetGPUComputeStream() const;
+
+ private:
+  OrtKernelContext* ctx_;
+};
+
+/// <summary>
+/// This struct owns the OrtKernInfo* pointer when a copy is made.
+/// For convenient wrapping of OrtKernelInfo* passed to kernel constructor
+/// and query attributes, warp the pointer with Ort::Unowned<KernelInfo> instance
+/// so it does not destroy the pointer the kernel does not own.
+/// </summary>
+struct KernelInfo : Base<OrtKernelInfo> {
+  explicit KernelInfo(std::nullptr_t) {} ///< Create an empty instance to initialize later
+  explicit KernelInfo(OrtKernelInfo* info); ///< Take ownership of the instance
+  KernelInfo Copy() const;
+  
+  template <typename T>  // T is only implemented for float, int64_t, and string
+  T GetAttribute(const char* name) const;
+
+  template <typename T>  // T is only implemented for std::vector<float>, std::vector<int64_t>
+  std::vector<T>  GetAttributes(const char* name) const;
+};
+
+/// <summary>
+/// Create and own custom defined operation.
+/// </summary>
+struct Op : Base<OrtOp> {
+  explicit Op(std::nullptr_t) {}  ///< Create an empty Operator object, must be assigned a valid one to be used
+  
+  explicit Op(OrtOp*);  ///< Take ownership of the OrtOp
+  
+  static Op Create(const OrtKernelInfo* info, const char* op_name, const char* domain,
+                  int version, const char** type_constraint_names,
+                  const ONNXTensorElementDataType* type_constraint_values,
+                  size_t type_constraint_count,
+                  const OpAttr* attr_values,
+                  size_t attr_count,
+                  size_t input_count, size_t output_count);
+
+  void Invoke(const OrtKernelContext* context,
+              const Value* input_values,
+              size_t input_count,
+              Value* output_values,
+              size_t output_count);
+
+  // For easier refactoring
+  void Invoke(const OrtKernelContext* context,
+              const OrtValue* const* input_values,
+              size_t input_count,
+              OrtValue* const* output_values,
+              size_t output_count);
+};
+
+/// <summary>
+/// This entire structure is deprecated, but we not marking
+/// it as a whole yet since we want to preserve for the next release.
+/// </summary>
 struct CustomOpApi {
   CustomOpApi(const OrtApi& api) : api_(api) {}
 
-  template <typename T>  // T is only implemented for std::vector<float>, std::vector<int64_t>, float, int64_t, and string
-  T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
-
+  /** \deprecated use Ort::Value::GetTensorTypeAndShape()
+   * [[deprecated]]
+   * This interface produces a pointer that must be released. Not exception safe.
+   */
+  [[deprecated("use Ort::Value::GetTensorTypeAndShape()")]]
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);
+
+  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetElementCount()
+   * [[deprecated]]
+   * This interface is redundant.
+   */
+  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetElementCount()")]]
   size_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);
+
+  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetElementType()
+   * [[deprecated]]
+   * This interface is redundant.
+   */
+  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetElementType()")]]
   ONNXTensorElementDataType GetTensorElementType(const OrtTensorTypeAndShapeInfo* info);
+
+  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetDimensionsCount()
+   * [[deprecated]]
+   * This interface is redundant.
+   */
+  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetDimensionsCount()")]]
   size_t GetDimensionsCount(_In_ const OrtTensorTypeAndShapeInfo* info);
+
+  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetShape()
+   * [[deprecated]]
+   * This interface is redundant.
+   */
+  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetShape()")]]
   void GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
+
+  /** \deprecated
+   * [[deprecated]]
+   * This interface sets dimensions to TensorTypeAndShapeInfo, but has no effect on the OrtValue.
+   */
+  [[deprecated("Do not use")]]
   void SetDimensions(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
 
+  /** \deprecated use Ort::Value::GetTensorMutableData()
+   * [[deprecated]]
+   * This interface is redundant.
+   */
   template <typename T>
+  [[deprecated("use Ort::Value::GetTensorMutableData()")]]
   T* GetTensorMutableData(_Inout_ OrtValue* value);
+
+  /** \deprecated use Ort::Value::GetTensorData()
+   * [[deprecated]]
+   * This interface is redundant.
+   */
   template <typename T>
+  [[deprecated("use Ort::Value::GetTensorData()")]]
   const T* GetTensorData(_Inout_ const OrtValue* value);
 
+  /** \deprecated use Ort::Value::GetTensorMemoryInfo()
+   * [[deprecated]]
+   * This interface is redundant.
+   */
+  [[deprecated("use Ort::Value::GetTensorMemoryInfo()")]]
   const OrtMemoryInfo* GetTensorMemoryInfo(_In_ const OrtValue* value);
 
+  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetShape()
+   * [[deprecated]]
+   * This interface is redundant.
+   */
+  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetShape()")]]
   std::vector<int64_t> GetTensorShape(const OrtTensorTypeAndShapeInfo* info);
+
+  /** \deprecated use TensorTypeAndShapeInfo instances for automatic ownership.
+   * [[deprecated]]
+   * This interface is not exception safe.
+   */
+  [[deprecated("use TensorTypeAndShapeInfo")]]
   void ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* input);
+
+  /** \deprecated use Ort::KernelContext::GetInputCount
+   * [[deprecated]]
+   * This interface is redundant.
+   */
+  [[deprecated("use Ort::KernelContext::GetInputCount")]]
   size_t KernelContext_GetInputCount(const OrtKernelContext* context);
+
+  /** \deprecated use Ort::KernelContext::GetInput
+   * [[deprecated]]
+   * This interface is redundant.
+   */
+  [[deprecated("use Ort::KernelContext::GetInput")]]
   const OrtValue* KernelContext_GetInput(const OrtKernelContext* context, _In_ size_t index);
+
+  /** \deprecated use Ort::KernelContext::GetOutputCount
+   * [[deprecated]]
+   * This interface is redundant.
+   */
+  [[deprecated("use Ort::KernelContext::GetOutputCount")]]
   size_t KernelContext_GetOutputCount(const OrtKernelContext* context);
+
+  /** \deprecated use Ort::KernelContext::GetOutput
+   * [[deprecated]]
+   * This interface is redundant.
+   */
+  [[deprecated("use Ort::KernelContext::GetOutput")]]
   OrtValue* KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
+
+  /** \deprecated use Ort::KernelContext::GetGPUComputeStream
+   * [[deprecated]]
+   * This interface is redundant.
+   */
+  [[deprecated("use Ort::KernelContext::GetGPUComputeStream")]]
   void* KernelContext_GetGPUComputeStream(const OrtKernelContext* context);
 
+  /** \deprecated use Ort::ThrowOnError()
+   * [[deprecated]]
+   * This interface is redundant.
+   */
+  [[deprecated("use Ort::ThrowOnError()")]]
   void ThrowOnError(OrtStatus* result);
 
+  /** \deprecated use Ort::OpAttr
+   * [[deprecated]]
+   * This interface is not exception safe.
+   */
+  [[deprecated("use Ort::OpAttr")]]
   OrtOpAttr* CreateOpAttr(_In_ const char* name,
                           _In_ const void* data,
                           _In_ int len,
                           _In_ OrtOpAttrType type);
 
+  /** \deprecated use Ort::OpAttr
+   * [[deprecated]]
+   * This interface is not exception safe.
+   */
+  [[deprecated("use Ort::OpAttr")]]
   void ReleaseOpAttr(_Frees_ptr_opt_ OrtOpAttr* op_attr);
 
+  /** \deprecated use Ort::Op
+   * [[deprecated]]
+   * This interface is not exception safe.
+   */
+  [[deprecated("use Ort::Op")]]
   OrtOp* CreateOp(_In_ const OrtKernelInfo* info,
                   _In_ const char* op_name,
                   _In_ const char* domain,
@@ -1098,6 +1357,11 @@ struct CustomOpApi {
                   _In_ int input_count,
                   _In_ int output_count);
 
+  /** \deprecated use Ort::Op::Invoke
+   * [[deprecated]]
+   * This interface is redundant
+   */
+  [[deprecated("use Ort::Op::Invoke")]]
   void InvokeOp(_In_ const OrtKernelContext* context,
                 _In_ const OrtOp* ort_op,
                 _In_ const OrtValue* const* input_values,
@@ -1105,10 +1369,36 @@ struct CustomOpApi {
                 _Inout_ OrtValue* const* output_values,
                 _In_ int output_count);
 
+  /** \deprecated use Ort::Op for automatic lifespan management.
+   * [[deprecated]]
+   * This interface is not exception safe.
+   */
+  [[deprecated("use Ort::Op")]]
   void ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op);
 
+  /** \deprecated use Ort::KernelInfo for automatic lifespan management or for
+   * querying attributes
+   * [[deprecated]]
+   * This interface is redundant
+   */
+  template <typename T>  // T is only implemented for std::vector<float>, std::vector<int64_t>, float, int64_t, and string
+  [[deprecated("use Ort::KernelInfo::GetAttribute")]]
+  T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
+
+  /** \deprecated use Ort::KernelInfo::Copy
+   * querying attributes
+   * [[deprecated]]
+   * This interface is not exception safe
+   */
+  [[deprecated("use Ort::KernelInfo::Copy")]]
   OrtKernelInfo* CopyKernelInfo(_In_ const OrtKernelInfo* info);
 
+  /** \deprecated use Ort::KernelInfo for lifespan management
+   * querying attributes
+   * [[deprecated]]
+   * This interface is not exception safe
+   */
+  [[deprecated("use Ort::KernelInfo")]]
   void ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_copy);
 
  private:
