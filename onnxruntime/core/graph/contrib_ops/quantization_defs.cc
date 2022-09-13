@@ -244,40 +244,49 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
 static const char* QuantizeBFP_ver1_doc = R"DOC(
 The BFP quantization operator. It consumes a full precision tensor and computes an BFP tensor.)DOC";
 
-ONNX_MS_OPERATOR_SET_SCHEMA(QuantizeBFP, 1,
-                            OpSchema()
-                                .Attr("bfp_type", "The type of BFP - must match with the BFPType enum",
-                                      AttributeProto::INT)
-                                .Attr("bounding_box_dims",
-                                      "Each bounding box spans these dimensions. If not specified, then it is up to "
-                                      "the implementation to decide.",
-                                      AttributeProto::INTS, false)
-                                .Input(0, "x", "N-D full precision input tensor to be quantized.", "T1")
-                                .Output(0, "y", "1-D, contiguous BFP data", "T2")
-                                .Output(1, "shape", "Shape of x", "T3")
-                                .Output(2, "strides", "Strides of x", "T3")
-                                .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                                                "Constrain the input to float and bfloat.")
-                                .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain y to uint8.")
-                                .TypeConstraint("T3", {"tensor(int64)"}, "Constrain shape and strides to uint64.")
-                                .SetDoc(QuantizeBFP_ver1_doc)
-                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-                                  if (!hasInputShape(ctx, 0)) return;
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    QuantizeBFP, 1,
+    OpSchema()
+        .Attr("bfp_type", "The type of BFP - must match with the BFPType enum", AttributeProto::INT)
+        .Attr("bounding_box_dims",
+              "Each bounding box spans these dimensions. If not specified, then it is up to "
+              "the implementation to decide.",
+              AttributeProto::INTS, false)
+        .Input(0, "x", "N-D full precision input tensor to be quantized.", "T1")
+        .Output(0, "y", "1-D, contiguous BFP data", "T2")
+        .Output(1, "shape", "Shape of x", "T3")
+        .Output(2, "strides", "Strides of x", "T3")
+        .TypeConstraint("T1", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain the input to float and bfloat.")
+        .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain y to uint8.")
+        .TypeConstraint("T3", {"tensor(int64)"}, "Constrain shape and strides to uint64.")
+        .SetDoc(QuantizeBFP_ver1_doc)
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          // Shape of raw, quantized tensor is specific to the hardware; for example, different hardware pad the data in
+          // different ways. So do not set the shape.
+          ONNX_NAMESPACE::setTensorElementType(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8,
+                                               ONNX_NAMESPACE::TypeProto::kTensorType, *ctx.getOutputType(0));
+          ONNX_NAMESPACE::setTensorElementType(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+                                               ONNX_NAMESPACE::TypeProto::kTensorType, *ctx.getOutputType(1));
+          ONNX_NAMESPACE::setTensorElementType(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+                                               ONNX_NAMESPACE::TypeProto::kTensorType, *ctx.getOutputType(2));
 
-                                  auto& input_shape = getInputShape(ctx, 0);
-                                  auto bounding_box_dims_proto = ctx.getAttribute("bounding_box_dims");
-                                  if (bounding_box_dims_proto != nullptr) {
-                                    auto bounding_box_dims = bounding_box_dims_proto->ints();
-                                    auto bfp_type = static_cast<BFPType>(ctx.getAttribute("bfp_type")->i());
-                                    CheckFitsInsideBoundingBox(input_shape, bounding_box_dims, bfp_type);
-                                  }
+          if (!hasInputShape(ctx, 0)) return;
 
-                                  auto num_dims = input_shape.dim_size();
-                                  ONNX_NAMESPACE::TensorShapeProto::Dimension num_dims_proto;
-                                  num_dims_proto.set_dim_value(num_dims);
-                                  updateOutputShape(ctx, 1, {num_dims_proto});
-                                  updateOutputShape(ctx, 2, {num_dims_proto});
-                                }));
+          auto& input_shape = getInputShape(ctx, 0);
+          auto bounding_box_dims_proto = ctx.getAttribute("bounding_box_dims");
+          if (bounding_box_dims_proto != nullptr) {
+            auto bounding_box_dims = bounding_box_dims_proto->ints();
+            auto bfp_type = static_cast<BFPType>(ctx.getAttribute("bfp_type")->i());
+            CheckFitsInsideBoundingBox(input_shape, bounding_box_dims, bfp_type);
+          }
+
+          auto num_dims = input_shape.dim_size();
+          ONNX_NAMESPACE::TensorShapeProto::Dimension num_dims_proto;
+          num_dims_proto.set_dim_value(num_dims);
+          updateOutputShape(ctx, 1, {num_dims_proto});
+          updateOutputShape(ctx, 2, {num_dims_proto});
+        }));
 
 static const char* DequantizeBFP_ver1_doc = R"DOC(
 The BFP dequantization operator. It consumes the raw BFP data and some metadata such as the shape and strides of the original tensor and computes the dequantized tensor.)DOC";
