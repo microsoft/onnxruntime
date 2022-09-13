@@ -444,7 +444,7 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
   p.input_width_mul_y2 = p.input_width_mul_y1 + output_height;
 
   // stride for width is 1 (no multiplication needed)
-  p.in_x1 = p.input_width_mul_y1 + 2 * output_height;
+  p.in_x1 = p.input_width_mul_y1 + output_height + output_height;
   p.in_x2 = p.in_x1 + output_width;
 
   auto* const scale_data = reinterpret_cast<float*>(p.in_x2 + output_width);
@@ -452,7 +452,7 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
   p.dy1 = scale_data;
   p.dy2 = p.dy1 + output_height;
 
-  p.dx1 = p.dy1 + 2UL * output_height;  // 2UL is to make prefast happy
+  p.dx1 = p.dy1 + output_height + output_height;
   p.dx2 = p.dx1 + output_width;
 
   // Start processing
@@ -549,7 +549,7 @@ BilinearParamsInteger SetupUpsampleBilinearInteger(const int32_t input_height,
   p.input_width_mul_y2 = p.input_width_mul_y1 + output_height;
 
   // stride for width is 1 (no multiplication needed)
-  p.in_x1 = p.input_width_mul_y1 + 2 * output_height;
+  p.in_x1 = p.input_width_mul_y1 + output_height + output_height;
   p.in_x2 = p.in_x1 + output_width;
 
   auto* const scale_data = reinterpret_cast<int32_t*>(p.in_x2 + output_width);
@@ -557,7 +557,7 @@ BilinearParamsInteger SetupUpsampleBilinearInteger(const int32_t input_height,
   p.dy1_scale_10 = scale_data;
   p.dy2_scale_10 = p.dy1_scale_10 + output_height;
 
-  p.dx1_scale_10 = p.dy1_scale_10 + 2 * output_height;
+  p.dx1_scale_10 = p.dy1_scale_10 + output_height + output_height;
   p.dx2_scale_10 = p.dx1_scale_10 + output_width;
 
   // Start processing
