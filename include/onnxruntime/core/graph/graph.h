@@ -45,7 +45,6 @@
 #endif
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
-#include "core/graph/runtime_optimization_record.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
