@@ -289,7 +289,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("bounding_box_dims",
               "Each bounding box spans these dimensions. If not specified, then it is up to the implementation to "
               "decide.",
-              AttributeProto::INTS)
+              AttributeProto::INTS, false)
         .Attr("dtype", "The datatype to dequantize to.", AttributeProto::INT,
               static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT))  // default
         .Input(0, "x", "1-D, contiguous, raw, BFP data to be de-quantized.", "T1")

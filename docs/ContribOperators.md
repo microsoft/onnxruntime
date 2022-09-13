@@ -1000,7 +1000,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>bfp_type</tt> : int (required)</dt>
 <dd>The type of BFP - must match with the BFPType enum</dd>
-<dt><tt>bounding_box_dims</tt> : list of ints (required)</dt>
+<dt><tt>bounding_box_dims</tt> : list of ints</dt>
 <dd>Each bounding box spans these dimensions. If not specified, then it is up to the implementation to decide.</dd>
 <dt><tt>dtype</tt> : int</dt>
 <dd>The datatype to dequantize to.</dd>
