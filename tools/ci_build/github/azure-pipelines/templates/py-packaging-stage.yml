@@ -161,111 +161,8 @@ stages:
         parameters:
           condition: 'succeeded'
 
-      - template: clean-agent-build-directory-step.yml
-
-  - ${{ if eq(parameters.enable_linux_cpu, true) }}:
-    - job: Linux_CPU_py_Wheels
-      timeoutInMinutes: 90
-      workspace:
-        clean: all
-      pool: Linux-CPU
-      strategy:
-        matrix:
-          Python37:
-            PythonVersion: '3.7'
-          Python38:
-            PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
-          Python310:
-            PythonVersion: '3.10'
-      steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
-
-      - template: set-python-manylinux-variables-step.yml
-
-      - template: get-docker-image-steps.yml
-        parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
-          Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-          Repository: onnxruntimecpubuild
-
-      - task: CmdLine@2
-        displayName: 'Build Python Wheel'
-        inputs:
-          script: |
-            mkdir -p $HOME/.onnx
-            docker run --rm \
-              --volume /data/onnx:/data/onnx:ro \
-              --volume $(Build.SourcesDirectory):/onnxruntime_src \
-              --volume $(Build.BinariesDirectory):/build \
-              --volume /data/models:/build/models:ro \
-              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-              -e NIGHTLY_BUILD \
-              -e BUILD_BUILDNUMBER \
-              onnxruntimecpubuild \
-                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build --cmake_generator Ninja \
-                  --config Release --update --build \
-                  --skip_submodule_sync \
-                  --parallel \
-                  --enable_lto \
-                  --build_wheel \
-                  --enable_onnx_tests \
-                  ${{ parameters.build_py_parameters }}
-          workingDirectory: $(Build.SourcesDirectory)
-
-      - task: CmdLine@2
-        displayName: 'Running tests'
-        condition: and(succeeded(), eq(variables['PythonVersion'], '3.8'))
-        inputs:
-          script: |
-            set -e -x
-            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-            sudo rm -f /build /onnxruntime_src
-            sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
-            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
-            cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
-            # Test ORT with the latest ONNX release.
-            sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
-            python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-            python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
-            cd $(Build.BinariesDirectory)/Release
-            ls $(Build.BinariesDirectory)/models
-            rmdir $(Build.BinariesDirectory)/models
-            ln -sf /data/models $(Build.BinariesDirectory)
-            python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
-                  --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
-                  --config Release --test \
-                  --skip_submodule_sync \
-                  --parallel \
-                  --enable_lto \
-                  --build_wheel \
-                  --enable_onnx_tests \
-                  ${{ parameters.build_py_parameters }} \
-                  --ctest_path ''
-
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)'
-          Contents: 'Release/dist/*.whl'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
-     
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
-        inputs:
-          ArtifactName: onnxruntime
-
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
-
-      - template: clean-agent-build-directory-step.yml
-
+      - template: clean-agent-build-directory-step.yml  
+   
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
     - job: Linux_py_GPU_Wheels
@@ -919,7 +816,15 @@ stages:
           condition: 'succeeded'
 
   - ${{ if eq(parameters.enable_linux_arm, true) }}:
-      - template: py-linux-arm.yaml
+      - template: py-linux.yml
         parameters:
-          build_py_parameters: ${{ parameters.build_py_parameters }}
+          arch: 'aarch64'
+          machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
+          base_image: 'arm64v8/centos:7'
 
+  - ${{ if eq(parameters.enable_linux_cpu, true) }}:
+      - template: py-linux.yml
+        parameters:
+          arch: 'x86_64'
+          machine_pool: 'Azure-Pipelines-EO-Ubuntu-2004-aiinfra'
+          base_image: 'centos:7'

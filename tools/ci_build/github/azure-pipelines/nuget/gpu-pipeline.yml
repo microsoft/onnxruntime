@@ -1,9 +1,0 @@
-variables:
-  PackageName: 'Microsoft.ML.OnnxRuntime.Gpu'
-  TESTONGPU: 'ON'
-
-jobs: 
-- template: templates/gpu.yml
-  parameters:
-    AgentPool : 'onnxruntime-gpu-winbuild'
-    DoEsrp: 'false'
