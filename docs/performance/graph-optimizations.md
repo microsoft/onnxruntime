@@ -60,10 +60,10 @@ These optimizations include complex node fusions. They are run after graph parti
 | GEMM Activation Fusion          | CPU                |                                                                             |
 | Matmul Add Fusion               | CPU                |                                                                             |
 | Conv Activation Fusion          | CPU                |                                                                             |
-| GELU Fusion                     | CPU or CUDA or ROCm        |                                                                             |
-| Layer Normalization Fusion      | CPU or CUDA or ROCm        |                                                                             |
+| GELU Fusion                     | CPU or CUDA or ROCm       |                                                                             |
+| Layer Normalization Fusion      | CPU or CUDA or ROCm       |                                                                             |
 | BERT Embedding Layer Fusion     | CPU or CUDA or ROCm       | Fuse BERT embedding layer, layer normalization and attention mask length    |
-| Attention Fusion*               | CPU or CUDA or ROCm        |                                                                             |
+| Attention Fusion*               | CPU or CUDA or ROCm       |                                                                             |
 | Skip Layer Normalization Fusion | CPU or CUDA or ROCm       | Fuse bias of fully connected layer, skip connection and layer normalization |
 | Bias GELU Fusion                | CPU or CUDA or ROCm       | Fuse bias of fully connected layer and GELU activation                      |
 | GELU Approximation*             | CUDA or ROCm              | Disabled by default. Enable with [kOrtSessionOptionsEnableGeluApproximation](https://cs.github.com/microsoft/onnxruntime/blob/175acf08f470db0bb2e4b8eefe55cdeb87c8b132/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h?q=kOrtSessionOptionsEnableGeluApproximation#L52) |
