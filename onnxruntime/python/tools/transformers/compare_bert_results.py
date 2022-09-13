@@ -6,23 +6,13 @@
 # It is a tool to compare the inference results of the original model and optimized model.
 
 import argparse
-import csv
-import os
-import random
 import statistics
-import sys
-import timeit
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import onnx
-import onnx.utils
 import psutil
 from bert_perf_test import create_session, onnxruntime_inference
 from bert_test_data import generate_test_data, get_bert_inputs, output_test_data
-from onnx import ModelProto, TensorProto, numpy_helper
-from onnx_model import OnnxModel
 
 
 def run_model(model_path, all_inputs, use_gpu, disable_optimization):
@@ -34,7 +24,9 @@ def run_model(model_path, all_inputs, use_gpu, disable_optimization):
 
     intra_op_num_threads = psutil.cpu_count(logical=False)
 
-    session = create_session(model_path, use_gpu, intra_op_num_threads, graph_optimization_level)
+    session = create_session(
+        model_path, use_gpu, "cuda" if use_gpu else "cpu", intra_op_num_threads, graph_optimization_level
+    )
 
     output_names = [output.name for output in session.get_outputs()]
     results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
