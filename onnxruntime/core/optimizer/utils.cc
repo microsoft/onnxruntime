@@ -165,10 +165,12 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, I
   if (require_constant && !graph_utils::IsConstantInitializer(graph, input_arg.Name(), true)) {
     return false;
   }
+
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
     return false;
   }
+
   Initializer init_const{*tensor_proto, graph.ModelPath()};
   const auto data_type = tensor_proto->data_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
@@ -184,6 +186,7 @@ bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, I
   } else {
     return false;
   }
+
   return true;
 }
 
