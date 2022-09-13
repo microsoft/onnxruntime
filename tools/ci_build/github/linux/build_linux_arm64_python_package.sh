@@ -6,7 +6,7 @@ CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-st
 arch=$(uname -i)
 if [[ $arch == x86_64* ]]; then
     CFLAGS="$CFLAGS -fcf-protection"
-	CXXFLAGS="$CFLAGS -fcf-protection"
+    CXXFLAGS="$CFLAGS -fcf-protection"
 fi
 export CFLAGS
 export CXXFLAGS
