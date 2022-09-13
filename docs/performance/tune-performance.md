@@ -49,7 +49,7 @@ In both cases, you will get a JSON file which contains the detailed performance 
 * Type chrome://tracing in the address bar
 * Load the generated JSON file
 
-To profile CUDA/ROCm kernels, please add the cupti library to your PATH and use the onnxruntime binary built from source with `--enable_cuda_profiling`/`--enable_rocm_profiling`. Performance numbers from the device will then be attached to those from the host. For example:
+To profile CUDA or ROCm kernels, please add the cupti library to your PATH and use the onnxruntime binary built from source with `--enable_cuda_profiling` or `--enable_rocm_profiling`. Performance numbers from the device will then be attached to those from the host. For example:
 
 ```json
 {"cat":"Node", "name":"Add_1234", "dur":17, ...}
@@ -74,11 +74,14 @@ It is convenient to compare the performance of an oparator on different platform
 
 If you test one operator, you will get the performance numbers of target operator with various input shapes.
 For example:
-```
-python matmul.py --provider [cuda|rocm|cpu] --precision [fp32|fp16] --profiling [True|False] 
-```
 
-```
+`
+python matmul.py --provider [cuda|rocm|cpu] --precision [fp32|fp16] --profiling [True|False] 
+`
+
+The output is as below:
+
+```dos
 INFO:benchmark:Execution provider: ROCMExecutionProvider
 INFO:benchmark:Model: models/matmul_fp32.onnx
 (b1 b2 m k n) = (1 1 384 1024 1024),  0.0856 ms, 9.41 tflops
