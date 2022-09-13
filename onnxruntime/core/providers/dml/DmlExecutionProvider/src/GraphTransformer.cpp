@@ -84,9 +84,10 @@ namespace Dml
         // graph while iterating over it
         std::vector<NodeToAdd> nodesToAdd;
 
+        onnxruntime::ProviderType provider_type = onnxruntime::kDmlExecutionProvider;
+        const gsl::not_null<const onnxruntime::KernelRegistry*> registry = m_providerImpl->GetKernelRegistry().get();
         const auto kernel_type_str_resolver = onnxruntime::AutoRegisteringKernelTypeStrResolver{};
-        gsl::not_null<const onnxruntime::KernelRegistry*> registry = m_providerImpl->GetKernelRegistry().get();
-        const auto kernel_lookup = onnxruntime::KernelLookup{onnxruntime::kDmlExecutionProvider,
+        const auto kernel_lookup = onnxruntime::KernelLookup{provider_type,
                                                              gsl::make_span(&registry, 1),
                                                              kernel_type_str_resolver};
 
