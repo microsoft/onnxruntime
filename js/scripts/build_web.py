@@ -9,13 +9,13 @@ import sys
 from os.path import abspath, dirname
 
 CURRENT_FOLDER = abspath(dirname(__file__))
-ROOT_DIR = os.path.normpath(os.path.join(CURRENT_FOLDER, "..\\..\\"))
+ROOT_DIR = os.path.normpath(os.path.join(CURRENT_FOLDER, "../../"))
 
-BUILD_SCRIPT = "source build.sh"
+BUILD_SCRIPT = "./build.sh"
 if sys.platform.startswith("win"):
     BUILD_SCRIPT = "build.bat"
 
-DEFAULT_FLAGS = " --build_wasm --skip_tests --skip_submodule_sync --parallel "
+DEFAULT_FLAGS = " --build_wasm --skip_tests --parallel "
 BINARIES_DIR = os.path.normpath(os.path.join(ROOT_DIR, "./build/"))
 DIST_PATH = os.path.normpath(os.path.join(ROOT_DIR, "./js/web/dist/"))
 BINDING_PATH = os.path.normpath(os.path.join(ROOT_DIR, "./js/web/lib/wasm/binding/"))
@@ -84,6 +84,9 @@ for entry in BUILDS:
         + " "
         + entry["wasm_flags"]
     )
+
+    print(command)
+
     with subprocess.Popen(command, shell=True, cwd=ROOT_DIR) as p:
         p.wait()
         if not os.path.exists(os.path.join(BINARIES_DIR, entry["dir"], CONFIGURATION, entry["wasm_file_name"])) and (
