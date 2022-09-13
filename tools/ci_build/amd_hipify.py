@@ -12,9 +12,15 @@ from logger import get_logger
 
 log = get_logger("amd_hipify")
 
-contrib_ops_path = "onnxruntime/contrib_ops"
-providers_path = "onnxruntime/core/providers"
-training_ops_path = "orttraining/orttraining/training_ops"
+
+def path_in_repo(path):
+    repo_root = os.path.relpath(os.path.join(os.path.dirname(__file__), "../.."))
+    return os.path.join(repo_root, path)
+
+
+contrib_ops_path = path_in_repo("onnxruntime/contrib_ops")
+providers_path = path_in_repo("onnxruntime/core/providers")
+training_ops_path = path_in_repo("orttraining/orttraining/training_ops")
 
 
 def is_excluded(f, excluded_patterns):
