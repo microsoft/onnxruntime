@@ -53,7 +53,7 @@ parameters:
   default: false
 
 stages:
-- stage: Python_Packaging
+- stage: Cuda_Python_Packaging
 
   variables:
     - name: isMain

@@ -9,7 +9,7 @@ class QLinearSoftmax(QuantOperatorBase):
     def quantize(self):
         node = self.node
         # set limitations for softmax output scale and zp, because the output of softmax is always 0-1
-        if self.quantizer.input_qType == onnx.onnx_pb.TensorProto.UINT8:
+        if self.quantizer.activation_qType == onnx.onnx_pb.TensorProto.UINT8:
             out_scale = 1 / 256.0
             out_zero_point = 0
         else:
@@ -30,7 +30,7 @@ class QLinearSoftmax(QuantOperatorBase):
             input_zero_point_names,
             input_scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [0])
+        ) = self.quantizer.quantize_activation(node, [0])
 
         if not data_found or quantized_input_names is None:
             return super().quantize()
@@ -77,7 +77,7 @@ class QLinearSoftmax(QuantOperatorBase):
 class QDQSoftmax(QDQOperatorBase):
     def quantize(self):
         super().quantize()
-        if self.quantizer.input_qType == onnx.onnx_pb.TensorProto.UINT8:
+        if self.quantizer.activation_qType == onnx.onnx_pb.TensorProto.UINT8:
             out_scale = 1 / 256.0
             out_zero_point = 0
         else:

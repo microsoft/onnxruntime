@@ -135,6 +135,10 @@ class CudaKernel : public OpKernel {
     return provider_->PerThreadCublasHandle();
   }
 
+  inline cublasLtHandle_t CublasLtHandle() const {
+    return provider_->PerThreadCublasLtHandle();
+  }
+
   inline cudnnHandle_t CudnnHandle() const {
     return provider_->PerThreadCudnnHandle();
   }

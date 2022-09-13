@@ -25,7 +25,9 @@ with fileinput.FileInput(filename, inplace=True) as file:
 
 extra_compile_args = {"cxx": ["-O3"]}
 if not use_rocm:
-    extra_compile_args.update({"nvcc": os.environ["ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS"].split(",")})
+    nvcc_extra_args = os.environ.get("ONNXRUNTIME_CUDA_NVCC_EXTRA_ARGS", "")
+    if nvcc_extra_args:
+        extra_compile_args.update({"nvcc": nvcc_extra_args.split(",")})
 
 setup(
     name="torch_gpu_allocator",
