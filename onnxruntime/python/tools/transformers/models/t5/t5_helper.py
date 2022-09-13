@@ -20,7 +20,6 @@ from onnxruntime import InferenceSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from float16 import float_to_float16_max_diff
-from fusion_utils import FusionUtils
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 
@@ -217,10 +216,6 @@ class T5Helper:
 
         logger.info(f"auto_mixed_precision parameters: {parameters}")
         onnx_model.convert_float_to_float16(use_symbolic_shape_infer=True, **parameters)
-
-        fusion_utils = FusionUtils(onnx_model)
-        fusion_utils.remove_cascaded_cast_nodes()
-        fusion_utils.remove_useless_cast_nodes()
 
         return parameters
 
