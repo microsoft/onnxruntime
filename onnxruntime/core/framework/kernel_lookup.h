@@ -43,7 +43,7 @@ class KernelLookup : public IExecutionProvider::IKernelLookup {
   }
 
  private:
-  const ProviderType provider_type_;
+  ProviderType provider_type_;
   const gsl::span<const gsl::not_null<const KernelRegistry*>> kernel_registries_;
   const IKernelTypeStrResolver& kernel_type_str_resolver_;
 };
