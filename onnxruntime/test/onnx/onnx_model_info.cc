@@ -59,6 +59,7 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  /
     re2::StringPiece text(model_url_string);
     re2::StringPiece submatch;
     re2::RE2 regex("onnx[0-9a-z]{3}", re2::RE2::Options());  //e.g. onnx141, onnx150, onnxtip
+    re2::RE2 regex_op("opset[0-9a-z]{1,2}", re2::RE2::Options());  //e.g. opset14, opset15
     if (!regex.ok()) {
       ORT_THROW("Failed to parse regex: onnx[0-9a-z]{3}");
     }
@@ -67,6 +68,13 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  /
       onnx_commit_tag_.assign(submatch.data(), submatch.length());
     } else {
       onnx_commit_tag_ = TestModelInfo::unknown_version;
+    }
+
+    match = regex_op.Match(text, 0, text.length(), re2_anchor, &submatch, 1);
+    if (match) {
+      onnx_nominal_opset_vesion_.assign(submatch.data(), submatch.length());
+    } else {
+      onnx_nominal_opset_vesion_ = TestModelInfo::unknown_version;
     }
   }
   for (const auto& opset : model_pb.opset_import()) {

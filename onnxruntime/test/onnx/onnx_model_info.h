@@ -9,6 +9,7 @@ class OnnxModelInfo : public TestModelInfo {
  private:
   std::string node_name_;
   std::string onnx_commit_tag_;
+  std::string onnx_nominal_opset_vesion_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> output_value_info_;
   std::unordered_map<std::string, int64_t> domain_to_version_;
@@ -33,6 +34,7 @@ class OnnxModelInfo : public TestModelInfo {
 
   const PATH_CHAR_TYPE* GetModelUrl() const override { return model_url_.c_str(); }
   std::string GetModelVersion() const override { return onnx_commit_tag_; }
+  std::string GetNominalOpsetVersion() const override { return onnx_nominal_opset_vesion_;  }
 
   const std::string& GetNodeName() const override { return node_name_; }
 

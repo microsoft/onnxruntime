@@ -69,11 +69,16 @@ struct BrokenTest {
   std::string test_name_;
   std::string reason_;
   std::set<std::string> broken_versions_ = {};  // apply to all versions if empty
+  std::set<std::string> broken_opset_versions_ = {};
   BrokenTest(std::string name, std::string reason) : test_name_(std::move(name)), reason_(std::move(reason)) {
   }
 
   BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions)
       : test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions) {
+  }
+
+  BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions, const std::initializer_list<std::string>& opversions)
+      : test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions), broken_opset_versions_(opversions) {
   }
 
   bool operator<(const struct BrokenTest& test) const {
@@ -126,7 +131,6 @@ TEST_P(ModelTest, Run) {
     return;
   }
 #endif
-  // TODO: filter model based on opset
   std::set<BrokenTest> broken_tests = {
       {"slice_neg_steps",
        "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
@@ -136,9 +140,9 @@ TEST_P(ModelTest, Run) {
       {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
       {"mnist", "Input data isn't in valid range"},
       {"BERT_Squad", "test data bug"},
-      {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
-      {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
-      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {}},
+      {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}, {"opset9", "opset10"}},
+      {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}, {"opset9", "opset10"}},
+      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}, {"opset9", "opset10"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
       // which doesn't match the expected output that was generated with numpy.
@@ -146,7 +150,7 @@ TEST_P(ModelTest, Run) {
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
-      {"shrink", "test case is wrong", {"onnx141"}},
+      {"shrink", "test case is wrong", {"onnx141"}, {"opset9"}},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
       {"tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied"},
@@ -184,7 +188,7 @@ TEST_P(ModelTest, Run) {
       {"castlike_FLOAT_to_BFLOAT16_expanded", "type error", {}},
       {"castlike_FLOAT_to_STRING", "type error", {}},
       {"castlike_FLOAT_to_STRING_expanded", "type error", {}},
-      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {}},
+      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"onnx180", "onnx181", "onnx190"}, {"opset13", "opset14"}},
       {"gru_batchwise", "type error", {}},
       {"lstm_batchwise", "type error", {}},
       {"optional_get_element", "type error", {}},
@@ -591,9 +595,16 @@ TEST_P(ModelTest, Run) {
     BrokenTest t = {ToUTF8String(test_case_name), ""};
     auto iter = broken_tests.find(t);
     auto model_version = model_info->GetModelVersion();
-    if (iter != broken_tests.end() &&
-        (model_version == TestModelInfo::unknown_version || iter->broken_versions_.empty() ||
-         iter->broken_versions_.find(model_version) != iter->broken_versions_.end())) {
+    auto opset_version = model_info->GetNominalOpsetVersion();
+    if (iter != broken_tests.end() && (iter->broken_versions_.empty() || 
+         iter->broken_versions_.find(model_version) != iter->broken_versions_.end() )) {
+      SkipTest();
+      return;
+    }
+
+    iter = broken_tests.find(t);
+    if (iter != broken_tests.end() && (iter->broken_opset_versions_.empty() ||
+         iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end() )) {
       SkipTest();
       return;
     }
@@ -602,6 +613,7 @@ TEST_P(ModelTest, Run) {
       std::string keyword = *iter2;
       if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
         SkipTest();
+        std::cout << "skip test3" << std::endl;
         return;
       }
     }
@@ -1046,10 +1058,10 @@ TEST_P(ModelTest, Run) {
 #if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 #ifdef _WIN32
     paths.push_back(ORT_TSTR("..\\models"));
-    paths.push_back(ORT_TSTR("..\\onnxops"));
+    paths.push_back(ORT_TSTR("..\\nodedata"));
 #else
     paths.push_back(ORT_TSTR("../models"));
-    paths.push_back(ORT_TSTR("../onnxops"));
+    paths.push_back(ORT_TSTR("../nodedata"));
 #endif
 #endif
 
