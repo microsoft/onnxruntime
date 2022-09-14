@@ -262,6 +262,13 @@ TEST_P(ModelTest, Run) {
   // specific keyword.
   std::set<std::string> broken_tests_keyword_set = {};
 
+  if (provider_name == "cuda") {
+#ifdef _WIN32
+    broken_tests.insert({"LSTM_Seq_lens_unpacked", "this test fails with new image since Aug 25."});
+    broken_tests.insert({"bidaf", "this test fails with new image since Aug 25."});
+#endif
+  }
+
   if (provider_name == "nnapi") {
     broken_tests.insert({"scan9_sum", "Error with the extra graph"});
     broken_tests.insert({"scan_sum", "Error with the extra graph"});
