@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
-#include "contrib_ops/cuda/quantization/qordered_ops/qordered_common.cuh"
 
 #include <cub/cub.cuh>
+
+#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_common.cuh"
 
 using namespace onnxruntime::cuda;
 
@@ -457,7 +458,7 @@ Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream, const cudaDeviceP
                const void* input, cublasLtOrder_t order_input, void* output, cublasLtOrder_t order_output) {
   if (data_type == CUDA_R_8I && order_input == CUBLASLT_ORDER_ROW && order_output == CUBLASLT_ORDER_COL32) {
     return ReorderS8RowToCol32(stream, device_prop, (const int8_t*)input, (int8_t*)output,
-                               (unsigned)batchCount, gsl::narrow<unsigned>(rows), gsl::narrow<unsigned>(cols));
+                               (unsigned)batchCount, static_cast<unsigned>(rows), static_cast<unsigned>(cols));
   }
 
   cublasLtMatrixTransformDesc_t transform_desc = nullptr;

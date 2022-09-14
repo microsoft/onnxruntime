@@ -63,7 +63,7 @@ union U1S2 {
 };
 
 __device__ inline char2 QuantizeHalf2Char2(const __half2 xy, const __half2 inverse_scale2) {
-  __half2 scaled_xy = xy * inverse_scale2;
+  __half2 scaled_xy = __hmul2(xy, inverse_scale2);
   U1S2 s2xy;
   s2xy.s2.x = __half2short_rn(scaled_xy.x);
   s2xy.s2.y = __half2short_rn(scaled_xy.y);
@@ -72,8 +72,8 @@ __device__ inline char2 QuantizeHalf2Char2(const __half2 xy, const __half2 inver
 }
 
 __device__ inline char4 QuantizeHalf4Char4(const __half4 val4, const __half2 inverse_scale2) {
-  __half2 val4_xy = val4.xy * inverse_scale2;
-  __half2 val4_zw = val4.zw * inverse_scale2;
+  __half2 val4_xy = __hmul2(val4.xy, inverse_scale2);
+  __half2 val4_zw = __hmul2(val4.zw, inverse_scale2);
   U1S2 shortxy, shortzw;
   shortxy.s2.x = __half2short_rn(__low2half(val4_xy));
   shortzw.s2.x = __half2short_rn(__low2half(val4_zw));
@@ -96,12 +96,13 @@ __device__ inline char4 QuantizeHalf4Char4Strict(const __half4 val4, const float
 }
 
 __device__ inline __half4 DeqantizeChar4Half4(const char4 ch4, const __half2 scale2) {
-  return {scale2 * __half2(__short2half_rn(ch4.x), __short2half_rn(ch4.y)),
-          scale2 * __half2(__short2half_rn(ch4.z), __short2half_rn(ch4.w))};
+  return {__hmul2(scale2, __half2(__short2half_rn(ch4.x), __short2half_rn(ch4.y))),
+          __hmul2(scale2, __half2(__short2half_rn(ch4.z), __short2half_rn(ch4.w)))};
 }
 
 __device__ inline __half4 DeqantizeChar4Half4Strict(const char4 ch4, const float scale) {
-  return __half4{{__float2half_rn(scale * ch4.x), __float2half_rn(scale * ch4.y)}, {__float2half_rn(scale * ch4.z), __float2half_rn(scale * ch4.w)}};
+  return __half4{{__float2half_rn(scale * ch4.x), __float2half_rn(scale * ch4.y)},
+                 {__float2half_rn(scale * ch4.z), __float2half_rn(scale * ch4.w)}};
 }
 
 }  // namespace cuda

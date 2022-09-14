@@ -3,97 +3,23 @@
 
 // #if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 
-#include "gtest/gtest.h"
-#include "test/common/tensor_op_test_utils.h"
-#include "test/common/cuda_op_test_utils.h"
-#include "test/providers/provider_test_utils.h"
-#include "test/util/include/scoped_env_vars.h"
-#include "contrib_ops/cpu/bert/longformer_attention_base.h"
+// #include "gtest/gtest.h"
+// #include "test/common/tensor_op_test_utils.h"
+// #include "test/common/cuda_op_test_utils.h"
+// #include "test/providers/provider_test_utils.h"
+// #include "test/util/include/scoped_env_vars.h"
+// #include "contrib_ops/cpu/bert/longformer_attention_base.h"
+#include "test/contrib_ops/qordered_test_utils.h"
 
-#include <numeric>
-#include <functional>
-#include <iostream>
-#include <math.h>
+// #include <numeric>
+// #include <functional>
+// #include <iostream>
+// #include <math.h>
 
 namespace onnxruntime {
 namespace test {
 
-
 #ifdef USE_CUDA
-
-enum OrderCublasLt {
-  ORDER_COL = 0,
-  ORDER_ROW = 1,
-  ORDER_COL32 = 2,
-  ORDER_COL4_4R2_8C = 3,
-  ORDER_COL32_2R_4R4 = 4
-};
-
-// generate random data without precision loss if quantized.
-template <typename T>
-static std::vector<T> GenData(std::vector<int64_t> const& shape, float scale) {
-  int64_t n = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
-
-  scale = std::is_same<T, int8_t>::value ? 1.0f : scale;  // using scale = 1.0f to generate int8_t data,
-  std::vector<T> r(n);
-  RandomValueGenerator random{};
-  std::vector<int> tmp = random.Uniform<int32_t>(shape, -128, 127);
-  for (int64_t i = 0; i < n; i++) {
-    r[i] = static_cast<T>(tmp[i] * scale);
-  }
-  return r;
-}
-
-class OrderedIndex {
-  OrderCublasLt order_;
-  int64_t rows_;
-  int64_t cols_;
-
- public:
-  OrderedIndex(OrderCublasLt order, int64_t rows, int64_t cols)
-      : order_(order), rows_(rows), cols_(cols) {}
-
-  int64_t operator()(int64_t r, int64_t c);
-};
-
-int64_t OrderedIndex::operator()(int64_t r, int64_t c) {
-  switch (order_) {
-    case ORDER_ROW:
-      return r * cols_ + c;
-    case ORDER_COL:
-      return c * rows_ + r;
-    case ORDER_COL32: {
-      int64_t tile_id = c / 32;
-      int64_t tile_stride = 32 * rows_;
-      return tile_id * tile_stride + r * 32 + (c % 32);
-    }
-    case ORDER_COL4_4R2_8C: {
-      int64_t tiles_c = c / 32;
-      int64_t tiles_r = r / 8;
-      int64_t tile_idx = tiles_c * (rows_ / 8) + tiles_r;
-      int64_t offset = tile_idx * (32 * 8);
-      offset += (r & 0x1) * (32 * 4);
-      int64_t in_4x4x8_tile_c = c % 32;
-      int64_t in_4x4x8_tile_r = (r % 8) / 2;
-      int64_t in_4x4x8_idx = (in_4x4x8_tile_c / 4) * (4 * 4) + in_4x4x8_tile_r * 4 + (in_4x4x8_tile_c % 4);
-      offset += in_4x4x8_idx;
-      return offset;
-    }
-    case ORDER_COL32_2R_4R4: {
-      // TODO:
-    }
-    default:
-      return 0;
-  }
-}
-
-void BatchRowColFromShape(std::vector<int64_t> const& shape, int64_t& batch, int64_t& rows, int64_t& cols) {
-  cols = shape.back();
-  rows = (shape.size() > 1 ? shape[shape.size() - 2] : 1LL);
-  batch = (shape.size() <= 2)
-              ? 1LL
-              : std::accumulate(shape.data(), shape.data() + (shape.size() - 2), 1LL, std::multiplies<int64_t>());
-}
 
 template <typename TSrc, typename TDst>
 static std::vector<TDst> ReorderAndTransform(const std::vector<int64_t>& shape, const std::vector<TSrc>& src,

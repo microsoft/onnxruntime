@@ -16,6 +16,9 @@ namespace test {
 enum OrderCublasLt {
   ORDER_COL = 0,
   ORDER_ROW = 1,
+  ORDER_COL32 = 2,
+  ORDER_COL4_4R2_8C = 3,
+  ORDER_COL32_2R_4R4 = 4
 };
 
 class OrderedIndex {
@@ -33,6 +36,26 @@ class OrderedIndex {
         return r * cols_ + c;
       case ORDER_COL:
         return c * rows_ + r;
+      case ORDER_COL32: {
+        int64_t tile_id = c / 32;
+        int64_t tile_stride = 32 * rows_;
+        return tile_id * tile_stride + r * 32 + (c % 32);
+      }
+      case ORDER_COL4_4R2_8C: {
+        int64_t tiles_c = c / 32;
+        int64_t tiles_r = r / 8;
+        int64_t tile_idx = tiles_c * (rows_ / 8) + tiles_r;
+        int64_t offset = tile_idx * (32 * 8);
+        offset += (r & 0x1) * (32 * 4);
+        int64_t in_4x4x8_tile_c = c % 32;
+        int64_t in_4x4x8_tile_r = (r % 8) / 2;
+        int64_t in_4x4x8_idx = (in_4x4x8_tile_c / 4) * (4 * 4) + in_4x4x8_tile_r * 4 + (in_4x4x8_tile_c % 4);
+        offset += in_4x4x8_idx;
+        return offset;
+      }
+      case ORDER_COL32_2R_4R4: {
+        // TODO:
+      }
       default:
         return 0;
     }

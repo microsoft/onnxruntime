@@ -1,30 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// #if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+// #include "gtest/gtest.h"
+// #include "test/common/tensor_op_test_utils.h"
+// #include "test/common/cuda_op_test_utils.h"
+// #include "test/providers/provider_test_utils.h"
+// #include "test/util/include/scoped_env_vars.h"
+// #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 
-#include "gtest/gtest.h"
-#include "test/common/tensor_op_test_utils.h"
-#include "test/common/cuda_op_test_utils.h"
-#include "test/providers/provider_test_utils.h"
-#include "test/util/include/scoped_env_vars.h"
-#include "contrib_ops/cpu/bert/longformer_attention_base.h"
-
-#include <numeric>
-#include <functional>
-#include <iostream>
-#include <math.h>
+#include "test/contrib_ops/qordered_test_utils.h"
+// #include <numeric>
+// #include <functional>
+// #include <iostream>
+// #include <math.h>
 
 namespace onnxruntime {
 namespace test {
-
-enum OrderCublasLt {
-  ORDER_COL = 0,
-  ORDER_ROW = 1,
-  ORDER_COL32 = 2,
-  ORDER_COL4_4R2_8C = 3,
-  ORDER_COL32_2R_4R4 = 4
-};
 
 const int64_t batch_size = 1;
 const int64_t sequence_len = 16;

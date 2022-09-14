@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qordered_test_utils.h"
+#include "test/contrib_ops/qordered_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -152,7 +152,7 @@ TEST(QOrderedTest, MatMul_bias_addC_COL_16x64x32) {
                           true /* add bias */, true /* broadcast batch c */);
 }
 #endif  // ifndef _WIN32
- 
+
 TEST(QOrderedTest, MatMul_COL_16x64x32_b3_1) {
   std::vector<int64_t> shape_A = {3, 16, 32};
   std::vector<int64_t> shape_B = {1, 32, 64};
