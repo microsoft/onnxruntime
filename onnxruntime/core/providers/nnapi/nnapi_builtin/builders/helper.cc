@@ -376,7 +376,7 @@ bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_
   return true;
 }
 
-std::string Shape2String(const std::vector<uint32_t>& shape) {
+std::string Shape2String(const Shape& shape) {
   std::ostringstream os;
   os << "[ ";
   for (const auto& dim : shape)

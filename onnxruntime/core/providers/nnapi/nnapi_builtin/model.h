@@ -167,8 +167,7 @@ class Execution {
   Execution& operator=(const Execution&) = delete;
 
   // Before we validate if we actually need to keep a shaper instance for Execution (if we have dynamic shape
-  // outputs, shape can get updated during execution),
-  // we commented out Shaper here for now.
+  // outputs, shape can get updated during execution), we commented out Shaper here for now.
   /* const Shaper& GetShaper() const { return shaper_; } */
 
   // Set the input/output data buffers

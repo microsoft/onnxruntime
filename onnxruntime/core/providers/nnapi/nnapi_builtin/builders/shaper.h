@@ -11,6 +11,7 @@
 
 #include "gsl/gsl"
 
+#include "core/common/inlined_containers.h"
 #include "core/common/status.h"
 #include "core/common/safeint.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
@@ -20,7 +21,7 @@ namespace nnapi {
 
 class Shaper {
  public:
-  using Shape = std::vector<uint32_t>;
+  using Shape = InlinedVector<uint32_t>;
 
   Shaper(const GraphViewer& graph_viewer);
 
@@ -42,7 +43,7 @@ class Shaper {
   // and calculate the new output shape
   // Only perform this when the NNAPI model is finalized!
   // TODO: Commented out these update shape methods for now due to the lack of dynamic shape support
-  // in NNAPI EP.
+  // in NNAPI EP. Can be added back and enhanced for future use if more support is available.
   /*
   common::Status UpdateShape(const std::string& name, const Shape& new_shape);
   common::Status UpdateDynamicDimensions();

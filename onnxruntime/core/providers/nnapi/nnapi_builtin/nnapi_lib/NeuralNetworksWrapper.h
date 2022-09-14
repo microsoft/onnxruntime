@@ -20,7 +20,10 @@
 #include <optional>
 #include <vector>
 
+#include "core/providers/nnapi/nnapi_builtin/builders/shaper.h"
 #include "NeuralNetworksTypes.h"
+
+using Shape = onnxruntime::nnapi::Shaper::Shape;
 
 namespace android {
 namespace nn {
@@ -122,11 +125,11 @@ struct SymmPerChannelQuantParams {
 struct OperandType {
   ANeuralNetworksOperandType operandType;
   Type type;
-  std::vector<uint32_t> dimensions;
+  Shape dimensions;
   std::optional<SymmPerChannelQuantParams> channelQuant;
 
-  explicit OperandType(Type type, const std::vector<uint32_t>& d, float scale = 0.0f, int32_t zeroPoint = 0);
-  explicit OperandType(Type type, const std::vector<uint32_t>& d, SymmPerChannelQuantParams&& channelQuant);
+  explicit OperandType(Type type, const Shape& d, float scale = 0.0f, int32_t zeroPoint = 0);
+  explicit OperandType(Type type, const Shape& d, SymmPerChannelQuantParams&& channelQuant);
 
   OperandType(const OperandType& other);
   OperandType& operator=(const OperandType& other);
@@ -137,7 +140,7 @@ struct OperandType {
   // Get the whole blob size in bytes
   size_t GetOperandBlobByteSize() const;
 
-  void SetDimensions(const std::vector<uint32_t>& d);
+  void SetDimensions(const Shape& d);
 
   operator ANeuralNetworksOperandType() const { return operandType; }
 };

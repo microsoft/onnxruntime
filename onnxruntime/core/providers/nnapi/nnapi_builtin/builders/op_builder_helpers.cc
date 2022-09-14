@@ -55,7 +55,7 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
   input_indices.push_back(perm_idx);  // permutation
 
   OperandType output_operand_type = operand_types.at(data_input);
-  output_operand_type.SetDimensions(*output_shape);
+  output_operand_type.SetDimensions(output_shape.value());
   return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
                                     {output_operand_type});
 }
@@ -69,7 +69,8 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
     // Calculate reshape output shape
     {
       const Shape input_dimen = shaper[data_input];
-      uint32_t input_size = Product(input_dimen);
+      uint32_t input_size = accumulate(input_dimen.cbegin(), input_dimen.cend(),
+                                       static_cast<uint32_t>(1), std::multiplies<uint32_t>());
       Shape output_dimen(shape_value.size());
 
       int64_t capacity = 1;
@@ -118,7 +119,7 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
 
   // For reshape, the output type should be the same as the input type except the shape is different
   OperandType output_operand_type{operand_types.at(data_input)};
-  output_operand_type.SetDimensions(*output_shape);
+  output_operand_type.SetDimensions(output_shape.value());
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RESHAPE,
                                                  input_indices, {output}, {output_operand_type}));
 

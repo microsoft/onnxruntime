@@ -204,7 +204,7 @@ Status Execution::Predict(const std::vector<int32_t>& dynamic_outputs, std::vect
     uint32_t output_rank = 0;
     RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksExecution_getOutputOperandRank(execution_, i, &output_rank));
 
-    std::vector<uint32_t> output_shape(output_rank);
+    InlinedVector<uint32_t> output_shape(output_rank);
     RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksExecution_getOutputOperandDimensions(execution_, i, output_shape.data()));
 
     dynamic_output_shapes.push_back(output_shape);
