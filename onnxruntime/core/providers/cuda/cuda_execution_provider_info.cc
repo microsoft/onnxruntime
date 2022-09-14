@@ -33,8 +33,7 @@ const DeleteOnUnload<EnumNameMapping<OrtCudnnConvAlgoSearch>> ort_cudnn_conv_alg
     {OrtCudnnConvAlgoSearchDefault, "DEFAULT"},
 }};
 
-const DeleteOnUnload<EnumNameMapping<ArenaExtendStrategy>> arena_extend_strategy_mapping{EnumNameMapping<ArenaExtendStrategy>
-{
+const DeleteOnUnload<EnumNameMapping<ArenaExtendStrategy>> arena_extend_strategy_mapping{EnumNameMapping<ArenaExtendStrategy>{
     {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
     {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
 }};
