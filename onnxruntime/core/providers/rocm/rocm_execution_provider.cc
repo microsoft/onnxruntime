@@ -286,7 +286,7 @@ void ROCMExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
   // AllocateBufferOnCPUPinned.
 
   std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
-  void* stream = GetComputeStream();
+  hipStream_t stream = static_cast<hipStream_t>(GetComputeStream());
   auto it = deferred_release_buffer_pool_.find(stream);
   if (it != deferred_release_buffer_pool_.end()) {
     it->second.push_back(p);
@@ -338,7 +338,7 @@ Status ROCMExecutionProvider::EnqueueDeferredRelease() {
     // This iteration enqueues a callback to release all buffers
     // in it->second on it->first.
 
-    auto stream = static_cast<hipStream_t>(it->first);
+    auto stream = it->first;
     auto& buffers = it->second;
     // Allocate a heap object to extend the lifetime of allocator and buffer pointers.
     std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
