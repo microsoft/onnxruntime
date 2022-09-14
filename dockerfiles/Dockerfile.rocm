@@ -5,56 +5,15 @@
 # Dockerfile to run ONNXRuntime with ROCm integration
 #--------------------------------------------------------------------------
 
-FROM ubuntu:20.04
+FROM rocm/pytorch:rocm5.2.3_ubuntu20.04_py3.7_pytorch_1.12.1
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=main
-
-ENV DEBIAN_FRONTEND noninteractive
-RUN apt-get clean && apt-get update && apt-get install -y locales
-RUN locale-gen en_US.UTF-8
-RUN update-locale LANG=en_US.UTF-8
-ENV LC_ALL C.UTF-8
-ENV LANG C.UTF-8
-
-# Register the ROCm package repository
-ARG ROCM_VERSION=5.2.3
-ARG AMDGPU_VERSION=22.20.3
-
-# Install ROCm and rocm-dev package
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl libnuma-dev gnupg \
-  && curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add - \
-  && printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ ubuntu main" | tee /etc/apt/sources.list.d/rocm.list \
-  && printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu focal main" | tee /etc/apt/sources.list.d/amdgpu.list \
-  && apt-get update \
-  && apt-get install -y --no-install-recommends \
-  sudo \
-  git \
-  libelf1 \
-  kmod \
-  file \
-  python3 \
-  python3-pip \
-  rocm-dev \
-  rocm-libs \
-  build-essential && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/*
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  hipify-clang && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/*
-
-RUN groupadd -g 109 render
-
-ENV PATH=/code/cmake-3.21.0-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
 
 WORKDIR /code
 
 # Prepare onnxruntime repository & build onnxruntime
 RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
-    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
     cd onnxruntime &&\
     /bin/sh ./build.sh --config Release --build_wheel --update --build --parallel --cmake_extra_defines\
             ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) --use_rocm --rocm_home=/opt/rocm &&\
