@@ -258,6 +258,13 @@ TEST_P(ModelTest, Run) {
   // specific keyword.
   std::set<std::string> broken_tests_keyword_set = {};
 
+  if (provider_name == "cuda") {
+#ifdef _WIN32
+    broken_tests.insert({"LSTM_Seq_lens_unpacked", "this test fails with new image since Aug 25."});
+    broken_tests.insert({"test_bidaf", "this test fails with new image since Aug 25."});
+#endif
+  }
+
   if (provider_name == "nuphar") {
     // https://msdata.visualstudio.com/Vienna/_workitems/edit/1000703
     broken_tests.insert({"fp16_test_tiny_yolov2", "Computed value is off by a bit more than tol."});
@@ -909,10 +916,6 @@ TEST_P(ModelTest, Run) {
                                                 ORT_TSTR("fp16_coreml_FNS-Candy"),
                                                 ORT_TSTR("fp16_test_tiny_yolov2"),
                                                 ORT_TSTR("fp16_test_shufflenet"),
-#ifdef _WIN32
-                                                ORT_TSTR("lstm_seq_lens_unpacked"),
-                                                ORT_TSTR("test_bidaf"),
-#endif
                                                 ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {
       ORT_TSTR("tf_mobilenet_v1_1.0_224"),
