@@ -261,7 +261,7 @@ TEST_P(ModelTest, Run) {
   if (provider_name == "cuda") {
 #ifdef _WIN32
     broken_tests.insert({"LSTM_Seq_lens_unpacked", "this test fails with new image since Aug 25."});
-    broken_tests.insert({"test_bidaf", "this test fails with new image since Aug 25."});
+    broken_tests.insert({"bidaf", "this test fails with new image since Aug 25."});
 #endif
   }
 
