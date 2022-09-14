@@ -5,8 +5,6 @@
 #include "core/framework/stream_handles.h"
 
 namespace onnxruntime {
-using CudaStreamHandle = cudaStream_t;
-
 
 struct CudaStream : Stream {
   CudaStream(cudaStream_t stream, const OrtDevice& device, bool own_flag, cudnnHandle_t external_cudnn_handle, cublasHandle_t external_cublass_handle);
