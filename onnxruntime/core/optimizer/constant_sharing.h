@@ -33,12 +33,6 @@ class ConstantSharing : public GraphTransformer {
   }
 
  private:
-  void ShareInitializer(Graph& graph, Node* node, int input_index,
-                        std::map<std::string, NodeArg*>&
-                            type_type_value_plus_rank_to_shared_arg_map,
-                        const std::string& pattern_key,
-                        onnxruntime::Initializer& initializer) const;
-
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
   const InlinedHashSet<std::string> excluded_initializers_;
