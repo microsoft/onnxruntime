@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 import torch
 from datasets import load_dataset
 from evaluate import evaluator
+from optimum.onnxruntime import ORTModelForQuestionAnswering
 from optimum.onnxruntime.modeling_ort import ORTModel
 from transformers import AutoTokenizer, pipeline
 
@@ -32,7 +33,6 @@ def get_package_version(package_name: str):
 
 
 def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, use_gpu: bool = True):
-
     """Load onnx model given pretrained model name and optional ONNX model path. If onnx_path is None,
     the default onnx model from optimum will be used.
 
@@ -45,8 +45,6 @@ def load_onnx_model(model_id: str, onnx_path: Optional[str] = None, use_gpu: boo
         model: ORTModel for the onnx model
         onnx_path: the path of onnx model
     """
-    from optimum.onnxruntime import ORTModelForQuestionAnswering
-
     model = ORTModelForQuestionAnswering.from_pretrained(model_id, from_transformers=True)
 
     if onnx_path is not None:
@@ -105,13 +103,13 @@ def output_details(results: List[Dict[str, Any]], csv_filename: str):
     print(f"Detail results are saved to csv file: {csv_filename}")
 
 
-def output_summary(results: List[Dict[str, Any]], csv_filename: str, data_field: str):
-    """Output a CSV file with summary of a data field.
+def output_summary(results: List[Dict[str, Any]], csv_filename: str, metric_name: str):
+    """Output a CSV file with summary of a metric on combinations of batch_size and sequence_length.
 
     Args:
         results (List[Dict[str, Any]]): list of JSON results.
         csv_filename (str): path of output CSV file
-        data_field (str): the data field to summarize
+        metric_name (str): the metric to summarize
     """
     with open(csv_filename, mode="a", newline="", encoding="ascii") as csv_file:
         header_names = ["pretrained_model_name", "onnx_path", "provider", "disable_fused_attention"]
@@ -125,56 +123,43 @@ def output_summary(results: List[Dict[str, Any]], csv_filename: str, data_field:
         sequence_lengths = list(set([result["sequence_length"] for result in results]))
         sequence_lengths.sort()
 
-        data_names = []
+        key_names = []
         for sequence_length in sequence_lengths:
             for batch_size in batch_sizes:
-                data_names.append(f"b{batch_size}_s{sequence_length}")
+                key_names.append(f"b{batch_size}_s{sequence_length}")
 
-        csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + data_names)
+        csv_writer = csv.DictWriter(csv_file, fieldnames=header_names + key_names)
         csv_writer.writeheader()
 
         for model in model_list:
             row = {}
 
-            sum_latency = {}
-            sum_latency.update({k: 0 for k in data_names})
-
-            count_latency = {}
-            count_latency.update({k: 0 for k in data_names})
+            # Metric value for given pair of batch_size and sequence_length.
+            # Assume that (onnx_path, batch_size and sequence_length) are unique so keep first occurrence only.
+            values = {}
+            values.update({k: "" for k in key_names})
 
             for result in results:
-                if result["onnx_path"] == model and result[data_field]:
+                if result["onnx_path"] == model and result[metric_name]:
                     headers = {k: v for k, v in result.items() if k in header_names}
                     if not row:
                         row.update(headers)
-                    else:
-                        for k in header_names:
-                            assert row[k] == headers[k]
 
                     batch_size = result["batch_size"]
                     sequence_length = result["sequence_length"]
                     key = f"b{batch_size}_s{sequence_length}"
 
-                    try:
-                        latency = float(result[data_field])
-                    except ValueError:
-                        continue
-
-                    sum_latency[key] += latency
-                    count_latency[key] += 1
+                    if key in key_names:
+                        values[key] = result[metric_name]
 
             if row:
-                for key in data_names:
-                    if key in count_latency and count_latency[key] > 0:
-                        row[key] = sum_latency[key] / count_latency[key]
-                    else:
-                        row[key] = ""
-
+                for key in key_names:
+                    row[key] = values[key] if key in values else ""
                 csv_writer.writerow(row)
 
         csv_file.flush()
 
-    print(f"Summary results for {data_field} are saved to csv file: {csv_filename}")
+    print(f"Summary results for {metric_name} are saved to csv file: {csv_filename}")
 
 
 def main():
