@@ -909,6 +909,10 @@ TEST_P(ModelTest, Run) {
                                                 ORT_TSTR("fp16_coreml_FNS-Candy"),
                                                 ORT_TSTR("fp16_test_tiny_yolov2"),
                                                 ORT_TSTR("fp16_test_shufflenet"),
+#ifdef _WIN32
+                                                ORT_TSTR("lstm_seq_lens_unpacked"),
+                                                ORT_TSTR("test_bidaf"),
+#endif
                                                 ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {
       ORT_TSTR("tf_mobilenet_v1_1.0_224"),

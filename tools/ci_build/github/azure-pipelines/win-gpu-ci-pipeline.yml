@@ -20,7 +20,7 @@ stages:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
-        MachinePool: onnxruntime-Win2019-GPU
+        MachinePool: Win-GPU-2019-beta
         DocUpdateNeeded: true
 
 
@@ -41,7 +41,7 @@ stages:
         ORT_EP_NAME: CUDA
         MachinePool: onnxruntime-Win2019-GPU-training
         isTraining: true
-     
+
 - stage: dml
   dependsOn: []
   jobs:
@@ -58,4 +58,3 @@ stages:
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: DML
         MachinePool: onnxruntime-Win2019-GPU-dml
-
