@@ -5,6 +5,7 @@
 
 #import <XCTest/XCTest.h>
 #import <onnxruntime/onnxruntime_cxx_api.h>
+#include <vector>
 
 @interface TensorHelperTest : XCTestCase
 
@@ -142,27 +143,27 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
   NSBundle *bundle = [NSBundle bundleForClass:[TensorHelperTest class]];
   NSString *dataPath = [bundle pathForResource:testDataFileName ofType:testDataFileExtension];
 
-  std::unique_ptr<Ort::Env> ortEnv{new Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default")};
+  Ort::Env ortEnv{ORT_LOGGING_LEVEL_INFO, "Default"};
   Ort::SessionOptions sessionOptions;
-  std::unique_ptr<Ort::Session> session{new Ort::Session(*ortEnv, [dataPath UTF8String], sessionOptions)};
+  Ort::Session session{ortEnv, [dataPath UTF8String], sessionOptions};
 
   Ort::AllocatorWithDefaultOptions ortAllocator;
-  std::vector << Ort::AllocatedStringPtr > names;
+  std::vector<Ort::AllocatedStringPtr> names;
 
-  names.reserve(session->GetInputCount() + session->GetOutputCount());
+  names.reserve(session.GetInputCount() + session.GetOutputCount());
 
   std::vector<const char *> inputNames;
-  inputNames.reserve(session->GetInputCount());
-  for (size_t i = 0; i < session->GetInputCount(); ++i) {
-    auto inputName = session->GetInputNameAllocated(i, ortAllocator);
+  inputNames.reserve(session.GetInputCount());
+  for (size_t i = 0; i < session.GetInputCount(); ++i) {
+    auto inputName = session.GetInputNameAllocated(i, ortAllocator);
     inputNames.emplace_back(inputName.get());
     names.emplace_back(std::move(inputName));
   }
 
   std::vector<const char *> outputNames;
-  outputNames.reserve(session->GetOutputCount());
-  for (size_t i = 0; i < session->GetOutputCount(); ++i) {
-    auto outputName = session->GetOutputNameAllocated(i, ortAllocator);
+  outputNames.reserve(session.GetOutputCount());
+  for (size_t i = 0; i < session.GetOutputCount(); ++i) {
+    auto outputName = session.GetOutputNameAllocated(i, ortAllocator);
     outputNames.emplace_back(outputName.get());
     names.emplace_back(std::move(outputName));
   }
@@ -196,8 +197,8 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
   feeds.emplace_back(std::move(inputTensor));
 
   Ort::RunOptions runOptions;
-  auto output = session->Run(runOptions, inputNames.data(), feeds.data(), inputNames.size(), outputNames.data(),
-                             outputNames.size());
+  auto output = session.Run(runOptions, inputNames.data(), feeds.data(), inputNames.size(), outputNames.data(),
+                            outputNames.size());
 
   NSDictionary *resultMap = [TensorHelper createOutputTensor:outputNames values:output];
 
