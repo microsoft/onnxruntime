@@ -1000,8 +1000,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>bfp_type</tt> : int (required)</dt>
 <dd>The type of BFP - must match with the BFPType enum</dd>
-<dt><tt>bounding_box_dims</tt> : list of ints</dt>
-<dd>Each bounding box spans these dimensions. If not specified, then it is up to the implementation to decide.</dd>
+<dt><tt>block_dims</tt> : list of ints</dt>
+<dd>Numbers within a bounding box will span across these dimensions.Any dimension not in this list is the same for all numbers within a bounding box.As an example, consider a 2D tensor with shape [d0, d1] and block_dims equal to [1].Within a bounding box, all elements will be within the same row but will be from different columnns.The default is the last dimension.</dd>
 <dt><tt>dtype</tt> : int</dt>
 <dd>The datatype to dequantize to.</dd>
 </dl>
@@ -3086,8 +3086,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>bfp_type</tt> : int (required)</dt>
 <dd>The type of BFP - must match with the BFPType enum</dd>
-<dt><tt>bounding_box_dims</tt> : list of ints</dt>
-<dd>Each bounding box spans these dimensions. If not specified, then it is up to the implementation to decide.</dd>
+<dt><tt>block_dims</tt> : list of ints</dt>
+<dd>Numbers within a bounding box will span across these dimensions.Any dimension not in this list is the same for all numbers within a bounding box.As an example, consider a 2D tensor with shape [d0, d1] and block_dims equal to [1].Within a bounding box, all elements will be within the same row but will be from different columnns.The default is the last dimension.</dd>
 </dl>
 
 #### Inputs

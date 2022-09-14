@@ -85,10 +85,5 @@ inline size_t get_bounding_box_size(const BFPType& bfp_type) {
       ONNX_THROW_EX(std::invalid_argument("Unsuported bfp_type case."));
   }
 }
-
-void CheckFitsInsideBoundingBox(const ONNX_NAMESPACE::TensorShapeProto& input_shape,
-                                const google::protobuf::RepeatedField<int64_t>& bounding_box_dims,
-                                const BFPType& bfp_type);
-
 }  // namespace contrib
 }  // namespace onnxruntime

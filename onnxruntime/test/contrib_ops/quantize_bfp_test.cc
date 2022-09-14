@@ -34,11 +34,11 @@ TEST(QuantizeBFPTest, CreateQuantizeGraph) {
   bfp_type.set_i(static_cast<int64_t>(onnxruntime::contrib::BFPType::BFP_1_8_8_16));
   bfp_type.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
   attributes["bfp_type"] = bfp_type;
-  ONNX_NAMESPACE::AttributeProto bounding_box_dims;
-  bounding_box_dims.set_name("bounding_box_dims");
-  bounding_box_dims.add_ints(1);  // bounding box is over dimension 1
-  bounding_box_dims.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
-  attributes["bounding_box_dims"] = bounding_box_dims;
+  ONNX_NAMESPACE::AttributeProto block_dims;
+  block_dims.set_name("block_dims");
+  block_dims.add_ints(1);  // bounding box is over dimension 1
+  block_dims.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+  attributes["block_dims"] = block_dims;
 
   std::vector<onnxruntime::NodeArg*> output_defs;
   ONNX_NAMESPACE::TypeProto y_byte;
@@ -91,11 +91,11 @@ TEST(DequantizeBFPTest, CreateDequantizeGraph) {
   bfp_type.set_i(static_cast<int64_t>(onnxruntime::contrib::BFPType::BFP_1_8_8_16));
   bfp_type.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
   attributes["bfp_type"] = bfp_type;
-  ONNX_NAMESPACE::AttributeProto bounding_box_dims;
-  bounding_box_dims.set_name("bounding_box_dims");
-  bounding_box_dims.add_ints(1);  // bounding box is over dimension 1
-  bounding_box_dims.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
-  attributes["bounding_box_dims"] = bounding_box_dims;
+  ONNX_NAMESPACE::AttributeProto block_dims;
+  block_dims.set_name("block_dims");
+  block_dims.add_ints(1);  // bounding box is over dimension 1
+  block_dims.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
+  attributes["block_dims"] = block_dims;
   ONNX_NAMESPACE::AttributeProto dtype;
   dtype.set_name("dtype");
   dtype.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
@@ -113,59 +113,6 @@ TEST(DequantizeBFPTest, CreateDequantizeGraph) {
                 onnxruntime::kMSDomain);
   Status status = graph.Resolve();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-}
-
-TEST(QuantizeBFPTest, CheckFitsInsideBoundingBoxTest) {
-  constexpr auto bfp_type = onnxruntime::contrib::BFPType::BFP_0_16_8_128;
-  {
-    ONNX_NAMESPACE::TensorShapeProto input_shape;
-    google::protobuf::RepeatedField<int64_t> bounding_box_dims;
-    // should succeed since input_shape is empty
-    onnxruntime::contrib::CheckFitsInsideBoundingBox(input_shape, bounding_box_dims, bfp_type);
-  }
-
-  {
-    ONNX_NAMESPACE::TensorShapeProto input_shape;
-    input_shape.add_dim()->set_dim_value(2);
-    google::protobuf::RepeatedField<int64_t> bounding_box_dims;
-    // should succeed since bounding_box_dims is empty
-    onnxruntime::contrib::CheckFitsInsideBoundingBox(input_shape, bounding_box_dims, bfp_type);
-  }
-
-  {
-    ONNX_NAMESPACE::TensorShapeProto input_shape;
-    input_shape.add_dim()->set_dim_value(2);
-    google::protobuf::RepeatedField<int64_t> bounding_box_dims;
-    bounding_box_dims.Add(0);
-    // should succeed since 2 is less than the bounding box size of bfp_type
-    onnxruntime::contrib::CheckFitsInsideBoundingBox(input_shape, bounding_box_dims, bfp_type);
-  }
-
-  {
-    ONNX_NAMESPACE::TensorShapeProto input_shape;
-    auto dim_too_large = onnxruntime::contrib::get_bounding_box_size(bfp_type) + 1;
-    input_shape.add_dim()->set_dim_value(static_cast<int64_t>(dim_too_large));
-    google::protobuf::RepeatedField<int64_t> bounding_box_dims;
-    bounding_box_dims.Add(0);
-    EXPECT_THROW(onnxruntime::contrib::CheckFitsInsideBoundingBox(input_shape, bounding_box_dims, bfp_type),
-                 ONNX_NAMESPACE::InferenceError);
-  }
-
-  {
-    ONNX_NAMESPACE::TensorShapeProto input_shape;
-    google::protobuf::RepeatedField<int64_t> bounding_box_dims;
-    // should succeed since the check is skipped for custom BFP types
-    onnxruntime::contrib::CheckFitsInsideBoundingBox(input_shape, bounding_box_dims,
-                                                     onnxruntime::contrib::BFPType::Custom_BFP_0);
-  }
-
-  {
-    ONNX_NAMESPACE::TensorShapeProto input_shape;
-    google::protobuf::RepeatedField<int64_t> bounding_box_dims;
-    // should succeed since the check is skipped for custom BFP types
-    onnxruntime::contrib::CheckFitsInsideBoundingBox(input_shape, bounding_box_dims,
-                                                     onnxruntime::contrib::BFPType::Custom_BFP_1);
-  }
 }
 }  // namespace test
 }  // namespace onnxruntime

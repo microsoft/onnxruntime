@@ -29,37 +29,6 @@ using ONNX_NAMESPACE::OPTIONAL_VALUE;
 using ONNX_NAMESPACE::DbgOperatorSetTracker;
 #endif
 
-void CheckFitsInsideBoundingBox(const ONNX_NAMESPACE::TensorShapeProto& input_shape,
-                                const google::protobuf::RepeatedField<int64_t>& bounding_box_dims,
-                                const BFPType& bfp_type) {
-  auto input_num_dims = input_shape.dim_size();
-  auto bounding_box_num_dims = bounding_box_dims.size();
-  if (input_num_dims == 0) {
-    // input is scalar so it must fit inside a bounding box
-    return;
-  } else if (bounding_box_num_dims == 0) {
-    LOGS_DEFAULT(WARNING) << "bounding_box_dims is an empty list.";
-    return;
-  }
-
-  bool all_dim_values = true;
-  int64_t numel = 1;
-
-  for (auto i = 0; i < bounding_box_dims.size(); i++) {
-    auto dim = input_shape.dim(static_cast<int>(bounding_box_dims[i]));
-    if (!dim.has_dim_value()) {
-      all_dim_values = false;
-      break;
-    }
-    numel *= dim.dim_value();
-  }
-
-  auto is_custom_bfp = bfp_type == BFPType::Custom_BFP_0 || bfp_type == BFPType::Custom_BFP_1;
-  if (all_dim_values && !is_custom_bfp && numel > static_cast<int64_t>(get_bounding_box_size(bfp_type))) {
-    fail_shape_inference("The number of elements in the bounding box dimensions exceeds the bounding box size.")
-  }
-}
-
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index,
                                        ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
@@ -248,10 +217,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     QuantizeBFP, 1,
     OpSchema()
         .Attr("bfp_type", "The type of BFP - must match with the BFPType enum", AttributeProto::INT)
-        .Attr("bounding_box_dims",
-              "Each bounding box spans these dimensions. If not specified, then it is up to "
-              "the implementation to decide.",
-              AttributeProto::INTS, false)
+        .Attr("block_dims",
+              "Numbers within a bounding box will span across these dimensions."
+              "Any dimension not in this list is the same for all numbers within a bounding box."
+              "As an example, consider a 2D tensor with shape [d0, d1] and block_dims equal to [1]."
+              "Within a bounding box, all elements will be within the same row but will be from different columnns."
+              "The default is the last dimension.",
+              AttributeProto::INTS, std::vector<int64_t>{-1})
         .Input(0, "x", "N-D full precision input tensor to be quantized.", "T1")
         .Output(0, "y", "1-D, contiguous BFP data", "T2")
         .Output(1, "shape", "Shape of x", "T3")
@@ -274,13 +246,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (!hasInputShape(ctx, 0)) return;
 
           auto& input_shape = getInputShape(ctx, 0);
-          auto bounding_box_dims_proto = ctx.getAttribute("bounding_box_dims");
-          if (bounding_box_dims_proto != nullptr) {
-            auto bounding_box_dims = bounding_box_dims_proto->ints();
-            auto bfp_type = static_cast<BFPType>(ctx.getAttribute("bfp_type")->i());
-            CheckFitsInsideBoundingBox(input_shape, bounding_box_dims, bfp_type);
-          }
-
           auto num_dims = input_shape.dim_size();
           ONNX_NAMESPACE::TensorShapeProto::Dimension num_dims_proto;
           num_dims_proto.set_dim_value(num_dims);
@@ -295,10 +260,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     DequantizeBFP, 1,
     OpSchema()
         .Attr("bfp_type", "The type of BFP - must match with the BFPType enum", AttributeProto::INT)
-        .Attr("bounding_box_dims",
-              "Each bounding box spans these dimensions. If not specified, then it is up to the implementation to "
-              "decide.",
-              AttributeProto::INTS, false)
+        .Attr("block_dims",
+              "Numbers within a bounding box will span across these dimensions."
+              "Any dimension not in this list is the same for all numbers within a bounding box."
+              "As an example, consider a 2D tensor with shape [d0, d1] and block_dims equal to [1]."
+              "Within a bounding box, all elements will be within the same row but will be from different columnns."
+              "The default is the last dimension.",
+              AttributeProto::INTS, std::vector<int64_t>{-1})
         .Attr("dtype", "The datatype to dequantize to.", AttributeProto::INT,
               static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT))  // default
         .Input(0, "x", "1-D, contiguous, raw, BFP data to be de-quantized.", "T1")
