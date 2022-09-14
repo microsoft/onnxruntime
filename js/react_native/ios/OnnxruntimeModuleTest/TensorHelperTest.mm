@@ -188,7 +188,7 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
 
   NSString *dataEncoded = [byteBufferRef base64EncodedStringWithOptions:0];
   inputTensorMap[@"data"] = dataEncoded;
-
+  std::vector<Ort::MemoryAllocation> allocations;
   Ort::Value inputTensor = [TensorHelper createInputTensor:inputTensorMap
                                               ortAllocator:ortAllocator
                                                allocations:allocations];
