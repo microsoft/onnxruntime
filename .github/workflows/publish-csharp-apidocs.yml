@@ -40,7 +40,7 @@ jobs:
         clean: false
     - name: Move API docs into target area
       run: |
-        if (Test-Path -Path docs/api/csharp) {rmdir docs/api/csharp /q /s} 
+        if (Test-Path -Path docs/api/csharp) {rm -r -fo docs/api/csharp}
         MOVE csharp/ApiDocs/csharp docs/api
         rm -r -fo csharp/ApiDocs
         rm -r -fo csharp/src
