@@ -22,8 +22,10 @@ class QLinearWhere final : public OpKernel {
   const size_t expected_input_count = 9;
   std::vector<uint8_t> y_fixed_lookup_table_;
   std::vector<uint8_t> x_fixed_lookup_table_;
-  int y_fixed_table_attr_ = 0;
-  int x_fixed_table_attr_ = 0;
+  bool is_x_dynamic_ = true;
+  bool is_y_dynamic_ = true;
+  bool is_x_fixed_copy_ = false;
+  bool is_y_fixed_copy_ = false;
 };
 
 }  // namespace contrib
