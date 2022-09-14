@@ -213,7 +213,7 @@ struct DeleteOnUnload {
   template <typename... Params>
   DeleteOnUnload(Params&&... params) : p_{new (data_) T{std::forward<Params>(params)...}} {
     RunOnUnload([p = p_]() {
-      delete p;
+      p->~T();
     });
   }
 
