@@ -147,7 +147,7 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
   cublasLtMatrixLayout_t desc_D = nullptr;
   auto clean_desc_D = gsl::finally([&desc_D]() {if (desc_D) cublasLtMatrixLayoutDestroy(desc_D); });
 
-  const float beta_zero = 0.0f;
+  constexpr float beta_zero = 0.0f;
   beta = (C == nullptr ? &beta_zero : beta);
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(&matmul_desc, CUBLAS_COMPUTE_32I, CUDA_R_32F));

@@ -2307,10 +2307,19 @@ def generate_documentation(source_dir, build_dir, configs, validate):
         [sys.executable, "gen_contrib_doc.py", "--output_path", contrib_op_doc_path, "--domains", "com.microsoft"],
         cwd=cwd,
     )
-    # we currently limit the documentation created by a build to the CPU and CUDA EPs.
+    # we currently limit the documentation created by a build to a subset of EP's.
     # Run get_opkernel_doc.py directly if you need/want documentation from other EPs that are enabled in the build.
     run_subprocess(
-        [sys.executable, "gen_opkernel_doc.py", "--output_path", opkernel_doc_path, "--providers", "CPU", "CUDA"],
+        [
+            sys.executable,
+            "gen_opkernel_doc.py",
+            "--output_path",
+            opkernel_doc_path,
+            "--providers",
+            "CPU",
+            "CUDA",
+            "DML",
+        ],
         cwd=cwd,
     )
 
