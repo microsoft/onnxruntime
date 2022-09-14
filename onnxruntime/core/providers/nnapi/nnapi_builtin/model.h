@@ -123,8 +123,6 @@ class Model {
   std::unordered_map<std::string, android::nn::wrapper::OperandType> operand_types_;
   std::unordered_set<std::string> scalar_outputs_;
 
-  Shaper shaper_;
-
   std::unordered_map<std::string, size_t> input_map_;
   std::unordered_map<std::string, size_t> output_map_;
 
@@ -144,8 +142,6 @@ class Model {
                  const android::nn::wrapper::OperandType& operand_type);
 
   void AddScalarOutput(const std::string& output_name);
-
-  Shaper& GetShaper() { return shaper_; }
 
   int32_t GetNNAPIFeatureLevel() const;
 };
@@ -170,7 +166,7 @@ class Execution {
   Execution(const Execution&) = delete;
   Execution& operator=(const Execution&) = delete;
 
-  // TODO: Before we validate if we actually need to keep a shaper instance for Execution (if we have dynamic shape
+  // Before we validate if we actually need to keep a shaper instance for Execution (if we have dynamic shape
   // outputs, shape can get updated during execution),
   // we commented out Shaper here for now.
   /* const Shaper& GetShaper() const { return shaper_; } */

@@ -94,7 +94,7 @@ class ModelBuilder {
       android::nn::wrapper::ExecutePreference pref) { exe_pref_ = pref; }
 
   // Accessors for members
-  Shaper& GetShaper() { return nnapi_model_->GetShaper(); }
+  Shaper& GetShaper() { return shaper_; }
 
   const std::unordered_map<std::string, uint32_t>&
   GetOperandIndices() const { return operand_indices_; }
@@ -126,6 +126,8 @@ class ModelBuilder {
   bool use_fp16_{false};
   android::nn::wrapper::ExecutePreference exe_pref_{
       android::nn::wrapper::ExecutePreference::PREFER_FAST_SINGLE_ANSWER};
+
+  Shaper shaper_;
 
   std::unordered_map<std::string, uint32_t> operand_indices_;
   std::unordered_map<std::string, android::nn::wrapper::OperandType> operand_types_;

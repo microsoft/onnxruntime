@@ -13,7 +13,7 @@
 
 #include "core/common/status.h"
 #include "core/common/safeint.h"
-#include "helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -22,12 +22,19 @@ class Shaper {
  public:
   using Shape = std::vector<uint32_t>;
 
+  Shaper(const GraphViewer& graph_viewer);
+
   void AddShape(const std::string& name, const Shape& shape) {
     shape_map_[name] = shape;
   }
 
-  inline const Shape& operator[](const std::string& key) const {
-    return shape_map_.at(key);
+  inline const Shape operator[](const std::string& key) const {
+    auto it = shape_map_.find(key);
+    if (it != shape_map_.end()) {
+      return it->second;
+    }
+    const auto shape = GetShapeInfoFromNodeArg(*graph_viewer_, key);
+    return shape;
   }
 
   // If the shape of certain input is dynamic
@@ -46,6 +53,8 @@ class Shaper {
   /*
   std::vector<std::function<common::Status(Shaper&)>> shape_ops_;
    */
+
+  const GraphViewer* graph_viewer_;
 };
 
 }  // namespace nnapi

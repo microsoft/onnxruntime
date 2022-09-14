@@ -9,6 +9,8 @@
 namespace onnxruntime {
 namespace nnapi {
 
+Shaper::Shaper(const GraphViewer& graph_viewer) : graph_viewer_(&graph_viewer) {}
+
 // TODO: Commented out these update shape methods for now due to the lack of dynamic shape support
 // in NNAPI EP for now. Can be enhanced and reused in the future when more dynamic shape support is available.
 

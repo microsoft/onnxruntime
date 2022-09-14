@@ -18,7 +18,7 @@ namespace nnapi {
 
 #pragma region Model
 
-Model::Model() : nnapi_(NnApiImplementation()){};
+Model::Model() : nnapi_(NnApiImplementation()) {}
 
 Model::~Model() {
   nnapi_->ANeuralNetworksCompilation_free(compilation_);
@@ -35,7 +35,6 @@ void Model::AddOutput(const std::string& onnx_output_name,
                       const android::nn::wrapper::OperandType& operand_type) {
   LOGS_DEFAULT(VERBOSE) << "Model::AddOutput output name " << onnx_output_name
                         << " shape " << Shape2String(operand_type.dimensions);
-  shaper_.AddShape(onnx_output_name, operand_type.dimensions);
 
   output_names_.push_back(onnx_output_name);
   onnx_to_nnapi_output_map_.emplace(onnx_output_name, nnapi_output_name);
@@ -62,16 +61,14 @@ const android::nn::wrapper::OperandType& Model::GetInputType(const std::string& 
   return operand_types_.at(name);
 }
 
-android::nn::wrapper::OperandType Model::GetOutputType(const std::string& name, const Execution& /* execution */) const {
-  const auto& nnapi_output_name = onnx_to_nnapi_output_map_.at(name);
-  const auto& output_type = operand_types_.at(nnapi_output_name);
-  // TODO: Before we validate if we actually need to get the shaper from execution (if we have dynamic shape outputs, shape can get updated in execution),
-  // we use shaper instance from Model class directly here for now.
+android::nn::wrapper::OperandType Model::GetOutputType(const std::string& name,
+                                                       const Execution& /* execution */) const {
+  // Before we validate if we actually need to get the shaper from execution (if we have dynamic shape outputs,
+  // shape can get updated in execution), we use shaper instance from Model class directly here for now.
   /* android::nn::wrapper::OperandType type(
-      output_type.type, execution.GetShaper()[nnapi_output_name], output_type.operandType.scale, output_type.operandType.zeroPoint); */
-  android::nn::wrapper::OperandType type(
-      output_type.type, shaper_[nnapi_output_name], output_type.operandType.scale, output_type.operandType.zeroPoint);
-  return type;
+      output_type.type, execution.GetShaper()[nnapi_output_name], output_type.operandType.scale,
+                                                                  output_type.operandType.zeroPoint); */
+  return operand_types_.at(name);
 }
 
 void Model::SetInputMap(std::unordered_map<std::string, size_t>&& input_map) {
