@@ -26,13 +26,13 @@ Status AddScalarOperand(ModelBuilder& model_builder, InlinedVector<uint32_t>& in
 Status AddNnapiTranspose(ModelBuilder& model_builder,
                          const std::string& data_input,
                          const std::string& perm_input, const gsl::span<const int32_t> perm,
-                         const std::string& output, const Shape* output_shape);
+                         const std::string& output, std::optional<Shape> output_shape);
 
 // adds ANEURALNETWORKS_RESHAPE operation
 Status AddNnapiReshape(ModelBuilder& model_builder,
                        const std::string& data_input,
                        const std::string& shape_input, const std::vector<int32_t>& shape_value,
-                       const std::string& output, const Shape* output_shape);
+                       const std::string& output, std::optional<Shape> output_shape);
 
 // adds ANEURALNETWORKS_SPLIT operation
 Status AddNnapiSplit(ModelBuilder& model_builder,

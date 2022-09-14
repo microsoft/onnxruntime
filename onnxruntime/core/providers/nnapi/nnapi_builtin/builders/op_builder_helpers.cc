@@ -24,13 +24,13 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
                          const std::string& perm_input,
                          const gsl::span<const int32_t> perm,
                          const std::string& output,
-                         const Shape* output_shape) {
-  if (output_shape == nullptr) {
+                         std::optional<Shape> output_shape) {
+  if (output_shape == std::nullopt) {
     auto& shaper(model_builder.GetShaper());
 
     // Calculate transpose output shape
     {
-      const Shape& input_dimen = shaper[data_input];
+      const Shape input_dimen = shaper[data_input];
       ORT_RETURN_IF_NOT(perm.size() == input_dimen.size(), "Invalid perm is given!");
       size_t size = input_dimen.size();
       Shape output_dimen(size);
@@ -39,8 +39,7 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
 
       shaper.AddShape(output, output_dimen);
     }
-    const auto shape = shaper[output];
-    output_shape = &shape;
+    output_shape = shaper[output];
   }
 
   const auto& operand_indices(model_builder.GetOperandIndices());
@@ -64,12 +63,12 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
 Status AddNnapiReshape(ModelBuilder& model_builder,
                        const std::string& data_input,
                        const std::string& shape_input, const std::vector<int32_t>& shape_value,
-                       const std::string& output, const Shape* output_shape) {
-  if (output_shape == nullptr) {
+                       const std::string& output, std::optional<Shape> output_shape) {
+  if (output_shape == std::nullopt) {
     auto& shaper = model_builder.GetShaper();
     // Calculate reshape output shape
     {
-      const Shape& input_dimen = shaper[data_input];
+      const Shape input_dimen = shaper[data_input];
       uint32_t input_size = Product(input_dimen);
       Shape output_dimen(shape_value.size());
 
@@ -100,8 +99,7 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
 
       shaper.AddShape(output, output_dimen);
     }
-    const auto shape = shaper[output];
-    output_shape = &shape;
+    output_shape = shaper[output];
   }
 
   const auto& operand_indices = model_builder.GetOperandIndices();
@@ -140,7 +138,7 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
 
   // Calculate split output shape
   {
-    const auto& input_shape = shaper[input];
+    const auto input_shape = shaper[input];
     const auto count = gsl::narrow<int32_t>(outputs.size());
 
     ORT_RETURN_IF_NOT(input_shape[axis] % count == 0,
@@ -272,7 +270,7 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
     new_shape_i32.reserve(new_shape.size());
     std::transform(new_shape.begin(), new_shape.end(), std::back_inserter(new_shape_i32),
                    [](uint32_t d) { return gsl::narrow<int32_t>(d); });
-    ORT_RETURN_IF_ERROR(AddNnapiReshape(model_builder, input, new_shape_name, new_shape_i32, output, nullptr));
+    ORT_RETURN_IF_ERROR(AddNnapiReshape(model_builder, input, new_shape_name, new_shape_i32, output, std::nullopt));
     return Status::OK();
   };
 
@@ -302,7 +300,7 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
     const std::string b_new_perm = model_builder.GetUniqueName(b + "/new_perm"),
                       b_transposed = model_builder.GetUniqueName(b + "/transposed");
     ORT_RETURN_IF_ERROR(AddNnapiTranspose(model_builder, gemm_b_inputs.front(), b_new_perm,
-                                          AsSpan<int32_t>({0, 2, 1}), b_transposed, nullptr));
+                                          AsSpan<int32_t>({0, 2, 1}), b_transposed, std::nullopt));
     gemm_b_inputs.front() = b_transposed;
   }
 
@@ -406,7 +404,7 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
       {
         std::vector<Shape> dimens;
         for (const auto& input_name : inputs) {
-          const Shape& dimen = shaper[input_name];
+          const Shape dimen = shaper[input_name];
           dimens.push_back(dimen);
         }
 
