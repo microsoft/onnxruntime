@@ -8,9 +8,9 @@
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 #include "contrib_ops/cuda/bert/longformer_attention.h"
 
-#include "qordered_longformer_attention.h"
-#include "qordered_qdq_impl.h"
-#include "qordered_matmul_utils.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_longformer_attention.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_matmul_utils.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;

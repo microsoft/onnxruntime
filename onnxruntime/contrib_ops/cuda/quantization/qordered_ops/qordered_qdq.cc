@@ -1,17 +1,18 @@
 
+
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
+#include "gsl/gsl"
+
 #include <numeric>
 #include <functional>
 #include <sstream>
-#include "gsl/gsl"
 
-#include "qordered_qdq.h"
-#include "qordered_qdq_impl.h"
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
-using namespace onnxruntime::cuda;
 
 ONNX_OPERATOR_KERNEL_EX(
     QuantizeWithOrder,

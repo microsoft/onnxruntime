@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "qordered_common.cuh"
-#include "qordered_layer_norm_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_common.cuh"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_layer_norm_impl.h"
 
 namespace onnxruntime {
 namespace contrib {

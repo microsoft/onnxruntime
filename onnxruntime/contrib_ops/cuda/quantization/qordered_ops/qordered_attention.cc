@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "qordered_attention.h"
-#include "qordered_attention_impl.h"
-#include "qordered_qdq_impl.h"
-#include "qordered_matmul_utils.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_attention.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_attention_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_matmul_utils.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"

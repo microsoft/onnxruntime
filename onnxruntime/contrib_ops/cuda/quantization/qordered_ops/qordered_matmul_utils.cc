@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qordered_matmul_utils.h"
-#include "qordered_qdq_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_matmul_utils.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
+
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
-using namespace onnxruntime::cuda;
 
 static Status cublasLtMatMulInt8SetupAlgo(cublasLtHandle_t cublasLt_handle, cublasLtMatmulAlgo_t& algo,
                                           int algo_id, int swizzle,

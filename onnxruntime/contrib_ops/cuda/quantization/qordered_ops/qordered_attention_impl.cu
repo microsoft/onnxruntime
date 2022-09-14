@@ -2,16 +2,14 @@
 // Licensed under the MIT License.
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include <cub/cub.cuh>
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_attention_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_common.cuh"
 
-#include "qordered_attention_impl.h"
-#include "qordered_common.cuh"
+#include <cub/cub.cuh>
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
-using namespace onnxruntime::cuda;
 
 __global__ void
 BuildTableForSoftmaxPowerOfKernel(const double base, float* table) {

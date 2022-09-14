@@ -1,21 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qordered_unary_ops_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_unary_ops_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
 #include "qordered_common.cuh"
+
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
-constexpr int kNumLinePerThread = 4;
-constexpr int kNumThreadsPerBlock = 256;
-constexpr int kNumElementsPerBlockLine = sizeof(char4) * kNumThreadsPerBlock;
-constexpr int kNumElementsPerBlock = sizeof(char4) * kNumLinePerThread * kNumThreadsPerBlock;
+static constexpr int kNumLinePerThread = 4;
+static constexpr int kNumThreadsPerBlock = 256;
+static constexpr int kNumElementsPerBlockLine = sizeof(char4) * kNumThreadsPerBlock;
+static constexpr int kNumElementsPerBlock = sizeof(char4) * kNumLinePerThread * kNumThreadsPerBlock;
 
 template <typename FuncT>
 __global__ void QOrderedUnaryElementWiseSharedMemoryKernel(

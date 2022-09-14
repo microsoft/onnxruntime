@@ -2,16 +2,16 @@
 // Licensed under the MIT License.
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_common.cuh"
+
 #include <cub/cub.cuh>
 
-#include "qordered_qdq_impl.h"
-#include "qordered_common.cuh"
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
-using namespace onnxruntime::cuda;
 
 template <typename FloatT>
 struct DequantizeVec {

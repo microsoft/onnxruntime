@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qordered_layer_norm.h"
-#include "qordered_layer_norm_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_layer_norm.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_layer_norm_impl.h"
+
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace contrib {
