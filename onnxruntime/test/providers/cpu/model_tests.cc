@@ -23,10 +23,6 @@
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #endif
 
-#ifdef USE_NUPHAR
-#include "core/providers/nuphar/nuphar_provider_factory.h"
-#endif
-
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_provider_factory.h"
 #endif
@@ -662,11 +658,6 @@ TEST_P(ModelTest, Run) {
         ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Dnnl(ortso, false));
       }
 #endif
-#ifdef USE_NUPHAR
-      else if (provider_name == "nuphar") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Nuphar(ortso, 1, ""));
-      }
-#endif
       else if (provider_name == "tensorrt") {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
           OrtTensorRTProviderOptionsV2 params{0, 0,       nullptr, 1000, 1, 1 << 30,
@@ -844,9 +835,6 @@ TEST_P(ModelTest, Run) {
 #endif
 #ifdef USE_DNNL
   provider_names.push_back(ORT_TSTR("dnnl"));
-#endif
-#ifdef USE_NUPHAR
-  provider_names.push_back(ORT_TSTR("nuphar"));
 #endif
 // For any non-Android system, NNAPI will only be used for ort model converter
 #if defined(USE_NNAPI) && defined(__ANDROID__)

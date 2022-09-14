@@ -191,7 +191,7 @@ void InitSyntheticDataLoader(
     int64_t sequence_length = 128;
     std::vector<int64_t> input_ids_shape{params.train_batch_size, sequence_length};
     std::vector<int64_t> attention_mask_shape{params.train_batch_size, sequence_length};
-    std::vector<int64_t> labels_shape{params.train_batch_size, 81};
+    std::vector<int64_t> labels_shape{params.train_batch_size, 7};
     for (int64_t i = 0; i < num_of_batches_per_epoch; ++i) {
       auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
       sample.AddInt64Input(input_ids_shape, 0, 250002 - 1);
@@ -255,10 +255,10 @@ int RunTraining(const TestRunnerParameters& params) {
       &session));
 
   size_t train_mode_output_count, eval_mode_output_count = 0;
-  ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetTrainModeOutputCount(session, &train_mode_output_count));
+  ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetTrainingModelOutputCount(session, &train_mode_output_count));
 
   if (do_eval) {
-    ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetEvalModeOutputCount(session, &eval_mode_output_count));
+    ORT_RETURN_ON_ERROR(g_ort_training_api->TrainingSessionGetEvalModelOutputCount(session, &eval_mode_output_count));
   }
 
   int64_t sample_batch_count_per_epoch = params.train_batch_size;
@@ -271,11 +271,10 @@ int RunTraining(const TestRunnerParameters& params) {
   onnxruntime::training::test::training_api::SyntheticDataLoader data_loader;
   InitSyntheticDataLoader(data_loader, params, num_of_batches_per_epoch);
 
-  auto lr_scheduler_parameters = std::make_unique<OrtLinearLRSchedulerParameters>().get();
-  lr_scheduler_parameters->total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
-  lr_scheduler_parameters->warmup_step_count = lr_scheduler_parameters->total_step_count / 3;
-  ORT_RETURN_ON_ERROR(g_ort_training_api->RegisterLRScheduler(
-    session, reinterpret_cast<void*>(lr_scheduler_parameters), OrtLRSchedulerType::LinearLRScheduler, nullptr));
+  auto total_step_count = params.num_train_epochs * num_of_batches_per_epoch;
+  auto warmup_step_count = total_step_count / 3;
+  ORT_RETURN_ON_ERROR(g_ort_training_api->RegisterLinearLRScheduler(
+    session, warmup_step_count, total_step_count, 0.001f));
 
   std::cout << "Initialization completed. Now starting training loop." << std::endl;
   const int64_t stabilized_perf_start_step = 0;

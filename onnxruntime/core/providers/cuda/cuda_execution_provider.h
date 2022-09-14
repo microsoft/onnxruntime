@@ -45,6 +45,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().CublasHandle();
   }
 
+  cublasLtHandle_t PerThreadCublasLtHandle() {
+    return GetPerThreadContext().CublasLtHandle();
+  }
+
   cudnnHandle_t PerThreadCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
   }
@@ -54,7 +58,23 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().template GetConstOnes<T>(count);
   }
 
+  // Add CPU buffer to a buffer pool.
+  // They can and only can be released
+  // by calling EuqueueDeferredRelease.
+  // A common pattern is
+  //  1. auto buffer = AllocateBufferOnCPUPinned<char>(128);
+  //  2. Some GPU kernel calls on GPU stream from GetComputeStream.
+  //  3. Call AddDeferredReleaseCPUPtr(buffer.release());
+  //  4. Call EnqueueDeferredRelease();
+  // so that the allocated "buffer" in (1) will be released
+  // only after all GPU kernels in (2) are finished.
+  // (4) is done in OnRunEnd, so the user doesn't need to call
+  // it in most cases.
   void AddDeferredReleaseCPUPtr(void* p);
+  // Release all buffers added by
+  // AddDeferredReleaseCPUPtr using
+  // GPU callback (so it's async).
+  Status EnqueueDeferredRelease();
 
   template <typename T>
   IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
@@ -108,13 +128,17 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
 
-  struct DeferredReleaseCPUPtrs {
-    bool recorded = false;
-    std::vector<void*> cpu_ptrs;
-  };
-
-  std::unordered_map<cudaEvent_t, DeferredReleaseCPUPtrs> deferred_release_cpu_ptr_;
-  OrtMutex deferred_release_cpu_ptr_mutex_;
+  // deferred_release_buffer_pool_[my_stream] store all CPU buffers associated with
+  // CUDA kernels running on my_stream (type: cudaStream_t).
+  // Buffers' release is enqueued as a CUDA callback onto the associated stream (aka
+  // stream returned by GetComputeStream when calling AddDeferredReleaseCPUPtr) in OnRunEnd.
+  // Those are pointers allocated by AllocateBufferOnCPUPinned and should be released
+  // by CPU Allocator's Free function.
+  std::unordered_map<void*, std::vector<void*>> deferred_release_buffer_pool_;
+  // To add a pointer to deferred_release_buffer_pool_, we need a mutex because
+  // different threads may create CPU buffers at the same time. Releasing
+  // buffers also needs this mutex.
+  OrtMutex deferred_release_mutex_;
 
   class PerThreadContext final {
    public:
@@ -130,8 +154,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
       return cudnn_handle_;
     }
 
-    cudaEvent_t& GetCurrentDeferredReleaseEvent() {
-      return current_deferred_release_event_;
+    cublasLtHandle_t CublasLtHandle() const {
+      return cublas_lt_handle_;
     }
 
     template <typename T>
@@ -166,23 +190,19 @@ class CUDAExecutionProvider : public IExecutionProvider {
     }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  bool IsGraphCaptureAllowed() const;
-  void CaptureBegin();
-  void CaptureEnd();
-  bool IsGraphCaptured() const;
-  Status ReplayGraph();
-  void IncrementRegularRunCountBeforeGraphCapture();
+    bool IsGraphCaptureAllowed() const;
+    void CaptureBegin();
+    void CaptureEnd();
+    bool IsGraphCaptured() const;
+    Status ReplayGraph();
+    void IncrementRegularRunCountBeforeGraphCapture();
 #endif
 
    private:
     cudaStream_t stream_ = nullptr;
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
-
-    // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync
-    // note that cudaEvent will be assigned at OnRunEnd() when PerThreadContext destory
-    // so the ownership is passed to deferred_release_cpu_ptr_
-    cudaEvent_t current_deferred_release_event_ = nullptr;
+    cublasLtHandle_t cublas_lt_handle_ = nullptr;
 
     std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
@@ -197,10 +217,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
     CUDAGraph cuda_graph_;
     bool is_graph_captured_ = false;
     int regular_run_count_before_graph_capture_ = 0;
-    const int min_num_runs_before_cuda_graph_capture_ = 1; // required min regular runs before graph capture for the necessary memory allocations.
+    const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
 
 #endif
-
   };
 
   using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;
