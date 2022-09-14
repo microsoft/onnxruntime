@@ -321,7 +321,7 @@ void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, voi
   // it will be cleaned up automatically at the end of this function.
   std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
   cpu_buffers_info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
-  for (auto ptr: info->buffers) {
+  for (auto ptr: cpu_buffers_info->buffers) {
     cpu_buffers_info->allocator->Free(ptr);
   }
 }
