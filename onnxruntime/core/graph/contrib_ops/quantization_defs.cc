@@ -1320,5 +1320,37 @@ TODO: Support them if needed in the future.
           .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32")
           .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+  ONNX_MS_OPERATOR_SET_SCHEMA(
+      QOrderedLongformerAttention,
+      1,
+      OpSchema()
+          .SetDoc(R"DOC(Quantized version of Longformer Self Attention (using int8 with specific matrix Layout).)DOC")
+          .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+          .Attr("window", "One sided attention windows length W, or half of total window length", AttributeProto::INT)
+          .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
+          .Attr("order_weight", "cublasLt order of weight matrix", AttributeProto::INT)
+          .Attr("order_global_weight", "cublasLt order of weight matrix", AttributeProto::INT)
+          .Attr("order_output", "cublasLt order of global bias", AttributeProto::INT)
+          .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "Q")
+          .Input(1, "scale_input", "scale of the input", "S")
+          .Input(2, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "Q")
+          .Input(3, "scale_weight", "scale of the weight", "S")
+          .Input(4, "bias", "1D input tensor with shape (3 * hidden_size), fp32 only currently.", "S")
+          .Input(5, "scale_bias", "scale of the bias (not used as add bias need float value in cublasLt)", "S")
+          .Input(6, "scale_qkv_gemm", "scale of the output for fused kqv gemm", "S")
+          .Input(7, "mask", "Attention mask with shape (batch_size, sequence_length)", "F")
+          .Input(8, "global_weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "Q")
+          .Input(9, "scale_global_weight", "scale of the global_weight", "S")
+          .Input(10, "global_bias", "1D input tensor with shape (3 * hidden_size)", "S")
+          .Input(11, "scale_global_gemm", "scale of the global_qkv_gemm", "S")
+          .Input(12, "global", "Global attention flags with shape (batch_size, sequence_length)", "G")
+          .Input(13, "scale_output", "scale of the output", "S")
+          .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
+          .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+          .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32 tensors.")
+          .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
+          .TypeConstraint("F", {"tensor(float16)"}, "Be compatible with float version.")
+          .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
 }  // namespace contrib
 }  // namespace onnxruntime
