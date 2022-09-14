@@ -392,9 +392,7 @@ def generate_files(list, args):
         files_list.append(
             "<file src="
             + '"'
-            + os.path.join(
-                args.sources_path, "include\\onnxruntime\\core\\providers\\tvm\\tvm_provider_factory.h"
-            )
+            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\tvm\\tvm_provider_factory.h")
             + '" target="build\\native\\include" />'
         )
 
