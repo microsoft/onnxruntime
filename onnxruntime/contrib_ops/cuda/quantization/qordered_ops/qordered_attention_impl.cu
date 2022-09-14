@@ -14,7 +14,7 @@ namespace cuda {
 __global__ void
 BuildTableForSoftmaxPowerOfKernel(const double base, float* table) {
   int g = threadIdx.x - 255;
-  table[255 + g] = __double2float_rn(pow(base, (double)g));
+  table[255 + g] = __double2float_rn(pow(base, static_cast<double>(g)));
 }
 
 Status BuildTableForSoftmaxPowerOf(cudaStream_t stream, const double base, float* table) {
@@ -30,8 +30,8 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
   using BlockReduceFP32 = cub::BlockReduce<float, TPB>;
 
   __shared__ union {
-    typename BlockReduceInt32::TempStorage tmp_storage_int32;
-    typename BlockReduceFP32::TempStorage tmp_storage_fp32;
+    typename BlockReduceInt32::TempStorage i32;
+    typename BlockReduceFP32::TempStorage f32;
   } unioned_tmp_storage;
   __shared__ float sum_reverse_block;
   __shared__ int32_t max_in_block;
@@ -48,20 +48,21 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
     four_masks = *(const int4*)(mask_index + offset);
     ch4 = *(const char4*)(src + offset);
   }
-  int32_t max_of_4 = max(max((int)ch4.x, (int)ch4.y), max((int)ch4.z, (int)ch4.w));
-  const int32_t max_all = BlockReduceInt32(unioned_tmp_storage.tmp_storage_int32).Reduce(max_of_4, cub::Max());
+  int32_t max_of_4 = max(max(static_cast<int>(ch4.x), static_cast<int>(ch4.y)),
+                         max(static_cast<int>(ch4.z), static_cast<int>(ch4.w)));
+  const int32_t max_all = BlockReduceInt32(unioned_tmp_storage.i32).Reduce(max_of_4, cub::Max());
   if (threadIdx.x == 0) {
     max_in_block = max_all;
   }
   __syncthreads();
 
   float4 epow_of_4 = {
-      four_masks.x ? lookup_table[255 - max_in_block + (int)ch4.x] : 0.0f,
-      four_masks.y ? lookup_table[255 - max_in_block + (int)ch4.y] : 0.0f,
-      four_masks.z ? lookup_table[255 - max_in_block + (int)ch4.z] : 0.0f,
-      four_masks.w ? lookup_table[255 - max_in_block + (int)ch4.w] : 0.0f};
+      four_masks.x ? lookup_table[255 - max_in_block + ch4.x] : 0.0f,
+      four_masks.y ? lookup_table[255 - max_in_block + ch4.y] : 0.0f,
+      four_masks.z ? lookup_table[255 - max_in_block + ch4.z] : 0.0f,
+      four_masks.w ? lookup_table[255 - max_in_block + ch4.w] : 0.0f};
   float sum_of_4 = epow_of_4.x + epow_of_4.y + epow_of_4.z + epow_of_4.w;
-  const float sum_all = BlockReduceFP32(unioned_tmp_storage.tmp_storage_fp32).Reduce(sum_of_4, cub::Sum());
+  const float sum_all = BlockReduceFP32(unioned_tmp_storage.f32).Reduce(sum_of_4, cub::Sum());
   if (threadIdx.x == 0) {
     sum_reverse_block = (float)(1.0 / ((double)sum_all * scale_dst));
   }
