@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - lint-updates-docs
 jobs:
   publish:
     runs-on: windows-latest
@@ -40,7 +41,7 @@ jobs:
         clean: false
     - name: Move API docs into target area
       run: |
-        if (Test-Path -Path docs/api/csharp) {rmdir docs/api/csharp /q /s} 
+        if (Test-Path -Path docs/api/csharp) {rmdir docs/api/csharp /q /s}
         MOVE csharp/ApiDocs/csharp docs/api
         rm -r -fo csharp/ApiDocs
         rm -r -fo csharp/src
