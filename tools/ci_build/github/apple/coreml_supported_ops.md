@@ -17,7 +17,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
 |ai.onnx:MatMul|Input B should be constant.|
 |ai.onnx:MaxPool|Only 2D Pool is supported.|
-|ai.onnx:PRelu|Input slope should be constant.<br/>Input slope should either have shape [C, 1, 1] or have 1 element.|
+|ai.onnx:PRelu|Input derivative should be constant.<br/>Input derivative should either have shape [C, 1, 1] or have 1 element.|
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
 |ai.onnx:Resize||
