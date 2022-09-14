@@ -11,8 +11,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
 class QOrderedLongformerAttention final : public CudaKernel, public LongformerAttentionBase {
  public:
   QOrderedLongformerAttention(const OpKernelInfo& info);

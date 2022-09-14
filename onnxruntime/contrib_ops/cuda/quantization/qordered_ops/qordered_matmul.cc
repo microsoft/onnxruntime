@@ -1,17 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qordered_matmul.h"
-#include "qordered_matmul_utils.h"
-#include "qordered_qdq_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_matmul.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_matmul_utils.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
 
 #include <functional>
+
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
-using namespace onnxruntime::cuda;
 
 constexpr int QOrderedMatMulScaleA = 1;
 constexpr int QOrderedMatMulScaleB = 3;

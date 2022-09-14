@@ -10,11 +10,11 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+using onnxruntime::cuda::CudaKernel;
 
 class QOrderedAttention final : public CudaKernel, public AttentionBase {
  public:
-  QOrderedAttention(const OpKernelInfo& info);
+  explicit QOrderedAttention(const OpKernelInfo& info);
 
   Status ComputeInternal(OpKernelContext* context) const override;
 

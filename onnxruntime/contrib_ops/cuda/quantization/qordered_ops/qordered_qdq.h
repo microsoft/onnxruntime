@@ -13,7 +13,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
+using onnxruntime::cuda::CudaKernel;
 
 class QuantizeWithOrder final : public CudaKernel {
  public:

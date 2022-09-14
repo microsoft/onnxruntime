@@ -7,8 +7,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
 __device__ inline float ToFloat(const __half h) { return __half2float(h); }
 
 __device__ inline float ToFloat(const float f) { return f; }
