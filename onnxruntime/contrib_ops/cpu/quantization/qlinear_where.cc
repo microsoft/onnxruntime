@@ -129,7 +129,7 @@ Status QLinearWhere::Compute(OpKernelContext* ctx) const {
   }
   const uint8_t* x_table = is_x_dynamic_ ? x_dynamic_lookup_table.data() : x_fixed_lookup_table_.data();
   const uint8_t* y_table = is_y_dynamic_ ? y_dynamic_lookup_table.data() : y_fixed_lookup_table_.data();
-  // Todo: implement the dynamic lookup table for z using ProcessBroadcastSpanFuncs
+  // Todo: compute output z using ProcessBroadcastSpanFuncs
   return Status();
 }
 
