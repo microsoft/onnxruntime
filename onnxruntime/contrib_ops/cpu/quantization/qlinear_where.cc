@@ -5,7 +5,192 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
+#include "core/providers/cpu/math/element_wise_ops.h"
+
 namespace onnxruntime {
+namespace {
+template <typename T, typename R>
+using EnableIfEigenScalar = typename std::enable_if<std::is_arithmetic<T>::value, R>::type;
+
+template <typename T, typename R>
+using EnableIfEigenNotScalar = typename std::enable_if<!std::is_arithmetic<T>::value, R>::type;
+template <typename T>
+ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
+  return ProcessBroadcastSpanFuncs{
+      [](BroadcastHelper& per_iter_bh) {
+        bool target = (per_iter_bh.GetUserData() != nullptr);
+        bool condition = per_iter_bh.ScalarInput0<bool>();
+        auto value = per_iter_bh.EigenInput1<T>();
+        auto output = per_iter_bh.OutputEigen<T>();
+        if (condition == target) {
+          output = value;
+        } else {
+          output = EigenVectorMap<T>::PlainObject::Constant(value.size(), T{});
+        }
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        bool target = (per_iter_bh.GetUserData() != nullptr);
+        auto condition = per_iter_bh.EigenInput0<bool>();
+        const T& value = per_iter_bh.ScalarInput1<T>();
+        auto output = per_iter_bh.OutputEigen<T>();
+        output = (condition.array() == target)
+                     .select(value, EigenVectorMap<T>::PlainObject::Constant(condition.size(), T{}));
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        bool target = (per_iter_bh.GetUserData() != nullptr);
+        auto condition = per_iter_bh.EigenInput0<bool>();
+        auto value = per_iter_bh.EigenInput1<T>();
+        auto output = per_iter_bh.OutputEigen<T>();
+        output = (condition.array() == target)
+                     .select(value, EigenVectorMap<T>::PlainObject::Constant(condition.size(), T{}));
+      }};
+}
+
+template <typename T>
+ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
+  return ProcessBroadcastSpanFuncs{
+      [](BroadcastHelper& per_iter_bh) {
+        bool target = (per_iter_bh.GetUserData() != nullptr);
+        bool condition = per_iter_bh.ScalarInput0<bool>();
+        auto value = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+        if (condition == target) {
+          std::copy(value.cbegin(), value.cend(), output.begin());
+        } else {
+          std::fill(output.begin(), output.end(), T{});
+        }
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        bool target = (per_iter_bh.GetUserData() != nullptr);
+        auto condition = per_iter_bh.SpanInput0<bool>();
+        const T& value = per_iter_bh.ScalarInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+        std::transform(condition.cbegin(), condition.cend(), output.begin(),
+                       [target, &value](bool condition_element) {
+                         return condition_element == target ? value : T{};
+                       });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        bool target = (per_iter_bh.GetUserData() != nullptr);
+        auto condition = per_iter_bh.SpanInput0<bool>();
+        auto value = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+        std::transform(condition.cbegin(), condition.cend(), value.cbegin(), output.begin(),
+                       [target](bool condition_element, const T& value_element) {
+                         return condition_element == target ? value_element : T{};
+                       });
+      }};
+}
+
+template <typename T>
+EnableIfEigenScalar<T, ProcessBroadcastSpanFuncs> SelectBroadcastFuncs() {
+  // NOTE: Workaround a VS2017 bug by calling a separate function to create the broadcast funcs.
+  // If we create them directly here it doesn't bring in the definitions of the Eigen classes leading to
+  // a 'class has no constructors' error
+  return CreateScalarBroadcastFuncs<T>();
+}
+
+template <typename T>
+EnableIfEigenNotScalar<T, ProcessBroadcastSpanFuncs> SelectBroadcastFuncs() {
+  return CreateNonScalarBroadcastFuncs<T>();
+}
+// function pointer to create typed tensor from type agnostic code whilst avoiding the overhead of std::function
+using AllocTensorFunc = std::unique_ptr<Tensor> (*)(const TensorAllocator& allocator, const TensorShape& shape);
+
+static std::unique_ptr<Tensor> UntypedSelect(OpKernelContext& context, bool target,
+                                             const TensorAllocator& allocator, AllocTensorFunc allocate_tensor,
+                                             const ProcessBroadcastSpanFuncs& functors) {
+  const auto& condition = *context.Input<Tensor>(0);
+  // select the X input (input 1) for 'true', and Y input (input 2) for 'false'
+  const auto& values = *context.Input<Tensor>(target ? 1 : 4);
+
+  InputBroadcaster input_broadcaster(condition, values);
+
+  std::unique_ptr<Tensor> selection_tensor = allocate_tensor(allocator, input_broadcaster.GetOutputShape());
+  OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(), *selection_tensor);
+
+  // store value of 'target' directly in void* for user_data so it's accessible in the state-less functors
+  BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster, reinterpret_cast<void*>(target));
+
+  BroadcastLooper(broadcast_helper, functors);
+
+  return selection_tensor;
+}
+template <typename T>
+void MergeScalarAndVector(EigenVectorMap<T> output, const T& scalar_value, ConstEigenVectorMap<T> vector_value) {
+  if (scalar_value != T{}) {
+    output = EigenVectorMap<T>::PlainObject::Constant(vector_value.size(), scalar_value);
+  } else {
+    output = vector_value;
+  }
+};
+
+template <typename T>
+EnableIfEigenScalar<T, ProcessBroadcastSpanFuncs> MergeBroadcastFuncs() {
+  return ProcessBroadcastSpanFuncs{
+      [](BroadcastHelper& per_iter_bh) {
+        MergeScalarAndVector(per_iter_bh.OutputEigen<T>(),
+                             per_iter_bh.ScalarInput0<T>(),  // X selection
+                             per_iter_bh.EigenInput1<T>());  // Y selection
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        MergeScalarAndVector(per_iter_bh.OutputEigen<T>(),
+                             per_iter_bh.ScalarInput1<T>(),  // Y selection
+                             per_iter_bh.EigenInput0<T>());  // X selection
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X_selection = per_iter_bh.EigenInput0<T>();
+        auto Y_selection = per_iter_bh.EigenInput1<T>();
+        per_iter_bh.OutputEigen<T>() = X_selection.binaryExpr(Y_selection,
+                                                              [](T x, T y) -> T {
+                                                                return x != T{} ? x : y;
+                                                              });
+      }};
+}
+
+template <typename T>
+void MergeScalarAndVector(gsl::span<T> output, const T& scalar_value, gsl::span<const T> vector_value) {
+  if (!scalar_value.empty()) {
+    std::fill(output.begin(), output.end(), scalar_value);
+  } else {
+    std::copy(vector_value.cbegin(), vector_value.cend(), output.begin());
+  }
+};
+
+template <typename T>
+EnableIfEigenNotScalar<T, ProcessBroadcastSpanFuncs> MergeBroadcastFuncs() {
+  return ProcessBroadcastSpanFuncs{
+      [](BroadcastHelper& per_iter_bh) {
+        MergeScalarAndVector(per_iter_bh.OutputSpan<T>(),
+                             per_iter_bh.ScalarInput0<T>(),  // X selection
+                             per_iter_bh.SpanInput1<T>());   // Y selection
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        MergeScalarAndVector(per_iter_bh.OutputSpan<T>(),
+                             per_iter_bh.ScalarInput1<T>(),  // Y selection
+                             per_iter_bh.SpanInput0<T>());   // X selection
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X_selection = per_iter_bh.SpanInput0<T>();
+        auto Y_selection = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+        std::transform(X_selection.cbegin(), X_selection.cend(), Y_selection.cbegin(), output.begin(),
+                       [](const T& x, const T& y) { return !x.empty() ? x : y; });
+      }};
+}
+static void UntypedMerge(OpKernelContext& context,
+                         const Tensor& X_selection_tensor, const Tensor& Y_selection_tensor,
+                         const ProcessBroadcastSpanFuncs& functors) {
+  InputBroadcaster merge_broadcaster{X_selection_tensor, Y_selection_tensor};
+  Tensor& output = *context.Output(0, merge_broadcaster.GetOutputShape());
+
+  OutputBroadcaster output_broadcaster{merge_broadcaster.GetSpanSize(), output};
+  BroadcastHelper broadcast_helper(merge_broadcaster, output_broadcaster);
+
+  BroadcastLooper(broadcast_helper, functors);
+}
+}  // namespace
+
 namespace contrib {
 
 QLinearWhere::QLinearWhere(const OpKernelInfo& info) : OpKernel(info) {
@@ -130,6 +315,21 @@ Status QLinearWhere::Compute(OpKernelContext* ctx) const {
   const uint8_t* x_table = is_x_dynamic_ ? x_dynamic_lookup_table.data() : x_fixed_lookup_table_.data();
   const uint8_t* y_table = is_y_dynamic_ ? y_dynamic_lookup_table.data() : y_fixed_lookup_table_.data();
   // Todo: compute output z using ProcessBroadcastSpanFuncs
+
+  const auto typed_tensor_allocation = [](const TensorAllocator& allocator,
+                                          const TensorShape& shape) {
+    return allocator.Allocate<uint8_t>(shape);
+  };
+
+  TensorAllocator tensor_allocator{*ctx};
+  ProcessBroadcastSpanFuncs funcs = SelectBroadcastFuncs<uint8_t>();
+  // X_Selection_Tensor size is the max of X and Condition
+  auto X_selection_tensor = UntypedSelect(*ctx, true, tensor_allocator, typed_tensor_allocation, funcs);
+  // Y_Selection_Tensor size is the max of Y and Condition
+  auto Y_selection_tensor = UntypedSelect(*ctx, false, tensor_allocator, typed_tensor_allocation, funcs);
+
+  UntypedMerge(*ctx, *X_selection_tensor, *Y_selection_tensor, MergeBroadcastFuncs<uint8_t>());
+
   return Status();
 }
 
