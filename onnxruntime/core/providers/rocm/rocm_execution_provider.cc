@@ -355,6 +355,12 @@ Status ROCMExecutionProvider::EnqueueDeferredRelease() {
     //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
     HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
   }
+  // All buffers are scheduled for release.
+  // Let's clear releated information so that
+  // those buffers won't be released twice in
+  // the next EnqueueDeferredRelease call.
+  deferred_release_buffer_pool_.clear();
+  return Status::OK();
 }
 
 Status ROCMExecutionProvider::OnRunStart() {
