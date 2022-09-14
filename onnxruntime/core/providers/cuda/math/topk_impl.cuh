@@ -502,7 +502,7 @@ Status TopKImpl(const CudaKernel* kernel, cudaStream_t stream, const T* input_x,
                                                  int64_t N,                \
                                                  int64_t dimension)
 
-// This file is causing excessive long compilation time in ROCm EP. Split all thoes compilation into multiple
+// This file is causing excessive long compilation time in ROCm EP. Split all those compilation into multiple
 // translation units to speed it up.
 TOPKIMPLE(TOPK_IMPL_TYPE);
 
