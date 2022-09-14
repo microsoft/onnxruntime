@@ -209,8 +209,9 @@ void RunOnUnload(std::function<void()> function);
 
 // A pointer stored in here will be deleted when the DLL gets unloaded, this is really only useful for thread_locals which don't get cleaned up properly otherwise
 template <typename T>
-struct DeleteOnUnloadPtr {
-  DeleteOnUnloadPtr(T* p) : p_(p) {
+struct DeleteOnUnload {
+  template <typename... Params>
+  DeleteOnUnload(Params&&... params) : p_{new (data_) T{std::forward<Params>(params)...}} {
     RunOnUnload([p = p_]() {
       delete p;
     });
@@ -223,8 +224,9 @@ struct DeleteOnUnloadPtr {
     return p_;
   }
 
- private:
-  T* p_;
+private:
+  alignas(T) std::byte data_[sizeof(T)];
+  T* p_{};
 };
 
 constexpr const char* kOnnxDomain = "";

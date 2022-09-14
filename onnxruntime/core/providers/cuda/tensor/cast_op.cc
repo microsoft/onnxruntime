@@ -9,7 +9,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-const DeleteOnUnloadPtr<std::vector<MLDataType>> castOpTypeConstraints = new std::vector<MLDataType> {
+const DeleteOnUnload<std::vector<MLDataType>> castOpTypeConstraints{ std::vector<MLDataType>{
   DataTypeImpl::GetTensorType<MLFloat16>(),
       DataTypeImpl::GetTensorType<BFloat16>(),
       DataTypeImpl::GetTensorType<float>(),
@@ -23,7 +23,7 @@ const DeleteOnUnloadPtr<std::vector<MLDataType>> castOpTypeConstraints = new std
       DataTypeImpl::GetTensorType<uint32_t>(),
       DataTypeImpl::GetTensorType<uint64_t>(),
       DataTypeImpl::GetTensorType<bool>()
-};
+}};
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \

@@ -25,10 +25,10 @@ constexpr const char* kMiopenConvUseMaxWorkspace = "miopen_conv_use_max_workspac
 }  // namespace rocm
 
 namespace {
-const DeleteOnUnloadPtr<EnumNameMapping<ArenaExtendStrategy>> arena_extend_strategy_mapping = new EnumNameMapping<ArenaExtendStrategy>{
+const DeleteOnUnload<EnumNameMapping<ArenaExtendStrategy>> arena_extend_strategy_mapping{EnumNameMapping<ArenaExtendStrategy>{
     {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
     {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
-};
+}};
 }  // namespace
 
 ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {

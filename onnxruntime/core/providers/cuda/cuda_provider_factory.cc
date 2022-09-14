@@ -180,6 +180,8 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
 
+protected:
+  ~ProviderInfo_CUDA_Impl() = default;
 } g_info;
 
 struct CUDA_Provider : Provider {

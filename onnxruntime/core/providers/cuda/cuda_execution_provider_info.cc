@@ -27,18 +27,17 @@ constexpr const char* kCudnnConv1dPadToNc1d = "cudnn_conv1d_pad_to_nc1d";
 }  // namespace provider_option_names
 }  // namespace cuda
 
-namespace {
-const DeleteOnUnloadPtr<EnumNameMapping<OrtCudnnConvAlgoSearch>> ort_cudnn_conv_algo_search_mapping = new EnumNameMapping<OrtCudnnConvAlgoSearch>{
+const DeleteOnUnload<EnumNameMapping<OrtCudnnConvAlgoSearch>> ort_cudnn_conv_algo_search_mapping{EnumNameMapping<OrtCudnnConvAlgoSearch>{
     {OrtCudnnConvAlgoSearchExhaustive, "EXHAUSTIVE"},
     {OrtCudnnConvAlgoSearchHeuristic, "HEURISTIC"},
     {OrtCudnnConvAlgoSearchDefault, "DEFAULT"},
-};
+}};
 
-const DeleteOnUnloadPtr<EnumNameMapping<ArenaExtendStrategy>> arena_extend_strategy_mapping = new EnumNameMapping<ArenaExtendStrategy>{
+const DeleteOnUnload<EnumNameMapping<ArenaExtendStrategy>> arena_extend_strategy_mapping{EnumNameMapping<ArenaExtendStrategy>
+{
     {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
     {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
-};
-}  // namespace
+}};
 
 CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   CUDAExecutionProviderInfo info{};
