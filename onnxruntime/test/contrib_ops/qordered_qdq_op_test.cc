@@ -1,20 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// #if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-
-// #include "gtest/gtest.h"
-// #include "test/common/tensor_op_test_utils.h"
-// #include "test/common/cuda_op_test_utils.h"
-// #include "test/providers/provider_test_utils.h"
-// #include "test/util/include/scoped_env_vars.h"
-// #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 #include "test/contrib_ops/qordered_test_utils.h"
-
-// #include <numeric>
-// #include <functional>
-// #include <iostream>
-// #include <math.h>
 
 namespace onnxruntime {
 namespace test {
