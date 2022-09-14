@@ -3,12 +3,10 @@ import tempfile
 
 import onnx
 import torch
-from orttraining_test_onnxblock import _get_models, _get_onnx_model
+from orttraining_test_onnxblock import _get_models
 
 import onnxruntime.training.onnxblock as onnxblock
-from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
-from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
-from onnxruntime.training.onnxblock import Module, Optimizer
+from onnxruntime.training.onnxblock.engine import Module, Optimizer
 
 
 class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingModel):

@@ -391,8 +391,8 @@ if (onnxruntime_ENABLE_TRAINING)
     file(GLOB onnxruntime_python_onnxblock_loss_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/loss/*"
     )
-    file(GLOB onnxruntime_python_onnxblock_engine_srcs CONFIGURE_DEPENDS
-    "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/engine/*"
+    file(GLOB onnxruntime_python_engine_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/engine/*"
     )
     file(GLOB onnxruntime_python_onnxblock_optim_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/optim/*"
@@ -735,7 +735,7 @@ if (onnxruntime_ENABLE_TRAINING)
       COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock
       COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/loss
       COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/optim
-      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/engine
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/engine
       COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_onnxblock_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/
@@ -746,8 +746,8 @@ if (onnxruntime_ENABLE_TRAINING)
         ${onnxruntime_python_onnxblock_optim_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/optim/
       COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_onnxblock_engine_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/engine/
+        ${onnxruntime_python_engine_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/engine/
 
     )
   endif()

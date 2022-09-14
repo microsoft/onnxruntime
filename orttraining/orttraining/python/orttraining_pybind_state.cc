@@ -824,17 +824,20 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         });
 #ifdef ENABLE_TRAINING_ON_DEVICE
   // Python apis only supports CPU device for now.
-  // TODO : Add support for CUDA device.
+  // TODO (adamlouly) : Add support for CUDA device.
   py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module.)pbdoc");
   training_module
-      .def(py::init([](const std::string model_uri, const std::string& ckpt_uri, std::optional<std::string> eval_model_uri) {
+      .def(py::init([](const std::string model_uri,
+                       const std::string& ckpt_uri,
+                       std::optional<std::string> eval_model_uri) {
         onnxruntime::training::api::CheckpointState state;
         ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(ckpt_uri, state));
 
         onnxruntime::SessionOptions session_option;
-        return std::make_unique<onnxruntime::training::api::Module>(model_uri,
-                                                                    state.module_checkpoint_state.named_parameters, session_option,
-                                                                    GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>(), eval_model_uri);
+        return std::make_unique<onnxruntime::training::api::Module>(
+            model_uri,
+            state.module_checkpoint_state.named_parameters, session_option,
+            GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>(), eval_model_uri);
       }))
       .def("train_step", [](onnxruntime::training::api::Module* model, const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
         ORT_THROW_IF_ERROR(model->TrainStep(user_inputs, user_outputs));
@@ -852,12 +855,16 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                                                                       ToPathString(checkpoint_path)));
       });
 
-  py::class_<onnxruntime::training::api::Optimizer> training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
-  training_optimizer.def(py::init([](const std::string optimizer_model_uri, onnxruntime::training::api::Module* model) {
+  py::class_<onnxruntime::training::api::Optimizer>
+      training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
+  training_optimizer.def(py::init([](
+                                      const std::string optimizer_model_uri,
+                                      onnxruntime::training::api::Module* model) {
                       onnxruntime::SessionOptions session_option;
-                      return std::make_unique<onnxruntime::training::api::Optimizer>(optimizer_model_uri,
-                                                                                     model->NamedParameters(), session_option,
-                                                                                     GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>());
+                      return std::make_unique<onnxruntime::training::api::Optimizer>(
+                          optimizer_model_uri,
+                          model->NamedParameters(), session_option,
+                          GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>());
                     }))
       .def("optimizer_step", [](onnxruntime::training::api::Optimizer* optimizer) -> void {
         ORT_THROW_IF_ERROR(optimizer->Step());
