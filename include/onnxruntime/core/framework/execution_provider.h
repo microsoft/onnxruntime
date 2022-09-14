@@ -108,7 +108,7 @@ class IExecutionProvider {
      contains more than one node. The node indexes contained in sub-graphs may
      have overlap, and it's ONNXRuntime's responsibility to do the partition
      and decide whether a node will be assigned to <*this> execution provider.
-     For kernels registered in a kernel registry, `kernel_lookup` can be used
+     For kernels registered in a kernel registry, `kernel_lookup` must be used
      to find a matching kernel for this EP.
   */
   virtual std::vector<std::unique_ptr<ComputeCapability>>

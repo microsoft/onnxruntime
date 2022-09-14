@@ -17,8 +17,7 @@ Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string
                                                    gsl::span<const ArgTypeAndIndex>& resolved_args) const {
   const auto op_id = utils::MakeOpId(node);
   const auto op_it = op_kernel_type_str_map_.find(op_id);
-  ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(),
-                "Failed to find op_id: ", op_id.domain, ':', op_id.op_type, ':', op_id.since_version);
+  ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(), "Failed to find op_id: ", op_id);
   const auto& type_str_map = op_it->second;
   const auto type_str_it = type_str_map.find(kernel_type_str);
   ORT_RETURN_IF(type_str_it == type_str_map.end(),
@@ -221,7 +220,7 @@ void KernelTypeStrResolver::Merge(KernelTypeStrResolver src) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-Status AutoRegisteringKernelTypeStrResolver::ResolveKernelTypeStr(
+Status OpSchemaKernelTypeStrResolver::ResolveKernelTypeStr(
     const Node& node, std::string_view kernel_type_str,
     gsl::span<const ArgTypeAndIndex>& resolved_args) const {
   std::lock_guard lock{resolver_mutex_};

@@ -181,7 +181,7 @@ void GradientOpTester::Run(
 
         bool valid = true;
 
-        AutoRegisteringKernelTypeStrResolver kernel_type_str_resolver{};
+        OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
 
         // set execution provider for all nodes in the graph
         for (auto& node : graph.Nodes()) {

@@ -262,7 +262,7 @@ class PlannerTest : public ::testing::Test {
         state_->GetDataTransferMgr());
 
     op_kernel_infos_.push_back(std::move(info));
-    const auto kernel_type_str_resolver = AutoRegisteringKernelTypeStrResolver{};
+    const auto kernel_type_str_resolver = OpSchemaKernelTypeStrResolver{};
     if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider,
                                              kernel_type_str_resolver)) {
       ASSERT_STATUS_OK(reg->Register(

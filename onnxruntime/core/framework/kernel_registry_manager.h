@@ -99,7 +99,7 @@ class KernelRegistryManager {
   // kernel type str resolver used by kernel registries for kernel matching
   using KernelTypeStrResolverVariant = std::variant<
 #if !defined(ORT_MINIMAL_BUILD)
-      AutoRegisteringKernelTypeStrResolver,  // the default in a full build
+      OpSchemaKernelTypeStrResolver,  // the default in a full build
 #endif
       KernelTypeStrResolver  // the default in a minimal build
       >;

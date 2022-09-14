@@ -18,7 +18,7 @@
 namespace Dml
 {
     GraphTransformer::GraphTransformer(
-        const std::string& name, 
+        const std::string& name,
         const onnxruntime::IExecutionProvider* provider
     )
         : onnxruntime::GraphTransformer(name),
@@ -29,7 +29,7 @@ namespace Dml
     onnxruntime::common::Status GraphTransformer::ApplyImpl(
         onnxruntime::Graph& graph,
         bool& modified,
-        int graph_level, const onnxruntime::logging::Logger&) const 
+        int graph_level, const onnxruntime::logging::Logger&) const
     {
       modified = false;
 
@@ -43,7 +43,7 @@ namespace Dml
         PerformQuantizedOperatorDecomposition(&graph, &transformModifiedGraph);
         modified |= transformModifiedGraph;
 
-        if (modified) 
+        if (modified)
         {
             ORT_RETURN_IF_ERROR(graph.Resolve());
         }
@@ -62,7 +62,7 @@ namespace Dml
         }
         return ss.str();
     }
-    
+
     void GraphTransformer::PerformOperatorFusion(onnxruntime::Graph* graph, bool* modified) const
     {
         struct NodeToAdd
@@ -86,7 +86,7 @@ namespace Dml
 
         onnxruntime::ProviderType provider_type = onnxruntime::kDmlExecutionProvider;
         const gsl::not_null<const onnxruntime::KernelRegistry*> registry = m_providerImpl->GetKernelRegistry().get();
-        const auto kernel_type_str_resolver = onnxruntime::AutoRegisteringKernelTypeStrResolver{};
+        const auto kernel_type_str_resolver = onnxruntime::OpSchemaKernelTypeStrResolver{};
         const auto kernel_lookup = onnxruntime::KernelLookup{provider_type,
                                                              gsl::make_span(&registry, 1),
                                                              kernel_type_str_resolver};
@@ -172,7 +172,7 @@ namespace Dml
             fusedNode.activationAttributes = activationNode.GetAttributes();
 
             // Inputs to the fused node are the inputs to the fuseable node
-            for (const auto *input : fuseableNode.InputDefs()) 
+            for (const auto *input : fuseableNode.InputDefs())
             {
                 fusedNode.inputs.push_back(graph->GetNodeArg(input->Name()));
             }
@@ -237,7 +237,7 @@ namespace Dml
             std::vector<onnxruntime::NodeArg*> inputs;
             std::vector<onnxruntime::NodeArg*> outputs;
         };
-        
+
         // Defer adding and removing nodes in the graph until after we're done iterating over it, because we can't mutate the
         // graph while iterating over it
         std::vector<NodeToAdd> nodesToAdd;
@@ -262,13 +262,13 @@ namespace Dml
                     dequantizeNode.name = "decomposed_QLinearSigmoid_DequantizeLinear_" + GetUniqueNodeName(&node);
                     dequantizeNode.description = "";
                     dequantizeNode.opType = "DequantizeLinear";
-                    dequantizeNode.domain = "";     
+                    dequantizeNode.domain = "";
 
                     dequantizeNode.inputs.push_back(graph->GetNodeArg(node.InputDefs()[0]->Name()));
                     dequantizeNode.inputs.push_back(graph->GetNodeArg(node.InputDefs()[1]->Name()));
                     dequantizeNode.inputs.push_back(graph->GetNodeArg(node.InputDefs()[2]->Name()));
                     dequantizeNode.outputs.push_back(sigmoidInputArg);
-                
+
                     nodesToAdd.push_back(std::move(dequantizeNode));
                 }
 
@@ -277,10 +277,10 @@ namespace Dml
                     sigmoidNode.name = "decomposed_QLinearSigmoid_Sigmoid_" + GetUniqueNodeName(&node);
                     sigmoidNode.description = "";
                     sigmoidNode.opType = "Sigmoid";
-                    sigmoidNode.domain = ""; 
+                    sigmoidNode.domain = "";
                     sigmoidNode.inputs.push_back(sigmoidInputArg);
-                    sigmoidNode.outputs.push_back(sigmoidOutputArg); 
-                    nodesToAdd.push_back(std::move(sigmoidNode)); 
+                    sigmoidNode.outputs.push_back(sigmoidOutputArg);
+                    nodesToAdd.push_back(std::move(sigmoidNode));
                 }
 
                 {
@@ -289,13 +289,13 @@ namespace Dml
                     quantizeNode.description = "";
                     quantizeNode.opType = "QuantizeLinear";
                     quantizeNode.domain = "";
-            
+
                     quantizeNode.inputs.push_back(sigmoidOutputArg);
                     quantizeNode.inputs.push_back(graph->GetNodeArg(node.InputDefs()[3]->Name()));
                     quantizeNode.inputs.push_back(graph->GetNodeArg(node.InputDefs()[4]->Name()));
                     quantizeNode.outputs.push_back(graph->GetNodeArg(node.OutputDefs()[0]->Name()));
- 
-                    nodesToAdd.push_back(std::move(quantizeNode)); 
+
+                    nodesToAdd.push_back(std::move(quantizeNode));
                 }
 
                 nodesToRemove.push_back(node.Index());
@@ -315,7 +315,7 @@ namespace Dml
                 nodeToAdd.domain);
         }
 
-        for (const auto& nodeIndex : nodesToRemove) 
+        for (const auto& nodeIndex : nodesToRemove)
         {
             onnxruntime::Node* node = graph->GetNode(nodeIndex);
             onnxruntime::graph_utils::RemoveNodeOutputEdges(*graph, *node);

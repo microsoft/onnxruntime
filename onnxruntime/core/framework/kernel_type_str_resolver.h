@@ -117,11 +117,13 @@ class KernelTypeStrResolver : public IKernelTypeStrResolver {
 #if !defined(ORT_MINIMAL_BUILD)
 
 /**
- * An implementation of IKernelTypeStrResolver which registers kernel type string matching info from node op schemas as
- * needed.
+ * An implementation of IKernelTypeStrResolver which loads kernel type string matching info from node op schemas.
+ *
+ * As this requires node op schemas, it is only enabled in a full build.
  */
-class AutoRegisteringKernelTypeStrResolver : public IKernelTypeStrResolver {
+class OpSchemaKernelTypeStrResolver : public IKernelTypeStrResolver {
  public:
+  // Note: `node`'s op schema must be populated.
   Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
                               gsl::span<const ArgTypeAndIndex>& resolved_args) const override;
 
