@@ -1371,13 +1371,16 @@ activation and leaky_relu_alpha.)DOC")
                                   }
                                 }));
 
+
 ONNX_MS_OPERATOR_SET_SCHEMA(RemoteCall, 1,
                             OpSchema()
                                 .SetDoc(R"DOC(Call remote endpoint.)DOC")
-                                .Input(0, "X", "X", "tensor(float)")
-                                .Output(0, "Y", "Y", "tensor(float)")
+                                .Input(0, "inputs", "variadic inputs", "T", OpSchema::Variadic, false, 1)
+                                .Output(0, "outputs", "variadic outputs", "T", OpSchema::Variadic, false, 1)
                                 .Attr("uri", "endpoint uri", AttributeProto::STRING)
-                                .Attr("key", "credential key", AttributeProto::STRING));
+                                .Attr("key", "credential key", AttributeProto::STRING)
+                                .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
+                                                "Allow inputs and outputs to be any kind of tensor."));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(ExpandDims, 1,
                             OpSchema()
