@@ -19,7 +19,14 @@ Status KernelTypeStrResolver::ResolveKernelTypeStr(const Node& node, std::string
   const auto op_it = op_kernel_type_str_map_.find(op_id);
   ORT_RETURN_IF(op_it == op_kernel_type_str_map_.end(), "Failed to find op_id: ", op_id);
   const auto& type_str_map = op_it->second;
+
+#ifdef DISABLE_ABSEIL
+  // TODO(edgchen1) maybe we can use transparent hash/eq to enable lookup with string_view
+  const auto type_str_it = type_str_map.find(std::string(kernel_type_str));
+#else
   const auto type_str_it = type_str_map.find(kernel_type_str);
+#endif
+
   ORT_RETURN_IF(type_str_it == type_str_map.end(),
                 "Failed to find args for kernel type string '", kernel_type_str,
                 "'. If type constraint names are available, ensure that they are used in the kernel def type "
