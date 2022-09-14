@@ -1247,18 +1247,11 @@ common::Status InferenceSession::Initialize() {
 
     // Ensure all registered EPs have created their allocators and shared them where possible.
     // Allocator creation may be delayed until IExecutionProvider::RegisterAllocator is called.
-    //
-    // We iterate EPs in reverse order as we are currently using this mechanism to share a CPU or CUDA
-    // allocator between CPU and XNNPACK, or CUDA and TensorRT. The memory config options for the CPU and CUDA EPs are
-    // more comprehensive so we prefer those, and need to call RegisterAllocator for those EPs first so their
-    // allocators are the ones that get shared.
     {
       AllocatorManager allocator_manager;
-      std::for_each(std::make_reverse_iterator(execution_providers_.end()),
-                    std::make_reverse_iterator(execution_providers_.begin()),
-                    [&allocator_manager](auto& iter) {
-                      iter->RegisterAllocator(allocator_manager);
-                    });
+      for (const auto& provider : execution_providers_) {
+        provider->RegisterAllocator(allocator_manager);
+      }
     }
 
     // At this time we know all the providers that will be part of this session.
