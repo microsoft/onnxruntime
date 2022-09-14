@@ -1,28 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// #include "gtest/gtest.h"
-// #include "test/common/tensor_op_test_utils.h"
-// #include "test/common/cuda_op_test_utils.h"
-// #include "test/providers/provider_test_utils.h"
-// #include "test/util/include/scoped_env_vars.h"
-// #include "contrib_ops/cpu/bert/longformer_attention_base.h"
-
 #include "test/contrib_ops/qordered_test_utils.h"
-// #include <numeric>
-// #include <functional>
-// #include <iostream>
-// #include <math.h>
 
 namespace onnxruntime {
 namespace test {
 
-const int64_t batch_size = 1;
-const int64_t sequence_len = 16;
-const int64_t input_hidden_size = 32;
-const int64_t num_heads = 2;
-const int64_t head_size = 16;
-const int64_t hidden_size = num_heads * head_size;
+#ifdef USE_CUDA
+
+static const int64_t batch_size = 1;
+static const int64_t sequence_len = 16;
+static const int64_t input_hidden_size = 32;
+static const int64_t num_heads = 2;
+static const int64_t head_size = 16;
+static const int64_t hidden_size = num_heads * head_size;
 
 std::vector<int32_t> input_mask = {  // [1, 16]
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0};
@@ -282,6 +273,8 @@ TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test_qorder.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
