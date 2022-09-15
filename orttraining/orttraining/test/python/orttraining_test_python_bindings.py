@@ -6,7 +6,7 @@ import torch
 from orttraining_test_onnxblock import _get_models
 
 import onnxruntime.training.onnxblock as onnxblock
-from onnxruntime.training.onnxblock.engine import Module, Optimizer
+from onnxruntime.training.api import Module, Optimizer
 
 
 class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingModel):
