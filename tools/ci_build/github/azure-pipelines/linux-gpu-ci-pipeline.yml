@@ -84,7 +84,7 @@ jobs:
     skipComponentGovernanceDetection: true
   workspace:
     clean: all
-  pool: Onnxruntime-Linux-GPU-NC6sv3-beta
+  pool: Onnxruntime-Linux-GPU-NC6sv3
   dependsOn:
   - Linux_Build
   steps:
