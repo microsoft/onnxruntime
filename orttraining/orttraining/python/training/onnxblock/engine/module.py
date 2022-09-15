@@ -1,6 +1,9 @@
-import torch
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# module.py
 
 from onnxruntime.capi import _pybind_state as C
+from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
 
 
@@ -19,44 +22,35 @@ class Module:
         """
         # TODO : Add support for bytes on train_model_uri and eval_model_uri.
         self.training = True
-        self._train_model_uri = train_model_uri
-        self._ckpt_uri = ckpt_uri
-        self._eval_model_uri = eval_model_uri
+        self._model = C.Module(train_model_uri, ckpt_uri, eval_model_uri)
 
-        self._create_training_module()
-
-    def __call__(self, *input):
+    def __call__(self, user_inputs):
         """
         This method enables calling Module as a function to run the model.
         Args:
-            input (OrtValueVector): input vector of ortvalues.
+            user_inputs (OrtValueVector): input vector of ortvalues.
         Returns:
             fetches : OrtValueVector that has model output.
         """
+        forward_inputs = OrtValueVector()
+        forward_inputs.reserve(len(user_inputs))
+        for element in user_inputs:
+            forward_inputs.push_back(OrtValue.ortvalue_from_numpy(element)._ortvalue)
         fetches = OrtValueVector()
+
         if self.training:
-            self._model.train_step(*input, fetches)
+            self._model.train_step(forward_inputs, fetches)
         else:
-            self._model.eval_step(*input, fetches)
+            self._model.eval_step(forward_inputs, fetches)
 
         return fetches
 
-    def _create_training_module(self):
-        """
-        This method is responsible for creating the model and initializing the parameters.
-        """
-        # TODO : make this as a util function.
-        self._model = C.Module(self._train_model_uri, self._ckpt_uri, self._eval_model_uri)
-
     def train(self, mode: bool = True):
         """Sets the Module in training mode.
-
         This has any effect only on Module Class.
-
         Args:
             mode (bool): whether to set training mode (``True``) or evaluation
                             mode (``False``). Default: ``True``.
-
         Returns:
             Module: self
         """
@@ -65,7 +59,6 @@ class Module:
 
     def eval(self):
         """Sets the Module in evaluation mode.
-
         This has any effect only on Module Class.
         Returns:
             Module: self
@@ -77,31 +70,6 @@ class Module:
         Resets the gradient of the parameters.
         """
         return self._model.reset_grad()
-
-    def get_model(self):
-        """
-        Returns the module class to be passed to initialize the Optimizer.
-        """
-        return self._model
-
-    def get_contagious_parameters(self):
-        """
-        Returns an ORTvalue that contains the buffer output of the Module's parameters.
-        """
-
-        arr = torch.zeros(self._model.get_parameters_size(False)).numpy()
-        output = C.OrtValue.ortvalue_from_numpy(
-            arr,
-            C.OrtDevice(
-                C.OrtDevice.cpu(),
-                C.OrtDevice.default_memory(),
-                0,
-            ),
-        )
-
-        self._model.copy_parameters_to_buffer(output)
-
-        return output
 
     def save_checkpoint(self, ckpt_uri):
         """
