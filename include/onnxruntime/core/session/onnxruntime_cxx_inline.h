@@ -1318,6 +1318,18 @@ inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelConte
   return out;
 }
 
+inline size_t CustomOpApi::KernelInfo_GetInputCount(const OrtKernelInfo* info) {
+  size_t out;
+  ThrowOnError(api_.KernelInfo_GetInputCount(info, &out));
+  return out;
+}
+
+inline size_t CustomOpApi::KernelInfo_GetOutputCount(const OrtKernelInfo* info) {
+  size_t out;
+  ThrowOnError(api_.KernelInfo_GetOutputCount(info, &out));
+  return out;
+}
+
 inline OrtOpAttr* CustomOpApi::CreateOpAttr(_In_ const char* name,
                                             _In_ const void* data,
                                             _In_ int len,

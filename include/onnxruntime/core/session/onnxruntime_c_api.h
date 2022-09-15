@@ -3496,6 +3496,24 @@ struct OrtApi {
   */
   const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version) NO_EXCEPTION;
 
+  /// @}
+  /// \name OrtKernelInfo
+  /// @{
+
+  /** \brief Used for custom operators, get the input count of a kernel
+  *
+  * \see ::OrtCustomOp
+  * \since Version 1.13
+  */
+  ORT_API2_STATUS(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
+
+  /** \brief Used for custom operators, get the output count of a kernel
+  *
+  * \see ::OrtCustomOp
+  * \since Version 1.13
+  */
+  ORT_API2_STATUS(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
+
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
 #endif

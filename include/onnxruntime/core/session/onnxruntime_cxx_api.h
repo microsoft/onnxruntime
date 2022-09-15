@@ -1148,6 +1148,9 @@ struct CustomOpApi {
   OrtValue* KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
   void* KernelContext_GetGPUComputeStream(const OrtKernelContext* context);
 
+  size_t KernelInfo_GetInputCount(const OrtKernelInfo* info);
+  size_t KernelInfo_GetOutputCount(const OrtKernelInfo* info);
+
   void ThrowOnError(OrtStatus* result);
 
   OrtOpAttr* CreateOpAttr(_In_ const char* name,

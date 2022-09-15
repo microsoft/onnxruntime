@@ -111,6 +111,16 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKe
   return onnxruntime::ToOrtStatus(status);
 }
 
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out) {
+  *out = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetInputCount();
+  return nullptr;
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out) {
+  *out = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetOutputCount();
+  return nullptr;
+};
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
 namespace onnxruntime {
