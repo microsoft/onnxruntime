@@ -849,6 +849,9 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("copy_parameters_to_buffer", [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
         ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output));
       })
+      .def("copy_buffer_to_parameters", [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
+        ORT_THROW_IF_ERROR(model->CopyBufferToParameters(output));
+      })
       .def("get_parameters_size", [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
         return model->GetParametersSize(trainable_only);
       })
