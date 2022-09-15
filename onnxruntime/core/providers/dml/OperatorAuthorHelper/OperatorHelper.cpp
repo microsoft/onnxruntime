@@ -592,7 +592,7 @@ namespace OperatorHelper
         int32_t transBatch,
         int32_t transpose)
     {
-        const uint32_t dimensionCount = sizes.size();
+        const uint32_t dimensionCount = gsl::narrow_cast<uint32_t>(sizes.size());
         std::vector<uint32_t> newStrides(dimensionCount);
         std::vector<uint32_t> newSizes(sizes.begin(), sizes.end());
 
