@@ -66,6 +66,7 @@
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
+#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -257,6 +258,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #ifdef ENABLE_TRAINING
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_rocm_eps));
 #endif
 
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_cuda_rocm_eps));

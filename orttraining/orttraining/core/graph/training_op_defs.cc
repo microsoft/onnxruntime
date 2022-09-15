@@ -333,11 +333,23 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
             )");
 
   builder.Add(R"(
-                adj_BCD = CastLike (one_hot_label_BCD, prob_BCD)
-                grad_BCD = Sub (prob_BCD, adj_BCD)
-                d_logits_BCD = Mul (d_loss_B1D, grad_BCD)
-                d_logits = Reshape (d_logits_BCD, orig_shape)
+              adj_BCD = CastLike (one_hot_label_BCD, prob_BCD)
+              grad_BCD = Sub (prob_BCD, adj_BCD)
+              d_logits_BCD = Mul (d_loss_B1D, grad_BCD)
             )");
+
+  if (ctx.hasInput(5)) {
+    builder.Add(R"(
+                d_logits_without_bias = Reshape (d_logits_BCD, orig_shape)
+                bias_shaped = Reshape (bias, orig_shape)
+                d_logits = Add(d_logits_without_bias, bias_shaped)
+              )");
+  } else {
+    builder.Add(R"(
+                d_logits = Reshape (d_logits_BCD, orig_shape)
+              )");
+  }
+
   schema.BuildFunction(functionProto);
   return true;
 };
@@ -3927,6 +3939,7 @@ Return true if all elements are true and false otherwise.
       .Input(4, "ignore_index",
              "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.",
              "I", OpSchema::Optional)
+      .Input(5, "bias", "data to be non-broadcasting added to the gradient.", "T", OpSchema::Optional)
       .Output(0, "d_logits", "gradient of logits", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                       "Constrain to float, float16 and double tensors.")
