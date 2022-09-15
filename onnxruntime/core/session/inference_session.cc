@@ -1024,9 +1024,18 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   // Check version mismatch, for now we will only proceed when runtime version matches the model's ort version
   const auto* fbs_ort_model_version = fbs_session->ort_version();
   ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
+
+  // Note about the ORT format version 5 breaking change.
+  // TODO This change was introduced in 1.13. Remove this note a few releases later, e.g., 1.15.
+  // TODO(edgchen1) update link to point to 1.13 release branch
+  constexpr auto* kOrtFormatVersion5BreakingChangeNote =
+      "This build doesn't support ORT format models older than version 5. "
+      "See: https://github.com/microsoft/onnxruntime/blob/main/docs/ORT_Format_Update_in_1.13.md";
+
   ORT_RETURN_IF_NOT(IsOrtModelVersionSupported(fbs_ort_model_version->string_view()),
                     "The ORT format model version [", fbs_ort_model_version->string_view(),
-                    "] is not supported in this build ", ORT_VERSION);
+                    "] is not supported in this build ", ORT_VERSION, ". ",
+                    kOrtFormatVersion5BreakingChangeNote);
 
   const auto* fbs_model = fbs_session->model();
   ORT_RETURN_IF(nullptr == fbs_model, "Missing Model. Invalid ORT format model.");
