@@ -1179,28 +1179,6 @@ static void ResolveMemoryPatternFlags(SessionState& session_state) {
     }
   }
 }
-static int NodePartitionStatistic(const Graph& graph) {
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  InlinedHashMap<std::string_view, size_t> ep_statistic;
-  for (auto node_index : node_topology_list) {
-    const auto* p_node = graph_viewer.GetNode(node_index);
-    if (p_node == nullptr) {
-      continue;  // node has been removed
-    }
-    ep_statistic[p_node->GetExecutionProviderType()]++;
-  }
-
-  std::ostringstream ostr;
-  ostr << "Creating " << ep_statistic.size() << " EPs; ";
-  for (auto [k, v] : ep_statistic) {
-    ostr << v << " nodes are assigned to " << k << ", ";
-  }
-  ostr << "\n";
-  printf("%s", ostr.str().c_str());
-  return 0;
-};
-
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 // VC++ reports: "Releasing unheld lock 'l' in function 'onnxruntime::InferenceSession::Initialize'". But I don't see anything wrong.
@@ -1493,7 +1471,6 @@ common::Status InferenceSession::Initialize() {
         model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
-    NodePartitionStatistic(graph);
   }
   ORT_CATCH(const NotImplementedException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
