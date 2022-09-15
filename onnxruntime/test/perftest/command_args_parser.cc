@@ -93,9 +93,6 @@ namespace perftest {
       "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
-      "\t    [XNNPACK only] [USE_PTHREADPOOL_ONLY]: 'If yes, ort-threadpool wouldn't be created'. \n"
-      "\t [Usage]: -e <provider_name> -i '<key1> <key2>' \n\n"
-      "\t [Example] [For XNNPACK EP] -e xnnpack -i \"USE_PTHREADPOOL_ONLY\" \n\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32

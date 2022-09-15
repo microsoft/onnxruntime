@@ -3,7 +3,6 @@
 #include <limits>
 #include <set>
 #include <type_traits>
-#include <unordered_map>
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -483,25 +482,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   } else if (provider_name == onnxruntime::kXnnpackExecutionProvider) {
 #ifdef USE_XNNPACK
-#ifdef _MSC_VER
-    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif
-    std::istringstream ss(ov_string);
-    std::unordered_map<std::string, std::string> provider_options =
-        {{"thread_num", std::to_string(performance_test_config.run_config.intra_op_num_threads)}};
-    std::string key;
-    while (ss >> key) {
-      if (key == "USE_PTHREADPOOL_ONLY") {
-        provider_options[key] = "1";
-      } else {
-        ORT_THROW(
-            "[ERROR] [XNNPACK] wrong key type entered. Choose from the following runtime key options"
-            " that are available for XNNPACK. ['USE_PTHREADPOOL_ONLY'] \n");
-      }
-    }
-    session_options.AppendExecutionProvider("XNNPACK", provider_options);
+    session_options.AppendExecutionProvider(
+        "XNNPACK", {{"thread_num", std::to_string(performance_test_config.run_config.intra_op_num_threads)}});
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
 #endif
