@@ -92,13 +92,13 @@ struct Module {
   size_t GetEvalModeOutputCount() const noexcept;
 
   // Return size of all parameters
-  size_t GetParametersSize(const bool trainable_only=true) const;
+  size_t GetParametersSize(const bool trainable_only = true) const;
 
   // Copy parameters onto contiguous buffer held by parameters_buffer
-  Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only=true);
-  
+  Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only = true);
+
   // Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
-  Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only=true);
+  Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only = true);
 
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
@@ -111,7 +111,7 @@ struct Module {
   std::vector<OrtValue> weights_;
   std::vector<OrtValue> gradients_;
   bool accumulate_gradient_ = false;
-  const std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters_;
+  const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
 };
 
 }  // namespace api

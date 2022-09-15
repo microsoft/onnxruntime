@@ -824,10 +824,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         });
 #ifdef ENABLE_TRAINING_ON_DEVICE
   // Python apis only supports CPU device for now.
-  // TODO (adamlouly) : Add support for CUDA device.
+  // TODO(adamlouly) : Add support for CUDA device.
   py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module.)pbdoc");
   training_module
-      .def(py::init([](const std::string model_uri,
+      .def(py::init([](const std::string& model_uri,
                        onnxruntime::training::api::CheckpointState& state,
                        std::optional<std::string> eval_model_uri) {
         onnxruntime::SessionOptions session_option;
@@ -912,7 +912,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
           std::istringstream buffer(serialized_model);
           ORT_THROW_IF_ERROR(Model::Load(buffer, &model_proto));
-          ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpointToModel(ToPathString(checkpoint_path), model_proto));
+          ORT_THROW_IF_ERROR(
+              onnxruntime::training::api::LoadCheckpointToModel(ToPathString(checkpoint_path), model_proto));
 
           std::string model_proto_str;
           ORT_ENFORCE(model_proto.SerializeToString(&model_proto_str), "Serializing Model failed.");

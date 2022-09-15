@@ -28,9 +28,9 @@ class Module:
         """
         This method enables calling Module as a function to run the model.
         Args:
-            user_inputs (OrtValueVector): input vector of ortvalues.
+            user_inputs : list of numpy objects.
         Returns:
-            fetches : OrtValueVector that has model output.
+            fetches : list of numpy objects.
         """
         forward_inputs = OrtValueVector()
         forward_inputs.reserve(len(user_inputs))
@@ -43,7 +43,7 @@ class Module:
         else:
             self._model.eval_step(forward_inputs, fetches)
 
-        return fetches
+        return [val.numpy() for val in fetches]
 
     def train(self, mode: bool = True):
         """Sets the Module in training mode.

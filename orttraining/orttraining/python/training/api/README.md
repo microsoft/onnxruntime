@@ -40,7 +40,7 @@ model.eval()
 loss = model(forward_inputs)
 
 # Assuming that the loss is the first element of the output in our case.
-print("Loss : ", loss.numpy()[0])
+print("Loss : ", loss[0])
 
 # Saving checkpoint.
 model.save_checkpoint("checkpoint_export.ckpt")

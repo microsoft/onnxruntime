@@ -22,7 +22,7 @@ def _create_training_models():
     # Given
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
-    _, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
+    pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
     # Build the onnx model with loss
     simple_model = SimpleModelWithCrossEntropyLoss()
@@ -35,7 +35,7 @@ def _create_training_models():
         _ = optimizer(simple_model.parameters())
         optimizer_model = accessor.model
 
-    return simple_model, onnx_model, optimizer_model, eval_model
+    return simple_model, onnx_model, optimizer_model, eval_model, pt_model
 
 
 def _get_test_models_path(directory, simple_model, onnx_model, optimizer_model=None, eval_model=None):
@@ -64,8 +64,7 @@ def _get_test_models_path(directory, simple_model, onnx_model, optimizer_model=N
 
 def test_train_step():
     # Initialize Models
-    simple_model, onnx_model, _, _ = _create_training_models()
-
+    simple_model, onnx_model, _, _, pt_model = _create_training_models()
     # Generating random data for testing.
     inputs = torch.randn(64, 784).numpy()
     labels = torch.randint(high=10, size=(64,), dtype=torch.int32).numpy()
@@ -80,12 +79,18 @@ def test_train_step():
         model = Module(model_file_path, state)
         model.train()
         fetches = model(forward_inputs)
-        assert fetches
+
+        # Calculate loss using pytorch model to compare it with Module's output.
+        pt_outputs = pt_model(torch.from_numpy(inputs).to("cuda"))
+        loss_fn = torch.nn.CrossEntropyLoss()
+        pt_loss = loss_fn(pt_outputs, torch.from_numpy(labels).to("cuda").long())
+
+        assert fetches[0] == pt_loss.item()
 
 
 def test_eval_step():
     # Initialize Models
-    simple_model, onnx_model, _, eval_model = _create_training_models()
+    simple_model, onnx_model, _, eval_model, _ = _create_training_models()
 
     # Generating random data for testing.
     # TODO : add utility function to convert numpy arrays to OrtValueVector.
@@ -112,7 +117,7 @@ def test_eval_step():
 
 def test_optimizer_step():
     # Initialize Models
-    simple_model, onnx_model, optimizer_model, _ = _create_training_models()
+    simple_model, onnx_model, optimizer_model, _, _ = _create_training_models()
 
     # Generating random data for testing.
     inputs = torch.randn(64, 784).numpy()
@@ -138,7 +143,7 @@ def test_optimizer_step():
 
 def test_training_module_checkpoint():
     # Initialize Models
-    simple_model, onnx_model, _, _ = _create_training_models()
+    simple_model, onnx_model, _, _, _ = _create_training_models()
 
     # Generating random data for testing.
     inputs = torch.randn(64, 784).numpy()
