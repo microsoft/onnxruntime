@@ -1,0 +1,67 @@
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'Python packaging pipeline'
+    trigger: true 
+    
+jobs:
+- job: Linux_Test
+  timeoutInMinutes: 60
+  variables:
+    skipComponentGovernanceDetection: true
+  workspace:
+    clean: all
+  pool: Linux-CPU  
+  steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact'
+    inputs:
+      preferTriggeringPipeline: true      
+      artifactName: 'drop-linux-cpu-x86_64'
+      targetPath: '$(Build.BinariesDirectory)/Release'
+      runVersion: 'latest'
+      buildType: specific
+      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+      definition: 841
+      #buildVersionToDownload: specific
+      #pipelineId: 227749
+    
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact'
+    inputs:
+      preferTriggeringPipeline: true
+      artifactName: 'onnxruntime'
+      targetPath: '$(Build.BinariesDirectory)/whl'
+      runVersion: 'latest'
+      buildType: specific
+      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+      definition: 841
+      #buildVersionToDownload: specific
+      #pipelineId: 227749
+
+
+  - task: Bash@3
+    displayName: 'Bash Script'
+    inputs:
+      targetType: filePath
+      filePath: tools/ci_build/github/linux/run_python_tests.sh
+
+
+  - task: PowerShell@2
+    displayName: 'Add Build Tag'
+    #Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'ResourceTrigger'))
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+    inputs:
+      targetType: inline
+      script: |
+        $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
+        $headers.Add("Authorization", "Bearer $env:SYSTEM_ACCESSTOKEN")
+        $headers.Add("Content-Type", "application/json")
+        $uri = "https://dev.azure.com/aiinfra/Lotus/_apis/build/builds/$(resources.pipeline.build.runID)/tags/test%20pass?api-version=6.0"
+        Invoke-RestMethod -Uri $uri -Headers $headers -Method PUT
+
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()

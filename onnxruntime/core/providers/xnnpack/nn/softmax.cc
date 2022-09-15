@@ -9,7 +9,6 @@
 #include "core/providers/cpu/math/softmax_shared.h"
 #include "core/optimizer/initializer.h"
 
-
 namespace onnxruntime {
 namespace xnnpack {
 std::pair<const onnx::TensorProto*, const onnx::TensorProto*>
@@ -31,12 +30,12 @@ bool IsQuantSoftmaxSupported(const NodeUnit& node_unit, const GraphViewer& graph
     // qdq models converted from other framework
     auto [scale_tensor, zero_tensor] = GetQuantizationZeroPointAndScale(graph, node_unit.Outputs()[0]);
     Initializer q_scale(*scale_tensor, node_unit.ModelPath());
-    if (fabs(*q_scale.data<float>() - 1.0f / 256.0f) > 0.0001f) {
+    if (fabs(q_scale.DataAsSpan<float>()[0] - 1.0f / 256.0f) > 0.0001f) {
       break;
     }
-    if (scale_tensor) {
+    if (zero_tensor) {
       Initializer q_zp(*zero_tensor, node_unit.ModelPath());
-      if (*q_zp.raw_data() != 0) {
+      if (q_zp.DataAsSpan<uint8_t>()[0] != 0) {
         break;
       }
     }
@@ -232,8 +231,8 @@ ONNX_OPERATOR_KERNEL_EX(Softmax, kOnnxDomain, 13, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         Softmax);
 
-ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kMSDomain, 1, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
+ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kDynamicDomainByCreate, 1, kXnnpackExecutionProvider,
+                        KernelDefBuilder(),  // dynamic schema
                         Softmax);
 
 }  // namespace xnnpack

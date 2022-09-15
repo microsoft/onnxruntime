@@ -56,12 +56,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kNupharExecutionProvider) {
-#ifdef USE_NUPHAR
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
-#else
-    ORT_THROW("Nuphar is not supported in this build\n");
-#endif
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     int device_id = 0;

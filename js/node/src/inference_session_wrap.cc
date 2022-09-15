@@ -83,7 +83,8 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
     size_t count = session_->GetInputCount();
     inputNames_.reserve(count);
     for (size_t i = 0; i < count; i++) {
-      inputNames_.emplace_back(session_->GetInputName(i, allocator));
+      auto inp_name = session_->GetInputNameAllocated(i, allocator);
+      inputNames_.emplace_back(inp_name.get());
       auto typeInfo = session_->GetInputTypeInfo(i);
       auto onnxType = typeInfo.GetONNXType();
       inputTypes_.emplace_back(onnxType);
@@ -95,7 +96,8 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo &info) {
     count = session_->GetOutputCount();
     outputNames_.reserve(count);
     for (size_t i = 0; i < count; i++) {
-      outputNames_.emplace_back(session_->GetOutputName(i, allocator));
+      auto out_name = session_->GetOutputNameAllocated(i, allocator);
+      outputNames_.emplace_back(out_name.get());
       auto typeInfo = session_->GetOutputTypeInfo(i);
       auto onnxType = typeInfo.GetONNXType();
       outputTypes_.emplace_back(onnxType);

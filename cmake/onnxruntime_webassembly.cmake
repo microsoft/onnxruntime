@@ -190,6 +190,7 @@ else()
   set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "             \
                         -s \"EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}\" \
                         -s \"EXPORTED_FUNCTIONS=_malloc,_free\"                     \
+                        -s MAXIMUM_MEMORY=4294967296                                \
                         -s WASM=1                                                   \
                         -s NO_EXIT_RUNTIME=0                                        \
                         -s ALLOW_MEMORY_GROWTH=1                                    \

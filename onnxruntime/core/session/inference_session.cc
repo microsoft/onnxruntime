@@ -1259,6 +1259,7 @@ common::Status InferenceSession::Initialize() {
       CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
       auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
       ORT_RETURN_IF_ERROR_SESSIONID_(RegisterExecutionProvider(std::move(p_cpu_exec_provider)));
+      execution_providers_.SetCpuProviderWasImplicitlyAdded(true);
     }
 
     // re-acquire mutex

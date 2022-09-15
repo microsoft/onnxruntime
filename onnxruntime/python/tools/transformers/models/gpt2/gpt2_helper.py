@@ -24,7 +24,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from benchmark_helper import Precision
 from float16 import float_to_float16_max_diff
-from fusion_utils import FusionUtils
 from io_binding_helper import IOBindingHelper
 from onnx_model import OnnxModel
 from torch_onnx_export_helper import torch_onnx_export
@@ -598,10 +597,6 @@ class Gpt2Helper:
 
         logger.info(f"auto_mixed_precision parameters: {parameters}")
         onnx_model.convert_float_to_float16(use_symbolic_shape_infer=True, **parameters)
-
-        fusion_utils = FusionUtils(onnx_model)
-        fusion_utils.remove_cascaded_cast_nodes()
-        fusion_utils.remove_useless_cast_nodes()
 
         return parameters
 

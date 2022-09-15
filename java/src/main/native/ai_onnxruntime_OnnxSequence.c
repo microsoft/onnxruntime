@@ -28,7 +28,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxSequence_getStringKeys(JN
 
     if (code == ORT_OK) {
       // Convert to Java String array
-      output = createStringArrayFromTensor(jniEnv, api, allocator, keys);
+      output = createStringArrayFromTensor(jniEnv, api, keys);
       // Release if valid
       api->ReleaseValue(element);
     }
@@ -94,7 +94,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxSequence_getStringValues(
 
     if (code == ORT_OK) {
       // Convert to Java String array
-      output = createStringArrayFromTensor(jniEnv, api, allocator, values);
+      output = createStringArrayFromTensor(jniEnv, api, values);
       // Release if valid
       api->ReleaseValue(element);
     }
@@ -230,7 +230,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxSequence_getStrings(JNIEn
       OrtValue* element;
       code = checkOrtStatus(jniEnv, api, api->GetValue(sequence, (int)i, allocator, &element));
       if (code == ORT_OK) {
-        jobject str = createStringFromStringTensor(jniEnv, api, allocator, element);
+        jobject str = createStringFromStringTensor(jniEnv, api, element);
         if (str == NULL) {
           api->ReleaseValue(element);
           // bail out as exception has been thrown
