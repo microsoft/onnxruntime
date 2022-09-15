@@ -507,9 +507,6 @@ struct ProviderHost {
   virtual std::shared_ptr<KernelRegistry> KernelRegistry__construct() = 0;
   virtual void KernelRegistry__operator_delete(KernelRegistry* p) = 0;
   virtual Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) = 0;
-  virtual Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider,
-                                               const IKernelTypeStrResolver& kernel_type_str_resolver,
-                                               const KernelCreateInfo** out) = 0;
 
   // PrimitiveDataTypeBase
   virtual int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) = 0;

@@ -133,7 +133,6 @@ struct KernelCreateInfo;
 struct KernelDef;
 struct KernelDefBuilder;
 struct KernelRegistry;
-class IKernelTypeStrResolver;
 struct Function;
 struct Graph;
 struct GraphViewer;
@@ -327,4 +326,3 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { r
 
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
-

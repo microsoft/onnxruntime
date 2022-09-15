@@ -594,12 +594,6 @@ struct ProviderHostImpl : ProviderHost {
   void KernelRegistry__operator_delete(KernelRegistry* p) override { delete p; }
   Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) override { return p->Register(std::move(create_info)); }
 
-  Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider,
-                                       const IKernelTypeStrResolver& kernel_type_str_resolver,
-                                       const KernelCreateInfo** out) override {
-    return p->TryFindKernel(node, exec_provider, kernel_type_str_resolver, out);
-  }
-
   // PrimitiveDataTypeBase (wrapped)
   int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) override { return p->GetDataType(); }
 
