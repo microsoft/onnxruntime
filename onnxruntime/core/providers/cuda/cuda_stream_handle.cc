@@ -13,9 +13,9 @@ struct StreamPool {
   StreamPool() = default;
   ~StreamPool() {
     for (const auto& s : streams_) {
-      cudaStreamDestroy(s.cuda_stream_);
-      cudnnDestroy(s.cudnn_handle_);
-      cublasDestroy(s.cublas_handle_);
+      // cudaStreamDestroy(s.cuda_stream_);
+      // cudnnDestroy(s.cudnn_handle_);
+      // cublasDestroy(s.cublas_handle_);
     }
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(StreamPool);
