@@ -42,8 +42,8 @@ struct StreamPool {
 };
 
 StreamPool& GetStreamPool() {
-  thread_local StreamPool stream_pool;
-  return stream_pool;
+  thread_local DeleteOnUnloadPtr<StreamPool> stream_pool = new StreamPool();
+  return *stream_pool;
 }
 
 struct CudaNotification : public synchronize::Notification {
