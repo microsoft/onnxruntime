@@ -54,14 +54,17 @@ public:
 
 void CALLBACK QueryLayerNormalization(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
 {
-    *isSupported = true;
+    *isSupported = false;
 
     // Mean and InvStdDev are not supported outputs.
-    if (context->GetOutputCount() > 1)
+    // If only scale Tensor is present then fall back to CPU. This is temporarily until 
+    // DML1.9.2 or DML1.10 gets released.
+    if (context->GetInputCount() < 3 || context->GetOutputCount() > 1) 
     {
-        *isSupported = false;
         return;
     }
+
+    *isSupported = true;
 }
 
 DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization, DmlOperatorLayerNormalization);
