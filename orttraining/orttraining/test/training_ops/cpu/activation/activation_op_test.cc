@@ -206,8 +206,8 @@ TEST(TanhGradTest, Basic) {
 }
 
 TEST(QuickGeluGradTest, Basic) {
-  const std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
-  const std::vector<float> dY(7, 1.0f);
+  const std::vector<float> x_vals = {-10.0f, -1.0f, 0.0f, 1.0f, 10.0f};
+  const std::vector<float> dY(5, 1.0f);
 
   // Positive alpha.
   {
