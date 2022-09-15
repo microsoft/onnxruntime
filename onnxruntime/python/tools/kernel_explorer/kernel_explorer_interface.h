@@ -31,16 +31,12 @@ class IKernelExplorer {
     return timer.Duration() / repeats_;
   }
 
-  virtual ~IKernelExplorer() {
-    if (stream_ != nullptr) {
-      HIP_CHECK(hipStreamDestroy(stream_));
-    }
-  }
+  virtual ~IKernelExplorer() = default;
 
  protected:
   hipStream_t Stream() { return stream_; }
 
  private:
-  hipStream_t stream_{[]() { hipStream_t stream; HIP_CHECK(hipStreamCreate(&stream)); return stream; }()};
+  hipStream_t stream_{0};
   int repeats_{100};
 };
