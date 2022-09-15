@@ -75,6 +75,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
   } else if (strcmp(provider_name, "XNNPACK") == 0) {
 #if defined(USE_XNNPACK)
+    if (provider_options.find("USE_PTHREADPOOL_ONLY") != provider_options.end() &&
+        provider_options["USE_PTHREADPOOL_ONLY"] == "1") {
+      status = onnxruntime::ToOrtStatus(options->value.config_options.AddConfigEntry(
+          kOrtSessionOptionsConfigDisableThreadPool, "1"));
+    }
     // If Xnnpack is enabled and user don't give a specific value, we need to set it same as cpu threadpool size
     if (provider_options.find("thread_num") == provider_options.end()) {
       provider_options["thread_num"] = std::to_string(options->value.intra_op_param.thread_pool_size);
