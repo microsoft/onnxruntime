@@ -392,5 +392,6 @@ ORT_API(const OrtTrainingApi*, GetTrainingApi, uint32_t version);
 
 ORT_API_STATUS_IMPL(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
-
+ORT_API_STATUS_IMPL(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
+                _Inout_ size_t* size);
 }  // namespace OrtApis

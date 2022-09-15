@@ -121,6 +121,34 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputCount, _In_ const OrtKernelInfo
   return nullptr;
 };
 
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
+                    _Inout_ size_t* size) {
+  const onnxruntime::OpKernelInfo* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  const size_t num_inputs = op_info->GetInputCount();
+
+  if (index >= num_inputs) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input index is out of range");
+  }
+
+  const std::string& name = op_info->node().InputDefs().at(index)->Name();
+
+  if (out == nullptr) {  // User is querying the true size of the name
+    *size = name.size() + 1;
+    return nullptr;
+  }
+
+  if (*size >= name.size() + 1) {  // User provided a buffer of sufficient size
+    std::memcpy(out, name.data(), name.size());
+    out[name.size()] = '\0';
+    *size = name.size() + 1;
+    return nullptr;
+  }
+
+  // User has provided a buffer that is not large enough
+  *size = name.size() + 1;
+  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
+}
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
 namespace onnxruntime {

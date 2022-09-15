@@ -3500,19 +3500,41 @@ struct OrtApi {
   /// \name OrtKernelInfo
   /// @{
 
-  /** \brief Used for custom operators, get the input count of a kernel
+  /** \brief Used for custom operators, get the input count from kernel info
   *
-  * \see ::OrtCustomOp
   * \since Version 1.13
   */
   ORT_API2_STATUS(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 
-  /** \brief Used for custom operators, get the output count of a kernel
+  /** \brief Used for custom operators, get the output count from kernel info
   *
-  * \see ::OrtCustomOp
   * \since Version 1.13
   */
   ORT_API2_STATUS(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
+
+  /** \brief Get an input node's name from a OrtKernelInfo object.
+  *
+  * If `out` is nullptr, the value of `size` is set to the true size of the input's
+  * name, and a success status is returned.
+  *
+  * If the `size` parameter is greater than or equal to the actual name's size,
+  * the value of `size` is set to the true size of the input's name, the provided memory
+  * is filled with the name's contents, and a success status is returned.
+  *
+  * If the `size` parameter is less than the actual input name's size and `out`
+  * is not nullptr, the value of `size` is set to the true size of the input's name
+  * and a failure status is returned.
+  *
+  * \param[in] info ::OrtKernelInfo instance
+  * \param[in] index Index of the input for which to get the name. Returns a failure status
+  *                  if the index is out of range.
+  * \param[out] out Pointer to memory where the null-terminated name will be stored.
+  * \param[in,out] size See above comments for details
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
+                  _Inout_ size_t* size);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer

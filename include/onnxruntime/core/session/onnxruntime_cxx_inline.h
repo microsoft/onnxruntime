@@ -1330,6 +1330,24 @@ inline size_t CustomOpApi::KernelInfo_GetOutputCount(const OrtKernelInfo* info) 
   return out;
 }
 
+inline std::string CustomOpApi::KernelInfo_GetInputName(_In_ const OrtKernelInfo* info, _In_ size_t index) {
+  size_t size = 0;
+  std::string out;
+
+  // Pass a nullptr as the data buffer to query the size of the input's name
+  OrtStatus* status = api_.KernelInfo_GetInputName(info, index, nullptr, &size);
+
+  if (status == nullptr) {
+    out.resize(size);
+    ThrowOnError(api_.KernelInfo_GetInputName(info, index, &out[0], &size));
+    out.resize(size - 1);  // remove the terminating character '\0'
+  } else {
+    ThrowOnError(status);
+  }
+
+  return out;
+}
+
 inline OrtOpAttr* CustomOpApi::CreateOpAttr(_In_ const char* name,
                                             _In_ const void* data,
                                             _In_ int len,
