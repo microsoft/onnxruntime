@@ -10,10 +10,17 @@ namespace cuda {
 
 // Fused kernel of Add (bias) and Transpose.
 // Shape of inputs and outputs:
-//     input :  (batch_size, sequence_length, num_matrices, num_heads, head_size)  -- format 1
-//              (num_matrices, batch_size, sequence_length, num_heads, head_size)  -- format 0
 //     biases:  (num_matrices, num_heads * head_size)
+// format 0:
+//     input:   (num_matrices, batch_size, sequence_length, num_heads, head_size)
 //     output:  (num_matrices, batch_size, num_heads, sequence_length, head_size)
+// format 1:
+//     input :  (batch_size, sequence_length, num_matrices, num_heads, head_size)
+//     output:  (num_matrices, batch_size, num_heads, sequence_length, head_size)
+// format 2:
+//     input :  (batch_size, sequence_length, num_matrices, num_heads, head_size)
+//     output:  (batch_size, sequence_length, num_heads, num_matrices, head_size)
+
 template <typename T>
 void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
