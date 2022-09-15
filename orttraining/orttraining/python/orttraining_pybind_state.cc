@@ -828,7 +828,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module.)pbdoc");
   training_module
       .def(py::init([](const std::string model_uri,
-                       onnxruntime::training::api::CheckpointState state,
+                       onnxruntime::training::api::CheckpointState& state,
                        std::optional<std::string> eval_model_uri) {
         onnxruntime::SessionOptions session_option;
         return std::make_unique<onnxruntime::training::api::Module>(
