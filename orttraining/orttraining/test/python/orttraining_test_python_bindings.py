@@ -6,7 +6,7 @@ import torch
 from orttraining_test_onnxblock import _get_models
 
 import onnxruntime.training.onnxblock as onnxblock
-from onnxruntime.training.api import Module, Optimizer
+from onnxruntime.training.api import CheckpointState, Module, Optimizer
 
 
 class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingModel):
@@ -74,8 +74,10 @@ def test_train_step():
     with tempfile.TemporaryDirectory() as temp_dir:
         # Save models & checkpoint files to load them later.
         checkpoint_file_path, model_file_path = _get_test_models_path(temp_dir, simple_model, onnx_model)
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
         # Create a Module.
-        model = Module(model_file_path, checkpoint_file_path)
+        model = Module(model_file_path, state)
         model.train()
         fetches = model(forward_inputs)
         assert fetches
@@ -96,9 +98,10 @@ def test_eval_step():
         checkpoint_file_path, model_file_path, eval_model_file_path = _get_test_models_path(
             temp_dir, simple_model, onnx_model, eval_model=eval_model
         )
-
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
         # Create a Module.
-        model = Module(model_file_path, checkpoint_file_path, eval_model_file_path)
+        model = Module(model_file_path, state, eval_model_file_path)
         model.train()
         model(forward_inputs)
 
@@ -121,9 +124,10 @@ def test_optimizer_step():
         checkpoint_file_path, model_file_path, optimizer_file_path = _get_test_models_path(
             temp_dir, simple_model, onnx_model, optimizer_model=optimizer_model
         )
-
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
         # Create a Module and Optimizer.
-        model = Module(model_file_path, checkpoint_file_path)
+        model = Module(model_file_path, state)
         optimizer = Optimizer(optimizer_file_path, model)
 
         model.train()
@@ -144,9 +148,10 @@ def test_training_module_checkpoint():
     with tempfile.TemporaryDirectory() as temp_dir:
         # Save models & checkpoint files to load them later.
         checkpoint_file_path, model_file_path = _get_test_models_path(temp_dir, simple_model, onnx_model)
-
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
         # Create a Training Module and Training Optimizer.
-        model = Module(model_file_path, checkpoint_file_path)
+        model = Module(model_file_path, state)
 
         model.train()
         model(forward_inputs)

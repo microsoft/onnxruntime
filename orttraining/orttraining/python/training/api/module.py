@@ -15,14 +15,14 @@ class Module:
 
     training: bool
 
-    def __init__(self, train_model_uri, ckpt_uri, eval_model_uri=None) -> None:
+    def __init__(self, train_model_uri, state, eval_model_uri=None) -> None:
         """
         Initializes Model for Training.
         __init__ will call an internatl function to create the model.
         """
         # TODO : Add support for bytes on train_model_uri and eval_model_uri.
         self.training = True
-        self._model = C.Module(train_model_uri, ckpt_uri, eval_model_uri)
+        self._model = C.Module(train_model_uri, state._state, eval_model_uri)
 
     def __call__(self, user_inputs):
         """
