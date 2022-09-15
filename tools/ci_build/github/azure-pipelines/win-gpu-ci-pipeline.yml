@@ -72,5 +72,5 @@ stages:
         RunOnnxRuntimeTests: false
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
-        MachinePool: onnxruntime-Win2019-GPU
+        MachinePool: Win-CPU-2019
         DocUpdateNeeded: true
