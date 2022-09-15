@@ -77,9 +77,9 @@ struct BrokenTest {
       : test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions) {
   }
 
-  BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions, 
+  BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions,
       const std::initializer_list<std::string>& opversions)
-      : test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions), 
+      : test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions),
       broken_opset_versions_(opversions) {
   }
 
