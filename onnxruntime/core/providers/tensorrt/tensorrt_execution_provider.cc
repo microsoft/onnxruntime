@@ -775,14 +775,15 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* build_graph, con
     }
   }
 
-  // "outer scope node arg" will not be set in the top level graph, only in subgraph.
-  //if (build_graph->ParentNode()) {
-  if (graph->ParentNode()) {
 
-    //std::cout << "Parent Node:" << graph->ParentNode()->Name() << std::endl;
-    //std::cout << "implicit inputs:" << std::endl;
+  if (build_graph->ParentNode()) {
 
+    std::cout << "Parent Node:" << graph->ParentNode()->Name() << std::endl;
+    std::cout << "implicit inputs:" << std::endl;
+
+    // iterate all the implict input to set proper outer scope value
     for (const auto& input : graph->ParentNode()->ImplicitInputDefs()) {
+      std::cout << input->Name() << std::endl;
 
       // Set outer scope value for current subgraph.
       //
@@ -791,7 +792,13 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* build_graph, con
       // (GetNodeArg searches for specific node arg in all node args in the graph)
       if (build_graph->GetNodeArg(input->Name())) {
         build_graph->AddOuterScopeNodeArg(input->Name());
-        //std::cout << input->Name() << std::endl;
+        std::cout << input->Name() << std::endl;
+      }
+
+      // handle the case where
+      if (!build_graph->ParentGraph()->ParentNode()) {
+        if (!build_graph->ParentGraph()->IsLocalValue(input->Name())) {
+        }
       }
     }
   }
@@ -884,6 +891,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
         }
 
+        SetGraphOuterScopeValues(&graph_build, &graph.GetGraph());
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
         // Add parent graph output to the subgraph
@@ -937,11 +945,11 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         std::string string_buf;
         model_proto->SerializeToString(string_buf);
 
-        if (dump_subgraphs_) {
+        //if (dump_subgraphs_) {
           // Dump TensorRT subgraph for debugging
           std::fstream dump("TensorrtExecutionProvider_TRT_Subgraph.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
           model_proto->SerializeToOstream(dump);
-        }
+        //}
 
         // Get supported node list recursively
         SubGraphCollection_t parser_nodes_list;

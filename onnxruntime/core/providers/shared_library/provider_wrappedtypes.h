@@ -687,6 +687,7 @@ struct Graph final {
 
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) { return g_host->Graph__GetOrCreateNodeArg(this, name, p_arg_type); }
   void AddOuterScopeNodeArg(const std::string& name) { g_host->Graph__AddOuterScopeNodeArg(this, name); }
+  void SetInputs(gsl::span<const NodeArg* const> inputs) { g_host->Graph__SetInputs(this, inputs); }
 
   Status Resolve() { return g_host->Graph__Resolve(this); }
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor) { return g_host->Graph__AddInitializedTensor(this, tensor); }
@@ -699,11 +700,15 @@ struct Graph final {
 
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const { return g_host->Graph__GetInitializedTensor(this, tensor_name, value); }
 
+  const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
+  Graph* MutableParentGraph() { return g_host->Graph__MutableParentGraph(this); }
   const Node* ParentNode() const { return g_host->Graph__ParentNode(this); }
   int MaxNodeIndex() const noexcept { return g_host->Graph__MaxNodeIndex(this); }
   const Node* GetNode(NodeIndex node_index) const noexcept { return g_host->Graph__GetNode(this, node_index); }
   Node* GetNode(NodeIndex node_index) noexcept { return g_host->Graph__GetNode(this, node_index); }
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->Graph__GetNodeArg(this, name); }
+
+  bool IsLocalValue(const std::string& name) const { return g_host->Graph__IsLocalValue(this, name); }
 
   PROVIDER_DISALLOW_ALL(Graph)
 };

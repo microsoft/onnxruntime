@@ -1292,6 +1292,10 @@ class Graph {
                        });
   }
 
+  bool IsLocalValue(const std::string& name) const {
+    return resolve_context_.IsLocalValue(name);
+  }
+
 #if !defined(ORT_MINIMAL_BUILD)
   /** Construct a Graph instance for a subgraph that is created from a GraphProto attribute in a Node.
   Inherits some properties from the parent graph.
