@@ -220,7 +220,6 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize + output_elements * element_size);
   MLFloat16* out_fp16 = (MLFloat16*)(((int8_t*)workspace_buffer.get()) + workSpaceSize);
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
   ORT_RETURN_IF_ERROR(LaunchLongformerAttentionKernel(device_prop,
                                                       cublas,
                                                       stream,
@@ -245,12 +244,12 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
                                                       disable_compact_memory,
                                                       true,     // use_merged_qkv_weights
                                                       false));  // use_half4
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+
   ORT_RETURN_IF_ERROR(QOrderQuantizeRowTo((cublasLtOrder_t)order_input_, stream, device_prop,
                                           (const CudaT*)out_fp16, output->template MutableData<int8_t>(),
                                           *scale_output, batch_size, sequence_length, hidden_size));
 
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+  // Defer release of pinned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
   return Status::OK();
 }
