@@ -535,7 +535,12 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
     bool has_leading_cast = false;
-    if (p_pow_input_node) {
+    // If it's not GPU EP, since the CPU impl for SimplifiedLayerNormalization doesn't support input and scale
+    // having different types for now, and it may also have conflict to InsertCastTransformer,
+    // so the sub-graph will not be fused if it contains Cast Op.
+    bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
+                     pow_node.GetExecutionProviderType() == kRocmExecutionProvider;
+    if (is_gpu_ep && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
       if (graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13}) &&
@@ -550,6 +555,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
+      if (!is_gpu_ep) continue;
       nodes_to_remove.push_back(*next_node);
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
