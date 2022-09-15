@@ -60,7 +60,8 @@ if(NOT onnxruntime_USE_DML)
 endif()
 
 file(GLOB onnxruntime_graph_src_exclude ${onnxruntime_graph_src_exclude_patterns})
-list(REMOVE_ITEM onnxruntime_graph_src ${onnxruntime_graph_src_exclude})
+#TODO: remove empty string "" param when project guarantees cmake 3.20+ due to https://gitlab.kitware.com/cmake/cmake/-/merge_requests/5693
+list(REMOVE_ITEM onnxruntime_graph_src ${onnxruntime_graph_src_exclude} "")
 
 file(GLOB_RECURSE onnxruntime_ir_defs_src CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/defs/*.cc"
