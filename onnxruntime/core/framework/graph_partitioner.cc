@@ -58,16 +58,6 @@ struct PartitionParams {
 };
 }  // namespace
 
-#if !defined(ORT_MINIMAL_BUILD)
-static void BuildFusedKernelDef(KernelDefBuilder& builder, const onnxruntime::Node& node) {
-  auto schema = node.Op();
-  builder.SetName(schema->Name())
-      .SetDomain(schema->domain())
-      .SinceVersion(schema->SinceVersion())
-      .Provider(node.GetExecutionProviderType());
-}
-#endif
-
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 // minimal KernelDef based on MetaDef instead of a Function based node
@@ -407,33 +397,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     // !!! The Function style fusion is deprecated.
     if (fusion_style == IExecutionProvider::FusionStyle::Function) {
       // Create a Function based node where the fused nodes have a new Graph instance.
-      static std::once_flag legacy_compile_method_warning_flag;
-      std::call_once(
-          legacy_compile_method_warning_flag, [](std::string_view ep_type) {
-            LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Function style Compile API "
-                                                                          "which is deprecated and will be removed soon. Please migrate to the new Compile "
-                                                                          "API based on FilteredGraphViewer.";
-          },
-          type);
-      ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_to_compile, node_compute_funcs));
-
-      if (node_compute_funcs.size() != nodes_to_compile.size()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, " did not return correct number of compiled functions");
-      }
-
-      for (size_t j = 0, end = nodes_to_compile.size(); j < end; j++) {
-        ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(nodes_to_compile[j]->Name(), std::move(node_compute_funcs[j])));
-      }
-
-      for (auto* node : nodes_to_compile) {
-        // add the KernelDef instances for the compiled nodes
-        KernelDefBuilder builder;
-        BuildFusedKernelDef(builder, *node);
-        ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(builder,
-                                                           [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-                                                             return FunctionKernel::Create(func_mgr, info, out);
-                                                           }));
-      }
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, "The Function Style fusion is deprecated.");
     } else {
       // temporary storage for the GraphViewer for each IndexedSubGraph
       std::vector<std::unique_ptr<GraphViewer>> viewers;

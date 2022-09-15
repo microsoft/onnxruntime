@@ -4,10 +4,10 @@
 # There are effectively three ways to consume DirectML in this repo:
 #
 # 1) Public = the build points at a pre-built copy of DirectML distributed as a NuGet package.
-# 2) Custom = the build points at a local copy of DirectML (bin/, include/, lib/). The dml_INCLUDE_DIR and 
+# 2) Custom = the build points at a local copy of DirectML (bin/, include/, lib/). The dml_INCLUDE_DIR and
 #    dml_LIB_DIR variables are also expected to be set to the custom build location.
 # 3) Internal = the build points at the DirectML source repo and builds it as part of the main project.
-# 
+#
 # Build Type | onnxruntime_USE_CUSTOM_DIRECTML | dml_EXTERNAL_PROJECT
 # -----------|---------------------------------|---------------------
 # Public     | OFF                             | OFF
@@ -40,7 +40,7 @@ if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
   set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
   set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
   get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
-  set(DML_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.AI.DirectML.1.9.0)
+  set(DML_PACKAGE_DIR ${PACKAGES_DIR}/Microsoft.AI.DirectML.1.9.1)
   set(DML_SHARED_LIB DirectML.dll)
 
   # Restore nuget packages, which will pull down the DirectML redist package.
@@ -72,7 +72,7 @@ else()
   if (dml_EXTERNAL_PROJECT)
     set(dml_preset_config $<IF:$<CONFIG:Debug>,debug,release>)
     set(dml_preset_name ${onnxruntime_target_platform}-win-redist-${dml_preset_config})
-    
+
     include(ExternalProject)
     ExternalProject_Add(
         directml_repo
@@ -86,7 +86,7 @@ else()
         INSTALL_COMMAND ${CMAKE_COMMAND} --install build/${dml_preset_name}
         STEP_TARGETS install
     )
-    
+
     # Target that consumers can use to link with the internal build of DirectML.
     set(directml_install_path ${CMAKE_BINARY_DIR}/directml_repo-prefix/src/directml_repo/build/${dml_preset_name}/install)
     add_library(DirectML INTERFACE)
