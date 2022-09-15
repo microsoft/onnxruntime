@@ -79,7 +79,7 @@ class VulkanPipelineFactory {
 
   virtual ~VulkanPipelineFactory();
 
-  const VulkanPipeline* GetPipeline(const std::string& key,
+  VulkanPipeline* GetPipeline(const std::string& key,
                                     const std::vector<VkDescriptorType>& descriptor_types,
                                     const std::vector<uint32_t>& local_sizes = std::vector<uint32_t>());
 

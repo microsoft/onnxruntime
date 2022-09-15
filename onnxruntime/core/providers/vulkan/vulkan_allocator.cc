@@ -16,7 +16,9 @@ VulkanAllocator::VulkanAllocator(const VulkanExecutionProviderInfo& info,
       memory_limits_(memory_limits) {
 }
 
-void* VulkanAllocator::Alloc(size_t /*size*/) { return nullptr; }
+void* VulkanAllocator::Alloc(size_t /*size*/) {
+  return nullptr;
+}
 
 void* VulkanAllocator::Alloc(const TensorShape& shape, MLDataType data_type) {
   return new VulkanTensor(shape, data_type,

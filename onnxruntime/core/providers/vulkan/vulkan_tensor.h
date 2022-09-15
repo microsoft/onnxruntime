@@ -29,20 +29,34 @@ class VulkanTensor {
     return blocks_;
   }
 
-  const VulkanImage* Get(size_t index = 0) const {
+  const VulkanImage* GetImage(size_t index = 0) const {
     return images_[index].get();
   }
+
+  VulkanImage* GetMutableImage(size_t index = 0) {
+    return images_[index].get();
+  }
+
+  MLDataType DataType() const {
+    return data_type_;
+  }
+
+  const TensorShape& Shape() const {
+    return tensor_shape_;
+  }
+
+  // void Release();
 
   // N, H, W, C
   static std::array<int64_t, 4> TensorShapeFormat(const TensorShape& tensor_shape);
 
-  static int64_t GetAlignSize(const Tensor* tensor);
-
-  void Release();
+  static int64_t GetAlignSize(MLDataType data_type);
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanTensor);
 
  private:
+  MLDataType data_type_;
+  TensorShape tensor_shape_;
   std::vector<std::shared_ptr<VulkanImage>> images_;
   std::array<int64_t, 2> blocks_;
   std::array<int64_t, 4> size_;

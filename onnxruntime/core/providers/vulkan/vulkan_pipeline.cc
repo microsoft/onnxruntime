@@ -281,7 +281,7 @@ void VulkanPipelineFactory::Reset() {
   VK_CALL(vkCreatePipelineCache(logical_device_, &pipeline_cache_create_info, nullptr, &pipeline_cache_));
 }
 
-const VulkanPipeline* VulkanPipelineFactory::GetPipeline(const std::string& key,
+VulkanPipeline* VulkanPipelineFactory::GetPipeline(const std::string& key,
                                                          const std::vector<VkDescriptorType>& /*descriptor_types*/,
                                                          const std::vector<uint32_t>& /*local_sizes*/) {
   auto iter = pipelines_.find(key);

@@ -5,10 +5,6 @@
 
 namespace onnxruntime {
 
-#define UP_DIV(x, y) (((x) + (y) - (1)) / (y))
-#define ROUND_UP(x, y) (((x) + (y) - (1)) / (y) * (y))
-#define ALIGN_UP4(x) ROUND_UP((x), 4)
-
 std::array<int64_t, 4> VulkanTensor::TensorShapeFormat(const TensorShape& tensor_shape) {
   auto rank = tensor_shape.GetDims().size();
 
@@ -49,14 +45,16 @@ std::array<int64_t, 4> VulkanTensor::TensorShapeFormat(const TensorShape& tensor
   return {N, H, W, C};
 }
 
-int64_t VulkanTensor::GetAlignSize(const Tensor* tensor) {
-  auto element_size = tensor->DataType()->Size();
+int64_t VulkanTensor::GetAlignSize(MLDataType data_type) {
+  auto element_size = data_type->Size();
   return ALIGN_UP4(element_size);
 }
 
 VulkanTensor::VulkanTensor(const TensorShape& tensor_shape, MLDataType data_type,
                            VulkanMemoryAllocationHelper& memory_alloc_helper,
-                           const VkPhysicalDeviceLimits& memory_limits) {
+                           const VkPhysicalDeviceLimits& memory_limits) : data_type_(data_type),
+                                                                          tensor_shape_(tensor_shape)
+{
   auto nhwc = TensorShapeFormat(tensor_shape);
 
   auto width = UP_DIV(nhwc[3], 4) * nhwc[2];
@@ -88,10 +86,10 @@ VulkanTensor::VulkanTensor(const TensorShape& tensor_shape, MLDataType data_type
   }
 }
 
-void VulkanTensor::Release() {
-  for (auto image : images_) {
-    image->Release();
-  }
-}
+//void VulkanTensor::Release() {
+//  for (auto image : images_) {
+//    image->Release();
+//  }
+// }
 
 }  // namespace onnxruntime

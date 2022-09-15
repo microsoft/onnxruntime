@@ -49,7 +49,7 @@ void* VulkanBuffer::Map(int start, int size) const {
 
   void* data = nullptr;
 
-  VK_CALL(vkMapMemory(device, device_memory->Get(), start + memory_.second, size_, 0, &data));
+  VK_CALL(vkMapMemory(device, device_memory->Get(), start + memory_.second, size, 0, &data));
 
   return data;
 }

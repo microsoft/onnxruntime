@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "vulkan_execution_provider.h"
+#include "vulkan_data_transfer.h"
 
 #include "core/common/common.h"
 //#include "core/framework/op_kernel.h"
@@ -159,17 +160,29 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
   VK_CALL_RETURNS_VOID(vkGetDeviceQueue(vulkan_logical_device_, vulkan_queue_family_index_, 0, &vulkan_queue_));
 
   // Insert the allocator
-
   InsertAllocator(CreateVulkanAllocator());
+
+  // Initialize other resources
+  vulkan_sampler_ = std::make_shared<VulkanSampler>(vulkan_logical_device_, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER);
+  vulkan_clamp_sampler_ = std::make_shared<VulkanSampler>(vulkan_logical_device_, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+  vulkan_memory_alloc_ = std::make_shared<VulkanMemoryAllocationHelper>(vulkan_logical_device_, vulkan_device_memory_properties_, vulkan_queue_family_index_);
+  vulkan_command_pool_ = std::make_shared<VulkanCommandPool>(vulkan_logical_device_, vulkan_queue_family_index_);
+  vulkan_pipeline_factory_ = std::make_shared<VulkanPipelineFactory>(vulkan_logical_device_);
 }
 
 VulkanExecutionProvider::~VulkanExecutionProvider() {
-  // NOTES:
-  // (1) Physical device is implicitly destroyed when the vulkan instance is destroyed
+  vulkan_instance_ = nullptr;
+  vulkan_sampler_ = nullptr;
+  vulkan_clamp_sampler_ = nullptr;
+  vulkan_memory_alloc_ = nullptr;
+  vulkan_command_pool_ = nullptr;
+  vulkan_pipeline_factory_ = nullptr;
+
+  // NOTE:
+  // (1) Physical device is implicitly destroyed when the Vulkan instance is destroyed
   // finally, so there is nothing to add here wrt to that
 
   // (2) Device queues are implicitly destroyed when logical device is destroyed
-
   if (VK_NULL_HANDLE != vulkan_logical_device_) {
     vkDestroyDevice(vulkan_logical_device_, nullptr);
     vulkan_logical_device_ = VK_NULL_HANDLE;
@@ -193,6 +206,44 @@ void VulkanExecutionProvider::RegisterAllocator(AllocatorManager& allocator_mana
     // enable sharing of our allocator from the EP
     allocator_manager.InsertAllocator(vulkan_alloc);
   }
+}
+
+const VulkanSampler& VulkanExecutionProvider::GetCommonSampler(bool clamp) const {
+  if (clamp) {
+    return *vulkan_clamp_sampler_;
+  }
+
+  return *vulkan_sampler_;
+}
+
+VulkanMemoryAllocationHelper& VulkanExecutionProvider::GetMemoryPool() const {
+  return *vulkan_memory_alloc_;
+}
+
+VulkanCommandPool& VulkanExecutionProvider::GetCommandPool() const {
+  return *vulkan_command_pool_;
+}
+
+VulkanPipeline& VulkanExecutionProvider::GetPipeline(const std::string& key, const std::vector<VkDescriptorType>& types,
+                                                     const std::vector<uint32_t>& local_sizes) const {
+  return *vulkan_pipeline_factory_->GetPipeline(key, types, local_sizes);
+}
+
+const VkPhysicalDeviceLimits& VulkanExecutionProvider::GetMemoryLimits() const {
+  return vulkan_device_properties_.limits;
+}
+
+std::unique_ptr<IDataTransfer> VulkanExecutionProvider::GetDataTransfer() const {
+  return std::make_unique<VulkanDataTransfer>(*this);
+}
+
+Status VulkanExecutionProvider::QueueCommand(VkCommandBuffer cmd_buffer) const {
+  vulkan_command_buffers_.emplace_back(cmd_buffer);
+  return Status::OK();
+}
+
+Status VulkanExecutionProvider::Sync() const {
+  return Status::OK();
 }
 
 // Forward declarations of op kernels
@@ -220,8 +271,7 @@ Status RegisterVulkanOnnxOperatorKernels(KernelRegistry& kernel_registry) {
 }
 
 Status RegisterVulkanKernels(KernelRegistry& kernel_registry) {
-  ORT_RETURN_IF_ERROR(RegisterVulkanOnnxOperatorKernels(kernel_registry));
-  return Status::OK();
+  return RegisterVulkanOnnxOperatorKernels(kernel_registry);
 }
 
 KernelRegistryAndStatus GetVulkanKernelRegistry() {

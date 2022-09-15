@@ -98,20 +98,25 @@ VulkanImage::~VulkanImage() {
   }
 }
 
-void VulkanImage::Release() {
-  if (nullptr == image_memory_.first) {
+//void VulkanImage::Release() {
+//  if (nullptr == image_memory_.first) {
+//    return;
+//  }
+
+  // Free the image
+//  memory_alloc_helper_.FreeDeviceMemory(image_memory_);
+
+//  image_memory_.first = nullptr;
+
+  // TODO: Should the image view be cleaned up too ?
+// }
+
+void VulkanImage::BarrierWrite(VkCommandBuffer buffer) const {
+  if (image_access_flags_ == VK_ACCESS_SHADER_WRITE_BIT &&
+      image_layout_ == VK_IMAGE_LAYOUT_GENERAL) {
     return;
   }
 
-  // Free the image
-  memory_alloc_helper_.FreeDeviceMemory(image_memory_);
-
-  image_memory_.first = nullptr;
-
-  // TODO: Should the image view be cleaned up too ?
-}
-
-void VulkanImage::BarrierWrite(VkCommandBuffer buffer) {
   VkImageMemoryBarrier barrier;
   ::memset(&barrier, 0, sizeof(VkImageMemoryBarrier));
 
@@ -127,15 +132,17 @@ void VulkanImage::BarrierWrite(VkCommandBuffer buffer) {
   barrier.subresourceRange.levelCount = 1;
   barrier.subresourceRange.layerCount = 1;
 
-  VK_CALL_RETURNS_VOID(vkCmdPipelineBarrier(buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
+  VK_CALL_RETURNS_VOID(vkCmdPipelineBarrier(buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
                                             nullptr, 0, nullptr, 1, &barrier));
 
   image_layout_ = VK_IMAGE_LAYOUT_GENERAL;
   image_access_flags_ = VK_ACCESS_SHADER_WRITE_BIT;
 }
 
-void VulkanImage::BarrierRead(VkCommandBuffer buffer) {
-  if (image_access_flags_ == VK_ACCESS_SHADER_READ_BIT && image_layout_ == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+void VulkanImage::BarrierRead(VkCommandBuffer buffer) const {
+  if (image_access_flags_ == VK_ACCESS_SHADER_READ_BIT &&
+      image_layout_ == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
     return;
   }
 
@@ -154,7 +161,8 @@ void VulkanImage::BarrierRead(VkCommandBuffer buffer) {
   barrier.subresourceRange.levelCount = 1;
   barrier.subresourceRange.layerCount = 1;
 
-  VK_CALL_RETURNS_VOID(vkCmdPipelineBarrier(buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
+  VK_CALL_RETURNS_VOID(vkCmdPipelineBarrier(buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0,
                                             nullptr, 0, nullptr, 1, &barrier));
 
   image_layout_ = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

@@ -48,19 +48,19 @@ class VulkanImage {
     return std::get<4>(image_info_);
   }
 
-  void Release();
+  // void Release();
 
-  void ResetBarrier() {
-    image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
-  }
+  // void ResetBarrier() {
+  //  image_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+  //}
 
   VkImageLayout GetLayout() const {
     return image_layout_;
   }
 
-  void BarrierWrite(VkCommandBuffer buffer);
+  void BarrierWrite(VkCommandBuffer buffer) const;
 
-  void BarrierRead(VkCommandBuffer buffer);
+  void BarrierRead(VkCommandBuffer buffer) const;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanImage);
 
@@ -74,8 +74,10 @@ class VulkanImage {
   std::vector<int64_t> image_dims_;
   std::pair<void*, int> image_memory_;
 
-  VkImageLayout image_layout_;
-  VkAccessFlagBits image_access_flags_;
+  // May be modified in BarrierRead() / BarrierWrite() based on
+  // whether the VulkanImage is set-up to be read from/written to
+  mutable VkImageLayout image_layout_;
+  mutable VkAccessFlagBits image_access_flags_;
 };
 
 }  // namespace onnxruntime
