@@ -63,12 +63,13 @@ class OrderedIndex {
 };
 
 template <typename T>
-inline std::vector<T> GenData(std::vector<int64_t> const& shape, float scale) {
+inline std::vector<T> GenData(std::vector<int64_t> const& shape, float scale, RandomValueGenerator* gen = nullptr) {
   int64_t n = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
 
   scale = std::is_same<T, int8_t>::value ? 1.0f : scale;  // using scale = 1.0f to generate int8_t data,
   std::vector<T> r(n);
-  RandomValueGenerator random{};
+  RandomValueGenerator default_random{};
+  RandomValueGenerator& random = gen ? *gen : default_random;
   std::vector<int> tmp = random.Uniform<int32_t>(shape, -128, 127);
   for (int64_t i = 0; i < n; i++) {
     r[i] = static_cast<T>(tmp[i] * scale);
