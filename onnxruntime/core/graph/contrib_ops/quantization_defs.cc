@@ -1177,13 +1177,13 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
 Quantize (Int8) MatMul with order. Implement Y = alpha * A * B + bias + beta * C. Matrix A, B, C, Y are all int8 matrix.
 Two type of order combination supported:
   *) When order_B is ORDER_COL, order_A must bu ORDER_ROW, MatMul will be implemented using B' * A' + bias + C' => Y'.
-         bias is vector of {#cols of Y} of float32, C' should be batch 1/batch_A. B' could be of batch 1 or batch_A. 
+         bias is vector of {#cols of Y} of float32, C' should be batch 1/batch_A. B' could be of batch 1 or batch_A.
          Note B is reorder to ORDER_COL, or Transposed. Not Transposed first and then Reordered here.
-  *) When order_B is specify ORDER_COL4_4R2_8C or ORDER_COL32_2R_4R4, orderA must be ORDER_COL32. 
+  *) When order_B is specify ORDER_COL4_4R2_8C or ORDER_COL32_2R_4R4, orderA must be ORDER_COL32.
          MatMul will be implemented using alpha(A * B) + beta * C => Y.
          bias is not supported here. B in fact is transposed first then reordered into ORDER_COL4_4R2_8C or ORDER_COL32_2R_4R4 here.
 order_Y and order_C will be same as order_A.
-Support per column quantized weight, ie, scale_B is 1-D vector of size [#cols of matrix B]. 
+Support per column quantized weight, ie, scale_B is 1-D vector of size [#cols of matrix B].
 )DOC";
 
   ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1336,7 +1336,7 @@ TODO: Support them if needed in the future.
           .Input(2, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "Q")
           .Input(3, "scale_weight", "scale of the weight", "S")
           .Input(4, "bias", "1D input tensor with shape (3 * hidden_size), fp32 only currently.", "S")
-          .Input(5, "scale_bias", "scale of the bias (not used as add bias need float value in cublasLt)", "S")
+          .Input(5, "scale_bias", "reserved. (not used as add bias need float value in cublasLt for normal order.)", "S")
           .Input(6, "scale_qkv_gemm", "scale of the output for fused kqv gemm", "S")
           .Input(7, "mask", "Attention mask with shape (batch_size, sequence_length)", "F")
           .Input(8, "global_weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "Q")
