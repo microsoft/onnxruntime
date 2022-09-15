@@ -9,7 +9,7 @@ redirect_from: /docs/reference/execution-providers/ROCm-ExecutionProvider
 # ROCm Execution Provider
 {: .no_toc }
 
-The [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_to_Install_ROCm.html#_How_to_Install) execution provider uses AMD's Deep Learning graph optimization engine to accelerate ONNX model on AMD GPUs. 
+The ROCm Execution Provider enables hardware accelerated computation on AMD ROCm-enabled GPUs. 
 
 ## Contents
 {: .no_toc }
