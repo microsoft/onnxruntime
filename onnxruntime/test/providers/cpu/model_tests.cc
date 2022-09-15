@@ -2,10 +2,7 @@
 // Licensed under the MIT License.
 
 #include <iterator>
-#include <iostream>
-#include <filesystem>
 #include <gtest/gtest.h>
-#include <string>
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
