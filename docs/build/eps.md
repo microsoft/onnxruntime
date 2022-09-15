@@ -669,7 +669,7 @@ See more information on the ROCm Execution Provider [here](../execution-provider
 ./build.sh --config <Release|Debug|RelWithDebInfo> --use_rocm --rocm_home <path to ROCm home>
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/peixuanzuo/update_rocm_dockerfile/dockerfiles#rocm).
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#rocm).
 
 ## NNAPI
 
