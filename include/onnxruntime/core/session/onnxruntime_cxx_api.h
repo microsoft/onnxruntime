@@ -1151,6 +1151,7 @@ struct CustomOpApi {
   size_t KernelInfo_GetInputCount(const OrtKernelInfo* info);
   size_t KernelInfo_GetOutputCount(const OrtKernelInfo* info);
   std::string KernelInfo_GetInputName(const OrtKernelInfo* info, size_t index);
+  std::string KernelInfo_GetOutputName(const OrtKernelInfo* info, size_t index);
 
   void ThrowOnError(OrtStatus* result);
 

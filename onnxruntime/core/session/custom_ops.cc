@@ -130,7 +130,35 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* 
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input index is out of range");
   }
 
-  const std::string& name = op_info->node().InputDefs().at(index)->Name();
+  const std::string& name = op_info->node().InputDefs()[index]->Name();
+
+  if (out == nullptr) {  // User is querying the true size of the name
+    *size = name.size() + 1;
+    return nullptr;
+  }
+
+  if (*size >= name.size() + 1) {  // User provided a buffer of sufficient size
+    std::memcpy(out, name.data(), name.size());
+    out[name.size()] = '\0';
+    *size = name.size() + 1;
+    return nullptr;
+  }
+
+  // User has provided a buffer that is not large enough
+  *size = name.size() + 1;
+  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
+                    _Inout_ size_t* size) {
+  const onnxruntime::OpKernelInfo* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  const size_t num_outputs = op_info->GetOutputCount();
+
+  if (index >= num_outputs) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Output index is out of range");
+  }
+
+  const std::string& name = op_info->node().OutputDefs()[index]->Name();
 
   if (out == nullptr) {  // User is querying the true size of the name
     *size = name.size() + 1;
