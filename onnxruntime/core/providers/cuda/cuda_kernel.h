@@ -74,21 +74,19 @@ class CudaKernel : public OpKernel {
   }
 
   inline cudnnHandle_t GetCudnnHandle(OpKernelContext* ctx) const {
-    return GetCudnnHandle(ctx->GetComputeStream());
+    return GetCudnnHandle(static_cast<CudaStream*>(ctx->GetComputeStream()));
   }
 
-  static inline cudnnHandle_t GetCudnnHandle(onnxruntime::Stream* stream) {
-    ORT_ENFORCE(stream->device.Type() == OrtDevice::GPU);
-    return static_cast<CudaStream*>(stream)->cudnn_handle_;
+  static inline cudnnHandle_t GetCudnnHandle(onnxruntime::CudaStream* stream) {
+    return stream->cudnn_handle_;
   }
 
   inline cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const {
-    return GetCublasHandle(ctx->GetComputeStream());
+    return GetCublasHandle(static_cast<CudaStream*>(ctx->GetComputeStream()));
   }
 
-  static inline cublasHandle_t GetCublasHandle(onnxruntime::Stream* stream) {
-    ORT_ENFORCE(stream->device.Type() == OrtDevice::GPU);
-    return static_cast<CudaStream*>(stream)->cublas_handle_;
+  static inline cublasHandle_t GetCublasHandle(onnxruntime::CudaStream* stream) {
+    return stream->cublas_handle_;
   }
 
   inline onnxruntime::Stream* OrtStream(OpKernelContext* ctx) const {

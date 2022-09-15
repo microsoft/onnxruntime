@@ -547,12 +547,13 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
   ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_cudnn, cudnn_type_X));
   ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_cudnn, cudnn_type_X));
   size_t workspace_bytes = 0;
-  CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(CudaKernel::GetCudnnHandle(ort_stream), reduce_desc,
+  CudaStream* cuda_stream = static_cast<CudaStream*>(ort_stream);
+  CUDNN_RETURN_IF_ERROR(cudnnGetReductionWorkspaceSize(CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc,
                                                        input_tensor, output_tensor, &workspace_bytes));
   auto workspace_cuda = cuda_ep.GetScratchBuffer<CudaT>(workspace_bytes, ort_stream, WaitCudaNotificationOnDevice);
 
   size_t indices_bytes = 0;
-  CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudaKernel::GetCudnnHandle(ort_stream), reduce_desc,
+  CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc,
                                                      input_tensor, output_tensor, &indices_bytes));
   auto indices_cuda = cuda_ep.GetScratchBuffer<uint32_t>(indices_bytes, ort_stream, WaitCudaNotificationOnDevice);
 
@@ -585,12 +586,12 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
         }
         ORT_RETURN_IF_ERROR(reduce_max_desc.Set(CUDNN_REDUCE_TENSOR_MAX, cudnn_reduce_max_type, CUDNN_REDUCE_TENSOR_NO_INDICES));
         size_t indices_bytes_max = 0;
-        CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudaKernel::GetCudnnHandle(ort_stream), reduce_max_desc,
+        CUDNN_RETURN_IF_ERROR(cudnnGetReductionIndicesSize(CudaKernel::GetCudnnHandle(cuda_stream), reduce_max_desc,
                                                            input_tensor, output_tensor, &indices_bytes_max));
         auto indices_cuda_max = cuda_ep.GetScratchBuffer<uint32_t>(indices_bytes, ort_stream, WaitCudaNotificationOnDevice);
         auto* p_output = reinterpret_cast<CudaT*>(output.template MutableData<T>());
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-            CudaKernel::GetCudnnHandle(ort_stream), reduce_max_desc, indices_cuda_max.get(), indices_bytes_max,
+            CudaKernel::GetCudnnHandle(cuda_stream), reduce_max_desc, indices_cuda_max.get(), indices_bytes_max,
             workspace_cuda.get(), workspace_bytes,
             &one, input_tensor, reinterpret_cast<const CudaT*>(input.Data<T>()),
             &zero, output_tensor, p_output));
@@ -626,7 +627,7 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
       } else {
         // ReduceSum
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-            CudaKernel::GetCudnnHandle(ort_stream), reduce_desc, indices_cuda.get(), indices_bytes,
+            CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
             workspace_cuda.get(), workspace_bytes,
             &one, input_tensor, exp_result,
             &zero, output_tensor, reinterpret_cast<CudaT*>(log_sum_result)));
@@ -655,7 +656,7 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
       } else {
         auto* p_output = reinterpret_cast<CudaT*>(output.template MutableData<T>());
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-            CudaKernel::GetCudnnHandle(ort_stream), reduce_desc, indices_cuda.get(), indices_bytes,
+            CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
             workspace_cuda.get(), workspace_bytes,
             &one, input_tensor, input_data,
             &zero, output_tensor, p_output));
@@ -670,7 +671,7 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
         if (temp_X) {
           auto temp_output = cuda_ep.GetScratchBuffer<float>(output_count, ort_stream, WaitCudaNotificationOnDevice);
           CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-              CudaKernel::GetCudnnHandle(ort_stream), reduce_desc, indices_cuda.get(), indices_bytes,
+              CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
               workspace_cuda.get(), workspace_bytes,
               &one, input_tensor, temp_X.get(),
               &zero, output_tensor, temp_output.get()));
@@ -679,7 +680,7 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
         } else {
           auto* p_output = reinterpret_cast<CudaT*>(output.template MutableData<T>());
           CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-              CudaKernel::GetCudnnHandle(ort_stream), reduce_desc, indices_cuda.get(), indices_bytes,
+              CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
               workspace_cuda.get(), workspace_bytes,
               &one, input_tensor, reinterpret_cast<const CudaT*>(input.Data<T>()),
               &zero, output_tensor, p_output));
@@ -696,14 +697,14 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
       if (temp_X) {
         auto temp_output = cuda_ep.GetScratchBuffer<float>(output_count, ort_stream, WaitCudaNotificationOnDevice);
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-            CudaKernel::GetCudnnHandle(ort_stream), reduce_desc, indices_cuda.get(), indices_bytes,
+            CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
             workspace_cuda.get(), workspace_bytes,
             &one, input_tensor, temp_X.get(),
             &zero, output_tensor, temp_output.get()));
       } else {
         auto temp_output = cuda_ep.GetScratchBuffer<CudaT>(output_count, ort_stream, WaitCudaNotificationOnDevice);
         CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-            CudaKernel::GetCudnnHandle(ort_stream), reduce_desc, indices_cuda.get(), indices_bytes,
+            CudaKernel::GetCudnnHandle(cuda_stream), reduce_desc, indices_cuda.get(), indices_bytes,
             workspace_cuda.get(), workspace_bytes,
             &one, input_tensor, reinterpret_cast<const CudaT*>(input.Data<T>()),
             &zero, output_tensor, temp_output.get()));
