@@ -49,8 +49,8 @@
 //! #     .build()?;
 //! let mut session = environment
 //!     .new_session_builder()?
-//!     .with_optimization_level(GraphOptimizationLevel::Basic)?
-//!     .with_number_threads(1)?
+//!     .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
+//!     .with_intra_op_num_threads(1)?
 //!     .with_model_from_file("squeezenet.onnx")?;
 //! # Ok(())
 //! # }
@@ -74,8 +74,8 @@ a model can be fetched directly from the [ONNX Model Zoo](https://github.com/onn
 #     .build()?;
 let mut session = environment
     .new_session_builder()?
-    .with_optimization_level(GraphOptimizationLevel::Basic)?
-    .with_number_threads(1)?
+    .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
+    .with_intra_op_num_threads(1)?
     .with_model_downloaded(ImageClassification::SqueezeNet)?;
 # Ok(())
 # }
@@ -98,8 +98,8 @@ to download.
 //! #     .build()?;
 //! # let mut session = environment
 //! #     .new_session_builder()?
-//! #     .with_optimization_level(GraphOptimizationLevel::Basic)?
-//! #     .with_number_threads(1)?
+//! #     .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
+//! #     .with_intra_op_num_threads(1)?
 //! #     .with_model_from_file("squeezenet.onnx")?;
 //! let array = ndarray::Array::linspace(0.0_f32, 1.0, 100);
 //! // Multiple inputs and outputs are possible

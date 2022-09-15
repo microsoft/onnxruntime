@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let session = environment
         .new_session_builder()?
-        .with_optimization_level(onnxruntime::GraphOptimizationLevel::Basic)?
+        .with_graph_optimization_level(onnxruntime::GraphOptimizationLevel::Basic)?
         .with_model_from_file(path)?;
 
     println!("Inputs:");

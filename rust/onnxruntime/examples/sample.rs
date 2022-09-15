@@ -33,8 +33,8 @@ fn run() -> Result<(), Error> {
 
     let session = environment
         .new_session_builder()?
-        .with_optimization_level(GraphOptimizationLevel::Basic)?
-        .with_number_threads(1)?
+        .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
+        .with_intra_op_num_threads(1)?
         // NOTE: The example uses SqueezeNet 1.0 (ONNX version: 1.3, Opset version: 8),
         //       _not_ SqueezeNet 1.1 as downloaded by '.with_model_downloaded(ImageClassification::SqueezeNet)'
         //       Obtain it with:

@@ -23,7 +23,7 @@ fn main() {
     let session = env
         .new_session_builder()
         .unwrap()
-        .with_optimization_level(GraphOptimizationLevel::Basic)
+        .with_graph_optimization_level(GraphOptimizationLevel::Basic)
         .unwrap()
         .with_model_from_file("model.onnx")
         .unwrap();

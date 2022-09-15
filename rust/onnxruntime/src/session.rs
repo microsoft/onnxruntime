@@ -58,8 +58,8 @@ use crate::{download::AvailableOnnxModel, error::OrtDownloadError};
 ///     .build()?;
 /// let mut session = environment
 ///     .new_session_builder()?
-///     .with_optimization_level(GraphOptimizationLevel::Basic)?
-///     .with_number_threads(1)?
+///     .with_graph_optimization_level(GraphOptimizationLevel::Basic)?
+///     .with_intra_op_num_threads(1)?
 ///     .with_model_from_file("squeezenet.onnx")?;
 /// # Ok(())
 /// # }
@@ -103,7 +103,7 @@ impl<'a> SessionBuilder<'a> {
     }
 
     /// Configure the session to use a number of threads
-    pub fn with_number_threads(self, num_threads: i16) -> Result<SessionBuilder<'a>> {
+    pub fn with_intra_op_num_threads(self, num_threads: i16) -> Result<SessionBuilder<'a>> {
         // FIXME: Pre-built binaries use OpenMP, set env variable instead
 
         // We use a u16 in the builder to cover the 16-bits positive values of a i32.
@@ -116,7 +116,7 @@ impl<'a> SessionBuilder<'a> {
     }
 
     /// Set the session's optimization level
-    pub fn with_optimization_level(
+    pub fn with_graph_optimization_level(
         self,
         opt_level: GraphOptimizationLevel,
     ) -> Result<SessionBuilder<'a>> {
