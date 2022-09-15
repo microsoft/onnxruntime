@@ -75,6 +75,9 @@ struct BasicOpIdentifier {
 };
 
 using OpIdentifier = BasicOpIdentifier<std::string>;
+
+// An op identifier that uses std::string_view to refer to domain and op type values.
+// IMPORTANT: Be sure that the underlying strings remain valid for the lifetime of the op identifier.
 using OpIdentifierWithStringViews = BasicOpIdentifier<std::string_view>;
 
 }  // namespace onnxruntime

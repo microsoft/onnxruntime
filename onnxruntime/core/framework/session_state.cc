@@ -1214,25 +1214,17 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Not needed in a basic minimal build because only runtime optimizations are expected to possibly result in unused
   //   initializers and they are only enabled in an extended minimal build.
   {
-    InlinedVector<InitializedTensorSet::const_iterator> unused_initializers;
-    {
-      const auto& all_initializers = graph_.GetAllInitializedTensors();
-      unused_initializers.reserve(all_initializers.size());
-      for (auto initializer_it = all_initializers.begin(); initializer_it != all_initializers.end();
-           ++initializer_it) {
-        const auto& name = initializer_it->first;
-        int idx;
-        if (!ort_value_name_idx_map_.GetIdx(name, idx).IsOK()) {
-          unused_initializers.push_back(initializer_it);
-        }
+    InlinedVector<std::string> unused_initializer_names;
+    for (const auto& [name, tensor_proto] : graph_.GetAllInitializedTensors()) {
+      ORT_UNUSED_PARAMETER(tensor_proto);
+      int idx;
+      if (!ort_value_name_idx_map_.GetIdx(name, idx).IsOK()) {
+        unused_initializer_names.push_back(name);
       }
     }
 
-    for (const auto initializer_it : unused_initializers) {
-      // Use a copy - the underlying string will be removed by Graph::RemoveInitializedTensor() and
-      // Graph::RemoveInitializedTensor() takes its parameter by const reference.
-      const std::string name_copy = initializer_it->first;
-      graph_.RemoveInitializedTensor(name_copy);
+    for (const auto& name : unused_initializer_names) {
+      graph_.RemoveInitializedTensor(name);
     }
   }
 #endif  // defined(ORT_EXTENDED_MINIMAL_BUILD)
