@@ -36,8 +36,12 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
     auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
     // Checking for device_type configuration
     if (info.device_type_ != "") {
-      if (info.device_type_ == "CPU" || info.device_type_.find("GPU") != std::string::npos ||
-         info.device_type_ == "MYRIAD") {
+      if (info.device_type_.find("HETERO") != std::string::npos ||
+         info.device_type_.find("MULTI") != std::string::npos ||
+         info.device_type_.find("AUTO") != std::string::npos) {
+        device_found = true;
+      } else if (info.device_type_ == "CPU" || info.device_type_.find("GPU") != std::string::npos ||
+                info.device_type_ == "MYRIAD") {
         for (auto device : available_devices) {
           if (device.rfind(info.device_type_, 0) == 0) {
             if (info.device_type_.find("GPU") != std::string::npos && (info.precision_ == "FP32" ||
