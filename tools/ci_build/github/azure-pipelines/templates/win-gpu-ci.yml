@@ -190,6 +190,16 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Create models link'
 
+  - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true)) }}:
+      - task: DotNetCoreCLI@2
+        displayName: 'Test C#'
+        inputs:
+          command: test
+          projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
+          configuration: '${{ parameters.BuildConfig }}'
+          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:DefineConstants=USE_${{ parameters.ORT_EP_NAME }} --blame'
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
   - ${{ if eq(parameters.EnablePython, true) }}:
       - powershell: |
          python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
