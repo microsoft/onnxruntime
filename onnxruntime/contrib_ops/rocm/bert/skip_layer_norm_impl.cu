@@ -98,7 +98,7 @@ __global__ void SkipLayerNormKernelSmall(
 
     T rldval_sum = T(0.f);
     T rldvalsq_sum = T(0.f);
-#pragma unroll
+    #pragma unroll
     for (int i = 0; i < ILP; i++) {
       input_v[i] += hasBias ? skip_v[i] + bias_v[i] : skip_v[i];
       const T rldval = rld * input_v[i];

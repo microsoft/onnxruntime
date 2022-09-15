@@ -141,7 +141,7 @@ __device__ inline void LayerNormSmall(const T* input_v, const hipcub::KeyValuePa
     VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
     *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
 
-#pragma unroll
+    #pragma unroll
     for (int i = 0; i < ILP; i++) {
       output_v[i] = (beta != nullptr) ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i] :
                                         gamma_v[i] * (input_v[i] - mu) * rsigma;
