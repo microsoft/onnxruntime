@@ -10,24 +10,36 @@
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
-namespace contrib {
+// official onnx operator registration
+// Only 2 type constraints (values using 'T' and 'U' in the contrib op all use 'T' in the ONNX spec)
+#define REGISTER_ONNX_KERNEL_TYPED(T)                                                        \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(LayerNormalization, 17, T,                                  \
+                                 KernelDefBuilder()                                          \
+                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
+                                     .TypeConstraint("U", DataTypeImpl::GetTensorType<T>()), \
+                                 contrib::LayerNorm<T, false>);
 
-#define REGISTER_KERNEL_TYPED(T)                                                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(LayerNormalization, kOnnxDomain, 1, T, kCpuExecutionProvider,           \
-                                KernelDefBuilder()                                                      \
-                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
-                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<T>())              \
-                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),             \
-                                LayerNorm<T, false>);                                                   \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(SimplifiedLayerNormalization, kOnnxDomain, 1, T, kCpuExecutionProvider, \
-                                KernelDefBuilder()                                                      \
-                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
-                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<T>())              \
-                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),             \
+// ONNX LayerNorm doesn't support 'double' for Mean/InvStdDev so we can only register a version with float
+REGISTER_ONNX_KERNEL_TYPED(float)
+
+namespace contrib {
+// original LayerNormalization contrib op (incorrectly using onnx domain though)
+#define REGISTER_CONTRIB_KERNELS(T)                                                                         \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(LayerNormalization, kOnnxDomain, 1, 16, T, kCpuExecutionProvider, \
+                                          KernelDefBuilder()                                                \
+                                              .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
+                                              .TypeConstraint("U", DataTypeImpl::GetTensorType<T>())        \
+                                              .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),       \
+                                          LayerNorm<T, false>);                                             \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(SimplifiedLayerNormalization, kOnnxDomain, 1, T, kCpuExecutionProvider,     \
+                                KernelDefBuilder()                                                          \
+                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                  \
+                                    .TypeConstraint("U", DataTypeImpl::GetTensorType<T>())                  \
+                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),                 \
                                 LayerNorm<T, true>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
+REGISTER_CONTRIB_KERNELS(float)
+REGISTER_CONTRIB_KERNELS(double)
 
 template <typename T, bool simplified>
 LayerNorm<T, simplified>::LayerNorm(const OpKernelInfo& op_kernel_info)
