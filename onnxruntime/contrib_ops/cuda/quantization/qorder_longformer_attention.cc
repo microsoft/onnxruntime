@@ -63,6 +63,28 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
                                        "QOrderedLongformerAttention: oder_output must be same as order_input");
 }
 
+#include <iostream>
+template<typename T>
+void debug_print(const T* mat, int rows, int cols, const char* name) {
+  std::vector<T> buf(rows * cols);
+  cudaMemcpy(buf.data(), mat, rows * cols * sizeof(T), cudaMemcpyDeviceToHost);
+  std::cout << "========" << name << " : " << rows << "x" << cols << " ============" << std::endl;
+  const T* p = buf.data();
+  for (int r = 0; r < rows; r++) {
+    std::cout << (r == 0 ? "[[" : " [");
+    for (int c = 0; c < cols; c++) {
+      if constexpr (std::is_same<T, int8_t>::value) {
+        std::cout << (int)*p++;
+      } else {
+        std::cout << *p++;
+      }
+      if (c < cols - 1) std::cout << ", ";
+    }
+    std::cout << ((r < rows - 1) ? "]," : "]]") << std::endl;
+  }
+  std::cout << "---------------- end of " << name << "-------" << std::endl;
+}
+
 Status
 QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   // For Debugging...
@@ -244,6 +266,8 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
                       *scale_output, batch_size, sequence_length, hidden_size);
 
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+  debug_print(output->Data<int8_t>(), batch_size * sequence_length, hidden_size, "LongformerOutput");
+
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
 
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
