@@ -219,14 +219,14 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
         for (; first < last; first++) {
           // reduceMaxInt8
           int8_t xmax = *std::max_element(x_t, x_t + D);
-          const size_t adjustment = 127 - xmax;
+          const int32_t adjustment = int32_t(127) - xmax;
           const QLinearSoftmax::EXP_OUT_DTYPE* shifted_lookuptable = lookup_table;
           size_t elements_n = D;
           // reduceSumUin8ToUint32: need speedup
           QLinearSoftmax::EXP_OUT_DTYPE vsum = 0;
           const int8_t* x_t_cur = x_t;
           do {
-            const size_t vx = uint8_t(adjustment + (*x_t_cur++));
+            const uint8_t vx = uint8_t(adjustment + (*x_t_cur++));
             vsum += shifted_lookuptable[vx];
           } while (--elements_n != 0);
           if (vsum == 0) {
@@ -236,7 +236,7 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
           x_t_cur = x_t;
           // elementwise div
           do {
-            const size_t vx = uint8_t(adjustment + (*x_t_cur++));
+            const uint8_t vx = uint8_t(adjustment + (*x_t_cur++));
             const QLinearSoftmax::EXP_OUT_DTYPE vt = shifted_lookuptable[vx];
             // simulate round function, and re-quant to Int8
             const int32_t vq = static_cast<int32_t>(std::nearbyintf(((vt * c_y_scale)) / vsum)) + c_y_zp;
