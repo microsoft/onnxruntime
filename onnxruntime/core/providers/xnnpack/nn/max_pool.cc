@@ -223,15 +223,15 @@ Status MaxPool::Compute(OpKernelContext* context) const {
   if (maxpool_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_max_pooling2d_nhwc_f32(op0_.get(), N, H, W,
                                               X.Data<float>(), Y->MutableData<float>(),
-                                              nullptr /*threadpool */);  // TBD: how to handle threading
+                                              nullptr /*threadpool */);
   } else if (maxpool_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_max_pooling2d_nhwc_u8(op0_.get(), N, H, W,
                                              X.Data<uint8_t>(), Y->MutableData<uint8_t>(),
-                                             nullptr /*threadpool */);  // TBD: how to handle threading
+                                             nullptr /*threadpool */);
   } else {
     status = xnn_setup_max_pooling2d_nhwc_s8(op0_.get(), N, H, W,
                                              X.Data<int8_t>(), Y->MutableData<int8_t>(),
-                                             nullptr /*threadpool */);  // TBD: how to handle threading
+                                             nullptr /*threadpool */);
   }
 
   if (status != xnn_status_success) {
