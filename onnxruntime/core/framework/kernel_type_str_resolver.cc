@@ -85,10 +85,11 @@ Status KernelTypeStrResolver::RegisterOpSchema(const ONNX_NAMESPACE::OpSchema& o
           return formal_params[idx].GetTypeStr();
         };
 
-        ORT_RETURN_IF_NOT(formal_param_type_str(curr_arg_type_and_idx) == formal_param_type_str(args_for_io_name.front()),
-                          "Kernel type string already exists for formal parameter name '", formal_param.GetName(),
-                          "', but the existing argument with that formal parameter name has a different formal parameter "
-                          "type string.");
+        ORT_RETURN_IF_NOT(
+            formal_param_type_str(curr_arg_type_and_idx) == formal_param_type_str(args_for_io_name.front()),
+            "Kernel type string already exists for formal parameter name '", formal_param.GetName(),
+            "', but the existing argument with that formal parameter name has a different formal parameter "
+            "type string.");
       }
       args_for_io_name.push_back(std::move(curr_arg_type_and_idx));
     }
