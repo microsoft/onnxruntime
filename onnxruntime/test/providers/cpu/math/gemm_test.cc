@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-
 #include "core/framework/run_options.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/run_options_config_keys.h"
 #include "test/util/include/default_providers.h"
 
@@ -110,6 +110,12 @@ TEST(GemmOpTest, GemmNoTrans_bfloat16) {
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif
@@ -407,6 +413,12 @@ TEST(GemmOpTest, GemmNaN) {
 }
 #if defined(USE_DNNL)
 TEST(GemmOpTest, GemmNaN_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Gemm", 14);
 
   test.AddAttribute("transA", (int64_t)0);
@@ -416,9 +428,9 @@ TEST(GemmOpTest, GemmNaN_bfloat16) {
   test.AddInput<BFloat16>("A", {2, 4},
                                MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
                                              -1.0f, -2.0f, -3.0f, -4.0f}));
-  test.AddInput<BFloat16>("B", {4, 3}, 
+  test.AddInput<BFloat16>("B", {4, 3},
                                MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
-                                             1.0f, 1.0f, 1.0f, 1.0f, 
+                                             1.0f, 1.0f, 1.0f, 1.0f,
                                              1.0f, 1.0f, 1.0f, 1.0f}));
   test.AddInput<BFloat16>("C", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
   test.AddOutput<BFloat16>("Y", {2, 3},
@@ -460,6 +472,12 @@ TEST(GemmOpTest, GemmScalarBroadcast) {
 
 #if defined(USE_DNNL)
 TEST(GemmOpTest, GemmScalarBroadcast_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Gemm", 14);
 
   test.AddAttribute("transA", (int64_t)0);
@@ -511,6 +529,12 @@ TEST(GemmOpTest, Gemm2DBroadcast_1) {
 }
 #if defined(USE_DNNL)
 TEST(GemmOpTest, Gemm2DBroadcast_1_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Gemm", 14);
 
   test.AddAttribute("transA", (int64_t)0);
@@ -564,6 +588,12 @@ TEST(GemmOpTest, Gemm2DBroadcast_2) {
 
 #if defined(USE_DNNL)
 TEST(GemmOpTest, Gemm2DBroadcast_2_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Gemm", 14);
 
   test.AddAttribute("transA", (int64_t)0);
@@ -616,6 +646,12 @@ TEST(GemmOpTest, GemmFalseBroadcast) {
 
 #if defined(USE_DNNL)
 TEST(GemmOpTest, GemmFalseBroadcast_2_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Gemm", 14);
 
   test.AddAttribute("transA", (int64_t)0);

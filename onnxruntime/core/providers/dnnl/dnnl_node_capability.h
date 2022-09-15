@@ -5,6 +5,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include <unordered_set>
+#include "dnnl.hpp"
 
 namespace onnxruntime {
 
@@ -28,6 +29,7 @@ enum ORT_DataType : int {
   type_complex128 = ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128,
   type_bfloat16 = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16
 };
+
 /**
  * Pure virtual base class
  *
@@ -114,7 +116,7 @@ class DnnlDefaultMultiInputNodeCapability : public DnnlNodeCapability {
 };
 /*
  * Works similar to the `DnnlDefaultMultiInputNodeCapability` class except that this
- * will check the input of all input nodes and supports optional inputs with different 
+ * will check the input of all input nodes and supports optional inputs with different
  * supported datatypes by using the input position to evaluate if the node is supported.
  *
  * Example usage:
@@ -213,6 +215,16 @@ class DnnlMatMulNodeCapability : public DnnlDefaultNodeCapability {
 };
 
 /**
+ * Decide if a LRN op is supported by DnnlExecutionProvider
+ */
+class DnnlLRNNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlLRNNodeCapability() : DnnlDefaultNodeCapability({type_bfloat16, type_float32}) {}
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+ private:
+};
+
+/**
  * Decide if a MatMulInteger op is supported by DnnlExecutionProvider
  */
 class DnnlMatMulIntegerNodeCapability : public DnnlDefaultNodeCapability {
@@ -250,14 +262,15 @@ class DnnlSumNodeCapability : public DnnlDefaultNodeCapability {
 class DnnlBinaryNodeCapability : public DnnlDefaultNodeCapability {
  public:
   DnnlBinaryNodeCapability() : DnnlDefaultNodeCapability({type_bfloat16, type_int8, type_uint8, type_float32}) {}
-
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+  bool IsBF16Supported(const Node* node) const;
 };
 
 /**
 * Decide if an Elementwise op is supported by DnnlExecutionProvider
 * Elementwise ops are:
-* Abs, Elu, Exp, Log, Relu, Round, Sigmoid, Softplus, Sqrt, Tanh
+* Abs, BiasGelu, Elu, Exp, FastGelu, Gelu, Log, Relu, Round, Sigmoid, Softplus, Sqrt, Tanh
+* BiasGelu has a Bias input but the capabilities can be discovered using the Elementwise check.
 */
 class DnnlElementwiseCapability : public DnnlDefaultNodeCapability {
  public:
@@ -441,5 +454,5 @@ class DnnlSkipLayerNormalizationNodeCapability : public DnnlLayerNormalizationNo
                                                                                     type_float16}) {}
 };
 
-                                 
+
 }  // namespace onnxruntime

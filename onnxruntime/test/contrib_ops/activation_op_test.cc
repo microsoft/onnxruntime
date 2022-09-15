@@ -3,10 +3,15 @@
 
 #include "core/providers/cpu/activation/activations.h"
 #include "gtest/gtest.h"
+#include "core/common/cpuid_info.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/activation/activation_op_test.h"
 #include <random>
 #include <test/util/include/default_providers.h>
+
+#if defined(USE_DNNL)
+#include "test/common/dnnl_op_test_utils.h"
+#endif
 
 using namespace onnxruntime::test;
 
@@ -63,12 +68,18 @@ std::vector<BFloat16> expected_output_bfloat16(const std::vector<float>& input_d
 }
 
  TEST_F(ActivationOpTest, Gelu_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
    std::vector<float> input_values_temp{-1.0f, 0.0f, 1.0f,  // normal input values for activation
                                         100.0f, -100.0f, 1000.0f, -1000.0f,                          // input values that leads to exp() overflow
                                         FLT_MIN, FLT_MIN / 10, -FLT_MIN / 10,                        // min, denorm, -denorm
                                         FLT_MAX, -FLT_MAX, std::numeric_limits<float>::infinity(),    // max, -max, inf
-                                        -0.5f, 0.2f                                                  // inputs values that leads to exceed the original threshold 
-   };  
+                                        -0.5f, 0.2f                                                  // inputs values that leads to exceed the original threshold
+   };
 
    std::vector<BFloat16> output_bf16 = expected_output_bfloat16(input_values_temp);
    std::vector<BFloat16> input_bf16 = FloatsToBFloat16s(input_values_temp);
@@ -84,7 +95,7 @@ std::vector<BFloat16> expected_output_bfloat16(const std::vector<float>& input_d
    #endif  //  USE_DNNL
    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
  }
- 
+
 #endif  // USE_DNNL
 
 

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -210,6 +211,12 @@ TEST(SqueezeOpTest, Squeeze_4d_NegAxis_axes_input) {
 }
 #if defined(USE_DNNL)
 TEST(SqueezeOpTest, Squeeze_opset13_1_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Squeeze", 13);
   test.AddInput<BFloat16>("data", {1, 3, 4, 5}, FloatsToBFloat16s(std::vector<float>(60, 1.0f)));
   test.AddOutput<BFloat16>("squeezed", {3, 4, 5}, FloatsToBFloat16s(std::vector<float>(60, 1.0f)));
@@ -221,6 +228,12 @@ TEST(SqueezeOpTest, Squeeze_opset13_1_bfloat16) {
 }
 
 TEST(SqueezeOpTest, Squeeze_opset13_2_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Squeeze", 13);
   //test.AddAttribute("axes", std::vector<int64_t>{0, 2, 3});
   test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2},
@@ -236,6 +249,12 @@ TEST(SqueezeOpTest, Squeeze_opset13_2_bfloat16) {
 }
 
 TEST(SqueezeOpTest, Squeeze_Empty_Axes_1_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Squeeze", 13);
   test.AddInput<BFloat16>("data", {1, 1, 4, 1}, FloatsToBFloat16s(std::vector<float>(4, 1.0f)));
   test.AddOutput<BFloat16>("squeezed", {4}, FloatsToBFloat16s(std::vector<float>(4, 1.0f)));
@@ -248,6 +267,12 @@ TEST(SqueezeOpTest, Squeeze_Empty_Axes_1_bfloat16) {
 }
 
 TEST(SqueezeOpTest, Squeeze_Empty_Axes_2_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Squeeze", 13);
   // nothing to "squeeze" out in the input shape
   test.AddInput<BFloat16>("data", {2, 4}, FloatsToBFloat16s(std::vector<float>(8, 1.0f)));
@@ -261,6 +286,12 @@ TEST(SqueezeOpTest, Squeeze_Empty_Axes_2_bfloat16) {
 }
 
 TEST(SqueezeOpTest, Squeeze_Empty_Axes_3_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Squeeze", 13);
   test.AddInput<BFloat16>("data", {1, 1, 1, 1}, FloatsToBFloat16s(std::vector<float>{1.0f}));
   test.AddOutput<BFloat16>("squeezed", {}, FloatsToBFloat16s(std::vector<float>{1.0f}));
@@ -269,6 +300,12 @@ TEST(SqueezeOpTest, Squeeze_Empty_Axes_3_bfloat16) {
 }
 
 TEST(SqueezeOpTest, UnsortedAxes_opset13_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Squeeze", 13);
   test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2},
                        MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
@@ -283,6 +320,12 @@ TEST(SqueezeOpTest, UnsortedAxes_opset13_bfloat16) {
 }
 
 TEST(SqueezeOpTest, DuplicateAxes_opset13_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Squeeze", 13);
   test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2},
                        MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));
@@ -297,6 +340,12 @@ TEST(SqueezeOpTest, DuplicateAxes_opset13_bfloat16) {
 }
 
 TEST(SqueezeOpTest, BadAxes_opset13_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Squeeze", 13);
   // Bad axes - should be 1 instead of 0.
   test.AddInput<BFloat16>("data", {3, 1, 4, 5}, FloatsToBFloat16s(std::vector<float>(60, 1.0f)));
@@ -312,6 +361,12 @@ TEST(SqueezeOpTest, BadAxes_opset13_bfloat16) {
 }
 
 TEST(SqueezeOpTest, SqueezeNegAxis_2_opset13_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Squeeze", 13);
   test.AddInput<BFloat16>("data", {1, 4, 1, 1, 2},
                        MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f}));

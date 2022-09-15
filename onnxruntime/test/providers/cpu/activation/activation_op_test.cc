@@ -3,6 +3,7 @@
 
 #include "activation_op_test.h"
 #include "core/providers/cpu/activation/activations.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 
@@ -221,6 +222,12 @@ TEST_F(ActivationOpTest, Sigmoid_bfloat16) {
     return;
   }
 #endif
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Sigmoid", 14);
 
   auto formula = [](float x) {
@@ -259,6 +266,12 @@ TEST_F(ActivationOpTest, Tanh_bfloat16) {
     return;
   }
 #endif
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Tanh", 14);
 
   auto formula = [](float x) { return std::tanh(x); };
@@ -290,6 +303,12 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif
@@ -325,6 +344,12 @@ TEST_F(ActivationOpTest, LeakyRelu_bfloat16) {
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif

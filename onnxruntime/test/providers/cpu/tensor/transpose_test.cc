@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/compare_provider_test_utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
@@ -160,6 +161,12 @@ TEST(TransposeOpTest, TwoDim_mlfloat16) {
 
 #if defined(USE_DNNL)
 TEST(TransposeOpTest, TwoDim_opset13_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Transpose", 13);
   test.AddAttribute("perm", std::vector<int64_t>{1, 0});
   test.AddInput<BFloat16>("data", {2, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
@@ -172,6 +179,12 @@ TEST(TransposeOpTest, TwoDim_opset13_bfloat16) {
 }
 
 TEST(TransposeOpTest, TwoDimNoAttr_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Transpose", 13);
   test.AddInput<BFloat16>("data", {2, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
   test.AddOutput<BFloat16>("transposed", {3, 2}, MakeBFloat16({1.0f, 4.0f, 2.0f, 5.0f, 3.0f, 6.0f}));
@@ -183,6 +196,12 @@ TEST(TransposeOpTest, TwoDimNoAttr_bfloat16) {
 }
 
 TEST(TransposeOpTest, Transpose021_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   std::vector<int64_t> input_shape({4, 2, 3});
   std::vector<float> input_vals = {
       1.0f, 2.0f, 3.0f,

@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "core/util/math.h"
 #include <algorithm>
 #include <math.h>
@@ -58,6 +59,12 @@ void TestBFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
                   const std::initializer_list<float>& rhs_values, const std::vector<int64_t>& out_dim,
                   const std::initializer_list<float>& out_values) {
   {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
     OpTester tester(op_name, 14);
     tester.AddInput<BFloat16>("A", lhs_dim, MakeBFloat16(lhs_values));
     tester.AddInput<BFloat16>("B", rhs_dim, MakeBFloat16(rhs_values));
@@ -637,14 +644,23 @@ TEST(MathOpTest, Abs) {
   test.AddInput<float>("X", dims, {1.0f, -2.0f, -0.0f, -10.0f});
   test.AddOutput<float>("Y", dims, {1.0f, 2.0f, 0.0f, 10.0f});
   test.Run();
+}
 
- #if defined(USE_DNNL)
+#ifdef USE_DNNL
+TEST(MathOpTest, Abs_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test_bf16("Abs", 13);
+  std::vector<int64_t> dims{2, 2};
   test_bf16.AddInput<BFloat16>("X", dims, MakeBFloat16({1.0f, -2.0f, -0.0f, -10.0f}));
   test_bf16.AddOutput<BFloat16>("Y", dims, MakeBFloat16({1.0f, 2.0f, 0.0f, 10.0f}));
   test_bf16.Run();
- #endif  //  USE_DNNL
 }
+#endif  //  USE_DNNL
 
 TEST(MathOpTest, Abs_int8) {
   OpTester test("Abs");
@@ -772,6 +788,12 @@ TEST(MathOpTest, Sqrt_Float) {
 
 #if defined(USE_DNNL)
 TEST(MathOpTest, Sqrt_bfloat16){
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test_bf16("Sqrt", 13);  // only version 13 support bf16 for sqrt
   test_bf16.AddInput<BFloat16>("X", {2, 3},
                                MakeBFloat16({1.0f, 4.0f,
@@ -881,7 +903,13 @@ TEST(MathOpTest, Pow_Float_15) {
 }
 
 #if defined(USE_DNNL)
-TEST(MathOpTest, Pow_bfloat_15) {
+TEST(MathOpTest, Pow_bfloat16_15) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test_bf16("Pow", 15);
   test_bf16.AddInput<BFloat16>("X", {2,2},
                                  MakeBFloat16({2.0f, 2.0f,
@@ -1036,6 +1064,12 @@ TEST(MathOpTest, Pow_float_float16) {
 #endif
 #if defined(USE_DNNL)
 TEST(MathOpTest, Exp_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Exp", 13);
   std::vector<int64_t> dims{2, 2};
   test.AddInput<BFloat16>("X", dims,
@@ -1094,6 +1128,12 @@ TEST(MathOpTest, Log) {
 
 #if defined(USE_DNNL)
 TEST(MathOpTest, Log_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Log", 13);
   std::vector<int64_t> dims{2, 2};
   test.AddInput<BFloat16>("X", dims,
@@ -1347,6 +1387,12 @@ TEST(MathOpTest, SumMultipleInputsNoBroadcasting_double) {
 
 #if defined(USE_DNNL)
 TEST(MathOpTest, Sum_13_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Sum", 13);
   std::vector<int64_t> dims{3, 3};
   test.AddInput<BFloat16>("data_0", dims,
@@ -1876,6 +1922,17 @@ TEST(MathOpTest, Less) {
 
 #if defined(USE_DNNL)
 TEST(MathOpTest, Less_bfloat16) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
   OpTester test("Less", 13);
   std::vector<int64_t> dims{4};
   test.AddInput<BFloat16>("A", dims, MakeBFloat16({1.0f, 0.0f, -1.0f, -1.0f}));
@@ -2018,6 +2075,17 @@ TEST(MathOpTest, LessOrEqual_multidiretional_broadcastBA) {
 
 #if defined(USE_DNNL)
 TEST(MathOpTest, LessOrEqual_bfloat16) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
   OpTester test("LessOrEqual", 16);
   std::vector<int64_t> dims{4};
   test.AddInput<BFloat16>("A", dims, MakeBFloat16({1.0f, 0.0f, -1.0f, -1.0f}));
@@ -2032,6 +2100,17 @@ TEST(MathOpTest, LessOrEqual_bfloat16) {
 }
 
 TEST(MathOpTest, LessOrEqual_bfloat16_Scalar0) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
   OpTester test("LessOrEqual", 16);
   test.AddInput<BFloat16>("A", {1}, MakeBFloat16({1.0f}));
   test.AddInput<BFloat16>("B", {4}, MakeBFloat16({1.0f, 1.5f, 2.0f, -1.0f}));
@@ -2044,6 +2123,17 @@ TEST(MathOpTest, LessOrEqual_bfloat16_Scalar0) {
            {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider}, nullptr, &execution_providers);
 }
 TEST(MathOpTest, LessOrEqual_bfloat16_Scalar1) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
   OpTester test("LessOrEqual", 16);
   test.AddInput<BFloat16>("A", {4}, MakeBFloat16({1.0f, 0.5f, 2.0f, -1.0f}));
   test.AddInput<BFloat16>("B", {1}, MakeBFloat16({1.0f}));
@@ -2057,6 +2147,17 @@ TEST(MathOpTest, LessOrEqual_bfloat16_Scalar1) {
 }
 
 TEST(MathOpTest, LessOrEqual_bfloat16_broadcastAB) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
   OpTester test("LessOrEqual", 16);
   test.AddInput<BFloat16>("A", {4, 2}, MakeBFloat16({10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f}));
   test.AddInput<BFloat16>("B", {2}, MakeBFloat16({15.0f, 7.0f}));
@@ -2070,6 +2171,17 @@ TEST(MathOpTest, LessOrEqual_bfloat16_broadcastAB) {
 }
 
 TEST(MathOpTest, LessOrEqual_bfloat16_broadcastBA) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
   OpTester test("LessOrEqual", 16);
   test.AddInput<BFloat16>("A", {2}, MakeBFloat16({15.0f, 7.0f}));
   test.AddInput<BFloat16>("B", {4, 2}, MakeBFloat16({10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f}));
@@ -2083,6 +2195,17 @@ TEST(MathOpTest, LessOrEqual_bfloat16_broadcastBA) {
 }
 
 TEST(MathOpTest, LessOrEqual_multidiretional_bfloat16_broadcastAB) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
   OpTester test("LessOrEqual", 16);
   test.AddInput<BFloat16>("A", {4, 1}, MakeBFloat16({10.0f, 11.0f, 12.0f, 13.0f}));
   test.AddInput<BFloat16>("B", {2}, MakeBFloat16({15.0f, 7.0f}));
@@ -2096,6 +2219,17 @@ TEST(MathOpTest, LessOrEqual_multidiretional_bfloat16_broadcastAB) {
 }
 
 TEST(MathOpTest, LessOrEqual_multidiretional_bfloat16_broadcastBA) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
   OpTester test("LessOrEqual", 16);
   test.AddInput<BFloat16>("A", {2}, MakeBFloat16({15.0f, 7.0f}));
   test.AddInput<BFloat16>("B", {4, 1}, MakeBFloat16({10.0f, 11.0f, 12.0f, 13.0f}));
@@ -2155,6 +2289,17 @@ TEST(MathOpTest, Greater_9_int64) {
 }
 #if defined(USE_DNNL)
 TEST(MathOpTest, Greater_13_bfloat16) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
   OpTester test("Greater", 13);
   std::vector<int64_t> dims{4};
   test.AddInput<BFloat16>("A", dims, MakeBFloat16({10.0f, 11.0f, 12.0f, 13.0f}));
@@ -2242,6 +2387,17 @@ TEST(MathOpTest, GreaterOrEqual_12_int64) {
 
 #if defined(USE_DNNL)
 TEST(MathOpTest, GreaterOrEqual_16_bfloat16) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
   OpTester test("GreaterOrEqual", 16);
   std::vector<int64_t> dims{4};
   test.AddInput<BFloat16>("A", dims, MakeBFloat16({1.0f, 0.0f, -1.0f, -1.0f}));
@@ -2251,7 +2407,7 @@ TEST(MathOpTest, GreaterOrEqual_16_bfloat16) {
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif  //  USE_DNNL
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
       {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider}, nullptr, &execution_providers);
 
 }
@@ -2360,6 +2516,17 @@ TEST(MathOpTest, Equal_float) {
 
 #if defined(USE_DNNL)
 TEST(MathOpTest, Equal_bfloat16) {
+#ifdef USE_DNNL
+#ifdef DNNL_GPU_RUNTIME
+  LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+  return;
+#else
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+#endif
   OpTester test("Equal", 13);
   std::vector<int64_t> dims{4};
   test.AddInput<BFloat16>("A", dims, MakeBFloat16({1.0f, 0.0f, -1.0f, -1.0f}));

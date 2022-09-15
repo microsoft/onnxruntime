@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "default_providers.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 using namespace std;
 namespace onnxruntime {
@@ -105,6 +106,12 @@ TEST(LRNTest, LRN_2) {
 
 #if defined(USE_DNNL)
 TEST(LRNTest, LRN_bfloat16_1) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("LRN", 13);
   test.AddAttribute("alpha", .001f);
   test.AddAttribute("beta", .75f);
@@ -137,6 +144,12 @@ TEST(LRNTest, LRN_bfloat16_1) {
   test.Run();
 }
 TEST(LRNTest, LRN_bfloat16_2) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("LRN", 13);
   test.AddAttribute("alpha", .0001f);
   test.AddAttribute("beta", .75f);
@@ -192,8 +205,8 @@ TEST(LRNTest, LRN_bfloat16_2) {
                           0.99867165f, 0.08305217f, 0.25943288f, 0.58913094f,
                           0.19776636f, 0.29519933f, 0.21649165f, 0.46785861f,
                           0.93277973f, 0.87322289f, 0.63762808f, 0.58810645f};
-  
-  
+
+
   test.AddInput<BFloat16>("X", shape, FloatsToBFloat16s(X));
   test.AddOutput<BFloat16>("Y", shape, FloatsToBFloat16s(expected_output));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;

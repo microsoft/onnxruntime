@@ -5,6 +5,7 @@
 #include <random>
 #include "core/framework/tensor.h"
 #include "core/session/inference_session.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -147,8 +148,14 @@ TEST(LayerNormTest, LayerNorm_InvalidScaleBias) {
            {kDnnlExecutionProvider, kDmlExecutionProvider});
 }
 
-#if defined(USE_DNNL) 
+#if defined(USE_DNNL)
 TEST(LayerNormTest, LayerNorm17_Scale_Bias_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("LayerNormalization", 17);
   test.AddAttribute<float>("epsilon", 1e-05f);
 

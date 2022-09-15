@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -200,6 +201,12 @@ TEST(TensorOpTest, Unsqueeze_3_axes_input) {
 
 #if defined(USE_DNNL)
 TEST(TensorOpTest, Unsqueeze_3_axes_input_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Unsqueeze", 13);
   test.AddInput<BFloat16>("input", {2, 3, 4}, FloatsToBFloat16s(std::vector<float>(2 * 3 * 4, 1.0f)));
   test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{2, 1, 0}, true);
@@ -212,6 +219,12 @@ TEST(TensorOpTest, Unsqueeze_3_axes_input_bfloat16) {
 }
 
 TEST(TensorOpTest, UnsqueezeNegAxis_3_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Unsqueeze", 13);
   test.AddInput<BFloat16>("input", {2, 3, 4}, FloatsToBFloat16s(std::vector<float>(2 * 3 * 4, 1.0f)));
   test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{-4, 1, -6}, true);

@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 using namespace onnxruntime::test;
@@ -117,6 +118,9 @@ static void RunFastGeluCpuTest(const std::vector<float>& input_data, const std::
     tester.AddOutput<float>("Y", output_dims, output_data);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+    execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif
     execution_providers.push_back(DefaultCpuExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
@@ -159,7 +163,13 @@ TEST(FastGeluTest, FastGeluWithNullInput) {
   RunFastGeluTest(input_data, bias_data, batch_size, sequence_length, hidden_size);
 }
 #if defined(USE_DNNL)
-TEST(FastGeluTest, DNNL_FastGeluWithBiasBFloat16) {
+TEST(FastGeluTest, FastGeluWithBias_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -181,7 +191,13 @@ TEST(FastGeluTest, DNNL_FastGeluWithBiasBFloat16) {
   RunFastGeluTest_bf16(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, true);
 }
 
-TEST(FastGeluTest, DNNL_FastGeluWithoutBiasBFloat16) {
+TEST(FastGeluTest, FastGeluWithoutBias_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
@@ -374,6 +390,12 @@ TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif

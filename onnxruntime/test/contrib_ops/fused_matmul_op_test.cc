@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/dnnl_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -345,16 +346,24 @@ TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
     return;
   }
 #endif
-
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
 
   std::vector<float> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
   for (auto t : GenerateSimpleTestCases<float>()) {
     #if defined(USE_DNNL)
     // disable scalar or 1D tensor input for oneDNN EP.
-    if (t.name == "test left 1D" || t.name == "test right 1D" || t.name == "test scalar output" || t.name == "test 2D with empty input") {
+    if (t.name == "test left 1D" ||
+        t.name == "test right 1D" ||
+        t.name == "test scalar output" ||
+        t.name == "test 2D with empty input") {
       continue;
     }
-    #endif //  USE_DNNL 
+    #endif //  USE_DNNL
 
     OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
 
@@ -388,7 +397,7 @@ TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
     execution_providers.push_back(DefaultRocmExecutionProvider());
 #elif USE_DNNL
     execution_providers.push_back(DefaultDnnlExecutionProvider());
-#endif 
+#endif
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }

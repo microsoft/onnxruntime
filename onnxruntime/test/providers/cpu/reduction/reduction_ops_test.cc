@@ -5,6 +5,7 @@
 #include <cmath>
 #include <type_traits>
 #include "gtest/gtest.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
@@ -97,6 +98,12 @@ TEST(ReductionOpTest, ReduceL1_default_axes_keepdims) {
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL1_default_axes_keepdims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceL1", 13);
   test.AddAttribute("keepdims", (int64_t)1);
   test.AddInput<BFloat16>("data", {3, 2, 2},
@@ -136,6 +143,12 @@ TEST(ReductionOpTest, ReduceL1_do_not_keep_dims) {
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceL1", 13);
   test.AddAttribute("axes", std::vector<int64_t>{2});
   test.AddAttribute("keepdims", (int64_t)0);
@@ -169,6 +182,12 @@ TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_2) {
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL1_do_not_keep_dims_2_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceL1", 13);
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("keepdims", (int64_t)0);
@@ -201,6 +220,12 @@ TEST(ReductionOpTest, ReduceL1_keepdims) {
 }
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL1_keepdims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceL1", 13);
   test.AddAttribute("axes", std::vector<int64_t>{2});
   test.AddAttribute("keepdims", (int64_t)1);
@@ -218,7 +243,7 @@ TEST(ReductionOpTest, ReduceL1_keepdims_bfloat16) {
 #if defined(USE_DNNL)
   execution_providers.push_back(DefaultDnnlExecutionProvider());
 #endif  //  USE_DNNL
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);  
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif  //  USE_DNNL
 
@@ -255,6 +280,12 @@ TEST(ReductionOpTest, ReduceL1_int32) {
 }
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL1_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceL1", 13);
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddInput<BFloat16>("data", {3, 2, 2},
@@ -377,6 +408,12 @@ TEST(ReductionOpTest, ReduceL2) {
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL2_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceL2", 13);
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)0);
@@ -443,6 +480,12 @@ TEST(ReductionOpTest, ReduceLogSum) {
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceLogSum_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceLogSum", 13);
   test.AddAttribute("axes", std::vector<int64_t>{1});
   test.AddAttribute("keepdims", (int64_t)1);
@@ -689,6 +732,12 @@ TEST(ReductionOpTest, ReduceLogSumExp) {
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceLogSumExp_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceLogSumExp", 13);
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)1);
@@ -898,6 +947,12 @@ TEST(ReductionOpTest, ReduceMax) {
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceMax_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceMax", 13);
   test.AddAttribute("axes", std::vector<int64_t>{1, 2});
   test.AddAttribute("keepdims", (int64_t)1);
@@ -913,7 +968,7 @@ TEST(ReductionOpTest, ReduceMax_bfloat16) {
   test.AddOutput<BFloat16>("reduced", {3, 1, 1}, MakeBFloat16({4.0f, 8.0f, 12.0f}));
   test.Run();
 }
-#endif  
+#endif
 
 TEST(ReductionOpTest, ReduceMax_double) {
   OpTester test("ReduceMax");
@@ -1057,11 +1112,20 @@ TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {18.25f});
   test.Run();
+}
 
-#if defined(USE_DNNL)
-  OpTester test_bf16("ReduceMean", 13);
-  test_bf16.AddAttribute("keepdims", (int64_t)1);
-  test_bf16.AddInput<BFloat16>("data", {3, 2, 2},
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_default_axes_keepdims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
                           MakeBFloat16({5.0f, 1.0f,
                         20.0f, 2.0f,
 
@@ -1070,10 +1134,10 @@ TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
 
                         55.0f, 1.0f,
                         60.0f, 2.0f}));
-  test_bf16.AddOutput<BFloat16>("reduced", {1, 1, 1}, MakeBFloat16({18.25f}));
-  test_bf16.Run();
-#endif
+  test.AddOutput<BFloat16>("reduced", {1, 1, 1}, MakeBFloat16({18.25f}));
+  test.Run();
 }
+#endif
 
 TEST(ReductionOpTest, ReduceMean_default_axes_keepdims_double) {
   OpTester test("ReduceMean");
@@ -1105,11 +1169,19 @@ TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims) {
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {}, {18.25f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+}
 
-#if defined(USE_DNNL)
-  OpTester test_bf16("ReduceMean", 13);
-  test_bf16.AddAttribute("keepdims", (int64_t)0);
-  test_bf16.AddInput<BFloat16>("data", {3, 2, 2},
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
                                MakeBFloat16({5.0f, 1.0f,
                                              20.0f, 2.0f,
 
@@ -1118,11 +1190,10 @@ TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims) {
 
                                              55.0f, 1.0f,
                                              60.0f, 2.0f}));
-  test_bf16.AddOutput<BFloat16>("reduced", {}, MakeBFloat16({18.25f}));
-  test_bf16.Run();
-#endif
+  test.AddOutput<BFloat16>("reduced", {}, MakeBFloat16({18.25f}));
+  test.Run();
 }
-
+#endif
 TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims_double) {
   OpTester test("ReduceMean");
   test.AddAttribute("keepdims", static_cast<int64_t>(0));
@@ -1161,12 +1232,20 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims) {
   test.SetOutputRelErr("reduced", 1e-5f);
 #endif
   test.Run();
+}
 
-#if defined(USE_DNNL)
-  OpTester test_bf16("ReduceMean", 13);
-  test_bf16.AddAttribute("axes", std::vector<int64_t>{1});
-  test_bf16.AddAttribute("keepdims", (int64_t)0);
-  test_bf16.AddInput<BFloat16>("data", {3, 2, 2},
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_do_not_keepdims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
                                MakeBFloat16({5.0f, 1.0f,
                                              20.0f, 2.0f,
 
@@ -1175,10 +1254,10 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims) {
 
                                              55.0f, 1.0f,
                                              60.0f, 2.0f}));
-  test_bf16.AddOutput<BFloat16>("reduced", {3, 2}, MakeBFloat16({12.5f, 1.5f, 35.0f, 1.5f, 57.5f, 1.5f}));
-  test_bf16.Run();
-#endif
+  test.AddOutput<BFloat16>("reduced", {3, 2}, MakeBFloat16({12.5f, 1.5f, 35.0f, 1.5f, 57.5f, 1.5f}));
+  test.Run();
 }
+#endif
 
 TEST(ReductionOpTest, ReduceMean_do_not_keepdims_double) {
   OpTester test("ReduceMean");
@@ -1213,17 +1292,24 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2) {
                        {1.0f, 2.0f, 3.0f});
   test.AddOutput<float>("reduced", {}, {2.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
-
-#if defined(USE_DNNL) 
-  OpTester test_bf16("ReduceMean", 13);
-  test_bf16.AddAttribute("axes", std::vector<int64_t>{0});
-  test_bf16.AddAttribute("keepdims", (int64_t)0);
-  test_bf16.AddInput<BFloat16>("data", {3},
-                       MakeBFloat16({1.0f, 2.0f, 3.0f}));
-  test_bf16.AddOutput<BFloat16>("reduced", {}, MakeBFloat16({2.0f}));
-  test_bf16.Run();
-#endif //USE_DNNL
 }
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {3},
+                       MakeBFloat16({1.0f, 2.0f, 3.0f}));
+  test.AddOutput<BFloat16>("reduced", {}, MakeBFloat16({2.0f}));
+  test.Run();
+}
+#endif //USE_DNNL
 
 TEST(ReductionOpTest, ReduceMean_do_not_keepdims_2_double) {
   OpTester test("ReduceMean");
@@ -1257,12 +1343,20 @@ TEST(ReductionOpTest, ReduceMean_keepdims) {
   test.SetOutputRelErr("reduced", 1e-5f);
 #endif
   test.Run();
+}
 
-#if defined(USE_DNNL)
-  OpTester test_bf16("ReduceMean", 13);
-  test_bf16.AddAttribute("axes", std::vector<int64_t>{1});
-  test_bf16.AddAttribute("keepdims", (int64_t)1);
-  test_bf16.AddInput<BFloat16>("data", {3, 2, 2},
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_keepdims_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
                         MakeBFloat16({5.0f, 1.0f,
                         20.0f, 2.0f,
 
@@ -1271,10 +1365,10 @@ TEST(ReductionOpTest, ReduceMean_keepdims) {
 
                         55.0f, 1.0f,
                         60.0f, 2.0f}));
-  test_bf16.AddOutput<BFloat16>("reduced", {3, 1, 2}, MakeBFloat16({12.5f, 1.5f, 35.0f, 1.5f, 57.5f, 1.5f}));
-  test_bf16.Run();
-#endif //USE_DNNL
+  test.AddOutput<BFloat16>("reduced", {3, 1, 2}, MakeBFloat16({12.5f, 1.5f, 35.0f, 1.5f, 57.5f, 1.5f}));
+  test.Run();
 }
+#endif //USE_DNNL
 
 TEST(ReductionOpTest, ReduceMean_keepdims_double) {
   OpTester test("ReduceMean");
@@ -1316,12 +1410,20 @@ TEST(ReductionOpTest, ReduceMean) {
   test.AddOutput<float>("reduced", {1, 2, 1}, {5.5f, 7.5f});
 
   test.Run();
+}
 
-#if defined(USE_DNNL)
-  OpTester test_bf16("ReduceMean", 13);
-  test_bf16.AddAttribute("axes", std::vector<int64_t>{0, 2});
-  test_bf16.AddAttribute("keepdims", (int64_t)1);
-  test_bf16.AddInput<BFloat16>("data", {3, 2, 2},
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
                         MakeBFloat16({1.0f, 2.0f,
                         3.0f, 4.0f,
 
@@ -1330,11 +1432,11 @@ TEST(ReductionOpTest, ReduceMean) {
 
                         9.0f, 10.0f,
                         11.0f, 12.0f}));
-  test_bf16.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({5.5f, 7.5f}));
+  test.AddOutput<BFloat16>("reduced", {1, 2, 1}, MakeBFloat16({5.5f, 7.5f}));
 
-  test_bf16.Run();
-#endif //USE_DNNL
+  test.Run();
 }
+#endif //USE_DNNL
 
 TEST(ReductionOpTest, ReduceMean_double) {
   OpTester test("ReduceMean");
@@ -1392,16 +1494,24 @@ TEST(ReductionOpTest, ReduceMean_keepdims_results_in_noop) {
   test.AddInput<float>("data", {1, 3}, {1.0, 2.0, 3.0});
   test.AddOutput<float>("reduced", {1, 3}, {1.0, 2.0, 3.0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-
-#if defined(USE_DNNL)
-  OpTester test_bf16("ReduceMean", 13);
-  test_bf16.AddAttribute("axes", std::vector<int64_t>{0});
-  test_bf16.AddAttribute("keepdims", (int64_t)1);
-  test_bf16.AddInput<BFloat16>("data", {1, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
-  test_bf16.AddOutput<BFloat16>("reduced", {1, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
-  test_bf16.Run();
-#endif
 }
+
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_keepdims_results_in_noop_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<BFloat16>("data", {1, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
+  test.AddOutput<BFloat16>("reduced", {1, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
+  test.Run();
+}
+#endif
 
 TEST(ReductionOpTest, ReduceMean_keepdims_results_in_shape_change) {
   OpTester test("ReduceMean");
@@ -1410,16 +1520,24 @@ TEST(ReductionOpTest, ReduceMean_keepdims_results_in_shape_change) {
   test.AddInput<float>("data", {1, 3}, {1.0, 2.0, 3.0});
   test.AddOutput<float>("reduced", {3}, {1.0, 2.0, 3.0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-
-#if defined(USE_DNNL)
-  OpTester test_bf16("ReduceMean", 13);
-  test_bf16.AddAttribute("axes", std::vector<int64_t>{0});
-  test_bf16.AddAttribute("keepdims", (int64_t)0);
-  test_bf16.AddInput<BFloat16>("data", {1, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
-  test_bf16.AddOutput<BFloat16>("reduced", {3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
-  test_bf16.Run();
-#endif
 }
+
+#ifdef USE_DNNL
+TEST(ReductionOpTest, ReduceMean_keepdims_results_in_shape_change_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+  OpTester test("ReduceMean", 13);
+  test.AddAttribute("axes", std::vector<int64_t>{0});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {1, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
+  test.AddOutput<BFloat16>("reduced", {3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
+  test.Run();
+}
+#endif
 
 TEST(ReductionOpTest, ReduceMin_default_axes_keepdims) {
   OpTester test("ReduceMin");
@@ -1526,6 +1644,12 @@ TEST(ReductionOpTest, ReduceMin) {
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceMin_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceMin", 13);
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)1);
@@ -1837,6 +1961,12 @@ TEST(ReductionOpTest, ReduceSum_half_bert) {
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceSum_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceSum", 14);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<BFloat16>("data", {3, 2, 2},
@@ -1850,7 +1980,7 @@ TEST(ReductionOpTest, ReduceSum_bfloat16) {
   execution_providers.push_back(DefaultRocmExecutionProvider());
 #elif USE_DNNL
   execution_providers.push_back(DefaultDnnlExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif  //  USE_CUDA USE_ROCM USE_DNNL
@@ -2180,6 +2310,12 @@ TEST(ReductionOpTest, ReduceSumSquare) {
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceSumSquare_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceSumSquare", 13);
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddAttribute("keepdims", (int64_t)1);
@@ -2411,6 +2547,12 @@ TEST(ReductionOpTest, ReduceProd) {
 
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceProd_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("ReduceProd", 13);
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
   test.AddInput<BFloat16>("data", {3, 2, 2},

@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include <cmath>
 
 namespace onnxruntime {
@@ -84,6 +85,12 @@ TEST(SoftmaxOperator, Simple_bfloat16) {
     return;
   }
 #endif
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   OpTester test("Softmax", 14);
 
   int64_t axis = 1;
@@ -98,7 +105,7 @@ TEST(SoftmaxOperator, Simple_bfloat16) {
   execution_providers.push_back(DefaultRocmExecutionProvider());
 #elif USE_DNNL
   execution_providers.push_back(DefaultDnnlExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif //  USE_CUDA USE_ROCM USE_DNNL

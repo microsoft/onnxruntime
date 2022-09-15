@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/run_options_config_keys.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
@@ -253,6 +254,12 @@ TEST(MathOpTest, MatMul_bfloat16) {
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
   }
 #endif

@@ -4,6 +4,7 @@
 #include "core/framework/tensor.h"
 #include "core/providers/cpu/nn/batch_norm.h"  // for BATCHNORM_INCLUDE_TRAINING_SUPPORT
 #include "core/session/inference_session.h"
+#include "test/common/dnnl_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
@@ -759,6 +760,12 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
 
 #if defined(USE_DNNL)
 TEST(BatchNormTest, BatchNorm2d_bfloat16) {
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
   vector<float> X{-0.91221f, -0.283559f, 0.937637f, 2.09818f, -0.100199f, -0.608113f, 0.444562f, -1.07505f, 0.940591f,
                   -0.922262f, 0.0931303f, 0.69611f, 1.55187f, 0.159808f, 0.914874f, -1.24856f, -1.98928f, -0.331621f,
                   2.33131f, 0.260409f, 0.0944811f, 0.442397f, 0.76461f, -0.203334f, -0.244228f, -0.387267f, -1.65039f,
