@@ -1807,7 +1807,13 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
 
   const TensorProto* external_data = nullptr;
   ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, external_data));
-  ASSERT_TRUE(utils::HasExternalData(*external_data));
+  if (external_data) {
+    ASSERT_TRUE(utils::HasExternalData(*external_data));
+  } else {
+    // Fail the test because external_data shouldn't be nullptr.
+    // This if-else is added for supressing warning C6011: dereferencing NULL pointer.
+    ASSERT_TRUE(false);
+  }
 
   // Replace things.
   ASSERT_STATUS_OK(graph.InjectExternalInitializedTensors(injection_initializers));
@@ -1817,17 +1823,20 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
   const TensorProto* with_data = nullptr;
   ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, with_data));
   // No longer has external data
-  ASSERT_FALSE(utils::HasExternalData(*with_data));
-
-  const auto& original_tensor = ort_value.Get<Tensor>();
-
-  Tensor replaced_tensor(original_tensor.DataType(), data_shape, std::make_shared<CPUAllocator>());
-  ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path.ToPathString().c_str(), *with_data, replaced_tensor));
-
-  ASSERT_EQ(original_tensor.GetElementType(), replaced_tensor.GetElementType());
-  const auto original_span = original_tensor.DataAsSpan<int32_t>();
-  const auto replaced_span = replaced_tensor.DataAsSpan<int32_t>();
-  ASSERT_EQ(original_span, replaced_span);
+  if (with_data) {
+    ASSERT_FALSE(utils::HasExternalData(*with_data));
+    const auto& original_tensor = ort_value.Get<Tensor>();
+    Tensor replaced_tensor(original_tensor.DataType(), data_shape, std::make_shared<CPUAllocator>());
+    ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path.ToPathString().c_str(), *with_data, replaced_tensor));
+    ASSERT_EQ(original_tensor.GetElementType(), replaced_tensor.GetElementType());
+    const auto original_span = original_tensor.DataAsSpan<int32_t>();
+    const auto replaced_span = replaced_tensor.DataAsSpan<int32_t>();
+    ASSERT_EQ(original_span, replaced_span);
+  } else {
+    // Fail the test because with_data shouldn't be nullptr.
+    // This if-else is added for supressing warning C6011: dereferencing NULL pointer.
+    ASSERT_TRUE(false);
+  }
 }
 #endif
 
