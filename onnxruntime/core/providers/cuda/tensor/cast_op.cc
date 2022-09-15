@@ -9,7 +9,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-const DeleteOnUnload<std::vector<MLDataType>> castOpTypeConstraints{ std::vector<MLDataType>{
+const std::vector<MLDataType> castOpTypeConstraints{
   DataTypeImpl::GetTensorType<MLFloat16>(),
       DataTypeImpl::GetTensorType<BFloat16>(),
       DataTypeImpl::GetTensorType<float>(),
@@ -23,7 +23,7 @@ const DeleteOnUnload<std::vector<MLDataType>> castOpTypeConstraints{ std::vector
       DataTypeImpl::GetTensorType<uint32_t>(),
       DataTypeImpl::GetTensorType<uint64_t>(),
       DataTypeImpl::GetTensorType<bool>()
-}};
+};
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
@@ -34,7 +34,7 @@ const DeleteOnUnload<std::vector<MLDataType>> castOpTypeConstraints{ std::vector
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", *castOpTypeConstraints),          \
+          .TypeConstraint("T2", castOpTypeConstraints),           \
       Cast<T>);                                                   \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Cast,                                                       \
@@ -44,7 +44,7 @@ const DeleteOnUnload<std::vector<MLDataType>> castOpTypeConstraints{ std::vector
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", *castOpTypeConstraints),          \
+          .TypeConstraint("T2", castOpTypeConstraints),           \
       Cast<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Cast,                                                       \
@@ -54,7 +54,7 @@ const DeleteOnUnload<std::vector<MLDataType>> castOpTypeConstraints{ std::vector
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", *castOpTypeConstraints),          \
+          .TypeConstraint("T2", castOpTypeConstraints),           \
       Cast<T>);
 
 template <typename SrcT>
