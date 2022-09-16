@@ -261,13 +261,11 @@ public:
         ComPtr<IMLOperatorTensor> inputTensor;
         ORT_THROW_IF_FAILED(context->GetInputTensor(0, &inputTensor));
         auto inputDims = GetTensorDimensions(inputTensor.Get());
-        auto inputDataSize = ComputeElementCountFromDimensions(inputDims);
         ML_CHECK_VALID_ARGUMENT(static_cast<size_t>(m_axis) < inputDims.size())
 
         ComPtr<IMLOperatorTensor> outputTensor;
         ORT_THROW_IF_FAILED(context->GetOutputTensor(0, &outputTensor));
         auto outputDims = GetTensorDimensions(outputTensor.Get());
-        auto outputDataSize = ComputeElementCountFromDimensions(outputDims);
 
         ORT_THROW_HR_IF(E_FAIL, inputDims.size() != outputDims.size());
 
