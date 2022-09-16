@@ -64,8 +64,16 @@ union U1S2 {
   short2 s2;
 };
 
+__device__ inline __half2 hmul2bk(const __half2 a, const __half2 b) {
+  #if defined(__hmul2)
+    return __hmul2(a, b);
+  #else
+    return __half2{a.x * b.x, a.y * b.y};
+  #endif
+}
+
 __device__ inline char2 QuantizeHalf2Char2(const __half2 xy, const __half2 inverse_scale2) {
-  __half2 scaled_xy = __hmul2(xy, inverse_scale2);
+  __half2 scaled_xy = hmul2bk(xy, inverse_scale2);
   U1S2 s2xy;
   s2xy.s2.x = __half2short_rn(scaled_xy.x);
   s2xy.s2.y = __half2short_rn(scaled_xy.y);
@@ -74,8 +82,8 @@ __device__ inline char2 QuantizeHalf2Char2(const __half2 xy, const __half2 inver
 }
 
 __device__ inline char4 QuantizeHalf4Char4(const __half4 val4, const __half2 inverse_scale2) {
-  __half2 val4_xy = __hmul2(val4.xy, inverse_scale2);
-  __half2 val4_zw = __hmul2(val4.zw, inverse_scale2);
+  __half2 val4_xy = hmul2bk(val4.xy, inverse_scale2);
+  __half2 val4_zw = hmul2bk(val4.zw, inverse_scale2);
   U1S2 shortxy, shortzw;
   shortxy.s2.x = __half2short_rn(__low2half(val4_xy));
   shortzw.s2.x = __half2short_rn(__low2half(val4_zw));
@@ -98,8 +106,8 @@ __device__ inline char4 QuantizeHalf4Char4Strict(const __half4 val4, const float
 }
 
 __device__ inline __half4 DeqantizeChar4Half4(const char4 ch4, const __half2 scale2) {
-  return {__hmul2(scale2, __half2(__short2half_rn(ch4.x), __short2half_rn(ch4.y))),
-          __hmul2(scale2, __half2(__short2half_rn(ch4.z), __short2half_rn(ch4.w)))};
+  return {hmul2bk(scale2, __half2(__short2half_rn(ch4.x), __short2half_rn(ch4.y))),
+          hmul2bk(scale2, __half2(__short2half_rn(ch4.z), __short2half_rn(ch4.w)))};
 }
 
 __device__ inline __half4 DeqantizeChar4Half4Strict(const char4 ch4, const float scale) {
