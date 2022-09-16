@@ -1006,6 +1006,11 @@ void OpTester::Run(
         kTensorrtExecutionProvider,
     };
 #else
+#ifdef USE_VULKAN
+    static const std::string all_provider_types[] = {
+        kVulkanExecutionProvider,
+    };
+#else
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
@@ -1021,7 +1026,9 @@ void OpTester::Run(
         kCoreMLExecutionProvider,
         kSnpeExecutionProvider,
         kXnnpackExecutionProvider,
+        kVulkanExecutionProvider,
     };
+#endif
 #endif
 
     bool has_run = false;
@@ -1118,6 +1125,9 @@ void OpTester::Run(
           execution_provider = DefaultSnpeExecutionProvider();
         else if (provider_type == onnxruntime::kXnnpackExecutionProvider)
           execution_provider = DefaultXnnpackExecutionProvider();
+        else if (provider_type == onnxruntime::kVulkanExecutionProvider)
+          execution_provider = DefaultVulkanExecutionProvider();
+
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)

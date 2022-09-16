@@ -19,6 +19,6 @@ set_target_properties(onnxruntime_providers_vulkan PROPERTIES FOLDER "ONNXRuntim
 set_target_properties(onnxruntime_providers_vulkan PROPERTIES LINKER_LANGUAGE CXX)
 add_dependencies(onnxruntime_providers_vulkan onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-target_link_directories(onnxruntime_providers_vulkan PRIVATE ${VULKAN_HOME}/Lib)
+link_directories(${VULKAN_HOME}/Lib)
 target_link_libraries(onnxruntime_providers_vulkan PRIVATE vulkan-1)
 target_include_directories(onnxruntime_providers_vulkan PRIVATE ${ONNXRUNTIME_ROOT} ${VULKAN_HOME}/Include)

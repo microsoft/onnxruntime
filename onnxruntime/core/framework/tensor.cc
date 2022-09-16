@@ -58,9 +58,16 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
     SafeInt<size_t> len = 0;
     if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_size), p_type->Size(), &len))
       ORT_THROW("tensor failed memory size calculation");
-
+#ifndef USE_VULKAN
     p_data = allocator->Alloc(len);
+#else
+    if (alloc_info_.name == VULKAN) {
+      p_data = allocator->Alloc(shape, p_type);
+    } else {
+      p_data = allocator->Alloc(len);    
+    }
   }
+#endif
 
   Init(p_type, shape, p_data, allocator, 0L, strides);
 }

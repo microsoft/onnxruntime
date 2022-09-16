@@ -494,6 +494,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_SNPE}
+	${PROVIDERS_VULKAN}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
@@ -548,6 +549,13 @@ if(onnxruntime_USE_SNPE)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_snpe)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_snpe)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_snpe)
+endif()
+
+if(onnxruntime_USE_VULKAN)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/vulkan/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_vulkan)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_vulkan)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_vulkan)
 endif()
 
 if(onnxruntime_USE_RKNPU)
@@ -1050,7 +1058,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       list(APPEND onnxruntime_perf_test_libs nsync_cpp)
       if(onnxruntime_USE_SNPE)
         list(APPEND onnxruntime_perf_test_libs onnxruntime_providers_snpe)
-      endif()
+      endif()	  
     endif()
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       list(APPEND onnxruntime_perf_test_libs ${android_shared_libs})

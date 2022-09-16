@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "vulkan_common.h"
+#include "vulkan_instance.h"
 #include "vulkan_execution_provider_info.h"
 #include "vulkan_execution_provider.h"
 #include "vulkan_allocator.h"
@@ -22,18 +23,6 @@
 
 namespace onnxruntime {
 
-class VulkanInstance {
- public:
-  VulkanInstance();
-  ~VulkanInstance();
-  VkInstance Get() const;
-
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanInstance);
-
- private:
-  VkInstance vulkan_instance_;
-};
-
 class VulkanExecutionProvider : public IExecutionProvider {
  public:
   explicit VulkanExecutionProvider(const VulkanExecutionProviderInfo& info);
@@ -46,6 +35,10 @@ class VulkanExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
+  bool ConcurrentRunSupported() const override;
+
+  Status Sync() const override;
+
   const VkPhysicalDeviceLimits& GetMemoryLimits() const;
 
   const VulkanSampler& GetCommonSampler(bool clamp = false) const;
@@ -55,11 +48,9 @@ class VulkanExecutionProvider : public IExecutionProvider {
   VulkanCommandPool& GetCommandPool() const;
 
   VulkanPipeline& GetPipeline(const std::string& key, const std::vector<VkDescriptorType>& types,
-                                    const std::vector<uint32_t>& local_sizes = std::vector<uint32_t>()) const;
+                              const std::vector<uint32_t>& local_sizes = std::vector<uint32_t>()) const;
 
   Status QueueCommand(VkCommandBuffer cmd_buffer) const;
-
-  Status Sync() const override;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VulkanExecutionProvider);
 

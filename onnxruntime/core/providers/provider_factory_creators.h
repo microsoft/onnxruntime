@@ -81,3 +81,7 @@
 #if defined(USE_XNNPACK)
 #include "core/providers/xnnpack/xnnpack_provider_factory_creator.h"
 #endif
+
+#if defined(USE_VULKAN)
+#include "core/providers/vulkan/vulkan_provider_factory_creator.h"
+#endif

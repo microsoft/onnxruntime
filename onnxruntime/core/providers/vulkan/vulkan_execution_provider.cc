@@ -5,69 +5,62 @@
 #include "vulkan_data_transfer.h"
 
 #include "core/common/common.h"
-//#include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/data_transfer_manager.h"
 
-namespace {
-struct KernelRegistryAndStatus {
-  std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
-  onnxruntime::Status st;
-};
-}  // namespace
+using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
-VulkanInstance::VulkanInstance() {
-  // A boilerplate struct to create the Vulkan engine instance
-  VkApplicationInfo appInfo{};
-  appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-  appInfo.pApplicationName = "Ort";
-  appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-  appInfo.pEngineName = "Ort";
-  appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-  appInfo.apiVersion = VK_API_VERSION_1_0;
+// forward declaration
+class DataTransferManager;
 
-#ifndef NDEBUG
-  // TODO: Learn how to use this to setup the debugging framework
-  const std::vector<const char*> validation_layers = {
-      "VK_LAYER_KHRONOS_validation"};
-#endif
+class Memcpy final : public OpKernel {
+ public:
+  Memcpy(const OpKernelInfo& info) : OpKernel{info} {}
 
-  // Create the Vulkan engine instance - a boilerplate struct is
-  // required to create the engine instance
-  VkInstanceCreateInfo instanceCreateInfo{
-      VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-      nullptr,
-      0,
-      &appInfo,
-#ifndef NDEBUG
-      1,
-      validation_layers.data(),
-#else
-      0,
-      nullptr,
-#endif
-      0,
-      nullptr,
-  };
+  Status Compute(OpKernelContext* ctx) const override {
+    auto X_type = ctx->InputType(0);
 
-  VK_CALL(vkCreateInstance(&instanceCreateInfo, nullptr, &vulkan_instance_));
-}
+    if (X_type->IsTensorType()) {
+      const auto* X = ctx->Input<Tensor>(0);
+      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
+      Tensor* Y = ctx->Output(0, X->Shape());
+      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
+      return Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
+    }
 
-VulkanInstance::~VulkanInstance() {
-  if (VK_NULL_HANDLE != vulkan_instance_) {
-    vkDestroyInstance(vulkan_instance_, nullptr);
-    vulkan_instance_ = VK_NULL_HANDLE;
+    return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type.");
   }
-}
+};
 
-VkInstance VulkanInstance::Get() const {
-  return vulkan_instance_;
-}
+namespace vulkan {
+ONNX_OPERATOR_KERNEL_EX(
+    MemcpyFromHost,
+    kOnnxDomain,
+    1,
+    kVulkanExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
+        .ExecQueueId(0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Memcpy);
+
+ONNX_OPERATOR_KERNEL_EX(
+    MemcpyToHost,
+    kOnnxDomain,
+    1,
+    kVulkanExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0)
+        .ExecQueueId(0)
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    Memcpy);
+}  // namespace vulkan
 
 AllocatorPtr VulkanExecutionProvider::CreateVulkanAllocator() {
-  VulkanMemoryAllocationHelper memory_alloc_helper(vulkan_logical_device_, vulkan_device_memory_properties_, vulkan_queue_family_index_);
-  AllocatorCreationInfo device_info{[&memory_alloc_helper, this](int) { return std::make_unique<VulkanAllocator>(info_, memory_alloc_helper, vulkan_device_properties_.limits); },
+  AllocatorCreationInfo device_info{[this](int) { return std::make_unique<VulkanAllocator>(info_, *vulkan_memory_alloc_, vulkan_device_properties_.limits); },
                                     info_.device_id, /*no arena*/ false};
 
   return CreateAllocator(device_info);
@@ -87,14 +80,17 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
     ORT_THROW("No Vulkan compatible device found");
   }
 
-  VkPhysicalDevice vulkan_physical_devices[1] = {nullptr};
+  ORT_ENFORCE(device_count == 2);
+
+  VkPhysicalDevice vulkan_physical_devices[2] = {nullptr, nullptr};
   VK_CALL(vkEnumeratePhysicalDevices(vulkan_instance_->Get(), &device_count, vulkan_physical_devices));
 
-  if (vulkan_physical_devices[0] != nullptr) {
+  if (vulkan_physical_devices[0] == nullptr) {
     ORT_THROW("Received nullptr for Vulkan Physical device");
   }
 
-  vulkan_physical_device_ = vulkan_physical_devices[info_.device_id];
+  // TODO: FIx indexing
+  vulkan_physical_device_ = vulkan_physical_devices[1];
 
   // Poll the physical device to see if it contains a compute queue family
   uint32_t total_queue_families = 0;
@@ -159,19 +155,18 @@ VulkanExecutionProvider::VulkanExecutionProvider(const VulkanExecutionProviderIn
   VK_CALL_RETURNS_VOID(vkGetPhysicalDeviceMemoryProperties(vulkan_physical_device_, &vulkan_device_memory_properties_));
   VK_CALL_RETURNS_VOID(vkGetDeviceQueue(vulkan_logical_device_, vulkan_queue_family_index_, 0, &vulkan_queue_));
 
-  // Insert the allocator
-  InsertAllocator(CreateVulkanAllocator());
-
   // Initialize other resources
   vulkan_sampler_ = std::make_shared<VulkanSampler>(vulkan_logical_device_, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER);
   vulkan_clamp_sampler_ = std::make_shared<VulkanSampler>(vulkan_logical_device_, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
   vulkan_memory_alloc_ = std::make_shared<VulkanMemoryAllocationHelper>(vulkan_logical_device_, vulkan_device_memory_properties_, vulkan_queue_family_index_);
   vulkan_command_pool_ = std::make_shared<VulkanCommandPool>(vulkan_logical_device_, vulkan_queue_family_index_);
   vulkan_pipeline_factory_ = std::make_shared<VulkanPipelineFactory>(vulkan_logical_device_);
+
+  // Insert the allocator
+  InsertAllocator(CreateVulkanAllocator());
 }
 
 VulkanExecutionProvider::~VulkanExecutionProvider() {
-  vulkan_instance_ = nullptr;
   vulkan_sampler_ = nullptr;
   vulkan_clamp_sampler_ = nullptr;
   vulkan_memory_alloc_ = nullptr;
@@ -187,10 +182,13 @@ VulkanExecutionProvider::~VulkanExecutionProvider() {
     vkDestroyDevice(vulkan_logical_device_, nullptr);
     vulkan_logical_device_ = VK_NULL_HANDLE;
   }
+
+  vulkan_instance_ = nullptr;
 }
 
 void VulkanExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice vulkan_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info_.device_id};
+  // TODO: Use info_.device_id
+  OrtDevice vulkan_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0};
 
   auto vulkan_alloc = GetAllocator(vulkan_device.Id(), OrtMemTypeDefault);
 
@@ -226,7 +224,9 @@ VulkanCommandPool& VulkanExecutionProvider::GetCommandPool() const {
 
 VulkanPipeline& VulkanExecutionProvider::GetPipeline(const std::string& key, const std::vector<VkDescriptorType>& types,
                                                      const std::vector<uint32_t>& local_sizes) const {
-  return *vulkan_pipeline_factory_->GetPipeline(key, types, local_sizes);
+  auto* pipeline = vulkan_pipeline_factory_->GetPipeline(key, types, local_sizes);
+  ORT_ENFORCE(pipeline, "Operation not supported: ", key);
+  return *pipeline;
 }
 
 const VkPhysicalDeviceLimits& VulkanExecutionProvider::GetMemoryLimits() const {
@@ -242,21 +242,32 @@ Status VulkanExecutionProvider::QueueCommand(VkCommandBuffer cmd_buffer) const {
   return Status::OK();
 }
 
+bool VulkanExecutionProvider::ConcurrentRunSupported() const {
+  return false;
+}
+
 Status VulkanExecutionProvider::Sync() const {
   return Status::OK();
 }
 
+namespace vulkan {
+
 // Forward declarations of op kernels
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kVulkanExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kVulkanExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kVulkanExecutionProvider, kOnnxDomain, 6, 12, float, Relu);
 
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
-  return {};
+  KernelCreateInfo info;
+  return info;
 }
 
 Status RegisterVulkanOnnxOperatorKernels(KernelRegistry& kernel_registry) {
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list become empty after ops-reducing
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kVulkanExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kVulkanExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kVulkanExecutionProvider, kOnnxDomain, 6, 12, float, Relu)>,
   };
 
@@ -270,9 +281,18 @@ Status RegisterVulkanOnnxOperatorKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
+}  // namespace vulkan
+
 Status RegisterVulkanKernels(KernelRegistry& kernel_registry) {
-  return RegisterVulkanOnnxOperatorKernels(kernel_registry);
+  return vulkan::RegisterVulkanOnnxOperatorKernels(kernel_registry);
 }
+
+namespace {
+struct KernelRegistryAndStatus {
+  std::shared_ptr<onnxruntime::KernelRegistry> kernel_registry = std::make_shared<onnxruntime::KernelRegistry>();
+  onnxruntime::Status st;
+};
+}  // namespace
 
 KernelRegistryAndStatus GetVulkanKernelRegistry() {
   KernelRegistryAndStatus ret;

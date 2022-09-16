@@ -125,7 +125,8 @@ VkImage VulkanMemoryAllocationHelper::AllocVkImage(const std::tuple<VkImageType,
   info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   info.pNext = nullptr;
 
-  VK_CALL(vkCreateImage(logical_device_, &info, nullptr, &image));
+  auto result = vkCreateImage(logical_device_, &info, nullptr, &image);
+  ORT_IGNORE_RETURN_VALUE(result);
 
   return image;
 }

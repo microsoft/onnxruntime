@@ -9,6 +9,12 @@
 namespace onnxruntime {
 
 struct VulkanExecutionProviderInfo {
+  VulkanExecutionProviderInfo() = default;
+
+  VulkanExecutionProviderInfo(const ProviderOptions&) {
+    // future: parse ProviderOptions
+  }
+
   OrtDevice::DeviceId device_id{0};
 
   //static VulkanExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);

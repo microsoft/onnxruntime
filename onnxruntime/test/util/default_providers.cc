@@ -5,6 +5,7 @@
 #include "default_providers.h"
 #include "providers.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
+
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
@@ -203,6 +204,14 @@ std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #ifdef USE_XNNPACK
   return XnnpackProviderFactoryCreator::Create(ProviderOptions())->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> DefaultVulkanExecutionProvider() {
+#ifdef USE_VULKAN
+  return VulkanProviderFactoryCreator::Create(ProviderOptions())->CreateProvider();
 #else
   return nullptr;
 #endif

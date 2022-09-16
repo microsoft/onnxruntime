@@ -160,6 +160,11 @@ template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
 
+namespace vulkan {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace vulkan
+
 namespace contrib {
 namespace cuda {
 template <typename T>
