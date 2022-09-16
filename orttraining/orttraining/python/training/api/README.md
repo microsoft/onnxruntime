@@ -19,7 +19,7 @@ Once the onnx models are generated, you can use the training APIs to run your tr
 ```py
 from onnxruntime.training.api import Module, Optimizer, CheckpointState
 # Create Checkpoint State.
-state = CheckpointState("checkpoint.ckpt)
+state = CheckpointState("checkpoint.ckpt")
 # Create Module and Optimizer.
 model = Module("training_model.onnx", state, "eval_model.onnx")
 optimizer = Optimizer("optimizer.onnx", model)
