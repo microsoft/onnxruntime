@@ -223,11 +223,7 @@ tvm_session = onnxruntime.InferenceSession(model_path, providers=["TvmExecutionP
 Currently, only precompiled models are supported in C# (see the related section below).
 
 ```CSharp
-SessionOptions session_options = new SessionOptions
-{
-  GraphOptimizationLevel = GraphOptimizationLevel.ORT_DISABLE_ALL,
-  LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE,
-};
+SessionOptions session_options = new SessionOptions{};
 string tvm_ep_options = 
   $"executor: {tvm_executor_type}, " +
   $"so_folder: {folder_with_pretuned_files}, " +
