@@ -43,6 +43,7 @@ namespace Dml
         void SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment);
         gsl::span<const uint32_t> GetSizes() const { return { m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount }; }
         gsl::span<const uint32_t> GetStrides() const;
+        void SetStrides(gsl::span<const uint32_t> strides);
   
         inline uint64_t GetBufferSizeInBytes() const
         { 

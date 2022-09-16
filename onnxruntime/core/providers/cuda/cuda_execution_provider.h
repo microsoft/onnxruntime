@@ -134,7 +134,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   // stream returned by GetComputeStream when calling AddDeferredReleaseCPUPtr) in OnRunEnd.
   // Those are pointers allocated by AllocateBufferOnCPUPinned and should be released
   // by CPU Allocator's Free function.
-  std::unordered_map<void*, std::vector<void*>> deferred_release_buffer_pool_;
+  std::unordered_map<cudaStream_t, std::vector<void*>> deferred_release_buffer_pool_;
   // To add a pointer to deferred_release_buffer_pool_, we need a mutex because
   // different threads may create CPU buffers at the same time. Releasing
   // buffers also needs this mutex.

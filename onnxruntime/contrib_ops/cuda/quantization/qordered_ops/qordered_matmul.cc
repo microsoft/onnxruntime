@@ -88,7 +88,7 @@ Status QOrderedMatMul::QOrderedMatMul::ComputeInternal(OpKernelContext* context)
   TensorShape output_shape(tensor_A.Shape());
   output_shape[output_shape.NumDimensions() - 1] = cols_B;
 
-  const float zero = 0.0f;
+  constexpr float zero = 0.0f;
   const float* scale_C = &zero;
 
   const int8_t* C = nullptr;
