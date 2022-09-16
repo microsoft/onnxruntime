@@ -17,10 +17,10 @@ class DeviceStreamCollection;
 
 struct PartialGraphExecutionState {
  public:
-  PartialGraphExecutionState() : execution_context_(nullptr), device_stream_collection_(nullptr) {
+  PartialGraphExecutionState() : execution_context_(nullptr), device_stream_collection_(nullptr), device_stream_deleter_(nullptr) {
   }
 
-  ~PartialGraphExecutionState() = default;
+  ~PartialGraphExecutionState();
 
   void SetProgramCounterStart(size_t start) { program_counter_start_ = start; }
   void SetProgramCounterEnd(size_t end) { program_counter_end_ = end; }
@@ -36,7 +36,7 @@ struct PartialGraphExecutionState {
                                         const SessionState& session_state,
                                         const logging::Logger& sess_logger,
                                         const DeviceStreamCollection& device_streams);
-  DeviceStreamCollection& GetDeviceStreamCollection(size_t num_streams, const SessionState& session_state);
+  DeviceStreamCollection& GetDeviceStreamCollection(const SessionState& session_state);
 
  private:
   std::unique_ptr<ExecutionContext> execution_context_;
@@ -45,6 +45,7 @@ struct PartialGraphExecutionState {
 
   std::vector<ProgramRegion> program_regions_;
   std::unique_ptr<DeviceStreamCollection> device_stream_collection_;
+  std::function<void(DeviceStreamCollection*)> device_stream_deleter_;
 };
 }  // namespace onnxruntime
 #endif

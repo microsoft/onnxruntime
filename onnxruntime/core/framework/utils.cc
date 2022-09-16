@@ -742,9 +742,9 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
   bool single_thread_mode = true;
 
   auto* execution_plan = session_state.GetExecutionPlan();
-  DeviceStreamCollection& device_stream_collection = state.GetDeviceStreamCollection(execution_plan->execution_plan.size(), session_state);
+  DeviceStreamCollection& device_stream_collection = state.GetDeviceStreamCollection(session_state);
+  UpdateWithParentStream(device_stream_collection, parent_stream);
 
-  ORT_ENFORCE(BindToDeviceStream(parent_stream, *execution_plan, device_stream_collection, session_state.GetStreamHandleRegistryInstance()).IsOK());
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
