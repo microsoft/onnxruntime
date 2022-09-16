@@ -3,8 +3,6 @@
 
 #include "core/flatbuffers/flatbuffers_utils.h"
 
-#include <cctype>
-
 #include "gsl/gsl"
 
 #include "core/common/common.h"

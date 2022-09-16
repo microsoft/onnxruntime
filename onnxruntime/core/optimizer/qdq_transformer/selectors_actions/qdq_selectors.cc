@@ -85,7 +85,7 @@ std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& gr
   }
 
   NodesToOptimizeIndicesBuilder builder;
-  // TODO update NodeGroup to use InlinedVector
+  // TODO(edgchen1) update NodeGroup to use InlinedVector
   builder.input_nodes.assign(qdq_group->dq_nodes.begin(), qdq_group->dq_nodes.end());
   builder.output_nodes.assign(qdq_group->q_nodes.begin(), qdq_group->q_nodes.end());
   //builder.input_nodes = qdq_group->dq_nodes;

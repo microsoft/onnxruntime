@@ -101,19 +101,19 @@ static bool TryAssignNodes(Graph& graph, const IndexedSubGraph& capability,
 static bool TryAssignSingleNode(Graph& graph,
                                 const IndexedSubGraph& indexed_sub_graph,
                                 const std::string& provider_type) {
-  // The <provider> can run a single node in the <graph> if not using meta-defs.
+  // The provider can run a single node in the <graph> if not using meta-defs.
   // A fused kernel is not supported in this case.
   ORT_ENFORCE(1 == indexed_sub_graph.nodes.size());
 
   auto* node = graph.GetNode(indexed_sub_graph.nodes[0]);
   if (nullptr != node && node->GetExecutionProviderType().empty()) {
-    // The node was not fused or assigned. Assign it to this <provider>.
+    // The node was not fused or assigned. Assign it to <provider_type>.
     node->SetExecutionProviderType(provider_type);
     return true;
   }
 
   return false;
-};
+}
 
 static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_registry_mgr,
                                  IExecutionProvider& current_ep, GraphPartitioner::Mode mode,

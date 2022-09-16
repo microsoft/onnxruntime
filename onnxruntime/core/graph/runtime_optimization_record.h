@@ -77,7 +77,7 @@ an ORT format model. This also means that non-empty node indices here must be in
 };
 
 /** Information for a single runtime optimization.
-It does not contain information about the optimizer itself, that should be maintained seperately.
+It does not contain information about the optimizer itself, that should be maintained separately.
 */
 struct RuntimeOptimizationRecord {
   /** The optimization action identifier. */
