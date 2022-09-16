@@ -410,12 +410,6 @@ void GraphEdge::RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edg
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-bool IsSupportedProvider(const Node& node,
-                         const InlinedHashSet<std::string_view>& compatible_providers) {
-  return !(!compatible_providers.empty() &&
-           compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
-}
-
 #if !defined(ORT_MINIMAL_BUILD)
 
 bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions) {
@@ -424,6 +418,12 @@ bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::Ope
 
 int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
   return GetIndexFromName(node, input_name, true);
+}
+
+bool IsSupportedProvider(const Node& node,
+                         const InlinedHashSet<std::string_view>& compatible_providers) {
+  return !(!compatible_providers.empty() &&
+           compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
 }
 
 /** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators.

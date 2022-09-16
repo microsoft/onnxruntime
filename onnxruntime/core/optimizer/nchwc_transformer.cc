@@ -1225,8 +1225,8 @@ Status NchwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     auto& node = *graph.GetNode(index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
-    if (graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
-      impl.Transform(node);
+    if (node.GetExecutionProviderType() == kCpuExecutionProvider) {
+        impl.Transform(node);
     }
   }
   impl.Finalize(modified);
