@@ -30,6 +30,12 @@ void run_qordered_longformer_attention_op_test(
     const int64_t head_size,
     const int64_t window,
     int64_t input_hidden_size = 0) {
+
+  // Needs Turing or higher architecture
+  if (NeedSkipIfCudaArchLowerThan(750)) {
+    return;
+  }
+
   const int64_t hidden_size = num_heads * head_size;
   if (!input_hidden_size) input_hidden_size = hidden_size;
 
