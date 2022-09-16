@@ -10,6 +10,9 @@
 #include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_c_api.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/graph/function_template.h"
+#endif
 #include "gsl/gsl"
 
 namespace flatbuffers {
@@ -37,7 +40,8 @@ struct ModelOptions {
   bool strict_shape_type_inference;
 
   ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference)
-      : allow_released_opsets_only(allow_released_opsets_only), strict_shape_type_inference(strict_shape_type_inference) {}
+      : allow_released_opsets_only(allow_released_opsets_only),
+        strict_shape_type_inference(strict_shape_type_inference) {}
 
   ModelOptions() : ModelOptions(true, false) {}
 };
@@ -137,6 +141,8 @@ class Model {
   // Get graph's doc string.
   // Returns empty string if not specified.
   const std::string GraphDocString() const;
+
+  const InlinedHashMap<std::string, FunctionTemplate*>& GetModelLocalFunctionTemplates() const;
 
 #else
   // Get model's IR version.
@@ -292,6 +298,7 @@ class Model {
 #if !defined(ORT_MINIMAL_BUILD)
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
 #endif
+                                          bool can_use_flatbuffer_for_initializers,
                                           const logging::Logger& logger,
                                           std::unique_ptr<Model>& model);
 
@@ -301,6 +308,18 @@ class Model {
   // Model data.
 #if !defined(ORT_MINIMAL_BUILD)
   ONNX_NAMESPACE::ModelProto model_proto_;
+  // map from function id to pointer of model local function proto
+  // FunctionProto is hosted in ModelProto.
+  // this map will be used for the local functions' schema's type/shape inference.
+  InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
+  // this is the container that host the generated schemas for model local functions.
+  // the generated schemare will be used for graph resolving and type/shape inference.
+  // those schemas' type/shape inference will reference to the model_local_functions_ as context,
+  // so need to keep them with same lifetime.
+  InlinedVector<std::unique_ptr<FunctionTemplate>> model_local_function_templates_;
+  // this is the map from function id to the local function template.
+  // this map will be used by graph to instantiate the function body.
+  InlinedHashMap<std::string, FunctionTemplate*> model_local_function_templates_maps_;
 #else
   // properties that would normally come from ModelProto
   std::string producer_version_;

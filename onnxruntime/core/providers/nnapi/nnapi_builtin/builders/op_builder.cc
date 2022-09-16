@@ -4,6 +4,7 @@
 #include "op_builder.h"
 
 #include <onnx/onnx_pb.h>
+#include <algorithm>
 
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
@@ -13,9 +14,11 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "helper.h"
 #include "model_builder.h"
 #include "op_support_checker.h"
+#include "core/optimizer/initializer.h"
 
 using namespace android::nn::wrapper;
 
@@ -29,37 +32,9 @@ struct OpBuilderRegistrations {
   std::unordered_map<std::string, const IOpBuilder*> op_builder_map;
 };
 
-#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)             \
-  {                                                                                \
-    uint32_t _index = 0;                                                           \
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromScalar(scalar_value, _index)); \
-    input_indices.push_back(_index);                                               \
-  }
-
-Status AddTransposeOperator(ModelBuilder& model_builder,
-                            const std::string& input,
-                            const std::string& perm_name,
-                            std::vector<int32_t> perm,
-                            const std::string& output) {
-  auto& shaper(model_builder.GetShaper());
-  const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto& operand_types(model_builder.GetOperandTypes());
-
-  std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input));  // input
-
-  Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
-  OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type));
-  uint32_t perm_idx = operand_indices.at(perm_name);
-
-  input_indices.push_back(perm_idx);  // permutation
-  ORT_RETURN_IF_ERROR(shaper.Transpose(input, perm, output));
-  OperandType output_operand_type = operand_types.at(input);
-  output_operand_type.SetDimensions(shaper[output]);
-  return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
-                                    {output_operand_type});
-}
+#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)          \
+  ORT_RETURN_IF_ERROR(onnxruntime::nnapi::op_builder_helpers::AddScalarOperand( \
+      model_builder, input_indices, scalar_value))
 
 static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
@@ -143,6 +118,33 @@ enum DataLayout {
   L_1230 = 1,
 };
 
+static Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                                            std::vector<int32_t>& axes) {
+  // Squeeze/Unsqueeze opset 13 uses input1 as axes
+  if (node_unit.SinceVersion() > 12) {
+    // For squeeze, axes is an optional input.If it is not supplied, return an empty axes as default to squeeze all
+    // For unsqueeze, axes is a required input. This check has no effect for it
+    // TODO: Add helper function to handle the following conversion from int64 initializer to int32
+    if (node_unit.Inputs().size() > 1) {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
+      Initializer unpacked_tensor(axes_tensor);
+      auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
+      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
+      axes.resize(size);
+      for (uint32_t i = 0; i < size; i++) {
+        // it is unlikely we have an axis value overflow for int32
+        axes[i] = static_cast<int32_t>(raw_axes[i]);
+      }
+    }
+  } else {
+    NodeAttrHelper helper(node_unit);
+    axes = helper.Get("axes", std::vector<int32_t>());
+  }
+
+  return Status::OK();
+}
+
 // This is primarily used for adding the weight (an initializer) of Conv/QlinearConv
 // And perform layout change from ONNX -> NNAPI
 // If is_per_tensor_u8s8 is true, the QlinearConv is per-tensor u8s8 (input X is unsigned int8
@@ -162,16 +164,11 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 
   // TODO support other data types
   const uint8_t* src = nullptr;
-  std::vector<uint8_t> unpacked_tensor;
 
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor));
-      src = unpacked_tensor.data();
       break;
     }
     default:
@@ -179,7 +176,8 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                              "The initializer of graph ", name,
                              " doesn't have valid type: ", tensor.data_type());
   }
-
+  Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
+  src = unpacked_tensor.DataAsByteSpan().data();
   const auto out_t = shape[0], in_t = shape[1],
              h_t = shape[2], w_t = shape[3];
   Shape dest_shape;
@@ -247,15 +245,10 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
 
   // TODO support other data types
   const uint8_t* src = nullptr;
-  std::vector<uint8_t> unpacked_tensor;
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor));
-      src = unpacked_tensor.data();
       break;
     }
     default:
@@ -263,7 +256,9 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
                              "The initializer of graph ", name,
                              " doesn't have valid type: ", tensor.data_type());
   }
-
+  Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
+  // could be float/u8/s8, so we have to use raw data here.
+  src = unpacked_tensor.DataAsByteSpan().data();
   const auto x_t = shape[0], y_t = shape[1];
   Shape dest_shape = {y_t, x_t};
   OperandType operand_type = source_operand_type;
@@ -421,11 +416,10 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
   w_zero_point = 0;
 
   // We need to copy the 1d scales array for per-channel quantization
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scale_tensor, unpacked_tensor));
-  const float* scales = reinterpret_cast<const float*>(unpacked_tensor.data());
+  Initializer unpacked_tensor(scale_tensor);
+  auto scales = unpacked_tensor.DataAsSpan<float>();
   const size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
-  std::vector<float> scales_vec(scales, scales + scales_size);
+  std::vector<float> scales_vec(scales.begin(), scales.begin() + scales_size);
   w_scales = onnxruntime::make_optional(std::move(scales_vec));
   return Status::OK();
 }
@@ -599,6 +593,7 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
           "QLinearAdd",
           "QLinearMul",
           "Pow",
+          "PRelu",
       });
 }
 
@@ -620,6 +615,9 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   } else if (op_type == "Pow") {
     add_activation = false;  // ANEURALNETWORKS_POW does not have activation
     op_code = ANEURALNETWORKS_POW;
+  } else if (op_type == "PRelu") {
+    add_activation = false;  // ANEURALNETWORKS_PRELU does not have activation
+    op_code = ANEURALNETWORKS_PRELU;
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "UnaryOpBuilder, unknown op: ", op_type);
   }
@@ -744,7 +742,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
   std::string perm_name = model_builder.GetUniqueName(node_unit.Name() + input + "perm");
 
-  ORT_RETURN_IF_ERROR(AddTransposeOperator(model_builder, input, perm_name, perm, output));
+  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiTranspose(model_builder, input, perm_name, perm, output));
 
   return Status::OK();
 }
@@ -796,7 +794,6 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   // and the node_unit has only one output node.
   const auto& output_node_arg = node_unit.Outputs()[0].node_arg;
   const auto& output_name = output_node_arg.Name();
-  const auto& output_node = *node_unit.GetOutputNodes()[0];
 
   // Check if the Reshape output is a graph output, if so we cannot skip the Reshape
   // We do not care the case where the Reshape output is a dead end
@@ -809,7 +806,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   }
 
   // We will go through all the output edges
-  for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
+  for (auto it = node_unit.OutputEdgesBegin(0), end = node_unit.OutputEdgesEnd(0); it != end; ++it) {
     const auto& dest_node_unit = model_builder.GetNodeUnit(&it->GetNode());
     const auto& op_type = dest_node_unit.OpType();
     // TODO add quantized matmul when reshape support quantized input
@@ -822,7 +819,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     }
 
     // Now the dest node is Gemm/Matmul, we want to make sure it is supported
-    if (!BaseOpBuilder::IsOpSupported(model_builder, node_unit)) {
+    if (!BaseOpBuilder::IsOpSupported(model_builder, dest_node_unit)) {
       return false;
     }
 
@@ -873,16 +870,9 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   } else {
     // We still need to perform a reshape here
-    // Add input
-    std::vector<uint32_t> input_indices;
-    input_indices.push_back(operand_indices.at(input));
-    // Add new shape
-    Shape shape_dimen = {static_cast<uint32_t>(shape.size())};
     std::string shape_name = model_builder.GetUniqueName(node_unit.Name() + input + "newshape");
-    OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
-    input_indices.push_back(operand_indices.at(shape_name));
-    ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices, {output}, {output_operand_type}));
+    ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape_name, shape, output,
+                                                            &shaper[output]));
   }
 
   return Status::OK();
@@ -895,9 +885,8 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto input = node_unit.Inputs()[0].node_arg.Name();
 
   const auto& shape_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(shape_tensor, unpacked_tensor));
-  const int64_t* raw_shape = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+  Initializer unpacked_tensor(shape_tensor);
+  auto raw_shape = unpacked_tensor.DataAsSpan<int64_t>();
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
 
   Shape input_shape = shaper[input];
@@ -921,6 +910,52 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 }
 
 #pragma endregion op_reshape
+
+#pragma region op_unsqueeze
+
+class UnsqueezeOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+};
+
+void UnsqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  // Unsqueeze opset 13 uses input 1 as axes, add it to initializer skip list
+  if (node_unit.SinceVersion() > 12 && node_unit.Inputs().size() > 1) {
+    model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());  // "axes"
+  }
+}
+
+Status UnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& shaper(model_builder.GetShaper());
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+
+  // NNAPI does not support unsqueeze, here we utilize unsqueeze's axes input to compute output shape
+  // And add equivalent operation as ANEURALNETWORKS_RESHAPE to nnapi model
+  std::vector<int32_t> axes;
+  ORT_RETURN_IF_ERROR(GetAxesForSqueezeAndUnSqueeze(model_builder, node_unit, axes));
+
+  Shape input_shape = shaper[input];
+  auto input_dims = input_shape.size();
+  std::vector<int32_t> shape;
+  const auto size = SafeInt<uint32_t>(input_dims + axes.size());  // "output rank"
+  shape.reserve(size);
+  for (auto& axis : axes) {
+    axis = static_cast<int32_t>(HandleNegativeAxis(axis, size));
+  }
+  std::sort(axes.begin(), axes.end());
+  std::copy(input_shape.cbegin(), input_shape.cend(), std::back_inserter(shape));
+  for (size_t i = 0; i < axes.size(); i++) {
+    auto iter = shape.cbegin() + axes[i];
+    shape.insert(iter, SafeInt<int32_t>(1));
+  }
+
+  return ReshapeOpBuilder::AddReshapeOperator(model_builder, node_unit, input, shape);
+}
+
+#pragma endregion op_unsqueeze
 
 #pragma region op_batchnormalization
 
@@ -963,21 +998,15 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   a.reserve(size);
   b.reserve(size);
 
-  std::vector<uint8_t> unpacked_scale_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scale_tensor, unpacked_scale_tensor));
-  const float* scale_data = reinterpret_cast<const float*>(unpacked_scale_tensor.data());
+  Initializer unpacked_scale_tensor(scale_tensor);
+  Initializer unpacked_bias_tensor(bias_tensor);
+  Initializer unpacked_mean_tensor(mean_tensor);
+  Initializer unpacked_var_tensor(var_tensor);
 
-  std::vector<uint8_t> unpacked_bias_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_bias_tensor));
-  const float* bias_data = reinterpret_cast<const float*>(unpacked_bias_tensor.data());
-
-  std::vector<uint8_t> unpacked_mean_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(mean_tensor, unpacked_mean_tensor));
-  const float* mean_data = reinterpret_cast<const float*>(unpacked_mean_tensor.data());
-
-  std::vector<uint8_t> unpacked_var_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(var_tensor, unpacked_var_tensor));
-  const float* var_data = reinterpret_cast<const float*>(unpacked_var_tensor.data());
+  auto scale_data = unpacked_scale_tensor.DataAsSpan<float>();
+  auto bias_data = unpacked_bias_tensor.DataAsSpan<float>();
+  auto mean_data = unpacked_mean_tensor.DataAsSpan<float>();
+  auto var_data = unpacked_var_tensor.DataAsSpan<float>();
 
   for (int64_t i = 0; i < size; i++) {
     a.push_back(scale_data[i] / sqrt(var_data[i] + eps));
@@ -1347,12 +1376,10 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     Shape bias_dimen;
     for (auto dim : bias_tensor.dims())
       bias_dimen.push_back(SafeInt<uint32_t>(dim));
-
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
+    Initializer unpacked_tensor(bias_tensor);
     OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
     ORT_RETURN_IF_ERROR(
-        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
+        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data<int32_t>(), bias_operand_type));
   }
 
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
@@ -1469,6 +1496,45 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(type, shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CAST, input_indices, {output},
+                                                 {output_operand_type}));
+  return Status::OK();
+}
+
+#pragma endregion
+
+#pragma region op_depthtospace
+class DepthToSpaceOpBuilder : public BaseOpBuilder {
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+};
+
+Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
+  NodeAttrHelper helper(node_unit);
+
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
+
+  bool use_nchw = model_builder.UseNCHW();
+  ORT_RETURN_IF_ERROR(IsOpInRequiredLayout(use_nchw, node_unit));
+
+  int32_t blocksize = SafeInt<int32_t>(node_unit.GetNode().GetAttributes().at("blocksize").i());
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, blocksize);
+
+  if (use_nchw && android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
+    // optional input to use nchw is available starting NNAPI feature level 3
+    ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
+  }
+
+  ORT_RETURN_IF_ERROR(shaper.DepthToSpace(input, blocksize, use_nchw, output));
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_DEPTH_TO_SPACE, input_indices, {output},
                                                  {output_operand_type}));
   return Status::OK();
 }
@@ -1605,6 +1671,11 @@ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 }
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetNNAPIFeatureLevel())) {
+    // no initializers to skip for batch matmul
+    return;
+  }
+
   const auto& inputs = node_unit.Inputs();
   if (IsQuantizedOp(node_unit)) {
     if (node_unit.OpType() == "QLinearMatMul" || node_unit.OpType() == "MatMul") {                 // QLinearMatMul/QDQMatMul
@@ -1641,6 +1712,10 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 }
 
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetNNAPIFeatureLevel())) {
+    return op_builder_helpers::BuildBatchMatMul(model_builder, node_unit);
+  }
+
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1727,12 +1802,13 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                         "bias of QDQGemm should be int32, actual type: ", bias_tensor.data_type());
       Shape bias_dimen;
       for (auto dim : bias_tensor.dims())
-        bias_dimen.push_back(dim);
-      std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
+        bias_dimen.push_back(SafeInt<uint32_t>(dim));
+      Initializer unpacked_tensor(bias_tensor);
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale);
       ORT_RETURN_IF_ERROR(
-          model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
+          model_builder.AddOperandFromPersistMemoryBuffer(
+              bias,
+              unpacked_tensor.data<int32_t>(), bias_operand_type));
 
       bias_idx = operand_indices.at(bias);
     }
@@ -2003,7 +2079,6 @@ class SqueezeOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-  static Status GetAxes(ModelBuilder& model_builder, const NodeUnit& node_unit, std::vector<int32_t>& axes);
 };
 
 void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2012,37 +2087,11 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   }
 }
 
-/* static */ Status SqueezeOpBuilder::GetAxes(ModelBuilder& model_builder,
-                                              const NodeUnit& node_unit, std::vector<int32_t>& axes) {
-  // Squeeze opset 13 use input as axes
-  if (node_unit.SinceVersion() > 12) {
-    // If axes is not supplied, return an empty axes as default to squeeze all
-    if (node_unit.Inputs().size() > 1) {
-      const auto& initializers(model_builder.GetInitializerTensors());
-      const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
-      std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axes_tensor, unpacked_tensor));
-      const int64_t* raw_axes = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
-      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
-      axes.resize(size);
-      for (uint32_t i = 0; i < size; i++) {
-        // it is unlikely we have a axis value overflow for int32
-        axes[i] = static_cast<int32_t>(raw_axes[i]);
-      }
-    }
-  } else {
-    NodeAttrHelper helper(node_unit);
-    axes = helper.Get("axes", std::vector<int32_t>());
-  }
-
-  return Status::OK();
-}
-
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto input = node_unit.Inputs()[0].node_arg.Name();
 
   std::vector<int32_t> axes;
-  ORT_RETURN_IF_ERROR(GetAxes(model_builder, node_unit, axes));
+  ORT_RETURN_IF_ERROR(GetAxesForSqueezeAndUnSqueeze(model_builder, node_unit, axes));
   return AddSqueezeOp(model_builder, node_unit.Name(), input, node_unit.Outputs()[0].node_arg.Name(), axes);
 }
 
@@ -2317,17 +2366,15 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   if (inputs.size() == 3) {  // we are using scales
     const auto& scales_name = inputs[2].node_arg.Name();
     const auto& scales_tensor = *initializers.at(scales_name);
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor));
-    const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
+    Initializer unpacked_tensor(scales_tensor);
+    auto scales_data = unpacked_tensor.DataAsSpan<float>();
     ORT_RETURN_IF_ERROR(
         shaper.ResizeUsingScales(input, scales_data[h_idx], scales_data[w_idx], use_nchw, output));
   } else {  // we are using sizes
     const auto& sizes_name = inputs[3].node_arg.Name();
     const auto& sizes_tensor = *initializers.at(sizes_name);
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor));
-    const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+    Initializer unpacked_tensor(sizes_tensor);
+    auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
     ORT_RETURN_IF_ERROR(
         shaper.ResizeUsingOutputSizes(input, SafeInt<uint32_t>(sizes_data[h_idx]), SafeInt<uint32_t>(sizes_data[w_idx]), use_nchw, output));
   }
@@ -2389,6 +2436,85 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   dim_2 = dim_2 == 0 ? -1 : dim_2;
   std::vector<int32_t> shape{dim_1, dim_2};
   return ReshapeOpBuilder::AddReshapeOperator(model_builder, node_unit, input, shape);
+}
+
+#pragma endregion
+
+#pragma region op_gather
+
+class GatherOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+};
+
+void GatherOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& inputs = node_unit.Inputs();
+  const auto& indices_name = inputs[1].node_arg.Name();
+  int32_t indices_data_type;
+  GetType(node_unit.Inputs()[1].node_arg, indices_data_type);
+  if (Contains(model_builder.GetInitializerTensors(), indices_name) &&
+      indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    // Skip the second input `indices` for Gather if it is an initializer
+    model_builder.AddInitializerToSkip(indices_name);
+  }
+}
+
+Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto& initializers(model_builder.GetInitializerTensors());
+  const auto& input1 = node_unit.Inputs()[0].node_arg.Name();
+  const auto& input2 = node_unit.Inputs()[1].node_arg.Name();  // "indices"
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
+
+  NodeAttrHelper helper(node_unit);
+  int32_t rank = static_cast<int32_t>(shaper[input1].size());
+  int32_t axis = static_cast<int32_t>(HandleNegativeAxis(helper.Get("axis", 0), rank));
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input1));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
+
+  int32_t indices_data_type;
+  GetType(node_unit.Inputs()[1].node_arg, indices_data_type);
+  if (Contains(model_builder.GetInitializerTensors(), input2) &&
+      indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    // Add indices operand into nnapi
+    const auto& indices_tensor = *initializers.at(input2);
+    Initializer unpacked_tensor(indices_tensor);
+
+    const auto data_type = indices_tensor.data_type();
+    const auto indices_shape = indices_tensor.dims();
+    Shape indices_dimen;
+    indices_dimen.reserve(indices_tensor.dims_size());
+    for (auto i = 0; i < indices_tensor.dims_size(); i++) {
+      indices_dimen.push_back(static_cast<uint32_t>(indices_shape[i]));
+    }
+
+    std::vector<int32_t> indices(unpacked_tensor.size());
+
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+      auto indice_span = unpacked_tensor.DataAsSpan<int64_t>();
+      std::transform(indice_span.begin(), indice_span.end(), indices.begin(),
+                     [](int64_t indice_n) -> int32_t { return SafeInt<int32_t>(indice_n); });
+    } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+      auto indice_span = unpacked_tensor.DataAsSpan<int32_t>();
+      indices.assign(indice_span.begin(), indice_span.end());
+    }
+
+    OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
+    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type));
+  }
+  input_indices.push_back(operand_indices.at(input2));
+  ORT_RETURN_IF_ERROR(shaper.Gather(input1, input2, axis, output));
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
+
+  return model_builder.AddOperation(ANEURALNETWORKS_GATHER, input_indices,
+                                    {output}, {output_operand_type});
 }
 
 #pragma endregion
@@ -2533,20 +2659,14 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       const auto& initializers(model_builder.GetInitializerTensors());
 
       const auto& tensor = *initializers.at(input_name);
-      std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor));
-      size_t tensor_byte_size = unpacked_tensor.size();
+      Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
       const auto data_type = tensor.data_type();
       if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-        const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
-        size_t size = tensor_byte_size / sizeof(int64_t);
-        data.insert(data.end(), tensor_data, tensor_data + size);
+        auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
+        data.insert(data.end(), tensor_data.begin(), tensor_data.end());
       } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-        const int32_t* tensor_data = reinterpret_cast<const int32_t*>(unpacked_tensor.data());
-        size_t size = tensor_byte_size / sizeof(int32_t);
-        data.insert(data.end(), tensor_data, tensor_data + size);
+        auto tensor_data = unpacked_tensor.DataAsSpan<int32_t>();
+        data.insert(data.end(), tensor_data.begin(), tensor_data.end());
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Data type for starts and ends inputs' is not supported in this build. Got ",
@@ -2651,6 +2771,87 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 #pragma endregion
 
+#pragma region op_pad
+
+class PadOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+};
+
+void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  const auto& inputs = node_unit.Inputs();
+  model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // pads
+  if (inputs.size() > 2) {
+    model_builder.AddInitializerToSkip(inputs[2].node_arg.Name());  // constant_value
+  }
+}
+
+Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  auto& shaper = model_builder.GetShaper();
+  const auto& operand_indices = model_builder.GetOperandIndices();
+  const auto& operand_types = model_builder.GetOperandTypes();
+  const auto& inputs = node_unit.Inputs();
+  const auto& outputs = node_unit.Outputs();
+
+  std::vector<uint32_t> input_indices{};
+
+  // `data` input
+  const auto& data = inputs[0].node_arg.Name();
+  input_indices.push_back(operand_indices.at(data));
+
+  // `pads` input
+  // convert from [begin_1, begin_2, ..., end_1, end_2, ...] to [begin_1, end_1, begin_2, end_2, ...]
+  // convert from int64_t to int32_t
+  const auto& data_shape = shaper[data];
+  const uint32_t data_rank = SafeInt<uint32_t>(data_shape.size());
+
+  const auto& pads = inputs[1].node_arg.Name();
+  const auto* pads_initializer = model_builder.GetConstantInitializer(pads);
+  ORT_RETURN_IF_NOT(pads_initializer, "pads must be a constant");
+
+  Initializer pads_initializer_raw_data(*pads_initializer);
+  // assume pads_initializer has int64 data, per ONNX spec
+  std::vector<int32_t> converted_pads_data{};
+  converted_pads_data.reserve(2 * data_rank);
+  auto pads_span = pads_initializer_raw_data.DataAsSpan<int64_t>();
+  for (size_t i = 0; i < data_rank; ++i) {
+    converted_pads_data.push_back(SafeInt<int32_t>(pads_span[i]));
+    converted_pads_data.push_back(SafeInt<int32_t>(pads_span[i + data_rank]));
+  }
+
+  const Shape converted_pads_shape{data_rank, 2};
+  const OperandType converted_pads_operand_type{Type::TENSOR_INT32, converted_pads_shape};
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(pads, converted_pads_data.data(),
+                                                                      converted_pads_operand_type));
+  input_indices.push_back(operand_indices.at(pads));
+
+  // `constant_value` input
+  float pad_value = 0.0f;
+  if (inputs.size() > 2 && inputs[2].node_arg.Exists()) {
+    const auto& constant_value = inputs[2].node_arg.Name();
+    const auto* constant_value_initializer = model_builder.GetConstantInitializer(constant_value);
+    ORT_RETURN_IF_NOT(constant_value_initializer, "constant_value must be a constant");
+    Initializer pad_value_raw_data_init(*constant_value_initializer);
+    pad_value = pad_value_raw_data_init.DataAsSpan<float>()[0];
+  }
+
+  ADD_SCALAR_OPERAND(model_builder, input_indices, pad_value);
+
+  const auto& output = outputs[0].node_arg.Name();
+
+  ORT_RETURN_IF_ERROR(shaper.Pad(data, converted_pads_data, output));
+
+  const OperandType output_operand_type{operand_types.at(data).type, shaper[output]};
+  const auto op_code = ANEURALNETWORKS_PAD_V2;
+
+  return model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});
+}
+
+#pragma endregion op_pad
+
 #pragma region CreateGetOpBuilders
 
 // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
@@ -2661,10 +2862,10 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 // This is for ops with dedicated OpBuilder
 #define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME)                                 \
-  {                                                                                           \
+  do {                                                                                        \
     op_registrations.builders.push_back(std::make_unique<BUILDER_NAME>());                    \
     op_registrations.op_builder_map.emplace(OP_TYPE, op_registrations.builders.back().get()); \
-  }
+  } while (0)
 
 static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
@@ -2674,11 +2875,14 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Cast", CastOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Clip", ClipOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Concat", ConcatOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("DepthToSpace", DepthToSpaceOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("DequantizeLinear", DequantizeLinearOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Elu", EluOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Gather", GatherOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Identity", IdentityOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("LRN", LRNOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Pad", PadOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("QuantizeLinear", QuantizeLinearOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Relu", ReluOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Reshape", ReshapeOpBuilder);
@@ -2687,6 +2891,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Softmax", SoftMaxOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Squeeze", SqueezeOpBuilder);
   NNAPI_EP_ADD_SINGLE_OP_BUILDER("Transpose", TransposeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Unsqueeze", UnsqueezeOpBuilder);
 
   // Builders shared among similar ops
   {
@@ -2694,6 +2899,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Div", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Pow", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("PRelu", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearMul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Sub", BinaryOpBuilder);

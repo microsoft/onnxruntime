@@ -457,7 +457,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                     constantCpuInputCapture,
                     shapeInferrerCapture.Get(),
                     &defaultAttributesCapture);
-			return Status::OK();
+            return Status::OK();
         };
 
     onnxruntime::KernelCreateInfo create_info(builder.Build(), lotusKernelCreateFn);
@@ -472,11 +472,18 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         if (supportsGraph)
         {
             GraphNodeFactoryRegistration graphReg;
-            graphReg.factory = 
-                [kernelFactoryCapture,
+            graphReg.factory = [
+                kernelFactoryCapture,
                 shapeInferrerCapture,
                 defaultAttributesCapture,
-                constantCpuInputCapture](const onnxruntime::Node& node, MLOperatorTensorGetter& constantInputGetter, const void* executionHandle, DmlGraphNodeCreateInfo* graphNodeCreateInfo)
+                constantCpuInputCapture
+                ]
+                (
+                    const onnxruntime::Node& node,
+                    MLOperatorTensorGetter& constantInputGetter,
+                    const void* executionHandle,
+                    /*out*/ DmlGraphNodeCreateInfo* graphNodeCreateInfo
+                )
                 {
                     onnxruntime::ProtoHelperNodeContext nodeContext(node);
                     onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
@@ -537,8 +544,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         // Currently unsupported for external operators
         if (canAliasFirstInput ||
             supportsGraph ||
-            requiredInputCountForGraph ||
-            requiredConstantCpuInputs)
+            requiredInputCountForGraph)
         {
             ORT_THROW_HR(E_INVALIDARG);
         }

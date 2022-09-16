@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 
@@ -18,7 +19,7 @@
 //       get the actually Android system version.
 //       If running on an actual Android system, this value will be ignored
 #ifndef ORT_NNAPI_MAX_SUPPORTED_API_LEVEL
-#define ORT_NNAPI_MAX_SUPPORTED_API_LEVEL 30
+#define ORT_NNAPI_MAX_SUPPORTED_API_LEVEL 31
 #endif
 
 namespace onnxruntime {
@@ -105,11 +106,6 @@ enum class ConvType : uint8_t {
   Grouped,
 };
 
-enum class IOKind : uint8_t {
-  Input,
-  Output,
-};
-
 QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit);
 
 // Return the type of the conv ops,
@@ -138,7 +134,7 @@ common::Status GetQuantizationScaleAndZeroPoint(
 
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
-    float& scale, int32_t& zero_point, IOKind io_kind = IOKind::Input);
+    float& scale, int32_t& zero_point, ArgType arg_type = ArgType::kInput);
 
 // Get Shape/Type of a NodeArg
 // TODO, move to shared_utils
@@ -162,6 +158,11 @@ bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_gr
 
 // Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);
+
+uint32_t ShapeSize(const Shape& shape, size_t begin_idx, size_t end_idx);
+inline uint32_t ShapeSize(const Shape& shape) {
+  return ShapeSize(shape, 0, shape.size());
+}
 
 // Check the given input is an initializer tensor
 // input_name is the name of the initializer

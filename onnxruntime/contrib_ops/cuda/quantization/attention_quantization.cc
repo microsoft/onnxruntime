@@ -48,7 +48,8 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* w_zp_tensor,
                                           const Tensor* past_tensor) const {
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past_tensor, nullptr, device_prop.maxThreadsPerBlock));
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
+                                                 mask_index, past_tensor, nullptr, device_prop.maxThreadsPerBlock));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -59,7 +60,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
   if (i_zp_tensor != nullptr) {
     ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(i_zp_tensor),
                       "input zero point must be a scalar or 1D tensor of size 1.");
-    if (0 != *(i_zp_tensor->template Data<int8_t>()))
+    if (0 != *(i_zp_tensor->Data<int8_t>()))
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA only support symmetric quantization for Attention");
   }
 
@@ -67,7 +68,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
     // CUDA only support symmetric quantization for Attention
     ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(w_zp_tensor),
                       "weight zero point must be a scalar or 1D tensor of size 1.");
-    if (0 != *(w_zp_tensor->template Data<int8_t>()))
+    if (0 != *(w_zp_tensor->Data<int8_t>()))
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA only support symmetric quantization for Attention");
   }
 
@@ -82,7 +83,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   //   Input 2  - bias              : (3 * hidden_size)
   //   Input 3  - input_scale       : scalar
   //   Input 4  - weight_scale      : scalar
-  //   Input 5  - mask_index        : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
+  //   Input 5  - mask_index        : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1)
+  //                                  or (batch_size, past_sequence_length + sequence_length)
   //   Input 6  - input_zero_point  : scalar
   //   Input 7  - weight_zero_point : scalar
   //   Input 8  - past              : (2, batch_size, num_heads, past_sequence_length, head_size)
@@ -138,58 +140,60 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(GemmInt8(m, n, k,
                                1 /*alpha_matmul*/, 0 /* beta_matmul*/,
-                               input->template Data<int8_t>(), k,
-                               weights->template Data<int8_t>(), n,
+                               input->Data<int8_t>(), k,
+                               weights->Data<int8_t>(), n,
                                gemm_buffer_quantized.get(), n,
                                this));
 
   CudaT dequant_scale;
-  CudaT input_scale = *(reinterpret_cast<const CudaT*>(input_scale_tensor->template Data<T>()));
-  CudaT weight_scale = *(reinterpret_cast<const CudaT*>(weight_scale_tensor->template Data<T>()));
+  CudaT input_scale = *(reinterpret_cast<const CudaT*>(input_scale_tensor->Data<T>()));
+  CudaT weight_scale = *(reinterpret_cast<const CudaT*>(weight_scale_tensor->Data<T>()));
   if (sizeof(T) == 2) {
     dequant_scale = __float2half(__half2float(input_scale) * __half2float(weight_scale));
   } else {
     dequant_scale = input_scale * weight_scale;
   }
+
   // scale back and bias
+  // TODO(tianleiwu): fuse Dequantize with Add bias and Transpose.
   ORT_RETURN_IF_ERROR(CudaDequantizeWithBias(Stream(),
                                              gemm_buffer_quantized.get(),
-                                             reinterpret_cast<const CudaT*>(bias->template Data<T>()),
+                                             reinterpret_cast<const CudaT*>(bias->Data<T>()),
                                              reinterpret_cast<CudaT*>(gemm_buffer.get()),
                                              dequant_scale,
                                              m,
                                              n));
 
   int past_sequence_length = 0;
-  Tensor* present_tensor = GetPresent(context, past_tensor, batch_size, head_size, sequence_length, past_sequence_length);
+  Tensor* present_tensor = GetPresent(context, past_tensor, batch_size, head_size,
+                                      sequence_length, past_sequence_length);
 
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
-  auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
-  if (!LaunchAttentionKernel(
+  void* fused_runner = nullptr;  // TODO(tianleiwu): use fused kernel to speed up
+  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size,
+                                                   sequence_length, past_sequence_length, fused_runner);
+
+  auto work_space = GetScratchBuffer<void>(workSpaceSize);
+  return LaunchAttentionKernel(
           GetDeviceProp(),
           Stream(),
-          reinterpret_cast<const CudaT*>(gemm_buffer.get()),
-          nullptr == mask_index ? nullptr : mask_index->template Data<int>(),
-          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
-          output->template MutableData<T>(),
+          cublas,
+          element_size,
           batch_size,
           sequence_length,
           num_heads_,
           head_size,
-          temp_buffer.get(),
-          cublas,
-          element_size,
-          is_unidirectional_,
           past_sequence_length,
-          nullptr == past_tensor ? nullptr : past_tensor->template Data<T>(),
-          nullptr, // TODO: support add_qk in quantized attention
-          nullptr == present_tensor ? nullptr : present_tensor->template MutableData<T>())) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+          is_unidirectional_,
+          reinterpret_cast<const void*>(gemm_buffer.get()),
+          nullptr,  // bias has been added
+          nullptr == mask_index ? nullptr : mask_index->Data<int>(),
+          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
+          nullptr == past_tensor ? nullptr : past_tensor->Data<T>(),
+          nullptr,  // TODO: support add_qk in quantized attention
+          work_space.get(),
+          output->MutableData<T>(),
+          nullptr == present_tensor ? nullptr : present_tensor->MutableData<T>(),
+          fused_runner);
 }
 
 }  // namespace cuda

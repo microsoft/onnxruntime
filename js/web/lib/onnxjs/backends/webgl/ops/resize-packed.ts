@@ -117,7 +117,8 @@ const createPackedResizeProgramInfo =
       const unpackChannel = unpackFromChannel();
       const shaderSource = `
             const vec2 inputWH = vec2(${inputHeight}.0, ${inputWidth}.0);
-            const vec4 scaleWHWH = vec4(${scalesHeight}.0, ${scalesWidth}.0, ${scalesHeight}.0, ${scalesWidth}.0);
+            const vec4 scaleWHWH = vec4(float(${scalesHeight}), float(${scalesWidth}), float(${scalesHeight}), float(${
+          scalesWidth}));
             ${unpackChannel}
             ${getSourceFracIndex}
             float getAValue(int x10, int r, int c, int d) {

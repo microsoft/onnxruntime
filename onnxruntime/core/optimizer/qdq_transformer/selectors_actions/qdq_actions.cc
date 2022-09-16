@@ -4,7 +4,7 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
 
 #include "core/optimizer/qdq_transformer/qdq_util.h"
-
+#include "core/graph/node_attr_utils.h"
 namespace onnxruntime {
 namespace QDQ {
 
@@ -71,6 +71,15 @@ std::vector<NodeAndMoveInfo> ConvMoves() {
       MoveAll(q, ArgType::kOutput)};                                      // and use the outputs from q
 
   return moves;
+}
+
+QDQReplaceWithNew SplitReplacer() {
+  NTO::NodeLocation dq{NTO::NodeType::kInput, 0};
+  NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
+  std::vector<NodeAndMoveInfo> moves{
+      MoveAndAppend(dq, ArgType::kInput, 0, ArgType::kInput),
+      MoveAll(q, ArgType::kOutput)};
+  return QDQReplaceWithNew(kOnnxDomain, "Split", std::move(moves));
 }
 
 QDQReplaceWithNew MatMulIntToFloatReplacer() {
@@ -195,6 +204,15 @@ UnaryReplaceWithQLinear::UnaryReplaceWithQLinear(std::string domain)
     : ReplaceWithQLinear(std::move(domain), UnaryMoves()) {
 }
 
+NodeAttributes UnaryReplaceWithQLinear::ExtraAttributes(const RuntimeState& state) const {
+  const auto& target = state.selected_nodes.Target();
+  NodeAttributes attr;
+  if (target.OpType() == "Softmax") {
+    attr["opset"] = utils::MakeAttribute(std::string("opset"), int64_t(target.SinceVersion()));
+  }
+  return attr;
+}
+
 BinaryReplaceWithQLinear::BinaryReplaceWithQLinear(std::string domain)
     : ReplaceWithQLinear(std::move(domain), BinaryMoves()) {
 }
@@ -210,6 +228,10 @@ ConvReplaceWithQLinear::ConvReplaceWithQLinear()
 MatMulReplaceWithQLinear::MatMulReplaceWithQLinear()
     : matmul_int_to_float_replacer_{MatMulIntToFloatReplacer()},
       qlinear_matmul_replacer_{kOnnxDomain} {
+}
+
+Status SplitReplaceWithQuant::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+  return SplitReplacer().Run(graph, selected_nodes);
 }
 
 Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {

@@ -14,6 +14,7 @@ class OnnxruntimeEngineFactory;
 class OnnxruntimeEnvironment;
 class OnnxruntimeModel;
 class OnnxruntimeEngine;
+class OnnxruntimeThreading;
 
 struct IOrtSessionBuilder;
 
@@ -165,11 +166,35 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CreateMapDescriptorInfo)
   (_Out_ IDescriptorInfo** info) override;
 
-private:
+  STDMETHOD(CreateThreadPool)
+  (_In_ bool allow_spinning, _In_ uint32_t num_intra_op_threads, _Out_ IThreading** thread_pool) override;
+
+ private:
   const OrtApi* ort_api_ = nullptr;
   const WinmlAdapterApi* winml_adapter_api_ = nullptr;
   std::shared_ptr<OnnxruntimeEnvironment> environment_;
   std::mutex mutex_;
+};
+
+class OnnxruntimeThreading : public Microsoft::WRL::RuntimeClass<
+                                  Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>,
+                                  IThreading> {
+public:
+  OnnxruntimeThreading();
+  ~OnnxruntimeThreading();
+
+  HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory);
+  
+  HRESULT SetIntraOpThreadPool(UniqueOrtThreadPool&& intra_op_ort_pool);
+  HRESULT SetInterOpThreadPool(UniqueOrtThreadPool&& inter_op_ort_pool);
+  OrtThreadPool* UseIntraOpThreadPool();
+  OrtThreadPool* UseInterOpThreadPool();
+
+private:
+  Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_ = nullptr;
+  UniqueOrtThreadPool inter_op_ort_pool_;
+  UniqueOrtThreadPool intra_op_ort_pool_;
+  
 };
 
 }  // namespace _winml

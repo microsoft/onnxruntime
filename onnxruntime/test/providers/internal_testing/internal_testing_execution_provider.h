@@ -6,11 +6,12 @@
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
+namespace internal_testing_ep {
+
 class InternalTestingExecutionProvider : public IExecutionProvider {
  public:
   InternalTestingExecutionProvider(const std::unordered_set<std::string>& ops,
                                    const std::unordered_set<std::string>& stop_ops = {},
-                                   bool debug_output = false,
                                    DataLayout preferred_layout = static_cast<DataLayout>(0));
   virtual ~InternalTestingExecutionProvider();
 
@@ -21,11 +22,21 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  FusionStyle GetFusionStyle() const override {
-    return FusionStyle::FilteredGraphViewer;
+  DataLayout GetPreferredLayout() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+
+  AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const override;
+  void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
+
+  InternalTestingExecutionProvider& SetDebugOutput(bool debug_output) {
+    debug_output_ = debug_output;
+    return *this;
   }
 
-  DataLayout GetPreferredLayout() const override;
+  InternalTestingExecutionProvider& EnableStaticKernels() {
+    enable_static_kernels_ = true;
+    return *this;
+  }
 
  private:
   const std::string ep_name_;
@@ -40,8 +51,14 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   //      the cost of going back to NNAPI.
   const std::unordered_set<std::string> stop_ops_;
 
-  const bool debug_output_;
-
+  bool debug_output_{false};
+  bool enable_static_kernels_{false};
   DataLayout preferred_layout_;
+
+  // used for testing allocator sharing as a few EPs (e.g. CUDA, TRT, TVM) override GetAllocator and have a local
+  // AllocatorPtr that can get out of sync with the allocator lists in the base IExecutionProvider
+  AllocatorPtr local_allocator_;
 };
+
+}  // namespace internal_testing_ep
 }  // namespace onnxruntime

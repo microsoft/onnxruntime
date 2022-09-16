@@ -66,14 +66,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
-            kNupharExecutionProvider,
-#ifdef USE_NUPHAR
-            true,
-#else
-            false,
-#endif
-        },
-        {
             kTvmExecutionProvider,
 #ifdef USE_TVM
             true,
@@ -132,6 +124,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
         {
             kRknpuExecutionProvider,
 #ifdef USE_RKNPU
+            true,
+#else
+            false,
+#endif
+        },
+        {
+            kXnnpackExecutionProvider,
+#ifdef USE_XNNPACK
             true,
 #else
             false,

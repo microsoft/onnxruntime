@@ -5,15 +5,16 @@
 Support for registering ONNX Runtime's built-in contrib ops with
 PyTorch-ONNX exporter (torch.onnx.export).
 """
-
 import typing
 
 try:
-    from torch.onnx import register_custom_op_symbolic
+    # TODO(justinchuby): Create a function to alert users when torch is not installed
+    import torch
 except ModuleNotFoundError:
     raise ModuleNotFoundError(
         "This module is only useful in combination with PyTorch. To install PyTorch see https://pytorch.org/."
     )
+
 import torch.onnx.symbolic_helper as sym_help
 import torch.onnx.symbolic_registry as sym_registry
 
@@ -23,7 +24,7 @@ _registered_ops: typing.AbstractSet[str] = set()
 
 def _reg(symbolic_fn: typing.Callable):
     name = "::%s" % symbolic_fn.__name__
-    register_custom_op_symbolic(name, symbolic_fn, _OPSET_VERSION)
+    torch.onnx.register_custom_op_symbolic(name, symbolic_fn, _OPSET_VERSION)
     _registered_ops.add(name)
 
 
@@ -71,8 +72,12 @@ def register():
 
     _reg(inverse)
 
-    def gelu(g, self):
-        return g.op("com.microsoft::Gelu", self).setType(self.type())
+    @torch.onnx.symbolic_helper.parse_args("v", "s")
+    def gelu(g, self: torch._C.Value, approximate: str = "none"):
+        # Use microsoft::Gelu for performance if possible. It only supports approximate == "none"
+        if approximate == "none":
+            return g.op("com.microsoft::Gelu", self).setType(self.type())
+        return torch.onnx.symbolic_opset9.gelu(g, self, approximate)
 
     _reg(gelu)
 
@@ -89,10 +94,12 @@ def register():
 
 def unregister():
     """Unregister ONNX Runtime's built-in contrib ops."""
-    # TODO: replace this once PyTorch supports unregister natively.
-    # https://msdata.visualstudio.com/Vienna/_workitems/edit/1342343
     for name in _registered_ops:
-        ns, kind = name.split("::")
-        for version in sym_help._onnx_stable_opsets:
-            if version >= _OPSET_VERSION and sym_registry.is_registered_op(kind, ns, version):
-                del sym_registry._registry[(ns, version)][kind]
+        try:
+            torch.onnx.unregister_custom_op_symbolic(name, _OPSET_VERSION)
+        except AttributeError:
+            # unregister_custom_op_symbolic is not available before PyTorch 1.12
+            namespace, kind = name.split("::")
+            for version in sym_help._onnx_stable_opsets:
+                if version >= _OPSET_VERSION and sym_registry.is_registered_op(kind, namespace, version):
+                    del sym_registry._registry[(namespace, version)][kind]

@@ -60,9 +60,10 @@ else
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Release $COMMON_BUILD_ARGS \
-            --use_tensorrt --tensorrt_home /workspace/tensorrt \
+            --tensorrt_placeholder_builder \
+            --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ \
             --cuda_home /usr/local/cuda \
-            --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
+            --cudnn_home /usr/lib/x86_64-linux-gnu/ $BUILD_EXTR_PAR
     else #cpu and openvino
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Release $COMMON_BUILD_ARGS $BUILD_EXTR_PAR

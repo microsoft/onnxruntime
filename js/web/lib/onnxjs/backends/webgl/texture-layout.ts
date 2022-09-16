@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {ShapeUtil} from '../../util';
+
 import {TextureLayoutStrategy, WidthHeightPrefs} from './texture-layout-strategy';
 import {TextureLayout, TextureType} from './types';
 

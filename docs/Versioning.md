@@ -20,35 +20,9 @@ models that are stamped with ONNX opset versions in the range [7-9].
 
 
 ### Version matrix
-The following table summarizes the relationship between the ONNX Runtime version and the ONNX opset version implemented in that release.
+The [table](https://onnxruntime.ai/docs/reference/compatibility.html#onnx-opset-support) summarizes the relationship between the ONNX Runtime version and the ONNX opset version implemented in that release.
 Please note the backward compatibility notes above.
-For more details on ONNX Release versions, see [this page](https://github.com/onnx/onnx/blob/master/docs/Versioning.md).
-
-| ONNX Runtime release version | ONNX release version | ONNX opset version | ONNX ML opset version | Supported ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
-|------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
-| 1.12.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.11+ |
-| 1.11.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.11+ |
-| 1.10.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.10+ |
-| 1.9.0 | **1.10** down to 1.2 | 15 | 2 | 7 | Windows AI 1.9+ |
-| 1.8.2 | **1.9** down to 1.2 | 14 | 2 | 7 | Windows AI 1.8+ |
-| 1.8.1 | **1.9** down to 1.2 | 14 | 2 | 7 | Windows AI 1.8+ |
-| 1.8.0 | **1.9** down to 1.2 | 14 | 2 | 7 | Windows AI 1.8+ |
-| 1.7.0 | **1.8** down to 1.2 | 13 | 2 | 7 | Windows AI 1.7+ |
-| 1.6.0 | **1.8** down to 1.2 | 13 | 2 | 7 | Windows AI 1.6+ |
-| 1.5.3 | **1.7** down to 1.2 | 12 | 2 | 7 | Windows AI 1.5+ |
-| 1.5.2 | **1.7** down to 1.2 | 12 | 2 | 7 | Windows AI 1.5+ |
-| 1.5.1 | **1.7** down to 1.2 | 12 | 2 | 7 | Windows AI 1.5+ |
-| 1.4.0 | **1.7** down to 1.2 | 12 | 2 | 7 | Windows AI 1.4+ |
-| 1.3.1 | **1.7** down to 1.2 | 12 | 2 | 7 | Windows AI 1.4+ |
-| 1.3.0 | **1.7** down to 1.2 | 12 | 2 | 7 | Windows AI 1.3+ |
-| 1.2.0<br>1.1.2<br>1.1.1<br>1.1.0 | **1.6** down to 1.2 | 11 | 2 | 6 | Windows AI 1.3+ |
-| 1.0.0 | **1.6** down to 1.2 | 11 | 2 | 6 | Windows AI 1.3+ |
-| 0.5.0 | **1.5** down to 1.2 | 10 | 1 | 5 | Windows AI 1.3+ |
-| 0.4.0 | **1.5** down to 1.2 | 10 | 1 | 5 | Windows AI 1.3+ |
-| 0.3.1<br>0.3.0 | **1.4** down to 1.2 | 9 | 1 | 3 | Windows 10 2004+ |
-| 0.2.1<br>0.2.0 | **1.3** down to 1.2 | 8 | 1 | 3 | Windows 10 1903+ |
-| 0.1.5<br>0.1.4 | **1.3** down to 1.2 | 8 | 1 | 3 | Windows 10 1809+ |
-
+For more details on ONNX Release versions, see [this page](https://github.com/onnx/onnx/blob/main/docs/Versioning.md).
 
 ## Tool Compatibility
 A variety of tools can be used to create ONNX models. Unless otherwise noted, please use the latest released version of the tools to convert/export the ONNX model. Most tools are backwards compatible and support multiple ONNX versions. Join this with the table above to evaluate ONNX Runtime compatibility.
@@ -66,4 +40,3 @@ A variety of tools can be used to create ONNX models. Unless otherwise noted, pl
 |[Paddle2ONNX](https://pypi.org/project/paddle2onnx/)| [Latest stable](https://github.com/PaddlePaddle/Paddle2ONNX/releases) | 1.6-1.9 |
 |[AutoML](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-automated-ml)|[1.0.39+](https://pypi.org/project/azureml-automl-core)|1.5|
 | |[1.0.33](https://pypi.org/project/azureml-automl-core/1.0.33/)|1.4|
-

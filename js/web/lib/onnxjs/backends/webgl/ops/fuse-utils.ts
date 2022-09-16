@@ -4,6 +4,7 @@
 import {Attribute} from '../../../attribute';
 import {MAX_CLIP, MIN_CLIP} from '../../../util';
 import {GlslValueFunction} from '../glsl-definitions';
+
 import {glslClip, glslRelu, glslSigmoid} from './unary-op';
 
 export interface InternalActivationAttributes {
@@ -13,7 +14,7 @@ export interface InternalActivationAttributes {
   readonly activationCacheKey: string;
 }
 
-export function getActicationSnippet(attributes: InternalActivationAttributes) {
+export function getActivationSnippet(attributes: InternalActivationAttributes) {
   let func: GlslValueFunction;
   switch (attributes.activation) {
     case 'Relu':

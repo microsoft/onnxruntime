@@ -15,13 +15,12 @@ namespace coreml {
 
 class CastOpBuilder : public BaseOpBuilder {
   // Add operator related
-#ifdef __APPLE__
  private:
+#ifdef __APPLE__
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 #endif
   // Operator support related
- private:
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
@@ -55,7 +54,7 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
 
   const auto& prec_node = node.InputEdgesBegin()->GetNode();
 
-  /*Cast node is only aimed for supporting argmax and we are only handling the case where an argmax 
+  /*Cast node is only aimed for supporting argmax and we are only handling the case where an argmax
     followed by a cast node. We need to check if the preceding node is an argmax and also if it's a
     supported argmax op type.*/
   if (prec_node.OpType() != "ArgMax") {

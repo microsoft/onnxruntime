@@ -1,7 +1,7 @@
 /*
  The implementation of this file is based on gelu plugin in TensorRT demo:
  https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/
- 
+
 Copyright 2019 NVIDIA Corporation
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,7 +40,8 @@ constexpr float B = 0.7978845608028654f;  // sqrt(2.0/M_PI)
 constexpr float C = 0.035677408136300125f;  // 0.044715 * sqrt(2.0/M_PI)
 
 template <typename T, unsigned TPB>
-__global__ void FastGeluKernel(const T a, const T b, const T c, int input_length, int bias_length, const T* input, const T* bias, T* output) {
+__global__ void FastGeluKernel(const T a, const T b, const T c, int input_length, int bias_length,
+                               const T* input, const T* bias, T* output) {
   const int idx = blockIdx.x * TPB + threadIdx.x;
 
   if (idx < input_length) {
@@ -52,7 +53,8 @@ __global__ void FastGeluKernel(const T a, const T b, const T c, int input_length
 }
 
 template <unsigned TPB>
-__global__ void FastGeluKernel2(const half2 a, const half2 b, const half2 c, int input_length, int bias_length, const half2* input, const half2* bias, half2* output) {
+__global__ void FastGeluKernel2(const half2 a, const half2 b, const half2 c, int input_length, int bias_length,
+                                const half2* input, const half2* bias, half2* output) {
   const int idx = blockIdx.x * TPB + threadIdx.x;
   if (idx < input_length) {
     const half2 x = input[idx];
@@ -63,16 +65,19 @@ __global__ void FastGeluKernel2(const half2 a, const half2 b, const half2 c, int
 }
 
 template <>
-bool LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length, const float* input, const float* bias, float* output, bool /*use_half2*/) {
+Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length,
+                          const float* input, const float* bias, float* output, bool /*use_half2*/) {
   constexpr int blockSize = 256;
   const int gridSize = (input_length + blockSize - 1) / blockSize;
-  FastGeluKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
+  FastGeluKernel<float, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length,
+                                                                       input, bias, output);
 
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
 template <>
-bool LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length, const half* input, const half* bias, half* output, bool use_half2) {
+Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length,
+                          const half* input, const half* bias, half* output, bool use_half2) {
   constexpr int blockSize = 256;
   if (use_half2 && 0 == (bias_length & 1) && prop.major >= 7) {
     const int n = input_length / 2;
@@ -83,27 +88,29 @@ bool LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int i
     const half2* input2 = reinterpret_cast<const half2*>(input);
     const half2* bias2 = reinterpret_cast<const half2*>(bias);
     half2* output2 = reinterpret_cast<half2*>(output);
-    FastGeluKernel2<blockSize><<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, n, bias_length / 2, input2, bias2, output2);
+    FastGeluKernel2<blockSize><<<gridSize, blockSize, 0, stream>>>(A2, B2, C2, n, bias_length / 2,
+                                                                   input2, bias2, output2);
   } else {
     const int gridSize = (input_length + blockSize - 1) / blockSize;
-    FastGeluKernel<half, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
+    FastGeluKernel<half, blockSize><<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length,
+                                                                        input, bias, output);
   }
 
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
 template <>
-bool LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length,
+Status LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length,
                           const BFloat16* input, const BFloat16* bias, BFloat16* output, bool /*use_half2*/) {
   constexpr int blockSize = 256;
 
   // remove nv_bfloat162 implementation for now to fix build issue
-  // we can decide whether to add it back if there's perf concern 
+  // we can decide whether to add it back if there's perf concern
   const int gridSize = (input_length + blockSize - 1) / blockSize;
   FastGeluKernel<BFloat16, blockSize>
       <<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
 
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
 }  // namespace cuda

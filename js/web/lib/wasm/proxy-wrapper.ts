@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {env, InferenceSession} from 'onnxruntime-common';
+
 import {OrtWasmMessage, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import * as core from './wasm-core-impl';
 import {initializeWebAssembly} from './wasm-factory';

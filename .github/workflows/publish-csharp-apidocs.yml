@@ -1,0 +1,55 @@
+name: Update C# API Docs
+on:
+  push:
+    branches:
+      - main
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v2
+      with:
+        dotnet-version: 5.0.x
+    - name: Restore dependencies
+      run: dotnet restore csharp/ApiDocs/ApiDocs.csproj
+    - name: Download DocFX
+      run: |
+        mkdir -p build/docfx
+        Invoke-WebRequest -Uri "https://github.com/dotnet/docfx/releases/download/v${env:DOCFXVERSION}/docfx.zip" -OutFile "build/docfx/docfx.zip"
+        [System.IO.Compression.ZipFile]::ExtractToDirectory("build/docfx/docfx.zip", "build/docfx" )
+        cd build/docfx
+        ls
+      env:
+        DOCFXVERSION: 2.59.3
+    - name: Install NuGet
+      uses: nuget/setup-nuget@v1
+    - name: Build Documentation
+      run: |
+        ls
+        build/docfx/docfx.exe metadata csharp/ApiDocs/docfx.json
+        dotnet build csharp/ApiDocs/ApiDocs.csproj --no-restore
+        build/docfx/docfx.exe build csharp/ApiDocs/docfx.json
+    - name: Set commit ID
+      id: vars
+      run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+    - uses: actions/checkout@v2
+      with:
+        ref: gh-pages
+        clean: false
+    - name: Move API docs into target area
+      run: |
+        if (Test-Path -Path docs/api/csharp) {rm -r -fo docs/api/csharp}
+        MOVE csharp/ApiDocs/csharp docs/api
+        rm -r -fo csharp/ApiDocs
+        rm -r -fo csharp/src
+    - name: Git Checkin
+      run: git add .
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v3
+      with:
+        branch: gh-pages-pr-csharp-docs
+        base: gh-pages
+        title: '[Automated]: Update C# API docs'
+        commit-message: 'Update C# API docs to commit ${{ steps.vars.outputs.sha_short }}'

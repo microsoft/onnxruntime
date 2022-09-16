@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "core/common/common.h"
+#include "gsl/gsl-lite.hpp"
 
 namespace onnxruntime {
 namespace cuda {
@@ -77,10 +78,11 @@ template <int TensorGroupSize, typename TMultiTensorFunctor, typename... TFuncto
 void launch_multi_tensor_functor(
     cudaStream_t stream,
     const int chunk_size,
-    std::vector<int>& tensor_sizes,
-    std::vector<std::vector<void*>>& grouped_tensor_pointers,
+    gsl::span<int> tensor_sizes,
+    gsl::span<std::vector<void*>> grouped_tensor_pointers,
     TMultiTensorFunctor multipleTensorKernel,
     TFunctorParams&&... kernelParams) {
+  // Check if 32-bit integer is enough.
   ORT_ENFORCE(tensor_sizes.size() > 0);
   ORT_ENFORCE(tensor_sizes.size() < static_cast<size_t>(INT_MAX));
   ORT_ENFORCE(grouped_tensor_pointers.size() > 0);
@@ -93,8 +95,6 @@ void launch_multi_tensor_functor(
   int tensor_group_index = 0;
   int block_index = 0;
 
-  // Check if 32-bit integer is enough.
-  ORT_ENFORCE(tensor_sizes.size() < static_cast<size_t>(INT_MAX));
   ORT_ENFORCE(grouped_tensor_pointers.size() == tensor_sizes.size());
   ORT_ENFORCE(group_size == ACTUAL_TENSOR_GROUP_SIZE[TensorGroupSize]);
   for (int i = 0; i < group_count; ++i) {

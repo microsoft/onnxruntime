@@ -119,9 +119,11 @@ def parse_arguments():
         required=False,
         default="None",
         type=str,
-        choices=["cuda", "dnnl", "openvino", "tensorrt", "None"],
+        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "tvm", "None"],
         help="The selected execution provider for this build.",
     )
+    parser.add_argument("--dependency_id", required=False, default="None", type=str, help="ependency id.")
+    parser.add_argument("--dependency_version", required=False, default="None", type=str, help="dependency version.")
 
     return parser.parse_args()
 
@@ -179,64 +181,82 @@ def generate_repo_url(list, repo_url, commit_id):
     list.append('<repository type="git" url="' + repo_url + '"' + ' commit="' + commit_id + '" />')
 
 
-def generate_dependencies(list, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.8.0"/>'
+def generate_dependencies(xml_text, package_name, version, dependency_id, dependency_version):
+    if package_name in ("Microsoft.ML.OnnxRuntime.Snpe", "Microsoft.ML.OnnxRuntime.Snpe_Win"):
+        xml_text.append("<dependencies>")
+        xml_text.append('<dependency id="' + dependency_id + '" version="' + dependency_version + '"/>')
+        xml_text.append("</dependencies>")
+        return
+
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.9.1"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
-        list.append("<dependencies>")
+        xml_text.append("<dependencies>")
 
         # Support .Net Core
-        list.append('<group targetFramework="net5.0">')
-        list.append(dml_dependency)
-        list.append("</group>")
+        xml_text.append('<group targetFramework="net5.0">')
+        xml_text.append(dml_dependency)
+        xml_text.append("</group>")
         # UAP10.0.16299, This is the earliest release of the OS that supports .NET Standard apps
-        list.append('<group targetFramework="UAP10.0.16299">')
-        list.append(dml_dependency)
-        list.append("</group>")
+        xml_text.append('<group targetFramework="UAP10.0.16299">')
+        xml_text.append(dml_dependency)
+        xml_text.append("</group>")
         # Support Native C++
-        list.append('<group targetFramework="native">')
-        list.append(dml_dependency)
-        list.append("</group>")
+        xml_text.append('<group targetFramework="native">')
+        xml_text.append(dml_dependency)
+        xml_text.append("</group>")
 
-        list.append("</dependencies>")
+        xml_text.append("</dependencies>")
     else:
         include_dml = package_name == "Microsoft.ML.OnnxRuntime.DirectML"
 
-        list.append("<dependencies>")
+        xml_text.append("<dependencies>")
         # Support .Net Core
-        list.append('<group targetFramework="NETCOREAPP">')
-        list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        xml_text.append('<group targetFramework="NETCOREAPP">')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
         if include_dml:
-            list.append(dml_dependency)
-        list.append("</group>")
+            xml_text.append(dml_dependency)
+        xml_text.append("</group>")
         # Support .Net Standard
-        list.append('<group targetFramework="NETSTANDARD">')
-        list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        xml_text.append('<group targetFramework="NETSTANDARD">')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
         if include_dml:
-            list.append(dml_dependency)
-        list.append("</group>")
+            xml_text.append(dml_dependency)
+        xml_text.append("</group>")
         # Support .Net Framework
-        list.append('<group targetFramework="NETFRAMEWORK">')
-        list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+        xml_text.append('<group targetFramework="NETFRAMEWORK">')
+        xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
         if include_dml:
-            list.append(dml_dependency)
-        list.append("</group>")
+            xml_text.append(dml_dependency)
+        xml_text.append("</group>")
         if package_name == "Microsoft.ML.OnnxRuntime":
             # Support monoandroid11.0
-            list.append('<group targetFramework="monoandroid11.0">')
-            list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
-            list.append("</group>")
+            xml_text.append('<group targetFramework="monoandroid11.0">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
             # Support xamarinios10
-            list.append('<group targetFramework="xamarinios10">')
-            list.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
-            list.append("</group>")
+            xml_text.append('<group targetFramework="xamarinios10">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
+            # Support net6.0-android
+            xml_text.append('<group targetFramework="net6.0-android31.0">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
+            # Support net6.0-ios
+            xml_text.append('<group targetFramework="net6.0-ios15.4">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
+            # Support net6.0-macos
+            xml_text.append('<group targetFramework="net6.0-macos12.3">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
         # Support Native C++
         if include_dml:
-            list.append('<group targetFramework="native">')
-            list.append(dml_dependency)
-            list.append("</group>")
+            xml_text.append('<group targetFramework="native">')
+            xml_text.append(dml_dependency)
+            xml_text.append("</group>")
 
-        list.append("</dependencies>")
+        xml_text.append("</dependencies>")
 
 
 def get_env_var(key):
@@ -276,7 +296,9 @@ def generate_metadata(list, args):
     generate_license(metadata_list)
     generate_project_url(metadata_list, "https://github.com/Microsoft/onnxruntime")
     generate_repo_url(metadata_list, "https://github.com/Microsoft/onnxruntime.git", args.commit_id)
-    generate_dependencies(metadata_list, args.package_name, args.package_version)
+    generate_dependencies(
+        metadata_list, args.package_name, args.package_version, args.dependency_id, args.dependency_version
+    )
     generate_release_notes(metadata_list)
     metadata_list.append("</metadata>")
 
@@ -291,6 +313,7 @@ def generate_files(list, args):
     is_cuda_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu"
     is_dml_package = args.package_name == "Microsoft.ML.OnnxRuntime.DirectML"
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
+    is_snpe_package_win = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe_Win"
 
     includes_winml = is_windowsai_package
     includes_directml = (is_dml_package or is_windowsai_package) and (
@@ -312,6 +335,7 @@ def generate_files(list, args):
             "tensorrt_ep_shared_lib": "onnxruntime_providers_tensorrt.dll",
             "openvino_ep_shared_lib": "onnxruntime_providers_openvino.dll",
             "cuda_ep_shared_lib": "onnxruntime_providers_cuda.dll",
+            "tvm_ep_shared_lib": "onnxruntime_providers_tvm.lib",
             "onnxruntime_perf_test": "onnxruntime_perf_test.exe",
             "onnx_test_runner": "onnx_test_runner.exe",
         }
@@ -363,6 +387,14 @@ def generate_files(list, args):
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h")
         + '" target="build\\native\\include" />'
     )
+
+    if args.execution_provider == "tvm":
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\tvm\\tvm_provider_factory.h")
+            + '" target="build\\native\\include" />'
+        )
 
     if args.execution_provider == "openvino":
         files_list.append(
@@ -457,9 +489,18 @@ def generate_files(list, args):
                 + '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.pdb" />'
             )
 
+    if args.package_name == "Microsoft.ML.OnnxRuntime.Snpe_Win":
+        files_list.append(
+            "<file src=" + '"' + os.path.join(args.native_build_path, "onnx_test_runner.exe") + runtimes + " />"
+        )
+        files_list.append(
+            "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime_perf_test.exe") + runtimes + " />"
+        )
+
     is_ado_packaging_build = False
     # Process runtimes
     # Process onnxruntime import lib, dll, and pdb
+    # for Snpe android build
     if is_windows_build:
         nuget_artifacts_dir = Path(args.native_build_path) / "nuget-artifacts"
         # the winml package includes pdbs. for other packages exclude them.
@@ -486,6 +527,13 @@ def generate_files(list, args):
                 files_list.append(
                     "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
                 )
+    elif args.package_name == "Microsoft.ML.OnnxRuntime.Snpe":
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, "libonnxruntime.so")
+            + '" target="runtimes\\android-arm64\\native" />'
+        )
     else:
         files_list.append(
             "<file src="
@@ -569,6 +617,38 @@ def generate_files(list, args):
             + args.target_architecture
             + '\\native" />'
         )
+
+    if args.execution_provider == "tvm":
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["tvm_ep_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+
+        tvm_build_path = os.path.join(args.ort_build_path, args.build_config, "_deps", "tvm-build")
+        if is_windows():
+            files_list.append(
+                "<file src="
+                + '"'
+                + os.path.join(tvm_build_path, args.build_config, nuget_dependencies["tvm"])
+                + runtimes_target
+                + args.target_architecture
+                + '\\native" />'
+            )
+        else:
+            # TODO(agladyshev): Add support for Linux.
+            raise RuntimeError("Now only Windows is supported for TVM EP.")
 
     if args.execution_provider == "openvino":
         openvino_path = get_env_var("INTEL_OPENVINO_DIR")
@@ -762,7 +842,7 @@ def generate_files(list, args):
             files_list.append("<file src=" + '"' + windowsai_net50_props + '" target="build\\net5.0" />')
             files_list.append("<file src=" + '"' + windowsai_net50_targets + '" target="build\\net5.0" />')
 
-    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package:
+    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package or is_snpe_package_win:
         # Process props file
         source_props = os.path.join(
             args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "props.xml"
@@ -778,13 +858,25 @@ def generate_files(list, args):
         )
         os.system(copy_command + " " + source_props + " " + target_props)
         files_list.append("<file src=" + '"' + target_props + '" target="build\\native" />')
-        files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard1.1" />')
-        files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard2.0" />')
+        if not is_snpe_package_win:
+            files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard1.1" />')
+            files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard2.0" />')
 
         # Process targets file
-        source_targets = os.path.join(
-            args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "targets.xml"
-        )
+        if is_snpe_package_win:
+            source_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "netstandard",
+                "targets_snpe.xml",
+            )
+        else:
+            source_targets = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "targets.xml"
+            )
         target_targets = os.path.join(
             args.sources_path,
             "csharp",
@@ -796,8 +888,9 @@ def generate_files(list, args):
         )
         os.system(copy_command + " " + source_targets + " " + target_targets)
         files_list.append("<file src=" + '"' + target_targets + '" target="build\\native" />')
-        files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard1.1" />')
-        files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard2.0" />')
+        if not is_snpe_package_win:
+            files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard1.1" />')
+            files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard2.0" />')
 
         # Process xamarin targets files
         if args.package_name == "Microsoft.ML.OnnxRuntime":
@@ -819,7 +912,6 @@ def generate_files(list, args):
                 "monoandroid11.0",
                 args.package_name + ".targets",
             )
-            os.system(copy_command + " " + monoandroid_source_targets + " " + monoandroid_target_targets)
 
             xamarinios_source_targets = os.path.join(
                 args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "xamarinios10", "targets.xml"
@@ -833,15 +925,83 @@ def generate_files(list, args):
                 "xamarinios10",
                 args.package_name + ".targets",
             )
+
+            net6_android_source_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-android",
+                "targets.xml",
+            )
+            net6_android_target_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-android",
+                args.package_name + ".targets",
+            )
+
+            net6_ios_source_targets = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-ios", "targets.xml"
+            )
+            net6_ios_target_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-ios",
+                args.package_name + ".targets",
+            )
+
+            net6_macos_source_targets = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-macos", "targets.xml"
+            )
+            net6_macos_target_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-macos",
+                args.package_name + ".targets",
+            )
+
+            os.system(copy_command + " " + monoandroid_source_targets + " " + monoandroid_target_targets)
             os.system(copy_command + " " + xamarinios_source_targets + " " + xamarinios_target_targets)
+            os.system(copy_command + " " + net6_android_source_targets + " " + net6_android_target_targets)
+            os.system(copy_command + " " + net6_ios_source_targets + " " + net6_ios_target_targets)
+            os.system(copy_command + " " + net6_macos_source_targets + " " + net6_macos_target_targets)
 
             files_list.append("<file src=" + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')
             files_list.append(
                 "<file src=" + '"' + monoandroid_target_targets + '" target="buildTransitive\\monoandroid11.0" />'
             )
+
             files_list.append("<file src=" + '"' + xamarinios_target_targets + '" target="build\\xamarinios10" />')
             files_list.append(
                 "<file src=" + '"' + xamarinios_target_targets + '" target="buildTransitive\\xamarinios10" />'
+            )
+
+            files_list.append(
+                "<file src=" + '"' + net6_android_target_targets + '" target="build\\net6.0-android31.0" />'
+            )
+            files_list.append(
+                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
+            )
+
+            files_list.append("<file src=" + '"' + net6_ios_target_targets + '" target="build\\net6.0-ios15.4" />')
+            files_list.append(
+                "<file src=" + '"' + net6_ios_target_targets + '" target="buildTransitive\\net6.0-ios15.4" />'
+            )
+
+            files_list.append("<file src=" + '"' + net6_macos_target_targets + '" target="build\\net6.0-macos12.3" />')
+            files_list.append(
+                "<file src=" + '"' + net6_macos_target_targets + '" target="buildTransitive\\net6.0-macos12.3" />'
             )
 
     # Process License, ThirdPartyNotices, Privacy

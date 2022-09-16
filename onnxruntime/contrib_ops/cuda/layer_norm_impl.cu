@@ -114,8 +114,8 @@ __device__ void cuWelfordMuSigma2(
       U curr = static_cast<U>(lvals[l]);
       cuWelfordOnlineSum<U, simplified>(curr, mu, sigma2, count);
     }
-    // intra-warp reductions
-    #pragma unroll
+// intra-warp reductions
+#pragma unroll
     for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
       U muB = WARP_SHFL_DOWN(mu, stride);
       U countB = WARP_SHFL_DOWN(count, stride);
@@ -209,8 +209,8 @@ __device__ void cuWelfordMuSigma2(
       float curr = static_cast<float>(lvals[l]);
       cuWelfordOnlineSum<float, simplified>(curr, mu, sigma2, count);
     }
-    // intra-warp reductions
-    #pragma unroll
+// intra-warp reductions
+#pragma unroll
     for (int stride = GPU_WARP_SIZE / 2; stride > 0; stride /= 2) {
       float muB = WARP_SHFL_DOWN(mu, stride);
       float countB = WARP_SHFL_DOWN(count, stride);
@@ -362,7 +362,7 @@ void HostApplyLayerNorm(
     const V* beta) {
   const int maxGridY = prop.maxGridSize[1];
   const int warp_size = prop.warpSize;
-  ORT_ENFORCE(warp_size == GPU_WARP_SIZE);
+  ORT_ENFORCE(warp_size == GPU_WARP_SIZE_HOST);
 
   dim3 threads(warp_size, 4, 1);
 #ifdef __HIP_PLATFORM_HCC__

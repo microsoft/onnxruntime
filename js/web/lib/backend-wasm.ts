@@ -5,8 +5,8 @@ import {readFile} from 'fs';
 import {Backend, env, InferenceSession, SessionHandler} from 'onnxruntime-common';
 import {cpus} from 'os';
 import {promisify} from 'util';
-import {initWasm} from './wasm/proxy-wrapper';
 
+import {initWasm} from './wasm/proxy-wrapper';
 import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler';
 
 /**

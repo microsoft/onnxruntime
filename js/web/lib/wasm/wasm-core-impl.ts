@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {InferenceSession, Tensor} from 'onnxruntime-common';
+
 import {SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';

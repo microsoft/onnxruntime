@@ -26,6 +26,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/schema_registry.h"
+#include "core/graph/function_utils.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
@@ -87,17 +88,33 @@ Model::Model(const std::string& graph_name,
     opset_id_proto->set_version(domain.second);
   }
 
-  std::vector<const ONNX_NAMESPACE::FunctionProto*> model_functions;
   for (auto& func : model_local_functions) {
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_functions.emplace_back(func_ptr);
+    model_local_functions_[function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name())] = func_ptr;
+  }
+
+  model_local_function_templates_.reserve(model_proto_.functions().size());
+  model_local_function_templates_maps_.reserve(model_proto_.functions().size());
+  for (auto& func : model_proto_.functions()) {
+    auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
+                                                        func.name(),
+                                                        model_local_functions_,
+                                                        *p_domain_to_version,
+                                                        *schema_registry,
+                                                        logger,
+                                                        allow_released_opsets_only_final);
+    auto func_template_ptr = std::make_unique<FunctionTemplate>();
+    func_template_ptr->op_schema_ = std::move(func_schema_ptr);
+    func_template_ptr->onnx_func_proto_ = &func;
+    model_local_function_templates_.push_back(std::move(func_template_ptr));
+    model_local_function_templates_maps_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] = model_local_function_templates_.back().get();
   }
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
-                         model_functions, logger, options.strict_shape_type_inference));
+                         logger, options.strict_shape_type_inference));
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -196,12 +213,33 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
 
   std::vector<const ONNX_NAMESPACE::FunctionProto*> model_local_functions;
   for (auto& func : model_proto_.functions()) {
-    model_local_functions.emplace_back(&func);
+    model_local_functions_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] = &func;
+  }
+
+  model_local_function_templates_.reserve(model_proto_.functions().size());
+  model_local_function_templates_maps_.reserve(model_proto_.functions().size());
+  for (auto& func : model_proto_.functions()) {
+    auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
+                                                        func.name(),
+                                                        model_local_functions_,
+                                                        domain_to_version,
+                                                        *schema_registry,
+                                                        logger,
+                                                        allow_official_onnx_release_only_final);
+    auto func_template_ptr = std::make_unique<FunctionTemplate>();
+    func_template_ptr->op_schema_ = std::move(func_schema_ptr);
+    func_template_ptr->onnx_func_proto_ = &func;
+    model_local_function_templates_.push_back(std::move(func_template_ptr));
+    model_local_function_templates_maps_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] = model_local_function_templates_.back().get();
   }
 
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, model_local_functions, logger, options.strict_shape_type_inference));
+  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger, options.strict_shape_type_inference));
+}
+
+const InlinedHashMap<std::string, FunctionTemplate*>& Model::GetModelLocalFunctionTemplates() const {
+  return model_local_function_templates_maps_;
 }
 
 Version Model::IrVersion() const {
@@ -732,6 +770,7 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
 #if !defined(ORT_MINIMAL_BUILD)
                                         const IOnnxRuntimeOpSchemaRegistryList* local_registries,
 #endif
+                                        bool can_use_flatbuffer_for_initializers,
                                         const logging::Logger& logger,
                                         std::unique_ptr<Model>& model) {
   model = std::make_unique<Model>();
@@ -789,10 +828,11 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   ORT_RETURN_IF(nullptr == fbs_graph, "Graph is null. Invalid ORT format model.");
 
 #if !defined(ORT_MINIMAL_BUILD)
-  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, schema_registry, logger,
-                                               model->graph_));
+  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, schema_registry,
+                                               can_use_flatbuffer_for_initializers, logger, model->graph_));
 #else
-  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, logger, model->graph_));
+  ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version,
+                                               can_use_flatbuffer_for_initializers, logger, model->graph_));
 #endif
   return Status::OK();
 }

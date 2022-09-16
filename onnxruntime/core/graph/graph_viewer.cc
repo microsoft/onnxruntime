@@ -91,8 +91,8 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     }
 
     // create set of node indexes as we need quick lookups and don't care about the order
-    filtered_node_indices_ = std::unordered_set<NodeIndex>(filter_info->nodes.cbegin(),
-                                                           filter_info->nodes.cend());
+    filtered_node_indices_ = FilteredNodeSet(filter_info->nodes.cbegin(),
+                                             filter_info->nodes.cend());
 
     const auto& metadef = filter_info->GetMetaDef();
 
@@ -271,9 +271,19 @@ bool GraphViewer::IsConstantInitializer(const std::string& name, bool check_oute
   return GetConstantInitializer(name, check_outer_scope) != nullptr;
 }
 
+bool GraphViewer::IsInitializedTensor(const std::string& name) const {
+  return graph_->IsInitializedTensor(name);
+}
+
 const ONNX_NAMESPACE::TensorProto* GraphViewer::GetConstantInitializer(const std::string& initializer_name,
                                                                        bool check_outer_scope) const {
   return graph_->GetConstantInitializer(initializer_name, check_outer_scope);
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+const std::unordered_set<std::string>& GraphViewer::GetOuterScopeNodeArgNames() const noexcept {
+  return graph_->GetOuterScopeNodeArgNames();
+}
+#endif
 
 }  // namespace onnxruntime

@@ -29,7 +29,8 @@ namespace vitisai_ep {
 class VitisAICustomOp {
  public:
   VitisAICustomOp(const ComputeContext* context,
-                  const onnxruntime::Node* fused_node,
+                  const onnxruntime::Node& fused_node,
+                  const onnxruntime::GraphViewer& graph_viewer,
                   const std::string& backend_type,
                   const std::string& export_runtime_module,
                   const std::string& load_runtime_module,

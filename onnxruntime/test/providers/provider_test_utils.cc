@@ -76,8 +76,8 @@ struct TensorCheck {
       expected = expected_sorted.Data<T>();
       output = output_sorted.Data<T>();
     } else {
-      expected = expected_tensor.template Data<T>();
-      output = output_tensor.template Data<T>();
+      expected = expected_tensor.Data<T>();
+      output = output_tensor.Data<T>();
     }
 
     for (int i = 0; i < size; ++i) {
@@ -110,8 +110,8 @@ struct TensorCheck<uint8_t> {
       expected = expected_sorted.Data<uint8_t>();
       output = output_sorted.Data<uint8_t>();
     } else {
-      expected = expected_tensor.template Data<uint8_t>();
-      output = output_tensor.template Data<uint8_t>();
+      expected = expected_tensor.Data<uint8_t>();
+      output = output_tensor.Data<uint8_t>();
     }
 
     // For uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
@@ -161,8 +161,8 @@ struct TensorCheck<double> {
       expected = expected_sorted.Data<double>();
       output = output_sorted.Data<double>();
     } else {
-      expected = expected_tensor.template Data<double>();
-      output = output_tensor.template Data<double>();
+      expected = expected_tensor.Data<double>();
+      output = output_tensor.Data<double>();
     }
 
     double threshold = 0.001;
@@ -219,8 +219,8 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
     expected = expected_sorted.Data<TypeToCheck>();
     output = output_sorted.Data<TypeToCheck>();
   } else {
-    expected = expected_tensor.template Data<TypeToCheck>();
-    output = output_tensor.template Data<TypeToCheck>();
+    expected = expected_tensor.Data<TypeToCheck>();
+    output = output_tensor.Data<TypeToCheck>();
   }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -274,8 +274,8 @@ struct TensorCheck<MLFloat16> {
                   const Tensor& output_tensor,
                   const std::string& provider_type,
                   const CheckParams& params) const {
-    auto* expected = expected_tensor.template Data<MLFloat16>();
-    auto* output = output_tensor.template Data<MLFloat16>();
+    auto* expected = expected_tensor.Data<MLFloat16>();
+    auto* output = output_tensor.Data<MLFloat16>();
     auto size = output_tensor.Shape().Size();
 
     std::vector<float> f_expected(size);
@@ -289,6 +289,9 @@ struct TensorCheck<MLFloat16> {
       sort_expected_and_actual_buffers<float>(f_expected, f_output);
     }
 
+    const bool has_abs_err = params.absolute_error_.has_value();
+    const bool has_rel_err = params.relative_error_.has_value();
+
     float threshold = 0.001f;
 #if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
     threshold = 0.005f;
@@ -299,9 +302,23 @@ struct TensorCheck<MLFloat16> {
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
         EXPECT_EQ(f_expected[i], f_output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
       } else {
-        // the default for existing tests
-        EXPECT_NEAR(f_expected[i], f_output[i], threshold)
-            << "i:" << i << ", provider_type: " << provider_type;
+        if (!has_abs_err && !has_rel_err) {
+          // the default for existing tests
+          EXPECT_NEAR(f_expected[i], f_output[i], threshold)
+              << "i:" << i << ", provider_type: " << provider_type;
+        } else {
+          if (has_abs_err) {
+            EXPECT_NEAR(f_expected[i], f_output[i],
+                        *(params.absolute_error_))
+                << "i:" << i << ", provider_type: " << provider_type;
+          }
+          if (has_rel_err) {
+            EXPECT_NEAR(f_expected[i], f_output[i],
+                        *(params.relative_error_) *
+                            std::abs(expected[i]))
+                << "i:" << i << ", provider_type: " << provider_type;
+          }
+        }
       }
     }
   }
@@ -313,8 +330,8 @@ struct TensorCheck<BFloat16> {
                   const Tensor& output_tensor,
                   const std::string& provider_type,
                   const CheckParams& params) const {
-    auto* expected = expected_tensor.template Data<BFloat16>();
-    auto* output = output_tensor.template Data<BFloat16>();
+    auto* expected = expected_tensor.Data<BFloat16>();
+    auto* output = output_tensor.Data<BFloat16>();
     auto size = output_tensor.Shape().Size();
 
     std::vector<float> f_expected(size);
@@ -1010,7 +1027,6 @@ void OpTester::Run(
         kCpuExecutionProvider,
         kCudaExecutionProvider,
         kDnnlExecutionProvider,
-        kNupharExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
         kDmlExecutionProvider,
@@ -1019,6 +1035,8 @@ void OpTester::Run(
         kNnapiExecutionProvider,
         kRocmExecutionProvider,
         kCoreMLExecutionProvider,
+        kSnpeExecutionProvider,
+        kXnnpackExecutionProvider,
     };
 #endif
 
@@ -1026,6 +1044,10 @@ void OpTester::Run(
 
     if (execution_providers) {
       for (auto& entry : *execution_providers) {
+        // Be noted, entry in execution providers passed in OpTester will be std::moved in the first OpTester::Run(),
+        // To make the error more obvious to debug (instead of a segment fault), we do check explicitly here.
+        ASSERT_TRUE(entry) << "Execution provider entry invalid.";
+
         if (entry->Type() == kDmlExecutionProvider) {
           so.enable_mem_pattern = false;
           so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
@@ -1096,8 +1118,6 @@ void OpTester::Run(
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
           execution_provider = DefaultOpenVINOExecutionProvider();
-        else if (provider_type == onnxruntime::kNupharExecutionProvider)
-          execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
@@ -1112,6 +1132,11 @@ void OpTester::Run(
           execution_provider = DefaultRocmExecutionProvider();
         else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
           execution_provider = DefaultCoreMLExecutionProvider();
+        else if (provider_type == onnxruntime::kSnpeExecutionProvider)
+          execution_provider = DefaultSnpeExecutionProvider();
+        else if (provider_type == onnxruntime::kXnnpackExecutionProvider)
+          execution_provider = DefaultXnnpackExecutionProvider();
+
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
           continue;
@@ -1127,14 +1152,13 @@ void OpTester::Run(
           node.SetExecutionProviderType(provider_type);
           if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
-              provider_type == onnxruntime::kNupharExecutionProvider ||
               // provider_type == onnxruntime::kTvmExecutionProvider ||
               provider_type == onnxruntime::kNnapiExecutionProvider ||
               provider_type == onnxruntime::kCoreMLExecutionProvider ||
-              provider_type == onnxruntime::kDnnlExecutionProvider)
+              provider_type == onnxruntime::kDnnlExecutionProvider ||
+              provider_type == onnxruntime::kSnpeExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();
-          ASSERT_NE(nullptr, reg);
           if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type())) {
             valid = false;
             for (auto& custom_session_registry : custom_session_registries_) {
@@ -1201,7 +1225,7 @@ void OpTester::Run(
   }
 }
 
-void OpTester::AddReferenceOutputs(const std::string& model_path) {
+void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_error) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
@@ -1249,10 +1273,15 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
       mutable_dim->set_dim_value(i);
     }
 
-    output_data_.push_back(Data(NodeArg(output_names[out_idx], &tmp_type_proto),
-                                std::move(subgraph_fetches[out_idx]),
-                                optional<float>(),
-                                optional<float>()));
+    if (abs_error != 0.0f) {
+      output_data_.push_back(Data(NodeArg(output_names[out_idx], &tmp_type_proto),
+                                  std::move(subgraph_fetches[out_idx]),
+                                  optional<float>(), optional<float>(abs_error)));
+    } else {
+      output_data_.push_back(Data(NodeArg(output_names[out_idx], &tmp_type_proto),
+                                  std::move(subgraph_fetches[out_idx]),
+                                  optional<float>(), optional<float>()));
+    }
   }
 }
 

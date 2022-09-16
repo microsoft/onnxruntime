@@ -37,13 +37,13 @@ namespace Dml
         inline DML_TENSOR_DATA_TYPE GetDmlDataType() const { return m_bufferTensorDesc.DataType; }
         inline MLOperatorTensorDataType GetMlOperatorDataType() const { return m_mlOperatorTensorDataType; }
         void ForceUnsignedDataType();
-        void Remap64bitDmlDataTypeTo32bit();
 
         inline bool IsValid() const { return m_tensorType != DML_TENSOR_TYPE_INVALID; }
         inline uint32_t GetDimensionCount() const { return m_bufferTensorDesc.DimensionCount; }
         void SetDimensionCount(uint32_t newDimensionCount, TensorAxis alignment);
         gsl::span<const uint32_t> GetSizes() const { return { m_sizes, m_sizes + m_bufferTensorDesc.DimensionCount }; }
         gsl::span<const uint32_t> GetStrides() const;
+        void SetStrides(gsl::span<const uint32_t> strides);
   
         inline uint64_t GetBufferSizeInBytes() const
         { 

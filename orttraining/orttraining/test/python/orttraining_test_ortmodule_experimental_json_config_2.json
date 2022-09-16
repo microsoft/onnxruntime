@@ -7,7 +7,6 @@
     },
     "UseExternalGPUAllocator" : true,
     "EnableCustomAutogradFunction": false,
-    "AllowLayerNormModPrecision": false,
     "EnableGradAccOptimization": false,
     "UseStaticShape": false,
     "RunSymbolicShapeInference": true,

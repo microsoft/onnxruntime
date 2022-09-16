@@ -36,6 +36,9 @@ OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKe
   node_output_start_index_ = node_implicit_input_start_index_ + ImplicitInputCount();
 }
 
+OpKernelContext::OpKernelContext(concurrency::ThreadPool* threadpool,
+                                 const logging::Logger& logger) : threadpool_(threadpool), logger_(&logger) {}
+
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape);
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
@@ -205,7 +208,7 @@ OrtValue* OpKernelContext::GetOutputMLValue(int index) {
   return execution_frame_->GetMutableNodeInputOrOutputMLValue(output_arg_index);
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_ATEN
 Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
   if (index < 0 || index >= OutputCount()) {
     return Status(common::ONNXRUNTIME, common::FAIL,

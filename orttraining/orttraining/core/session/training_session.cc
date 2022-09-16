@@ -25,7 +25,7 @@
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 
-//Gist Encoding
+// Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
@@ -349,7 +349,7 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  MemoryInfo::SetLocalRank(config.distributed_config.world_rank);
+  GetMemoryProfiler().GetMemoryInfo().SetLocalRank(config.distributed_config.world_rank);
 #endif
 
 #ifdef USE_MPI
