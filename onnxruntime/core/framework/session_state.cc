@@ -1705,4 +1705,41 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   return Status::OK();
 }
 
+static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
+                               DeviceStreamCollection& device_stream_map,
+                               IStreamCommandHandleRegistry& stream_handle_registry) {
+  for (size_t i = 0; i < execution_plan.execution_plan.size(); ++i) {
+    auto& logic_stream = execution_plan.execution_plan[i];
+    if (logic_stream->steps_.size() > 0) {
+      auto create_stream_fn = stream_handle_registry.GetCreateStreamFn(logic_stream->device_.Type());
+      if (create_stream_fn) {
+        auto device_stream = create_stream_fn(logic_stream->device_);
+        device_stream_map.SetDeviceStream(i, std::move(device_stream));
+      } else {
+        device_stream_map.SetDeviceStream(i, nullptr);
+      }
+    } else {
+      device_stream_map.SetDeviceStream(i, nullptr);
+    }
+  }
+}
+
+std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollection() const {
+  std::lock_guard<onnxruntime::OrtMutex> lock(mem_patterns_lock_);
+  if (!device_stream_pool_.empty()) {
+    auto device_stream = std::move(device_stream_pool_.back());
+    device_stream_pool_.pop_back();
+    return device_stream;
+  } else {
+    auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *this);
+    BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
+    return device_stream;
+  }
+}
+
+void SessionState::RecycleDeviceStreamCollection(DeviceStreamCollection* device_stream_collection_ptr) const {
+  std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
+  device_stream_pool_.emplace_back(std::unique_ptr<DeviceStreamCollection>(device_stream_collection_ptr));
+}
+
 }  // namespace onnxruntime

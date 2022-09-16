@@ -553,18 +553,58 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   return Status::OK();
 }
 
-static common::Status ExecuteGraphImpl(const SessionState& session_state,
-                                       const FeedsFetchesManager& feeds_fetches_manager,
-                                       gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                                       const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                       ExecutionMode execution_mode, const bool* terminate_flag,
-                                       const logging::Logger& logger, const bool only_execute_path_to_fetches = false,
-                                       Stream* parent_stream = nullptr) {
+struct DeviceStreamCollectionHolder {
+  DeviceStreamCollectionHolder(const SessionState& session_state) : session_state_(session_state),
+                                                                    p_(session_state.AcquireDeviceStreamCollection()) {
+  }
+
+  ~DeviceStreamCollectionHolder() {
+    session_state_.RecycleDeviceStreamCollection(p_.release());
+  }
+
+  const SessionState& session_state_;
+  std::unique_ptr<DeviceStreamCollection> p_;
+};
+
+static void UpdateWithParentStream(DeviceStreamCollection& device_stream_collection,
+                                   Stream* parent_stream) {
+  if (parent_stream) {
+    // TODO: in theory, we should make current subgraph's stream depends on parent stream.
+    // but in current code structure, it causing issues with the resource sharing and stream
+    // lifetime. it also may cause additional cost of stream sync for single stream case.
+    // In first phase, let's just put all the subgraph execution on the parent stream.
+    for (size_t i = 0; i < device_stream_collection.NumStreams(); ++i) {
+      auto* stream = device_stream_collection.GetStreams()[i];
+      if (stream) {
+        // if current logic stream is not on the same EP instance as parent stream
+        // and the EP instance does have async streams (not EP like CPU)
+        // throw error as we don't have the code to setup the dependency at this moment.
+        if (stream->device != parent_stream->device) {
+          ORT_THROW("Subgraph has nodes running on device: ", stream->device.Type(),
+                    " while parent graph node running on device: ", parent_stream->device.Type(),
+                    ", this is not supported yet.");
+        }
+        device_stream_collection.SetDeviceStream(i, parent_stream);
+      }
+    }
+  }
+}
+
+static common::Status
+ExecuteGraphImpl(const SessionState& session_state,
+                 const FeedsFetchesManager& feeds_fetches_manager,
+                 gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
+                 const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                 ExecutionMode execution_mode, const bool* terminate_flag,
+                 const logging::Logger& logger, const bool only_execute_path_to_fetches = false,
+                 Stream* parent_stream = nullptr) {
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
   auto* execution_plan = session_state.GetExecutionPlan();
 
-  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size(), session_state);
+  DeviceStreamCollectionHolder device_stream_collection_holder(session_state);
+  DeviceStreamCollection& device_stream_collection = *device_stream_collection_holder.p_;
+  UpdateWithParentStream(device_stream_collection, parent_stream);
 
   bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;
   // in following two cases, we execute the workload in main thread:
@@ -577,7 +617,6 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   single_thread_mode = true;
 #endif
 
-  ORT_ENFORCE(BindToDeviceStream(parent_stream, *execution_plan, device_stream_collection, session_state.GetStreamHandleRegistryInstance()).IsOK());
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
@@ -667,17 +706,7 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     }
   }
   // clean up stream on run end
-  for (auto* stream : device_stream_collection.GetStreams()) {
-    if (stream) {
-      ORT_RETURN_IF_ERROR(stream->CleanUpOnRunEnd());
-#ifndef ENABLE_TRAINING
-      // training build doesn't want flush
-      stream->Flush();
-#endif
-    }
-  }
-
-  return Status::OK();
+  return device_stream_collection.CleanUp();
 }
 
 common::Status ExecuteGraph(const SessionState& session_state,
