@@ -666,6 +666,16 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
       ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info, fetches_streams));
     }
   }
+  // clean up stream on run end
+  for (auto* stream : device_stream_collection.GetStreams()) {
+    if (stream) {
+      ORT_RETURN_IF_ERROR(stream->CleanUpOnRunEnd());
+#ifndef ENABLE_TRAINING
+      // training build doesn't want flush
+      stream->Flush();
+#endif
+    }
+  }
 
   return Status::OK();
 }
