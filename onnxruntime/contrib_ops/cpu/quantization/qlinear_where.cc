@@ -358,36 +358,34 @@ Status QLinearWhere::Compute(OpKernelContext* ctx) const {
           tensor_z_scale, tensor_z_zero_point, identity_float);
     }
   }
-  const auto& x_table = is_x_dynamic_ ? x_dynamic_lookup_table : x_fixed_lookup_table_;
-  const auto& y_table = is_y_dynamic_ ? y_dynamic_lookup_table : y_fixed_lookup_table_;
+  // Each lookup table is 256 bytes
+  const auto& x_lookup_table = is_x_dynamic_ ? x_dynamic_lookup_table : x_fixed_lookup_table_;
+  const auto& y_lookup_table = is_y_dynamic_ ? y_dynamic_lookup_table : y_fixed_lookup_table_;
 
+  // Each user_data will sized at 2 + 256 bytes, and contain {is_x/y, is_x/y_copy, x/y_lookup_table} respectively
   std::vector<uint8_t> x_user_data(258);
-  x_user_data[0] = 1;
-  x_user_data[1] = is_x_copy ? 1 : 0;
-  if (!is_x_copy) {
-    std::copy(x_table.begin(), x_table.end(), x_user_data.begin() + 2);
-  }
   std::vector<uint8_t> y_user_data(258);
+  x_user_data[0] = 1;
   y_user_data[0] = 0;
+  x_user_data[1] = is_x_copy ? 1 : 0;
   y_user_data[1] = is_y_copy ? 1 : 0;
-  if (!is_y_copy) {
-    std::copy(y_table.begin(), y_table.end(), y_user_data.begin() + 2);
+  if (!is_x_copy) {
+    std::copy(x_lookup_table.begin(), x_lookup_table.end(), x_user_data.begin() + 2);
   }
-
-  // Todo: compute output z using ProcessBroadcastSpanFuncs
-
+  if (!is_y_copy) {
+    std::copy(y_lookup_table.begin(), y_lookup_table.end(), y_user_data.begin() + 2);
+  }
+  //Allocator, Allocation, and SelectBroadcastFuncs are the same implementation from where_op.cc
   const auto typed_tensor_allocation = [](const TensorAllocator& allocator,
                                           const TensorShape& shape) {
     return allocator.Allocate<uint8_t>(shape);
   };
-
   TensorAllocator tensor_allocator{*ctx};
   ProcessBroadcastSpanFuncs funcs = SelectBroadcastFuncs<uint8_t>();
-  // X_Selection_Tensor size is the max of X and Condition
+  // UntypedSelect is MODIFIED from where_op.cc
   auto X_selection_tensor = UntypedSelect(*ctx, x_user_data, funcs, tensor_allocator, typed_tensor_allocation);
-  // Y_Selection_Tensor size is the max of Y and Condition
   auto Y_selection_tensor = UntypedSelect(*ctx, y_user_data, funcs, tensor_allocator, typed_tensor_allocation);
-
+  // UntypedMerge is the same as from where_op.cc
   UntypedMerge(*ctx, *X_selection_tensor, *Y_selection_tensor, MergeBroadcastFuncs<uint8_t>());
 
   return Status();
