@@ -546,7 +546,12 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     const IndexedSubGraph& indexed_sub_graph = *capability->sub_graph;
     const IndexedSubGraph::MetaDef* metadef = indexed_sub_graph.GetMetaDef();
     if (!metadef) {
-      // Static kernel - use the kernel hash that was saved in the ORT format model
+      // Static kernel - use the kernel hash that was saved in the ORT format model.
+      auto* node = graph.GetNode(indexed_sub_graph.nodes[0]);
+      if (nullptr != node && node->GetExecutionProviderType().empty()) {
+        // The node was not fused or assigned. Assign it to this <provider>.
+        node->SetExecutionProviderType(type);
+      }
       continue;
     }
 
@@ -602,6 +607,21 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   return Status::OK();
 }
 
+// If this is an ORT format model the hashes will be for CPU EP kernels, so set the EP of any unassigned nodes
+// to kCpuExecutionProvider.
+static void AssignRemainingNodesToCpuEp(Graph& graph) {
+  for (auto& node : graph.Nodes()) {
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      Graph* subgraph = entry.second;
+      AssignRemainingNodesToCpuEp(*subgraph);
+    }
+
+    if (node.GetExecutionProviderType().empty()) {
+      node.SetExecutionProviderType(kCpuExecutionProvider);
+    }
+  }
+}
+
 // Simplified partitioning where custom EPs may produce compiled nodes.
 // EPs with static kernels do not need to be processed as their kernels are matched via hash information serialized
 // as part of the ORT format model.
@@ -615,13 +635,13 @@ Status GraphPartitioner::PartitionOrtFormatModel(
   for (const auto& ep : providers_) {
     if (ep->Type() == kCpuExecutionProvider) {
       // hash for kernel is stored in session state for EPs that have pre-registered kernels
-      // (vs. runtime fused kernels) so nothing to do here.
-      continue;
+      // (vs. runtime fused kernels) so we can simply assign any remaining nodes to the CPU EP
+      AssignRemainingNodesToCpuEp(graph);
+    } else {
+      ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(graph, func_mgr, kernel_registry_mgr_, fused_kernel_registry,
+                                                      *ep, compiled_kernel_hashes, fused_node_unique_id,
+                                                      transform_layout_function));
     }
-
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(graph, func_mgr, kernel_registry_mgr_, fused_kernel_registry,
-                                                    *ep, compiled_kernel_hashes, fused_node_unique_id,
-                                                    transform_layout_function));
   }
 
   return Status::OK();
