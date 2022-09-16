@@ -37,9 +37,12 @@ api:JavaScript:
 # Add/remove 'api:Java' label if issue contains the word 'Java' not followed by 'Script'
 api:Java:
   - '(Java(?!Script))'
-# Add/remove 'api' label if issue contains the word 'Python', 'C++', 'C#', 'C\b', 'Obj-C', or 'WinRT'
+# Add/remove 'api' label if issue contains the word 'C#'
+api:CSharp:
+  - '(C#)'
+# Add/remove 'api' label if issue contains the word 'Python', 'C++', 'C\b', 'Obj-C', or 'WinRT'
 api:
-  - '(Python|C++|C#|C\b|Obj-C|WinRT)'
+  - '(Python|C++|C\b|Obj-C|WinRT)'
 # Add/remove 'platform:jetson' label if issue contains the word 'Jetson' or 'jetson'
 platform:jetson:
   - '(Jetson|jetson)'
