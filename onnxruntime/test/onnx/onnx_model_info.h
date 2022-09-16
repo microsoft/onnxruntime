@@ -9,6 +9,7 @@ class OnnxModelInfo : public TestModelInfo {
  private:
   std::string node_name_;
   std::string onnx_commit_tag_;
+  // Due to performance, the opset version is get from directory name, so it's nominal
   std::string onnx_nominal_opset_vesion_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> output_value_info_;
