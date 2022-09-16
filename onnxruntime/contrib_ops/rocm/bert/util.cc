@@ -12,18 +12,18 @@ int CeilingDivision(int n, int m) {
   return r;
 }
 
-Timer::Timer() {
+Timer::Timer(hipStream_t stream): stream_(stream) {
   HIP_CHECK(hipEventCreate(&start_));
   HIP_CHECK(hipEventCreate(&end_));
 }
 
 void Timer::Start() {
   HIP_CHECK(hipDeviceSynchronize());
-  HIP_CHECK(hipEventRecord(start_, nullptr));
+  HIP_CHECK(hipEventRecord(start_, stream_));
 }
 
 void Timer::End() {
-  HIP_CHECK(hipEventRecord(end_, nullptr));
+  HIP_CHECK(hipEventRecord(end_, stream_));
   HIP_CHECK(hipEventSynchronize(end_));
 }
 

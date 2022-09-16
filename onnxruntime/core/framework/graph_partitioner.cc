@@ -42,15 +42,6 @@ NonCudaOps non_cuda;
 
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
-#if !defined(ORT_MINIMAL_BUILD)
-static void BuildFusedKernelDef(KernelDefBuilder& builder, const onnxruntime::Node& node) {
-  auto schema = node.Op();
-  builder.SetName(schema->Name())
-      .SetDomain(schema->domain())
-      .SinceVersion(schema->SinceVersion())
-      .Provider(node.GetExecutionProviderType());
-}
-#endif
 
 // minimal KernelDef based on MetaDef instead of a Function based node
 static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph::MetaDef& metadef,
@@ -371,33 +362,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     // !!! The Function style fusion is deprecated.
     if (fusion_style == IExecutionProvider::FusionStyle::Function) {
       // Create a Function based node where the fused nodes have a new Graph instance.
-      static std::once_flag legacy_compile_method_warning_flag;
-      std::call_once(
-          legacy_compile_method_warning_flag, [](std::string_view ep_type) {
-            LOGS_DEFAULT(WARNING) << "Execution Provider: " << ep_type << " is still using Function style Compile API "
-                                     "which is deprecated and will be removed soon. Please migrate to the new Compile "
-                                     "API based on FilteredGraphViewer.";
-          },
-          type);
-      ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_to_compile, node_compute_funcs));
-
-      if (node_compute_funcs.size() != nodes_to_compile.size()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, " did not return correct number of compiled functions");
-      }
-
-      for (size_t j = 0, end = nodes_to_compile.size(); j < end; j++) {
-        ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(nodes_to_compile[j]->Name(), std::move(node_compute_funcs[j])));
-      }
-
-      for (auto* node : nodes_to_compile) {
-        // add the KernelDef instances for the compiled nodes
-        KernelDefBuilder builder;
-        BuildFusedKernelDef(builder, *node);
-        ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(builder,
-                                                           [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-                                                             return FunctionKernel::Create(func_mgr, info, out);
-                                                           }));
-      }
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, "The Function Style fusion is deprecated.");
     } else {
       // temporary storage for the GraphViewer for each IndexedSubGraph
       std::vector<std::unique_ptr<GraphViewer>> viewers;
@@ -581,7 +546,12 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     const IndexedSubGraph& indexed_sub_graph = *capability->sub_graph;
     const IndexedSubGraph::MetaDef* metadef = indexed_sub_graph.GetMetaDef();
     if (!metadef) {
-      // Static kernel - use the kernel hash that was saved in the ORT format model
+      // Static kernel - use the kernel hash that was saved in the ORT format model.
+      auto* node = graph.GetNode(indexed_sub_graph.nodes[0]);
+      if (nullptr != node && node->GetExecutionProviderType().empty()) {
+        // The node was not fused or assigned. Assign it to this <provider>.
+        node->SetExecutionProviderType(type);
+      }
       continue;
     }
 
@@ -637,6 +607,21 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   return Status::OK();
 }
 
+// If this is an ORT format model the hashes will be for CPU EP kernels, so set the EP of any unassigned nodes
+// to kCpuExecutionProvider.
+static void AssignRemainingNodesToCpuEp(Graph& graph) {
+  for (auto& node : graph.Nodes()) {
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      Graph* subgraph = entry.second;
+      AssignRemainingNodesToCpuEp(*subgraph);
+    }
+
+    if (node.GetExecutionProviderType().empty()) {
+      node.SetExecutionProviderType(kCpuExecutionProvider);
+    }
+  }
+}
+
 // Simplified partitioning where custom EPs may produce compiled nodes.
 // EPs with static kernels do not need to be processed as their kernels are matched via hash information serialized
 // as part of the ORT format model.
@@ -650,13 +635,13 @@ Status GraphPartitioner::PartitionOrtFormatModel(
   for (const auto& ep : providers_) {
     if (ep->Type() == kCpuExecutionProvider) {
       // hash for kernel is stored in session state for EPs that have pre-registered kernels
-      // (vs. runtime fused kernels) so nothing to do here.
-      continue;
+      // (vs. runtime fused kernels) so we can simply assign any remaining nodes to the CPU EP
+      AssignRemainingNodesToCpuEp(graph);
+    } else {
+      ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(graph, func_mgr, kernel_registry_mgr_, fused_kernel_registry,
+                                                      *ep, compiled_kernel_hashes, fused_node_unique_id,
+                                                      transform_layout_function));
     }
-
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(graph, func_mgr, kernel_registry_mgr_, fused_kernel_registry,
-                                                    *ep, compiled_kernel_hashes, fused_node_unique_id,
-                                                    transform_layout_function));
   }
 
   return Status::OK();

@@ -228,15 +228,6 @@ class IExecutionProvider {
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-  /**
-  * !!!! This API is deprecated. If your execution provider overrides this API
-  * !!!! Please migrate it to the "Compile" API with FusedNodeAndGraph type.
-  Given a list of fused_node, return create_state/compute/release_state func for each node.
-  */
-  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                 std::vector<NodeComputeInfo>& node_compute_funcs);
-
   /**
   Given a collection of fused Nodes and the respective GraphViewer instance for the nodes that were fused,
   return create_state/compute/release_state func for each node.

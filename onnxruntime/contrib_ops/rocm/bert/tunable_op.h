@@ -116,7 +116,7 @@ class TunableOp {
 
   static double Profile(Op<ParamsT>& op, const ParamsT* param) {
     const int num_iter = 100;
-    Timer timer{};
+    Timer timer{param->stream};
     timer.Start();
     for (int i = 0; i < num_iter; i++) {
       ORT_THROW_IF_ERROR(op(param));
