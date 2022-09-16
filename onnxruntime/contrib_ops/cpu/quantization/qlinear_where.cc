@@ -17,8 +17,11 @@ using EnableIfEigenNotScalar = typename std::enable_if<!std::is_arithmetic<T>::v
 template <typename T>
 ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
   return ProcessBroadcastSpanFuncs{
+      // Scalar Condition + Eigen Input -> Eigen output
       [](BroadcastHelper& per_iter_bh) {
-        bool target = (per_iter_bh.GetUserData() != nullptr);
+        auto* user_data = static_cast<T*>(per_iter_bh.GetUserData());
+        bool target = user_data[0] == 1;
+        bool is_copy = user_data[1] == 1;
         bool condition = per_iter_bh.ScalarInput0<bool>();
         auto value = per_iter_bh.EigenInput1<T>();
         auto output = per_iter_bh.OutputEigen<T>();
@@ -27,22 +30,49 @@ ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
         } else {
           output = EigenVectorMap<T>::PlainObject::Constant(value.size(), T{});
         }
+        if (!is_copy) {
+          auto* look_up_table = user_data + 2;
+          std::transform(value.cbegin(), value.cend(), output.begin(),
+                         [condition, target, &look_up_table](const T& value_element) {
+                           return condition == target ? look_up_table[value_element] : T{};
+                         });
+        }
       },
+      // Eigen Condition + Scalar Input -> Eigen Output
       [](BroadcastHelper& per_iter_bh) {
-        bool target = (per_iter_bh.GetUserData() != nullptr);
+        auto* user_data = static_cast<T*>(per_iter_bh.GetUserData());
+        bool target = user_data[0] == 1;
+        bool is_copy = user_data[1] == 1;
         auto condition = per_iter_bh.EigenInput0<bool>();
         const T& value = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputEigen<T>();
         output = (condition.array() == target)
                      .select(value, EigenVectorMap<T>::PlainObject::Constant(condition.size(), T{}));
+        if (!is_copy) {
+          auto* look_up_table = user_data + 2;
+          std::transform(condition.cbegin(), condition.cend(), output.begin(),
+                         [target, &look_up_table, &value](bool condition_element) {
+                           return condition_element == target ? look_up_table[value] : T{};
+                         });
+        }
       },
+      // Eigen Condition + Eigen Input -> Eigen Output
       [](BroadcastHelper& per_iter_bh) {
-        bool target = (per_iter_bh.GetUserData() != nullptr);
+        auto* user_data = static_cast<T*>(per_iter_bh.GetUserData());
+        bool target = user_data[0] == 1;
+        bool is_copy = user_data[1] == 1;
         auto condition = per_iter_bh.EigenInput0<bool>();
         auto value = per_iter_bh.EigenInput1<T>();
         auto output = per_iter_bh.OutputEigen<T>();
         output = (condition.array() == target)
                      .select(value, EigenVectorMap<T>::PlainObject::Constant(condition.size(), T{}));
+        if (!is_copy) {
+          auto* look_up_table = user_data + 2;
+          std::transform(condition.cbegin(), condition.cend(), value.cbegin(), output.begin(),
+                         [target, &look_up_table](bool condition_element, const T& value_element) {
+                           return (condition_element == target) ? look_up_table[value_element] : T{};
+                         });
+        }
       }};
 }
 
@@ -50,34 +80,46 @@ template <typename T>
 ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
   return ProcessBroadcastSpanFuncs{
       [](BroadcastHelper& per_iter_bh) {
-        bool target = (per_iter_bh.GetUserData() != nullptr);
+        auto* user_data = static_cast<T*>(per_iter_bh.GetUserData());
+        bool target = user_data[0] == 1;
+        bool is_copy = user_data[1] == 1;
+        auto* look_up_table = user_data + 2;
         bool condition = per_iter_bh.ScalarInput0<bool>();
         auto value = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
         if (condition == target) {
-          std::copy(value.cbegin(), value.cend(), output.begin());
+          std::transform(value.cbegin(), value.cend(), output.begin(),
+                         [condition, target, &look_up_table,is_copy](const T& value_element) {
+                           return is_copy ? value_element : look_up_table[value_element];
+                         });
         } else {
           std::fill(output.begin(), output.end(), T{});
         }
       },
       [](BroadcastHelper& per_iter_bh) {
-        bool target = (per_iter_bh.GetUserData() != nullptr);
+        auto* user_data = static_cast<T*>(per_iter_bh.GetUserData());
+        bool target = user_data[0] == 1;
+        bool is_copy = user_data[1] == 1;
+        auto* look_up_table = user_data + 2;
         auto condition = per_iter_bh.SpanInput0<bool>();
         const T& value = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
         std::transform(condition.cbegin(), condition.cend(), output.begin(),
-                       [target, &value](bool condition_element) {
-                         return condition_element == target ? value : T{};
+                       [target, &value,&look_up_table,is_copy](bool condition_element) {
+                         return condition_element == target ? (is_copy ? value : look_up_table[value]) : T{};
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
-        bool target = (per_iter_bh.GetUserData() != nullptr);
+        auto* user_data = static_cast<T*>(per_iter_bh.GetUserData());
+        bool target = user_data[0] == 1;
+        bool is_copy = user_data[1] == 1;
+        auto* look_up_table = user_data + 2;
         auto condition = per_iter_bh.SpanInput0<bool>();
         auto value = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
         std::transform(condition.cbegin(), condition.cend(), value.cbegin(), output.begin(),
-                       [target](bool condition_element, const T& value_element) {
-                         return condition_element == target ? value_element : T{};
+                       [target,&look_up_table,is_copy](bool condition_element, const T& value_element) {
+                         return condition_element == target ? (is_copy ? value_element : look_up_table[value_element]) : T{};
                        });
       }};
 }
@@ -97,25 +139,22 @@ EnableIfEigenNotScalar<T, ProcessBroadcastSpanFuncs> SelectBroadcastFuncs() {
 // function pointer to create typed tensor from type agnostic code whilst avoiding the overhead of std::function
 using AllocTensorFunc = std::unique_ptr<Tensor> (*)(const TensorAllocator& allocator, const TensorShape& shape);
 
-static std::unique_ptr<Tensor> UntypedSelect(OpKernelContext& context, bool target,
-                                             const TensorAllocator& allocator, AllocTensorFunc allocate_tensor,
-                                             const ProcessBroadcastSpanFuncs& functors) {
+static std::unique_ptr<Tensor> UntypedSelect(OpKernelContext& context, std::vector<uint8_t>& user_data, const ProcessBroadcastSpanFuncs& functors, const TensorAllocator& allocator, AllocTensorFunc allocate_tensor) {
   const auto& condition = *context.Input<Tensor>(0);
   // select the X input (input 1) for 'true', and Y input (input 2) for 'false'
+  bool target = user_data[0] == 1;
   const auto& values = *context.Input<Tensor>(target ? 1 : 4);
 
   InputBroadcaster input_broadcaster(condition, values);
-
   std::unique_ptr<Tensor> selection_tensor = allocate_tensor(allocator, input_broadcaster.GetOutputShape());
   OutputBroadcaster output_broadcaster(input_broadcaster.GetSpanSize(), *selection_tensor);
-
   // store value of 'target' directly in void* for user_data so it's accessible in the state-less functors
-  BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster, reinterpret_cast<void*>(target));
-
+  BroadcastHelper broadcast_helper(input_broadcaster, output_broadcaster, reinterpret_cast<void*>(user_data.data()));
   BroadcastLooper(broadcast_helper, functors);
-
   return selection_tensor;
 }
+
+// Merging Functions
 template <typename T>
 void MergeScalarAndVector(EigenVectorMap<T> output, const T& scalar_value, ConstEigenVectorMap<T> vector_value) {
   if (scalar_value != T{}) {
@@ -158,6 +197,7 @@ void MergeScalarAndVector(gsl::span<T> output, const T& scalar_value, gsl::span<
 };
 
 template <typename T>
+
 EnableIfEigenNotScalar<T, ProcessBroadcastSpanFuncs> MergeBroadcastFuncs() {
   return ProcessBroadcastSpanFuncs{
       [](BroadcastHelper& per_iter_bh) {
@@ -312,8 +352,22 @@ Status QLinearWhere::Compute(OpKernelContext* ctx) const {
           tensor_z_scale, tensor_z_zero_point, identity_float);
     }
   }
-  const uint8_t* x_table = is_x_dynamic_ ? x_dynamic_lookup_table.data() : x_fixed_lookup_table_.data();
-  const uint8_t* y_table = is_y_dynamic_ ? y_dynamic_lookup_table.data() : y_fixed_lookup_table_.data();
+  const auto& x_table = is_x_dynamic_ ? x_dynamic_lookup_table : x_fixed_lookup_table_;
+  const auto& y_table = is_y_dynamic_ ? y_dynamic_lookup_table : y_fixed_lookup_table_;
+
+  std::vector<uint8_t> x_user_data(258);
+  x_user_data[0] = 1;
+  x_user_data[1] = is_x_copy ? 1 : 0;
+  if (!is_x_copy) {
+    std::copy(x_table.begin(), x_table.end(), x_user_data.begin() + 2);
+  }
+  std::vector<uint8_t> y_user_data(258);
+  y_user_data[0] = 0;
+  y_user_data[1] = is_y_copy ? 1 : 0;
+  if (!is_y_copy) {
+    std::copy(y_table.begin(), y_table.end(), y_user_data.begin() + 2);
+  }
+
   // Todo: compute output z using ProcessBroadcastSpanFuncs
 
   const auto typed_tensor_allocation = [](const TensorAllocator& allocator,
@@ -324,9 +378,9 @@ Status QLinearWhere::Compute(OpKernelContext* ctx) const {
   TensorAllocator tensor_allocator{*ctx};
   ProcessBroadcastSpanFuncs funcs = SelectBroadcastFuncs<uint8_t>();
   // X_Selection_Tensor size is the max of X and Condition
-  auto X_selection_tensor = UntypedSelect(*ctx, true, tensor_allocator, typed_tensor_allocation, funcs);
+  auto X_selection_tensor = UntypedSelect(*ctx, x_user_data, funcs, tensor_allocator, typed_tensor_allocation);
   // Y_Selection_Tensor size is the max of Y and Condition
-  auto Y_selection_tensor = UntypedSelect(*ctx, false, tensor_allocator, typed_tensor_allocation, funcs);
+  auto Y_selection_tensor = UntypedSelect(*ctx, y_user_data, funcs, tensor_allocator, typed_tensor_allocation);
 
   UntypedMerge(*ctx, *X_selection_tensor, *Y_selection_tensor, MergeBroadcastFuncs<uint8_t>());
 
