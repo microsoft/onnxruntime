@@ -25,35 +25,22 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 void SessionState::SetupAllocators() {
-  // register allocators in reverse order. one per OrtMemType+OrtDevice combination.
-  // this order prefers allocators from the core EPs (CPU EP, CUDA EP, ROCM EP) and ensures the CUDA/ROCM EP's
-  // per-thread allocators will be preferred over the TensorRT/MIGraphX EP non-per-thread allocators.
-  // TODO: Refactor the EP/allocator relationship so that we can be explicit about which allocator is preferred and
-  //       avoid creating unnecessary allocators.
-  std::for_each(std::make_reverse_iterator(execution_providers_.end()),
-                std::make_reverse_iterator(execution_providers_.begin()),
-                [this](const auto& provider_iter) {
-                  IExecutionProvider& provider = *provider_iter;
-                  for (const auto& allocator : provider.GetAllocators()) {
-                    const OrtMemoryInfo& memory_info = allocator->Info();
-                    auto iter = allocators_.find(memory_info);
-                    if (iter != allocators_.end()) {
-                      // EPs could be sharing allocators so no info message unless this is a different instance.
-                      // This is an expected scenario as multiple EPs may have allocators for the same device.
-                      // e.g. xnnpack and CPU EP are both CPU based.
-                      if (iter->second(memory_info.id, memory_info.mem_type) != allocator) {
-                        LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
-                                            << ". Ignoring allocator from " << provider.Type();
-                      }
-                    } else {
-                      // slightly weird indirection to go back to the provider to get the allocator each time
-                      // it's needed in order to support scenarios such as the CUDA EP's per-thread allocator.
-                      allocators_[memory_info] = [&provider](int id, OrtMemType mem_type) {
-                        return provider.GetAllocator(id, mem_type);
-                      };
-                    }
-                  }
-                });
+  for (const auto& provider : execution_providers_) {
+    for (const auto& allocator : provider->GetAllocators()) {
+      const OrtMemoryInfo& memory_info = allocator->Info();
+      if (allocators_.find(memory_info) != allocators_.end()) {
+        // EPs are ordered by priority so ignore the duplicate allocator for this memory location.
+        LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
+                            << ". Ignoring allocator from " << provider->Type();
+      } else {
+        // slightly weird indirection to go back to the provider to get the allocator each time it's needed
+        // in order to support scenarios such as the CUDA EP's per-thread allocator.
+        allocators_[memory_info] = [&provider](int id, OrtMemType mem_type) {
+          return provider->GetAllocator(id, mem_type);
+        };
+      }
+    }
+  }
 }
 
 AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noexcept {
@@ -1137,9 +1124,11 @@ static void ComputeConstantInitializerUseCount(const Graph& graph, InlinedHashMa
 }
 
 using NodePlacementMap = std::unordered_map<std::string, std::vector<std::string>>;
+using NodePlacementSet = std::unordered_set<std::string>;
 
 static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
-                                                 NodePlacementMap& node_placements) {
+                                                 NodePlacementMap& node_placements,
+                                                 NodePlacementSet& node_placement_provider_set) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
     if (node_provider.empty()) {
@@ -1147,6 +1136,8 @@ static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_ver
                              "Could not find an implementation for ",
                              node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(), "'");
     }
+
+    node_placement_provider_set.insert(node_provider);
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (is_verbose) {  // TODO: should we disable this if the number of nodes is above a certain threshold?
@@ -1159,7 +1150,8 @@ static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_ver
     if (node.ContainsSubgraph()) {
       const auto subgraphs = node.GetSubgraphs();
       for (const auto& subgraph : subgraphs) {
-        ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements));
+        ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements,
+                                                               node_placement_provider_set));
       }
     }
   }
@@ -1167,8 +1159,10 @@ static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_ver
   return Status::OK();
 }
 
-static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger& logger) {
+static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger& logger,
+                                             const ExecutionProviders& providers) {
   NodePlacementMap node_placements{};
+  NodePlacementSet node_placement_provider_set{};
 #if !defined(ORT_MINIMAL_BUILD)
   const bool is_verbose_mode = logger.GetSeverity() == logging::Severity::kVERBOSE;
 #else
@@ -1176,7 +1170,7 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   const bool is_verbose_mode = false;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements));
+  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements, node_placement_provider_set));
 
 #if !defined(ORT_MINIMAL_BUILD)
   // print placement info
@@ -1196,6 +1190,17 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+  // Silent fallback from GPU/NPU to CPU nodes can cause performance issues due to memory copies and frequent stalls.
+  // If the user explicitly included the CPU provider anyway, then remain silent, but if it was implicitly added,
+  // and unexpected fallback happened to a non-preferred provider, warn the user.
+  size_t explicit_provider_count = providers.NumProviders() - (providers.GetCpuProviderWasImplicitlyAdded() ? 1 : 0);
+  if (node_placement_provider_set.size() > explicit_provider_count) {
+    LOGS(logger, WARNING) << "Some nodes were not assigned to the preferred execution providers which may or may not have an negative impact on performance. e.g. ORT explicitly assigns shape related ops to CPU to improve perf.";
+    if (!is_verbose_mode) {
+      LOGS(logger, WARNING) << "Rerunning with verbose output on a non-minimal build will show node assignments.";
+    }
+  }
+
   return Status::OK();
 }
 
@@ -1213,10 +1218,10 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   if (serialized_session_state) {
     ORT_RETURN_IF_ERROR(LoadFromOrtFormat(*serialized_session_state, kernel_registry_manager));
     // LoadFromOrtFormat() may assign node EPs so check afterwards
-    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_));
+    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_, execution_providers_));
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
-    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_));
+    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_, execution_providers_));
     ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
 #else
     ORT_UNUSED_PARAMETER(graph_location);
