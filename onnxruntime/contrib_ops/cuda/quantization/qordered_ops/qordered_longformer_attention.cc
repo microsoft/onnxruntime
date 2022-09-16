@@ -41,6 +41,8 @@ ONNX_OPERATOR_KERNEL_EX(
 
 QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& info)
     : CudaKernel(info), LongformerAttentionBase(info) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
   use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, false);
   const cublasLtOrder_t InputOrders[2] = {CUBLASLT_ORDER_ROW, CUBLASLT_ORDER_COL32};
   const cublasLtOrder_t weight_tiles_for_input_col32[2] = {CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4};
@@ -64,10 +66,18 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
   order_output_ = GetCublasLtOrderAttr(
       info, "order_output", 1, (const cublasLtOrder_t*)&order_input_,
       "QOrderedLongformerAttention: oder_output must be same as order_input");
+
+#else
+
+  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+
+#endif
 }
 
 Status
 QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(2);
   const Tensor* bias = context->Input<Tensor>(4);
@@ -251,6 +261,14 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   // Defer release of pinned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
+
+#else
+
+  ORT_UNUSED_PARAMETER(context);
+  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+
+#endif
+
   return Status::OK();
 }
 

@@ -6,7 +6,7 @@
 namespace onnxruntime {
 namespace test {
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
 template <typename TSrc, typename TDst>
 static std::vector<TDst> ReorderAndTransform(const std::vector<int64_t>& shape, const std::vector<TSrc>& src,

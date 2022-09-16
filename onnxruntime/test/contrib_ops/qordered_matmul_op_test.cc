@@ -6,8 +6,7 @@
 namespace onnxruntime {
 namespace test {
 
-// Only the CUDA EP supports ordered quantized ops for now
-#ifdef USE_CUDA
+#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
 static void RunQOrdered_MatMul_Test(
     std::vector<int64_t> const& shape_A,
@@ -16,6 +15,7 @@ static void RunQOrdered_MatMul_Test(
     OrderCublasLt weight_order,
     float scale_A, float scale_B, float scale_C, float scale_Y,
     bool add_bias = false, bool broadcast_c_batch = false) {
+
   // Needs Turing or higher architecture
   if (NeedSkipIfCudaArchLowerThan(750)) {
     return;

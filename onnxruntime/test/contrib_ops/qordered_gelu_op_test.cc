@@ -6,8 +6,7 @@
 namespace onnxruntime {
 namespace test {
 
-// Only the CUDA EP supports ordered quantized ops for now
-#ifdef USE_CUDA
+#if defined(USE_CUDA)
 
 static void
 RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_x,

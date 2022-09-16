@@ -5,7 +5,6 @@
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_matmul_utils.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
-#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include <cmath>
@@ -25,6 +24,7 @@ enum InputIds {
 };
 #undef DefineQOrderedAttentionInput
 
+// double check the definitions orders are correct
 static_assert((InputIds::K_Weight == 1 + InputIds::Q_Weight) && (InputIds::V_Weight == 2 + InputIds::Q_Weight));
 static_assert((InputIds::Scale_K_Weight == 1 + InputIds::Scale_Q_Weight) && (InputIds::Scale_V_Weight == 2 + InputIds::Scale_Q_Weight));
 static_assert((InputIds::K_Bias == 1 + InputIds::Q_Bias) && (InputIds::V_Bias == 2 + InputIds::Q_Bias));
@@ -47,30 +47,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, InputIds::Scale_Values_Gemm),
     QOrderedAttention);
 
-QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info), input_hidden_size_(0) {
-  ORT_ENFORCE(qkv_hidden_sizes_.size() == 3, "qkv_hidden_sizes is needed and must be of shape [3]!");
-  ORT_ENFORCE(std::all_of(qkv_hidden_sizes_.begin(), qkv_hidden_sizes_.end(),
-                          [num_heads = this->num_heads_](int64_t v) { return (v > 0) && (v % num_heads) == 0; }),
-              "All qkv hiddend_sizes must be positive and divisible by num_heads");
-  ORT_ENFORCE(qkv_hidden_sizes_[0] == qkv_hidden_sizes_[1] && qkv_hidden_sizes_[0] == qkv_hidden_sizes_[2],
-              "currently qkv hidden size should be same");
-  qkv_total_hidden_size_ = qkv_hidden_sizes_[0] + qkv_hidden_sizes_[1] + qkv_hidden_sizes_[2];
-  order_input_ = GetCublasLtOrderAttr(info, "order_input");
-  order_weight_ = GetCublasLtOrderAttr(info, "order_weight");
-  order_output_ = GetCublasLtOrderAttr(info, "order_output");
-  if (order_input_ == CUBLASLT_ORDER_ROW) {
-    ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL, "Only CUBLASLT_ORDER_COL is supported for order_weight_");
-    ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW is supported for order_output");
-  } else if (order_input_ == CUBLASLT_ORDER_COL32) {
-    ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL4_4R2_8C || order_weight_ == CUBLASLT_ORDER_COL32_2R_4R4,
-                "Only CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4 are supported for order_weight_");
-    ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_output");
-  } else {
-    ORT_ENFORCE(false, "Only CUBLASLT_ORDER_ROW or CUBLASLT_ORDER_COL32 are supported for order_input");
-  }
-  qkv_weight_const_count_ = scale_qkv_weight_const_count_ = qkv_bias_const_cout_ = 0;
-  const_scale_input_ = const_scale_qkv_layer_[0] = const_scale_qkv_layer_[1] = const_scale_qkv_layer_[2] = 0.0f;
-}
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
 Status QOrderedAttention::PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr alloc, int qkv_index) {
   ++qkv_weight_const_count_;
@@ -159,6 +136,7 @@ inline void debug_print([[maybe_unused]] const T* arr,
                         [[maybe_unused]] const int w,
                         [[maybe_unused]] const char* name) {
 #if defined(DEBUGPRINT_QORDERED_ATTENTION)
+
   cudaDeviceSynchronize();
   std::vector<T> buf(sz);
   cudaMemcpy(buf.data(), arr, sz * sizeof(T), cudaMemcpyDeviceToHost);
@@ -173,10 +151,50 @@ inline void debug_print([[maybe_unused]] const T* arr,
     }
   }
   std::cout << std::endl;
+
 #endif
+
+}
+
+#endif
+
+QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info), input_hidden_size_(0) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
+  ORT_ENFORCE(qkv_hidden_sizes_.size() == 3, "qkv_hidden_sizes is needed and must be of shape [3]!");
+  ORT_ENFORCE(std::all_of(qkv_hidden_sizes_.begin(), qkv_hidden_sizes_.end(),
+                          [num_heads = this->num_heads_](int64_t v) { return (v > 0) && (v % num_heads) == 0; }),
+              "All qkv hiddend_sizes must be positive and divisible by num_heads");
+  ORT_ENFORCE(qkv_hidden_sizes_[0] == qkv_hidden_sizes_[1] && qkv_hidden_sizes_[0] == qkv_hidden_sizes_[2],
+              "currently qkv hidden size should be same");
+  qkv_total_hidden_size_ = qkv_hidden_sizes_[0] + qkv_hidden_sizes_[1] + qkv_hidden_sizes_[2];
+  order_input_ = GetCublasLtOrderAttr(info, "order_input");
+  order_weight_ = GetCublasLtOrderAttr(info, "order_weight");
+  order_output_ = GetCublasLtOrderAttr(info, "order_output");
+  if (order_input_ == CUBLASLT_ORDER_ROW) {
+    ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL, "Only CUBLASLT_ORDER_COL is supported for order_weight_");
+    ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW is supported for order_output");
+  } else if (order_input_ == CUBLASLT_ORDER_COL32) {
+    ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL4_4R2_8C || order_weight_ == CUBLASLT_ORDER_COL32_2R_4R4,
+                "Only CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4 are supported for order_weight_");
+    ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_output");
+  } else {
+    ORT_ENFORCE(false, "Only CUBLASLT_ORDER_ROW or CUBLASLT_ORDER_COL32 are supported for order_input");
+  }
+  qkv_weight_const_count_ = scale_qkv_weight_const_count_ = qkv_bias_const_cout_ = 0;
+  const_scale_input_ = const_scale_qkv_layer_[0] = const_scale_qkv_layer_[1] = const_scale_qkv_layer_[2] = 0.0f;
+
+#else
+
+  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+
+#endif
+
 }
 
 Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+  
   ORT_ENFORCE(qkv_bias_const_cout_ == 3 && scale_qkv_weight_const_count_ == 3 && qkv_weight_const_count_ == 3,
               "qkv gemm weight and their scales, qkv gemm bias must all be constant!");
   ORT_ENFORCE(const_scale_input_ > 0.0f, "input scale must be constant");
@@ -247,7 +265,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
                                       (const float*)merged_qkv_alpha_.get(), input->template Data<int8_t>(), (const int8_t*)merged_qkv_weight_.get(),
                                       (const float*)merged_qkv_bias_.get(), stacked_qkv_layers,
                                       CUBLASLT_ORDER_COL,
-                                      CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST));  // (cublasLtPointerMode_t)4
+                                      (cublasLtPointerMode_t)4));  // CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST available after 11.4.2
   // debug_print(stacked_qkv_layers, m * n, hidden_size, "stacked_qkv_layer");
 
   // BxSx3xNxH => 3xBxNxSxH, treat 4 consecutive int8 as float
@@ -285,6 +303,13 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(LaunchTransCtx(stream, sequence_length, batch_size, head_size / 4, num_heads_, device_prop.maxThreadsPerBlock,
                                      false, (const float*)context_layer, (float*)output->MutableData<int8_t>()));
   // debug_print(output->Data<int8_t>(), m * n / 3, head_size, "attention output");
+
+#else
+
+  ORT_UNUSED_PARAMETER(context);
+  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+
+#endif
 
   return Status::OK();
 }

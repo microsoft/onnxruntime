@@ -4,8 +4,6 @@
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_unary_ops_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
-#include "qordered_common.cuh"
-
 using namespace onnxruntime::cuda;
 
 namespace onnxruntime {

@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cu_inc/common.cuh"
-#include "contrib_ops/cuda/quantization/qordered_ops/qordered_common.cuh"
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_layer_norm_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_common.cuh"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+static __device__ inline float ToFloat(const __half h) { return __half2float(h); }
+
+static __device__ inline float ToFloat(const float f) { return f; }
 
 constexpr static unsigned QORDER_LAYERNORM_ROWS_PER_BLOCK = 8;
 

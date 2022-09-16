@@ -9,10 +9,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-__device__ inline float ToFloat(const __half h) { return __half2float(h); }
-
-__device__ inline float ToFloat(const float f) { return f; }
-
 template <typename T>
 __inline__ __device__ T
 WarpReduceSum(T val) {

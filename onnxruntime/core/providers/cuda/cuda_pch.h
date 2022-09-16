@@ -17,10 +17,6 @@
 #include <cufft.h>
 #include <cublasLt.h>
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#include <cublasLt.h>
-#endif
-
 #ifdef ORT_USE_NCCL
 #include <nccl.h>
 #endif

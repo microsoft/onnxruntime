@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace test {
 
 // Only the CUDA EP supports ordered quantized ops for now
-#ifdef USE_CUDA
+#if defined(USE_CUDA)
 
 template <typename T>  // MLFloat16 or float
 static void RunQOrdered_LayerNorm_RowMajor(std::vector<int64_t> const& shape, int axis, float epsilon,

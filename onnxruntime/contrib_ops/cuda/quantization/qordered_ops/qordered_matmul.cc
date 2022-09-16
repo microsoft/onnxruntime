@@ -31,23 +31,9 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, QOrderedMatMulScaleC),  // scale_C
     QOrderedMatMul);
 
-static Status ParseRowMajorTensorMetadata(const Tensor& input_tensor, int64_t& rows,
-                                          int64_t& cols, int64_t& batch_count, int64_t& element_count) {
-  const auto& dims = input_tensor.Shape().GetDims();
-
-  cols = dims.back();
-  rows = (dims.size() <= 1 ? 1LL : dims[dims.size() - 2]);
-  batch_count = (dims.size() <= 2
-                     ? 1LL
-                     : std::accumulate(dims.begin(), dims.begin() + (dims.size() - 2),
-                                       1LL, std::multiplies<int64_t>()));
-
-  element_count = cols * rows * batch_count;
-
-  return Status::OK();
-}
-
 QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
   order_A_ = GetCublasLtOrderAttr(info, "order_A");
   order_B_ = GetCublasLtOrderAttr(info, "order_B");
   order_Y_ = GetCublasLtOrderAttr(info, "order_Y");
@@ -62,44 +48,68 @@ QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
   }
   const_scale_A_ = const_scale_B_ = const_scale_C_ = const_scale_Y_ = 0.0;
   origin_scale_B_vector_ = nullptr;
+
+#else
+
+  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+
+#endif
 }
 
 Status QOrderedMatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                                /*out*/ bool& is_packed,
                                /*out*/ PrePackedWeights* /* prepacked_weights */) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
   is_packed = false;
-  if (input_idx == QOrderedMatMulScaleA) {
-    ORT_ENFORCE(tensor.Shape().IsScalar(), "scale_A_ must be scala!");
-    const_scale_A_ = *tensor.Data<float>();
-    ORT_ENFORCE(const_scale_A_ > 0.0f, "scale_A_ must > 0.0f");
-  }
+  if (order_B_ == CUBLASLT_ORDER_COL) {
+    if (input_idx == QOrderedMatMulScaleA) {
+      ORT_ENFORCE(tensor.Shape().IsScalar(), "scale_A_ must be scala!");
+      const_scale_A_ = *tensor.Data<float>();
+      ORT_ENFORCE(const_scale_A_ > 0.0f, "scale_A_ must > 0.0f");
+    }
 
-  if (input_idx == QOrderedMatMulScaleB) {
-    if (tensor.Shape().IsScalar()) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(&const_scale_B_, tensor.Data<float>(), sizeof(float), cudaMemcpyDeviceToHost));
-      ORT_ENFORCE(const_scale_B_ > 0.0f, "scale_B_ must > 0.0f if scalar");
-    } else {
-      ORT_ENFORCE(tensor.Shape().NumDimensions() == 1, "scale_b_ must be 1d array if not scalar!");
-      scale_b_size_ = gsl::narrow_cast<int>(tensor.Shape()[0]);
-      origin_scale_B_vector_ = tensor.Data<float>();
+    if (input_idx == QOrderedMatMulScaleB) {
+      if (tensor.Shape().IsScalar()) {
+        CUDA_RETURN_IF_ERROR(cudaMemcpy(&const_scale_B_, tensor.Data<float>(), sizeof(float), cudaMemcpyDeviceToHost));
+        ORT_ENFORCE(const_scale_B_ > 0.0f, "scale_B_ must > 0.0f if scalar");
+      } else {
+        ORT_ENFORCE(tensor.Shape().NumDimensions() == 1, "scale_b_ must be 1d array if not scalar!");
+        scale_b_size_ = gsl::narrow_cast<int>(tensor.Shape()[0]);
+        origin_scale_B_vector_ = tensor.Data<float>();
+      }
+    }
+
+    if (input_idx == QOrderedMatMulScaleY) {
+      ORT_ENFORCE(tensor.Shape().IsScalar(), "scale_Y_ must be scala!");
+      const_scale_Y_ = *tensor.Data<float>();
+      ORT_ENFORCE(const_scale_Y_ > 0.0f, "scale_Y_ must > 0.0f");
+      if (origin_scale_B_vector_) {
+        calculated_alpha_ = BufferUniquePtr(alloc->Alloc(scale_b_size_ * sizeof(float)), BufferDeleter(alloc));
+        float rescale = static_cast<float>((double)const_scale_A_ / const_scale_Y_);
+        CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), scale_b_size_, &rescale, (float*)calculated_alpha_.get(), 1));
+      }
     }
   }
 
-  if (input_idx == QOrderedMatMulScaleY) {
-    ORT_ENFORCE(tensor.Shape().IsScalar(), "scale_Y_ must be scala!");
-    const_scale_Y_ = *tensor.Data<float>();
-    ORT_ENFORCE(const_scale_Y_ > 0.0f, "scale_Y_ must > 0.0f");
-    if (origin_scale_B_vector_) {
-      calculated_alpha_ = BufferUniquePtr(alloc->Alloc(scale_b_size_ * sizeof(float)), BufferDeleter(alloc));
-      float rescale = static_cast<float>((double)const_scale_A_ / const_scale_Y_);
-      CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), scale_b_size_, &rescale, (float*)calculated_alpha_.get(), 1));
-    }
-  }
+#else
+
+  ORT_UNUSED_PARAMETER(tensor);
+  ORT_UNUSED_PARAMETER(input_idx);
+  ORT_UNUSED_PARAMETER(alloc);
+  ORT_UNUSED_PARAMETER(is_packed);
+  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+
+#endif
 
   return Status::OK();
 }
 
 Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
+  ORT_ENFORCE(order_B_ == CUBLASLT_ORDER_COL, "COL32 related order processing will be implemented later!");
+
   int64_t rowsA = 0, colsA = 0, batchA = 1, elementsA = 0;
   int64_t rowsB = 0, colsB = 0, batchB = 1, elementsB = 0;
   int64_t rowsC = 0, colsC = 0, batchC = 1, elementsC = 0;
@@ -150,7 +160,7 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
   cublasLtPointerMode_t pointer_mode = CUBLASLT_POINTER_MODE_HOST;
   if (const_scale_B_ == 0.0f) {
     alpha = (const float*)calculated_alpha_.get();
-    pointer_mode = CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST;  // (cublasLtPointerMode_t)4
+    pointer_mode = (cublasLtPointerMode_t)4; //CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST, 11.4.2 header needed
   } else {
     alpha_value = const_scale_A_ * const_scale_B_ / const_scale_Y_;
   }
@@ -161,6 +171,14 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
                                       bias, &beta, C, gsl::narrow<int32_t>(batchC),
                                       tensor_Y->MutableData<int8_t>(), (cublasLtOrder_t)order_B_,
                                       pointer_mode));
+
+
+#else
+
+  ORT_UNUSED_PARAMETER(context);
+  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+
+#endif
 
   return Status::OK();
 }

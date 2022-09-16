@@ -38,12 +38,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 1),  // scale_A
     DequantizeWithOrder);
 
-QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
-  order_input_ = GetCublasLtOrderAttr(info, "order_input");
-  order_output_ = GetCublasLtOrderAttr(info, "order_output");
-  ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_ROW,
-              "Only CUBLASLT_ORDER_ROW is supported for order_input");
-}
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
 void UpdateTileRequire(cublasLtOrder_t order, int64_t& row_tile, int64_t& col_tile) {
   switch (order) {
@@ -64,20 +59,6 @@ void UpdateTileRequire(cublasLtOrder_t order, int64_t& row_tile, int64_t& col_ti
   }
 }
 
-DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
-  int64_t to_type = 0;
-  Status status = info.GetAttr("to", &to_type);
-  ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
-  ORT_ENFORCE(to_type == onnx::TensorProto_DataType_FLOAT16 || to_type == onnx::TensorProto_DataType_FLOAT,
-              "Attribute to only support float(", onnx::TensorProto_DataType_FLOAT, ") or float16(", onnx::TensorProto_DataType_FLOAT16, ").");
-  order_input_ = GetCublasLtOrderAttr(info, "order_input");
-  order_output_ = GetCublasLtOrderAttr(info, "order_output");
-  ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_ROW,
-              "Only CUBLASLT_ORDER_ROW are supported for order_output");
-  ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32 || order_input_ == CUBLASLT_ORDER_ROW,
-              "Only CUBLASLT_ORDER_COL32 or CUBLASLT_ORDER_ROW is supported for order_input");
-}
-
 Status CheckTensorOrder(const Tensor& input_tensor, cublasLtOrder_t input_order, cublasLtOrder_t output_order,
                         int64_t& rows, int64_t& cols, int64_t& batchCount, int64_t& elementCount) {
   const auto dims = input_tensor.Shape().GetDims();
@@ -94,7 +75,67 @@ Status CheckTensorOrder(const Tensor& input_tensor, cublasLtOrder_t input_order,
   return Status::OK();
 }
 
+cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order_attr) {
+  int64_t order_value;
+  Status status = info.GetAttr(order_attr, &order_value);
+  ORT_ENFORCE(status.IsOK(), "Attribute ", order_attr, " is not set.");
+  return gsl::narrow<cublasLtOrder_t>(order_value);
+}
+
+cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order_attr,
+                                     int num_allowed_orders, const cublasLtOrder_t* orders_allowed, const char* error_msg) {
+  cublasLtOrder_t order = GetCublasLtOrderAttr(info, order_attr);
+  ORT_ENFORCE(std::any_of(orders_allowed, orders_allowed + num_allowed_orders,
+                          [order](cublasLtOrder_t allowed_order) { return allowed_order == order; }),
+              error_msg);
+  return order;
+}
+
+#endif
+
+QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
+  order_input_ = GetCublasLtOrderAttr(info, "order_input");
+  order_output_ = GetCublasLtOrderAttr(info, "order_output");
+  ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_ROW,
+              "Only CUBLASLT_ORDER_ROW is supported for order_input");
+
+#else
+
+  ORT_UNUSED_PARAMETER(info);
+  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+  
+#endif
+}
+
+DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
+  int64_t to_type = 0;
+  Status status = info.GetAttr("to", &to_type);
+  ORT_ENFORCE(status.IsOK(), "Attribute to is not set.");
+  ORT_ENFORCE(to_type == onnx::TensorProto_DataType_FLOAT16 || to_type == onnx::TensorProto_DataType_FLOAT,
+              "Attribute to only support float(", onnx::TensorProto_DataType_FLOAT, ") or float16(", onnx::TensorProto_DataType_FLOAT16, ").");
+  order_input_ = GetCublasLtOrderAttr(info, "order_input");
+  order_output_ = GetCublasLtOrderAttr(info, "order_output");
+  ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_ROW,
+              "Only CUBLASLT_ORDER_ROW are supported for order_output");
+  ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32 || order_input_ == CUBLASLT_ORDER_ROW,
+              "Only CUBLASLT_ORDER_COL32 or CUBLASLT_ORDER_ROW is supported for order_input");
+#else
+
+  ORT_UNUSED_PARAMETER(info);
+  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+
+#endif
+
+}
+
 Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
   int64_t rows = 0, cols = 0, batch = 0, n = 0;
   const Tensor& input_tensor = *context->Input<Tensor>(0);
   ORT_RETURN_IF_ERROR(CheckTensorOrder(
@@ -133,9 +174,18 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   }
 
   return Status::OK();
+
+#else
+
+  ORT_UNUSED_PARAMETER(info);
+  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+
+#endif
 }
 
 Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
   int64_t rows = 0, cols = 0, batch = 0, n = 0;
 
   const Tensor& input_tensor = *context->Input<Tensor>(0);
@@ -169,22 +219,13 @@ Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   }
 
   return Status::OK();
-}
 
-cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order_attr) {
-  int64_t order_value;
-  Status status = info.GetAttr(order_attr, &order_value);
-  ORT_ENFORCE(status.IsOK(), "Attribute ", order_attr, " is not set.");
-  return gsl::narrow<cublasLtOrder_t>(order_value);
-}
+#else
 
-cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order_attr,
-                                     int num_allowed_orders, const cublasLtOrder_t* orders_allowed, const char* error_msg) {
-  cublasLtOrder_t order = GetCublasLtOrderAttr(info, order_attr);
-  ORT_ENFORCE(std::any_of(orders_allowed, orders_allowed + num_allowed_orders,
-                          [order](cublasLtOrder_t allowed_order) { return allowed_order == order; }),
-              error_msg);
-  return order;
+  ORT_UNUSED_PARAMETER(info);
+  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+
+#endif
 }
 
 }  // namespace cuda

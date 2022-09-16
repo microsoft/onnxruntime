@@ -6,9 +6,9 @@
 namespace onnxruntime {
 namespace test {
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
-void run_qordered_longformer_attention_op_test(
+static void run_qordered_longformer_attention_op_test(
     const std::vector<int8_t>& gold_result,
     const std::vector<int8_t>& inputq,
     const std::vector<int8_t>& weightq,
