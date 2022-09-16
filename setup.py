@@ -518,7 +518,7 @@ if enable_training:
         # To support the package consisting of both openvino and training modules part of it
         package_name = "onnxruntime-training"
 
-    disable_local_version = environ.get("DISABLE_LOCAL_VERSION", "0")
+    disable_local_version = environ.get("ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION", "0")
     disable_local_version = (
         disable_local_version == "1"
         or disable_local_version.lower() == "true"
