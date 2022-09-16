@@ -31,7 +31,7 @@ struct DMLProviderFactory : IExecutionProviderFactory {
                                                       cmd_queue_(cmd_queue) {}
   ~DMLProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override;
   void SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode);
 
   void SetMetacommandsEnabled(bool metacommands_enabled);
@@ -43,7 +43,7 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   bool metacommands_enabled_ = true;
 };
 
-std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
+std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider(const SessionOptions*) {
   auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_);
   Dml::SetDefaultRoundingMode(provider.get(), rounding_mode_);
   return provider;
@@ -100,7 +100,7 @@ bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
     auto isBasicRenderDriverVendorId = desc.VendorId == 0x1414;
     auto isBasicRenderDriverDeviceId = desc.DeviceId == 0x8c;
     auto isSoftwareAdapter = desc.Flags == DXGI_ADAPTER_FLAG_SOFTWARE;
-    
+
     return isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
 }
 

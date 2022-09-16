@@ -483,7 +483,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   } else if (provider_name == onnxruntime::kXnnpackExecutionProvider) {
 #ifdef USE_XNNPACK
     session_options.AppendExecutionProvider(
-        "XNNPACK", {{"thread_num", std::to_string(performance_test_config.run_config.intra_op_num_threads)}});
+        "XNNPACK", {{"intra_op_num_threads", std::to_string(performance_test_config.run_config.intra_op_num_threads)}});
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
 #endif

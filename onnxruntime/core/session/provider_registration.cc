@@ -75,15 +75,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
   } else if (strcmp(provider_name, "XNNPACK") == 0) {
 #if defined(USE_XNNPACK)
-    // If Xnnpack is enabled and user don't give a specific value, we need to set it same as cpu threadpool size
-    if (provider_options.find("thread_num") == provider_options.end()) {
-      provider_options["thread_num"] = std::to_string(options->value.intra_op_param.thread_pool_size);
-    }
     options->provider_factories.push_back(XnnpackProviderFactoryCreator::Create(provider_options));
-    // XNNPACK owns its own threadpool, so we have to disable ort-threadpool's spinning feature
-    // otherwise it will cause contention.
-    status = onnxruntime::ToOrtStatus(options->value.config_options.AddConfigEntry(
-        kOrtSessionOptionsConfigAllowIntraOpSpinning, "0"));
 #else
     status = create_not_supported_status();
 #endif

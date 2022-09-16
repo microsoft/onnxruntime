@@ -16,13 +16,13 @@ struct DnnlProviderFactory : IExecutionProviderFactory {
   DnnlProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~DnnlProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override;
 
  private:
   bool create_arena_;
 };
 
-std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider() {
+std::unique_ptr<IExecutionProvider> DnnlProviderFactory::CreateProvider(const SessionOptions*) {
   DNNLExecutionProviderInfo info;
   info.create_arena = create_arena_;
   return std::make_unique<DNNLExecutionProvider>(info);
