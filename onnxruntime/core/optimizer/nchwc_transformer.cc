@@ -1226,7 +1226,7 @@ Status NchwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level
     auto& node = *graph.GetNode(index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
     if (node.GetExecutionProviderType() == kCpuExecutionProvider) {
-        impl.Transform(node);
+      impl.Transform(node);
     }
   }
   impl.Finalize(modified);
