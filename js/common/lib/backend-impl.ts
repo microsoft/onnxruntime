@@ -33,7 +33,7 @@ export const registerBackend = (name: string, backend: Backend, priority: number
     } else if (currentBackend.priority > priority) {
       // same name is already registered with a higher priority. skip registeration.
       return;
-    } else if (currentBackend.priority === priority ) {
+    } else if (currentBackend.priority === priority) {
       if (currentBackend.backend !== backend) {
         throw new Error(`cannot register backend "${name}" using priority ${priority}`);
       }
