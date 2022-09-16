@@ -1399,12 +1399,8 @@ common::Status InferenceSession::Initialize() {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       // nodes are already partitioned, but a custom EP may compile some at runtime.
       // run the partitioning to allow that to happen.
-      //
-      // We always have the CPU EP, so only need to run this if some other EP is enabled
-      if (execution_providers_.NumProviders() > 1) {
-        ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
-                                                    *session_state_));
-      }
+      ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
+                                                  *session_state_));
 
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
       ORT_RETURN_IF_ERROR_SESSIONID_(
