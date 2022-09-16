@@ -162,7 +162,7 @@ class ThreadPool {
 
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
-  ~ThreadPool();
+  virtual ~ThreadPool();
 
   // Start and end a multi-loop parallel section.  Parallel loops can
   // be executed directly (without using this API), but entering a
@@ -372,7 +372,7 @@ class ThreadPool {
 
   // Returns the number of threads created in the pool.  This may be different from the
   // value returned by DegreeOfParallelism to code using the pool.
-  int NumThreads() const;
+  virtual int NumThreads() const;
 
   // Returns current thread id between 0 and NumThreads() - 1, if called from a
   // thread in the pool. Returns -1 otherwise.
@@ -402,19 +402,19 @@ class ThreadPool {
 
   // Internal (non-static) parallel loop methods.  Unlike the public static methods,
   // these will not handle the cases of OpenMP builds. or builds without a threadpool.
-  void ParallelFor(std::ptrdiff_t total, double cost_per_unit,
-                   const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn);
+  virtual void ParallelFor(std::ptrdiff_t total, double cost_per_unit,
+                           const std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>& fn);
 
-  void ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
-                   const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn);
+  virtual void ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost_per_unit,
+                           const std::function<void(std::ptrdiff_t first, std::ptrdiff_t)>& fn);
 
-  void SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn);
+  virtual void SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn);
 
-  void Schedule(std::function<void()> fn);
+  virtual void Schedule(std::function<void()> fn);
 
-  void StartProfiling();
+  virtual void StartProfiling();
 
-  std::string StopProfiling();
+  virtual std::string StopProfiling();
 
   ThreadOptions thread_options_;
 

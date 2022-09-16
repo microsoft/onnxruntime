@@ -47,6 +47,9 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#ifdef USE_XNNPACK
+#include "core/providers/xnnpack/xnnpack_threadpool.h"
+#endif
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
@@ -298,8 +301,12 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         if (to.custom_create_thread_fn) {
           ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
         }
+#ifdef USE_XNNPACK
+        thread_pool_ = std::make_unique<concurrency::XnnpackThreadPool>(to.thread_pool_size);
+#else
         thread_pool_ =
             concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+#endif
       }
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {

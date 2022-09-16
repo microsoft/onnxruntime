@@ -221,7 +221,9 @@ Status AveragePool::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  pthreadpool_t t_pool = GetThreadPool();
+  // pthreadpool_t t_pool = GetThreadPool();
+  pthreadpool_t t_pool = static_cast<concurrency::XnnpackThreadPool*>(context->GetOperatorThreadPool())->Get();
+
   xnn_status status = xnn_status_invalid_state;
   if (avgpool_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_average_pooling2d_nhwc_f32(op0_.get(), N, H, W,
