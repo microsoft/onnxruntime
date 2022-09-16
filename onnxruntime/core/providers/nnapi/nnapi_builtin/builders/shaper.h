@@ -7,13 +7,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <iostream>
-
-#include "gsl/gsl"
 
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
-#include "core/common/safeint.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 
 namespace onnxruntime {

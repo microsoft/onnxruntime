@@ -4,6 +4,7 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 
 #include <algorithm>
+#include <functional>
 
 #include "gsl/gsl"
 
@@ -27,17 +28,15 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
   auto& shaper(model_builder.GetShaper());
 
   // Calculate transpose output shape
-  {
-    const Shape input_dimen = shaper[data_input];
-    ORT_RETURN_IF_NOT(perm.size() == input_dimen.size(), "Invalid perm is given!");
-    size_t size = input_dimen.size();
-    Shape output_dimen(size);
-    for (size_t i = 0; i < size; i++)
-      output_dimen[i] = input_dimen[perm[i]];
 
-    shaper.AddShape(output, output_dimen);
-  }
-  const auto output_shape = shaper[output];
+  const Shape input_dimen = shaper[data_input];
+  ORT_RETURN_IF_NOT(perm.size() == input_dimen.size(), "Invalid perm is given!");
+  size_t size = input_dimen.size();
+  Shape output_dimen(size);
+  for (size_t i = 0; i < size; i++)
+    output_dimen[i] = input_dimen[perm[i]];
+
+  shaper.AddShape(output, output_dimen);
 
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -52,7 +51,7 @@ Status AddNnapiTranspose(ModelBuilder& model_builder,
   input_indices.push_back(perm_idx);  // permutation
 
   OperandType output_operand_type = operand_types.at(data_input);
-  output_operand_type.SetDimensions(output_shape);
+  output_operand_type.SetDimensions(output_dimen);
   return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
                                     {output_operand_type});
 }
@@ -63,40 +62,38 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
                        const std::string& output) {
   auto& shaper = model_builder.GetShaper();
   // Calculate reshape output shape
-  {
-    const Shape input_dimen = shaper[data_input];
-    uint32_t input_size = accumulate(input_dimen.cbegin(), input_dimen.cend(),
-                                     static_cast<uint32_t>(1), std::multiplies<uint32_t>());
-    Shape output_dimen(shape_value.size());
 
-    int64_t capacity = 1;
-    int unk_dim_idx = -1;
-    for (size_t i = 0; i < shape_value.size(); i++) {
-      int32_t dim_i = shape_value[i];
-      ORT_RETURN_IF_NOT(dim_i != 0, "NNAPI does not support 0 reshape dimension");
-      if (dim_i == -1) {
-        ORT_RETURN_IF_NOT(unk_dim_idx == -1, "Only one input dimension of Attr(shape) can be unknown!");
-        unk_dim_idx = static_cast<int>(i);
-      } else {
-        capacity *= dim_i;
-        output_dimen[i] = static_cast<uint32_t>(dim_i);
-      }
+  const Shape input_dimen = shaper[data_input];
+  uint32_t input_size = accumulate(input_dimen.cbegin(), input_dimen.cend(),
+                                   static_cast<uint32_t>(1), std::multiplies<uint32_t>());
+  Shape output_dimen(shape_value.size());
+
+  int64_t capacity = 1;
+  int unk_dim_idx = -1;
+  for (size_t i = 0; i < shape_value.size(); i++) {
+    int32_t dim_i = shape_value[i];
+    ORT_RETURN_IF_NOT(dim_i != 0, "NNAPI does not support 0 reshape dimension");
+    if (dim_i == -1) {
+      ORT_RETURN_IF_NOT(unk_dim_idx == -1, "Only one input dimension of Attr(shape) can be unknown!");
+      unk_dim_idx = static_cast<int>(i);
+    } else {
+      capacity *= dim_i;
+      output_dimen[i] = static_cast<uint32_t>(dim_i);
     }
-
-    if (unk_dim_idx != -1) {
-      if (input_size == 0)
-        output_dimen[unk_dim_idx] = 0;
-      else
-        output_dimen[unk_dim_idx] = static_cast<uint32_t>(input_size / capacity);
-
-      capacity *= output_dimen[unk_dim_idx];
-    }
-
-    ORT_RETURN_IF_NOT(capacity == input_size, "Invalid shape is given!");
-
-    shaper.AddShape(output, output_dimen);
   }
-  const auto output_shape = shaper[output];
+
+  if (unk_dim_idx != -1) {
+    if (input_size == 0)
+      output_dimen[unk_dim_idx] = 0;
+    else
+      output_dimen[unk_dim_idx] = static_cast<uint32_t>(input_size / capacity);
+
+    capacity *= output_dimen[unk_dim_idx];
+  }
+
+  ORT_RETURN_IF_NOT(capacity == input_size, "Invalid shape is given!");
+
+  shaper.AddShape(output, output_dimen);
 
   const auto& operand_indices = model_builder.GetOperandIndices();
   const auto& operand_types = model_builder.GetOperandTypes();
@@ -114,7 +111,7 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
 
   // For reshape, the output type should be the same as the input type except the shape is different
   OperandType output_operand_type{operand_types.at(data_input)};
-  output_operand_type.SetDimensions(output_shape);
+  output_operand_type.SetDimensions(output_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RESHAPE,
                                                  input_indices, {output}, {output_operand_type}));
 

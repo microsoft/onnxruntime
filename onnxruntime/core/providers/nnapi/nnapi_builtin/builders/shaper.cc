@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "shaper.h"
+
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
-
-#include "shaper.h"
 
 namespace onnxruntime {
 namespace nnapi {

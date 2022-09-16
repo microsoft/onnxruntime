@@ -20,8 +20,9 @@
 #include <optional>
 #include <vector>
 
-#include "core/providers/nnapi/nnapi_builtin/builders/shaper.h"
 #include "NeuralNetworksTypes.h"
+
+#include "core/providers/nnapi/nnapi_builtin/builders/shaper.h"
 
 using Shape = onnxruntime::nnapi::Shaper::Shape;
 
