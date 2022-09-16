@@ -2695,9 +2695,6 @@ def main():
             source_onnx_model_dir = "C:\\local\\models" if is_windows() else "/data/models"
             setup_test_data(source_onnx_model_dir, "models", build_dir, configs)
 
-            nodejs_test_data_dir = "C:\\local\\nodedata" if is_windows() else "/data/nodedata"
-            setup_test_data(nodejs_test_data_dir, "nodedata", build_dir, configs)
-
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
 
         # TODO(agladyshev):

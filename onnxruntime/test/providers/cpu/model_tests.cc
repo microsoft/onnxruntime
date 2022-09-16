@@ -1064,17 +1064,20 @@ TEST_P(ModelTest, Run) {
 #if defined(NDEBUG) || defined(RUN_MODELTEST_IN_DEBUG_MODE)
 #ifdef _WIN32
     paths.push_back(ORT_TSTR("..\\models"));
-    paths.push_back(ORT_TSTR("..\\nodedata"));
 #else
     paths.push_back(ORT_TSTR("../models"));
-    paths.push_back(ORT_TSTR("../nodedata"));
 #endif
 #endif
 
 // TENSORRT/OpenVino has too many test failures in the single node tests
-#if !defined(_WIN32) && !defined(USE_OPENVINO)
-    paths.push_back("/data/onnx");
+#if !defined(USE_OPENVINO)
+#if !defined(_WIN32)
+    paths.push_back(ORT_TSTR("/data/onnx"));
+#else
+    paths.push_back(ORT_TSTR("c:\\local\\data\\onnx"));
 #endif
+#endif
+
     while (!paths.empty()) {
       std::basic_string<ORTCHAR_T> node_data_root_path = paths.back();
       paths.pop_back();

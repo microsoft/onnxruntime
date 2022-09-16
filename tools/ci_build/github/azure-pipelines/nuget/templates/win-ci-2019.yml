@@ -157,7 +157,6 @@ jobs:
 
       - script: |
          mklink /D /J models C:\local\models
-         mklink /D /J nodedata C:\local\nodedata
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Create models link'
 
