@@ -185,18 +185,16 @@ Softmax::Softmax(const OpKernelInfo& info) : XnnpackKernel{info} {
 }
 
 // compute method of Softmax
-Status Softmax::Compute(OpKernelContext* context) const {
-  const auto* X = context->Input<Tensor>(0);
+Status Softmax::Compute(OpKernelContext* ctx) const {
+  const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
-  auto* Y = context->Output(0, X_shape);
+  auto* Y = ctx->Output(0, X_shape);
 
   // edge case. one or more dims with value of 0. nothing to do
   if (X_shape.Size() == 0) {
     return Status::OK();
   }
-  // pthreadpool_t t_pool = GetThreadPool();
-  pthreadpool_t t_pool = static_cast<concurrency::XnnpackThreadPool*>(context->GetOperatorThreadPool())->Get();
-
+  pthreadpool_t t_pool = GetThreadPool();
   const size_t N = X_shape.SizeToDimension(axis_);
   // const size_t D = X_shape.SizeFromDimension(axis_); // the step D is 1
   xnn_status status = xnn_status_invalid_state;

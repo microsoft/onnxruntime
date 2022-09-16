@@ -9,7 +9,6 @@
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
 #include "xnnpack.h"
-#include "core/providers/xnnpack/xnnpack_threadpool.h"
 
 namespace onnxruntime {
 // placeholder for future use. no options currently
@@ -19,7 +18,7 @@ struct XnnpackExecutionProviderInfo {
 
   XnnpackExecutionProviderInfo(const ProviderOptions& po) {
     if (po.count("thread_num")) {
-      // xnn_thread_pool_size = std::stoi(po.at("thread_num"));
+      xnn_thread_pool_size = std::stoi(po.at("thread_num"));
     }
     // future: parse ProviderOptions
   }
