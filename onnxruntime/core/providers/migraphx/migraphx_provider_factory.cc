@@ -23,13 +23,13 @@ struct MIGraphXProviderFactory : IExecutionProviderFactory {
   MIGraphXProviderFactory(const MIGraphXExecutionProviderInfo& info) : info_{info} {}
   ~MIGraphXProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override;
 
  private:
   MIGraphXExecutionProviderInfo info_;
 };
 
-std::unique_ptr<IExecutionProvider> MIGraphXProviderFactory::CreateProvider() {
+std::unique_ptr<IExecutionProvider> MIGraphXProviderFactory::CreateProvider(const SessionOptions*) {
   return std::make_unique<MIGraphXExecutionProvider>(info_);
 }
 

@@ -15,7 +15,7 @@ struct SNPEProviderFactory : IExecutionProviderFactory {
   }
   ~SNPEProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider() override {
+  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override {
     return std::make_unique<SNPEExecutionProvider>(provider_options_map_);
   }
 

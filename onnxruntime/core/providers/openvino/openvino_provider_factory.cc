@@ -22,7 +22,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   ~OpenVINOProviderFactory() override {
   }
 
-  std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override;
 
  private:
   std::string device_type_;
@@ -36,7 +36,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   bool enable_dynamic_shapes_;
 };
 
-std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
+std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider(const SessionOptions*) {
   OpenVINOExecutionProviderInfo info(device_type_, enable_vpu_fast_compile_, device_id_, num_of_threads_,
                                      use_compiled_network_, blob_dump_path_, context_, enable_opencl_throttling_,
                                      enable_dynamic_shapes_);
