@@ -68,7 +68,7 @@ __device__ inline __half2 hmul2bk(const __half2 a, const __half2 b) {
   #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
     return __hmul2(a, b);
   #else
-    return __half2{a.x * b.x, a.y * b.y};
+    return __half2{(half)((float)a.x * (float)b.x), (half)((float)a.y * (float)b.y)};
   #endif
 }
 

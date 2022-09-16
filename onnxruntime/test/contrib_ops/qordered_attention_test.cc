@@ -238,6 +238,11 @@ std::vector<float> scale_bias(const std::vector<float>& src, float scale) {
 }
 
 TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
+  // Needs Turing or higher architecture
+  if (NeedSkipIfCudaArchLowerThan(750)) {
+    return;
+  }
+
   OpTester test_qorder("QOrderedAttention", 1, onnxruntime::kMSDomain);
   test_qorder.AddAttribute("order_input", (int64_t)ORDER_ROW);
   test_qorder.AddAttribute("order_output", (int64_t)ORDER_ROW);
