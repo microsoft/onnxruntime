@@ -85,7 +85,7 @@ Status CheckInputs(const TensorShape& query_shape,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "q_weights shall have shape (hidden size, hidden size)");
   }
 
-  if (kv_weights_dims[0] != hidden_size || kv_weights_dims[1] != 2 * hidden_size) {
+  if (kv_weights_dims[0] != hidden_size || kv_weights_dims[1] != static_cast<int64_t>(2 * hidden_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_weights shall have shape (hidden size, 2 * hidden size)");
   }
 
@@ -259,11 +259,13 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
                 has_key_padding_mask_)
   );
 
-  // calcualte q
+  // calculate q
   gemm_query_buffer_p = GetScratchBuffer<T>(batch_size * sequence_length * hidden_size * element_size);
   m = sequence_length * batch_size;
   n = hidden_size;
   k = hidden_size;
+
+  // TODO(tianleiwu): fuse bias and transpose
   // broadcast bias for query: (h2, S*B)
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
@@ -359,7 +361,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* new_key_cache(context->Output(1, new_cache_shape));
   Tensor* new_value_cache(context->Output(2, new_cache_shape));
 
-  if (!LaunchDecoderAttentionKernel(
+  return LaunchDecoderAttentionKernel(
           device_prop,
           stream,
           cublas,
@@ -382,13 +384,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
           workspace_p.get(),
           output->MutableData<T>(),
           nullptr == new_key_cache ? nullptr : new_key_cache->MutableData<T>(),
-          nullptr == new_value_cache ? nullptr : new_value_cache->MutableData<T>())) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+          nullptr == new_value_cache ? nullptr : new_value_cache->MutableData<T>());
 }
 
 }  // namespace cuda

@@ -32,10 +32,7 @@
 #define LIBFUNC(lib, fn) dlsym((lib), (fn))
 #endif
 
-#define CUDA_RETURN_IF_ERROR(expr)               \
-  ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error executing ", #expr))
+#define CUDA_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDA_CALL(expr))
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
@@ -168,12 +165,12 @@ void Impl_Cast(
 }  // namespace cuda
 
 template <>
-bool CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
+Status CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
   return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
 }
 
 template <>
-bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
+void CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
 
@@ -451,7 +448,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   if (!external_stream_ && stream_) {
-    CUDA_CALL(cudaStreamDestroy(stream_));
+    ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
 }
 
@@ -553,6 +550,46 @@ Status TensorrtExecutionProvider::SetComputeStream(void* stream) {
     stream_ = static_cast<cudaStream_t>(stream);
   }
   return Status::OK();
+}
+
+// Check the graph is the subgraph of control flow op
+bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const GraphViewer& graph) const {
+  if (graph.IsSubgraph()) {
+    const auto& node = graph.ParentNode();
+    if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+
+// Check whether all the nodes of the graph are assigned to specific ep 
+bool TensorrtExecutionProvider::AllNodesAssignedToSpecificEP(const GraphViewer& graph, const std::string& provider_type) const {
+  const int number_of_ort_nodes = graph.NumberOfNodes();
+  std::vector<size_t> nodes_vector(number_of_ort_nodes);
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  for (const auto& index : nodes_vector) {
+    const auto& node = graph.GetNode(node_index[index]);
+    if (node->GetExecutionProviderType() != provider_type) {
+      return false;
+    }
+  }
+
+  return number_of_ort_nodes != 0;
+}
+
+// Check whether all the nodes of subgraph are supported
+bool TensorrtExecutionProvider::IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const {
+  int number_of_trt_nodes = 0;
+    for (const auto& group : supported_nodes_vector) {
+    if (!group.first.empty()) {
+      number_of_trt_nodes += static_cast<int>(group.first.size());
+      }
+    }
+
+  return number_of_trt_nodes == number_of_ort_nodes;
 }
 
 std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, const GraphViewer& graph) const {
@@ -767,7 +804,29 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
               subgraph_output_names.push_back(name);
             }
           }
-          graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
+
+          // If the node has subgraph, it's possible that the ORT graph of that subgraph and the GraphProto in the node attributes are not in sync because of graph optimization.
+          // Therefore, we need to force GraphProto attributes to be updated in order to get the valid GraphProto.
+          if (node->GetAttributes().size() > 0) {
+            auto node_proto = ONNX_NAMESPACE::NodeProto::Create();
+            // we need to update any GraphProto attributes for subgraphs so that any changes made by things
+            // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
+            node->ToProto(*node_proto, /* update_subgraphs */ true);
+            const int num_attributes = node_proto->attribute_size();
+            auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
+            node_attributes->reserve(num_attributes);
+
+            for (int i = 0; i < num_attributes; ++i) {
+              auto& attr = node_proto->attribute(i);
+              node_attributes->emplace(attr.name(), attr);
+            }
+
+            // The GraphProto attributes are the updated ones.
+            graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, node_attributes.get(), node->Domain());
+          } else {
+            // The GraphProto attributes are the original ones.
+            graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
+          }
         }
 
         ORT_ENFORCE(graph_build.Resolve().IsOK());
@@ -984,16 +1043,36 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+
   std::vector<size_t> filtered_nodes_vector;
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-
-  // We currently exclude "If" and "Loop" control flow ops from original node vector before calling TensorRT parser.
-  // The reason is, these control flow ops have subgraph which might contain TRT fused node after ORT partition.
-  // If this is the case, TensorRT parser will complain the non-recognized TRT fused node and fail.
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
-    if (node->OpType() == "If" || node->OpType() == "Loop" || node->OpType() == "Scan") {
-            continue;
+
+    /* If current node is control flow op, we take different approach based on following four cases:
+     * 
+     * (1) control flow op is supported by TRT, and its subgraphs are all supported by TRT. Assign this node to TRT.
+     * (2) control flow op is supported by TRT, but not all its subgraphs supported by TRT. Don't assign this node to TRT.
+     * (3) control flow op is not supported by TRT, but its subgraphs all supported by TRT. Don't assign this node to TRT.
+     * (4) control flow op is not supported by TRT, and not all its subgraphs supported by TRT. Don't assign this node to TRT.
+     *
+     * For cases 2, 3, 4, even though the control flow op is not assigned to TRT, any portion of its subgraphs that can run in TRT will be still fused and assigned to TRT EP.
+     */
+    if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
+      auto sub_graphs = node->GetSubgraphs();
+      if (sub_graphs.size() != 0) {
+        bool all_subgraphs_are_supported = true;
+        for (auto sub_graph : sub_graphs) {
+          if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kTensorrtExecutionProvider)) {
+            all_subgraphs_are_supported = false;
+            break;
+          }
+        }
+        if (!all_subgraphs_are_supported) {
+        // if not all its subgraphs are supported, we need to exclude this control flow op
+          continue;
+        }
+      }
     }
     filtered_nodes_vector.push_back(index);
   }
@@ -1035,6 +1114,52 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
+
+  // Handle the case where the graph is subgraph of control flow op.
+  // The purpose is to make control flow op as well as its subgraphs run on TRT.
+  // Here we need to check whether subgraph is fully supported by TRT and don't fuse the nodes of the subgraph until control flow op level.
+  if (IsSubGraphOfControlFlowOp(graph) && IsSubGraphFullySupported(supported_nodes_vector, number_of_ort_nodes)) {
+    const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+    bool all_subgraphs_are_supported = true;
+
+    // "If" control flow op has two subgraph bodies, "then" body and "else" body respectively.
+    // Check its parent node's another subgraph to see whether that subgraph is also fully supported by TRT.
+    if (graph.ParentNode()->OpType() == "If") {
+      all_subgraphs_are_supported = false;
+      SubGraphCollection_t subgraph_supported_nodes_vector;
+      auto sub_graphs = graph.ParentNode()->GetSubgraphs();
+      for (auto sub_graph : sub_graphs) {
+        if (sub_graph.get() != &graph.GetGraph()) {
+          auto sub_graph_veiwer = sub_graph->CreateGraphViewer();
+          const int number_of_ort_subgraph_nodes = sub_graph_veiwer->NumberOfNodes();
+          std::vector<size_t> subgraph_nodes_vector(number_of_ort_subgraph_nodes);
+          std::iota(std::begin(subgraph_nodes_vector), std::end(subgraph_nodes_vector), 0);
+          SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
+          bool subgraph_early_termination = false;
+          subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination);
+          all_subgraphs_are_supported = IsSubGraphFullySupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
+          break;
+        }
+      }
+    }
+
+    if (all_subgraphs_are_supported) {
+      // We want the subgraph nodes to be assigned to TRT EP but don't want them to be fused until later at the control flow op level.
+      // Simply request the subgraph nodes with a single ComputeCapability for each with no MetaDef (i.e. what the default implementation for IExecutionProvider::GetCapability does). 
+      for (const auto& group : supported_nodes_vector) {
+        if (!group.first.empty()) {
+          for (const auto& index : group.first) {
+            std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
+            sub_graph->Nodes().push_back(node_index[index]);
+            result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+          }
+        }
+      }
+      LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
+      return result;
+    }    
+  } 
+
   int number_of_trt_nodes = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {

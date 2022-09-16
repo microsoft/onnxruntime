@@ -8,6 +8,7 @@
 #include "core/providers/rocm/rocm_fence.h"
 #include "core/providers/rocm/rocm_fwd.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
+#include "core/providers/rocm/rocm_profiler.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/rocm/rocm_contrib_kernels.h"
@@ -141,13 +142,13 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   // here may be bad, and the destroy calls can throw.
   // https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rc-dtor-noexcept
   try {
-    ROCBLAS_CALL(rocblas_destroy_handle(rocblas_handle_));
+    ROCBLAS_CALL_THROW(rocblas_destroy_handle(rocblas_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "rocblas_destroy_handle threw:" << ex.what();
   }
 
   try {
-    MIOPEN_CALL(miopenDestroy(miopen_handle_));
+    MIOPEN_CALL_THROW(miopenDestroy(miopen_handle_));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "miopenDestroy threw:" << ex.what();
   }
@@ -182,22 +183,9 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
-  auto cpu_alloc = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  {
-    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-    auto it = deferred_release_cpu_ptr_.begin();
-    while (it != deferred_release_cpu_ptr_.end()) {
-      auto& e = it->first;
-      auto& v = it->second;
-      if (v.recorded)
-        HIP_CALL_THROW(hipEventSynchronize(e));
-      for (auto p : v.cpu_ptrs) {
-        cpu_alloc->Free(p);
-      }
-      HIP_CALL_THROW(hipEventDestroy(e));
-      it = deferred_release_cpu_ptr_.erase(it);
-    }
-  }
+  // Prevent memory leak when people don't call
+  // OnRunStart and OnRunEnd when calling CudaKernel's.
+  ORT_IGNORE_RETURN_VALUE(EnqueueDeferredRelease());
 
   // clean up thread local context caches
   {
@@ -210,8 +198,12 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   }
 
   if (!external_stream_ && stream_) {
-    HIP_CALL(hipStreamDestroy(stream_));
+    HIP_CALL_THROW(hipStreamDestroy(stream_));
   }
+}
+
+std::unique_ptr<profiling::EpProfiler> ROCMExecutionProvider::GetProfiler() {
+  return std::make_unique<profiling::RocmProfiler>();
 }
 
 ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadContext() const {
@@ -289,63 +281,114 @@ void ROCMExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
   // when not running in InferenceSession (e.g. Test)
   // it's OK to not remember the deferred release ptr
   // as the actual memory will be cleaned in arena allocator dtor
-  auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
-  if (current_deferred_release_event) {
-    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-    auto iter = deferred_release_cpu_ptr_.find(current_deferred_release_event);
-    ORT_ENFORCE(iter != deferred_release_cpu_ptr_.end());
-    iter->second.cpu_ptrs.push_back(p);
+
+  // This function should only record pointers returned by
+  // AllocateBufferOnCPUPinned.
+
+  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
+  void* stream = GetComputeStream();
+  auto it = deferred_release_buffer_pool_.find(stream);
+  if (it != deferred_release_buffer_pool_.end()) {
+    it->second.push_back(p);
+  } else {
+    deferred_release_buffer_pool_[stream] = {p};
   }
+}
+
+struct CpuBuffersInfo {
+  // This struct stores the information needed
+  // to release CPU buffers allocated for GPU kernels.
+  // It's used to enqueue their release after
+  // associated GPU kernels in a GPU stream.
+
+  // This is a CPU allocator in GPU EP.
+  // It must be the one used to allocate the
+  // following pointers.
+  AllocatorPtr allocator;
+  // buffers[i] is the i-th pointer added by
+  // AddDeferredReleaseCPUPtr for a specific
+  // GPU stream. For example, this fields
+  // should contain all values in
+  // deferred_release_buffer_pool_[my_stream]
+  // when release my_stream's buffers.
+  void** buffers;
+  // CPU buffer buffers[i].
+  // Number of buffer points in "buffers".
+  size_t n_buffers;
+};
+
+void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, void* raw_info) {
+  auto info = reinterpret_cast<CpuBuffersInfo*>(raw_info);
+  for (size_t i = 0; i < info->n_buffers; ++i) {
+    info->allocator->Free(info->buffers[i]);
+  }
+  delete[] info->buffers;
+  delete info;
+}
+
+Status ROCMExecutionProvider::EnqueueDeferredRelease() {
+  // Release CPU buffers allocated for GPU kernels (type: RocmKernel).
+  // They have to be released outside GPU kernels because they must be alive
+  // during asynchronous GPU computation even after the CPU part (e.g,
+  // RocmKernel::ComputeInternal) already return.
+  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
+  for (auto it = deferred_release_buffer_pool_.begin(); it != deferred_release_buffer_pool_.end(); ++it) {
+    // it->first: a ROCM stream.
+    // it->second: CPU buffers associated with kernels running on it->first.
+    // This iteration enqueues a callback to release all buffers
+    // in it->second on it->first.
+
+    auto stream = static_cast<hipStream_t>(it->first);
+    auto& buffers = it->second;
+    // Allocate a heap object to extend the lifetime of allocator and buffer pointers
+    // until the end of callback (aka ReleaseCpuBufferCallback).
+    auto cpu_buffers_info = new CpuBuffersInfo;
+    // This allocator must be the same to the allocator
+    // used in AllocateBufferOnCPUPinned.
+    cpu_buffers_info->allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+    cpu_buffers_info->buffers = new void*[buffers.size()];
+    for (size_t i = 0; i < buffers.size(); ++i) {
+      cpu_buffers_info->buffers[i] = buffers.at(i);
+    }
+    cpu_buffers_info->n_buffers = buffers.size();
+    // TODO(wechi): CUDA deprecates cudaStreamAddCallback and
+    // uses another API, cudaLaunchHostFunc(which can be
+    // captured in CUDA graph). Once AMD adds similar feature,
+    // we should replace the following line with
+    //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
+    HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info, 0));
+  }
+  // All buffers are scheduled for release.
+  // Let's clear releated information so that
+  // those buffers won't be released twice in
+  // the next EnqueueDeferredRelease call.
+  deferred_release_buffer_pool_.clear();
+  return Status::OK();
 }
 
 Status ROCMExecutionProvider::OnRunStart() {
   // always set ROCM device when session::Run() in case it runs in a worker thread
   HIP_RETURN_IF_ERROR(hipSetDevice(GetDeviceId()));
-  auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
-  // check if hipEvents has passed for deferred release
-  // note that we need to take a mutex in case of multi-threaded Run()
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  auto it = deferred_release_cpu_ptr_.begin();
-  while (it != deferred_release_cpu_ptr_.end()) {
-    auto& e = it->first;
-    auto& v = it->second;
-    // note that hipEventQuery returns rocmSucess before first hipEventRecord
-    if (v.recorded) {
-      auto event_query_status = hipEventQuery(e);
-      if (event_query_status == hipSuccess) {
-        for (auto p : v.cpu_ptrs) {
-          cpu_alloc->Free(p);
-        }
-        HIP_RETURN_IF_ERROR(hipEventDestroy(e));
-        it = deferred_release_cpu_ptr_.erase(it);
-      } else if (event_query_status == hipErrorNotReady) {
-        // ignore and clear the error if not ready; void to silence nodiscard
-        (void)hipGetLastError();
-        it++;
-      } else {
-        HIP_RETURN_IF_ERROR(event_query_status);
-      }
-    } else {
-      ++it;
-    }
-  }
-
-  auto& current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
-  HIP_RETURN_IF_ERROR(hipEventCreateWithFlags(&current_deferred_release_event, hipEventDisableTiming));
-  deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
   return Status::OK();
 }
 
 Status ROCMExecutionProvider::OnRunEnd(bool sync_stream) {
-  // record deferred release event on default stream, and release per_thread_context
-  auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
-  HIP_RETURN_IF_ERROR(hipEventRecord(current_deferred_release_event, static_cast<hipStream_t>(GetComputeStream())));
+  // Enqueue deferred CPU memory release on related streams.
+  // This will release all deferred-release CPU buffers allocated
+  // before calling OnRunEnd.
+  ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
+
   if (sync_stream) {
     HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
   }
-  ReleasePerThreadContext();
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
+
+  // In extreme cases (e.g., 1-op graph and that op fallbacks to CPU),
+  // PerThreadContext won't be created and there is nothing to
+  // release. This didn't happen before because we always call
+  // GetPerThreadContext in OnRunStart.
+  if (PerThreadContextCache()->find(this) != PerThreadContextCache()->end()) {
+    ReleasePerThreadContext();
+  }
 
   return Status::OK();
 }

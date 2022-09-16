@@ -40,6 +40,46 @@ class GeluGrad(ONNXOp):
         self.domain = kMSDomain
 
 
+class SoftmaxGrad(ONNXOp):
+    """
+    The operator computes the grad of softmax values:
+    """
+
+    def __init__(self, dY, Y, axis=None):
+        super().__init__(
+            "SoftmaxGrad_13",
+            1,
+            [
+                {"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"},
+                {"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"},
+            ],
+            dY,
+            Y,
+            axis=ONNXAttr(axis, AttrType.INT),
+        )
+        self.domain = kMSDomain
+
+
+class LogSoftmaxGrad(ONNXOp):
+    """
+    The operator computes the grad of log of softmax values:
+    """
+
+    def __init__(self, dY, Y, axis=None):
+        super().__init__(
+            "LogSoftmaxGrad_13",
+            1,
+            [
+                {"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"},
+                {"at::kDouble", "at::kBFloat16", "at::kHalf", "at::kFloat"},
+            ],
+            dY,
+            Y,
+            axis=ONNXAttr(axis, AttrType.INT),
+        )
+        self.domain = kMSDomain
+
+
 ops = {}
 type_promotion_ops = []
 aten_output_type = {}
@@ -163,7 +203,8 @@ hand_implemented = {
     # Leaving nll_loss_forward.output set to fallback. https://github.com/microsoft/onnxruntime/blob/main/docs/OperatorKernels.md.
     "aten::nll_loss_forward.output": MakeTorchFallback(),
     "aten::nll_loss_backward.grad_input": MakeTorchFallback(),
-    "aten::_log_softmax_backward_data.out": MakeTorchFallback(),
+    "aten::_softmax_backward_data": SoftmaxGrad("grad_output", "output", axis="dim"),
+    "aten::_log_softmax_backward_data": LogSoftmaxGrad("grad_output", "output", axis="dim"),
     "aten::squeeze.dim": Squeeze("self", "dim"),
     "aten::squeeze": SignatureOnly(),
     "aten::unsqueeze": Unsqueeze(data="self", axes="dim"),

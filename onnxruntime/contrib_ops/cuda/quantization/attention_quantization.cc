@@ -48,7 +48,8 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* w_zp_tensor,
                                           const Tensor* past_tensor) const {
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past_tensor, nullptr, device_prop.maxThreadsPerBlock));
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
+                                                 mask_index, past_tensor, nullptr, device_prop.maxThreadsPerBlock));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -82,7 +83,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   //   Input 2  - bias              : (3 * hidden_size)
   //   Input 3  - input_scale       : scalar
   //   Input 4  - weight_scale      : scalar
-  //   Input 5  - mask_index        : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
+  //   Input 5  - mask_index        : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1)
+  //                                  or (batch_size, past_sequence_length + sequence_length)
   //   Input 6  - input_zero_point  : scalar
   //   Input 7  - weight_zero_point : scalar
   //   Input 8  - past              : (2, batch_size, num_heads, past_sequence_length, head_size)
@@ -151,7 +153,9 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   } else {
     dequant_scale = input_scale * weight_scale;
   }
+
   // scale back and bias
+  // TODO(tianleiwu): fuse Dequantize with Add bias and Transpose.
   ORT_RETURN_IF_ERROR(CudaDequantizeWithBias(Stream(),
                                              gemm_buffer_quantized.get(),
                                              reinterpret_cast<const CudaT*>(bias->Data<T>()),
@@ -161,12 +165,15 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                              n));
 
   int past_sequence_length = 0;
-  Tensor* present_tensor = GetPresent(context, past_tensor, batch_size, head_size, sequence_length, past_sequence_length);
+  Tensor* present_tensor = GetPresent(context, past_tensor, batch_size, head_size,
+                                      sequence_length, past_sequence_length);
 
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
+  void* fused_runner = nullptr;  // TODO(tianleiwu): use fused kernel to speed up
+  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size,
+                                                   sequence_length, past_sequence_length, fused_runner);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
-  if (!LaunchAttentionKernel(
+  return LaunchAttentionKernel(
           GetDeviceProp(),
           Stream(),
           cublas,
@@ -178,19 +185,15 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
           past_sequence_length,
           is_unidirectional_,
           reinterpret_cast<const void*>(gemm_buffer.get()),
+          nullptr,  // bias has been added
           nullptr == mask_index ? nullptr : mask_index->Data<int>(),
           nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
           nullptr == past_tensor ? nullptr : past_tensor->Data<T>(),
           nullptr,  // TODO: support add_qk in quantized attention
           work_space.get(),
           output->MutableData<T>(),
-          nullptr == present_tensor ? nullptr : present_tensor->MutableData<T>())) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+          nullptr == present_tensor ? nullptr : present_tensor->MutableData<T>(),
+          fused_runner);
 }
 
 }  // namespace cuda
