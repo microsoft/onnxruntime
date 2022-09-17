@@ -80,7 +80,6 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
     memcpy(dst_data, src_data, bytes);
   }
 
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(stream->handle)));
   return Status::OK();
 }
 

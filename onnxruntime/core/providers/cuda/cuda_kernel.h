@@ -27,8 +27,8 @@ class CudaKernel : public OpKernel {
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
     auto s = ComputeInternal(p_op_kernel_context);
     // use this to precisely locate the node where CUDA failure comes from
-    if (cudaSuccess != cudaDeviceSynchronize())
-      ORT_THROW("Error when sync cuda device!");
+    // if (cudaSuccess != cudaDeviceSynchronize())
+    //  ORT_THROW("Error when sync cuda device!");
     if (s.IsOK()) {
       auto err = cudaGetLastError();
       if (err != cudaSuccess) {
