@@ -308,16 +308,16 @@ QLinearWhere::QLinearWhere(const OpKernelInfo& info) : OpKernel(info) {
 }
 
 Status QLinearWhere::Compute(OpKernelContext* ctx) const {
-  const auto* tensor_condition = ctx->Input<Tensor>(0);
-  const auto* tensor_x_input = ctx->Input<Tensor>(1);
+//  const auto* tensor_condition = ctx->Input<Tensor>(0);
+//  const auto* tensor_x_input = ctx->Input<Tensor>(1);
   const auto* tensor_x_scale = ctx->Input<Tensor>(2);
   const auto* tensor_x_zero_point = ctx->Input<Tensor>(3);
-  const auto* tensor_y_input = ctx->Input<Tensor>(4);
+//  const auto* tensor_y_input = ctx->Input<Tensor>(4);
   const auto* tensor_y_scale = ctx->Input<Tensor>(5);
   const auto* tensor_y_zero_point = ctx->Input<Tensor>(6);
   const auto* tensor_z_scale = ctx->Input<Tensor>(7);
   const auto* tensor_z_zero_point = ctx->Input<Tensor>(8);
-  auto* tensor_output = ctx->Output(0, tensor_condition->Shape());
+//  auto* tensor_output = ctx->Output(0, tensor_condition->Shape());
   ORT_ENFORCE(tensor_x_scale->IsDataType<float>(), "Input scale is not float for quantized input x @ 2");
   ORT_ENFORCE(tensor_y_scale->IsDataType<float>(), "Input scale is not float for quantized input y @ 5");
   ORT_ENFORCE(tensor_z_scale->IsDataType<float>(), "Input scale is not float for quantized output z @ 7");
