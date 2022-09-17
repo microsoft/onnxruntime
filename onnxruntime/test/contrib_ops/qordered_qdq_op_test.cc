@@ -3,10 +3,14 @@
 
 #include "test/contrib_ops/qordered_test_utils.h"
 
+#if defined(USE_CUDA)
+
+#include <cuda.h>
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
 namespace onnxruntime {
 namespace test {
-
-#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
 template <typename TSrc, typename TDst>
 static std::vector<TDst> ReorderAndTransform(const std::vector<int64_t>& shape, const std::vector<TSrc>& src,
@@ -187,9 +191,10 @@ TEST(QOrderedTest, FP16_Dequantize_ROW) {
   RunQOrdered_Dequantize_Test<MLFloat16>(qvec, shape, ORDER_ROW, scale);
 }
 
-#endif
-
 }  // namespace test
 }  // namespace onnxruntime
 
-// #endif
+
+#endif // CUDA_VERSION
+
+#endif  // USE_CUDA

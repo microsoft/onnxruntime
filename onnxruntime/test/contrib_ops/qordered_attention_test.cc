@@ -3,10 +3,14 @@
 
 #include "test/contrib_ops/qordered_test_utils.h"
 
+#if defined(USE_CUDA)
+
+#include <cuda.h>
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
 namespace onnxruntime {
 namespace test {
-
-#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
 static const int64_t batch_size = 1;
 static const int64_t sequence_len = 16;
@@ -279,7 +283,9 @@ TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
   test_qorder.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-#endif
-
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif // CUDA_VERSION
+
+#endif  // USE_CUDA

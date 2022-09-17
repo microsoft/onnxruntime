@@ -3,10 +3,14 @@
 
 #include "test/contrib_ops/qordered_test_utils.h"
 
+#if defined(USE_CUDA)
+
+#include <cuda.h>
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
 namespace onnxruntime {
 namespace test {
-
-#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
 static void run_qordered_longformer_attention_op_test(
     const std::vector<int8_t>& gold_result,
@@ -653,7 +657,9 @@ TEST(QOrderedTest, LongformerAttention_1x128x2x16_window_32) {
       input_hidden_size);
 }
 
-#endif
-
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif // CUDA_VERSION
+
+#endif  // USE_CUDA

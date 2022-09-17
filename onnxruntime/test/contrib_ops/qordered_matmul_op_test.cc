@@ -3,10 +3,14 @@
 
 #include "test/contrib_ops/qordered_test_utils.h"
 
+#if defined(USE_CUDA)
+
+#include <cuda.h>
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+
 namespace onnxruntime {
 namespace test {
-
-#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
 static void RunQOrdered_MatMul_Test(
     std::vector<int64_t> const& shape_A,
@@ -213,7 +217,9 @@ TEST(QOrderedTest, MatMul_bias_addC_broadcastC_COL_16x64x32_b2_1) {
 }
 #endif  // ifndef _WIN32
 
-#endif  // USE_CUDA
-
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif // CUDA_VERSION
+
+#endif  // USE_CUDA
