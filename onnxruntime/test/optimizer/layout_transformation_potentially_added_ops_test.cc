@@ -14,7 +14,7 @@ namespace onnxruntime::test {
 // This test is to ensure the latest opset version for ops which can be added
 // during layout transformation step are added. If this test fails then it means
 // there is a new version available for one of the ops in the map.
-TEST(TransposeOptimizerTests, LayoutTransformationPotentiallyAddedOpsHaveLatestVersions) {
+TEST(LayoutTransformationPotentiallyAddedOpsTests, OpsHaveLatestVersions) {
   const auto* schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
 
   // kLayoutTransformationPotentiallyAddedOps is sorted in increasing order of <domain, op_type, since_version>

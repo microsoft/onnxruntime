@@ -4,7 +4,7 @@ This End-to-End test app for iOS will test ORT Mobile C/C++ API framework using 
 
 ## Requirements
 
-- [Prerequisites for building ORT-Mobile for iOS](https://onnxruntime.ai/docs/build/android-ios.html#prerequisites-1)
+- [Prerequisites for building ORT-Mobile for iOS](https://onnxruntime.ai/docs/build/ios.html#prerequisites)
 - [CocoaPods](https://cocoapods.org/)
 
 ## iOS End-to-End Test App Overview
@@ -23,4 +23,4 @@ The iOS End-to-End Test App will use CocoaPods to install the Onnx Runtime C/C++
 
 ## Build and Test iOS Framework using [build.py](../../../../../tools/ci_build/build.py)
 
-Use the [build for iOS simulator](https://onnxruntime.ai/docs/build/android-ios.html#cross-build-for-ios-simulator) with `--build_apple_framework`
+Use the [build for iOS simulator](https://onnxruntime.ai/docs/build/ios.html#cross-compile-for-ios-simulator) with `--build_apple_framework`

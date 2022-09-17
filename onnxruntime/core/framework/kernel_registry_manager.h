@@ -49,17 +49,19 @@ class KernelRegistryManager {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
   /**
-   * Search kernel registry by provider type.
-   * @param type provider type string
-   * @return It returns all the possible results. The returned value may contain garbage that doesn't belong to
-   *         this provider. Caller should do the filtering.
+   * Gets kernel registries for the specified provider type.
+   * @param provider_type provider type string
+   * @return The kernel registries. This also includes custom registries. These may contain kernels that don't belong
+   *         to this provider. The caller should do the filtering.
    */
-  InlinedVector<gsl::not_null<const KernelRegistry*>> GetKernelRegistriesByProviderType(const std::string& type) const {
+  InlinedVector<gsl::not_null<const KernelRegistry*>> GetKernelRegistriesByProviderType(
+      const std::string& provider_type) const {
     InlinedVector<gsl::not_null<const KernelRegistry*>> result;
+    result.reserve(custom_kernel_registries_.size() + 1);
     for (auto& registry : custom_kernel_registries_) {
       result.push_back(registry.get());
     }
-    auto iter = provider_type_to_registry_.find(type);
+    auto iter = provider_type_to_registry_.find(provider_type);
     if (iter != provider_type_to_registry_.end()) result.push_back(iter->second.get());
     return result;
   }

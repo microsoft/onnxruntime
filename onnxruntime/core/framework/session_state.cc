@@ -10,8 +10,6 @@
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/allocator.h"
-#include "core/framework/kernel_registry.h"
-#include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_pattern_planner.h"
@@ -120,13 +118,12 @@ Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kerne
     const KernelCreateInfo* kci = nullptr;
     auto status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
     if (!status.IsOK() && saving_ort_format) {
-      // TODO update this comment to not refer to hashes
       // if we didn't find the kernel and are saving to ORT format an EP that compiles nodes is enabled.
       // in that case we assigned the node to that EP but do not compile it into a fused node.
       // this keeps the original node and prevents level 2 and level 3 optimizers from modifying it.
-      // we now revert to the CPU EP to include the hash for the kernel as a fallback. at runtime when the model
-      // is loaded in a minimal build, the compiling EP will replace this node if possible. if that's not possible for
-      // some reason we can fallback to the CPU EP implementation via this hash.
+      // we now revert to the CPU EP kernel as a fallback.
+      // at runtime when the model is loaded in a minimal build, the compiling EP will replace this node if possible.
+      // if that's not possible for some reason we can fallback to the CPU EP implementation.
       node.SetExecutionProviderType(kCpuExecutionProvider);
       status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
     }

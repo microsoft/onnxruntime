@@ -25,6 +25,7 @@
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/kernel_type_str_resolver_utils.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/TensorSeq.h"

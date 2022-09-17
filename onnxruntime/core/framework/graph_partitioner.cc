@@ -127,13 +127,19 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
     return Status::OK();
   }
 
-  // In theory an EP could return an empty capability. Remove those.
-  auto remove_empty_capabilities = [](std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
+  auto get_capabilities = [](const IExecutionProvider& ep,
+                             const GraphViewer& graph_viewer,
+                             const IExecutionProvider::IKernelLookup& kernel_lookup) {
+    auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup);
+
+    // In theory an EP could return an empty capability. Remove those.
     capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),
                                       [](const std::unique_ptr<ComputeCapability>& capability) {
                                         return !capability || !capability->sub_graph;
                                       }),
                        capabilities.end());
+
+    return capabilities;
   };
 
   const auto kernel_registries_for_ep = kernel_registry_mgr.GetKernelRegistriesByProviderType(ep_type);
@@ -143,8 +149,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
 
   {
     const GraphViewer graph_viewer(graph);
-    capabilities = current_ep.GetCapability(graph_viewer, kernel_lookup);
-    remove_empty_capabilities(capabilities);
+    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup);
 
     if (capabilities.empty()) {
       return Status::OK();
@@ -182,8 +187,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
     capabilities.clear();
 
     const GraphViewer graph_viewer(graph);
-    capabilities = current_ep.GetCapability(graph_viewer, kernel_lookup);
-    remove_empty_capabilities(capabilities);
+    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup);
 
     // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
     InlinedHashSet<NodeIndex> new_nodes_in_capabilities;

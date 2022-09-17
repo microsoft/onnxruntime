@@ -114,7 +114,7 @@ class OrtFormatModelDumper:
 
     def dump(self, output: typing.IO):
         with contextlib.redirect_stdout(output):
-            print(f"ORT format version: {self._inference_session.OrtVersion()}")
+            print(f"ORT format version: {self._inference_session.OrtVersion().decode()}")
             print("--------")
 
             graph = self._model.Graph()

@@ -8,6 +8,7 @@
 #include <iterator>
 #include <utility>
 
+#include "core/graph/op_identifier_utils.h"
 #include "core/graph/runtime_optimization_record_container.h"
 
 namespace onnxruntime {
@@ -150,13 +151,18 @@ static Status MatchAndProcess(
       produced_op_ids.reserve(action_saved_state.produced_node_op_schemas.size());
 
       for (const auto op_schema : action_saved_state.produced_node_op_schemas) {
-        produced_op_ids.push_back(OpIdentifier{op_schema->domain(), op_schema->Name(), op_schema->SinceVersion()});
+        produced_op_ids.push_back(utils::MakeOpId(*op_schema));
         if (save_context->record_produced_node_op_schema) {
           status = save_context->record_produced_node_op_schema(*op_schema);
           if (!status.IsOK()) {
             break;
           }
         }
+      }
+
+      // handle break out of above for loop on error
+      if (!status.IsOK()) {
+        break;
       }
 
       RuntimeOptimizationRecord runtime_optimization_record{selector_action_entry.name,

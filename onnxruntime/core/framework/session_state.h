@@ -23,7 +23,6 @@
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/kernel_registry_manager.h"
-#include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/node_index_info.h"

@@ -756,8 +756,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
   fbs::utils::LoadStringFromOrtFormat(op_type_, fbs_node.op_type());
   node_type_ = static_cast<Node::Type>(fbs_node.type());
   // we skip populating the saved EP here
-  // the node will either be assigned to another EP by the ORT format model-specific graph partitioning or fall back to
-  // the EP encoded in its kernel def hash
+  // the node will be assigned to an EP by the ORT format model-specific graph partitioning
   // fbs::utils::LoadStringFromOrtFormat(execution_provider_type_, fbs_node.execution_provider_type());
   ORT_RETURN_IF_ERROR(LoadNodeArgsFromOrtFormat(fbs_node.inputs(), definitions_.input_defs));
 

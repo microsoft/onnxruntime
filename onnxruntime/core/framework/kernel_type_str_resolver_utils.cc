@@ -47,7 +47,7 @@ Status LoadKernelTypeStrResolverFromBuffer(KernelTypeStrResolver& kernel_type_st
 Status AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(KernelTypeStrResolver& kernel_type_str_resolver) {
   KernelTypeStrResolver resolver_with_required_ops{};
 
-  // to generate kRequiredOpsKernelTypeStrResolverBytes, run the test:
+  // to generate kLayoutTransformationRequiredOpsKernelTypeStrResolverBytes, run the test:
   //   KernelTypeStrResolverUtilsTest.DISABLED_PrintExpectedLayoutTransformationRequiredOpsResolverByteArray
 
   // clang-format off

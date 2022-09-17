@@ -536,27 +536,6 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBufferNoCopy) {
   RunOrtModel(test_info);
 }
 
-// TODO provide backwards compatibility?
-TEST(OrtModelOnlyTests, DISABLED_TestBackwardsCompat) {
-  auto v110_dir = ORT_TSTR("testdata/ort_backwards_compat/ORTv1.10/");
-  std::vector<std::string> models = {"gathernd9.basic.ort",
-                                     "not1.basic.ort",
-                                     "roialign10.basic.ort",
-                                     "scan9.basic.ort"};
-
-  SessionOptions session_options;
-  session_options.session_logid = "TestBackwardsCompat";
-
-  for (const auto& model : models) {
-    // test loading old model succeeds. if it does the hash replacement worked.
-    InferenceSession session{session_options, GetEnvironment()};
-    auto model_uri = v110_dir + ToPathString(model);
-
-    ASSERT_STATUS_OK(session.Load(model_uri));
-    ASSERT_STATUS_OK(session.Initialize());
-  }
-}
-
 #endif  // !defined(DISABLE_ML_OPS)
 }  // namespace test
 }  // namespace onnxruntime
