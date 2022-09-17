@@ -2199,10 +2199,10 @@ std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const
   return s_kernel_registry;
 }
 
-static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
-                                 const std::vector<std::string> activations_supported,
-                                 const std::string& op_type) {
-  const auto& node_attributes = node.GetAttributes();
+static bool RNNNeedFallbackToCPU(const onnxruntime::Node&,
+                                 const std::vector<std::string>,
+                                 const std::string&) {
+  /*const auto& node_attributes = node.GetAttributes();
   // Check attributes
   for (auto& attr : node_attributes) {
     auto& attr_name = attr.first;
@@ -2251,8 +2251,8 @@ static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
         return true;
       }
     }
-  }
-  return false;
+  }*/
+  return true;
 }
 
 static bool ConvTransposeNeedFallbackToCPU(const onnxruntime::Node& node) {
