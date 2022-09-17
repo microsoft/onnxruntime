@@ -3560,6 +3560,9 @@ struct OrtApi {
   ORT_API2_STATUS(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
                   _Inout_ size_t* size);
 
+  ORT_API2_STATUS(KernelInfo_GetInputTensorTypeAndShape, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                  _Outptr_ OrtTensorTypeAndShapeInfo** out);
+
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
 #endif

@@ -24,3 +24,5 @@ struct OrtTensorTypeAndShapeInfo {
 };
 
 constexpr ONNXTensorElementDataType TensorDataTypeToOnnxRuntimeTensorElementDataType(int32_t dtype);
+OrtStatus* GetTensorShapeAndTypeHelper(ONNXTensorElementDataType type, const onnxruntime::TensorShape& shape,
+                                       const std::vector<std::string>* dim_params, OrtTensorTypeAndShapeInfo** out);

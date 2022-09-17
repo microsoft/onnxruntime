@@ -2574,6 +2574,7 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::KernelInfo_GetOutputCount,
     &OrtApis::KernelInfo_GetInputName,
     &OrtApis::KernelInfo_GetOutputName,
+    &OrtApis::KernelInfo_GetInputTensorTypeAndShape,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

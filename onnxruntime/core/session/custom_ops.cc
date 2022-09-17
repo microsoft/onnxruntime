@@ -10,47 +10,61 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/tensor_type_and_shape.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
 #include <type_traits>
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
+  API_IMPL_BEGIN
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<float>(name, out);
   if (status.IsOK())
     return nullptr;
   return onnxruntime::ToOrtStatus(status);
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out) {
+  API_IMPL_BEGIN
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<int64_t>(name, out);
   if (status.IsOK())
     return nullptr;
   return onnxruntime::ToOrtStatus(status);
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out) {
+  API_IMPL_BEGIN
   *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->InputCount();
   return nullptr;
+  API_IMPL_END
 };
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out) {
+  API_IMPL_BEGIN
   *out = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->OutputCount();
   return nullptr;
+  API_IMPL_END
 };
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out) {
+  API_IMPL_BEGIN
   *out = reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index));
   return nullptr;
+  API_IMPL_END
 };
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count, _Out_ OrtValue** out) {
+  API_IMPL_BEGIN
   onnxruntime::TensorShape shape(dim_values, dim_count);
   *out = reinterpret_cast<OrtValue*>(reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->OutputMLValue(index, shape));
   return nullptr;
+  API_IMPL_END
 };
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out, _Inout_ size_t* size) {
+  API_IMPL_BEGIN
   std::string value;
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<std::string>(name, &value);
   if (status.IsOK()) {
@@ -68,11 +82,14 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
     }
   }
   return onnxruntime::ToOrtStatus(status);
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out) {
+  API_IMPL_BEGIN
   *out = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
   return nullptr;
+  API_IMPL_END
 };
 
 template <typename T, typename std::enable_if<std::is_fundamental<T>::value, int>::type = 0>
@@ -93,36 +110,45 @@ static Status CopyDataFromVectorToMemory(const std::vector<T>& values, T* out, s
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_float, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_ float* out, _Inout_ size_t* size) {
+  API_IMPL_BEGIN
   std::vector<float> values;
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<float>(name, values);
   if (status.IsOK()) {
     status = CopyDataFromVectorToMemory<float>(values, out, size);
   }
   return onnxruntime::ToOrtStatus(status);
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttributeArray_int64, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_ int64_t* out, _Inout_ size_t* size) {
+  API_IMPL_BEGIN
   std::vector<int64_t> values;
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttrs<int64_t>(name, values);
   if (status.IsOK()) {
     status = CopyDataFromVectorToMemory<int64_t>(values, out, size);
   }
   return onnxruntime::ToOrtStatus(status);
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out) {
+  API_IMPL_BEGIN
   *out = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetInputCount();
   return nullptr;
+  API_IMPL_END
 };
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out) {
+  API_IMPL_BEGIN
   *out = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetOutputCount();
   return nullptr;
+  API_IMPL_END
 };
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
                     _Inout_ size_t* size) {
+  API_IMPL_BEGIN
   const onnxruntime::OpKernelInfo* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const size_t num_inputs = op_info->GetInputCount();
 
@@ -147,10 +173,12 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* 
   // User has provided a buffer that is not large enough
   *size = name.size() + 1;
   return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
                     _Inout_ size_t* size) {
+  API_IMPL_BEGIN
   const onnxruntime::OpKernelInfo* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const size_t num_outputs = op_info->GetOutputCount();
 
@@ -175,6 +203,37 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo*
   // User has provided a buffer that is not large enough
   *size = name.size() + 1;
   return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputTensorTypeAndShape, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                    _Outptr_ OrtTensorTypeAndShapeInfo** out) {
+  API_IMPL_BEGIN
+  const onnxruntime::OpKernelInfo* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  const size_t num_inputs = op_info->GetInputCount();
+
+  if (index >= num_inputs) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input index is out of range");
+  }
+
+  const onnxruntime::NodeArg* node = op_info->node().InputDefs()[index];
+  const ONNX_NAMESPACE::TypeProto* type_proto = node->TypeAsProto();
+  const ONNX_NAMESPACE::TensorShapeProto* shape_proto = node->Shape();
+
+  if (type_proto == nullptr || shape_proto == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input does not have a set type or shape");  // TODO: Bad message
+  }
+
+  if (onnxruntime::utils::HasTensorType(*type_proto)) {
+    const int32_t elem_type_proto = type_proto->tensor_type().elem_type();
+    ONNXTensorElementDataType elem_type = TensorDataTypeToOnnxRuntimeTensorElementDataType(elem_type_proto);
+    onnxruntime::TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*shape_proto); // TODO: Only available if SHARED_PROVIDER is not defined
+
+    return GetTensorShapeAndTypeHelper(elem_type, shape, nullptr, out);
+  }
+
+  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input is not a tensor");
+  API_IMPL_END
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)

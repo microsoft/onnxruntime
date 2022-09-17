@@ -396,4 +396,7 @@ ORT_API_STATUS_IMPL(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, _In
                 _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
                     _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfo_GetInputTensorTypeAndShape, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                    _Outptr_ OrtTensorTypeAndShapeInfo** out);
+
 }  // namespace OrtApis

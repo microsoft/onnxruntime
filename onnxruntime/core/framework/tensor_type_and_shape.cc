@@ -149,7 +149,7 @@ ONNXTensorElementDataType MLDataTypeToOnnxRuntimeTensorElementDataType(
   return TensorDataTypeToOnnxRuntimeTensorElementDataType(prim_type->GetDataType());
 }
 
-OrtStatus* GetTensorShapeAndTypeHelper(ONNXTensorElementDataType type, const onnxruntime::TensorShape shape,
+OrtStatus* GetTensorShapeAndTypeHelper(ONNXTensorElementDataType type, const onnxruntime::TensorShape& shape,
                                        const std::vector<std::string>* dim_params, OrtTensorTypeAndShapeInfo** out) {
   OrtTensorTypeAndShapeInfo* ret;
   if (auto* status = OrtApis::CreateTensorTypeAndShapeInfo(&ret))

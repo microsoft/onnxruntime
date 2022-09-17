@@ -1233,6 +1233,12 @@ inline OrtTensorTypeAndShapeInfo* CustomOpApi::GetTensorTypeAndShape(_In_ const 
   return out;
 }
 
+inline OrtTensorTypeAndShapeInfo* CustomOpApi::KernelInfo_GetInputTensorTypeAndShape(_In_ const OrtKernelInfo* info, size_t index) {
+  OrtTensorTypeAndShapeInfo* out;
+  ThrowOnError(api_.KernelInfo_GetInputTensorTypeAndShape(info, index, &out));
+  return out;
+}
+
 inline size_t CustomOpApi::GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info) {
   size_t out;
   ThrowOnError(api_.GetTensorShapeElementCount(info, &out));
