@@ -52,7 +52,6 @@ inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
 void RegisterContribSchemas();
 void RegisterNchwcSchemas();
 void RegisterQuantizationSchemas();
-void RegisterQOrderedSchemas();
 
 constexpr const float kDefaultSkipLayerNormEpsilon = 1e-12f;
 constexpr const float kDefaultEmbedLayerNormEpsilon = 1e-12f;
