@@ -15,11 +15,14 @@ struct XnnpackProviderFactory : IExecutionProviderFactory {
   }
 
   std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override {
-    if (options && options->intra_op_param.allow_spinning && options->intra_op_param.thread_pool_size > 1) {
+    bool allow_spinning = options ? options->config_options.GetConfigOrDefault(
+                                        kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1"
+                                  : false;
+    if (options && allow_spinning && options->intra_op_param.thread_pool_size > 1) {
       LOGS_DEFAULT(WARNING)
-          << "XNNPACK EP utilize pthreadpool for multi-threading. So, if allow_spinning on ORT's"
+          << "XNNPACK EP utilize pthreadpool for multi-threading. So, if allow_spinning is true on ORT's"
              "thread-pool and its pool size is not 1, "
-             "pthreadpool will content with ORT's intra-op thread pool and hurt performance a lot. "
+             "pthreadpool will content with ORT's intra-op thread pool and possible hurt performance a lot, even produce more power consumption. "
              "Please Setting intra_op_param.allow_spinning to false or "
              "setting ort's pool size (intra_thread_num) to 1 and try again.";
     }
