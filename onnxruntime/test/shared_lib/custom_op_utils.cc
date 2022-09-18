@@ -145,9 +145,9 @@ static void custom_slice(const T* X, int64_t from, int64_t to, T* Y, void* compu
   // We do not expect the compute_stream to be nullptr as we have queried the compute stream
   // being used by the ORT session. If it is a nullptr, there was an issue with the stream querying.
   // We don't launch the operation to trigger a test failure in that case.
-  if (compute_stream) {
-    cuda_slice(X, from, to, Y, reinterpret_cast<cudaStream_t>(compute_stream));
-  }
+  // if (compute_stream) {
+  cuda_slice(X, from, to, Y, reinterpret_cast<cudaStream_t>(compute_stream));
+  //}
 #else
   ORT_UNUSED_PARAMETER(compute_stream);
   for (auto i = from; i < to; i++) {
@@ -402,11 +402,11 @@ void StandaloneCustomKernel::InvokeGru(OrtKernelContext* context) {
 void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
   auto mem_info = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeCPU);
   const char* type_constraint_names[] = {"T"};
-  int type_constraint_values[] = {1}; //float
+  int type_constraint_values[] = {1};  // float
 
   int64_t dilation_values[] = {2};
   OrtOpAttr* dilations = ort_.CreateOpAttr("dilations", &dilation_values, 1, OrtOpAttrType::ORT_OP_ATTR_INTS);
-  
+
   int64_t group_value = 1;
   OrtOpAttr* group = ort_.CreateOpAttr("group", &group_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT);
 
