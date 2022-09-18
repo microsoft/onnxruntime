@@ -128,12 +128,13 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
   bool get_R = info.TryGetConstantInput(RNN_Input_Index::R, &R);
   bool get_B = info.TryGetConstantInput(RNN_Input_Index::B, &B);
 
-  if (get_W && get_R) {
+  if (false && get_W && get_R) {
     CudnnRNN tmp_rnn_desc;
     ORT_RETURN_IF_ERROR(tmp_rnn_desc.Set(DefaultCudnnHandle(),
                                          hidden_size_,
                                          RNN_NUM_LAYERS,
-                                         cudnn_dropout_desc_,
+                                         //cudnn_dropout_desc_,
+                                         nullptr,
                                          cudnn_direction_mode_,
                                          rnn_mode_,
                                          CudnnTensor::GetDataType<CudaT>(),
@@ -144,7 +145,7 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
       ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, nullptr, w_data_cache_, w_desc_cache_, tmp_rnn_desc, nullptr));
     }
     cudaStreamSynchronize(nullptr);
-    weight_cached_ = false;
+    weight_cached_ = true;
   }
 
   return Status::OK();
@@ -232,7 +233,8 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(rnn_desc.Set(GetCudnnHandle(ctx),
                                    hidden_size_,
                                    RNN_NUM_LAYERS,
-                                   cudnn_dropout_desc_,
+                                   //cudnn_dropout_desc_,
+                                   nullptr,
                                    cudnn_direction_mode_,
                                    rnn_mode_,
                                    CudnnTensor::GetDataType<CudaT>(),
