@@ -2,7 +2,6 @@ import json
 import os
 from pathlib import Path
 
-
 SCRIPT_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
 REPO_DIR = SCRIPT_DIR.parent.parent
 
