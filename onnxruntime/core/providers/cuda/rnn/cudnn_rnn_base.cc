@@ -152,8 +152,6 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
 
 template <typename T>
 Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
-  cudaStreamSynchronize(nullptr);
-  cudaStreamSynchronize(Stream(ctx));
   typedef typename ToCudaType<T>::MappedType CudaT;
   // inputs
   const Tensor* X = ctx->Input<Tensor>(RNN_Input_Index::X);  // inputs. [seq_length, batch_size, input_size]
