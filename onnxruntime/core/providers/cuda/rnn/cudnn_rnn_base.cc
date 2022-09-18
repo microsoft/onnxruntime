@@ -152,6 +152,8 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
 
 template <typename T>
 Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
+  cudaStreamSynchronize(nullptr);
+  cudaStreamSynchronize(Stream(ctx));
   typedef typename ToCudaType<T>::MappedType CudaT;
   // inputs
   const Tensor* X = ctx->Input<Tensor>(RNN_Input_Index::X);  // inputs. [seq_length, batch_size, input_size]
@@ -232,8 +234,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(rnn_desc.Set(GetCudnnHandle(ctx),
                                    hidden_size_,
                                    RNN_NUM_LAYERS,
-                                   //cudnn_dropout_desc_,
-                                   nullptr,
+                                   cudnn_dropout_desc_,
                                    cudnn_direction_mode_,
                                    rnn_mode_,
                                    CudnnTensor::GetDataType<CudaT>(),
