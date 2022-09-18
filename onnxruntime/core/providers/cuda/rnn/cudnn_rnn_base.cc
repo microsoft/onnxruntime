@@ -144,7 +144,7 @@ Status CudnnRnnBase<T>::CacheCudnnRnnWeights(const OpKernelInfo& info) {
       ORT_RETURN_IF_ERROR(ReorganizeWeights(W, R, nullptr, w_data_cache_, w_desc_cache_, tmp_rnn_desc, nullptr));
     }
     cudaStreamSynchronize(nullptr);
-    weight_cached_ = true;
+    weight_cached_ = false;
   }
 
   return Status::OK();
