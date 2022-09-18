@@ -60,8 +60,10 @@ CudaStream::CudaStream(cudaStream_t stream,
 CudaStream::~CudaStream() {
   ORT_IGNORE_RETURN_VALUE(CleanUpOnRunEnd());
   if (own_stream_) {
-    cublasDestroy(cublas_handle_);
-    cudnnDestroy(cudnn_handle_);
+    if (cublas_handle_)
+      cublasDestroy(cublas_handle_);
+    if (cudnn_handle_)
+      cudnnDestroy(cudnn_handle_);
     if (handle)
       cudaStreamDestroy(static_cast<cudaStream_t>(handle));
   }
@@ -173,7 +175,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_cuda_stream](const OrtDevice& device) {
       cudaStream_t stream = nullptr;
       //CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-      CUDA_CALL_THROW(cudaStreamCreate(&stream));
+      // CUDA_CALL_THROW(cudaStreamCreate(&stream));
       return std::make_unique<CudaStream>(stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, true, nullptr, nullptr);
     });
   else
