@@ -1162,6 +1162,10 @@ else()
   if (HAS_ENUM_CONSTEXPR_CONVERSION)
     target_compile_options(${PROTOBUF_LIB} PRIVATE "-Wno-enum-constexpr-conversion")
   endif()
+  if (onnxruntime_USE_ROCM)
+    # float16.h:90:12: error: ‘tmp’ is used uninitialized
+    list(APPEND ORT_WARNING_FLAGS -Wno-uninitialized)
+  endif()
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
