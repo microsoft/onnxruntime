@@ -1797,7 +1797,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           input_index = iter->second;
         }
         auto input_tensor = ctx.GetInput(input_index);
-        auto tensor_info = inpute_tensor.GetTensorTypeAndShapeInfo();
+        auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         const auto tensor_shapes = tensor_info.GetShape();
 
         // Set dynamic shapes

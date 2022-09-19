@@ -18,14 +18,6 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 
 static const char* c_OpDomain = "test.customop";
 
-static std::vector<Ort::CustomOpDomain> ort_custom_op_domain_container;
-static std::mutex ort_custom_op_domain_mutex;
-
-static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
-  std::lock_guard<std::mutex> lock(ort_custom_op_domain_mutex);
-  ort_custom_op_domain_container.push_back(std::move(domain));
-}
-
 struct KernelOne {
 
   void Compute(OrtKernelContext* context) {
@@ -96,7 +88,7 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
-} c_CustomOpOne;
+};
 
 struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* /* info */) const {
@@ -111,9 +103,19 @@ struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; };
 
-} c_CustomOpTwo;
+};
+
+static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
+  static std::vector<Ort::CustomOpDomain> ort_custom_op_domain_container;
+  static std::mutex ort_custom_op_domain_mutex;
+  std::lock_guard<std::mutex> lock(ort_custom_op_domain_mutex);
+  ort_custom_op_domain_container.push_back(std::move(domain));
+}
 
 OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* /* api */) {
+
+  static const CustomOpOne c_CustomOpOne;
+  static const CustomOpTwo c_CustomOpTwo;
   
   OrtStatus* result = nullptr;
   

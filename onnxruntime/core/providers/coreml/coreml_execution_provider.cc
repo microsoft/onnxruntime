@@ -158,7 +158,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
         const auto& input_name = model_inputs[i];
         auto input_tensor = ctx.GetInput(i);
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
-        const auto shape = tensor_info.GetShape();
+        auto shape = tensor_info.GetShape();
         // If we have an empty shape, this is a scalar input,
         // Since all the input output of CoreML EP is MultiArray, we will make the scalar input as a {1} MultiArray
         if (shape.empty())
@@ -198,7 +198,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
           if (model->IsInt64Output(output_name))
             output_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
 
-          auto* output_tensor =
+          auto output_tensor =
               ctx.GetOutput(i, output_shape.data(), output_shape.size());
 
           void* output_buffer;
@@ -207,10 +207,10 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
               output_buffer = output_tensor.GetTensorMutableData<float>();
               break;
             case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-              output_buffer = output_tensor..GetTensorMutableData<int32_t>();
+              output_buffer = output_tensor.GetTensorMutableData<int32_t>();
               break;
             case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-              output_buffer = output_tensor..GetTensorMutableData<int64_t>();
+              output_buffer = output_tensor.GetTensorMutableData<int64_t>();
               break;
             default:
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,

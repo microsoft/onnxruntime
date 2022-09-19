@@ -29,7 +29,7 @@ TEST(CApiTest, DefaultAllocator) {
   ASSERT_EQ(OrtMemTypeDefault, cpu_info.GetMemoryType());
 
   Ort::MemoryAllocation allocation(default_allocator, default_allocator.Alloc(100), 100);
-  ASSERT_EQ(allocation.size(), 100);
+  ASSERT_EQ(allocation.size(), 100U);
   ASSERT_NE(allocation.get(), nullptr);
-  memset(allocation.get(), 0, 100);
+  memset(allocation.get(), 0, 100U);
 }

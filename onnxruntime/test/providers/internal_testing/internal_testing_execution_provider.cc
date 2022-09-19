@@ -244,7 +244,7 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
         // and fill with zeros
         auto ml_type = DataTypeImpl::TensorTypeFromONNXEnum(ortvalue.GetTensorTypeAndShapeInfo().GetElementType())->GetElementType();
         void* data = ortvalue.GetTensorMutableRawData();
-        const auto bytes = ortvalue.GetCount() * ml_type->Size();
+        const auto bytes = shape.Size() * ml_type->Size();
         memset(data, 0, bytes);
       };
 

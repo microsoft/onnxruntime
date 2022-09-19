@@ -81,7 +81,7 @@ void RunnerImpl::add_device_type_data2output_tensors(Ort::KernelContext& context
     const auto tensor_type = output_tensor.GetTensorTypeAndShapeInfo().GetElementType();
 
     output_tensors_[i].device = GetDLDevice(ort_device_type);
-    output_tensors_[i].dtype = GetDataType(tensor_type);
+    output_tensors_[i].dtype = GetDataType(static_cast<ONNXTensorElementDataType>(tensor_type));
     output_tensors_[i].data = output_tensor.GetTensorMutableRawData();
   }
 }
