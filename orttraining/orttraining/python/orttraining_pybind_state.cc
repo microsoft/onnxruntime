@@ -34,6 +34,7 @@
 
 #ifdef ENABLE_TRAINING_ON_DEVICE
 #include "orttraining/training_api/include/checkpoint.h"
+#include "orttraining/training_api/include/on_device_utils.h"
 
 #endif
 
@@ -849,6 +850,15 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("reset_grad", [](onnxruntime::training::api::Module* model) -> void {
         ORT_THROW_IF_ERROR(model->ResetGrad());
       })
+      .def("copy_parameters_to_buffer", [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
+        ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output));
+      })
+      .def("copy_buffer_to_parameters", [](onnxruntime::training::api::Module* model, OrtValue& input) -> void {
+        ORT_THROW_IF_ERROR(model->CopyBufferToParameters(input));
+      })
+      .def("get_parameters_size", [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
+        return model->GetParametersSize(trainable_only);
+      })
       .def("save_checkpoint", [](onnxruntime::training::api::Module* model, const std::string& checkpoint_path) -> void {
         onnxruntime::training::api::CheckpointState state;
         ORT_THROW_IF_ERROR(model->GetStateDict(state.module_checkpoint_state));
@@ -880,6 +890,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         ORT_THROW_IF_ERROR(optimizer->Step());
       });
 
+  m.def("get_parameters_difference",
+        [](const OrtValue output_params, const OrtValue old_output_params, OrtValue& output) {
+          ORT_THROW_IF_ERROR(onnxruntime::training::api::GetParametersDifference(output_params, old_output_params, output));
+        });
   m.def("save_checkpoint",
         [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
            const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,

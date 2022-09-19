@@ -2,6 +2,8 @@
 # Licensed under the MIT License.
 # module.py
 
+import numpy as np
+
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
@@ -81,3 +83,26 @@ class Module:
         """
         # TODO : move this out of Module Class.
         self._model.save_checkpoint(ckpt_uri)
+
+    def get_contagious_parameters(self):
+        """
+        Returns contiguous parameters object.
+        """
+        size = self._model.get_parameters_size(False)
+        parameters = OrtValue.ortvalue_from_shape_and_type(
+            [
+                size,
+            ],
+            np.float32,
+            "cpu",
+            0,
+        )._ortvalue
+        self._model.copy_parameters_to_buffer(parameters)
+
+        return parameters
+
+    def copy_buffer_to_parameters(self, buffer):
+        """
+        Copies buffer to parameters.
+        """
+        self._model.copy_buffer_to_parameters(buffer)
