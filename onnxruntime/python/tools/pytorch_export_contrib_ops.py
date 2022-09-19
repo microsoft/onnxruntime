@@ -17,7 +17,6 @@ except ModuleNotFoundError:
 
 from torch.onnx import symbolic_helper
 
-
 _OPSET_VERSION = 1
 _registered_ops: typing.AbstractSet[str] = set()
 
