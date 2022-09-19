@@ -183,9 +183,21 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
 
 #ifndef NDEBUG
   bool TestAll() override {
+    // TestAll is the entry point of CUDA EP's insternal tests.
+    // Those internal tests are not directly callable from onnxruntime_test_all
+    // because CUDA EP is a shared library now.
+
+    // This is just one test. Call other test functions below.
     if (!onnxruntime::cuda::test::TestDeferredRelease()) {
       return false;
     }
+
+    if (!onnxruntime::cuda::test::TestDeferredReleaseWithoutArena()) {
+      return false;
+    }
+
+    // TODO(wechi): brings disabled tests in onnxruntime/test/providers/cuda/*
+    // back alive here.
     return false;
   }
 #endif
