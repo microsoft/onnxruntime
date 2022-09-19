@@ -67,8 +67,8 @@ static Status AddBinaryOperator(int32_t op_type,
 static Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
                                          const std::string& input1,
                                          const std::string& input2,
-                                         const std::string& output1,
                                          const std::string& input3,
+                                         const std::string& output1,
                                          const std::string& output2,
                                          int32_t fuse_code,
                                          float output_scale = 0.0f,
@@ -1112,8 +1112,8 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), b_operand_type));
 
   int32_t fuse_code = model_builder.FindActivation(node_unit);
-  ORT_RETURN_IF_ERROR(AddNnapiBatchNormalization(model_builder, input, tensor_a_name, tensor_imm_product_name,
-                                                 tensor_b_name, output, fuse_code));
+  ORT_RETURN_IF_ERROR(AddNnapiBatchNormalization(model_builder, input, tensor_a_name, tensor_b_name,
+                                                 tensor_imm_product_name, output, fuse_code));
   return Status::OK();
 }
 

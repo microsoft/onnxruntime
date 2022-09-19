@@ -15,7 +15,7 @@ Shaper::Shaper(const GraphViewer& graph_viewer) : graph_viewer_(&graph_viewer) {
 // in NNAPI EP for now. Can be enhanced and reused in the future when more dynamic shape support is available.
 
 /* Status Shaper::UpdateShape(const std::string& name, const Shape& new_shape) {
-  const Shape& old_shape = (*this)[name];
+  const Shape old_shape = (*this)[name];
   if (old_shape != new_shape) {
     ORT_RETURN_IF_NOT(Product(old_shape) == 0 || !old_shape.empty(),
                       "The shape should be same size or old shape has size 0 (dynamic shape)");

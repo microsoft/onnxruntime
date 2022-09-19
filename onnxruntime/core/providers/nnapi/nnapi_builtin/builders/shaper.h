@@ -25,7 +25,7 @@ class Shaper {
     shape_map_[name] = shape;
   }
 
-  inline const Shape operator[](const std::string& key) const {
+  inline Shape operator[](const std::string& key) const {
     auto it = shape_map_.find(key);
     if (it != shape_map_.end()) {
       return it->second;

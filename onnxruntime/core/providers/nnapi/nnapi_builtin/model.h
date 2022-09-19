@@ -57,6 +57,7 @@ class Model {
 #endif
 
  public:
+  Model();
   ~Model();
   Model(const Model&) = delete;
   Model& operator=(const Model&) = delete;
@@ -132,7 +133,6 @@ class Model {
 
   OrtMutex mutex_;
 
-  Model();
   void AddInput(const std::string& name, const android::nn::wrapper::OperandType& operand_type);
 
   // It is possible that the actual output from NNAPI model is not the same as the name of

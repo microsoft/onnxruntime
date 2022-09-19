@@ -64,8 +64,7 @@ Status AddNnapiReshape(ModelBuilder& model_builder,
   // Calculate reshape output shape
 
   const Shape input_dimen = shaper[data_input];
-  uint32_t input_size = accumulate(input_dimen.cbegin(), input_dimen.cend(),
-                                   static_cast<uint32_t>(1), std::multiplies<uint32_t>());
+  uint32_t input_size = ShapeSize(input_dimen);
   Shape output_dimen(shape_value.size());
 
   int64_t capacity = 1;
@@ -129,11 +128,11 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
   const auto input_rank = shaper[input].size();
   axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_rank));
 
+  const auto count = gsl::narrow<int32_t>(outputs.size());
+
   // Calculate split output shape
   {
     const auto input_shape = shaper[input];
-    const auto count = gsl::narrow<int32_t>(outputs.size());
-
     ORT_RETURN_IF_NOT(input_shape[axis] % count == 0,
                       "count [", count, "] does not evenly divide dimension ", axis, " [", input_shape[axis], "]");
 
@@ -147,7 +146,6 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
   InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ORT_RETURN_IF_ERROR(AddScalarOperand(model_builder, input_indices, axis));
-  const auto count = gsl::narrow<int32_t>(outputs.size());
   ORT_RETURN_IF_ERROR(AddScalarOperand(model_builder, input_indices, count));
 
   const OperandType& input_operand_type = operand_types.at(input);
@@ -347,9 +345,9 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
       int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
       ORT_RETURN_IF_ERROR(AddScalarOperand(model_builder, input_indices, fuse_code));
 
-      const auto input1_dimen = shaper[a];
-      const auto input2_dimen = shaper[b_transposed];  // num_units, input_size
-      Shape output_dimen{input1_dimen[0], input2_dimen[0]};
+      const auto a_dimen = shaper[a];
+      const auto b_transposed_dimen = shaper[b_transposed];  // num_units, input_size
+      Shape output_dimen{a_dimen[0], b_transposed_dimen[0]};
       shaper.AddShape(output, output_dimen);
       const OperandType output_operand_type(operand_types.at(a).type, output_dimen);
       ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices,
@@ -437,9 +435,9 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
 }
 
 Status PerformBroadcasting(const Shape& shape1, const Shape& shape2, Shape& output_shape) {
-  bool shape1IsBigger = shape1.size() >= shape2.size();
-  auto max_shape = shape1IsBigger ? shape1 : shape2;
-  auto min_shape = shape1IsBigger ? shape2 : shape1;
+  bool shape1_is_bigger = shape1.size() >= shape2.size();
+  auto max_shape = shape1_is_bigger ? shape1 : shape2;
+  const auto& min_shape = shape1_is_bigger ? shape2 : shape1;
   for (int i = gsl::narrow<int>(max_shape.size()) - 1,
            j = gsl::narrow<int>(min_shape.size()) - 1;
        i >= 0 && j >= 0;
@@ -448,8 +446,8 @@ Status PerformBroadcasting(const Shape& shape1, const Shape& shape2, Shape& outp
     int dim_min_shape = min_shape[j];
     if (dim_max_shape != dim_min_shape) {
       ORT_RETURN_IF_NOT(dim_max_shape == 1 || dim_min_shape == 1,
-                        "Dimensions are not compatible, dim1: ", std::to_string(dim_max_shape),
-                        "dim2: ", std::to_string(dim_min_shape));
+                        "Dimensions are not compatible, dim1: ", dim_max_shape,
+                        "dim2: ", dim_min_shape);
     }
 
     if (dim_max_shape == 0 || dim_min_shape == 0) {
@@ -458,7 +456,7 @@ Status PerformBroadcasting(const Shape& shape1, const Shape& shape2, Shape& outp
       max_shape[i] = dim_min_shape;
     }
   }
-  output_shape = max_shape;
+  output_shape = std::move(max_shape);
   return Status::OK();
 }
 

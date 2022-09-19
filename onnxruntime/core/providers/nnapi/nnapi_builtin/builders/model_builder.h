@@ -118,7 +118,7 @@ class ModelBuilder {
  private:
   const NnApi* nnapi_{nullptr};
   const GraphViewer& graph_viewer_;
-  std::unique_ptr<Model> nnapi_model_;
+  std::unique_ptr<Model> nnapi_model_{std::make_unique<Model>()};
 
   uint32_t name_token_{0};
 
