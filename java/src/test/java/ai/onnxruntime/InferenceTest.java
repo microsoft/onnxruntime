@@ -1303,7 +1303,8 @@ public class InferenceTest {
 
         // try-cast first element in sequence to map/dictionary type
         @SuppressWarnings("unchecked")
-        Map<Long, Float> map = (Map<Long, Float>) ((List<Object>) secondOutput.getValue()).get(0);
+        Map<Long, Float> map =
+            (Map<Long, Float>) ((List<OnnxMap>) secondOutput.getValue()).get(0).getValue();
         assertEquals(0.25938290, map.get(0L), 1e-6);
         assertEquals(0.40904793, map.get(1L), 1e-6);
         assertEquals(0.33156919, map.get(2L), 1e-6);
@@ -1370,7 +1371,7 @@ public class InferenceTest {
         // try-cast first element in sequence to map/dictionary type
         @SuppressWarnings("unchecked")
         Map<String, Float> map =
-            (Map<String, Float>) ((List<Object>) secondOutput.getValue()).get(0);
+            (Map<String, Float>) ((List<OnnxMap>) secondOutput.getValue()).get(0).getValue();
         assertEquals(0.25938290, map.get("0"), 1e-6);
         assertEquals(0.40904793, map.get("1"), 1e-6);
         assertEquals(0.33156919, map.get("2"), 1e-6);
@@ -1413,7 +1414,7 @@ public class InferenceTest {
         assertEquals(2, seq.getInfo().length);
 
         // try-cast the elements in sequence to tensor type
-        List<Object> elements = seq.getValue();
+        List<? extends OnnxValue> elements = seq.getValue();
         assertEquals(2, elements.size());
         assertTrue(elements.get(0) instanceof OnnxTensor);
         assertTrue(elements.get(1) instanceof OnnxTensor);
