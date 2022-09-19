@@ -45,7 +45,7 @@ void RunQLinearWhere(
   test.Run(expect_result);
 }
 
-void QlinearWhereScalarCondition() {
+void QLinearWhereScalarCondition() {
   RunQLinearWhere<uint8_t>(
       {true},
       {1},
@@ -64,8 +64,8 @@ void QlinearWhereScalarCondition() {
       {1},
       {1}, OpTester::ExpectResult::kExpectSuccess);
 }
-TEST(QLinearWhereTest, QlinearWhereScalarCondition) {
-  QlinearWhereScalarCondition();
+TEST(QLinearWhereTest, QLinearWhereScalarCondition) {
+  QLinearWhereScalarCondition();
 }
 } // namespace test
 } // namespace onnxruntime

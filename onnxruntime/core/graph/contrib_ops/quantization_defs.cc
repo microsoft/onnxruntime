@@ -895,7 +895,7 @@ The output tensor has the same shape.
         }
       }));
 
-  ONNX_MS_OPERATOR_SET_SCHEMA(QlinearWhere, 1, OpSchema()
+  ONNX_MS_OPERATOR_SET_SCHEMA(QLinearWhere, 1, OpSchema()
       .SetDoc(
              "Return elements, either from X or Y, depending on condition.")
       .Input(0, "condition", " When True (nonzero), yield x, otherwise yield y", "B")
@@ -927,6 +927,7 @@ The output tensor has the same shape.
               shapes, *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
         }
       }));
+
   ONNX_MS_OPERATOR_SET_SCHEMA(QGemm, 1, OpSchema()
       .SetDoc("Quantized Gemm")
       .Input(0,
