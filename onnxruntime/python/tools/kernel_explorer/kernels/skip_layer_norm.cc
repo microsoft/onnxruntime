@@ -56,7 +56,6 @@ class SkipLayerNormSmall : public IKernelExplorer {
   REGISTER_OP(name, type, threads_per_block, 16)
 
 #define REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(name, type) \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 32)                         \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 64)                         \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 128)                        \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 192)                        \

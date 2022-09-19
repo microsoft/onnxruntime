@@ -12,8 +12,8 @@ import pytest
 
 def get_bert_sizes():
     batch_sizes = [1, 8, 64, 128]
-    seq_lens = [384]
-    hidden_sizes = [128, 256, 384, 1024]
+    seq_lens = [64, 128, 256, 384, 512]
+    hidden_sizes = [768, 1024]
     return product(batch_sizes, seq_lens, hidden_sizes)
 
 
