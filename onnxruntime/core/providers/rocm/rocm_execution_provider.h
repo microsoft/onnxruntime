@@ -128,8 +128,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
   hipStream_t stream_ = nullptr;
 
   // deferred_release_buffer_pool_[my_stream] store all CPU buffers associated with
-  // CUDA kernels running on my_stream (type: cudaStream_t).
-  // Buffers' release is enqueued as a CUDA callback onto the associated stream (aka
+  // HIP kernels running on my_stream (type: hipStream_t).
+  // Buffers' release is enqueued as a HIP callback onto the associated stream (aka
   // stream returned by GetComputeStream when calling AddDeferredReleaseCPUPtr) in OnRunEnd.
   // Those are pointers allocated by AllocateBufferOnCPUPinned and should be released
   // by CPU Allocator's Free function.

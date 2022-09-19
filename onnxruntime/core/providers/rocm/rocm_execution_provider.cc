@@ -99,7 +99,7 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
-          return std::make_unique<ROCMExternalAllocator>(id, CUDA, external_allocator_info.alloc, external_allocator_info.free, external_allocator_info.empty_cache);
+          return std::make_unique<ROCMExternalAllocator>(id, HIP, external_allocator_info.alloc, external_allocator_info.free, external_allocator_info.empty_cache);
         },
         device_id,
         false);
@@ -109,7 +109,7 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
   } else {
     AllocatorCreationInfo default_memory_info(
         [](OrtDevice::DeviceId id) {
-          return std::make_unique<ROCMAllocator>(id, CUDA);
+          return std::make_unique<ROCMAllocator>(id, HIP);
         },
         device_id,
         true,
@@ -184,7 +184,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
   // Prevent memory leak when people don't call
-  // OnRunStart and OnRunEnd when calling CudaKernel's.
+  // OnRunStart and OnRunEnd when calling HipKernel's.
   ORT_IGNORE_RETURN_VALUE(EnqueueDeferredRelease());
 
   // clean up thread local context caches
@@ -2338,7 +2338,7 @@ ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
   OrtDevice::DeviceId short_device_id = gsl::narrow<OrtDevice::DeviceId>(info_.device_id);
   OrtDevice gpu_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, short_device_id};
-  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
 
   // setup ROCM allocator
@@ -2370,7 +2370,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
     if (!rocm_pinned_alloc) {
       AllocatorCreationInfo pinned_memory_info(
           [](OrtDevice::DeviceId device_id) {
-            return std::make_unique<ROCMPinnedAllocator>(device_id, CUDA_PINNED);
+            return std::make_unique<ROCMPinnedAllocator>(device_id, HIP_PINNED);
           },
           pinned_device.Id());
       rocm_pinned_alloc = CreateAllocator(pinned_memory_info);
