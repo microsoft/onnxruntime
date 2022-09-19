@@ -1201,7 +1201,12 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 #ifdef MIGRAPHX_STREAM_SYNC
 
 Status MIGraphXExecutionProvider::Sync() const {
-  HIP_CALL_THROW(hipDeviceSynchronize());
+  HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(nullptr)));
+
+  auto status = hipStreamQuery(static_cast<hipStream_t>(GetComputeStream()));
+  if (status != hipSuccess) {
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::EP_FAIL);
+  }
   return Status::OK();
 }
 
@@ -1211,6 +1216,11 @@ Status MIGraphXExecutionProvider::OnRunStart()
 }
 
 Status MIGraphXExecutionProvider::OnRunEnd(bool) {
+  auto status = hipStreamQuery(static_cast<hipStream_t>(GetComputeStream()));
+
+  if (status != hipSuccess) {
+    HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
+  }
   return Status::OK();
 }
 
