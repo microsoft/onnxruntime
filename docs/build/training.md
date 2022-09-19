@@ -82,7 +82,7 @@ These dependency versions should reflect what is in the [Dockerfiles](https://gi
 
 The default AMD GPU build requires ROCM software toolkit installed on the system:
 
-* [ROCM](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_to_Install_ROCm.html#_How_to_Install) 5.2.3
+* [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_to_Install_ROCm.html#_How_to_Install) 5.2.3
 * [OpenMPI](https://www.open-mpi.org/) 4.0.4
   * See [install_openmpi.sh](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
 
