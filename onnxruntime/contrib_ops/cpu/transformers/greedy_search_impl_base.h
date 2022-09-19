@@ -92,6 +92,8 @@ class GreedySearchBase : public GenerateBase {
     parameters_->ParseFromInputs(&context);
   }
 
+  virtual ~GreedySearchBase(){}
+
   // Initialize by validating all the inputs, and allocating the output tensors.
   Status Initialize();
 
