@@ -14,7 +14,7 @@ enum QLinearWhereFailCause {
 
 template <typename T>
 void RunQLinearWhere(
-    const std::vector<T> condition,
+    bool*  condition,
     const std::vector<T> x,
     float x_scale,
     T x_zero_point,
@@ -32,7 +32,7 @@ void RunQLinearWhere(
     const std::vector<int64_t> z_shape,
    OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess) {
   OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
-  test.AddInput<T>("condition", condition_shape, condition);
+  test.AddInput<bool>("condition", condition_shape,condition,true );
   test.AddInput<T>("X", x_shape, x);
   test.AddInput<float>("x_scale" , {}, {x_scale}, is_x_const_input);
   test.AddInput<T>("x_zero_point" ,{}, {x_zero_point}, is_x_const_input);
@@ -46,8 +46,9 @@ void RunQLinearWhere(
 }
 
 void QLinearWhereScalarCondition() {
+  bool c[] = {true};
   RunQLinearWhere<uint8_t>(
-      {true},
+      c,
       {1},
       1.0f,
       0,

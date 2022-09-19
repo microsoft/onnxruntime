@@ -896,26 +896,29 @@ The output tensor has the same shape.
       }));
 
   ONNX_MS_OPERATOR_SET_SCHEMA(QLinearWhere, 1, OpSchema()
-      .SetDoc(
-             "Return elements, either from X or Y, depending on condition.")
+    .SetDoc("Return elements, either from X or Y, depending on condition.")
       .Input(0, "condition", " When True (nonzero), yield x, otherwise yield y", "B")
-      .Input(1, "X", "Y's zero point.", "T8")
-      .Input(2, "x_scale", "X's scale.", "float")
-      .Input(3, "x_zero_point", "X's zero point.", "T8")
-      .Input(4, "Y", "Y's zero point.", "T8")
-      .Input(5, "y_scale", "Y's scale.", "float")
-      .Input(6, "y_zero_point", "Y's zero point.", "T8")
-      .Input(7, "z_scale", "Z's scale.", "float")
-      .Input(8, "z_zero_point", "Z's zero point.", "T8")
-      .Output(0, "Z", "Tensor of shape equal to the broadcasted shape of condition, X, and Y", "T8")
+      .Input(1, "X", "Y's zero point.", "T")
+      .Input(2, "x_scale", "X's scale.", "TF")
+      .Input(3, "x_zero_point", "X's zero point.", "T")
+      .Input(4, "Y", "Y's zero point.", "T")
+      .Input(5, "y_scale", "Y's scale.", "TF")
+      .Input(6, "y_zero_point", "Y's zero point.", "T")
+      .Input(7, "z_scale", "Z's scale.", "TF")
+      .Input(8, "z_zero_point", "Z's zero point.", "T")
+      .Output(0, "Z", "Tensor of shape equal to the broadcasted shape of condition, X, and Y", "T")
       .TypeConstraint(
-       "B",
-       {"tensor(bool)"},
-       "Constrain input and output types to 8 bit signed and unsigned tensors.")
+        "B",
+        {"tensor(bool)"},
+        "Constrain input and output types to 8 bit signed and unsigned tensors.")
       .TypeConstraint(
-          "T8",
-          {"tensor(uint8)", "tensor(int8)"},
-          "Constrain input and output types to 8 bit signed and unsigned tensors.")
+        "TF",
+        {"tensor(float)"},
+        "Constrain scale types to any float tensor type.")
+      .TypeConstraint(
+        "T",
+        {"tensor(uint8)", "tensor(int8)"},
+        "Constrain input and output types to 8 bit signed and unsigned tensors.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 1, 0);
         if (hasNInputShapes(ctx, 9)) {
