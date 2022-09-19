@@ -16,6 +16,7 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/providers/cuda/test/all_tests.h"
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -179,6 +180,15 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) override {
     return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
+
+#ifndef NDEBUG
+  bool TestAll() override {
+    if (!onnxruntime::cuda::test::TestDeferredRelease()) {
+      return false;
+    }
+    return false;
+  }
+#endif
 
 } g_info;
 

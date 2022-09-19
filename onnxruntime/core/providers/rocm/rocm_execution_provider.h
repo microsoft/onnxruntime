@@ -79,6 +79,24 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
   }
 
+  template <typename T>
+  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
+    if (count_or_bytes == 0)
+      return nullptr;
+
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
+  }
+
+  template <typename T>
+  IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
+    // Note that OrtMemTypeCPU and OrtMemTypeCPUOutput are the same. See onnxruntime_c_api.h.
+    // In some CUDA async
+    if (count_or_bytes == 0)
+      return nullptr;
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput),
+                                        count_or_bytes);
+  }
+
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
@@ -95,14 +113,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   ProviderOptions GetProviderOptions() const override {
     return ROCMExecutionProviderInfo::ToProviderOptions(info_);
-  }
-
-  template <typename T>
-  IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
-    if (count_or_bytes == 0)
-      return nullptr;
-
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
   }
 
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
