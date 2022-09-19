@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifndef NDEBUG
 namespace onnxruntime {
 namespace cuda {
 namespace test {
@@ -8,6 +9,7 @@ namespace test {
 bool TestDeferredRelease();
 bool TestDeferredReleaseWithoutArena();
 
-} // onnxruntime
-} // cuda
-} // test
+}  // namespace test
+}  // namespace cuda
+}  // namespace onnxruntime
+#endif

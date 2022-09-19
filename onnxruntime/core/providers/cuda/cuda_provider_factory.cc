@@ -16,7 +16,9 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#ifndef NDEBUG
 #include "core/providers/cuda/test/all_tests.h"
+#endif
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -201,7 +203,6 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return false;
   }
 #endif
-
 } g_info;
 
 struct CUDA_Provider : Provider {

@@ -411,7 +411,7 @@ Status CUDAExecutionProvider::EnqueueDeferredRelease() {
       // Release memory asynchronously to avoid blocking the compute stream.
       CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release()));
     } else {
-      // cudaFreeHost and all other CUDA APIs cannot be called by cudaLaunchHostFunc per CUDA spec.
+      // cudaFreeHost and all other CUDA APIs cannot be called by cudaLaunchHostFunc per spec.
       // So we just do synchrous release.
       ReleaseCpuBufferCallback(cpu_buffers_info.release());
     }

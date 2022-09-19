@@ -79,12 +79,7 @@ bool TestDeferredReleaseWithoutArena() {
     ep.AddDeferredReleaseCPUPtr(pinned_buffer.release());
   }
 
-  // Memory stats
-  AllocatorStats stats;
-  cpu_pinned_alloc->GetStats(&stats);
-  std::cout << stats.DebugString() << std::endl;
   ORT_THROW_IF_ERROR(ep.OnRunEnd(true));
-  std::cout << stats.DebugString() << std::endl;
   return true;
 }
 
