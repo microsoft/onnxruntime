@@ -755,6 +755,10 @@ struct ProviderHostImpl : ProviderHost {
   bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
 
   const Node* Graph__ParentNode(const Graph* p) const override { return p->ParentNode(); }
+  const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
+  const std::string& Graph__Name(const Graph* p) noexcept override { return p->Name(); }
+  const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) noexcept override { return p->GetInputsIncludingInitializers(); }
+  bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }

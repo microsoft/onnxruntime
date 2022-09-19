@@ -274,6 +274,42 @@ TEST(TensorrtExecutionProviderTest, MultiThreadsTestWithOneSessionMultiThreadsIn
   RunWithOneSessionMultiThreadsInference(model_name, sess_log_id);
 }
 
+// Test loading same model in different way, when hash id is generated via model name/model content/env metadata
+TEST(TensorrtExecutionProviderTest, TRTMetadefIdGeneratorUsingModelHashing) {
+  
+  auto model_path = ORT_TSTR("testdata/mnist.onnx");
+
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_path, model, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
+
+  Graph& graph = model->MainGraph();
+  GraphViewer viewer(graph);
+
+  // get the hash for the model when loaded from file
+  HashValue model_hash;
+  
+  int id = TRTGenerateMetaDefId(viewer, model_hash);
+  ASSERT_EQ(id, 0);
+  ASSERT_NE(model_hash, 0);
+
+  // now load the model from bytes and check the hash differs
+  std::ifstream model_file_stream(model_path, std::ios::in | std::ios::binary);
+
+  std::shared_ptr<Model> model2;
+  ONNX_NAMESPACE::ModelProto model_proto;
+  ASSERT_STATUS_OK(Model::Load(model_file_stream, &model_proto));
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), PathString(), model2, nullptr,
+                               DefaultLoggingManager().DefaultLogger()));
+
+  Graph& graph2 = model2->MainGraph();
+  GraphViewer viewer2(graph2);
+
+  HashValue model_hash2;
+  int id2 = TRTGenerateMetaDefId(viewer2, model_hash2);
+  ASSERT_EQ(model_hash, model_hash2) << "Hash from model path shouldn't differ from hash based on model contents, as long as the model name/content/env are the same";
+  ASSERT_EQ(id2, 1) << "id2 should be 1 as model2 has same hash as model1";
+}
+
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   // GetParam() returns the parameter of following format:
   // ##cache type##_##input shape type##
