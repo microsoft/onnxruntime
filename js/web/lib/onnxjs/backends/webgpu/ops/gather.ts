@@ -9,7 +9,8 @@ import {ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, WORKGROUP_SIZE} from './common';
+import {createIndicesHelper, generateDispatchGroup, WORKGROUP_SIZE} from './common';
+import {declareDataSize, declareWorkgroupSize, mainBegin} from './shader-util';
 
 interface GatherAttributes extends AttributeWithCacheKey {
   readonly axis: number;
@@ -70,8 +71,10 @@ const createGatherProgramInfo =
       const dataIndicesHelper = createIndicesHelper('data', dataShape);
       const indicesIndicesHelper = createIndicesHelper('indices', indicesShape);
 
+      const dispatchGroup = generateDispatchGroup(Math.ceil(outputSize / WORKGROUP_SIZE));
       const shaderSource = `
-    const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+    ${declareWorkgroupSize()}
+    ${declareDataSize(outputSize)}
 
     @group(0) @binding(0) var<storage, read> data : array<${dataType}>;
     @group(0) @binding(1) var<storage, read> indices : array<i32>;
@@ -81,28 +84,22 @@ const createGatherProgramInfo =
     ${indicesIndicesHelper.i2oImpl}
     ${dataIndicesHelper.i2oImpl}
 
-    @compute @workgroup_size(WORKGROUP_SIZE)
-    fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
-      // Guard against out-of-bounds work group sizes
-      if (global_id.x >= ${outputSize}u) {
-        return;
-      }
+    ${mainBegin(dispatchGroup)}
 
       ${outputIndicesHelper.indicesVariableDeclaration('outputIdx')}
-      ${outputIndicesHelper.o2iCall('global_id.x', 'outputIdx')}
+      ${outputIndicesHelper.o2iCall('global_index', 'outputIdx')}
       ${dataIndicesHelper.indicesVariableDeclaration('dataIdx')}
       ${indicesIndicesHelper.indicesVariableDeclaration('indicesIdx')}
       ${indexCopyOps.join('\n        ')}
       let idx = indices[${indicesIndicesHelper.i2oExpression('indicesIdx')}];
       dataIdx${dataShape.length > 1 ? `[${axis}]` : ''} = u32(select(idx, idx + ${dataShape[axis]}, idx < 0));
-      output[global_id.x] = data[${dataIndicesHelper.i2oExpression('dataIdx')}];
+      output[global_index] = data[${dataIndicesHelper.i2oExpression('dataIdx')}];
     }`;
       return {
         ...metadata,
         outputs: [{dims: outputShape, type: inputs[0].type, gpuDataType: GpuDataType.default}],
         shaderSource,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+        dispatchGroup
       };
     };
 

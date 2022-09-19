@@ -7,9 +7,10 @@ import {ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, WORKGROUP_SIZE} from './common';
+import {createIndicesHelper, generateDispatchGroup, WORKGROUP_SIZE} from './common';
 import {calculateOutputShape, ConvAttributes} from './conv';
 import {getActicationSnippet} from './fuse-utils';
+import {declareDataSize, declareWorkgroupSize, mainBegin} from './shader-util';
 
 const createGroupedConvProgramMetadata = (hasBias: boolean, cacheHint: string): ProgramMetadata => ({
   name: 'GroupedConv',
@@ -48,8 +49,10 @@ const createGroupedConvProgramInfo =
       const xIndicesHelper = createIndicesHelper('x', xShape);
       const wIndicesHelper = createIndicesHelper('w', wShape);
 
+      const dispatchGroup = generateDispatchGroup(Math.ceil(outputSize / WORKGROUP_SIZE));
       const shaderSource = `
-  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  ${declareWorkgroupSize()}
+  ${declareDataSize(outputSize)}
   const strides: vec2<u32> = vec2(${attributes.strides[0]}u, ${attributes.strides[1]}u);
   const pads: vec2<u32> = vec2(${attributes.pads[0]}u, ${attributes.pads[1]}u);
 
@@ -61,15 +64,10 @@ const createGroupedConvProgramInfo =
   ${xIndicesHelper.i2oImpl}
   ${wIndicesHelper.i2oImpl}
 
-  @compute @workgroup_size(WORKGROUP_SIZE)
-  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-    // Guard against out-of-bounds work group sizes
-    if (global_id.x >= ${outputSize}u) {
-      return;
-    }
+  ${mainBegin(dispatchGroup)}
 
     ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
-    ${outputIndicesHelper.o2iCall('global_id.x', 'outputIndices')}
+    ${outputIndicesHelper.o2iCall('global_index', 'outputIndices')}
     let batch: u32 = outputIndices[0];
     let output_channel: u32 = outputIndices[1];
     let xRCCorner: vec2<u32> = vec2<u32>(outputIndices[2], outputIndices[3]) * strides - pads;
@@ -109,13 +107,13 @@ const createGroupedConvProgramInfo =
     }
     ${processBias}
     ${applyActivation}
-    output[global_id.x] = value;
+    output[global_index] = value;
   }`;
       return {
         ...metadata,
         outputs: [{dims: outputShape, type: inputs[0].type, gpuDataType: GpuDataType.default}],
         shaderSource,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+        dispatchGroup
       };
     };
 

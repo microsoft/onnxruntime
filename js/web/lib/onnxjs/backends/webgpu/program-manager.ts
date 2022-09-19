@@ -31,8 +31,7 @@ export class ProgramManager {
   setArtifact(key: unknown, artifact: Artifact): void {
     this.repo.set(key, artifact);
   }
-  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[],
-      dispatchGroup: {x: number; y?: number; z?: number}): void {
+  run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[]): void {
     const device = this.backend.device;
 
     const computePassEncoder = this.backend.getComputePassEncoder();
@@ -48,8 +47,7 @@ export class ProgramManager {
     const bindGroup = device.createBindGroup({layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries});
     computePassEncoder.setBindGroup(0, bindGroup);
 
-    const {x, y, z} = dispatchGroup;
-    computePassEncoder.dispatch(x, y, z);
+    computePassEncoder.dispatch(...buildArtifact.programInfo.dispatchGroup);
 
     this.backend.pendingDispatchNumber++;
 

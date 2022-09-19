@@ -9,7 +9,8 @@ import {GemmUtil, ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {WORKGROUP_SIZE} from './common';
+import {generateDispatchGroup, WORKGROUP_SIZE} from './common';
+import {declareDataSize, declareWorkgroupSize, mainBegin} from './shader-util';
 
 export interface GemmAttributes extends AttributeWithCacheKey {
   transA: boolean;
@@ -97,8 +98,10 @@ const createGemmProgramInfo =
       if (inputs.length === 3) {
         inputStorageBuffersDeclarations.push(`@group(0) @binding(2) var<storage, read> c : array<${dataType}>;`);
       }
+      const dispatchGroup = generateDispatchGroup(Math.ceil(outputSize / WORKGROUP_SIZE));
       const shaderSource = `
-  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  ${declareWorkgroupSize()}
+  ${declareDataSize(outputSize)}
   const M: u32 = ${M}u;
   const N: u32 = ${N}u;
   const K: u32 = ${K}u;
@@ -108,16 +111,9 @@ const createGemmProgramInfo =
   ${inputStorageBuffersDeclarations.join('\n')}
   @group(0) @binding(${inputs.length}) var<storage, read_write> output : array<${dataType}>;
 
-  @compute @workgroup_size(WORKGROUP_SIZE)
-  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
-    // Guard against out-of-bounds work group sizes
-    if (global_id.x >= ${outputSize}u) {
-      return;
-    }
-
-    let m = global_id.x / N;
-    let n = global_id.x % N;
+  ${mainBegin(dispatchGroup)}
+    let m = global_index / N;
+    let n = global_index % N;
 
     var value = ${dataType}(0);
     for (var k: u32 = 0u; k<${K}u; k++) {
@@ -126,14 +122,14 @@ const createGemmProgramInfo =
 
     ${calculateAlpha}
     ${calculateC}
-    output[global_id.x] = value;
+    output[global_index] = value;
 
   }`;
       return {
         ...metadata,
         outputs: [{dims: outputShape, type: inputs[0].type, gpuDataType: GpuDataType.default}],
         shaderSource,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+        dispatchGroup
       };
     };
 

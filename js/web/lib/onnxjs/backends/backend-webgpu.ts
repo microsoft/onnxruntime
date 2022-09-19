@@ -8,6 +8,7 @@ import {Logger} from '../instrument';
 import {Session} from '../session';
 
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
+import {setMaxComputeWorkgroupsPerDimension} from './webgpu/ops/common';
 import {WebGpuSessionHandler} from './webgpu/session-handler';
 
 export class WebGpuBackend implements Backend {
@@ -48,6 +49,8 @@ export class WebGpuBackend implements Backend {
           console.error(`An uncaught WebGPU validation error was raised: ${ev.error.message}`);
         }
       };
+
+      setMaxComputeWorkgroupsPerDimension(this.device.limits.maxComputeWorkgroupsPerDimension);
 
       return true;
     } catch (e) {

@@ -74,7 +74,7 @@ export class WebGpuInferenceHandler implements InferenceHandler {
       this.session.programManager.setArtifact(key, artifact);
     }
 
-    this.session.programManager.run(artifact, inputDatas, outputDatas, artifact.programInfo.dispatchGroup(inputs));
+    this.session.programManager.run(artifact, inputDatas, outputDatas);
 
     return outputTensors;
   }

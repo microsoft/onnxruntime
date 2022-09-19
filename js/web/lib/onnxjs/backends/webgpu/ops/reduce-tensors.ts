@@ -6,7 +6,8 @@ import {ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {WORKGROUP_SIZE} from './common';
+import {generateDispatchGroup, WORKGROUP_SIZE} from './common';
+import {declareDataSize, declareWorkgroupSize, mainBegin} from './shader-util';
 
 export const sum = async(inferenceHandler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> => {
   validateInputs(inputs);
@@ -27,32 +28,26 @@ const createSumProgramInfo =
       const inputsDeclaration =
           inputs.map((_, i) => `@group(0) @binding(${i}) var<storage, read> input${i} : array<${dataType}>;`);
       const sumLine = inputs.map((_, i) => `input${i}[offset]`).join('+');
+      const dispatchGroup = generateDispatchGroup(Math.ceil(outputSize / WORKGROUP_SIZE));
       const shaderSource = `
-  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  ${declareWorkgroupSize()}
+  ${declareDataSize(outputSize)}
 
   ${inputsDeclaration.join('\n')}
   @group(0) @binding(${inputs.length}) var<storage, read_write> output : array<${dataType}>;
 
-  @compute @workgroup_size(WORKGROUP_SIZE)
-  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
-    // Guard against out-of-bounds work group sizes
-    if (global_id.x >= ${outputSize}u) {
-      return;
-    }
-
-    let offset = global_id.x;
+  ${mainBegin(dispatchGroup)}
 
     var value = ${dataType}(0);
     value = ${sumLine};
 
-    output[offset] = value;
+    output[global_index] = value;
   }`;
       return {
         ...sumProgramMetadata,
         outputs: [{dims: outputShape, type: inputs[0].type, gpuDataType: GpuDataType.default}],
         shaderSource,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+        dispatchGroup
       };
     };
 

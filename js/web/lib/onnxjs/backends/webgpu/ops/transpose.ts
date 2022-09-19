@@ -9,7 +9,8 @@ import {ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo} from '../types';
 
-import {createIndicesHelper, WORKGROUP_SIZE} from './common';
+import {createIndicesHelper, generateDispatchGroup, WORKGROUP_SIZE} from './common';
+import {declareDataSize, declareWorkgroupSize, mainBegin} from './shader-util';
 
 export interface TransposeAttributes extends AttributeWithCacheKey {
   readonly perm: number[];
@@ -50,8 +51,10 @@ const createTransposeProgramInfo =
       const outputIndicesHelper = createIndicesHelper('output', outputShape);
       const inputIndicesHelper = createIndicesHelper('a', inputShape);
 
+      const dispatchGroup = generateDispatchGroup(Math.ceil(outputSize / WORKGROUP_SIZE));
       const shaderSource = `
-  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  ${declareWorkgroupSize()}
+  ${declareDataSize(outputSize)}
 
   @group(0) @binding(0) var<storage, read> a : array<${dataType}>;
   @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
@@ -60,26 +63,20 @@ const createTransposeProgramInfo =
   ${outputIndicesHelper.o2iImpl}
   ${inputIndicesHelper.i2oImpl}
 
-  @compute @workgroup_size(WORKGROUP_SIZE)
-  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
-    // Guard against out-of-bounds work group sizes
-    if (global_id.x >= ${outputSize}u) {
-      return;
-    }
+  ${mainBegin(dispatchGroup)}
 
     ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-    ${outputIndicesHelper.o2iCall('global_id.x', 'indices')}
+    ${outputIndicesHelper.o2iCall('global_index', 'indices')}
     ${inputIndicesHelper.indicesVariableDeclaration('aIndices')}
     perm(&aIndices, &indices);
 
-    output[global_id.x] = a[${inputIndicesHelper.i2oExpression('aIndices')}];
+    output[global_index] = a[${inputIndicesHelper.i2oExpression('aIndices')}];
   }`;
       return {
         ...transposeProgramMetadata,
         outputs: [{dims: outputShape, type: input.type, gpuDataType: GpuDataType.default}],
         shaderSource,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+        dispatchGroup
       };
     };
 

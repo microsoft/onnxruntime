@@ -9,7 +9,8 @@ import {ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, IndicesHelper, WORKGROUP_SIZE} from './common';
+import {createIndicesHelper, generateDispatchGroup, IndicesHelper, WORKGROUP_SIZE} from './common';
+import {declareDataSize, declareWorkgroupSize, mainBegin} from './shader-util';
 
 export interface ConcatAttributes extends AttributeWithCacheKey {
   readonly axis: number;
@@ -71,8 +72,11 @@ const createConcatProgramInfo =
       const outputIndicesHelper = createIndicesHelper('output', outputShape);
 
       const indicesAxis = rank < 2 ? 'indices' : `indices[${axis}]`;
+
+      const dispatchGroup = generateDispatchGroup(Math.ceil(outputSize / WORKGROUP_SIZE));
       const shaderSource = `
-  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  ${declareWorkgroupSize()}
+  ${declareDataSize(outputSize)}
 
   ${inputStorageBuffersDeclarations.join('\n')}
   @group(0) @binding(${inputs.length}) var<storage, read_write> output : array<${dataType}>;
@@ -84,29 +88,23 @@ const createConcatProgramInfo =
   ${calculateInputIndexImpl(sizeInConcatAxis.length)}
   ${readBufferDataImpl(inputIndicesHelpers, rank, dataType)}
 
-  @compute @workgroup_size(WORKGROUP_SIZE)
-  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
-    // Guard against out-of-bounds work group sizes
-    if (global_id.x >= ${outputSize}u) {
-      return;
-    }
+  ${mainBegin(dispatchGroup)}
 
     ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-    ${outputIndicesHelper.o2iCall('global_id.x', 'indices')}
+    ${outputIndicesHelper.o2iCall('global_index', 'indices')}
 
     let textureIndex = calculateInputIndex(${indicesAxis});
     if (textureIndex != 0u) {
       ${indicesAxis} -= sizeInConcatAxis[textureIndex - 1u];
     }
 
-    output[global_id.x] = readBufferData(textureIndex, &indices);
+    output[global_index] = readBufferData(textureIndex, &indices);
   }`;
       return {
         ...metadata,
         outputs: [{dims: outputShape, type: inputs[0].type, gpuDataType: GpuDataType.default}],
         shaderSource,
-        dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+        dispatchGroup
       };
     };
 

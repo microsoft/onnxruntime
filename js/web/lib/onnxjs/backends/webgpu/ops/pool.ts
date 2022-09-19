@@ -9,7 +9,8 @@ import {PoolConvUtil, ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramMetadata} from '../types';
 
-import {createIndicesHelper, WORKGROUP_SIZE} from './common';
+import {createIndicesHelper, generateDispatchGroup, WORKGROUP_SIZE} from './common';
+import {declareDataSize, declareWorkgroupSize, mainBegin} from './shader-util';
 
 export interface AveragePoolAttributes extends AttributeWithCacheKey {
   readonly autoPad: string;
@@ -47,28 +48,30 @@ export const parseAveragePoolAttributes: OperatorInitialization<AveragePoolAttri
     };
 
 const createAveragePoolProgramInfo =
-    (inputs: Tensor[], metadata: ProgramMetadata, isGlobalOperator: boolean,
-     attributes: AveragePoolAttributes): ProgramInfo => {
-      const [adjustedAttributes, outputShape] =
-          getAdjustedPoolAttributesAndOutputShape(inputs, attributes, isGlobalOperator);
-      const kernelSize = ShapeUtil.size(adjustedAttributes.kernelShape);
+    (inputs: Tensor[], metadata: ProgramMetadata, isGlobalOperator: boolean, attributes: AveragePoolAttributes):
+        ProgramInfo => {
+          const [adjustedAttributes, outputShape] =
+              getAdjustedPoolAttributesAndOutputShape(inputs, attributes, isGlobalOperator);
+          const kernelSize = ShapeUtil.size(adjustedAttributes.kernelShape);
 
-      const dataType = 'f32';
+          const dataType = 'f32';
 
-      const op1 = 'value += x_val;';
-      let op2 = '';
-      if (adjustedAttributes.countIncludePad) {
-        op2 += `value /= ${dataType}(${kernelSize});`;
-      } else {
-        op2 += `value /= ${dataType}(${kernelSize} - pad);`;
-      }
-      return {
-        ...metadata,
-        outputs: [{dims: outputShape, type: inputs[0].type, gpuDataType: GpuDataType.default}],
-        shaderSource: generatePoolingCode(inputs[0].dims, outputShape, adjustedAttributes, op1, op2, dataType, '0.0'),
-        dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
-      };
-    };
+          const op1 = 'value += x_val;';
+          let op2 = '';
+          if (adjustedAttributes.countIncludePad) {
+            op2 += `value /= ${dataType}(${kernelSize});`;
+          } else {
+            op2 += `value /= ${dataType}(${kernelSize} - pad);`;
+          }
+          const dispatchGroup = generateDispatchGroup(Math.ceil(ShapeUtil.size(outputShape) / WORKGROUP_SIZE));
+          return {
+            ...metadata,
+            outputs: [{dims: outputShape, type: inputs[0].type, gpuDataType: GpuDataType.default}],
+            shaderSource: generatePoolingCode(
+                inputs[0].dims, outputShape, dispatchGroup, adjustedAttributes, op1, op2, dataType, '0.0'),
+            dispatchGroup
+          };
+        };
 
 export const globalAveragePool: OperatorAsyncImplementation<AveragePoolAttributes> =
     async(inferenceHandler: WebGpuInferenceHandler, inputs: Tensor[], attributes: AveragePoolAttributes):
@@ -134,11 +137,13 @@ const createMaxPoolProgramInfo =
       value = max(x_val, value);
     `;
           const op2 = '';
+          const dispatchGroup = generateDispatchGroup(Math.ceil(ShapeUtil.size(outputShape) / WORKGROUP_SIZE));
           return {
             ...metadata,
             outputs: [{dims: outputShape, type: inputs[0].type, gpuDataType: GpuDataType.default}],
-            shaderSource: generatePoolingCode(inputs[0].dims, outputShape, adjustedAttributes, op1, op2, 'f32', '-1e5'),
-            dispatchGroup: () => ({x: Math.ceil(ShapeUtil.size(outputShape) / 64 /* workgroup size */)})
+            shaderSource: generatePoolingCode(
+                inputs[0].dims, outputShape, dispatchGroup, adjustedAttributes, op1, op2, 'f32', '-1e5'),
+            dispatchGroup
           };
         };
 
@@ -202,8 +207,8 @@ const validateInputs = (inputs: Tensor[]): void => {
 };
 
 const generatePoolingCode =
-    (inputDims: readonly number[], outputShape: readonly number[], attributes: AveragePoolAttributes, op1: string,
-     op2: string, dataType: string, start: string): string => {
+    (inputDims: readonly number[], outputShape: readonly number[], dispatchGroup: [number, number, number],
+     attributes: AveragePoolAttributes, op1: string, op2: string, dataType: string, start: string): string => {
       const rank = inputDims.length;
       const outputSize = ShapeUtil.size(outputShape);
       const outputIndicesHelper = createIndicesHelper('output', outputShape);
@@ -265,25 +270,20 @@ const generatePoolingCode =
         }
 
         const poolingCode = `
-        const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+      ${declareWorkgroupSize()}
+      ${declareDataSize(outputSize)}
         @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
         @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
 
         ${outputIndicesHelper.o2iImpl}
         ${xIndicesHelper.i2oImpl}
 
-        @compute @workgroup_size(WORKGROUP_SIZE)
-        fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
-          // Guard against out-of-bounds work group sizes
-          if (global_id.x >= ${outputSize}u) {
-            return;
-          }
+        ${mainBegin(dispatchGroup)}
 
           ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-          ${outputIndicesHelper.o2iCall('global_id.x', 'indices')}
+          ${outputIndicesHelper.o2iCall('global_index', 'indices')}
           ${outputIndicesHelper.indicesVariableDeclaration('xIndices')}
-          ${outputIndicesHelper.o2iCall('global_id.x', 'xIndices')}
+          ${outputIndicesHelper.o2iCall('global_index', 'xIndices')}
 
           var value: ${dataType} = ${dataType}(${start});
           var pad = 0;
@@ -292,7 +292,7 @@ const generatePoolingCode =
           ${codeHEnd}
           ${op2}
 
-          output[global_id.x] = value;
+          output[global_index] = value;
         }`;
         return poolingCode;
       } else {
@@ -322,7 +322,8 @@ const generatePoolingCode =
         `;
         }
         const poolingCode = `
-        const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+        ${declareWorkgroupSize()}
+        ${declareDataSize(outputSize)}
         @group(0) @binding(0) var<storage, read> x : array<${dataType}>;
         @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
 
@@ -334,18 +335,12 @@ const generatePoolingCode =
         const kernelStrides = array<u32, ${stridesRank}>(${kernelStrides.map(i => `${i}u`).join(',')});
         const strides = array<u32, ${stridesRank}>(${attributes.strides.map(i => `${i}u`).join(',')});
 
-        @compute @workgroup_size(WORKGROUP_SIZE)
-        fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
-
-          // Guard against out-of-bounds work group sizes
-          if (global_id.x >= ${outputSize}u) {
-            return;
-          }
+        ${mainBegin(dispatchGroup)}
 
           ${outputIndicesHelper.indicesVariableDeclaration('indices')}
-          ${outputIndicesHelper.o2iCall('global_id.x', 'indices')}
+          ${outputIndicesHelper.o2iCall('global_index', 'indices')}
           ${outputIndicesHelper.indicesVariableDeclaration('xIndices')}
-          ${outputIndicesHelper.o2iCall('global_id.x', 'xIndices')}
+          ${outputIndicesHelper.o2iCall('global_index', 'xIndices')}
 
           var offsets: array<u32, ${stridesRank}>;
 
@@ -369,7 +364,7 @@ const generatePoolingCode =
           }
           ${op2}
 
-          output[global_id.x] = value;
+          output[global_index] = value;
         }`;
         return poolingCode;
       }

@@ -9,7 +9,8 @@ import {ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo} from '../types';
 
-import {WORKGROUP_SIZE} from './common';
+import {generateDispatchGroup, WORKGROUP_SIZE} from './common';
+import {declareDataSize, declareWorkgroupSize, mainBegin} from './shader-util';
 
 export interface SliceAttributes extends AttributeWithCacheKey {
   readonly axes: number[];
@@ -92,31 +93,27 @@ const createSliceProgramInfo = (input: Tensor, attributes: SliceAttributes, data
 
   const outputSize = ShapeUtil.size(outputShape);
   const outputStrides = ShapeUtil.computeStrides(outputShape);
+  const dispatchGroup = generateDispatchGroup(Math.ceil(outputSize / WORKGROUP_SIZE));
   const shaderSource = `
-  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  ${declareWorkgroupSize()}
+  ${declareDataSize(outputSize)}
   @group(0) @binding(0) var<storage, read> input : array<${dataType}>;
   @group(0) @binding(1) var<storage, read_write> output : array<${dataType}>;
 
-  @compute @workgroup_size(WORKGROUP_SIZE)
-  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
+  ${mainBegin(dispatchGroup)}
 
-    // Guard against out-of-bounds work group sizes
-    if (global_id.x >= ${outputSize}u) {
-      return;
-    }
-
-    var offset = global_id.x;
+    var offset = global_index;
     ${offsetToIndices('offset', outputStrides, 'idx_')}
     ${sliceOps.join('')}
     var offsetInput = 0u;
     ${indicesToOffset('idx_', ShapeUtil.computeStrides(input.dims), 'offsetInput')}
-    output[global_id.x] = input[offsetInput];
+    output[global_index] = input[offsetInput];
   }`;
   return {
     ...sliceProgramMetadata,
     outputs: [{dims: outputShape, type: input.type, gpuDataType: GpuDataType.default}],
     shaderSource,
-    dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
+    dispatchGroup
   };
 };
 

@@ -47,7 +47,7 @@ export interface IndicesHelper {
   iType: string;
 }
 
-export const createIndicesHelper = (name: string, shape: readonly number[]) => {
+export const createIndicesHelper = (name: string, shape: readonly number[]): IndicesHelper => {
   const iType = shape.length < 2 ? 'u32' : `array<u32, ${shape.length}>`;
 
   const strides = ShapeUtil.computeStrides(shape);
@@ -88,4 +88,38 @@ export const createIndicesHelper = (name: string, shape: readonly number[]) => {
       `var ${v}:${iType}${init ? `=${iType}(${init.join(',')})` : ''};`;
 
   return {o2iImpl, o2iCall, i2oImpl, i2oExpression, indicesVariableDeclaration, iType};
+};
+
+let MAX_COMPUTE_WORKGROUPS_PER_DIMENSION: number;
+
+export const setMaxComputeWorkgroupsPerDimension = (n: number): void => {
+  MAX_COMPUTE_WORKGROUPS_PER_DIMENSION = n;
+};
+
+export const generateDispatchGroup = (x: number, y?: number, z?: number): [number, number, number] => {
+  if (typeof y !== 'number') {
+    y = 1;
+  }
+  if (typeof z !== 'number') {
+    z = 1;
+  }
+
+  const max = MAX_COMPUTE_WORKGROUPS_PER_DIMENSION;
+
+  if (x <= max && y <= max && z <= max) {
+    return [x, y, z];
+  }
+
+  const totalSize = x * y * z;
+  const sizeXY = Math.ceil(Math.sqrt(totalSize));
+  if (sizeXY <= max) {
+    return [sizeXY, sizeXY, 1];
+  }
+
+  const sizeXYZ = Math.ceil(Math.cbrt(totalSize));
+  if (sizeXYZ <= max) {
+    return [sizeXYZ, sizeXYZ, sizeXYZ];
+  }
+
+  throw new Error(`input size too large: ${totalSize}`);
 };

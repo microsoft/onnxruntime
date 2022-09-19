@@ -82,11 +82,7 @@ export interface ProgramInfo extends ProgramMetadata {
    */
   // entryPoint: string;
 
-  dispatchGroup: (inputs: readonly Tensor[]) => {
-    x: number;
-    y?: number;
-    z?: number;
-  };
+  dispatchGroup: [number, number, number];
 }
 
 export interface Artifact {

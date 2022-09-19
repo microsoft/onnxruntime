@@ -8,7 +8,8 @@ import {MAX_CLIP, MIN_CLIP} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
-import {WORKGROUP_SIZE} from './common';
+import {generateDispatchGroup, WORKGROUP_SIZE} from './common';
+import {declareDataSize, declareWorkgroupSize, mainBegin} from './shader-util';
 
 type BuiltinFunctionName = string;
 type ElementwiseCustomExpression = (expression: string) => string;
@@ -24,24 +25,20 @@ const createElementwiseProgramShader =
       } else {
         expression = funcCall('a');
       }
+      const dispatchGroup = generateDispatchGroup(Math.ceil(datasize / WORKGROUP_SIZE / 4 /* vec size */));
       return `
-  const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
+  ${declareWorkgroupSize()}
+  ${declareDataSize(vecSize)}
 
   @group(0) @binding(0) var<storage, read> inputData : array<vec4<f32>>;
   @group(0) @binding(1) var<storage, read_write> outputData : array<vec4<f32>>;
 
   ${additionalImplementation ?? ''}
 
-  @compute @workgroup_size(WORKGROUP_SIZE)
-  fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
+  ${mainBegin(dispatchGroup)}
 
-    // Guard against out-of-bounds work group sizes
-    if (global_id.x >= ${vecSize}u) {
-      return;
-    }
-
-    let a = inputData[global_id.x];
-    outputData[global_id.x] = ${expression};
+    let a = inputData[global_index];
+    outputData[global_index] = ${expression};
   }`;
     };
 
@@ -51,8 +48,7 @@ const createElementwiseProgramInfo =
           ...metadata,
           shaderSource: createElementwiseProgramShader(input.size, funcCall, additionalImplementation),
           outputs: [{dims: input.dims, type: input.type, gpuDataType: GpuDataType.default}],
-          dispatchGroup: (inputTensors) =>
-              ({x: Math.ceil(inputTensors[0].size / 64 /* workgroup size */ / 4 /* vec size */)})
+          dispatchGroup: generateDispatchGroup(Math.ceil(input.size / WORKGROUP_SIZE / 4 /* vec size */))
         });
 
 const createElementwiseProgramInfoLoader =
