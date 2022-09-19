@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "core/graph/basic_types.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 
 namespace onnxruntime {
 
