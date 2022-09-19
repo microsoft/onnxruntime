@@ -98,8 +98,11 @@ def unregister():
         try:
             torch.onnx.unregister_custom_op_symbolic(name, _OPSET_VERSION)
         except AttributeError:
+            # The symbolic_registry module was removed in PyTorch 1.13.
+            # We are importing it here for backwards compatibility
+            # because unregister_custom_op_symbolic is not available before PyTorch 1.12
             from torch.onnx import symbolic_registry
-            # unregister_custom_op_symbolic is not available before PyTorch 1.12
+
             namespace, kind = name.split("::")
             for version in symbolic_helper._onnx_stable_opsets:
                 if version >= _OPSET_VERSION and symbolic_registry.is_registered_op(kind, namespace, version):
