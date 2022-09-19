@@ -413,6 +413,53 @@ typedef struct OrtCUDAProviderOptions {
 
 } OrtCUDAProviderOptions;
 
+/** \brief CANN Provider Options
+*
+* \see OrtApi::SessionOptionsAppendExecutionProvider_CANN
+*/
+typedef struct OrtCANNProviderOptions {
+#ifdef __cplusplus
+  OrtCANNProviderOptions() : device_id{}, npu_mem_limit{SIZE_MAX}, arena_extend_strategy{},
+                             do_copy_in_default_stream{1}, max_opqueue_num{10000},
+                             default_memory_arena_cfg{} {}
+#endif
+
+  /** \brief CANN device Id
+  *   Defaults to 0.
+  */
+  int device_id;
+
+  /** \brief CANN memory limit (To use all possible memory pass in maximum size_t)
+  *   Defaults to SIZE_MAX.
+  *   \note If a ::OrtArenaCfg has been applied, it will override this field
+  */
+  size_t npu_mem_limit;
+
+  /** \brief Strategy used to grow the memory arena
+  *   0 = kNextPowerOfTwo<br>
+  *   1 = kSameAsRequested<br>
+  *   Defaults to 0.
+  *   \note If a ::OrtArenaCfg has been applied, it will override this field
+  */
+  int arena_extend_strategy;
+
+  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the CANN EP
+  *   0 = Use separate streams for copying and compute.
+  *   1 = Use the same stream for copying and compute.
+  *   Defaults to 1.
+  */
+  int do_copy_in_default_stream;
+
+  /** \brief CANN operator cache information aging configuration
+  *   Defaults to 10000
+  */
+  int max_opqueue_num;
+
+  /** \brief CANN memory arena configuration parameters
+  */
+  OrtArenaCfg* default_memory_arena_cfg;
+} OrtCANNProviderOptions;
+
 /** \brief ROCM Provider Options
 *
 * \see OrtApi::SessionOptionsAppendExecutionProvider_ROCM
@@ -3495,6 +3542,18 @@ struct OrtApi {
   * \since Version 1.13
   */
   const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version) NO_EXCEPTION;
+
+  /** \brief Append CANN provider to session options
+  *
+  * If CANN is not available (due to a non CANN enabled build, or if CANN is not installed on the system), this function will return failure.
+  *
+  * \param[in] options
+  * \param[in] cann_options
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CANN,
+                  _In_ OrtSessionOptions* options, _In_ const OrtCANNProviderOptions* cann_options);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
