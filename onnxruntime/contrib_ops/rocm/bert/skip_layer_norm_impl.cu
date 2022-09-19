@@ -49,55 +49,55 @@ Status LaunchSkipLayerNormKernel(
     const int grid_size = element_count / ld;
     if (ld <= 32) {
       constexpr int block_size = 32;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
-                         0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
+      SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, stream>>>(
+          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 64) {
       constexpr int block_size = 64 / 2;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 2>), grid_size, block_size,
-                         0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
+      SkipLayerNormKernelSmall<T, block_size, 2><<<grid_size, block_size, 0, stream>>>(
+          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 128) {
       constexpr int block_size = 128 / 4;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size,
-                         0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
+      SkipLayerNormKernelSmall<T, block_size, 4><<<grid_size, block_size, 0, stream>>>(
+          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 384) {
       constexpr int block_size = 384 / 4;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size,
-                         0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
+      SkipLayerNormKernelSmall<T, block_size, 4><<<grid_size, block_size, 0, stream>>>(
+          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 768) {
       constexpr int block_size = 768 / 4;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size,
-                         0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
+      SkipLayerNormKernelSmall<T, block_size, 4><<<grid_size, block_size, 0, stream>>>(
+          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 1024) {
       constexpr int block_size = 1024 / 4;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 4>), grid_size, block_size,
-                         0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
+      SkipLayerNormKernelSmall<T, block_size, 4><<<grid_size, block_size, 0, stream>>>(
+          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else {
       constexpr int block_size = 256;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), grid_size, block_size,
-                         0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output);
+      SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, stream>>>(
+          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output);
     }
   } else {
     const int grid_size = element_count / ld;
     if (ld <= 32) {
       constexpr int block_size = 32;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
-                         0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
+      SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, stream>>>(
+          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 64) {
       constexpr int block_size = 64;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
-                         0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
+      SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, stream>>>(
+          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld <= 128) {
       constexpr int block_size = 128;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
-                         0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
+      SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, stream>>>(
+          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else if (ld == 384) {
       constexpr int block_size = 384;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernelSmall<T, block_size, 1>), grid_size, block_size,
-                         0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
+      SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, stream>>>(
+          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, hasBias);
     } else {
       constexpr int block_size = 256;
-      hipLaunchKernelGGL(HIP_KERNEL_NAME(SkipLayerNormKernel<T, block_size>), grid_size, block_size,
-                         0, stream, ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output);
+      SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, stream>>>(
+          ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output);
     }
   }
   return HIP_CALL(hipPeekAtLastError());
