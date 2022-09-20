@@ -257,34 +257,33 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                              disable_compact_memory);
   auto workspace_buffer = GetScratchBuffer<void>(workSpaceSize, OrtStream(context));
   ORT_RETURN_IF_ERROR(LaunchLongformerAttentionKernel(
-          device_prop,
-          cublas,
-          stream,
-          reinterpret_cast<const CudaT*>(gemm_buffer.get()),
-          reinterpret_cast<const CudaT*>(bias->Data<T>()),
-          reinterpret_cast<const CudaT*>(attention_mask->Data<T>()),
-          reinterpret_cast<const CudaT*>(global_gemm_buffer),
-          reinterpret_cast<const CudaT*>(global_bias->Data<T>()),
-          global_attention_mask->Data<int>(),
-          global_index_buffer.get(),
-          batch_global_num_buffer.get(),
-          pinned_buffer.get(),
-          workspace_buffer.get(),
-          output->MutableData<T>(),
-          batch_size,
-          sequence_length,
-          num_heads_,
-          head_size,
-          window_,
-          max_num_global,
-          element_size,
-          disable_compact_memory,
-          use_merged_qkv_weights,
-          use_half4_))
-    ;
+      device_prop,
+      cublas,
+      stream,
+      reinterpret_cast<const CudaT*>(gemm_buffer.get()),
+      reinterpret_cast<const CudaT*>(bias->Data<T>()),
+      reinterpret_cast<const CudaT*>(attention_mask->Data<T>()),
+      reinterpret_cast<const CudaT*>(global_gemm_buffer),
+      reinterpret_cast<const CudaT*>(global_bias->Data<T>()),
+      global_attention_mask->Data<int>(),
+      global_index_buffer.get(),
+      batch_global_num_buffer.get(),
+      pinned_buffer.get(),
+      workspace_buffer.get(),
+      output->MutableData<T>(),
+      batch_size,
+      sequence_length,
+      num_heads_,
+      head_size,
+      window_,
+      max_num_global,
+      element_size,
+      disable_compact_memory,
+      use_merged_qkv_weights,
+      use_half4_));
 
   // Defer release of pinned memory since cudaStreamSynchronize is not used here and kernel need access the buffer.
-  this->AddDeferredReleaseCPUPtr(pinned_buffer.release(), GetCudaStreamFromContext(context));
+  this->AddDeferredReleaseCPUPtr(pinned_buffer.release(), context->GetComputeStream());
 
   return Status::OK();
 }

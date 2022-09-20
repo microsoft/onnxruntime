@@ -62,8 +62,10 @@ class CudaKernel : public OpKernel {
     return provider_->GetTransientScratchBuffer<T>(count_or_bytes);
   }
 
-  inline void AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream) const {
-    provider_->AddDeferredReleaseCPUPtr(p, stream);
+  inline void AddDeferredReleaseCPUPtr(void* p, onnxruntime::Stream* ort_stream) const {
+    ORT_ENFORCE(ort_stream->device.Type() == OrtDevice::GPU);
+    auto* cuda_ep_stream = static_cast<CudaStream*>(ort_stream);
+    cuda_ep_stream->EnqueDeferredCPUBuffer(p);
   }
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
@@ -129,7 +131,7 @@ class CudaKernel : public OpKernel {
         cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->handle) : nullptr;
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice,
                                              cuda_stream));
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), cuda_stream);
+        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), stream);
       }
       return Status::OK();
     }

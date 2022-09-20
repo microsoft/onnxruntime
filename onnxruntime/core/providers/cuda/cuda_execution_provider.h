@@ -54,24 +54,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().template GetConstOnes<T>(count, stream);
   }
 
-  // Add CPU buffer to a buffer pool.
-  // They can and only can be released
-  // by calling EuqueueDeferredRelease.
-  // A common pattern is
-  //  1. auto buffer = AllocateBufferOnCPUPinned<char>(128);
-  //  2. Some GPU kernel calls on GPU stream from GetComputeStream.
-  //  3. Call AddDeferredReleaseCPUPtr(buffer.release());
-  //  4. Call EnqueueDeferredRelease();
-  // so that the allocated "buffer" in (1) will be released
-  // only after all GPU kernels in (2) are finished.
-  // (4) is done in OnRunEnd, so the user doesn't need to call
-  // it in most cases.
-  void AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream);
-  // Release all buffers added by
-  // AddDeferredReleaseCPUPtr using
-  // GPU callback (so it's async).
-  Status EnqueueDeferredRelease();
-
   // GPU scratch buffer need to be allocated on stream
   template <typename T>
   IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
@@ -127,17 +109,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   cudaStream_t stream_ = nullptr;
 
   bool use_ep_level_unified_stream_ = false;
-  // deferred_release_buffer_pool_[my_stream] store all CPU buffers associated with
-  // CUDA kernels running on my_stream (type: cudaStream_t).
-  // Buffers' release is enqueued as a CUDA callback onto the associated stream (aka
-  // stream returned by GetComputeStream when calling AddDeferredReleaseCPUPtr) in OnRunEnd.
-  // Those are pointers allocated by AllocateBufferOnCPUPinned and should be released
-  // by CPU Allocator's Free function.
-  std::unordered_map<void*, std::vector<void*>> deferred_release_buffer_pool_;
-  // To add a pointer to deferred_release_buffer_pool_, we need a mutex because
-  // different threads may create CPU buffers at the same time. Releasing
-  // buffers also needs this mutex.
-  OrtMutex deferred_release_mutex_;
 
   class PerThreadContext final {
    public:
