@@ -10,7 +10,6 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/tensor_type_and_shape.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
@@ -151,13 +150,13 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputNodeArg, _In_ const OrtKernelInf
                     _Outptr_ const OrtNodeArg** node_arg) {
   API_IMPL_BEGIN
   const onnxruntime::OpKernelInfo* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
-  const size_t num_inputs = op_info->GetInputCount();
+  const auto input_defs = op_info->node().InputDefs();
 
-  if (index >= num_inputs) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input index is out of range");
+  if (index >= input_defs.size()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input index is out of bounds");
   }
 
-  *node_arg = reinterpret_cast<const OrtNodeArg*>(op_info->node().InputDefs()[index]);
+  *node_arg = reinterpret_cast<const OrtNodeArg*>(input_defs[index]);
 
   return nullptr;
   API_IMPL_END
@@ -167,13 +166,13 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputNodeArg, _In_ const OrtKernelIn
                     _Outptr_ const OrtNodeArg** node_arg){
   API_IMPL_BEGIN
   const onnxruntime::OpKernelInfo* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
-  const size_t num_outputs = op_info->GetOutputCount();
+  const auto output_defs = op_info->node().OutputDefs();
 
-  if (index >= num_outputs) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Output index is out of range");
+  if (index >= output_defs.size()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Output index is out of bounds");
   }
 
-  *node_arg = reinterpret_cast<const OrtNodeArg*>(op_info->node().OutputDefs()[index]);
+  *node_arg = reinterpret_cast<const OrtNodeArg*>(output_defs[index]);
 
   return nullptr;
   API_IMPL_END
