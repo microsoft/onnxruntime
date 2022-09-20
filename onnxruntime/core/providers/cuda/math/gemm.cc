@@ -5,6 +5,7 @@
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -72,11 +73,18 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int N = gsl::narrow_cast<int>(helper.N());
   int K = gsl::narrow_cast<int>(helper.K());
   auto* Y = ctx->Output(0, {M, N});
+
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   CudaT* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
   auto& device_prop = GetDeviceProp();
+
   // broadcast bias if needed and is present
   if (beta_ != 0 && B != nullptr) {
     auto& b_shape = B->Shape();
@@ -123,21 +131,53 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
   CudaT beta = ToCudaType<T>::FromFloat(beta_);
-  // Gemm, note that CUDA assumes col-major, so Y(N,M) = alpha * op(W) x op(X) + beta * Y
-  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      CublasHandle(),
-      trans_B_ ? CUBLAS_OP_T : CUBLAS_OP_N,
-      trans_A_ ? CUBLAS_OP_T : CUBLAS_OP_N,
-      N, M, K,
-      &alpha,
-      reinterpret_cast<const CudaT*>(W->Data<T>()),
-      (trans_B_ ? K : N),
-      reinterpret_cast<const CudaT*>(X->Data<T>()),
-      (trans_A_ ? M : K),
-      // ideally we need to set the output buffer contents to 0 if bias is missing,
-      // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
-      B != nullptr ? &beta : &zero,
-      out_data, N, device_prop));
+
+  // General note : CUDA assumes col-major, so Y(N,M) = alpha * op(W) x op(X) + beta * Y
+  if (use_cublaslt_matmul_ && std::is_same<T, float>::value) {
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
+        CublasLtHandle(),
+        trans_B_ ? CUBLAS_OP_T : CUBLAS_OP_N,
+        trans_A_ ? CUBLAS_OP_T : CUBLAS_OP_N,
+        N, M, K,
+        &alpha,
+        reinterpret_cast<const CudaT*>(W->Data<T>()),
+        (trans_B_ ? K : N),
+        reinterpret_cast<const CudaT*>(X->Data<T>()),
+        (trans_A_ ? M : K),
+        (B != nullptr) ? &beta : &zero,
+        out_data, N,
+        Stream()));
+  } else if (use_cublaslt_matmul_ && std::is_same<T, MLFloat16>::value) {
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
+        CublasLtHandle(),
+        trans_B_ ? CUBLAS_OP_T : CUBLAS_OP_N,
+        trans_A_ ? CUBLAS_OP_T : CUBLAS_OP_N,
+        N, M, K,
+        reinterpret_cast<const CudaT*>(&alpha),
+        reinterpret_cast<const CudaT*>(W->Data<T>()),
+        (trans_B_ ? K : N),
+        reinterpret_cast<const CudaT*>(X->Data<T>()),
+        (trans_A_ ? M : K),
+        (B != nullptr) ? &beta : &zero,
+        out_data, N,
+        Stream()));
+  } else {
+    // Use CublasGemm instead
+    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+        CublasHandle(),
+        trans_B_ ? CUBLAS_OP_T : CUBLAS_OP_N,
+        trans_A_ ? CUBLAS_OP_T : CUBLAS_OP_N,
+        N, M, K,
+        &alpha,
+        reinterpret_cast<const CudaT*>(W->Data<T>()),
+        (trans_B_ ? K : N),
+        reinterpret_cast<const CudaT*>(X->Data<T>()),
+        (trans_A_ ? M : K),
+        // ideally we need to set the output buffer contents to 0 if bias is missing,
+        // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
+        B != nullptr ? &beta : &zero,
+        out_data, N, device_prop));
+  }
 
   return Status::OK();
 }
