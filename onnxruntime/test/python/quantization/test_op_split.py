@@ -45,18 +45,21 @@ class TestONNXModel(unittest.TestCase):
         output_3 = helper.make_tensor_value_info("output_3", TensorProto.FLOAT, [1, 12])
 
         reshape_shape = "reshape_shape"
-        initializers.append(onnx.numpy_helper.from_array(
-            np.random.randint(-1, 2, [6, 3]).astype(np.float32),
-            name="conv_weight",
-        ))
+        initializers.append(
+            onnx.numpy_helper.from_array(
+                np.random.randint(-1, 2, [6, 3]).astype(np.float32),
+                name="conv_weight",
+            )
+        )
         conv_node = helper.make_node("Conv", ["input", "conv_weight"], ["conv_output"], name="conv_node")
         initializers.append(onnx.numpy_helper.from_array(np.array([3, 12], dtype=np.int64), name=reshape_shape))
-        reshape_node = helper.make_node("Reshape", ["conv_output", reshape_shape], ["reshape_output"],
-                                        name="reshape_node")
+        reshape_node = helper.make_node(
+            "Reshape", ["conv_output", reshape_shape], ["reshape_output"], name="reshape_node"
+        )
         initializers.append(onnx.numpy_helper.from_array(np.array([1, 1, 1], dtype=np.int64), name="split"))
         split_node = helper.make_node(
             "Split",
-            inputs=["reshape_output","split"],
+            inputs=["reshape_output", "split"],
             outputs=["output_1", "output_2", "output_3"],
             name="split_node",
             axis=0,
