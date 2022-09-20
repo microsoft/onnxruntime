@@ -286,7 +286,7 @@ void ROCMExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
   // AllocateBufferOnCPUPinned.
 
   std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
-  void* stream = GetComputeStream();
+  hipStream_t stream = static_cast<hipStream_t>(GetComputeStream());
   auto it = deferred_release_buffer_pool_.find(stream);
   if (it != deferred_release_buffer_pool_.end()) {
     it->second.push_back(p);
@@ -311,19 +311,19 @@ struct CpuBuffersInfo {
   // should contain all values in
   // deferred_release_buffer_pool_[my_stream]
   // when release my_stream's buffers.
-  void** buffers;
-  // CPU buffer buffers[i].
-  // Number of buffer points in "buffers".
-  size_t n_buffers;
+  std::vector<void*> buffers;
 };
 
 void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, void* raw_info) {
-  auto info = reinterpret_cast<CpuBuffersInfo*>(raw_info);
-  for (size_t i = 0; i < info->n_buffers; ++i) {
-    info->allocator->Free(info->buffers[i]);
+  // The passed-in raw_info is a unmanaged pointer from
+  // std::unique_ptr<CpuBuffersInfo>.release().
+  // We rewrap raw_info as std::unique_ptr<CpuBuffersInfo> so that
+  // it will be cleaned up automatically at the end of this function.
+  std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
+  cpu_buffers_info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
+  for (auto ptr: cpu_buffers_info->buffers) {
+    cpu_buffers_info->allocator->Free(ptr);
   }
-  delete[] info->buffers;
-  delete info;
 }
 
 Status ROCMExecutionProvider::EnqueueDeferredRelease() {
@@ -338,25 +338,22 @@ Status ROCMExecutionProvider::EnqueueDeferredRelease() {
     // This iteration enqueues a callback to release all buffers
     // in it->second on it->first.
 
-    auto stream = static_cast<hipStream_t>(it->first);
+    auto stream = it->first;
     auto& buffers = it->second;
-    // Allocate a heap object to extend the lifetime of allocator and buffer pointers
-    // until the end of callback (aka ReleaseCpuBufferCallback).
-    auto cpu_buffers_info = new CpuBuffersInfo;
+    // Allocate a heap object to extend the lifetime of allocator and buffer pointers.
+    std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
     // This allocator must be the same to the allocator
     // used in AllocateBufferOnCPUPinned.
     cpu_buffers_info->allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-    cpu_buffers_info->buffers = new void*[buffers.size()];
-    for (size_t i = 0; i < buffers.size(); ++i) {
-      cpu_buffers_info->buffers[i] = buffers.at(i);
-    }
-    cpu_buffers_info->n_buffers = buffers.size();
+    cpu_buffers_info->buffers = buffers;
+    // Release the ownership of cpu_buffers_info so that the underlying
+    // object will keep alive until the end of ReleaseCpuBufferCallback.
     // TODO(wechi): CUDA deprecates cudaStreamAddCallback and
     // uses another API, cudaLaunchHostFunc(which can be
     // captured in CUDA graph). Once AMD adds similar feature,
     // we should replace the following line with
     //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
-    HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info, 0));
+    HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
   }
   // All buffers are scheduled for release.
   // Let's clear releated information so that

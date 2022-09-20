@@ -3,6 +3,7 @@
 - CPU: [Dockerfile](Dockerfile.source), [Instructions](#cpu)
 - CUDA/cuDNN: [Dockerfile](Dockerfile.cuda), [Instructions](#cuda)
 - MIGraphX: [Dockerfile](Dockerfile.migraphx), [Instructions](#migraphx)
+- ROCm: [Dockerfile](Dockerfile.rocm), [Instructions](#rocm)
 - NUPHAR: [Dockerfile](Dockerfile.nuphar), [Instructions](#nuphar)
 - OpenVINO: [Dockerfile](Dockerfile.openvino), [Instructions](#openvino)
 - TensorRT: [Dockerfile](Dockerfile.tensorrt), [Instructions](#tensorrt)
@@ -311,4 +312,18 @@ git submodule update --init
 
   ```
   docker run -it --device=/dev/kfd --device=/dev/dri --group-add video onnxruntime-migraphx
+  ```
+
+   ## ROCm
+**Ubuntu 20.04, ROCm5.2.3**
+
+1. Build the docker image from the Dockerfile in this repository.
+  ```
+  docker build -t onnxruntime-rocm -f Dockerfile.rocm .
+  ```
+
+2. Run the Docker image
+
+  ```
+  docker run -it --device=/dev/kfd --device=/dev/dri --group-add video --privileged onnxruntime-rocm
   ```

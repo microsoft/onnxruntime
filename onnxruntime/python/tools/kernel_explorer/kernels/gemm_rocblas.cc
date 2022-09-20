@@ -27,6 +27,7 @@ class RocBlasGemm : public IKernelExplorer {
               double beta,
               DeviceArray& c, int64_t ldc) {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.stream = Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
     params_.opb = opb;

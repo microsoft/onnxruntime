@@ -2116,6 +2116,7 @@ def build_nuget_package(
     elif use_cuda:
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
     elif use_tvm:
+        execution_provider = '/p:ExecutionProvider="tvm"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Tvm"'
     else:
         # use the solution file that includes Xamarin mobile targets
@@ -2157,7 +2158,7 @@ def build_nuget_package(
             run_subprocess(cmd_args, cwd=csharp_build_dir)
 
         if is_windows():
-            if use_openvino:
+            if use_openvino or use_tvm:
                 # user needs to make sure nuget is installed and added to the path variable
                 nuget_exe = "nuget.exe"
             else:
