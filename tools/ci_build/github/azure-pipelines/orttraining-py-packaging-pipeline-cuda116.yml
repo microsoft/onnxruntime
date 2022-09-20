@@ -26,10 +26,10 @@ stages:
     torch_version: '1.11.0'
     opset_version: '15'
     cuda_version: '11.6'
-    gcc_version: 10
+    gcc_version: 11
     cmake_cuda_architectures: 37;50;52;60;61;70;75;80;86;87
     docker_file: Dockerfile.manylinux2014_training_cuda11_6
-    agent_pool: Onnxruntime-Linux-GPU
+    agent_pool: Linux-CPU
     upload_wheel: 'yes'
     debug_build: ${{ parameters.DebugLinuxBuild }}
 
