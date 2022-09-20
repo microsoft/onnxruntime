@@ -3,7 +3,6 @@ import logging
 import os
 import sys
 
-import torch
 from utils import (
     chain_enc_dec_with_beamsearch,
     export_summarization_edinit,
