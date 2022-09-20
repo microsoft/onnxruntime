@@ -1135,7 +1135,7 @@ var validCombos = {
     "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
 
     "android,C++,ARM64,SNPE":
-    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>"
+        "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
 
     //Xnnpack
     "android,C-API,ARM64,Xnnpack":
