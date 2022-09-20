@@ -621,7 +621,7 @@ if (onnxruntime_USE_TENSORRT)
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")
   endif()
   set(CXX_VERSION_DEFINED TRUE)
-  
+
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     # Add TensorRT library
     find_path(TENSORRT_INCLUDE_DIR NvInfer.h
@@ -658,9 +658,9 @@ if (onnxruntime_USE_TENSORRT)
     include_directories(${TENSORRT_INCLUDE_DIR})
     set(onnxparser_link_libs nvonnxparser_static)
   endif()
-  
+
   set(trt_link_libs cudnn ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
-    
+
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.cc"
@@ -1011,6 +1011,8 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/*.h"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/*.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/impl/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/impl/*.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.cc"

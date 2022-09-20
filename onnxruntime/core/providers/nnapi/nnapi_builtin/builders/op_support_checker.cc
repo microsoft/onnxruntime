@@ -18,6 +18,7 @@
 namespace onnxruntime {
 namespace nnapi {
 
+// TODO: consider move these helpers into a new file `op_support_helpers.h/.cc`
 #pragma region helpers
 
 inline bool IsNodeLayoutNHWC(const NodeUnit& node_unit) {

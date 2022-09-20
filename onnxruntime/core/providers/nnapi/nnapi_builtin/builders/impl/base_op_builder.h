@@ -4,14 +4,13 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
+#include "core/providers/shared/node_unit/node_unit.h"
 
 namespace onnxruntime {
-
-class Node;
-class NodeUnit;
 
 namespace common {
 class Status;
@@ -35,7 +34,7 @@ class BaseOpBuilder : public IOpBuilder {
  protected:
   virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const = 0;
 
-  static bool IsOpSupported(const ModelBuilder& model_builder, const NodeUnit& node_unit) ORT_MUST_USE_RESULT;
+  static bool IsOpSupported(const ModelBuilder& model_builder, const NodeUnit& node_unit);
 
   virtual bool IsQuantizedOp(const NodeUnit& /* node_unit */) const { return false; }
 };
