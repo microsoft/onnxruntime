@@ -13,10 +13,8 @@ def GenerateModel(model_name):
     graph = helper.make_graph(
         node,
         "Nnapi_sigmoid_input_rank_test",
-        [helper.make_tensor_value_info(
-            "X", TensorProto.FLOAT, [2, 1, 2, 1, 2])],  # input
-        [helper.make_tensor_value_info(
-            "Y", TensorProto.FLOAT, [2, 1, 2, 1, 2])],  # output
+        [helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 1, 2, 1, 2])],  # input
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 1, 2, 1, 2])],  # output
     )
 
     model = helper.make_model(graph)
