@@ -6,9 +6,7 @@ from onnx import TensorProto, helper
 # Sigmoid op support checker in NNAPI EP, so we don't fail hard. Added test case here.
 
 def GenerateModel(model_name):
-    node = [
-        helper.make_node("Sigmoid", ["X"], ["Y"], "sigmoid"),
-    ]
+    node = [helper.make_node("Sigmoid", ["X"], ["Y"], "sigmoid"),]
 
     graph = helper.make_graph(
         node,
