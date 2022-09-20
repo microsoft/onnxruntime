@@ -53,10 +53,10 @@ class TestONNXModel(unittest.TestCase):
         initializers.append(onnx.numpy_helper.from_array(np.array([3, 12], dtype=np.int64), name=reshape_shape))
         reshape_node = helper.make_node("Reshape", ["conv_output", reshape_shape], ["reshape_output"],
                                         name="reshape_node")
-
+        initializers.append(onnx.numpy_helper.from_array(np.array([1, 1, 1], dtype=np.int64), name="split"))
         split_node = helper.make_node(
             "Split",
-            inputs=["reshape_output"],
+            inputs=["reshape_output","split"],
             outputs=["output_1", "output_2", "output_3"],
             name="split_node",
             axis=0,
