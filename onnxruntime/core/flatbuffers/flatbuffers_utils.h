@@ -5,6 +5,7 @@
 
 #include <unordered_map>
 
+#include "core/common/common.h"
 #include "core/common/path_string.h"
 #include "core/common/status.h"
 
@@ -32,11 +33,12 @@ struct ValueInfo;
 
 namespace utils {
 
+constexpr auto kInvalidOrtFormatModelMessage = "Invalid ORT format model.";
+
 // Will only create string in flatbuffers when has_string is true
 flatbuffers::Offset<flatbuffers::String> SaveStringToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                                                bool has_string, const std::string& src);
 
-// TODO, add ORT_MUST_USE_RESULT when it is moved to a different header
 onnxruntime::common::Status SaveValueInfoOrtFormat(
     flatbuffers::FlatBufferBuilder& builder, const ONNX_NAMESPACE::ValueInfoProto& value_info_proto,
     flatbuffers::Offset<fbs::ValueInfo>& fbs_value_info);
@@ -67,3 +69,7 @@ bool IsOrtFormatModelBytes(const void* bytes, int num_bytes);
 }  // namespace utils
 }  // namespace fbs
 }  // namespace onnxruntime
+
+#define ORT_FORMAT_RETURN_IF_NULL(expr, expr_description)            \
+  ORT_RETURN_IF((expr) == nullptr, (expr_description), " is null. ", \
+                onnxruntime::fbs::utils::kInvalidOrtFormatModelMessage)
