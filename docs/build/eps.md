@@ -699,3 +699,20 @@ Once you have all the necessary components setup, follow the instructions to [cr
 
 * Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the CoreML EP.
 * Add `--use_coreml` to include the CoreML EP in the build
+
+## Xnnpack
+
+Usage of Xnnpack on Android/Web/Windows/Linux platforms is via the Xnnpack EP.
+
+See the [Xnnpack Execution Provider](../execution-providers/Xnnpack-ExecutionProvider.md) documentation for more details.
+
+The pre-built ONNX Runtime Mobile package for Android doesn't include the Xnnpack EP.
+
+### Create a minimal build with Xnnpack EP support
+
+Please see [the instructions](./android.md) for setting up the Android environment required to build. The Android build can be cross-compiled on Windows or Linux.
+
+Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom.md), with the following changes:
+
+* Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the Xnnpack EP.
+* Add `--use_xnnpack` to include the Xnnpack EP in the build
