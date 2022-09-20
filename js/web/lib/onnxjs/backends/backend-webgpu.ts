@@ -19,6 +19,9 @@ export class WebGpuBackend implements Backend {
   computePassEncoder: GPUComputePassEncoder|null = null;
   pendingDispatchNumber = 0;
 
+  supportProfiling = false;
+  querySet?: GPUQuerySet;
+
   // #region interface Backend
 
   async initialize(): Promise<boolean> {
@@ -34,7 +37,20 @@ export class WebGpuBackend implements Backend {
         Logger.warning('WebGpuBackend', 'Failed to get GPU adapter.');
         return false;
       }
-      this.device = await adapter.requestDevice();
+
+      const deviceDescriptor: GPUDeviceDescriptor = {
+        requiredLimits: {
+          maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
+          maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
+          maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+        }
+      };
+      if (adapter.features.has('timestamp-query')) {
+        this.supportProfiling = true;
+        deviceDescriptor.requiredFeatures = ['timestamp-query'];
+      }
+
+      this.device = await adapter.requestDevice(deviceDescriptor);
       this.gpuDataManager = createGpuDataManager(this);
 
       // TODO: set up flags
@@ -51,6 +67,13 @@ export class WebGpuBackend implements Backend {
       };
 
       setMaxComputeWorkgroupsPerDimension(this.device.limits.maxComputeWorkgroupsPerDimension);
+
+      if (this.supportProfiling) {
+        this.querySet = this.device.createQuerySet({
+          type: 'timestamp',
+          count: 2,
+        });
+      }
 
       return true;
     } catch (e) {

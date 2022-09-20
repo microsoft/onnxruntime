@@ -3,7 +3,9 @@
 
 import {Env} from 'onnxruntime-common';
 
+import {WebGpuBackend} from './backends/backend-webgpu';
 import {WebGLContext} from './backends/webgl/webgl-context';
+import {GpuDataType} from './backends/webgpu/types';
 
 export declare namespace Logger {
   export interface SeverityTypeMap {
@@ -266,6 +268,8 @@ export declare namespace Profiler {
   export interface Event {
     end(): void|Promise<void>;
   }
+
+  export type Context = WebGLContext|WebGpuBackend;
 }
 // TODO
 // class WebGLEvent implements Profiler.Event {}
@@ -273,12 +277,21 @@ export declare namespace Profiler {
 class Event implements Profiler.Event {
   constructor(
       public category: Profiler.EventCategory, public name: string, public startTime: number,
-      private endCallback: (e: Event) => void|Promise<void>, public timer?: WebGLQuery, public ctx?: WebGLContext) {}
+      private endCallback: (e: Event) => void|Promise<void>) {}
 
   end() {
     return this.endCallback(this);
   }
+}
 
+class WebGLEvent implements Profiler.Event {
+  constructor(
+      public category: Profiler.EventCategory, public name: string, public startTime: number,
+      private endCallback: (e: WebGLEvent) => void|Promise<void>, public timer: WebGLQuery, public ctx: WebGLContext) {}
+
+  end() {
+    return this.endCallback(this);
+  }
   async checkTimer(): Promise<number> {
     if (this.ctx === undefined || this.timer === undefined) {
       throw new Error('No webgl timer found');
@@ -286,6 +299,16 @@ class Event implements Profiler.Event {
       this.ctx.endTimer();
       return this.ctx.waitForQueryAndGetTime(this.timer);
     }
+  }
+}
+
+class WebGpuEvent implements Profiler.Event {
+  constructor(
+      public category: Profiler.EventCategory, public name: string,
+      private endCallback: (e: WebGpuEvent) => void|Promise<void>, public backend: WebGpuBackend) {}
+
+  end() {
+    return this.endCallback(this);
   }
 }
 
@@ -326,10 +349,10 @@ export class Profiler {
   }
 
   // create an event scope for the specific function
-  event<T>(category: Profiler.EventCategory, name: string, func: () => T, ctx?: WebGLContext): T;
-  event<T>(category: Profiler.EventCategory, name: string, func: () => Promise<T>, ctx?: WebGLContext): Promise<T>;
+  event<T>(category: Profiler.EventCategory, name: string, func: () => T, ctx?: Profiler.Context): T;
+  event<T>(category: Profiler.EventCategory, name: string, func: () => Promise<T>, ctx?: Profiler.Context): Promise<T>;
 
-  event<T>(category: Profiler.EventCategory, name: string, func: () => T | Promise<T>, ctx?: WebGLContext): T
+  event<T>(category: Profiler.EventCategory, name: string, func: () => T | Promise<T>, ctx?: Profiler.Context): T
       |Promise<T> {
     const event = this._started ? this.begin(category, name, ctx) : undefined;
     let isPromise = false;
@@ -374,22 +397,32 @@ export class Profiler {
   }
 
   // begin an event
-  begin(category: Profiler.EventCategory, name: string, ctx?: WebGLContext): Event {
+  begin(category: Profiler.EventCategory, name: string, ctx?: Profiler.Context): Profiler.Event {
     if (!this._started) {
       throw new Error('profiler is not started yet');
     }
     if (ctx === undefined) {
       const startTime = now();
       this.flush(startTime);
-      return new Event(category, name, startTime, e => this.endSync(e));
-    } else {
+      return new Event(category, name, startTime, e => this.end(e));
+    } else if (ctx instanceof WebGLContext) {
       const timer: WebGLQuery = ctx.beginTimer();
-      return new Event(category, name, 0, async e => this.end(e), timer, ctx);
+      return new WebGLEvent(category, name, 0, async e => this.endWebGL(e), timer, ctx);
+    } else {
+      const webgpuBackend = ctx;
+      if (!webgpuBackend.supportProfiling) {
+        throw new Error(
+            'profiling is not supported in webgpu backend. use flag "--disable-dawn-features=disallow_unsafe_apis"');
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (webgpuBackend.getComputePassEncoder() as any).writeTimestamp(webgpuBackend.querySet, 0);
+      return new WebGpuEvent(category, name, async e => this.endWebGpu(e), webgpuBackend);
     }
   }
 
   // end the specific event
-  private async end(event: Event): Promise<void> {
+  private async endWebGL(event: WebGLEvent): Promise<void> {
     const endTime: number = await event.checkTimer();
     if (this._timingEvents.length < this._maxNumberEvents) {
       this._timingEvents.push(new EventRecord(event.category, event.name, event.startTime, endTime));
@@ -397,7 +430,51 @@ export class Profiler {
     }
   }
 
-  private endSync(event: Event): void {
+  private webGpuTimestampZero?: bigint;
+  private async endWebGpu(event: WebGpuEvent): Promise<void> {
+    const backend = event.backend;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (backend.getComputePassEncoder() as any).writeTimestamp(backend.querySet, 1);
+
+    // TODO: move getTimeFromQuerySet() here:
+    const queryData =
+        // eslint-disable-next-line no-bitwise
+        backend.gpuDataManager.create(16, GpuDataType.default, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
+    const syncData =
+        // eslint-disable-next-line no-bitwise
+        backend.gpuDataManager.create(16, GpuDataType.default, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
+
+    backend.endComputePass();
+    backend.getCommandEncoder().resolveQuerySet(backend.querySet!, 0, 2, queryData.buffer, 0);
+    backend.getCommandEncoder().copyBufferToBuffer(queryData.buffer, 0, syncData.buffer, 0, 16);
+    backend.flush();
+
+    await syncData.buffer.mapAsync(GPUMapMode.READ);
+    const mappedData = new BigUint64Array(syncData.buffer.getMappedRange());
+
+    const endTimeU64 = mappedData[1];
+    const startTimeU64 = mappedData[0];
+
+    syncData.buffer.unmap();
+
+    if (!this.webGpuTimestampZero) {
+      this.webGpuTimestampZero = startTimeU64;
+    }
+
+    const startTime = Number(startTimeU64 - this.webGpuTimestampZero);
+    const endTime = Number(endTimeU64 - this.webGpuTimestampZero);
+
+    if (!Number.isSafeInteger(startTime) || !Number.isSafeInteger(endTime)) {
+      throw new RangeError('incorrect timestamp range');
+    }
+    backend.gpuDataManager.release(queryData.id);
+    backend.gpuDataManager.release(syncData.id);
+
+    this._timingEvents.push(new EventRecord(event.category, event.name, startTime / 1000000, endTime / 1000000));
+    this.flush(endTime);
+  }
+
+  private end(event: Event): void {
     const endTime: number = now();
     if (this._timingEvents.length < this._maxNumberEvents) {
       this._timingEvents.push(new EventRecord(event.category, event.name, event.startTime, endTime));

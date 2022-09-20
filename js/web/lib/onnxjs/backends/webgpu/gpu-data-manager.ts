@@ -4,10 +4,9 @@
 import {Guid} from 'guid-typescript';
 
 import {Logger} from '../../instrument';
-
-import {sizeof, Tensor} from '../../tensor';
-import {ShapeUtil} from '../../util';
+import {Tensor} from '../../tensor';
 import {WebGpuBackend} from '../backend-webgpu';
+
 import {GpuData, GpuDataId, GpuDataType} from './types';
 
 /**
@@ -21,7 +20,7 @@ export interface GpuDataManager {
   /**
    * create new data on GPU.
    */
-  create(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): GpuData;
+  create(size: number, gpuDataType: GpuDataType, usage?: number): GpuData;
   /**
    * get GPU data by ID.
    */
@@ -88,7 +87,9 @@ class GpuDataManagerImpl implements GpuDataManager {
     return gpuData;
   }
 
-  create(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): GpuData {
+  // eslint-disable-next-line no-bitwise
+  create(bufferLength: number, gpuDataType: GpuDataType, usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC):
+      GpuData {
     if (gpuDataType !== GpuDataType.default) {
       throw new Error('we only support default GPU data type now');
     }
@@ -98,14 +99,10 @@ class GpuDataManagerImpl implements GpuDataManager {
     // !!!                  This need to be figured out by performance test results.
     // !!!
 
-    const elemCount = ShapeUtil.size(dims);
-    const bufferLength = sizeof(type) * elemCount;
     const size = calcNormalizedBufferSize(bufferLength);
 
     // create gpu buffer
-    const gpuBuffer =
-        // eslint-disable-next-line no-bitwise
-        this.backend.device.createBuffer({size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC});
+    const gpuBuffer = this.backend.device.createBuffer({size, usage});
 
     const gpuData = {id: Guid.create(), type: GpuDataType.default, buffer: gpuBuffer};
     this.storageCache.set(gpuData.id, {gpuData, size: bufferLength});

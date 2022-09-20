@@ -32,28 +32,30 @@ export class ProgramManager {
     this.repo.set(key, artifact);
   }
   run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[]): void {
-    const device = this.backend.device;
+    this.profiler.event('op', `ProgramManager.run ${buildArtifact.programInfo.name ?? 'unknown kernel'}`, () => {
+      const device = this.backend.device;
 
-    const computePassEncoder = this.backend.getComputePassEncoder();
+      const computePassEncoder = this.backend.getComputePassEncoder();
 
-    computePassEncoder.setPipeline(buildArtifact.computePipeline);
-    const entries = [];
-    for (const input of inputs) {
-      entries.push({binding: entries.length, resource: {buffer: input.buffer}});
-    }
-    for (const output of outputs) {
-      entries.push({binding: entries.length, resource: {buffer: output.buffer}});
-    }
-    const bindGroup = device.createBindGroup({layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries});
-    computePassEncoder.setBindGroup(0, bindGroup);
+      computePassEncoder.setPipeline(buildArtifact.computePipeline);
+      const entries = [];
+      for (const input of inputs) {
+        entries.push({binding: entries.length, resource: {buffer: input.buffer}});
+      }
+      for (const output of outputs) {
+        entries.push({binding: entries.length, resource: {buffer: output.buffer}});
+      }
+      const bindGroup = device.createBindGroup({layout: buildArtifact.computePipeline.getBindGroupLayout(0), entries});
+      computePassEncoder.setBindGroup(0, bindGroup);
 
-    computePassEncoder.dispatch(...buildArtifact.programInfo.dispatchGroup);
+      computePassEncoder.dispatch(...buildArtifact.programInfo.dispatchGroup);
 
-    this.backend.pendingDispatchNumber++;
+      this.backend.pendingDispatchNumber++;
 
-    if (this.backend.pendingDispatchNumber >= 16) {
-      this.backend.flush();
-    }
+      if (this.backend.pendingDispatchNumber >= 16) {
+        this.backend.flush();
+      }
+    }, this.backend);
   }
   dispose(): void {
     // this.repo.forEach(a => this.glContext.deleteProgram(a.program));

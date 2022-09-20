@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {createView, Tensor} from '../../tensor';
+import {createView, sizeof, Tensor} from '../../tensor';
+import {ShapeUtil} from '../../util';
 
 import {GpuDataManager} from './gpu-data-manager';
 import {GpuData, GpuDataId, GpuDataType} from './types';
@@ -84,7 +85,9 @@ class TensorDataManagerImpl implements TensorDataManager {
   }
 
   createGpuTensor(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): [Tensor, GpuData] {
-    const gpuData = this.gpuDataManager.create(type, dims, gpuDataType);
+    const elemCount = ShapeUtil.size(dims);
+    const bufferLength = sizeof(type) * elemCount;
+    const gpuData = this.gpuDataManager.create(bufferLength, gpuDataType);
     const tensor = new Tensor(dims, type, undefined, async () => {
       const data = await this.gpuDataManager.download(gpuData.id);
       return createView(data, type);

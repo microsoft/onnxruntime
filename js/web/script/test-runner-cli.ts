@@ -460,7 +460,7 @@ function run(config: Test.Config) {
         args.bundleMode === 'perf' ? 'perf' :
             args.debug             ? 'debug' :
                                      'test',
-        webgpu);
+        webgpu, config.profile);
     const karmaArgs = ['start', `--browsers ${browser}`];
     if (args.debug) {
       karmaArgs.push('--log-level info --timeout-mocha 9999999');
@@ -565,10 +565,11 @@ function saveConfig(config: Test.Config) {
 }
 
 
-function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean) {
+function getBrowserNameFromEnv(
+    env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, profile: boolean) {
   switch (env) {
     case 'chrome':
-      return selectChromeBrowser(mode, webgpu);
+      return selectChromeBrowser(mode, webgpu, profile);
     case 'edge':
       return 'Edge';
     case 'firefox':
@@ -584,13 +585,13 @@ function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], mode: 'debug'|'per
   }
 }
 
-function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean) {
+function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean, profile: boolean) {
   if (webgpu) {
     switch (mode) {
       case 'debug':
-        return 'ChromeCanaryDebug';
+        return profile ? 'ChromeCanaryProfileDebug' : 'ChromeCanaryDebug';
       default:
-        return 'ChromeCanaryTest';
+        return profile ? 'ChromeCanaryProfileTest' : 'ChromeCanaryDebug';
     }
   } else {
     switch (mode) {
