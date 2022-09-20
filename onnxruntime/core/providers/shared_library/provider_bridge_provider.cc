@@ -291,11 +291,6 @@ std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapabilit
                                                                                   const std::vector<const KernelRegistry*>& kernel_registries) const {
   return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries);
 }
-// !!! This API will be deprecated soon.
-common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
-                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
-  return g_host->IExecutionProvider__Compile(this, fused_nodes, node_compute_funcs);
-}
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);

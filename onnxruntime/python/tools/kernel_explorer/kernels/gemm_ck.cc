@@ -30,6 +30,7 @@ class CKGemm : public IKernelExplorer {
     auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
     ORT_ENFORCE(supports_a && supports_b);
 
+    params_.stream = Stream();
     // rocblas handle is not used for ck
     params_.handle = nullptr;
     params_.opa = opa;
