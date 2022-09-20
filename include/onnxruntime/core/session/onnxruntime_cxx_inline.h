@@ -1231,6 +1231,9 @@ inline size_t KernelInfo::GetOutputCount() const {
   return out;
 }
 
+inline Ort::NodeArg::NodeArg(const OrtNodeArg* node_arg) : p_(node_arg) {
+}
+
 inline Ort::NodeArg KernelInfo::GetInput(size_t index) const {
   const OrtNodeArg* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelInfo_GetInputNodeArg(p_, index, &out));
