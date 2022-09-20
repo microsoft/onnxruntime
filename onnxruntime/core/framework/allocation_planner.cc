@@ -193,7 +193,7 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
     }
 #ifdef ENABLE_TRAINING
     auto* node_to_execute = execution_context->GetNodeToExecute();
-    if (node_to_execute && node_to_execute->count(node_idx) == 0) {
+    if (node_to_execute && node_to_execute->count(node_index) == 0) {
       continue_flag = true;
       return Status::OK();
     }
