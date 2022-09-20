@@ -6,8 +6,6 @@
 #include <unordered_set>
 #include <utility>
 
-#include <xnnpack.h>
-
 #include "core/graph/function_utils.h"
 #include "xnnpack_execution_provider.h"
 #include "detail/utils.h"
@@ -91,6 +89,8 @@ using namespace xnnpack;
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
   if (info.xnn_thread_pool_size > 1) {
+    // pthreadpool is independent of ort-threadpoool, so we have to disable cpu spinning for ort-threadpool.
+    // otherwise, the pthreadpool will be starved and harm performance a lot.
     xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info.xnn_thread_pool_size));
   }
 }
