@@ -357,10 +357,15 @@ Status ROCMExecutionProvider::EnqueueDeferredRelease() {
       // Release memory asynchronously to avoid blocking the compute stream.
       HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
     } else {
+
+      // Per
+      // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#implicit-synchronization
+      // cudaHostFree doesn't block stream, so a synchronitation is needed to make sure no kernels
+      // are using the host memory.
+      HIP_RETURN_IF_ERROR(hipStreamSynchronize(stream));
       // hipHostFree and all other GPU APIs cannot be called by hipStreamAddCallback per spec.
       // So we just do synchrous release.
-      hipError_t callback_status = hipSuccess;
-      ReleaseCpuBufferCallback(nullptr, callback_status, cpu_buffers_info.release());
+      ReleaseCpuBufferCallback(nullptr, hipSuccess, cpu_buffers_info.release());
     }
   }
   // All buffers are scheduled for release.
