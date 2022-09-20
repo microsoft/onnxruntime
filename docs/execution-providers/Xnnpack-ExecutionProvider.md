@@ -54,7 +54,6 @@ To achieve the best performance, the Xnnpack EP requires the following configura
 ```
 2. Xnnpack EP takes the intra-threadpool size from provider-options. The default value is 1. For example:
 ```C++
-    int intra_op_num_threads = 4;
     so.AppendExecutionProvider("XNNPACK", {{"intra_op_num_threads", std::to_string(intra_op_num_threads)}});
 ```
 3. Try to set ORT thread-pool intra_op_num_threads as 1 or equal to Xnnpack thread-pool size, and pick the best value for your model. Generally, 1 would be the best fit if your model run most of computation heavy ops on Xnnpack EP or same as Xnnpack thread-pool size in contrast.:
