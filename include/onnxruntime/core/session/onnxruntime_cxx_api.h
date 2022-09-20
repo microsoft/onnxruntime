@@ -117,6 +117,7 @@ ORT_DEFINE_RELEASE(ModelMetadata);
 ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(IoBinding);
 ORT_DEFINE_RELEASE(ArenaCfg);
+ORT_DEFINE_RELEASE(KernelInfo);
 
 #undef ORT_DEFINE_RELEASE
 
@@ -238,9 +239,16 @@ struct Base {
  */
 template <typename T>
 struct Unowned : T {
-  Unowned(typename T::contained_type* p) : T{p} {}
-  Unowned(Unowned&& v) : T{v.p_} {}
+  using Type = typename T::contained_type;
+  Unowned(Type* p) : T{p} {}
+  Unowned(const Type* p) : T{const_cast<Type*>(p)} {}
+  Unowned(Unowned&& v) : T{v.p_} { v.p_ = nullptr; }
+  Unowned& operator=(Unowned&&) = delete;
   ~Unowned() { this->release(); }
+  template <typename R = T>
+  std::enable_if_t<std::is_const<R>::value, R>& operator*() const { return *this; }
+  template <typename R = T>
+  std::enable_if_t<!std::is_const<R>::value, R>& operator*() { return *this; }
 };
 
 struct AllocatorWithDefaultOptions;
@@ -1120,6 +1128,44 @@ struct ArenaCfg : Base<OrtArenaCfg> {
 // Custom OPs (only needed to implement custom OPs)
 //
 
+/// <summary>
+/// This struct wraps a raw pointer OrtNodeArg* that is obtained from
+/// a KernelInfo object. Use it to access the name or type info of an input
+/// or output.
+/// </summary>
+struct NodeArg {
+  explicit NodeArg(const OrtNodeArg* node_arg);
+
+  std::string GetName() const;
+  TypeInfo GetTypeInfo() const;
+ private:
+  const OrtNodeArg* p_;
+};
+
+/// <summary>
+/// This struct owns the OrtKernInfo* pointer when a copy is made.
+/// For convenient wrapping of OrtKernelInfo* passed to kernel constructor
+/// and query attributes, warp the pointer with Ort::Unowned<KernelInfo> instance
+/// so it does not destroy the pointer the kernel does not own.
+/// </summary>
+struct KernelInfo : Base<OrtKernelInfo> {
+  explicit KernelInfo(std::nullptr_t) {}     ///< Create an empty instance to initialize later
+  explicit KernelInfo(OrtKernelInfo* info);  ///< Take ownership of the instance
+  KernelInfo Copy() const;
+
+  template <typename T>  // T is only implemented for float, int64_t, and string
+  T GetAttribute(const char* name) const;
+
+  template <typename T>  // T is only implemented for std::vector<float>, std::vector<int64_t>
+  std::vector<T> GetAttributes(const char* name) const;
+
+  size_t GetInputCount() const;
+  size_t GetOutputCount() const;
+
+  Ort::NodeArg GetInput(size_t index) const;
+  Ort::NodeArg GetOutput(size_t index) const;
+};
+
 struct CustomOpApi {
   CustomOpApi(const OrtApi& api) : api_(api) {}
 
@@ -1147,12 +1193,6 @@ struct CustomOpApi {
   size_t KernelContext_GetOutputCount(const OrtKernelContext* context);
   OrtValue* KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
   void* KernelContext_GetGPUComputeStream(const OrtKernelContext* context);
-
-  size_t KernelInfo_GetInputCount(const OrtKernelInfo* info);
-  size_t KernelInfo_GetOutputCount(const OrtKernelInfo* info);
-  std::string KernelInfo_GetInputName(const OrtKernelInfo* info, size_t index);
-  std::string KernelInfo_GetOutputName(const OrtKernelInfo* info, size_t index);
-  OrtTensorTypeAndShapeInfo* KernelInfo_GetInputTensorTypeAndShape(const OrtKernelInfo* info, size_t index);
 
   void ThrowOnError(OrtStatus* result);
 

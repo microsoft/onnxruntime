@@ -1158,6 +1158,115 @@ inline TensorTypeAndShapeInfo Value::GetTensorTypeAndShapeInfo() const {
 //
 // Custom OP API Inlines
 //
+
+inline KernelInfo::KernelInfo(OrtKernelInfo* info) : Base<OrtKernelInfo>{info} {}
+
+inline KernelInfo KernelInfo::Copy() const {
+  OrtKernelInfo* info_copy;
+  Ort::ThrowOnError(GetApi().CopyKernelInfo(p_, &info_copy));
+  return KernelInfo{info_copy};
+}
+
+template <>
+inline float KernelInfo::GetAttribute<float>(const char* name) const {
+  float out;
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_float(p_, name, &out));
+  return out;
+}
+
+template <>
+inline int64_t KernelInfo::GetAttribute<int64_t>(const char* name) const {
+  int64_t out;
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_int64(p_, name, &out));
+  return out;
+}
+
+template <>
+inline std::string KernelInfo::GetAttribute<std::string>(const char* name) const {
+  size_t size = 0;
+  // Feed nullptr for the data buffer to query the true size of the string attribute
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_string(p_, name, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_string(p_, name, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+  return out;
+}
+
+template <>
+inline std::vector<float> KernelInfo::GetAttributes(const char* name) const {
+  size_t size = 0;
+  // Feed nullptr for the data buffer to query the true size of the attribute
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_float(p_, name, nullptr, &size));
+
+  std::vector<float> out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_float(p_, name, out.data(), &size));
+  return out;
+}
+
+template <>
+inline std::vector<int64_t> KernelInfo::GetAttributes(const char* name) const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the attribute
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_int64(p_, name, nullptr, &size));
+
+  std::vector<int64_t> out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfoGetAttributeArray_int64(p_, name, out.data(), &size));
+  return out;
+}
+
+inline size_t KernelInfo::GetInputCount() const {
+  size_t out;
+  ThrowOnError(GetApi().KernelInfo_GetInputCount(p_, &out));
+  return out;
+}
+
+inline size_t KernelInfo::GetOutputCount() const {
+  size_t out;
+  ThrowOnError(GetApi().KernelInfo_GetOutputCount(p_, &out));
+  return out;
+}
+
+inline Ort::NodeArg KernelInfo::GetInput(size_t index) const {
+  const OrtNodeArg* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelInfo_GetInputNodeArg(p_, index, &out));
+  return Ort::NodeArg(out);
+}
+
+inline Ort::NodeArg KernelInfo::GetOutput(size_t index) const {
+  const OrtNodeArg* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelInfo_GetOutputNodeArg(p_, index, &out));
+  return Ort::NodeArg(out);
+}
+
+inline std::string Ort::NodeArg::GetName() const {
+  size_t size = 0;
+  std::string out;
+
+  // Pass a nullptr as the data buffer to query the size of the input's name
+  OrtStatus* status = GetApi().NodeArg_GetName(p_, nullptr, &size);
+
+  if (status == nullptr) {
+    out.resize(size);
+    ThrowOnError(GetApi().NodeArg_GetName(p_, &out[0], &size));
+    out.resize(size - 1);  // remove the terminating character '\0'
+  } else {
+    ThrowOnError(status);
+  }
+
+  return out;
+}
+
+inline TypeInfo Ort::NodeArg::GetTypeInfo() const {
+  OrtTypeInfo* out;
+  ThrowOnError(GetApi().NodeArg_GetTypeInfo(p_, &out));
+  return TypeInfo(out);
+}
+
 inline void CustomOpApi::ThrowOnError(OrtStatus* status) {
   Ort::ThrowOnError(api_, status);
 }
@@ -1230,12 +1339,6 @@ inline std::vector<int64_t> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKe
 inline OrtTensorTypeAndShapeInfo* CustomOpApi::GetTensorTypeAndShape(_In_ const OrtValue* value) {
   OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(api_.GetTensorTypeAndShape(value, &out));
-  return out;
-}
-
-inline OrtTensorTypeAndShapeInfo* CustomOpApi::KernelInfo_GetInputTensorTypeAndShape(_In_ const OrtKernelInfo* info, size_t index) {
-  OrtTensorTypeAndShapeInfo* out;
-  ThrowOnError(api_.KernelInfo_GetInputTensorTypeAndShape(info, index, &out));
   return out;
 }
 
@@ -1321,54 +1424,6 @@ inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context,
 inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelContext* context) {
   void* out;
   ThrowOnError(api_.KernelContext_GetGPUComputeStream(context, &out));
-  return out;
-}
-
-inline size_t CustomOpApi::KernelInfo_GetInputCount(const OrtKernelInfo* info) {
-  size_t out;
-  ThrowOnError(api_.KernelInfo_GetInputCount(info, &out));
-  return out;
-}
-
-inline size_t CustomOpApi::KernelInfo_GetOutputCount(const OrtKernelInfo* info) {
-  size_t out;
-  ThrowOnError(api_.KernelInfo_GetOutputCount(info, &out));
-  return out;
-}
-
-inline std::string CustomOpApi::KernelInfo_GetInputName(_In_ const OrtKernelInfo* info, _In_ size_t index) {
-  size_t size = 0;
-  std::string out;
-
-  // Pass a nullptr as the data buffer to query the size of the input's name
-  OrtStatus* status = api_.KernelInfo_GetInputName(info, index, nullptr, &size);
-
-  if (status == nullptr) {
-    out.resize(size);
-    ThrowOnError(api_.KernelInfo_GetInputName(info, index, &out[0], &size));
-    out.resize(size - 1);  // remove the terminating character '\0'
-  } else {
-    ThrowOnError(status);
-  }
-
-  return out;
-}
-
-inline std::string CustomOpApi::KernelInfo_GetOutputName(_In_ const OrtKernelInfo* info, _In_ size_t index) {
-  size_t size = 0;
-  std::string out;
-
-  // Pass a nullptr as the data buffer to query the size of the input's name
-  OrtStatus* status = api_.KernelInfo_GetOutputName(info, index, nullptr, &size);
-
-  if (status == nullptr) {
-    out.resize(size);
-    ThrowOnError(api_.KernelInfo_GetOutputName(info, index, &out[0], &size));
-    out.resize(size - 1);  // remove the terminating character '\0'
-  } else {
-    ThrowOnError(status);
-  }
-
   return out;
 }
 

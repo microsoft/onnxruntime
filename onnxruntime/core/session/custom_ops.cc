@@ -11,6 +11,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
@@ -146,8 +147,8 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputCount, _In_ const OrtKernelInfo
   API_IMPL_END
 };
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
-                    _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                    _Outptr_ const OrtNodeArg** node_arg) {
   API_IMPL_BEGIN
   const onnxruntime::OpKernelInfo* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const size_t num_inputs = op_info->GetInputCount();
@@ -156,28 +157,14 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputName, _In_ const OrtKernelInfo* 
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input index is out of range");
   }
 
-  const std::string& name = op_info->node().InputDefs()[index]->Name();
+  *node_arg = reinterpret_cast<const OrtNodeArg*>(op_info->node().InputDefs()[index]);
 
-  if (out == nullptr) {  // User is querying the true size of the name
-    *size = name.size() + 1;
-    return nullptr;
-  }
-
-  if (*size >= name.size() + 1) {  // User provided a buffer of sufficient size
-    std::memcpy(out, name.data(), name.size());
-    out[name.size()] = '\0';
-    *size = name.size() + 1;
-    return nullptr;
-  }
-
-  // User has provided a buffer that is not large enough
-  *size = name.size() + 1;
-  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
+  return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
-                    _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                    _Outptr_ const OrtNodeArg** node_arg){
   API_IMPL_BEGIN
   const onnxruntime::OpKernelInfo* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const size_t num_outputs = op_info->GetOutputCount();
@@ -186,7 +173,15 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo*
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Output index is out of range");
   }
 
-  const std::string& name = op_info->node().OutputDefs()[index]->Name();
+  *node_arg = reinterpret_cast<const OrtNodeArg*>(op_info->node().OutputDefs()[index]);
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_ char* out, _Inout_ size_t* size) {
+  API_IMPL_BEGIN
+  const std::string& name = reinterpret_cast<const onnxruntime::NodeArg*>(node_arg)->Name();
 
   if (out == nullptr) {  // User is querying the true size of the name
     *size = name.size() + 1;
@@ -206,33 +201,15 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputName, _In_ const OrtKernelInfo*
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputTensorTypeAndShape, _In_ const OrtKernelInfo* info, _In_ size_t index,
-                    _Outptr_ OrtTensorTypeAndShapeInfo** out) {
+ORT_API_STATUS_IMPL(OrtApis::NodeArg_GetTypeInfo, _In_ const OrtNodeArg* node_arg, _Outptr_ OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
-  const onnxruntime::OpKernelInfo* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
-  const size_t num_inputs = op_info->GetInputCount();
+  const ONNX_NAMESPACE::TypeProto* type_proto = reinterpret_cast<const onnxruntime::NodeArg*>(node_arg)->TypeAsProto();
 
-  if (index >= num_inputs) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input index is out of range");
+  if (type_proto == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Node argument does not have a valid type");
   }
 
-  const onnxruntime::NodeArg* node = op_info->node().InputDefs()[index];
-  const ONNX_NAMESPACE::TypeProto* type_proto = node->TypeAsProto();
-  const ONNX_NAMESPACE::TensorShapeProto* shape_proto = node->Shape();
-
-  if (type_proto == nullptr || shape_proto == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input does not have a set type or shape");  // TODO: Bad message
-  }
-
-  if (onnxruntime::utils::HasTensorType(*type_proto)) {
-    const int32_t elem_type_proto = type_proto->tensor_type().elem_type();
-    ONNXTensorElementDataType elem_type = TensorDataTypeToOnnxRuntimeTensorElementDataType(elem_type_proto);
-    onnxruntime::TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*shape_proto); // TODO: Only available if SHARED_PROVIDER is not defined
-
-    return GetTensorShapeAndTypeHelper(elem_type, shape, nullptr, out);
-  }
-
-  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input is not a tensor");
+  return OrtTypeInfo::FromTypeProto(type_proto, type_info);
   API_IMPL_END
 }
 

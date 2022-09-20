@@ -392,11 +392,12 @@ ORT_API(const OrtTrainingApi*, GetTrainingApi, uint32_t version);
 
 ORT_API_STATUS_IMPL(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
-ORT_API_STATUS_IMPL(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
-                _Inout_ size_t* size);
-ORT_API_STATUS_IMPL(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
-                    _Inout_ size_t* size);
-ORT_API_STATUS_IMPL(KernelInfo_GetInputTensorTypeAndShape, _In_ const OrtKernelInfo* info, _In_ size_t index,
-                    _Outptr_ OrtTensorTypeAndShapeInfo** out);
+ORT_API_STATUS_IMPL(KernelInfo_GetInputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                    _Outptr_ const OrtNodeArg** node_arg);
+ORT_API_STATUS_IMPL(KernelInfo_GetOutputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                    _Outptr_ const OrtNodeArg** node_arg);
+
+ORT_API_STATUS_IMPL(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_ char* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(NodeArg_GetTypeInfo, _In_ const OrtNodeArg* info, _Outptr_ OrtTypeInfo** type_info);
 
 }  // namespace OrtApis

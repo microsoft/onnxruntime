@@ -269,6 +269,7 @@ ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
+ORT_RUNTIME_CLASS(NodeArg);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -3512,56 +3513,58 @@ struct OrtApi {
   */
   ORT_API2_STATUS(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 
-  /** \brief Get an input node's name from a OrtKernelInfo object.
+ /** \brief Get an input node argument definition from an instance of OrtKernelInfo.
   *
-  * If `out` is nullptr, the value of `size` is set to the true size of the input's
+  * \param[in] info An instance of OrtKernelInfo.
+  * \param[in] index The index of the input node to get. Returns a failure status if out-of-bounds.
+  * \param[out] node_arg Do not free this value. It is owned by OrtKernelInfo.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(KernelInfo_GetInputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                  _Outptr_ const OrtNodeArg** node_arg);
+
+  /** \brief Get an output node argument definition from an instance of OrtKernelInfo.
+  *
+  * \param[in] info An instance of OrtKernelInfo.
+  * \param[in] index The index of the output node to get. Returns a failure status if out-of-bounds.
+  * \param[out] node_arg Do not free this value. It is owned by OrtKernelInfo.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(KernelInfo_GetOutputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                  _Outptr_ const OrtNodeArg** node_arg);
+
+  /** \brief Get a node argument's name.
+  *
+  * If `out` is nullptr, the value of `size` is set to the true size of the
   * name, and a success status is returned.
   *
   * If the `size` parameter is greater than or equal to the actual name's size,
-  * the value of `size` is set to the true size of the input's name, the provided memory
+  * the value of `size` is set to the true size of the node's name, the provided memory
   * is filled with the name's contents, and a success status is returned.
   *
-  * If the `size` parameter is less than the actual input name's size and `out`
-  * is not nullptr, the value of `size` is set to the true size of the input's name
+  * If the `size` parameter is less than the actual name's size and `out`
+  * is not nullptr, the value of `size` is set to the true size of the node's name
   * and a failure status is returned.
   *
-  * \param[in] info ::OrtKernelInfo instance
-  * \param[in] index Index of the input for which to get the name. Returns a failure status
-  *                  if the index is out of range.
+  * \param[in] node_arg An instance of OrtNodeArg representing a node argument definition
+  *                     for both input and output.
   * \param[out] out Pointer to memory where the null-terminated name will be stored.
   * \param[in,out] size See above comments for details
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
-                  _Inout_ size_t* size);
+  ORT_API2_STATUS(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_ char* out, _Inout_ size_t* size);
 
-  /** \brief Get an output node's name from a OrtKernelInfo object.
+  /** \brief Get a node argument definition's type information.
   *
-  * If `out` is nullptr, the value of `size` is set to the true size of the output's
-  * name, and a success status is returned.
-  *
-  * If the `size` parameter is greater than or equal to the actual name's size,
-  * the value of `size` is set to the true size of the output's name, the provided memory
-  * is filled with the name's contents, and a success status is returned.
-  *
-  * If the `size` parameter is less than the actual output name's size and `out`
-  * is not nullptr, the value of `size` is set to the true size of the output's name
-  * and a failure status is returned.
-  *
-  * \param[in] info ::OrtKernelInfo instance
-  * \param[in] index Index of the output for which to get the name. Returns a failure status
-  *                  if the index is out of range.
-  * \param[out] out Pointer to memory where the null-terminated name will be stored.
-  * \param[in,out] size See above comments for details
+  * \param[in] node_arg
+  * \param[out] type_info Must be freed with OrtApi::ReleaseTypeInfo.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, _In_ size_t index, _Out_ char* out,
-                  _Inout_ size_t* size);
-
-  ORT_API2_STATUS(KernelInfo_GetInputTensorTypeAndShape, _In_ const OrtKernelInfo* info, _In_ size_t index,
-                  _Outptr_ OrtTensorTypeAndShapeInfo** out);
+  ORT_API2_STATUS(NodeArg_GetTypeInfo, _In_ const OrtNodeArg* info, _Outptr_ OrtTypeInfo** type_info);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
