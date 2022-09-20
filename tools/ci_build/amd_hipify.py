@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import concurrent.futures
+import fnmatch
 import functools
 import os
 import shutil
@@ -15,8 +16,14 @@ contrib_ops_path = "onnxruntime/contrib_ops"
 providers_path = "onnxruntime/core/providers"
 training_ops_path = "orttraining/orttraining/training_ops"
 
+
+def is_excluded(f, excluded_patterns):
+    return any([fnmatch.fnmatch(f, pat) for pat in excluded_patterns])
+
+
 contrib_ops_excluded_files = [
     "bert/attention.cc",
+    "bert/attention.h",
     "bert/attention_impl.cu",
     "bert/attention_softmax.h",
     "bert/embed_layer_norm.cc",
@@ -31,11 +38,7 @@ contrib_ops_excluded_files = [
     "bert/skip_layer_norm.h",
     "bert/skip_layer_norm_impl.cu",
     "bert/skip_layer_norm_impl.h",
-    "bert/tensorrt_fused_multihead_attention/cudaDriverWrapper.cc",
-    "bert/tensorrt_fused_multihead_attention/cudaDriverWrapper.h",
-    "bert/tensorrt_fused_multihead_attention/fused_multihead_attention.h",
-    "bert/tensorrt_fused_multihead_attention/fused_multihead_attention_v2.h",
-    "bert/tensorrt_fused_multihead_attention/mha_runner.cu",
+    "bert/tensorrt_fused_multihead_attention/*",
     "bert/transformer_common.h",
     "bert/transformer_common.cc",
     "math/complex_mul.cc",
@@ -386,7 +389,7 @@ def amd_hipify(config_build_dir):
         contrib_results = [
             executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
             for f in contrib_files
-            if f not in contrib_ops_excluded_files
+            if not is_excluded(f, contrib_ops_excluded_files)
         ]
 
         cuda_path = os.path.join(providers_path, "cuda")
@@ -395,7 +398,7 @@ def amd_hipify(config_build_dir):
         provider_results = [
             executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
             for f in provider_files
-            if f not in provider_excluded_files
+            if not is_excluded(f, provider_excluded_files)
         ]
 
         cuda_path = os.path.join(training_ops_path, "cuda")
@@ -404,7 +407,7 @@ def amd_hipify(config_build_dir):
         training_results = [
             executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
             for f in training_files
-            if f not in training_ops_excluded_files
+            if not is_excluded(f, training_ops_excluded_files)
         ]
         # explicitly wait so that hipify warnings finish printing before logging the hipify statements
         concurrent.futures.wait(contrib_results)

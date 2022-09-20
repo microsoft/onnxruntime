@@ -1,6 +1,5 @@
 # Mobile
-/onnxruntime/test/testdata/kernel_def_hashes/ @microsoft/onnxruntime-mobile
-/onnxruntime/core/framework/kernel_def_hash_helpers.* @microsoft/onnxruntime-mobile
+/onnxruntime/core/flatbuffers/schema/ort.fbs @microsoft/onnxruntime-mobile
 
 # Contrib Ops
 /onnxruntime/core/graph/contrib_ops/nhwc_schema_defs.cc @microsoft/onnxruntime-mlas

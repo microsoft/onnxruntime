@@ -3,7 +3,11 @@
 
 #pragma once
 
+#include "gsl/gsl"
+
 #include "core/common/basic_types.h"
+#include "core/common/inlined_containers.h"
+#include "core/graph/graph.h"
 #include "core/graph/runtime_optimization_record.h"
 
 namespace onnxruntime {
@@ -37,9 +41,9 @@ class NodesToOptimize {
 
   // nodes to assemble. num_inputs and num_outputs default to the size of input_nodes and output_nodes.
   // specify num_input_defs/num_output_defs if the last input/output is variadic
-  NodesToOptimize(const std::vector<Node*>& input_nodes,
+  NodesToOptimize(gsl::span<Node* const> input_nodes,
                   Node& target_node,
-                  const std::vector<Node*>& output_nodes,
+                  gsl::span<Node* const> output_nodes,
                   int num_input_defs = -1, int num_output_defs = -1);
 
   // construct from saved NodeIndex values. IsValid() will return false if one or more nodes were missing.
@@ -81,7 +85,7 @@ class NodesToOptimize {
   }
 
   // inputs filtered by index. includes all variadic.
-  std::vector<Node*> Inputs(const std::vector<int>& indices, bool required = true) const;
+  InlinedVector<Node*> Inputs(gsl::span<const int> indices, bool required = true) const;
 
   Node& Target() const {
     return *GetNode(NumInputEntries() + 0, /*required*/ true);
@@ -92,12 +96,12 @@ class NodesToOptimize {
   }
 
   // outputs filtered by index. includes all variadic.
-  std::vector<Node*> Outputs(const std::vector<int>& indices, bool required = true) const;
+  InlinedVector<Node*> Outputs(const std::vector<int>& indices, bool required = true) const;
 
   // Get the Node or Nodes (if variadic) at a specific index.
-  std::vector<Node*> GetNodesAtLocation(const NodeLocation& location, bool required = true) const;
+  InlinedVector<Node*> GetNodesAtLocation(const NodeLocation& location, bool required = true) const;
 
-  const std::vector<Node*>& AllNodes() const { return nodes_; }
+  gsl::span<Node* const> AllNodes() const { return nodes_; }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(NodesToOptimize);
 
@@ -117,15 +121,15 @@ class NodesToOptimize {
   bool variadic_output_{false};
   int num_variadic_inputs_{0};  // how many values does the variadic input have. can be zero or more.
   int num_variadic_outputs_{0};
-  std::vector<Node*> nodes_;
+  InlinedVector<Node*> nodes_;
 };
 
 // Helper to build a NodesToOptimizeIndices instance
 // Use in selector to incrementally add pieces
 struct NodesToOptimizeIndicesBuilder {
-  std::vector<NodeIndex> input_nodes;
+  InlinedVector<NodeIndex> input_nodes;
   NodeIndex target_node{NodesToOptimizeIndices::kEmptyNodeIndex};
-  std::vector<NodeIndex> output_nodes;
+  InlinedVector<NodeIndex> output_nodes;
   int num_input_defs{-1};
   int num_output_defs{-1};
 
