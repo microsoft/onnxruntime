@@ -65,19 +65,12 @@ namespace {
 struct BrokenTest {
   std::string test_name_;
   std::string reason_;
-  std::set<std::string> broken_versions_ = {};  // apply to all versions if empty
-  std::set<std::string> broken_opset_versions_ = {};
+  std::set<std::string> broken_opset_versions_ = {};  // apply to all versions if empty
   BrokenTest(std::string name, std::string reason) : test_name_(std::move(name)), reason_(std::move(reason)) {
   }
 
-  BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions)
-      : test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions) {
-  }
-
-  BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& versions,
-      const std::initializer_list<std::string>& opversions)
-      : test_name_(std::move(name)), reason_(std::move(reason)), broken_versions_(versions),
-      broken_opset_versions_(opversions) {
+  BrokenTest(std::string name, std::string reason, const std::initializer_list<std::string>& opversions)
+      : test_name_(std::move(name)), reason_(std::move(reason)), broken_opset_versions_(opversions) {
   }
 
   bool operator<(const struct BrokenTest& test) const {
@@ -1085,11 +1078,7 @@ TEST_P(ModelTest, Run) {
           std::basic_string<PATH_CHAR_TYPE> filename_str = filename;
           if (!HasExtensionOf(filename_str, ORT_TSTR("onnx")))
             return true;
-
           std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
-#if defined(_WIN32)
-          test_case_name.erase(test_case_name.find(':'));
-#endif
           if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
             test_case_name = test_case_name.substr(5);
           if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
@@ -1140,7 +1129,7 @@ auto ExpandModelName = [](const ::testing::TestParamInfo<ModelTest::ParamType>& 
 
   // Note: test name only accepts '_' and alphanumeric
   // remove '.' and '-'
-  char chars[] = ".-";
+  char chars[] = ".-:";
   for (unsigned int i = 0; i < strlen(chars); ++i) {
     name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
   }
