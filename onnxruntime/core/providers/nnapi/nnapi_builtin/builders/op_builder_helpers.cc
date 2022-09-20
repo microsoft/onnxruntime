@@ -448,12 +448,9 @@ Status PerformBroadcasting(const Shape& shape1, const Shape& shape2, Shape& outp
       ORT_RETURN_IF_NOT(dim_max_shape == 1 || dim_min_shape == 1,
                         "Dimensions are not compatible, dim1: ", dim_max_shape,
                         "dim2: ", dim_min_shape);
-    }
-
-    if (dim_max_shape == 0 || dim_min_shape == 0) {
-      max_shape[i] = 0;
-    } else if (dim_max_shape < dim_min_shape) {
-      max_shape[i] = dim_min_shape;
+      if (dim_max_shape == 1) {
+        max_shape[i] = dim_min_shape;
+      }
     }
   }
   output_shape = std::move(max_shape);
