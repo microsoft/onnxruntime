@@ -1128,7 +1128,7 @@ auto ExpandModelName = [](const ::testing::TestParamInfo<ModelTest::ParamType>& 
   std::replace(name.begin(), name.end(), '\\', '_');
 
   // Note: test name only accepts '_' and alphanumeric
-  // remove '.' and '-'
+  // remove '.', '-', ':'
   char chars[] = ".-:";
   for (unsigned int i = 0; i < strlen(chars); ++i) {
     name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
