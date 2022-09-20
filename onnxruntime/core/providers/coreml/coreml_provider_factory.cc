@@ -14,11 +14,11 @@ struct CoreMLProviderFactory : IExecutionProviderFactory {
       : coreml_flags_(coreml_flags) {}
   ~CoreMLProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
   uint32_t coreml_flags_;
 };
 
-std::unique_ptr<IExecutionProvider> CoreMLProviderFactory::CreateProvider(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> CoreMLProviderFactory::CreateProvider() {
   return std::make_unique<CoreMLExecutionProvider>(coreml_flags_);
 }
 

@@ -17,12 +17,13 @@ struct XnnpackExecutionProviderInfo {
   XnnpackExecutionProviderInfo() = default;
 
   XnnpackExecutionProviderInfo(const ProviderOptions& po) {
-    if (po.count("intra_op_num_threads")) {
-      xnn_thread_pool_size = std::stoi(po.at("intra_op_num_threads"));
+    if (po.count("thread_num")) {
+      xnn_thread_pool_size = std::stoi(po.at("thread_num"));
     }
     // future: parse ProviderOptions
   }
 };
+
 
 class XnnpackExecutionProvider : public IExecutionProvider {
  public:

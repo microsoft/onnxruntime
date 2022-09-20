@@ -3461,7 +3461,7 @@ struct OrtApi {
    *   If SNPE is not available (due to a non Snpe enabled build or its dependencies not being installed), this function will fail.
    *
    * XNNPACK supported keys:
-   *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
+   *   None currently
    *
    * \since Version 1.12.
    */

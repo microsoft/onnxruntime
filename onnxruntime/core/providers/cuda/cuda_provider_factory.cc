@@ -39,13 +39,13 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
       : info_{info} {}
   ~CUDAProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   CUDAExecutionProviderInfo info_;
 };
 
-std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   return std::make_unique<CUDAExecutionProvider>(info_);
 }
 

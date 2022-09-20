@@ -13,10 +13,10 @@ struct RknpuProviderFactory : IExecutionProviderFactory {
   RknpuProviderFactory() {}
   ~RknpuProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 };
 
-std::unique_ptr<IExecutionProvider> RknpuProviderFactory::CreateProvider(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> RknpuProviderFactory::CreateProvider() {
   return std::make_unique<RknpuExecutionProvider>();
 }
 
