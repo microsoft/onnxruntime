@@ -40,9 +40,9 @@ For build instructions, please see the [BUILD page](../build/eps.md#amd-rocm).
 
 ```c++
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
-Ort::SessionOptions sf;
+Ort::SessionOptions so;
 int device_id = 0;
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCm(sf, device_id));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCm(so, device_id));
 ```
 
 The C API details are [here](../get-started/with-c.md).
