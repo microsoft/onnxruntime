@@ -1068,7 +1068,7 @@ TEST_P(ModelTest, Run) {
 #if !defined(_WIN32)
     paths.push_back(ORT_TSTR("/data/onnx"));
 #else
-    paths.push_back(ORT_TSTR("c:\\local\\data\\onnx"));
+    paths.push_back(ORT_TSTR("/c/local/data/onnx"));
 #endif
 #endif
 
