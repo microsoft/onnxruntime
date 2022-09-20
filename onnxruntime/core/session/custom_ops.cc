@@ -205,7 +205,7 @@ ORT_API_STATUS_IMPL(OrtApis::NodeArg_GetTypeInfo, _In_ const OrtNodeArg* node_ar
   const ONNX_NAMESPACE::TypeProto* type_proto = reinterpret_cast<const onnxruntime::NodeArg*>(node_arg)->TypeAsProto();
 
   if (type_proto == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Node argument does not have a valid type");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Node argument definition does not have a type");
   }
 
   return OrtTypeInfo::FromTypeProto(type_proto, type_info);
