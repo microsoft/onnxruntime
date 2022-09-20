@@ -186,7 +186,7 @@ static void AddComputeCapabilityForEachNodeInNodeUnit(
 
 std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
-    const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+    const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
 
   std::shared_ptr<KernelRegistry> registry = GetKernelRegistry();
