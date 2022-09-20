@@ -186,7 +186,7 @@ describe('UnitTests - InferenceSession.run()', () => {
 });
 
 describe('UnitTests - InferenceSession.SessionOptions', () => {
-  const modelPath = path.join(__dirname, '../../testdata/test_types_FLOAT.pb');
+  const modelPath = path.join(__dirname, '../../testdata/test_types_float.onnx');
   const createAny: any = InferenceSession.create;
 
   it('BAD CALL - type mismatch', async () => {
@@ -323,7 +323,7 @@ describe('UnitTests - InferenceSession.RunOptions', () => {
   const expectedOutput0 = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
 
   before(async () => {
-    const modelPath = path.join(__dirname, '../../testdata/test_types_FLOAT.pb');
+    const modelPath = path.join(__dirname, '../../testdata/test_types_float.onnx');
     session = await InferenceSession.create(modelPath);
     sessionAny = session;
   });
