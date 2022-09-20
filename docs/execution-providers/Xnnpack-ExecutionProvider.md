@@ -21,13 +21,14 @@ Accelerate ONNX models on Android devices and WebAssembly with ONNX Runtime and 
 
 
 ## Install
-Pre-built packages of ONNX Runtime with Xnnpack EP for Android are published on Maven.
+No Pre-built packages of ONNX Runtime with Xnnpack EP for Android are available.
 
-See [here](../install/index.md#install-on-android) for installation instructions.
 
 ## Build
 
-Please see the [Build Android EP](../build/eps.md#xnnpack) for instructions on building a package that includes the Xnnpack EP.
+Please see the [Build page](../build/eps.md#xnnpack) for instructions on building a package that includes the Xnnpack EP.
+
+Android/Windows/Linux support
 
 ## Usage
 
