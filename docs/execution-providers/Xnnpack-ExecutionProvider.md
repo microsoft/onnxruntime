@@ -2,7 +2,7 @@
 title: Xnnpack (Android)
 description: Instructions to execute ONNX Runtime with the Xnnpack execution provider
 parent: Execution Providers
-nav_order: 7
+nav_order: 16
 redirect_from: /docs/reference/execution-providers/Xnnpack-ExecutionProvider
 ---
 {::options toc_levels="2" /}
@@ -42,7 +42,7 @@ The Xnnpack EP must be explicitly registered when creating the inference session
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions so;
 uint32_t Xnnpack_flags = 0;
-so.AppendExecutionProvider("XNNPACK", {{"intra_op_num_threads", 4/*how many threads setup for xnnpack*/}});
+so.AppendExecutionProvider("XNNPACK", {{"intra_op_num_threads", std::to_string(4)/*how many threads setup for xnnpack*/}});
 Ort::Session session(env, model_path, so);
 ```
 
@@ -56,8 +56,8 @@ To achieve the best performance, the Xnnpack EP requires the following configura
 2. Xnnpack EP takes the intra-threadpool size from provider-options. The default value is 1. 
 the intra-threadpool size should be set to the half of number of cores on the device. For example:
 ```C++
-    so.AppendExecutionProvider("XNNPACK", {{"intra_op_num_threads", intra_op_num_threads});
-    // intra_op_num_threads is the key of the provider option, and 4 is the value of the provider option.
+    int intra_op_num_threads = 4;
+    so.AppendExecutionProvider("XNNPACK", {{"intra_op_num_threads", std::to_string(intra_op_num_threads)}});
 ```
 3. Try to set ort thread-pool intra_op_num_threads as 1 or equal to Xnnpack thread-pool size, and pick the best value for your model. Generally, 1 would be the best fit if your model run most of calculation heavy ops on Xnnpack EP or same as Xnnpack thread-pool size in contrast.:
 ```C++
