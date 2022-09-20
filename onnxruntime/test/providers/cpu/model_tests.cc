@@ -1090,6 +1090,9 @@ TEST_P(ModelTest, Run) {
             return true;
 
           std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name;
+#if defined(_WIN32)
+          test_case_name.erase(test_case_name.find(':'));
+#endif
           if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
             test_case_name = test_case_name.substr(5);
           if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
