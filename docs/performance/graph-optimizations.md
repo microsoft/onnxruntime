@@ -53,20 +53,20 @@ These are semantics-preserving graph rewrites which remove redundant nodes and r
 
 ### Extended Graph Optimizations
 
-These optimizations include complex node fusions. They are run after graph partitioning and are only applied to the nodes assigned to the CPU or CUDA execution provider. Available extended graph optimizations are as follows:
+These optimizations include complex node fusions. They are run after graph partitioning and are only applied to the nodes assigned to the CPU or CUDA or ROCm execution provider. Available extended graph optimizations are as follows:
 
 | Optimization                    | Execution Provider | Comment                                                                     |
 |---------------------------------|--------------------|-----------------------------------------------------------------------------|
 | GEMM Activation Fusion          | CPU                |                                                                             |
 | Matmul Add Fusion               | CPU                |                                                                             |
 | Conv Activation Fusion          | CPU                |                                                                             |
-| GELU Fusion                     | CPU or CUDA        |                                                                             |
-| Layer Normalization Fusion      | CPU or CUDA        |                                                                             |
-| BERT Embedding Layer Fusion     | CPU or CUDA        | Fuse BERT embedding layer, layer normalization and attention mask length    |
-| Attention Fusion*               | CPU or CUDA        |                                                                             |
-| Skip Layer Normalization Fusion | CPU or CUDA        | Fuse bias of fully connected layer, skip connection and layer normalization |
-| Bias GELU Fusion                | CPU or CUDA        | Fuse bias of fully connected layer and GELU activation                      |
-| GELU Approximation*             | CUDA               | Disabled by default. Enable with [kOrtSessionOptionsEnableGeluApproximation](https://cs.github.com/microsoft/onnxruntime/blob/175acf08f470db0bb2e4b8eefe55cdeb87c8b132/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h?q=kOrtSessionOptionsEnableGeluApproximation#L52) |
+| GELU Fusion                     | CPU, CUDA, ROCm    |                                                                             |
+| Layer Normalization Fusion      | CPU, CUDA, ROCm    |                                                                             |
+| BERT Embedding Layer Fusion     | CPU, CUDA, ROCm    | Fuse BERT embedding layer, layer normalization and attention mask length    |
+| Attention Fusion*               | CPU, CUDA, ROCm    |                                                                             |
+| Skip Layer Normalization Fusion | CPU, CUDA, ROCm    | Fuse bias of fully connected layer, skip connection and layer normalization |
+| Bias GELU Fusion                | CPU, CUDA, ROCm    | Fuse bias of fully connected layer and GELU activation                      |
+| GELU Approximation*             | CUDA, ROCm         | Disabled by default. Enable with [kOrtSessionOptionsEnableGeluApproximation](https://cs.github.com/microsoft/onnxruntime/blob/175acf08f470db0bb2e4b8eefe55cdeb87c8b132/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h?q=kOrtSessionOptionsEnableGeluApproximation#L52) |
 
 
 <details>
@@ -74,7 +74,7 @@ These optimizations include complex node fusions. They are run after graph parti
     Approximations (click to expand)
   </summary>
 
-  To optimize performance of [BERT](https://en.wikipedia.org/wiki/BERT_(language_model)), approximation is used in GELU Approximation and Attention Fusion for CUDA execution provider. The impact on accuracy is negligible based on our evaluation: F1 score for a BERT model on SQuAD v1.1 is almost same (87.05 vs 87.03).
+  To optimize performance of [BERT](https://en.wikipedia.org/wiki/BERT_(language_model)), approximation is used in GELU Approximation and Attention Fusion for CUDA and ROCm execution provider. The impact on accuracy is negligible based on our evaluation: F1 score for a BERT model on SQuAD v1.1 is almost same (87.05 vs 87.03).
 
 </details>
 

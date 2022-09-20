@@ -650,6 +650,27 @@ See more information on the MIGraphX Execution Provider [here](../execution-prov
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles#migraphx).
 
+## AMD ROCm
+
+See more information on the ROCm Execution Provider [here](../execution-providers/ROCm-ExecutionProvider.md).
+
+### Prerequisites
+{: .no_toc }
+
+* Install [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_to_Install_ROCm.html#_How_to_Install)
+  * The ROCm execution provider for ONNX Runtime is built and tested with ROCm5.2.3
+
+### Build Instructions
+{: .no_toc }
+
+#### Linux
+
+```bash
+./build.sh --config <Release|Debug|RelWithDebInfo> --use_rocm --rocm_home <path to ROCm home>
+```
+
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#rocm).
+
 ## NNAPI
 
 Usage of NNAPI on Android platforms is via the NNAPI Execution Provider (EP).
