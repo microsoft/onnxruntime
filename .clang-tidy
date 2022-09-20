@@ -9,7 +9,8 @@ Checks: >
   bugprone-*,
   -readability-braces-around-statements,
   -google-runtime-references,
-  -cppcoreguidelines-pro-type-reinterpret-cast"
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -modernize-use-trailing-return-type
 WarningsAsErrors: ""
 HeaderFilterRegex: '.*onnxruntime\/core\/.*'
 AnalyzeTemporaryDtors: false
