@@ -98,9 +98,9 @@ static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
  * Stubs for the publicly exported static registration functions for EPs that are referenced in the C# bindings
  * and are not implemented in provider_bridge_ort.cc.
  *
- * NOTE: The nuget packages that the C# bindings will use are all for full builds, so we don't need to allow for 
+ * NOTE: The nuget packages that the C# bindings will use are all for full builds, so we don't need to allow for
  * provider_bridge_ort.cc being excluded in a minimal build.
- * 
+ *
  * These are required when building an iOS app using Xamarin as all external symbols must be defined at compile time.
  * In that case a static ORT library is used and the symbol needs to exist but doesn't need to be publicly exported.
  * TODO: Not sure if we need to purely limit to iOS builds, so limit to __APPLE__ for now
