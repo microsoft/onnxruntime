@@ -6,10 +6,8 @@
 #include <functional>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include "core/common/inlined_containers.h"
-#include "core/common/status.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 
 namespace onnxruntime {
@@ -19,7 +17,7 @@ class Shaper {
  public:
   using Shape = InlinedVector<uint32_t>;
 
-  Shaper(const GraphViewer& graph_viewer);
+  Shaper(const GraphViewer& graph_viewer) : graph_viewer_(&graph_viewer) {}
 
   void AddShape(const std::string& name, const Shape& shape) {
     shape_map_[name] = shape;
@@ -34,23 +32,11 @@ class Shaper {
     return shape;
   }
 
-  // If the shape of certain input is dynamic
-  // Use the following 2 functions to update the particular shape
-  // and calculate the new output shape
-  // Only perform this when the NNAPI model is finalized!
-  // TODO: Commented out these update shape methods for now due to the lack of dynamic shape support
-  // in NNAPI EP. Can be added back and enhanced for future use if more support is available.
-  /*
-  common::Status UpdateShape(const std::string& name, const Shape& new_shape);
-  common::Status UpdateDynamicDimensions();
-  */
+  // Note: Original code to update shapes are removed for now due to lack of dynamic shape support in NNAPI EP.
+  // Can be added back and enhanced in the future if more support is available.
 
  private:
   std::unordered_map<std::string, Shape> shape_map_;
-  /*
-  std::vector<std::function<common::Status(Shaper&)>> shape_ops_;
-   */
-
   const GraphViewer* graph_viewer_;
 };
 
