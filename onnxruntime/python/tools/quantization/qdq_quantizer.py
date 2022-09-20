@@ -220,7 +220,7 @@ class QDQQuantizer(ONNXQuantizer):
         for node in self.model.nodes():
             if self.should_quantize_node(node):
                 op_quantizer = CreateQDQQuantizer(self, node)
-                if op_quantizer == None:
+                if op_quantizer is None:
                     continue  # Skip quantize if no quantizer returned
                 op_quantizer.quantize()
 
@@ -715,7 +715,6 @@ class QDQQuantizer(ONNXQuantizer):
                             )
                         # Here we add dynamic subgraph, if we found no static params
                         # Scale and Zero Points not available for this input. Add nodes to dynamically compute it
-                        qType = self.activation_qType
                         if self.model.is_graph_output(tensor_name):  # Changes name to quantize output correctly
                             (
                                 scale_name,

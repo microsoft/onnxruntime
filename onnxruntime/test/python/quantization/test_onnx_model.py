@@ -14,9 +14,6 @@ import onnx
 from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import (
     TestCaseTempDir,
-    TestDataFeeds,
-    check_model_correctness,
-    check_op_type_count,
     check_op_type_order,
 )
 

@@ -1,5 +1,3 @@
-import logging
-
 from .operators.activation import QDQRemovableActivation, QLinearActivation
 from .operators.argmax import QArgMax
 from .operators.attention import AttentionQuant, QDQAttention

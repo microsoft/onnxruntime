@@ -41,9 +41,7 @@ class TestOpLSTM(TestCaseTempDir):
         def make_lstm_node(input_name, weight_name, recurrence_weight_name, output_name):
             input_size = 2
             hidden_size = 7
-            weight_scale = 0.3
             number_of_gates = 4
-            layout = 1
 
             weight_data = np.random.normal(0, 0.3, [1, number_of_gates * hidden_size, input_size]).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
