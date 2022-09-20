@@ -170,6 +170,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUDA_CALL_THROW(cudaSetDevice(device_id));
 
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
+  CUBLAS_CALL_THROW(cublasLtCreate(&cublas_lt_handle_));
   CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
 
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
@@ -184,6 +185,7 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(cublas_handle_)));
+  ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasLtDestroy(cublas_lt_handle_)));
   ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(cudnn_handle_)));
 }
 
@@ -252,21 +254,6 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
-  auto cpu_alloc = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  {
-    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-    if (!deferred_release_cpu_ptrs.empty()) {
-      // iterate from the end
-
-      for (int i = static_cast<int>(deferred_release_cpu_ptrs.size()) - 1; i >= 0; i--) {
-        CUDA_CALL_THROW(cudaEventSynchronize(deferred_release_cpu_ptrs[i].kernel_complete_event));
-        cpu_alloc->Free(deferred_release_cpu_ptrs[i].cpu_ptr);
-        CUDA_CALL_THROW(cudaEventDestroy(deferred_release_cpu_ptrs[i].kernel_complete_event));
-        deferred_release_cpu_ptrs.erase(deferred_release_cpu_ptrs.begin() + i);
-      }
-    }
-  }
-
   // clean up thread local context caches
   {
     std::lock_guard<OrtMutex> lock(context_state_.mutex);
@@ -376,40 +363,12 @@ Status CUDAExecutionProvider::Sync() const {
   return Status::OK();
 }
 
-void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream) {
-  // TODO: event reusing?
-  cudaEvent_t kernel_complete_event;
-  CUDA_CALL_THROW(cudaEventCreate(&kernel_complete_event, cudaEventDisableTiming));
-  CUDA_CALL_THROW(cudaEventRecord(kernel_complete_event, stream));
-  // the push_back is not thread safe
-  std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-  deferred_release_cpu_ptrs.push_back({p, kernel_complete_event});
-}
-
 Status CUDAExecutionProvider::OnRunStart() {
   // always set CUDA device when session::Run() in case it runs in a worker thread
   CUDA_RETURN_IF_ERROR(cudaSetDevice(GetDeviceId()));
-  auto cpu_alloc = GetAllocator(0, OrtMemTypeCPU);
-  // check if cudaEvents has passed for deferred release
-  // note that we need to take a mutex in case of multi-threaded Run()
-  {
-    std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
-    if (!deferred_release_cpu_ptrs.empty()) {
-      // iterate from the end
-      for (int i = static_cast<int>(deferred_release_cpu_ptrs.size()) - 1; i >= 0; i--) {
-        if (cudaSuccess == cudaEventQuery(deferred_release_cpu_ptrs[i].kernel_complete_event)) {
-          cpu_alloc->Free(deferred_release_cpu_ptrs[i].cpu_ptr);
-          CUDA_RETURN_IF_ERROR(cudaEventDestroy(deferred_release_cpu_ptrs[i].kernel_complete_event));
-          deferred_release_cpu_ptrs.erase(deferred_release_cpu_ptrs.begin() + i);
-        }
-      }
-    }
-  }
-  // create per thread context cache
-  auto& per_thread_context_cache = GetPerThreadContext();
-  if (IsGraphCaptureEnabled() && per_thread_context_cache.IsGraphCaptureAllowed() && !per_thread_context_cache.IsGraphCaptured()) {
+  if (IsGraphCaptureEnabled() && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured()) {
     LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
-    per_thread_context_cache.CaptureBegin();
+    GetPerThreadContext().CaptureBegin();
   }
   return Status::OK();
 }
@@ -426,14 +385,21 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
     }
   }
 
-  if (sync_stream && use_ep_level_unified_stream_) {
+  if (sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(stream_)));
   }
 
-  // If cuda graph is enabled, the per thread context will not be released
-  // because the per thread cuda graph needs to be maintained and replayed for
-  // the next run.
-  if (!IsGraphCaptureEnabled()) {
+  // The reason of !IsGraphCaptureEnabled():
+  //  If cuda graph is enabled, the per thread context will not be released
+  //  because the per thread cuda graph needs to be maintained and replayed for
+  //  the next run.
+  // The reason of PerThreadContextCache()->find(this) != PerThreadContextCache()->end():
+  //  In extreme cases (e.g., 1-op graph and that op fallbacks to CPU),
+  //  PerThreadContext won't be created and there isbe nothing to
+  //  release. This didn't happen before because we always call
+  //  GetPerThreadContext in OnRunStart.
+  if (!IsGraphCaptureEnabled() &&
+      PerThreadContextCache()->find(this) != PerThreadContextCache()->end()) {
     ReleasePerThreadContext();
   }
 
@@ -2523,12 +2489,27 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 }
 
 void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  RegisterCudaStreamHandles(stream_handle_registry,
-                            OrtDevice::GPU,
-                            stream_,
-                            use_ep_level_unified_stream_,
-                            GetPerThreadContext().CudnnHandle(),
-                            GetPerThreadContext().CublasHandle());
+  // This allocator must be the same to the allocator
+  // used in AllocateBufferOnCPUPinned.
+  auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  if (use_ep_level_unified_stream_)
+    RegisterCudaStreamHandles(stream_handle_registry,
+                              OrtDevice::GPU,
+                              allocator,
+                              !IsGraphCaptureEnabled(),
+                              stream_,
+                              use_ep_level_unified_stream_,
+                              GetPerThreadContext().CudnnHandle(),
+                              GetPerThreadContext().CublasHandle());
+  else
+    RegisterCudaStreamHandles(stream_handle_registry,
+                              OrtDevice::GPU,
+                              allocator,
+                              !IsGraphCaptureEnabled(),
+                              stream_,
+                              use_ep_level_unified_stream_,
+                              GetPerThreadContext().CudnnHandle(),
+                              GetPerThreadContext().CublasHandle());
 }
 
 }  // namespace onnxruntime

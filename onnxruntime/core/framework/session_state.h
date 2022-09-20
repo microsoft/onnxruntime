@@ -18,6 +18,7 @@
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_providers.h"
+#include "core/framework/execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/prepacked_weights_container.h"
@@ -60,6 +61,7 @@ class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
+class DeviceStreamCollection;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 class MemoryInfo;
 #endif
@@ -335,8 +337,12 @@ class SessionState {
     return subgraph_session_states_;
   }
 
+  std::unique_ptr<DeviceStreamCollection> AcquireDeviceStreamCollection() const;
+
+  void RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const;
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  void IncrementGraphExecutionCounter() {
+  void
+  IncrementGraphExecutionCounter() {
     ++graph_executions_counter_;
   }
 
@@ -563,6 +569,10 @@ class SessionState {
   size_t graph_executions_counter_ = 0;
 #endif
   std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
+
+  // lock for the device stream pool
+  mutable OrtMutex device_stream_pool_mutex_;
+  mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
 };
 
 }  // namespace onnxruntime

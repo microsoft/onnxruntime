@@ -35,9 +35,13 @@ class TrainingSession {
                                std::unique_ptr<LRSchedulerBase>(std::shared_ptr<Optimizer>)>& get_scheduler,
                            std::optional<float> initial_lr);
 
-  size_t GetTrainModeOutputCount() const noexcept;
+  size_t GetTrainingModelOutputCount() const noexcept;
 
-  size_t GetEvalModeOutputCount() const noexcept;
+  size_t GetEvalModelOutputCount() const noexcept;
+
+  std::string GetTrainingModelOutputName(size_t index) const noexcept;
+
+  std::string GetEvalModelOutputName(size_t index) const noexcept;
 
   Status TrainStep(const RunOptions& run_options,
                    const std::vector<OrtValue>& inputs,
@@ -52,6 +56,8 @@ class TrainingSession {
   Status OptimizerStep(const RunOptions& run_options);
 
   Status SetLearningRate(float learning_rate) noexcept;
+
+  float GetLearningRate() const;
 
   Status SchedulerStep() noexcept;
 

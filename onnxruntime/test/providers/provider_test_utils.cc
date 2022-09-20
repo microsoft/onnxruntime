@@ -289,6 +289,9 @@ struct TensorCheck<MLFloat16> {
       sort_expected_and_actual_buffers<float>(f_expected, f_output);
     }
 
+    const bool has_abs_err = params.absolute_error_.has_value();
+    const bool has_rel_err = params.relative_error_.has_value();
+
     float threshold = 0.001f;
 #if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
     threshold = 0.005f;
@@ -299,9 +302,23 @@ struct TensorCheck<MLFloat16> {
       } else if (std::isinf(f_expected[i])) {  // Test infinity for equality
         EXPECT_EQ(f_expected[i], f_output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
       } else {
-        // the default for existing tests
-        EXPECT_NEAR(f_expected[i], f_output[i], threshold)
-            << "i:" << i << ", provider_type: " << provider_type;
+        if (!has_abs_err && !has_rel_err) {
+          // the default for existing tests
+          EXPECT_NEAR(f_expected[i], f_output[i], threshold)
+              << "i:" << i << ", provider_type: " << provider_type;
+        } else {
+          if (has_abs_err) {
+            EXPECT_NEAR(f_expected[i], f_output[i],
+                        *(params.absolute_error_))
+                << "i:" << i << ", provider_type: " << provider_type;
+          }
+          if (has_rel_err) {
+            EXPECT_NEAR(f_expected[i], f_output[i],
+                        *(params.relative_error_) *
+                            std::abs(expected[i]))
+                << "i:" << i << ", provider_type: " << provider_type;
+          }
+        }
       }
     }
   }
@@ -1007,7 +1024,6 @@ void OpTester::Run(
         kCpuExecutionProvider,
         kCudaExecutionProvider,
         kDnnlExecutionProvider,
-        kNupharExecutionProvider,
         kTensorrtExecutionProvider,
         kOpenVINOExecutionProvider,
         kDmlExecutionProvider,
@@ -1099,8 +1115,6 @@ void OpTester::Run(
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
           execution_provider = DefaultOpenVINOExecutionProvider();
-        else if (provider_type == onnxruntime::kNupharExecutionProvider)
-          execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
@@ -1135,7 +1149,6 @@ void OpTester::Run(
           node.SetExecutionProviderType(provider_type);
           if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
-              provider_type == onnxruntime::kNupharExecutionProvider ||
               // provider_type == onnxruntime::kTvmExecutionProvider ||
               provider_type == onnxruntime::kNnapiExecutionProvider ||
               provider_type == onnxruntime::kCoreMLExecutionProvider ||
@@ -1209,7 +1222,7 @@ void OpTester::Run(
   }
 }
 
-void OpTester::AddReferenceOutputs(const std::string& model_path) {
+void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_error) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
@@ -1257,10 +1270,15 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
       mutable_dim->set_dim_value(i);
     }
 
-    output_data_.push_back(Data(NodeArg(output_names[out_idx], &tmp_type_proto),
-                                std::move(subgraph_fetches[out_idx]),
-                                optional<float>(),
-                                optional<float>()));
+    if (abs_error != 0.0f) {
+      output_data_.push_back(Data(NodeArg(output_names[out_idx], &tmp_type_proto),
+                                  std::move(subgraph_fetches[out_idx]),
+                                  optional<float>(), optional<float>(abs_error)));
+    } else {
+      output_data_.push_back(Data(NodeArg(output_names[out_idx], &tmp_type_proto),
+                                  std::move(subgraph_fetches[out_idx]),
+                                  optional<float>(), optional<float>()));
+    }
   }
 }
 

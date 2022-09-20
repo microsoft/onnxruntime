@@ -18,6 +18,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
+#include "core/common/inlined_containers.h"
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
@@ -1092,13 +1093,6 @@ class Graph {
   */
   Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
-  /**
-  If we have BeginFuseSubGraph, but somehow hit errors, such as Compile of an EP failed on thesub_graph.
-  We can call CancelFuseSubGraph to undo the changes of BeginFuseSubGraph
-  @param fused_node The fused node and it's function body to be removed from the graph
-  */
-  void CancelFuseSubGraph(const Node& fused_node);
-
   void FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node);
 #endif
 
@@ -1605,6 +1599,9 @@ class Graph {
   // for the fused kernel. I really don't like it. but for short-term solution, let's host
   // those schemas here.
   InlinedVector<std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_containers_;
+  // in some case, a fused sub-graph will happens multiple times in one model, we use a map
+  // to store reusable-schema in lookup.
+  InlinedHashMap<std::string, std::reference_wrapper<ONNX_NAMESPACE::OpSchema>> reusable_fused_schema_map_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Graph nodes.

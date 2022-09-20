@@ -38,9 +38,18 @@ ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState&
   return program_regions_.back();
 }
 
-DeviceStreamCollection& PartialGraphExecutionState::GetDeviceStreamCollection(size_t num_streams, const SessionState& session_state) {
+PartialGraphExecutionState::~PartialGraphExecutionState() {
+  if (device_stream_deleter_ && device_stream_collection_) {
+    device_stream_deleter_(std::move(device_stream_collection_));
+  }
+}
+
+DeviceStreamCollection& PartialGraphExecutionState::GetDeviceStreamCollection(const SessionState& session_state) {
   if (device_stream_collection_ == nullptr) {
-    device_stream_collection_ = std::make_unique<DeviceStreamCollection>(num_streams, session_state);
+    device_stream_collection_ = session_state.AcquireDeviceStreamCollection();
+    device_stream_deleter_ = [&](std::unique_ptr<DeviceStreamCollection> ptr) {
+      session_state.RecycleDeviceStreamCollection(std::move(ptr));
+    };
   }
   return *device_stream_collection_;
 }

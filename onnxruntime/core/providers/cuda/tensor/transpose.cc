@@ -81,10 +81,10 @@ Status Transpose::DoTranspose(const Transpose& transpose_kernel,
                               onnxruntime::Stream* ort_stream,
                               const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output) {
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
-  return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(), 
-      cuda_stream, 
-      CudaKernel::GetCublasHandle(ort_stream), 
-      permutations, 
+  return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(),
+      cuda_stream,
+      CudaKernel::GetCublasHandle(static_cast<CudaStream*>(ort_stream)),
+      permutations,
       input, output);
 }
 

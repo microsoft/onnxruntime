@@ -2000,7 +2000,7 @@ class PlannerImpl {
         onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
         const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
         auto& node_device_mem_location = ep->GetAllocator(0, OrtMemType::OrtMemTypeDefault)->Info();
-        ORT_ENFORCE(execution_plan[node_stream_map_[node_index]]->device_ == node_device_mem_location.device);
+        ORT_ENFORCE(execution_plan[node_stream_map_[node_index]]->device_.Type() == node_device_mem_location.device.Type());
       }
     }
     // 4. set notification owners

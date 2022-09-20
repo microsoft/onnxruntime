@@ -28,7 +28,6 @@ class GreedySearch : public IControlFlowKernel {
       : IControlFlowKernel(info),
         // encoder_feeds_fetches_manager_(nullptr),
         decoder_feeds_fetches_manager_(nullptr),
-        ort_stream_(nullptr),
         dumper_(nullptr) {
     Init(info);
   }
@@ -42,7 +41,6 @@ class GreedySearch : public IControlFlowKernel {
                                     const SessionState& subgraph_session_state) override;
 
  protected:
-  void SetComputeStream(Stream* stream) { ort_stream_ = stream; }
   void SetConsoleDumper(IConsoleDumper* dumper) { dumper_ = dumper; }
 
   // device helpers that is same for both GPT and encoder-decoder models.
@@ -96,8 +94,6 @@ class GreedySearch : public IControlFlowKernel {
   // std::unique_ptr<T5DecoderSubgraph> t5_decoder_subgraph_;
   // FeedsFetchesManager* encoder_feeds_fetches_manager_;
   FeedsFetchesManager* decoder_feeds_fetches_manager_;
-
-  Stream* ort_stream_;
 
   IConsoleDumper* dumper_;
 

@@ -62,8 +62,10 @@ class CudaKernel : public OpKernel {
     return provider_->GetTransientScratchBuffer<T>(count_or_bytes);
   }
 
-  inline void AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream) const {
-    provider_->AddDeferredReleaseCPUPtr(p, stream);
+  inline void AddDeferredReleaseCPUPtr(void* p, onnxruntime::Stream* ort_stream) const {
+    ORT_ENFORCE(ort_stream->device.Type() == OrtDevice::GPU);
+    auto* cuda_ep_stream = static_cast<CudaStream*>(ort_stream);
+    cuda_ep_stream->EnqueDeferredCPUBuffer(p);
   }
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
@@ -74,21 +76,19 @@ class CudaKernel : public OpKernel {
   }
 
   inline cudnnHandle_t GetCudnnHandle(OpKernelContext* ctx) const {
-    return GetCudnnHandle(ctx->GetComputeStream());
+    return GetCudnnHandle(static_cast<CudaStream*>(ctx->GetComputeStream()));
   }
 
-  static inline cudnnHandle_t GetCudnnHandle(onnxruntime::Stream* stream) {
-    auto* cuda_stream = dynamic_cast<CudaStream*>(stream);
-    return cuda_stream ? cuda_stream->cudnn_handle_ : nullptr;
+  static inline cudnnHandle_t GetCudnnHandle(onnxruntime::CudaStream* stream) {
+    return stream->cudnn_handle_;
   }
 
   inline cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const {
-    return GetCublasHandle(ctx->GetComputeStream());
+    return GetCublasHandle(static_cast<CudaStream*>(ctx->GetComputeStream()));
   }
 
-  static inline cublasHandle_t GetCublasHandle(onnxruntime::Stream* stream) {
-    auto* cuda_stream = dynamic_cast<CudaStream*>(stream);
-    return cuda_stream ? cuda_stream->cublas_handle_ : nullptr;
+  static inline cublasHandle_t GetCublasHandle(onnxruntime::CudaStream* stream) {
+    return stream->cublas_handle_;
   }
 
   inline onnxruntime::Stream* OrtStream(OpKernelContext* ctx) const {
@@ -131,7 +131,7 @@ class CudaKernel : public OpKernel {
         cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->handle) : nullptr;
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice,
                                              cuda_stream));
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), cuda_stream);
+        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), stream);
       }
       return Status::OK();
     }
@@ -161,6 +161,10 @@ class CudaKernel : public OpKernel {
 
   inline cublasHandle_t DefaultCublasHandle() const {
     return provider_->PerThreadDefaultCublasHandle();
+  }
+
+  inline cublasLtHandle_t CublasLtHandle() const {
+    return provider_->PerThreadCublasLtHandle();
   }
 
   inline cudnnHandle_t DefaultCudnnHandle() const {

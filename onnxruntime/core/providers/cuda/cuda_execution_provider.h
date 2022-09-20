@@ -41,6 +41,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return GetPerThreadContext().CublasHandle();
   }
 
+  cublasLtHandle_t PerThreadCublasLtHandle() {
+    return GetPerThreadContext().CublasLtHandle();
+  }
+
   cudnnHandle_t PerThreadDefaultCudnnHandle() {
     return GetPerThreadContext().CudnnHandle();
   }
@@ -49,8 +53,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   const T* GetConstOnes(size_t count, cudaStream_t stream) {
     return GetPerThreadContext().template GetConstOnes<T>(count, stream);
   }
-
-  void AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream);
 
   // GPU scratch buffer need to be allocated on stream
   template <typename T>
@@ -105,21 +107,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool external_stream_ = false;
   // only used when set user external stream or cuda graph
   cudaStream_t stream_ = nullptr;
+
   bool use_ep_level_unified_stream_ = false;
-
-  // because within a single iteration GPU kernels may executed on multiple streams,
-  // we can't use an unified event to guard the deferred cpu ptrs.
-  // change the design to each cpu ptr has an event,
-  // cuda EP check the event status and release ptrs in the RunStart.
-  // Ideally there should be a worker thread that keep query those events and release
-  // once the event is done, but we don't want to pay the cost of additional thread.
-  struct DeferredReleaseCPUPtr {
-    void* cpu_ptr;
-    cudaEvent_t kernel_complete_event;
-  };
-
-  std::vector<DeferredReleaseCPUPtr> deferred_release_cpu_ptrs;
-  OrtMutex deferred_release_cpu_ptr_mutex_;
 
   class PerThreadContext final {
    public:
@@ -133,6 +122,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
+    }
+
+    cublasLtHandle_t CublasLtHandle() const {
+      return cublas_lt_handle_;
     }
 
     template <typename T>
@@ -174,6 +167,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
    private:
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
+    cublasLtHandle_t cublas_lt_handle_ = nullptr;
 
     std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;

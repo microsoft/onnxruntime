@@ -86,19 +86,25 @@ struct Module {
   Status GetStateDict(ModuleCheckpointState& module_checkpoint_states);
 
   // Returns the output count for training graph
-  size_t GetTrainModeOutputCount() const noexcept;
+  size_t GetTrainingModelOutputCount() const noexcept;
 
   // Returns the output count for eval graph
-  size_t GetEvalModeOutputCount() const noexcept;
+  size_t GetEvalModelOutputCount() const noexcept;
+
+  // Returns the output names for train graph
+  std::string GetTrainingModelOutputName(size_t index) const;
+
+  // Returns the output names for eval graph
+  std::string GetEvalModelOutputName(size_t index) const;
 
   // Return size of all parameters
-  size_t GetParametersSize(const bool trainable_only=true) const;
+  size_t GetParametersSize(const bool trainable_only = true) const;
 
   // Copy parameters onto contiguous buffer held by parameters_buffer
-  Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only=true);
-  
+  Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only = true);
+
   // Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
-  Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only=true);
+  Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only = true);
 
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};

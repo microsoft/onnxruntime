@@ -474,7 +474,6 @@ def parse_arguments():
     parser.add_argument("--enable_msinternal", action="store_true", help="Enable for Microsoft internal builds only.")
     parser.add_argument("--llvm_path", help="Path to llvm dir")
     parser.add_argument("--use_vitisai", action="store_true", help="Build with Vitis-AI")
-    parser.add_argument("--use_nuphar", action="store_true", help="Build with nuphar")
     parser.add_argument("--use_tvm", action="store_true", help="Build with TVM")
     parser.add_argument("--tvm_cuda_runtime", action="store_true", default=False, help="Build TVM with CUDA support")
     parser.add_argument(
@@ -757,24 +756,30 @@ def install_python_deps(numpy_version=""):
     run_subprocess([sys.executable, "-m", "pip", "install"] + dep_packages)
 
 
-def setup_test_data(build_dir, configs):
-    # create a shortcut for test models if there is a 'models'
-    # folder in build_dir
+def setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, configs):
+    # create the symlink/shortcut of onnx models dir under build_dir
+    # currently, there're 2 sources of onnx models, one is build in OS image, another is
+    # from {source_dir}/js/test, which is downloaded from onnx web.
     if is_windows():
-        src_model_dir = os.path.join(build_dir, "models")
-        if os.path.exists("C:\\local\\models") and not os.path.exists(src_model_dir):
-            log.debug("creating shortcut %s -> %s" % ("C:\\local\\models", src_model_dir))
-            run_subprocess(["mklink", "/D", "/J", src_model_dir, "C:\\local\\models"], shell=True)
+        src_model_dir = os.path.join(build_dir, dest_model_dir_name)
+        if os.path.exists(source_onnx_model_dir) and not os.path.exists(src_model_dir):
+            log.debug("creating shortcut %s -> %s" % (source_onnx_model_dir, src_model_dir))
+            run_subprocess(["mklink", "/D", "/J", src_model_dir, source_onnx_model_dir], shell=True)
         for config in configs:
             config_build_dir = get_config_build_dir(build_dir, config)
             os.makedirs(config_build_dir, exist_ok=True)
-            dest_model_dir = os.path.join(config_build_dir, "models")
-            if os.path.exists("C:\\local\\models") and not os.path.exists(dest_model_dir):
-                log.debug("creating shortcut %s -> %s" % ("C:\\local\\models", dest_model_dir))
-                run_subprocess(["mklink", "/D", "/J", dest_model_dir, "C:\\local\\models"], shell=True)
+            dest_model_dir = os.path.join(config_build_dir, dest_model_dir_name)
+            if os.path.exists(source_onnx_model_dir) and not os.path.exists(dest_model_dir):
+                log.debug("creating shortcut %s -> %s" % (source_onnx_model_dir, dest_model_dir))
+                run_subprocess(["mklink", "/D", "/J", dest_model_dir, source_onnx_model_dir], shell=True)
             elif os.path.exists(src_model_dir) and not os.path.exists(dest_model_dir):
                 log.debug("creating shortcut %s -> %s" % (src_model_dir, dest_model_dir))
                 run_subprocess(["mklink", "/D", "/J", dest_model_dir, src_model_dir], shell=True)
+    else:
+        src_model_dir = os.path.join(build_dir, dest_model_dir_name)
+        if os.path.exists(source_onnx_model_dir) and not os.path.exists(src_model_dir):
+            log.debug(f"create symlink {source_onnx_model_dir} -> {src_model_dir}")
+            os.symlink(source_onnx_model_dir, src_model_dir, target_is_directory=True)
 
 
 def use_dev_mode(args):
@@ -847,11 +852,9 @@ def generate_build_tree(
         "-Donnxruntime_USE_DNNL=" + ("ON" if args.use_dnnl else "OFF"),
         "-Donnxruntime_USE_NNAPI_BUILTIN=" + ("ON" if args.use_nnapi else "OFF"),
         "-Donnxruntime_USE_RKNPU=" + ("ON" if args.use_rknpu else "OFF"),
-        "-Donnxruntime_USE_NUPHAR_TVM=" + ("ON" if args.use_nuphar else "OFF"),
-        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar or args.use_tvm else "OFF"),
+        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
-        "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=" + ("ON" if args.use_tensorrt_builtin_parser else "OFF"),
         "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
@@ -1034,7 +1037,7 @@ def generate_build_tree(
     if args.use_full_protobuf or args.use_tensorrt or args.use_openvino or args.use_vitisai or args.gen_doc:
         cmake_args += ["-Donnxruntime_USE_FULL_PROTOBUF=ON", "-DProtobuf_USE_STATIC_LIBS=ON"]
 
-    if (args.use_nuphar or args.use_tvm) and args.llvm_path is not None:
+    if args.use_tvm and args.llvm_path is not None:
         cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
 
     if args.use_cuda and not is_windows():
@@ -1260,7 +1263,7 @@ def generate_build_tree(
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
-        if args.use_nuphar or args.use_tvm:
+        if args.use_tvm:
             os.environ["PATH"] = (
                 os.path.join(config_build_dir, "_deps", "tvm-build")
                 + os.pathsep
@@ -1278,7 +1281,7 @@ def generate_build_tree(
                 + (
                     "ON"
                     if config.lower() == "debug"
-                    and not (args.use_nuphar or args.use_tvm)
+                    and not args.use_tvm
                     and not args.use_openvino
                     and not args.use_gdk
                     and not args.enable_msvc_static_runtime
@@ -1776,8 +1779,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_ios_tests(args, source_dir, config, cwd)
             continue
         dll_path_list = []
-        if args.use_nuphar:
-            dll_path_list.append(os.path.join(build_dir, "_deps", "tvm-build"))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
         # Adding the torch lib path for loading DLLs for onnxruntime in eager mode
@@ -1982,17 +1983,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([sys.executable, "onnxruntime_test_python_keras.py"], cwd=cwd, dll_path=dll_path)
 
 
-def nuphar_run_python_tests(build_dir, configs):
-    for config in configs:
-        if config == "Debug":
-            continue
-        cwd = get_config_build_dir(build_dir, config)
-        if is_windows():
-            cwd = os.path.join(cwd, config)
-        dll_path = os.path.join(build_dir, config, "_deps", "tvm-build", config)
-        run_subprocess([sys.executable, "onnxruntime_test_python_nuphar.py"], cwd=cwd, dll_path=dll_path)
-
-
 def tvm_run_python_tests(build_dir, configs):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -2022,7 +2012,6 @@ def build_python_wheel(
     use_dnnl,
     use_tensorrt,
     use_openvino,
-    use_nuphar,
     use_tvm,
     use_vitisai,
     use_acl,
@@ -2071,8 +2060,6 @@ def build_python_wheel(
             args.append("--use_openvino")
         elif use_dnnl:
             args.append("--use_dnnl")
-        elif use_nuphar:
-            args.append("--use_nuphar")
         elif use_tvm:
             args.append("--use_tvm")
         elif use_vitisai:
@@ -2095,7 +2082,7 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(
-    source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar, use_tvm, use_winml
+    source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_tvm, use_winml
 ):
     if not (is_windows() or is_linux()):
         raise BuildError(
@@ -2128,9 +2115,8 @@ def build_nuget_package(
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.DNNL"'
     elif use_cuda:
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
-    elif use_nuphar:
-        package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Nuphar"'
     elif use_tvm:
+        execution_provider = '/p:ExecutionProvider="tvm"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Tvm"'
     else:
         # use the solution file that includes Xamarin mobile targets
@@ -2172,7 +2158,7 @@ def build_nuget_package(
             run_subprocess(cmd_args, cwd=csharp_build_dir)
 
         if is_windows():
-            if use_openvino:
+            if use_openvino or use_tvm:
                 # user needs to make sure nuget is installed and added to the path variable
                 nuget_exe = "nuget.exe"
             else:
@@ -2322,10 +2308,19 @@ def generate_documentation(source_dir, build_dir, configs, validate):
         [sys.executable, "gen_contrib_doc.py", "--output_path", contrib_op_doc_path, "--domains", "com.microsoft"],
         cwd=cwd,
     )
-    # we currently limit the documentation created by a build to the CPU and CUDA EPs.
+    # we currently limit the documentation created by a build to a subset of EP's.
     # Run get_opkernel_doc.py directly if you need/want documentation from other EPs that are enabled in the build.
     run_subprocess(
-        [sys.executable, "gen_opkernel_doc.py", "--output_path", opkernel_doc_path, "--providers", "CPU", "CUDA"],
+        [
+            sys.executable,
+            "gen_opkernel_doc.py",
+            "--output_path",
+            opkernel_doc_path,
+            "--providers",
+            "CPU",
+            "CUDA",
+            "DML",
+        ],
         cwd=cwd,
     )
 
@@ -2584,9 +2579,6 @@ def main():
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
 
-        if args.enable_onnx_tests:
-            setup_test_data(build_dir, configs)
-
         if args.use_cuda and args.cuda_version is None:
             if is_windows():
                 # cuda_version is used while generating version_info.py on Windows.
@@ -2700,10 +2692,12 @@ def main():
         build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, args.target)
 
     if args.test:
-        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
+        if args.enable_onnx_tests:
+            source_onnx_model_dir = "C:\\local\\models" if is_windows() else "/data/models"
+            dest_model_dir_name = "models"
+            setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, configs)
 
-        if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
-            nuphar_run_python_tests(build_dir, configs)
+        run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
 
         # TODO(agladyshev):
         # to support Windows, we need to update .github/workflows/windows.yml
@@ -2735,7 +2729,6 @@ def main():
                 args.use_dnnl,
                 args.use_tensorrt,
                 args.use_openvino,
-                args.use_nuphar,
                 args.use_tvm,
                 args.use_vitisai,
                 args.use_acl,
@@ -2758,7 +2751,6 @@ def main():
                 args.use_openvino,
                 args.use_tensorrt,
                 args.use_dnnl,
-                args.use_nuphar,
                 args.use_tvm,
                 args.use_winml,
             )

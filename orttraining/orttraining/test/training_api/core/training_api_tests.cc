@@ -60,7 +60,7 @@ TEST(TrainingApiTest, ModuleParametersSize) {
   auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
                                                                     state.module_checkpoint_state.named_parameters, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
-  size_t params_size=0;
+  size_t params_size = 0;
   for (auto& param : model->Parameters()) {
     params_size += param->Data().Get<Tensor>().Shape().Size();
   }
@@ -97,7 +97,7 @@ TEST(TrainingApiTest, ModuleCopyBufferToParameters) {
 
   OrtValue output_params;
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), {params_size},
-                       onnxruntime::test::TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), 
+                       onnxruntime::test::TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
                        output_params);
   ASSERT_STATUS_OK(model->CopyParametersToBuffer(output_params));
 
@@ -121,7 +121,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
                                                                     state.module_checkpoint_state.named_parameters, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
-  ASSERT_EQ(model->GetTrainModeOutputCount(), 1);
+  ASSERT_EQ(model->GetTrainingModelOutputCount(), 1);
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
   onnxruntime::training::api::utils::CreateInputOrtValue<int32_t>(

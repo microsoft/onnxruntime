@@ -23,10 +23,6 @@
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #endif
 
-#ifdef USE_NUPHAR
-#include "core/providers/nuphar/nuphar_provider_factory.h"
-#endif
-
 #ifdef USE_NNAPI
 #include "core/providers/nnapi/nnapi_provider_factory.h"
 #endif
@@ -258,11 +254,11 @@ TEST_P(ModelTest, Run) {
   // specific keyword.
   std::set<std::string> broken_tests_keyword_set = {};
 
-  if (provider_name == "nuphar") {
-    // https://msdata.visualstudio.com/Vienna/_workitems/edit/1000703
-    broken_tests.insert({"fp16_test_tiny_yolov2", "Computed value is off by a bit more than tol."});
-    broken_tests.insert({"keras2coreml_Repeat_ImageNet", "this test fails with Nuphar EP."});
-    broken_tests.insert({"fp16_coreml_FNS-Candy", "this test fails with Nuphar EP."});
+  if (provider_name == "cuda") {
+#ifdef _WIN32
+    broken_tests.insert({"LSTM_Seq_lens_unpacked", "this test fails with new image since Aug 25."});
+    broken_tests.insert({"bidaf", "this test fails with new image since Aug 25."});
+#endif
   }
 
   if (provider_name == "nnapi") {
@@ -655,11 +651,6 @@ TEST_P(ModelTest, Run) {
         ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Dnnl(ortso, false));
       }
 #endif
-#ifdef USE_NUPHAR
-      else if (provider_name == "nuphar") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Nuphar(ortso, 1, ""));
-      }
-#endif
       else if (provider_name == "tensorrt") {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
           OrtTensorRTProviderOptionsV2 params{0, 0,       nullptr, 1000, 1, 1 << 30,
@@ -837,9 +828,6 @@ TEST_P(ModelTest, Run) {
 #endif
 #ifdef USE_DNNL
   provider_names.push_back(ORT_TSTR("dnnl"));
-#endif
-#ifdef USE_NUPHAR
-  provider_names.push_back(ORT_TSTR("nuphar"));
 #endif
 // For any non-Android system, NNAPI will only be used for ort model converter
 #if defined(USE_NNAPI) && defined(__ANDROID__)
