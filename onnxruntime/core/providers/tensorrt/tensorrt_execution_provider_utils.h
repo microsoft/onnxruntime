@@ -216,10 +216,10 @@ class TRTModelMetadefIdGenerator {
 
     // hash the bytes in the Graph instance. we can't just use the address as a new Graph instance may use
     // the same memory (unit tests prove this can occur). the raw bytes of the Graph instance should be a unique
-    // fingerprint for the instance that can use used as the key to the hash of the model name/contents/env metadata.
+    // fingerprint for the instance that can use used as the key to the hash of the graph name/inputs&outputs/metadata.
     MurmurHash3::x86_128(&main_graph, gsl::narrow_cast<int32_t>(sizeof(Graph)), instance_hash[0], &instance_hash);
     HashValue graph_instance_hash = instance_hash[0] | (uint64_t(instance_hash[1]) << 32);
-    
+
     // if we've already hashed this main graph instance use the cached value
     auto entry = trt_main_graph_hash_.find(graph_instance_hash);
     if (entry != trt_main_graph_hash_.cend()) {
@@ -227,12 +227,12 @@ class TRTModelMetadefIdGenerator {
     } else {
       uint32_t hash[4] = {0, 0, 0, 0};
 
-      // Use model name instead of path to avoid cache regeneration if path changes
+      // Use graph name instead of path to avoid cache regeneration if path changes
       const auto& model_name_str = main_graph.Name();
       if (!model_name_str.empty()) {
         MurmurHash3::x86_128(model_name_str.data(), gsl::narrow_cast<int32_t>(model_name_str.size()), hash[0], &hash);
       }
-      
+
       auto hash_str = [&hash](const std::string& str) {
         MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
       };
@@ -241,7 +241,8 @@ class TRTModelMetadefIdGenerator {
       for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
         hash_str(node_arg->Name());
       }
-      
+
+      // hashing output of each node
       const int number_of_ort_nodes = graph_viewer.NumberOfNodes();
       std::vector<size_t> nodes_vector(number_of_ort_nodes);
       std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
@@ -254,7 +255,7 @@ class TRTModelMetadefIdGenerator {
           }
         }
       }
-      
+
 #ifdef __linux__
       hash_str("LINUX");
 #elif defined(_WIN32)

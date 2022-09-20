@@ -666,8 +666,8 @@ struct ProviderHost {
 
   virtual const Node* Graph__ParentNode(const Graph* p) const = 0;
   virtual const Graph* Graph__ParentGraph(const Graph* p) const = 0;
-  virtual const std::string& Graph__Name(const Graph* p) noexcept = 0;
-  virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) noexcept = 0;
+  virtual const std::string& Graph__Name(const Graph* p) const noexcept = 0;
+  virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept = 0;
   virtual bool Graph__IsSubgraph(const Graph* p) = 0;
 
   // GraphViewer

@@ -756,8 +756,8 @@ struct ProviderHostImpl : ProviderHost {
 
   const Node* Graph__ParentNode(const Graph* p) const override { return p->ParentNode(); }
   const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
-  const std::string& Graph__Name(const Graph* p) noexcept override { return p->Name(); }
-  const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) noexcept override { return p->GetInputsIncludingInitializers(); }
+  const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
+  const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
   bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
 
   // GraphViewer (wrapped)
