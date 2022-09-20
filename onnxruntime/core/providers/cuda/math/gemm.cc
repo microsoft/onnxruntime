@@ -132,7 +132,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   // General note : CUDA assumes col-major, so Y(N,M) = alpha * op(W) x op(X) + beta * Y
   if (use_cublaslt_matmul_) { // Use CublasLtMatmul
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
+     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
         CublasLtHandle(),
         trans_B_ ? CUBLAS_OP_T : CUBLAS_OP_N,
         trans_A_ ? CUBLAS_OP_T : CUBLAS_OP_N,

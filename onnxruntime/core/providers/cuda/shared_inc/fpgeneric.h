@@ -177,15 +177,15 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t, cublasOperation_t, cublas
 // CublasLtMatmul
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 static Status InitializeCublasLtMatmulDescAndOperationHelper(cublasLtMatrixLayout_t& A_desc, int lda,
-                                                       cublasOperation_t transa,
-                                                       cublasLtMatrixLayout_t& B_desc, int ldb,
-                                                       cublasOperation_t transb,
-                                                       cublasLtMatrixLayout_t& C_desc, int ldc,
-                                                       cudaDataType_t data_type,
-                                                       int m, int n, int k,
-                                                       cublasLtMatmulDesc_t& operation_desc,
-                                                       cublasComputeType_t compute_type,
-                                                       cudaDataType_t scale_type) {
+                                                             cublasOperation_t transa,
+                                                             cublasLtMatrixLayout_t& B_desc, int ldb,
+                                                             cublasOperation_t transb,
+                                                             cublasLtMatrixLayout_t& C_desc, int ldc,
+                                                             cudaDataType_t data_type,
+                                                             int m, int n, int k,
+                                                             cublasLtMatmulDesc_t& operation_desc,
+                                                             cublasComputeType_t compute_type,
+                                                             cudaDataType_t scale_type) {
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&A_desc, data_type,
                                                     (transa == CUBLAS_OP_N) ? m : k, (transa == CUBLAS_OP_N) ? k : m, lda));
 
@@ -260,15 +260,15 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
   });
 
   if (Status::OK() != InitializeCublasLtMatmulDescAndOperationHelper(A_desc, lda,
-                                                               transa,
-                                                               B_desc, ldb,
-                                                               transb,
-                                                               C_desc, ldc,
-                                                               data_type,
-                                                               m, n, k,
-                                                               operation_desc,
-                                                               compute_type,
-                                                               scale_type)) {
+                                                                     transa,
+                                                                     B_desc, ldb,
+                                                                     transb,
+                                                                     C_desc, ldc,
+                                                                     data_type,
+                                                                     m, n, k,
+                                                                     operation_desc,
+                                                                     compute_type,
+                                                                     scale_type)) {
     return CUBLAS_STATUS_ALLOC_FAILED;
   }
 
@@ -341,15 +341,15 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
   });
 
   if (Status::OK() != InitializeCublasLtMatmulDescAndOperationHelper(A_desc, lda,
-                                                               transa,
-                                                               B_desc, ldb,
-                                                               transb,
-                                                               C_desc, ldc,
-                                                               data_type,
-                                                               m, n, k,
-                                                               operation_desc,
-                                                               compute_type,
-                                                               scale_type)) {
+                                                                     transa,
+                                                                     B_desc, ldb,
+                                                                     transb,
+                                                                     C_desc, ldc,
+                                                                     data_type,
+                                                                     m, n, k,
+                                                                     operation_desc,
+                                                                     compute_type,
+                                                                     scale_type)) {
     return CUBLAS_STATUS_ALLOC_FAILED;
   }
 
@@ -390,6 +390,22 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            const double* beta,
                                            double* C, int ldc,
                                            cudaStream_t stream) {
+  ORT_UNUSED_PARAMETER(handle);
+  ORT_UNUSED_PARAMETER(transa);
+  ORT_UNUSED_PARAMETER(transb);
+  ORT_UNUSED_PARAMETER(m);
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(A);
+  ORT_UNUSED_PARAMETER(lda);
+  ORT_UNUSED_PARAMETER(B);
+  ORT_UNUSED_PARAMETER(ldb);
+  ORT_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(C);
+  ORT_UNUSED_PARAMETER(ldc);
+  ORT_UNUSED_PARAMETER(stream);
+
   return CUBLAS_STATUS_NOT_SUPPORTED;
 }
 
@@ -403,6 +419,22 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            const BFloat16* beta,
                                            BFloat16* C, int ldc,
                                            cudaStream_t stream) {
+  ORT_UNUSED_PARAMETER(handle);
+  ORT_UNUSED_PARAMETER(transa);
+  ORT_UNUSED_PARAMETER(transb);
+  ORT_UNUSED_PARAMETER(m);
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(A);
+  ORT_UNUSED_PARAMETER(lda);
+  ORT_UNUSED_PARAMETER(B);
+  ORT_UNUSED_PARAMETER(ldb);
+  ORT_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(C);
+  ORT_UNUSED_PARAMETER(ldc);
+  ORT_UNUSED_PARAMETER(stream);
+
   return CUBLAS_STATUS_NOT_SUPPORTED;
 }
 

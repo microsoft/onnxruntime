@@ -32,6 +32,7 @@ class Gemm final : public CudaKernel {
     ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
 
     use_cublaslt_matmul_ = !ParseEnvironmentVariableWithDefault<bool>(matmul_detail::kDisableCublasLtMatmul, false) &&
+                           // We will support CublasLtMatmul only for float and half types for now
                            (std::is_same<T, float>::value || std::is_same<T, MLFloat16>::value);
   }
 
