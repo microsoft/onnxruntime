@@ -1739,7 +1739,7 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
 
 void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const {
   std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
-  device_stream_pool_.emplace_back(device_stream_collection);
+  device_stream_pool_.emplace_back(std::move(device_stream_collection));
 }
 
 }  // namespace onnxruntime

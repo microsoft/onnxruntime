@@ -559,7 +559,7 @@ struct DeviceStreamCollectionHolder {
   }
 
   ~DeviceStreamCollectionHolder() {
-    session_state_.RecycleDeviceStreamCollection(p_);
+    session_state_.RecycleDeviceStreamCollection(std::move(p_));
   }
 
   const SessionState& session_state_;
