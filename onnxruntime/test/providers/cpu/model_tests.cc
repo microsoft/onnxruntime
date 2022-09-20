@@ -601,8 +601,6 @@ TEST_P(ModelTest, Run) {
     BrokenTest t = {ToUTF8String(test_case_name), ""};
     auto iter = broken_tests.find(t);
     auto opset_version = model_info->GetNominalOpsetVersion();
-
-    iter = broken_tests.find(t);
     if (iter != broken_tests.end() && (iter->broken_opset_versions_.empty() ||
          iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end() )) {
       SkipTest();
@@ -613,7 +611,6 @@ TEST_P(ModelTest, Run) {
       std::string keyword = *iter2;
       if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
         SkipTest();
-        std::cout << "skip test3" << std::endl;
         return;
       }
     }
@@ -1068,7 +1065,7 @@ TEST_P(ModelTest, Run) {
 #if !defined(_WIN32)
     paths.push_back(ORT_TSTR("/data/onnx"));
 #else
-    paths.push_back(ORT_TSTR("/c/local/data/onnx"));
+    paths.push_back(ORT_TSTR("c:\\local\\data\\onnx"));
 #endif
 #endif
 

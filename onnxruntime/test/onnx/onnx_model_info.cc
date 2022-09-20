@@ -60,7 +60,7 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  /
     re2::StringPiece submatch;
     re2::RE2 regex_op("opset[0-9a-z]{1,2}", re2::RE2::Options());  // e.g. opset14, opset15
 
-    auto match = regex_op.Match(text, 0, text.length(), re2_anchor, &submatch, 1);
+    bool match = regex_op.Match(text, 0, text.length(), re2_anchor, &submatch, 1);
     if (match) {
       onnx_nominal_opset_vesion_.assign(submatch.data(), submatch.length());
     } else {
