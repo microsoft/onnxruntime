@@ -545,10 +545,10 @@ def model_has_infer_metadata(model):
 
 
 def load_model_with_shape_infer(model_path: Path):
-    with tempfile.TemporaryDirectory() as temp_dir:
-        inferred_model_path = str(Path(temp_dir) / (model_path.stem + "-inferred.onnx"))
-        onnx.shape_inference.infer_shapes_path(str(model_path), inferred_model_path)
-        model = onnx.load(inferred_model_path)
+    inferred_model_path = generate_identified_filename(model_path, "-inferred")
+    onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
+    model = onnx.load(inferred_model_path.as_posix())
+    inferred_model_path.unlink()
     return model
 
 

@@ -29,13 +29,14 @@ struct alignas(sizeof(T) * VecSize) AlignedVector {
 
 class Timer {
  public:
-  Timer();
+  explicit Timer(hipStream_t stream);
   void Start();
   void End();
   float Duration();
   ~Timer();
 
  private:
+  hipStream_t stream_;
   hipEvent_t start_;
   hipEvent_t end_;
 };
