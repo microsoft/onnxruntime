@@ -28,19 +28,17 @@ class TestOpLSTM(TestCaseTempDir):
         dr = TestDataFeeds(input_data_list)
         return dr
 
-    def construct_model_lstm_and_matmul(self, output_model_path):
+    def construct_model_lstm(self, output_model_path):
         #      (input)
         #         |
         #        LSTM
-        #         |
-        #       MatMul
         #         |
         #      (output)
         input_name = "input"
         output_name = "output"
         initializers = []
 
-        def make_lstm_node(input_name, weight_shape, weight_name, bias_shape, bias_name, output_name):
+        def make_lstm_node(input_name, weight_name, recurrence_weight_name, output_name):
             input_size = 2
             hidden_size = 7
             weight_scale = 0.3
@@ -50,15 +48,15 @@ class TestOpLSTM(TestCaseTempDir):
             weight_data = np.random.normal(0, 0.3, [1, number_of_gates * hidden_size, input_size]).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
 
-            bias_data = np.random.normal(0, 0.3, [1, number_of_gates * hidden_size, input_size]).astype(np.float32)
-            initializers.append(onnx.numpy_helper.from_array(bias_data, name=bias_name))
+            recurrence_weight_data = np.random.normal(0, 0.3, [1, number_of_gates * hidden_size, hidden_size]).astype(np.float32)
+            initializers.append(onnx.numpy_helper.from_array(recurrence_weight_data, name=recurrence_weight_name))
 
             return onnx.helper.make_node(
-                "LSTM", [input_name, weight_name, bias_name], [output_name], hidden_size=hidden_size
+                "LSTM", [input_name, weight_name, recurrence_weight_name], [output_name], hidden_size=hidden_size
             )
 
         # make lstm node
-        lstm_node = make_lstm_node(input_name, [10, 30], "qkv.weight", [30], "qkv.bias", output_name)
+        lstm_node = make_lstm_node(input_name, "qkv.weight", "qkv.recurrence_weight", output_name)
 
         # make graph
         input_tensor = onnx.helper.make_tensor_value_info(input_name, onnx.TensorProto.FLOAT, [1, -1, 2])
@@ -74,7 +72,6 @@ class TestOpLSTM(TestCaseTempDir):
         model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 14)])
         model.ir_version = onnx.IR_VERSION
 
-        onnx.save_model(model, output_model_path)
         model_inferenced = symbolic_shape_infer.SymbolicShapeInference.infer_shapes(model)
         onnx.save_model(model_inferenced, output_model_path)
 
@@ -157,7 +154,7 @@ class TestOpLSTM(TestCaseTempDir):
         np.random.seed(1)
         model_fp32_path = "lstm_fp32.onnx"
         model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
-        self.construct_model_lstm_and_matmul(model_fp32_path)
+        self.construct_model_lstm(model_fp32_path)
 
         self.dynamic_lstm_quant_test(model_fp32_path, True, True)
         self.dynamic_lstm_quant_test(model_fp32_path, True, False)
