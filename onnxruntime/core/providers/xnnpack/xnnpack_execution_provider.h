@@ -8,8 +8,8 @@
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
-#include "xnnpack.h"
 
+struct pthreadpool;
 namespace onnxruntime {
 // placeholder for future use. no options currently
 struct XnnpackExecutionProviderInfo {
@@ -20,10 +20,8 @@ struct XnnpackExecutionProviderInfo {
     if (po.count("intra_op_num_threads")) {
       xnn_thread_pool_size = std::stoi(po.at("intra_op_num_threads"));
     }
-    // future: parse ProviderOptions
   }
 };
-
 
 class XnnpackExecutionProvider : public IExecutionProvider {
  public:
@@ -45,14 +43,12 @@ class XnnpackExecutionProvider : public IExecutionProvider {
   // xnnpack does not support concurrent execution of a kernel
   bool ConcurrentRunSupported() const override { return false; }
 
-  pthreadpool_t GetPrivateThreadPool() const {
-    return xnnpack_thread_pool_.get();
+  pthreadpool* GetPrivateThreadPool() const {
+    return xnnpack_thread_pool_;
   }
 
  private:
-  // Thread pool with smart-pointer for lifetime management.
-  std::unique_ptr<pthreadpool, decltype(&pthreadpool_destroy)> xnnpack_thread_pool_{
-      nullptr, &pthreadpool_destroy};
+  pthreadpool* xnnpack_thread_pool_{nullptr};
 };
 
 }  // namespace onnxruntime

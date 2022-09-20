@@ -4,7 +4,8 @@
 #pragma once
 #include "core/framework/op_kernel.h"
 #include "core/providers/xnnpack/xnnpack_execution_provider.h"
-#include "xnnpack.h"
+
+struct pthreadpool;
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -17,12 +18,12 @@ class XnnpackKernel : public OpKernel {
             static_cast<const XnnpackExecutionProvider*>(info.GetExecutionProvider())
                 ->GetPrivateThreadPool()) {
   }
-  pthreadpool_t GetThreadPool() const {
+  [[nodiscard]] pthreadpool* GetThreadPool() const {
     return xnnpack_threadpool_;
   }
 
  private:
-  pthreadpool_t xnnpack_threadpool_{nullptr};
+  pthreadpool* xnnpack_threadpool_;
 };
 }  // namespace xnnpack
 }  // namespace onnxruntime
