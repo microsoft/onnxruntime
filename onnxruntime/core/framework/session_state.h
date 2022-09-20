@@ -339,7 +339,7 @@ class SessionState {
 
   std::unique_ptr<DeviceStreamCollection> AcquireDeviceStreamCollection() const;
 
-  void RecycleDeviceStreamCollection(DeviceStreamCollection* device_stream_collection) const;
+  void RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const;
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   void
   IncrementGraphExecutionCounter() {

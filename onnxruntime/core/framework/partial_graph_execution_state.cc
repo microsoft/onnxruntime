@@ -40,7 +40,7 @@ ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState&
 
 PartialGraphExecutionState::~PartialGraphExecutionState() {
   if (device_stream_deleter_ && device_stream_collection_) {
-    device_stream_deleter_(device_stream_collection_.release());
+    device_stream_deleter_(device_stream_collection_);
   }
 }
 

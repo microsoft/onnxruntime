@@ -559,7 +559,7 @@ struct DeviceStreamCollectionHolder {
   }
 
   ~DeviceStreamCollectionHolder() {
-    session_state_.RecycleDeviceStreamCollection(p_.release());
+    session_state_.RecycleDeviceStreamCollection(p_);
   }
 
   const SessionState& session_state_;
@@ -836,7 +836,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
     // training don't want to flush the stream
   }
 
-  return Status::OK();
+  return device_stream_collection.CleanUp();
 }
 #endif
 
