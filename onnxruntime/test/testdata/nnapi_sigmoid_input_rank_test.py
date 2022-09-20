@@ -1,7 +1,6 @@
 import onnx
 from onnx import TensorProto, helper
 
-
 # Since NNAPI ANEURALNETWORKS_LOGISTIC only supports input tensor rank up to 4, we added limits in
 # Sigmoid op support checker in NNAPI EP, so we don't fail hard. Added test case here.
 
