@@ -85,6 +85,30 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
 #endif
 }
 
+TEST(NnapiExecutionProviderTest, SigmoidSupportedInputRankTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/nnapi_sigmoid_input_rank_test.onnx");
+
+#if defined(__ANDROID__)
+  std::vector<int64_t> dims_mul_x = {2, 1, 2, 1, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
+
+  OrtValue ml_value_x;
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                       &ml_value_x);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.SigmoidSupportedInputRankTest",
+                            std::make_unique<NnapiExecutionProvider>(0),
+                            feeds, {ExpectedEPNodeAssignment::None} /* params */);
+#else
+  // test load only
+  TestModelLoad(model_file_name,
+                [](const Graph& graph) { ASSERT_EQ(CountAssignedNodes(graph, kNnapiExecutionProvider), 0)
+                                             << "No nodes should have been taken by the NNAPI EP"; });
+#endif
+}
+
 // Since NNAPI EP does not support dynamic shape input and we now switch from the approach of immediately rejecting
 // the whole graph in NNAPI EP if it has a dynamic input to check at individual operator support check level, we have a
 // separated test here.
