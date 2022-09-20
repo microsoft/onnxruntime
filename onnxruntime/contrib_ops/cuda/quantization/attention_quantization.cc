@@ -4,6 +4,7 @@
 #include "attention_quantization.h"
 #include "attention_quantization_impl.cuh"
 #include "contrib_ops/cuda/bert/attention_impl.h"
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/shared_inc/integer_gemm.h"
@@ -112,18 +113,18 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                   past_tensor));
 
   const auto& shape = input->Shape();
-  int batch_size = static_cast<int>(shape[0]);
-  int sequence_length = static_cast<int>(shape[1]);
-  int input_hidden_size = static_cast<int>(shape[2]);
+  int batch_size = SafeInt<int>(shape[0]);
+  int sequence_length = SafeInt<int>(shape[1]);
+  int input_hidden_size = SafeInt<int>(shape[2]);
 
   const auto& bias_shape = bias->Shape();
-  const int hidden_size = static_cast<int>(bias_shape.GetDims()[0]) / 3;
+  const int hidden_size = SafeInt<int>(bias_shape.GetDims()[0]) / 3;
   const int head_size = hidden_size / num_heads_;
 
   TensorShapeVector output_shape(3);
   output_shape[0] = shape[0];
   output_shape[1] = shape[1];
-  output_shape[2] = static_cast<int64_t>(hidden_size);
+  output_shape[2] = SafeInt<int64_t>(hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
   cublasHandle_t cublas = GetCublasHandle(context);
@@ -133,8 +134,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   int m = batch_size * sequence_length;
   int n = 3 * hidden_size;
   int k = input_hidden_size;
-  auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size, OrtStream(context));
-  auto gemm_buffer_quantized = GetScratchBuffer<int32_t>(batch_size * sequence_length * 3 * hidden_size, OrtStream(context));
+  auto gemm_buffer = GetScratchBuffer<T>(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size, OrtStream(context));
+  auto gemm_buffer_quantized = GetScratchBuffer<int32_t>(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size, OrtStream(context));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
@@ -175,26 +176,26 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize, OrtStream(context));
   return LaunchAttentionKernel(
-          GetDeviceProp(),
-          Stream(context),
-          cublas,
-          element_size,
-          batch_size,
-          sequence_length,
-          num_heads_,
-          head_size,
-          past_sequence_length,
-          is_unidirectional_,
-          reinterpret_cast<const void*>(gemm_buffer.get()),
-          nullptr,  // bias has been added
-          nullptr == mask_index ? nullptr : mask_index->Data<int>(),
-          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
-          nullptr == past_tensor ? nullptr : past_tensor->Data<T>(),
-          nullptr,  // TODO: support add_qk in quantized attention
-          work_space.get(),
-          output->MutableData<T>(),
-          nullptr == present_tensor ? nullptr : present_tensor->MutableData<T>(),
-          fused_runner);
+      GetDeviceProp(),
+      Stream(context),
+      cublas,
+      element_size,
+      batch_size,
+      sequence_length,
+      num_heads_,
+      head_size,
+      past_sequence_length,
+      is_unidirectional_,
+      reinterpret_cast<const void*>(gemm_buffer.get()),
+      nullptr,  // bias has been added
+      nullptr == mask_index ? nullptr : mask_index->Data<int>(),
+      nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
+      nullptr == past_tensor ? nullptr : past_tensor->Data<T>(),
+      nullptr,  // TODO: support add_qk in quantized attention
+      work_space.get(),
+      output->MutableData<T>(),
+      nullptr == present_tensor ? nullptr : present_tensor->MutableData<T>(),
+      fused_runner);
 }
 
 }  // namespace cuda

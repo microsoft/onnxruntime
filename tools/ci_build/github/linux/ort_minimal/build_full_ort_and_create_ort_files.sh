@@ -30,11 +30,6 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --use_nnapi \
     --use_coreml
 
-# Run kernel def hash verification test
-pushd ${BUILD_DIR}/Debug
-ORT_TEST_STRICT_KERNEL_DEF_HASH_CHECK=1 ./onnxruntime_test_all --gtest_filter="KernelDefHashTest.ExpectedCpuKernelDefHashes"
-popd
-
 # Install the ORT python wheel
 python3 -m pip install --user ${BUILD_DIR}/Debug/dist/*
 
