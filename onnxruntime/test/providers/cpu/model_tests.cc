@@ -139,9 +139,9 @@ TEST_P(ModelTest, Run) {
       {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
       {"mnist", "Input data isn't in valid range"},
       {"BERT_Squad", "test data bug"},
-      {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}, {"opset9", "opset10"}},
-      {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}, {"opset9", "opset10"}},
-      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}, {"opset9", "opset10"}},
+      {"constantofshape_float_ones", "test data bug", {"opset9", "opset10"}},
+      {"constantofshape_int_zeros", "test data bug",  {"opset9", "opset10"}},
+      {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"opset9", "opset10"}},
       // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
       // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
       // which doesn't match the expected output that was generated with numpy.
@@ -149,7 +149,7 @@ TEST_P(ModelTest, Run) {
       {"tf_nasnet_large", "disable temporarily"},
       {"tf_nasnet_mobile", "disable temporarily"},
       {"tf_pnasnet_large", "disable temporarily"},
-      {"shrink", "test case is wrong", {"onnx141"}, {"opset9"}},
+      {"shrink", "test case is wrong", {"opset9"}},
       {"maxpool_with_argmax_2d_precomputed_strides", "ShapeInferenceError"},
       {"tf_inception_v2", "result mismatch"},
       {"tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied"},
@@ -187,7 +187,7 @@ TEST_P(ModelTest, Run) {
       {"castlike_FLOAT_to_BFLOAT16_expanded", "type error", {}},
       {"castlike_FLOAT_to_STRING", "type error", {}},
       {"castlike_FLOAT_to_STRING_expanded", "type error", {}},
-      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"onnx180", "onnx181", "onnx190"}, {"opset13", "opset14"}},
+      {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.",  {"opset13", "opset14"}},
       {"gru_batchwise", "type error", {}},
       {"lstm_batchwise", "type error", {}},
       {"optional_get_element", "type error", {}},
@@ -212,46 +212,46 @@ TEST_P(ModelTest, Run) {
       {"momentum", "not a registered function/op", {}},                 // Op not registered.
       {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
       {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_log_prob", "type error", {"opset12"}},
       {"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index_log_prob",
        "type error",
-       {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_3d", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_4d_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_4d", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index", "type error", {"onnx170"}},
+       {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_3d", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_4d_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_4d", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index", "type error", {"opset12"}},
       {"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_log_prob",
        "type error",
-       {"onnx170"}},
-      {"softmax_cross_entropy_mean_3d_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_none_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_3d", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index_3d_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_none_weights_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_sum_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight_ignore_index", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_sum", "type error", {"onnx170"}},
+       {"opset12"}},
+      {"softmax_cross_entropy_mean_3d_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_none_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_3d", "type error", {"opset12"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_3d_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_none_weights_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_sum_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d", "type error", {"opset12"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index", "type error", {"opset12"}},
+      {"softmax_cross_entropy_sum", "type error", {"opset12"}},
       {"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob",
        "type error",
-       {"onnx170"}},
-      {"softmax_cross_entropy_none_weights", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d_log_prob", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_none", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_weight", "type error", {"onnx170"}},
-      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"onnx170"}},
+       {"opset12"}},
+      {"softmax_cross_entropy_none_weights", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d_log_prob", "type error", {"opset12"}},
+      {"softmax_cross_entropy_none", "type error", {"opset12"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index", "type error", {"opset12"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_weight", "type error", {"opset12"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"opset12"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
@@ -600,13 +600,7 @@ TEST_P(ModelTest, Run) {
   {
     BrokenTest t = {ToUTF8String(test_case_name), ""};
     auto iter = broken_tests.find(t);
-    auto model_version = model_info->GetModelVersion();
     auto opset_version = model_info->GetNominalOpsetVersion();
-    if (iter != broken_tests.end() && (iter->broken_versions_.empty() ||
-         iter->broken_versions_.find(model_version) != iter->broken_versions_.end() )) {
-      SkipTest();
-      return;
-    }
 
     iter = broken_tests.find(t);
     if (iter != broken_tests.end() && (iter->broken_opset_versions_.empty() ||

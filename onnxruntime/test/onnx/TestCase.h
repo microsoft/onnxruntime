@@ -66,7 +66,6 @@ class TestModelInfo {
   virtual int GetOutputCount() const = 0;
   virtual const std::string& GetInputName(size_t i) const = 0;
   virtual const std::string& GetOutputName(size_t i) const = 0;
-  virtual std::string GetModelVersion() const { return ""; }
   virtual std::string GetNominalOpsetVersion() const { return ""; }
   virtual ~TestModelInfo() = default;
 
