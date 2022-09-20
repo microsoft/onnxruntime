@@ -966,7 +966,7 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   gather.SetAttributeInt("axis", 0);
   node.SetInput(i, gather_output);
 }
-
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
 static bool HandleResize(HandlerArgs& args) {
   auto inputs = args.node.Inputs();
   int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
@@ -996,6 +996,7 @@ static bool HandleResize(HandlerArgs& args) {
 }
 
 constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
+#endif
 
 static bool HandlePad(HandlerArgs& args) {
   size_t rank = args.perm.size();
