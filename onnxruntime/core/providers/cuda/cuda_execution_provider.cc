@@ -407,7 +407,19 @@ Status CUDAExecutionProvider::EnqueueDeferredRelease() {
     cpu_buffers_info->buffers = buffers;
     // Release the ownership of cpu_buffers_info so that the underlying
     // object will keep alive until the end of ReleaseCpuBufferCallback.
-    CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release()));
+    if (cpu_buffers_info->allocator->Info().alloc_type == OrtArenaAllocator) {
+      // Release memory asynchronously to avoid blocking the compute stream.
+      CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release()));
+    } else {
+      // Per
+      // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#implicit-synchronization
+      // cudaHostFree doesn't block stream, so a synchronitation is needed to make sure no kernels
+      // are using the host memory.
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+      // cudaFreeHost and all other CUDA APIs cannot be called by cudaLaunchHostFunc per spec.
+      // So we just do synchrous release.
+      ReleaseCpuBufferCallback(cpu_buffers_info.release());
+    }
   }
   // All buffers are scheduled for release.
   // Let's clear releated information so that
