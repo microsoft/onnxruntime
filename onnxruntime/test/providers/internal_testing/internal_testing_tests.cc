@@ -268,7 +268,7 @@ TEST(InternalTestingEP, TestRegisterAllocatorHandlesUsageInMultipleSessions) {
   std::vector<std::shared_ptr<IExecutionProvider>> eps{
       std::make_shared<InternalTestingExecutionProvider>(supported_ops, std::unordered_set<std::string>{},
                                                          DataLayout::NHWC),
-      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{}, true /* delay allocator registration to allow sharing */)};
 
   // check RegisterAllocator is implemented properly and supports calls from multiple inference sessions
   init_session(eps, session1);

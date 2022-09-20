@@ -448,6 +448,15 @@ void OrtModuleGraphBuilder::FindModuleOutputNeededForBackward() {
       }
     }
   }
+
+  // Graph resolve will have the YieldOp outputs' shapes inferred. To avoid lossing these information when
+  // transferring model from backend to frontend (in case any graph optimization requires these shape information),
+  // add them to graph's ValueInfo.
+  for (const auto& node_def : yield_node->OutputDefs()) {
+    if (node_def->TypeAsProto()) {
+      gradient_graph.AddValueInfo(node_def);
+    }
+  }
 }
 
 void OrtModuleGraphBuilder::UpdatePythonOpInputsRequireGradInfo(

@@ -108,7 +108,7 @@ TEST(XnnpackEP, TestAllocatorSharing) {
   // and use the same EP instances in both
   std::vector<std::shared_ptr<IExecutionProvider>> eps{
       std::make_shared<XnnpackExecutionProvider>(XnnpackExecutionProviderInfo{}),
-      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{})};
+      std::make_shared<CPUExecutionProvider>(CPUExecutionProviderInfo{}, true /* delay allocator creation to allow sharing */)};
 
   // check RegisterAllocator is implemented properly and supports calls from multiple inference sessions
   init_session(eps, session1);
@@ -223,13 +223,13 @@ TEST(XnnpackEP, TestQDQConvU8U8) {
 
 TEST(XnnpackEP, TestQDQConvS8S8) {
   RunModelTest(BuildQDQConvTestCase<int8_t /* InputType */,
-                                     int8_t /* WeightType */,
-                                     int32_t /* BiasType */,
-                                     int8_t /* OutputType */>(
-                    {1, 1, 5, 5} /* input_shape */,
-                    {1, 1, 3, 3} /* weights_shape */),
-                "xnnpack_qdq_test_graph_conv_s8s8",
-                {ExpectedEPNodeAssignment::Some, 0.2f});
+                                    int8_t /* WeightType */,
+                                    int32_t /* BiasType */,
+                                    int8_t /* OutputType */>(
+                   {1, 1, 5, 5} /* input_shape */,
+                   {1, 1, 3, 3} /* weights_shape */),
+               "xnnpack_qdq_test_graph_conv_s8s8",
+               {ExpectedEPNodeAssignment::Some, 0.2f});
 
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_s8s8.onnx";
   RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8", 0.7f);
