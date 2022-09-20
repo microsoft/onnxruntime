@@ -711,7 +711,7 @@ The pre-built ONNX Runtime Mobile package for Android doesn't include the Xnnpac
 If performing a custom build of ONNX Runtime, support for the Xnnpack EP must be enabled when building.
 
 ### build for Android
-### Create a minimal build with Xnnpack EP support
+#### Create a minimal build with Xnnpack EP support
 
 Please see [the instructions](./android.md) for setting up the Android environment required to build. The Android build can be cross-compiled on Windows or Linux.
 
@@ -720,7 +720,7 @@ Once you have all the necessary components setup, follow the instructions to [cr
 * Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the Xnnpack EP.
 * Add `--use_xnnpack` to include the Xnnpack EP in the build
 
-#### Example build commands with the Xnnpack EP enabled
+##### Example build commands with the Xnnpack EP enabled
 
 Windows example:
 
@@ -733,7 +733,11 @@ Linux example:
 ```bash
 <ONNX Runtime repository root>./build.sh --config MinSizeRel --android --android_sdk_path /Android --android_ndk_path /Android/ndk/21.1.6352462/ --android_abi arm64-v8a --android_api 29 --minimal_build extended --use_xnnpack --disable_ml_ops --disable_exceptions --build_shared_lib --skip_tests --include_ops_by_config <config file from model conversion>`
 ```
-
+If you don't mind MINIMAL build, you can use the following command to build XNNPACK EP for Android:
+Linux example:
+```bash
+./build.sh --cmake_generator "Ninja" --android  --android_sdk_path /Android --android_ndk_path /Android/ndk/21.1.6352462/ --android_abi arm64-v8a --android_api 29 --use_xnnpack
+```
 ### build for Windows
 ```dos
 <ONNX Runtime repository root>.\build.bat --config <Release|Debug|RelWithDebInfo> --use_xnnpack

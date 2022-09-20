@@ -28,7 +28,7 @@ No Pre-built packages of ONNX Runtime with Xnnpack EP for Android are available.
 
 Please see the [Build page](../build/eps.md#xnnpack) for instructions on building a package that includes the Xnnpack EP.
 
-Android/Windows/Linux support
+Support build for Android/Windows/Linux
 
 ## Usage
 
@@ -65,7 +65,7 @@ To achieve the best performance, the Xnnpack EP requires the following configura
 ### Available Options
 ##### intra_op_num_threads
 
-The thread-pool size (default 1) for Xnnpack EP. Xnnpack Ep use [pthreadpool](https://github.com/Maratyszcza/pthreadpool) for parallelization implementation. Thus, there would be two threadpools inside. However, ORT thread-pool will spinning threads by default as which can improve the performance. But in that case, threads will not release CPU resources when ops finished, switched to Xnnpack EP and it will lead to serious contention between the two thread-pool, which will hurt performance dramatically and even produce more power consumption. So, it is recommended to disable thread-pool Spinning.
+The thread-pool size (default 1) for Xnnpack EP. Xnnpack Ep use [pthreadpool](https://github.com/Maratyszcza/pthreadpool) for parallelization implementation. Thus, there would be two threadpools inside. However, ORT thread-pool will spinning threads by default as which can improve the performance. But in that case, threads will not release CPU resources when ops finished, switched to Xnnpack EP and it will lead to serious contention between the two thread-pools, which will hurt performance dramatically and even produce more power consumption. So, it is recommended to disable thread-pool Spinning.
 
 To alleviate the contention further, it is recommended to set ort thread-pool intra_op_num_threads as 1 so ORT thread-pool wouldn't be created. The trade-off is that all ops are assigned to CPU EP will be running on single thread.
 
