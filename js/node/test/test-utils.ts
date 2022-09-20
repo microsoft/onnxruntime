@@ -82,7 +82,7 @@ export function warmup(): void {
     this.timeout(0);
     // we have test cases to verify correctness in other place, so do no check here.
     try {
-      const session = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_INT32.pb'));
+      const session = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_int32.onnx'));
       await session.run({input: new Tensor(new Float32Array(5), [1, 5])}, {output: null}, {});
     } catch (e) {
     }
