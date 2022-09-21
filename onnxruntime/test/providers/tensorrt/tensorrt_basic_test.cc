@@ -307,7 +307,7 @@ TEST(TensorrtExecutionProviderTest, TRTMetadefIdGeneratorUsingModelHashing) {
 
   // test comparing model 1 & 2
   ASSERT_EQ(model_hash, model_hash2) << "model1 has same graph name/nodes/env metadata as model2";
-  ASSERT_EQ(id2, 1) << "id2 should be 1 as model 1 & 2 has same hash";
+  ASSERT_EQ(id2, 1) << "id2 should be 1 as model 1 & 2 have same hash";
 
   // Test loading same model from different path, see if hash values are same as well
   model_path = ORT_TSTR("testdata/TRTEP_test_model/mnist.onnx");
@@ -318,6 +318,7 @@ TEST(TensorrtExecutionProviderTest, TRTMetadefIdGeneratorUsingModelHashing) {
   HashValue model_hash3;
   int id3 = TRTGenerateMetaDefId(viewer3, model_hash3);
   ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
+  ASSERT_EQ(id3, 2) << "id3 should be 2 as model 1 & 2 & 3 have same hash";
 }
 
 // Compare on TRT subgraph id when repeatedly calling TRTGenerateMetaDefId
@@ -330,11 +331,11 @@ TEST(TensorrtExecutionProviderTest, TRTSubgraphIdGeneratorUsingModelHashing) {
   Graph& main_graph = model->MainGraph();
   GraphViewer graph(main_graph);
   HashValue model_hash;
-  
+
   // Graph id acquired
   int graph_id = TRTGenerateMetaDefId(graph, model_hash);
   int asserted_subgraph_id = graph_id + 1;
-  
+
   // mock fetching subgraphs and generate id by calling TRTGenerateMetaDefId repeatedly
   const int number_of_ort_nodes = graph.NumberOfNodes();
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
@@ -342,6 +343,9 @@ TEST(TensorrtExecutionProviderTest, TRTSubgraphIdGeneratorUsingModelHashing) {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
 
   for (const auto& index : nodes_vector) {
+    const auto& node = graph.GetNode(node_index[index]);
+    std::cout << "->" << node->Name(); 
+
     // Check if id increment each time TRTGenerateMetaDefId is called
     int subgraph_id = TRTGenerateMetaDefId(graph, model_hash);
     ASSERT_EQ(subgraph_id, asserted_subgraph_id) << "id will increment as TRTGenerateMetaDefId is repeatedly called";
