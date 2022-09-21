@@ -157,6 +157,7 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
                                                                    notification_idx(idx) {}
 
   Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) override {
+    ORT_ENFORCE(wait_handle, "WaitOnEPStep.wait_handle is null");
     wait_handle(*ctx->GetDeviceStream(stream_idx), *ctx->GetNotification(notification_idx));
     // update streams clock status
     if (ctx->GetDeviceStream(stream_idx)) {
