@@ -31,9 +31,9 @@ class Gemm final : public CudaKernel {
     ORT_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());
     ORT_ENFORCE(info.GetAttr<float>("beta", &beta_).IsOK());
 
-    use_cublaslt_matmul_ = !ParseEnvironmentVariableWithDefault<bool>(matmul_detail::kDisableCublasLtMatmul, false) &&
-                           // We will support CublasLtMatmul only for float and half types for now
-                           (std::is_same<T, float>::value || std::is_same<T, MLFloat16>::value);
+    // We will support CublasLtMatmul only for half type for now
+    disable_cublaslt_matmul_ = !std::is_same<T, MLFloat16>::value ||
+                               ParseEnvironmentVariableWithDefault<bool>(matmul_detail::kDisableCublasLtMatmul, false);
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -43,7 +43,7 @@ class Gemm final : public CudaKernel {
   bool trans_B_;
   float alpha_;
   float beta_;
-  bool use_cublaslt_matmul_;
+  bool disable_cublaslt_matmul_;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

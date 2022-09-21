@@ -22,6 +22,7 @@ class Attention final : public CudaKernel, public AttentionBase {
 
  protected:
   bool disable_fused_runner_;
+  bool disable_cublaslt_matmul_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
 };
 

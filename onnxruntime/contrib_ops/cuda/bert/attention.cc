@@ -6,6 +6,7 @@
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention.h"
+#include "core/providers/cuda/math/gemm.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -54,6 +55,8 @@ static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
   disable_fused_runner_ = sizeof(T) != 2 || ParseEnvironmentVariableWithDefault<bool>(kDisableFusedAttention, false);
+  disable_cublaslt_matmul_ = sizeof(T) != 2 ||
+                             ParseEnvironmentVariableWithDefault<bool>(matmul_detail::kDisableCublasLtMatmul, false);
 }
 
 template <typename T>
@@ -129,12 +132,26 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
+  // CublasLtMatmul requires that M (which is actually N here as the row-major inputs will be swapped to
+  // account for the col-major format of Cublas) and K are multiples of 4
+  auto use_cublaslt_matmul = !disable_cublaslt_matmul_ && ((n % 4) == 0) && ((k % 4) == 0);
+
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
-  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-      reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
-      reinterpret_cast<const CudaT*>(input->Data<T>()), k,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+  if (use_cublaslt_matmul) {
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
+        CublasLtHandle(), CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
+        reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
+        reinterpret_cast<const CudaT*>(input->Data<T>()), k,
+        &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n,
+        NULL, 0,
+        Stream()));
+  } else {
+    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+        cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
+        reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
+        reinterpret_cast<const CudaT*>(input->Data<T>()), k,
+        &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+  }
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,

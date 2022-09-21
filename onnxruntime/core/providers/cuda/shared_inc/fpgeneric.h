@@ -175,7 +175,6 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t, cublasOperation_t, cublas
 #endif
 
 // CublasLtMatmul
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 static Status InitializeCublasLtMatmulDescAndOperationHelper(cublasLtMatrixLayout_t& A_desc, int lda,
                                                              cublasOperation_t transa,
                                                              cublasLtMatrixLayout_t& B_desc, int ldb,
@@ -187,24 +186,28 @@ static Status InitializeCublasLtMatmulDescAndOperationHelper(cublasLtMatrixLayou
                                                              cublasComputeType_t compute_type,
                                                              cudaDataType_t scale_type) {
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&A_desc, data_type,
-                                                    (transa == CUBLAS_OP_N) ? m : k, (transa == CUBLAS_OP_N) ? k : m, lda));
+                                                    (transa == CUBLAS_OP_N) ? m : k,
+                                                    (transa == CUBLAS_OP_N) ? k : m, lda));
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&B_desc, data_type,
-                                                    (transb == CUBLAS_OP_N) ? k : n, (transb == CUBLAS_OP_N) ? n : k, ldb));
+                                                    (transb == CUBLAS_OP_N) ? k : n,
+                                                    (transb == CUBLAS_OP_N) ? n : k, ldb));
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&C_desc, data_type, m, n, ldc));
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(&operation_desc, compute_type, scale_type));
 
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operation_desc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(cublasOperation_t)));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operation_desc,
+                                                        CUBLASLT_MATMUL_DESC_TRANSA,
+                                                        &transa, sizeof(cublasOperation_t)));
 
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operation_desc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(cublasOperation_t)));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(operation_desc,
+                                                        CUBLASLT_MATMUL_DESC_TRANSB,
+                                                        &transb, sizeof(cublasOperation_t)));
 
   return Status::OK();
 }
-#endif
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            cublasOperation_t transa,
                                            cublasOperation_t transb,
@@ -214,6 +217,8 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            const half* B, int ldb,
                                            const half* beta,
                                            half* C, int ldc,
+                                           void* workspace_memory,
+                                           size_t workspace_size,
                                            cudaStream_t stream) {
   const HalfGemmOptions* half_options = HalfGemmOptions::GetInstance();
 
@@ -272,33 +277,24 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
     return CUBLAS_STATUS_ALLOC_FAILED;
   }
 
-  // TODO (hasesh): Allow CublasLtMatmul tuning for clients by allowing them to pass in the workspace and algo of their choice.
-  // According to the cublasLtMatmul documentation, passing in NULL for the algo means that "an implicit heuristics query with
-  // default search preferences will be performed to determine actual algorithm to use". Source: cublasLtMatmul documentation.
+  // TODO (hasesh): Allow CublasLtMatmul tuning for clients by allowing them to pass in the
+  // workspace and algo of their choice.
+  // According to the cublasLtMatmul documentation, passing in NULL for the algo means that
+  // "an implicit heuristics query with
+  // default search preferences will be performed to determine actual algorithm to use".
+  // Source: cublasLtMatmul documentation.
   return cublasLtMatmul(
-      handle, operation_desc, is_compute_16f ? reinterpret_cast<const void*>(alpha) : reinterpret_cast<const void*>(&f_alpha),
+      handle, operation_desc,
+      is_compute_16f ? reinterpret_cast<const void*>(alpha) : reinterpret_cast<const void*>(&f_alpha),
       A, A_desc, B, B_desc,
       is_compute_16f ? reinterpret_cast<const void*>(beta) : reinterpret_cast<const void*>(&f_beta),
       C, C_desc,
       C, C_desc,
-      /*algo*/ NULL, /*workspace memory*/ NULL, /*workspace size*/ 0, stream);
+      /*algo*/ NULL,
+      workspace_memory, workspace_size,
+      stream);
 }
-#else
-inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
-                                           cublasOperation_t transa,
-                                           cublasOperation_t transb,
-                                           int m, int n, int k,
-                                           const half* alpha,
-                                           const half* A, int lda,
-                                           const half* B, int ldb,
-                                           const half* beta,
-                                           half* C, int ldc,
-                                           cudaStream_t stream) {
-  return CUBLAS_STATUS_NOT_SUPPORTED;
-}
-#endif
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            cublasOperation_t transa,
                                            cublasOperation_t transb,
@@ -308,87 +304,8 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            const float* B, int ldb,
                                            const float* beta,
                                            float* C, int ldc,
-                                           cudaStream_t stream) {
-  cudaDataType_t data_type = CUDA_R_32F;
-  cudaDataType_t scale_type = CUDA_R_32F;
-  cublasComputeType_t compute_type = CUBLAS_COMPUTE_32F;
-
-  cublasLtMatrixLayout_t A_desc = NULL, B_desc = NULL, C_desc = NULL;
-  cublasLtMatmulDesc_t operation_desc = NULL;
-
-  auto clean_desc_A = gsl::finally([&A_desc]() {
-    if (A_desc) {
-      cublasLtMatrixLayoutDestroy(A_desc);
-    }
-  });
-
-  auto clean_desc_B = gsl::finally([&B_desc]() {
-    if (B_desc) {
-      cublasLtMatrixLayoutDestroy(B_desc);
-    }
-  });
-
-  auto clean_desc_C = gsl::finally([&C_desc]() {
-    if (C_desc) {
-      cublasLtMatrixLayoutDestroy(C_desc);
-    }
-  });
-
-  auto clean_matmul_desc = gsl::finally([&operation_desc]() {
-    if (operation_desc) {
-      cublasLtMatmulDescDestroy(operation_desc);
-    }
-  });
-
-  if (Status::OK() != InitializeCublasLtMatmulDescAndOperationHelper(A_desc, lda,
-                                                                     transa,
-                                                                     B_desc, ldb,
-                                                                     transb,
-                                                                     C_desc, ldc,
-                                                                     data_type,
-                                                                     m, n, k,
-                                                                     operation_desc,
-                                                                     compute_type,
-                                                                     scale_type)) {
-    return CUBLAS_STATUS_ALLOC_FAILED;
-  }
-
-  // TODO (hasesh): Allow CublasLtMatmul tuning for clients by allowing them to pass in the workspace and algo of their choice.
-  // According to the cublasLtMatmul documentation, passing in NULL for the algo means that "an implicit heuristics query with
-  // default search preferences will be performed to determine actual algorithm to use". Source: cublasLtMatmul documentation.
-  return cublasLtMatmul(
-      handle, operation_desc, reinterpret_cast<const void*>(alpha),
-      A, A_desc, B, B_desc,
-      reinterpret_cast<const void*>(beta),
-      C, C_desc,
-      C, C_desc,
-      /*algo*/ NULL, /*workspace memory*/ NULL, /*workspace size*/ 0, stream);
-}
-
-#else
-inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
-                                           cublasOperation_t transa,
-                                           cublasOperation_t transb,
-                                           int m, int n, int k,
-                                           const float* alpha,
-                                           const float* A, int lda,
-                                           const float* B, int ldb,
-                                           const float* beta,
-                                           float* C, int ldc,
-                                           cudaStream_t stream) {
-  return CUBLAS_STATUS_NOT_SUPPORTED;
-}
-#endif
-
-inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
-                                           cublasOperation_t transa,
-                                           cublasOperation_t transb,
-                                           int m, int n, int k,
-                                           const double* alpha,
-                                           const double* A, int lda,
-                                           const double* B, int ldb,
-                                           const double* beta,
-                                           double* C, int ldc,
+                                           void* workspace_memory,
+                                           size_t workspace_size,
                                            cudaStream_t stream) {
   ORT_UNUSED_PARAMETER(handle);
   ORT_UNUSED_PARAMETER(transa);
@@ -404,6 +321,41 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
   ORT_UNUSED_PARAMETER(beta);
   ORT_UNUSED_PARAMETER(C);
   ORT_UNUSED_PARAMETER(ldc);
+  ORT_UNUSED_PARAMETER(workspace_memory);
+  ORT_UNUSED_PARAMETER(workspace_size);
+  ORT_UNUSED_PARAMETER(stream);
+
+  return CUBLAS_STATUS_NOT_SUPPORTED;
+}
+
+inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
+                                           cublasOperation_t transa,
+                                           cublasOperation_t transb,
+                                           int m, int n, int k,
+                                           const double* alpha,
+                                           const double* A, int lda,
+                                           const double* B, int ldb,
+                                           const double* beta,
+                                           double* C, int ldc,
+                                           void* workspace_memory,
+                                           size_t workspace_size,
+                                           cudaStream_t stream) {
+  ORT_UNUSED_PARAMETER(handle);
+  ORT_UNUSED_PARAMETER(transa);
+  ORT_UNUSED_PARAMETER(transb);
+  ORT_UNUSED_PARAMETER(m);
+  ORT_UNUSED_PARAMETER(n);
+  ORT_UNUSED_PARAMETER(k);
+  ORT_UNUSED_PARAMETER(alpha);
+  ORT_UNUSED_PARAMETER(A);
+  ORT_UNUSED_PARAMETER(lda);
+  ORT_UNUSED_PARAMETER(B);
+  ORT_UNUSED_PARAMETER(ldb);
+  ORT_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(C);
+  ORT_UNUSED_PARAMETER(ldc);
+  ORT_UNUSED_PARAMETER(workspace_memory);
+  ORT_UNUSED_PARAMETER(workspace_size);
   ORT_UNUSED_PARAMETER(stream);
 
   return CUBLAS_STATUS_NOT_SUPPORTED;
@@ -418,6 +370,8 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            const BFloat16* B, int ldb,
                                            const BFloat16* beta,
                                            BFloat16* C, int ldc,
+                                           void* workspace_memory,
+                                           size_t workspace_size,
                                            cudaStream_t stream) {
   ORT_UNUSED_PARAMETER(handle);
   ORT_UNUSED_PARAMETER(transa);
@@ -433,6 +387,8 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
   ORT_UNUSED_PARAMETER(beta);
   ORT_UNUSED_PARAMETER(C);
   ORT_UNUSED_PARAMETER(ldc);
+  ORT_UNUSED_PARAMETER(workspace_memory);
+  ORT_UNUSED_PARAMETER(workspace_size);
   ORT_UNUSED_PARAMETER(stream);
 
   return CUBLAS_STATUS_NOT_SUPPORTED;

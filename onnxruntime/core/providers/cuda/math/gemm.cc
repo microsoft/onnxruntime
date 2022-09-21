@@ -130,12 +130,13 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaT alpha = ToCudaType<T>::FromFloat(alpha_);
   CudaT beta = ToCudaType<T>::FromFloat(beta_);
 
-  // CublasLtMatmul requires that M (which is actually N here) and K are multiples of 4
-  auto use_cublaslt_matmul = use_cublaslt_matmul_ && ((N % 4) == 0) && ((K % 4) == 0);
-  
+  // CublasLtMatmul requires that M (which is actually N here as the row-major inputs will be swapped to
+  // account for the col-major format of Cublas) and K are multiples of 4
+  auto use_cublaslt_matmul = !disable_cublaslt_matmul_ && ((N % 4) == 0) && ((K % 4) == 0);
+
   // General note : CUDA assumes col-major, so Y(N,M) = alpha * op(W) x op(X) + beta * Y
-  if (use_cublaslt_matmul) { // Use CublasLtMatmul
-     CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
+  if (use_cublaslt_matmul) {  // Use CublasLtMatmul
+    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
         CublasLtHandle(),
         trans_B_ ? CUBLAS_OP_T : CUBLAS_OP_N,
         trans_A_ ? CUBLAS_OP_T : CUBLAS_OP_N,
@@ -147,8 +148,9 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
         (trans_A_ ? M : K),
         (B != nullptr) ? &beta : &zero,
         out_data, N,
+        NULL, 0,
         Stream()));
-  } else { // Use CublasGemm instead
+  } else {  // Use CublasGemm instead
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         CublasHandle(),
         trans_B_ ? CUBLAS_OP_T : CUBLAS_OP_N,
