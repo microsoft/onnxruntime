@@ -173,12 +173,6 @@ class FusionUtils:
         if zero_point is None:
             return False
 
-        # Zero point(s) should be all 0s
-        # Per-tensor quantization
-        if zero_point.ndim == 0:
-            return zero_point == 0
-
-        # Per-channel quantization
         return numpy.all(zero_point == 0)
 
     def check_node_input_value(self, node, input_index: int, expected_value):

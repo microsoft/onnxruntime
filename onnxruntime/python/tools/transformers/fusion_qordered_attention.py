@@ -259,10 +259,6 @@ class FusionQOrderedAttention(Fusion):
 
         (_, _, dequantize_k, quantize_k, add_k, matmul_k) = k_nodes
 
-        if k_nodes is None:
-            logger.debug("fuse_qordered_attention: failed to match q path")
-            return
-
         # Make sure the Q/DQ has the proper zero points and constant per-tensor scales      
         if not FusionUtils.check_qdq_node_for_fusion(quantize_k, self.model):
             return
