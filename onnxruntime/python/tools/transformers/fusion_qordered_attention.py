@@ -214,7 +214,7 @@ class FusionQOrderedAttention(Fusion):
             matmul_qk,
             ["Transpose", "Reshape", "DequantizeLinear", "QuantizeLinear", "Add", "MatMul"],
             [0, 0, 0, 0, 0, None],
-        )    
+        )
 
         if q_nodes is None:
             logger.debug("fuse_qordered_attention: failed to match q path")
@@ -222,7 +222,7 @@ class FusionQOrderedAttention(Fusion):
 
         (_, reshape_q, dequantize_q, quantize_q, add_q, matmul_q) = q_nodes
 
-        # Make sure the Q/DQ has the proper zero points and constant per-tensor scales   
+        # Make sure the Q/DQ has the proper zero points and constant per-tensor scales
         if not FusionUtils.check_qdq_node_for_fusion(quantize_q, self.model):
             return
 
@@ -251,7 +251,7 @@ class FusionQOrderedAttention(Fusion):
             matmul_qk,
             ["Transpose", "Reshape", "DequantizeLinear", "QuantizeLinear", "Add", "MatMul"],
             [1, 0, 0, 0, 0, None],
-        )    
+        )
 
         if k_nodes is None:
             logger.debug("fuse_qordered_attention: failed to match k path")
@@ -259,7 +259,7 @@ class FusionQOrderedAttention(Fusion):
 
         (_, _, dequantize_k, quantize_k, add_k, matmul_k) = k_nodes
 
-        # Make sure the Q/DQ has the proper zero points and constant per-tensor scales      
+        # Make sure the Q/DQ has the proper zero points and constant per-tensor scales   
         if not FusionUtils.check_qdq_node_for_fusion(quantize_k, self.model):
             return
 
@@ -300,7 +300,7 @@ class FusionQOrderedAttention(Fusion):
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
             # TODO: Fix this
-            # num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)        
+            # num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)  
             num_heads, hidden_size = (12, 768)
 
             if hidden_size > 0 and (hidden_size % num_heads) != 0:
@@ -391,8 +391,9 @@ class FusionQOrderedAttention(Fusion):
             self.nodes_to_remove.extend(q_nodes)
             self.nodes_to_remove.extend(k_nodes)
             self.nodes_to_remove.extend(v_nodes)
-            self.nodes_to_remove.extend([dequantize_q_matmul_weight, dequantize_k_matmul_weight, 
-                                        dequantize_v_matmul_weight])
+            self.nodes_to_remove.extend(
+                [dequantize_q_matmul_weight, dequantize_k_matmul_weight, dequantize_v_matmul_weight]
+            )
 
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
             # self.nodes_to_remove.extend(mask_nodes)
