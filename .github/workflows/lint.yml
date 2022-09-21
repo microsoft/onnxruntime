@@ -98,7 +98,7 @@ jobs:
             --update \
             --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON
       - name: Run clang-tidy
-        uses: ZedThree/clang-tidy-review@v0.9.0
+        uses: ZedThree/clang-tidy-review@526cbfb043719639f1ebdeedae0cc1eacd219d8f
         with:
           token: ${{ secrets.github_token }}
           build_dir: "build/Debug/compile_commands.json"
