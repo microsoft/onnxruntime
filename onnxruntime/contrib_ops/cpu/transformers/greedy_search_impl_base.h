@@ -92,7 +92,7 @@ class GreedySearchBase : public GenerateBase {
     parameters_->ParseFromInputs(&context);
   }
 
-  virtual ~GreedySearchBase() {}
+  ~GreedySearchBase() override = default;
 
   // Initialize by validating all the inputs, and allocating the output tensors.
   Status Initialize();

@@ -141,7 +141,7 @@ class BeamSearchBase : public GenerateBase  {
     parameters_->ParseFromInputs(&context);
   }
 
-  virtual ~BeamSearchBase() {}
+  ~BeamSearchBase() override = default;
 
   // Initialize by validating all the inputs, and allocating the output tensors.
   Status Initialize();
