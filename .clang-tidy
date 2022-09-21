@@ -21,6 +21,8 @@ Checks: >
   readability-*,
   modernize-*,
   bugprone-*,
+  performance-*,
+  misc-*,
   -cppcoreguidelines-macro-usage,
   -cppcoreguidelines-pro-type-reinterpret-cast,
   -google-readability-todo,
