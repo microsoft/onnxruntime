@@ -49,7 +49,10 @@ In both cases, you will get a JSON file which contains the detailed performance 
 * Type chrome://tracing in the address bar
 * Load the generated JSON file
 
-To profile CUDA kernels, please add the cupti library to your PATH and use the onnxruntime binary built from source with `--enable_cuda_profiling`. Performance numbers from the device will then be attached to those from the host. For example:
+To profile CUDA kernels, please add the cupti library to your PATH and use the onnxruntime binary built from source with `--enable_cuda_profiling`.
+To profile ROCm kernels, please add the roctracer library to your PATH and use the onnxruntime binary built from source with `--enable_rocm_profiling`. 
+
+Performance numbers from the device will then be attached to those from the host. For example:
 
 ```json
 {"cat":"Node", "name":"Add_1234", "dur":17, ...}

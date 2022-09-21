@@ -1048,6 +1048,15 @@ var validCombos = {
     "linux,C++,X86,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
+    "linux,Python,X86,ROCm":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
+    
+    "linux,C-API,X86,ROCm":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
+    
+    "linux,C++,X86,ROCm":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
+
     "linux,Python,ARM64,ACL":
         "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
     
