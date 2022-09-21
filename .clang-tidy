@@ -12,7 +12,6 @@
 # -google-runtime-references: https://github.com/microsoft/onnxruntime/blob/main/docs/Coding_Conventions_and_Standards.md#c-code-style.
 # -modernize-concat-nested-namespaces: We don't use it.
 # -modernize-use-trailing-return-type: Stylistic preference we do not enforce.
-# -readability-braces-around-statements: Allow single line statement like 'if (x == y) doSomething();'.
 # -readability-identifier-length: A lot of numerical code rely on short names to improve readability.
 
 Checks: >
