@@ -53,7 +53,7 @@ class ModelSetting:
     opt_level: int
 
 
-def create_session(model_path, use_gpu, provider, intra_op_num_threads, log_severity, graph_optimization_level=None):
+def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_optimization_level=None, log_severity=2):
     import onnxruntime
 
     onnxruntime.set_default_logger_severity(log_severity)
@@ -226,8 +226,8 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
         test_setting.use_gpu,
         test_setting.provider,
         intra_op_num_threads,
-        test_setting.log_severity,
         model_setting.opt_level,
+        log_severity=test_setting.log_severity,
     )
     output_names = [output.name for output in session.get_outputs()]
 
@@ -409,7 +409,7 @@ def parse_arguments():
         "--log_severity",
         required=False,
         type=int,
-        default="2",
+        default=2,
         choices=[0, 1, 2, 3, 4],
         help="0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal",
     )
