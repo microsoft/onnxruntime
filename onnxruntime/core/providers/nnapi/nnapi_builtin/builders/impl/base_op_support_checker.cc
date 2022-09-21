@@ -10,20 +10,6 @@ namespace onnxruntime {
 
 namespace nnapi {
 
-template <class T>
-void CreateSharedOpSupportCheckerImpl(const std::string& op_type,
-                                      OpSupportCheckerRegistrations& op_registrations,
-                                      const std::vector<std::string>& op_types) {
-  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
-  if (op_registrations.op_support_checker_map.find(op_type) != op_registrations.op_support_checker_map.cend())
-    return;
-
-  op_registrations.support_checkers.push_back(std::make_unique<T>());
-  for (const auto& op : op_types) {
-    op_registrations.op_support_checker_map.emplace(op, op_registrations.support_checkers.back().get());
-  }
-}
-
 static bool HasExternalInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit) {
   const auto is_ext_initializer =
       [&](const NodeArg& node_arg) {

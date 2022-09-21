@@ -20,6 +20,25 @@ namespace nnapi {
 
 class ModelBuilder;
 
+struct OpBuilderRegistrations {
+  std::vector<std::unique_ptr<IOpBuilder>> builders;
+  std::unordered_map<std::string, const IOpBuilder*> op_builder_map;
+};
+
+template <class T>
+void CreateSharedOpBuilderImpl(const std::string& op_type,
+                               OpBuilderRegistrations& op_registrations,
+                               const std::vector<std::string>& op_types) {
+  // The shared OpSupportChecker is already in the OpSupportCheckerRegistrations
+  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+    return;
+
+  op_registrations.builders.push_back(std::make_unique<T>());
+  for (const auto& op : op_types) {
+    op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
+  }
+}
+
 class BaseOpBuilder : public IOpBuilder {
  public:
   virtual ~BaseOpBuilder() = default;

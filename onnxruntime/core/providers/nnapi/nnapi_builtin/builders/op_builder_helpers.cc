@@ -4,14 +4,16 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 
 #include <algorithm>
+#include <optional>
 
 #include "gsl/gsl"
 
 #include "core/common/safeint.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/node_arg.h"
+#include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
-#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 
 namespace onnxruntime::nnapi::op_builder_helpers {
 
@@ -348,6 +350,340 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
     new_shape[new_shape.size() - 2] = m;
     new_shape[new_shape.size() - 1] = n;
     ORT_RETURN_IF_ERROR(add_reshape(joined_gemm_output, new_shape, output));
+  }
+
+  return Status::OK();
+}
+
+Status AddInitializerInNewLayout(ModelBuilder& model_builder,
+                                 const std::string& name,
+                                 const OperandType& source_operand_type,
+                                 DataLayout new_layout,
+                                 bool is_per_tensor_u8s8) {
+  const auto& tensor = *model_builder.GetInitializerTensors().at(name);
+  const Shape& shape = source_operand_type.dimensions;
+  ORT_RETURN_IF_NOT(shape.size() == 4,
+                    "The initializer is not 4D: ", name, " actual dim ", shape.size());
+
+  // TODO support other data types
+  const uint8_t* src = nullptr;
+  std::vector<uint8_t> unpacked_tensor;
+
+  switch (tensor.data_type()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
+      ORT_RETURN_IF_ERROR(
+          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
+                                                    unpacked_tensor));
+      src = unpacked_tensor.data();
+      break;
+    }
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "The initializer of graph ", name,
+                             " doesn't have valid type: ", tensor.data_type());
+  }
+
+  const auto out_t = shape[0], in_t = shape[1],
+             h_t = shape[2], w_t = shape[3];
+  Shape dest_shape;
+  if (new_layout == L_0231)
+    dest_shape = {out_t, h_t, w_t, in_t};  // L_0231
+  else
+    dest_shape = {in_t, h_t, w_t, out_t};  // L_1230 for depthwise conv weight
+
+  OperandType operand_type = source_operand_type;
+  operand_type.SetDimensions(dest_shape);
+  std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
+  uint8_t* buffer = buffer_holder.get();
+  size_t element_size = operand_type.GetElementByteSize();
+
+  uint8_t bit_flip_val = is_per_tensor_u8s8 ? 0x80 : 0;
+  for (uint32_t out = 0; out < out_t; out++) {
+    for (uint32_t in = 0; in < in_t; in++) {
+      for (uint32_t h = 0; h < h_t; h++) {
+        for (uint32_t w = 0; w < w_t; w++) {
+          auto onnx_idx = out * in_t * h_t * w_t +
+                          in * h_t * w_t +
+                          h * w_t +
+                          w;
+
+          uint32_t nnapi_idx;
+          if (new_layout == L_0231) {  // L_0231
+            nnapi_idx = out * h_t * w_t * in_t +
+                        h * w_t * in_t +
+                        w * in_t +
+                        in;
+          } else {  // L_1230 for depthwise conv weight
+            nnapi_idx = in * h_t * w_t * out_t +
+                        h * w_t * out_t +
+                        w * out_t +
+                        out;
+          }
+
+          for (size_t i = 0; i < element_size; i++) {
+            buffer[element_size * nnapi_idx + i] = src[element_size * onnx_idx + i] ^ bit_flip_val;
+          }
+        }
+      }
+    }
+  }
+
+  return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
+}
+
+Status AddInitializerTransposed(ModelBuilder& model_builder,
+                                const OperandType& source_operand_type,
+                                const std::string& name,
+                                bool is_per_tensor_u8s8) {
+  const auto& tensor = *model_builder.GetInitializerTensors().at(name);
+  const Shape& shape = source_operand_type.dimensions;
+
+  ORT_RETURN_IF_NOT(shape.size() == 2,
+                    "The initializer is not 2D: ", name, " actual dim ", shape.size());
+
+  // TODO support other data types
+  const uint8_t* src = nullptr;
+  std::vector<uint8_t> unpacked_tensor;
+  switch (tensor.data_type()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
+      ORT_RETURN_IF_ERROR(
+          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
+                                                    unpacked_tensor));
+      src = unpacked_tensor.data();
+      break;
+    }
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "The initializer of graph ", name,
+                             " doesn't have valid type: ", tensor.data_type());
+  }
+
+  const auto x_t = shape[0], y_t = shape[1];
+  Shape dest_shape = {y_t, x_t};
+  OperandType operand_type = source_operand_type;
+  operand_type.SetDimensions(dest_shape);
+  std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
+  uint8_t* buffer = buffer_holder.get();
+  size_t element_size = operand_type.GetElementByteSize();
+  uint8_t bit_flip_val = is_per_tensor_u8s8 ? 0x80 : 0;
+  for (uint32_t x = 0; x < x_t; x++) {
+    for (uint32_t y = 0; y < y_t; y++) {
+      for (size_t i = 0; i < element_size; i++) {
+        buffer[element_size * (y * x_t + x) + i] = src[element_size * (x * y_t + y) + i] ^ bit_flip_val;
+      }
+    }
+  }
+
+  return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
+}
+
+Status ComputeConvPads(
+    const Shape& input_dimen,
+    const uint32_t weight_size_y, const uint32_t weight_size_x,
+    const std::vector<int32_t>& onnx_pads, const std::vector<int32_t>& onnx_strides, const std::vector<int32_t>& onnx_dilations,
+    AutoPadType auto_pad_type, bool nchw,
+    std::vector<int32_t>& pads_out) {
+  const int32_t input_size_y = nchw ? input_dimen[2] : input_dimen[1];
+  const int32_t input_size_x = nchw ? input_dimen[3] : input_dimen[2];
+  const int32_t stride_y = onnx_strides[0];
+  const int32_t stride_x = onnx_strides[1];
+  const int32_t dilation_y = onnx_dilations[0];
+  const int32_t dilation_x = onnx_dilations[1];
+
+  int64_t padding_top = onnx_pads[0];
+  int64_t padding_bottom = onnx_pads[2];
+  int64_t padding_left = onnx_pads[1];
+  int64_t padding_right = onnx_pads[3];
+
+  ORT_RETURN_IF_ERROR(ComputePad(input_size_y,
+                                 stride_y, weight_size_y, dilation_y,
+                                 auto_pad_type,
+                                 padding_top, padding_bottom));
+  ORT_RETURN_IF_ERROR(ComputePad(input_size_x,
+                                 stride_x, weight_size_x, dilation_x,
+                                 auto_pad_type,
+                                 padding_left, padding_right));
+
+  pads_out = {static_cast<int32_t>(padding_top), static_cast<int32_t>(padding_left),
+              static_cast<int32_t>(padding_bottom), static_cast<int32_t>(padding_right)};
+
+  return Status::OK();
+}
+
+Status HandleAutoPad(const Shape& input_shape,
+                     const uint32_t weight_size_y,
+                     const uint32_t weight_size_x,
+                     const std::vector<int32_t>& onnx_strides,
+                     const std::vector<int32_t>& onnx_dilations,
+                     AutoPadType auto_pad_type,
+                     bool use_nchw,
+                     std::vector<int32_t>& onnx_pads,
+                     int32_t& nnapi_padding_code,
+                     bool& use_auto_pad) {
+  use_auto_pad = false;
+  if (auto_pad_type != AutoPadType::NOTSET) {
+    ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
+                                        onnx_pads, onnx_strides, onnx_dilations,
+                                        auto_pad_type, use_nchw,
+                                        onnx_pads));
+
+    if (AutoPadType::VALID == auto_pad_type || AutoPadType::SAME_UPPER == auto_pad_type) {
+      use_auto_pad = true;
+      nnapi_padding_code = (AutoPadType::VALID == auto_pad_type) ? ANEURALNETWORKS_PADDING_VALID
+                                                                 : ANEURALNETWORKS_PADDING_SAME;
+    }
+  } else if (onnx_dilations == std::vector<int32_t>{1, 1}) {
+    // Since NNAPI runs more efficiently using auto_pad, we try to map the NOTSET padding to auto_pad
+    std::vector<int32_t> same_upper_pads;
+    ORT_RETURN_IF_ERROR(ComputeConvPads(input_shape, weight_size_y, weight_size_x,
+                                        onnx_pads, onnx_strides, onnx_dilations,
+                                        AutoPadType::SAME_UPPER, use_nchw,
+                                        same_upper_pads));
+    if (onnx_pads == same_upper_pads) {
+      use_auto_pad = true;
+      nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
+    }
+  }
+
+  return Status::OK();
+}
+
+Status GetBinaryOpQuantizationScaleAndZeroPoint(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    float& a_scale, float& b_scale, float& y_scale,
+    int32_t& a_zero_point, int32_t& b_zero_point, int32_t& y_zero_point) {
+  ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+      initializers, node_unit.Inputs()[0], node_unit.ModelPath(), a_scale, a_zero_point));
+  ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+      initializers, node_unit.Inputs()[1], node_unit.ModelPath(), b_scale, b_zero_point));
+  ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+      initializers, node_unit.Outputs()[0], node_unit.ModelPath(), y_scale, y_zero_point));
+
+  return Status::OK();
+}
+
+Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
+    const ModelBuilder& model_builder, const NodeUnit& node_unit,
+    float& a_scale, float& w_scale, float& y_scale,
+    int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
+    std::optional<std::vector<float>>& w_scales, bool& is_per_tensor_u8s8) {
+  is_per_tensor_u8s8 = false;
+  const auto& initializers(model_builder.GetInitializerTensors());
+  // Get scale and zero points
+  // We will handle per-channel weight scale and zero point later
+  ORT_RETURN_IF_ERROR(
+      GetBinaryOpQuantizationScaleAndZeroPoint(initializers, node_unit,
+                                               a_scale, w_scale, y_scale,
+                                               a_zero_point, w_zero_point, y_zero_point));
+
+  const auto& inputs = node_unit.Inputs();
+  const auto& weight_tensor = *initializers.at(inputs[1].node_arg.Name());
+
+  // We are done here if this is u8u8 QLinearConv
+  if (weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8)
+    return Status::OK();
+
+  // This is per-tensor u8s8
+  // NNAPI does not support per-tensor u8s8
+  // For this case we will need to convert the int8 weight tensor to uint8
+  // And have same scale and 128 as zero point
+  // The conversion of the weight tensor itself will be done in the OpBuilder
+  const auto& scale_tensor = *initializers.at(inputs[1].quant_param->scale.Name());
+  int64_t scale_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
+  if (scale_dim == 1) {
+    w_zero_point = 128;
+    is_per_tensor_u8s8 = true;
+    return Status::OK();
+  }
+
+  // Now we have u8s8 per-channel QlinearConv
+  // u8s8 QlinearConv always have 0 as zero point so we are not getting it here
+  // and we do not use w_scale here, so we reset them back to 0
+  w_scale = 0.0f;
+  w_zero_point = 0;
+
+  // We need to copy the 1d scales array for per-channel quantization
+  std::vector<uint8_t> unpacked_tensor;
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scale_tensor, unpacked_tensor));
+  const float* scales = reinterpret_cast<const float*>(unpacked_tensor.data());
+  const size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
+  std::vector<float> scales_vec(scales, scales + scales_size);
+  w_scales = std::make_optional(std::move(scales_vec));
+  return Status::OK();
+}
+
+Status IsValidInputQuantizedType(const ModelBuilder& model_builder,
+                                 const std::string& input_name,
+                                 float scale,
+                                 int32_t zero_point) {
+  const OperandType& input_operand_type = model_builder.GetOperandTypes().at(input_name);
+  if (input_operand_type.operandType.scale != scale) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input [", input_name,
+                           "] NNAPI input scale: ", input_operand_type.operandType.scale,
+                           ", ONNX input scale: ", scale);
+  }
+
+  if (input_operand_type.operandType.zeroPoint != zero_point) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input [", input_name,
+                           "] NNAPI input zero point: ", input_operand_type.operandType.zeroPoint,
+                           ", ONNX input zero point: ", zero_point);
+  }
+
+  return Status::OK();
+}
+
+Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
+                                      const std::string& input_name,
+                                      float scale,
+                                      int32_t zero_point,
+                                      const std::optional<std::vector<float>>& scales) {
+  // first verify as the weight has no per-channel quantization
+  ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input_name, scale, zero_point));
+
+  if (scales) {
+    const OperandType& input_operand_type = model_builder.GetOperandTypes().at(input_name);
+    if (!input_operand_type.channelQuant) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input [", input_name, "] has no channelQuant");
+    }
+
+    if (input_operand_type.channelQuant.value().scales != scales.value()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input [", input_name, "] has mismatch scales between onnx and NNAPI");
+    }
+  }
+
+  return Status::OK();
+}
+
+void AddQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder,
+                                            const NodeUnitIODef::QuantParam& quant_param) {
+  // If we reach here, we assume the io_def has quant_param
+  model_builder.AddInitializerToSkip(quant_param.scale.Name());  // scale
+  LOGS_DEFAULT(VERBOSE) << quant_param.scale.Name() << " is skipped";
+  if (quant_param.zero_point) {
+    model_builder.AddInitializerToSkip(quant_param.zero_point->Name());  // zero_point
+    LOGS_DEFAULT(VERBOSE) << quant_param.zero_point->Name() << " is skipped";
+  }
+}
+
+void AddInputToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_def) {
+  model_builder.AddInitializerToSkip(io_def.node_arg.Name());  // main input
+  if (io_def.quant_param)
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *io_def.quant_param);
+}
+
+Status IsOpInRequiredLayout(bool use_nchw, const NodeUnit& node_unit) {
+  bool is_op_nhwc = node_unit.Domain() == kMSInternalNHWCDomain;
+  if (is_op_nhwc && use_nchw) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Expected layout and operator layout do not match. Possible bug in layout optimizer.");
   }
 
   return Status::OK();
