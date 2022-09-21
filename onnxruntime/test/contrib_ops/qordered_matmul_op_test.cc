@@ -6,7 +6,7 @@
 #if defined(USE_CUDA)
 
 #include <cuda.h>
- 
+
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
 namespace onnxruntime {
@@ -18,8 +18,7 @@ static void RunQOrdered_MatMul_Test(
     std::vector<int64_t> const& shape_Y,
     OrderCublasLt weight_order,
     float scale_A, float scale_B, float scale_C, float scale_Y,
-    bool add_bias = false, bool broadcast_c_batch = false) {
-
+    bool add_bias = false, bool broadcast_c_batch = false, bool per_channel = false) {
   int cuda_runtime_version = 0;
   // Need 11.4 or higher cuda runtime
   if ((cudaRuntimeGetVersion(&cuda_runtime_version) != cudaSuccess) || (cuda_runtime_version < 11040)) {
@@ -47,6 +46,7 @@ static void RunQOrdered_MatMul_Test(
   int64_t cols_B = 0, rows_B = 0, batch_B = 0;
   BatchRowColFromShape(shape_B, batch_B, rows_B, cols_B);
   OrderedIndex indexerB(ORDER_ROW, cols_B, rows_B);  // B need Transpose
+  std::vector<float> scale_B_vec(cols_B, scale_B);
 
   int64_t cols_Y = 0, rows_Y = 0, batch_Y = 0;
   BatchRowColFromShape(shape_Y, batch_Y, rows_Y, cols_Y);
@@ -55,7 +55,7 @@ static void RunQOrdered_MatMul_Test(
   std::vector<int64_t> bias_shape = {cols_Y};
   std::vector<float> bias;
   if (add_bias) {  // make bias not too big
-    float bias_scale = MLFloat16(scale_Y / 27.0f).ToFloat();
+    float bias_scale = MLFloat16(scale_Y * scale_Y / 27.0f).ToFloat();
     bias = GenData<float>(bias_shape, bias_scale);
   }
   std::vector<int8_t> vec_C;
@@ -82,7 +82,7 @@ static void RunQOrdered_MatMul_Test(
         }
         float sum = alpha * isum;
         if (add_bias) {
-          sum += bias[n];
+          sum += bias[n] / scale_Y;
         }
         auto posY = indexerY(m, n);
         if (scale_C != 0.0f) {
@@ -107,7 +107,11 @@ static void RunQOrdered_MatMul_Test(
   test_qorder.AddInput<int8_t>("A", shape_A, vec_A);
   test_qorder.AddInput<float>("scale_A", {}, {scale_A}, true);
   test_qorder.AddInput<int8_t>("B", shape_B, vec_B, true);
-  test_qorder.AddInput<float>("scale_B", {}, {scale_B}, true);
+  if (per_channel) {
+    test_qorder.AddInput<float>("scale_B", {cols_B}, scale_B_vec, true);
+  } else {
+    test_qorder.AddInput<float>("scale_B", {}, {scale_B}, true);
+  }
   test_qorder.AddInput<float>("scale_Y", {}, {scale_Y}, true);
   if (add_bias) {
     test_qorder.AddInput<float>("bias", bias_shape, bias, true);
@@ -132,6 +136,15 @@ TEST(QOrderedTest, MatMul_COL_16x64x32) {
                           false /* add bias */, false /* broadcast batch c */);
 }
 
+TEST(QOrderedTest, MatMul_COL_16x64x32_perchannel) {
+  std::vector<int64_t> shape_A = {16, 32};
+  std::vector<int64_t> shape_B = {32, 64};
+  std::vector<int64_t> shape_Y = {16, 64};
+  RunQOrdered_MatMul_Test(shape_A, shape_B, shape_Y, ORDER_COL,
+                          1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
+                          false /* add bias */, false /* broadcast batch c */, true);
+}
+
 #ifndef _WIN32
 TEST(QOrderedTest, MatMul_bias_COL_16x64x32) {
   std::vector<int64_t> shape_A = {16, 32};
@@ -140,6 +153,15 @@ TEST(QOrderedTest, MatMul_bias_COL_16x64x32) {
   RunQOrdered_MatMul_Test(shape_A, shape_B, shape_Y, ORDER_COL,
                           1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
                           true /* add bias */, false /* broadcast batch c */);
+}
+
+TEST(QOrderedTest, MatMul_bias_COL_16x64x32_perchannel) {
+  std::vector<int64_t> shape_A = {16, 32};
+  std::vector<int64_t> shape_B = {32, 64};
+  std::vector<int64_t> shape_Y = {16, 64};
+  RunQOrdered_MatMul_Test(shape_A, shape_B, shape_Y, ORDER_COL,
+                          1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
+                          true /* add bias */, false /* broadcast batch c */, true);
 }
 #endif  // ifndef _WIN32
 
@@ -152,6 +174,15 @@ TEST(QOrderedTest, MatMul_addC_COL_16x64x32) {
                           false /* add bias */, false /* broadcast batch c */);
 }
 
+TEST(QOrderedTest, MatMul_addC_COL_16x64x32_perchannel) {
+  std::vector<int64_t> shape_A = {16, 32};
+  std::vector<int64_t> shape_B = {32, 64};
+  std::vector<int64_t> shape_Y = {16, 64};
+  RunQOrdered_MatMul_Test(shape_A, shape_B, shape_Y, ORDER_COL,
+                          1.0f / 32.0f, 1.0f / 32.0f, 4.0f /*scaleC*/, 2.0f,
+                          false /* add bias */, false /* broadcast batch c */, true);
+}
+
 #ifndef _WIN32
 TEST(QOrderedTest, MatMul_bias_addC_COL_16x64x32) {
   std::vector<int64_t> shape_A = {16, 32};
@@ -160,6 +191,15 @@ TEST(QOrderedTest, MatMul_bias_addC_COL_16x64x32) {
   RunQOrdered_MatMul_Test(shape_A, shape_B, shape_Y, ORDER_COL,
                           1.0f / 32.0f, 1.0f / 32.0f, 4.0f /*scaleC*/, 2.0f,
                           true /* add bias */, true /* broadcast batch c */);
+}
+
+TEST(QOrderedTest, MatMul_bias_addC_COL_16x64x32_perchannel) {
+  std::vector<int64_t> shape_A = {16, 32};
+  std::vector<int64_t> shape_B = {32, 64};
+  std::vector<int64_t> shape_Y = {16, 64};
+  RunQOrdered_MatMul_Test(shape_A, shape_B, shape_Y, ORDER_COL,
+                          1.0f / 32.0f, 1.0f / 32.0f, 4.0f /*scaleC*/, 2.0f,
+                          true /* add bias */, true /* broadcast batch c */, true);
 }
 #endif  // ifndef _WIN32
 
@@ -181,6 +221,15 @@ TEST(QOrderedTest, MatMul_bias_COL_16x64x32_b2_1) {
                           1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
                           true /* add bias */, false /* broadcast batch c */);
 }
+
+TEST(QOrderedTest, MatMul_bias_COL_16x64x32_b2_1_perchannel) {
+  std::vector<int64_t> shape_A = {2, 16, 32};
+  std::vector<int64_t> shape_B = {1, 32, 64};
+  std::vector<int64_t> shape_Y = {2, 16, 64};
+  RunQOrdered_MatMul_Test(shape_A, shape_B, shape_Y, ORDER_COL,
+                          1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
+                          true /* add bias */, false /* broadcast batch c */, true);
+}
 #endif  // ifndef _WIN32
 
 TEST(QOrderedTest, MatMul_addC_COL_16x64x32_b2_1) {
@@ -190,6 +239,15 @@ TEST(QOrderedTest, MatMul_addC_COL_16x64x32_b2_1) {
   RunQOrdered_MatMul_Test(shape_A, shape_B, shape_Y, ORDER_COL,
                           1.0f / 32.0f, 1.0f / 32.0f, 4.0f /*scaleC*/, 2.0f,
                           false /* add bias */, false /* broadcast batch c */);
+}
+
+TEST(QOrderedTest, MatMul_addC_COL_16x64x32_b2_1_perchannel) {
+  std::vector<int64_t> shape_A = {2, 16, 32};
+  std::vector<int64_t> shape_B = {1, 32, 64};
+  std::vector<int64_t> shape_Y = {2, 16, 64};
+  RunQOrdered_MatMul_Test(shape_A, shape_B, shape_Y, ORDER_COL,
+                          1.0f / 32.0f, 1.0f / 32.0f, 4.0f /*scaleC*/, 2.0f,
+                          false /* add bias */, false /* broadcast batch c */, true);
 }
 
 TEST(QOrderedTest, MatMul_addC_broadcastC_COL_16x64x32_b2_1) {
@@ -210,6 +268,15 @@ TEST(QOrderedTest, MatMul_addC_bias_COL_16x64x32_b2_1) {
                           1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
                           true /* add bias */, false /* broadcast batch c */);
 }
+
+TEST(QOrderedTest, MatMul_addC_bias_COL_16x64x32_b2_1_perchannel) {
+  std::vector<int64_t> shape_A = {2, 16, 32};
+  std::vector<int64_t> shape_B = {1, 32, 64};
+  std::vector<int64_t> shape_Y = {2, 16, 64};
+  RunQOrdered_MatMul_Test(shape_A, shape_B, shape_Y, ORDER_COL,
+                          1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
+                          true /* add bias */, false /* broadcast batch c */, true);
+}
 #endif  // ifndef _WIN32
 
 #ifndef _WIN32
@@ -221,11 +288,20 @@ TEST(QOrderedTest, MatMul_bias_addC_broadcastC_COL_16x64x32_b2_1) {
                           1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
                           true /* add bias */, true /* broadcast batch c */);
 }
+
+TEST(QOrderedTest, MatMul_bias_addC_broadcastC_COL_16x64x32_b2_1_perchannel) {
+  std::vector<int64_t> shape_A = {2, 16, 32};
+  std::vector<int64_t> shape_B = {1, 32, 64};
+  std::vector<int64_t> shape_Y = {2, 16, 64};
+  RunQOrdered_MatMul_Test(shape_A, shape_B, shape_Y, ORDER_COL,
+                          1.0f / 32.0f, 1.0f / 32.0f, 0.0f /*scaleC*/, 2.0f,
+                          true /* add bias */, true /* broadcast batch c */, true);
+}
 #endif  // ifndef _WIN32
 
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif // CUDA_VERSION
+#endif  // CUDA_VERSION
 
 #endif  // USE_CUDA

@@ -29,6 +29,8 @@ class QOrderedMatMul final : public CudaKernel {
   int scale_b_size_;
   const float* origin_scale_B_vector_;
   BufferUniquePtr calculated_alpha_;
+  BufferUniquePtr const_bias_scaled_;
+  int const_bias_size_;
   float const_scale_B_;
   float const_scale_C_;
   float const_scale_Y_;

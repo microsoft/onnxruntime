@@ -15,8 +15,9 @@ namespace cuda {
 
 constexpr int QOrderedMatMulScaleA = 1;
 constexpr int QOrderedMatMulScaleB = 3;
-constexpr int QOrderedMatMulScaleC = 7;
 constexpr int QOrderedMatMulScaleY = 4;
+constexpr int QOrderedMatMulBias = 5;
+constexpr int QOrderedMatMulScaleC = 7;
 
 ONNX_OPERATOR_KERNEL_EX(
     QOrderedMatMul,
@@ -42,17 +43,12 @@ QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
   order_A_ = GetCublasLtOrderAttr(info, "order_A");
   order_B_ = GetCublasLtOrderAttr(info, "order_B");
   order_Y_ = GetCublasLtOrderAttr(info, "order_Y");
-  if (order_B_ == CUBLASLT_ORDER_COL) {
-    ORT_ENFORCE(order_A_ == CUBLASLT_ORDER_ROW && order_Y_ == CUBLASLT_ORDER_ROW,
-                "When order_B is ORDER_COL, other matrix must be ORDER_ROW");
-  } else {
-    ORT_ENFORCE(order_B_ == CUBLASLT_ORDER_COL4_4R2_8C || order_B_ == CUBLASLT_ORDER_COL32_2R_4R4,
-                "If order_B is not ORDER_COL, it must be either ORDER_COL4_4R2_8C or ORDER_COL32_2R_4R4");
-    ORT_ENFORCE(order_Y_ == CUBLASLT_ORDER_COL32 && order_A_ == CUBLASLT_ORDER_COL32,
-                "If order_B is not ORDER_COL, Only CUBLASLT_ORDER_COL32 is supported for order_A and order_Y");
-  }
+  ORT_ENFORCE(order_B_ == CUBLASLT_ORDER_COL, "Other order is currently not supported!");
+  ORT_ENFORCE(order_A_ == CUBLASLT_ORDER_ROW && order_Y_ == CUBLASLT_ORDER_ROW,
+              "When order_B is ORDER_COL, other matrix must be ORDER_ROW");
   const_scale_A_ = const_scale_B_ = const_scale_C_ = const_scale_Y_ = 0.0;
   origin_scale_B_vector_ = nullptr;
+  const_bias_size_ = 0;
 
 #else
 
@@ -91,9 +87,20 @@ Status QOrderedMatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
       ORT_ENFORCE(const_scale_Y_ > 0.0f, "scale_Y_ must > 0.0f");
       if (origin_scale_B_vector_) {
         calculated_alpha_ = BufferUniquePtr(alloc->Alloc(scale_b_size_ * sizeof(float)), BufferDeleter(alloc));
+        CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), scale_b_size_, origin_scale_B_vector_, 1, (float*)calculated_alpha_.get(), 1));
         float rescale = static_cast<float>((double)const_scale_A_ / const_scale_Y_);
         CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), scale_b_size_, &rescale, (float*)calculated_alpha_.get(), 1));
       }
+    }
+
+    if (input_idx == QOrderedMatMulBias) {
+      ORT_ENFORCE(const_scale_Y_ > 0.0f, "scale_Y_ must be constant and > 0.0f");
+      ORT_ENFORCE(tensor.Shape().NumDimensions() == 1 && tensor.Shape()[0] > 0, "bias must be 1d array!");
+      const_bias_size_ = static_cast<int>(tensor.Shape().Size());
+      const_bias_scaled_ = BufferUniquePtr(alloc->Alloc(const_bias_size_ * sizeof(float)), BufferDeleter(alloc));
+      CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), const_bias_size_, tensor.Data<float>(), 1, (float*)const_bias_scaled_.get(), 1));
+      float rescale = static_cast<float>(1.0 / (double)const_scale_Y_);
+      CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), const_bias_size_, &rescale, (float*)const_bias_scaled_.get(), 1));
     }
   }
 
@@ -131,9 +138,13 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
   ORT_ENFORCE(const_scale_B_ > 0.0f || calculated_alpha_.get() != nullptr, "scale_B_ must be constant!");
   ORT_ENFORCE(calculated_alpha_.get() == nullptr || scale_b_size_ == colsB, "if not scalar, scale_B_ must be of size colsB!");
 
-  const Tensor* tensor_bias = context->Input<Tensor>(5);
-  ORT_ENFORCE(tensor_bias == nullptr || (tensor_bias->Shape().NumDimensions() == 1 && tensor_bias->Shape()[0] == colsB));
-  const float* bias = (tensor_bias == nullptr) ? nullptr : tensor_bias->Data<float>();
+  float const* bias = reinterpret_cast<float const*>(const_bias_scaled_.get());
+  if (bias == nullptr) {
+    const Tensor* tensor_bias = context->Input<Tensor>(QOrderedMatMulBias);
+    ORT_ENFORCE(tensor_bias == nullptr, "non const bias currently is not supported");
+  } else {
+    ORT_ENFORCE(const_bias_size_ == colsB, "bias size not matching with input matrix B's columns.");
+  }
 
   ORT_ENFORCE(batchA == batchB || batchB == 1, "batch count for matrix A and matrix B does not match");
   ORT_ENFORCE(colsA == rowsB, "Sahpe mis-match");
