@@ -24,6 +24,7 @@ using IntervalT = std::pair<size_t, size_t>;
 #endif
 
 class SessionState;
+class ExecutionContext;
 
 // Captures information required to allocate/reuse buffer for a ml-value
 struct AllocPlanPerValue {
@@ -80,8 +81,6 @@ struct AllocPlanPerValue {
   AllocPlanPerValue() : location(CPU, OrtInvalidAllocator) {}
 };
 
-using StepCommandFn = std::function<Status(void*, size_t, bool&)>;
-
 using NotificationIndex = size_t;
 
 // SequentialExecutionPlan: This is the data that is produced by a static
@@ -103,7 +102,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   class ExecutionStep {
    public:
     virtual ~ExecutionStep() {}
-    virtual StepCommandFn GetStepFun() = 0;
+    virtual Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) = 0;
     virtual std::string Dump() const = 0;
   };
 
