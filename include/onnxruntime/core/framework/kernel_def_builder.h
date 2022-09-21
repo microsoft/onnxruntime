@@ -200,7 +200,7 @@ class KernelDefBuilder {
   /**
      The execution provider type of the kernel.
   */
-  KernelDefBuilder& Provider(ProviderType& provider_type);
+  KernelDefBuilder& Provider(ProviderType provider_type);
   KernelDefBuilder& Provider(const char* provider_type);
 
   /**
