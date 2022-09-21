@@ -170,8 +170,8 @@ class KernelDefBuilder {
   explicit KernelDefBuilder()
       : kernel_def_(std::make_unique<KernelDef>()) {}
 
-  KernelDefBuilder& SetName(const std::string& name);
-  KernelDefBuilder& SetName(const char* name);
+  KernelDefBuilder& SetName(const std::string& op_name);
+  KernelDefBuilder& SetName(const char* op_name);
 
   KernelDefBuilder& SetDomain(const std::string& domain);
   KernelDefBuilder& SetDomain(const char* domain);
