@@ -1,5 +1,20 @@
 ---
-# turn off readability-braces-around-statements to allow single line statement like 'if (x == y) doSomething();'
+
+# NOTE:
+#     The check is a multiline string here. Comment must not be moved into the string.
+#     Be sure to keep the disabled rules alphabetically sorted.
+#
+# Checks that are turned off:
+#
+# -cppcoreguidelines-macro-usage: There are a lot of false-positives like Function-like macro 'Foo' used; consider a 'constexpr' template function
+# -cppcoreguidelines-pro-type-reinterpret-cast: Originally turned off.
+# -google-readability-todo: Not enforced.
+# -google-runtime-references: https://github.com/microsoft/onnxruntime/blob/main/docs/Coding_Conventions_and_Standards.md#c-code-style.
+# -modernize-concat-nested-namespaces: We don't use it.
+# -modernize-use-trailing-return-type: Stylistic preference we do not enforce.
+# -readability-braces-around-statements: Allow single line statement like 'if (x == y) doSomething();'.
+# -readability-identifier-length: A lot of numerical code rely on short names to improve readability.
+
 Checks: >
   -*,
   cppcoreguidelines-*,
@@ -7,10 +22,14 @@ Checks: >
   readability-*,
   modernize-*,
   bugprone-*,
-  -readability-braces-around-statements,
-  -google-runtime-references,
+  -cppcoreguidelines-macro-usage,
   -cppcoreguidelines-pro-type-reinterpret-cast,
-  -modernize-use-trailing-return-type
+  -google-readability-todo,
+  -google-runtime-references,
+  -modernize-concat-nested-namespaces,
+  -modernize-use-trailing-return-type,
+  -readability-braces-around-statements,
+  -readability-identifier-length,
 WarningsAsErrors: ""
 HeaderFilterRegex: '.*onnxruntime\/core\/.*'
 AnalyzeTemporaryDtors: false
