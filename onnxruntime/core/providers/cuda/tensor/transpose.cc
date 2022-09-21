@@ -94,7 +94,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
 
   const auto input_dims = input_shape_override ? input_shape_override->GetDims() : input.Shape().GetDims();
   const auto output_dims = output_shape_override ? output_shape_override->GetDims() : output.Shape().GetDims();
-  auto rank = static_cast<int32_t>(input_dims.size());
+  auto rank = input_dims.size();
 
   // flatten the adjacent dimensions which are contiguous
   // for example: permutations[0, 2, 3, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
