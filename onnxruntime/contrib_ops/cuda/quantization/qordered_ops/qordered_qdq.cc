@@ -96,6 +96,9 @@ cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order
 QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+  int cuda_runtime_version = 0;
+  CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
+  ORT_ENFORCE(cuda_runtime_version >= 11040, "QOrderedMatmul need cuda runtime higher than 11.4");
 
   order_input_ = GetCublasLtOrderAttr(info, "order_input");
   order_output_ = GetCublasLtOrderAttr(info, "order_output");
@@ -105,13 +108,16 @@ QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info
 #else
 
   ORT_UNUSED_PARAMETER(info);
-  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
   
 #endif
 }
 
 DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+  int cuda_runtime_version = 0;
+  CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
+  ORT_ENFORCE(cuda_runtime_version >= 11040, "QOrderedMatmul need cuda runtime higher than 11.4");
 
   int64_t to_type = 0;
   Status status = info.GetAttr("to", &to_type);
@@ -127,7 +133,7 @@ DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(
 #else
 
   ORT_UNUSED_PARAMETER(info);
-  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
 
 #endif
 
@@ -178,7 +184,7 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
 #else
 
   ORT_UNUSED_PARAMETER(info);
-  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
 
 #endif
 }
@@ -223,7 +229,7 @@ Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
 #else
 
   ORT_UNUSED_PARAMETER(info);
-  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
 
 #endif
 }

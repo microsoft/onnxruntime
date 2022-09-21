@@ -33,6 +33,11 @@ ONNX_OPERATOR_KERNEL_EX(
 
 QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
+  int cuda_runtime_version = 0;
+  CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
+  ORT_ENFORCE(cuda_runtime_version >= 11040, "QOrderedMatmul need cuda runtime higher than 11.4");
+  auto& device_prop = GetDeviceProp();
+  ORT_ENFORCE((device_prop.major * 10 + device_prop.minor) >= 75, "QOrderedMatmul need sm75 or highter");
 
   order_A_ = GetCublasLtOrderAttr(info, "order_A");
   order_B_ = GetCublasLtOrderAttr(info, "order_B");
@@ -51,7 +56,7 @@ QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
 
 #else
 
-  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
 
 #endif
 }
@@ -98,7 +103,7 @@ Status QOrderedMatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
   ORT_UNUSED_PARAMETER(input_idx);
   ORT_UNUSED_PARAMETER(alloc);
   ORT_UNUSED_PARAMETER(is_packed);
-  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
 
 #endif
 
@@ -160,7 +165,7 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
   cublasLtPointerMode_t pointer_mode = CUBLASLT_POINTER_MODE_HOST;
   if (const_scale_B_ == 0.0f) {
     alpha = (const float*)calculated_alpha_.get();
-    pointer_mode = (cublasLtPointerMode_t)4; //CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST, 11.4.2 header needed
+    pointer_mode = (cublasLtPointerMode_t)4;  // CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST, 11.4.2 header needed
   } else {
     alpha_value = const_scale_A_ * const_scale_B_ / const_scale_Y_;
   }
@@ -172,11 +177,10 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
                                       tensor_Y->MutableData<int8_t>(), (cublasLtOrder_t)order_B_,
                                       pointer_mode));
 
-
 #else
 
   ORT_UNUSED_PARAMETER(context);
-  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
 
 #endif
 

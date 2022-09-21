@@ -161,6 +161,12 @@ inline void debug_print([[maybe_unused]] const T* arr,
 QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info), input_hidden_size_(0) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
+  int cuda_runtime_version = 0;
+  CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
+  ORT_ENFORCE(cuda_runtime_version >= 11040, "QOrderedMatmul need cuda runtime higher than 11.4");
+  auto& device_prop = GetDeviceProp();
+  ORT_ENFORCE((device_prop.major * 10 + device_prop.minor) >= 75, "QOrderedMatmul need sm75 or highter");
+
   ORT_ENFORCE(qkv_hidden_sizes_.size() == 3, "qkv_hidden_sizes is needed and must be of shape [3]!");
   ORT_ENFORCE(std::all_of(qkv_hidden_sizes_.begin(), qkv_hidden_sizes_.end(),
                           [num_heads = this->num_heads_](int64_t v) { return (v > 0) && (v % num_heads) == 0; }),
@@ -186,7 +192,7 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
 
 #else
 
-  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
 
 #endif
 
@@ -307,7 +313,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
 #else
 
   ORT_UNUSED_PARAMETER(context);
-  ORT_ENFORCE(false, "Higher CUDA_VERSION is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
 
 #endif
 

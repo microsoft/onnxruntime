@@ -242,6 +242,12 @@ static std::vector<float> scale_bias(const std::vector<float>& src, float scale)
 }
 
 TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
+  int cuda_runtime_version = 0;
+  // Need 11.4 or higher cuda runtime
+  if ((cudaRuntimeGetVersion(&cuda_runtime_version) != cudaSuccess) || (cuda_runtime_version < 11040)) {
+    return;
+  }
+
   // Needs Turing or higher architecture
   if (NeedSkipIfCudaArchLowerThan(750)) {
     return;
