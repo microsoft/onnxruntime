@@ -259,7 +259,7 @@ class FusionQOrderedAttention(Fusion):
 
         (_, _, dequantize_k, quantize_k, add_k, matmul_k) = k_nodes
 
-        # Make sure the Q/DQ has the proper zero points and constant per-tensor scales   
+        # Make sure the Q/DQ has the proper zero points and constant per-tensor scales
         if not FusionUtils.check_qdq_node_for_fusion(quantize_k, self.model):
             return
 
@@ -300,7 +300,7 @@ class FusionQOrderedAttention(Fusion):
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
             # TODO: Fix this
-            # num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)  
+            # num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
             num_heads, hidden_size = (12, 768)
 
             if hidden_size > 0 and (hidden_size % num_heads) != 0:
