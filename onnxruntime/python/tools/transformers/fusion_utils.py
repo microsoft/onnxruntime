@@ -165,19 +165,21 @@ class FusionUtils:
         # Zero point should be constant and should have a value of 0
         zero_point = model.get_constant_value(node.input[2])
 
+        # Zero point and scale should have same number of dims
+        if scale.ndim != zero_point.ndim:
+            return False
+
         # Zero point is not constant or zero point is not zero
         if zero_point is None:
             return False
 
-        if allow_per_tensor_quantization_only:
-            # Per tensor quantization
-            if zero_point != 0:
-                return False
-            # Per channel quantization
-            else:
-                return numpy.all(zero_point == 0)
+        # Zero point(s) should be all 0s
+        # Per-tensor quantization
+        if zero_point.ndim == 0:
+            return zero_point == 0
 
-        return True
+        # Per-channel quantization
+        return numpy.all(zero_point == 0)
 
     def check_node_input_value(self, node, input_index: int, expected_value):
         """Verify that a node has expected input value

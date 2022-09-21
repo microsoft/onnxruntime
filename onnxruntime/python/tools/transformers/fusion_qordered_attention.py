@@ -1,7 +1,7 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 from logging import getLogger
 from typing import Tuple
@@ -68,7 +68,11 @@ class FusionQOrderedAttention(Fusion):
         return num_heads, hidden_size
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        add_before_layernorm = self.model.match_parent_path(normalize_node, ["QuantizeLinear", "Add"], [0, 0],)
+        add_before_layernorm = self.model.match_parent_path(
+            normalize_node,
+            ["QuantizeLinear", "Add"],
+            [0, 0],
+        )
 
         if add_before_layernorm is not None:
             start_node = add_before_layernorm[-1]
@@ -91,8 +95,7 @@ class FusionQOrderedAttention(Fusion):
         # QKV nodes
         qkv_nodes = self.model.match_parent_path(
             start_node,
-            ["Add", "MatMul", "Reshape", "Transpose", 
-            "DequantizeLinear", "QuantizeLinear", "MatMul"],
+            ["Add", "MatMul", "Reshape", "Transpose", "DequantizeLinear", "QuantizeLinear", "MatMul"],
             [None, None, 0, 0, 0, 0, 0],
         )
 
@@ -100,7 +103,7 @@ class FusionQOrderedAttention(Fusion):
             logger.debug("fuse_qordered_attention: failed to match qkv path")
             return
 
-        (_, projection_matmul, reshape_qkv, transpose_qkv, dequantize_qkv, quantize_qkv,  matmul_qkv) = qkv_nodes
+        (_, projection_matmul, reshape_qkv, transpose_qkv, dequantize_qkv, quantize_qkv, matmul_qkv) = qkv_nodes
 
         # Make sure the Q/DQ has the proper zero points and constant per-tensor scales
         if not FusionUtils.check_qdq_node_for_fusion(quantize_qkv, self.model):
@@ -126,16 +129,17 @@ class FusionQOrderedAttention(Fusion):
         root_input = other_inputs[0]
 
         # V nodes
-        v_nodes = self.model.match_parent_path(matmul_qkv, 
-                                              ["Transpose", "Reshape", 
-                                              "DequantizeLinear", "QuantizeLinear",
-                                              "Add", "MatMul"], 
-                                              [1, 0, 0, 0, 0, None])
+        v_nodes = self.model.match_parent_path(
+            matmul_qkv,
+            ["Transpose", "Reshape", "DequantizeLinear", "QuantizeLinear", "Add", "MatMul"],
+            [1, 0, 0, 0, 0, None],
+        )
+
         if v_nodes is None:
             logger.debug("fuse_qordered_attention: failed to match v path")
             return
 
-        (_, _, dequantize_v, quantize_v,  add_v, matmul_v) = v_nodes
+        (_, _, dequantize_v, quantize_v, add_v, matmul_v) = v_nodes
 
         # Make sure the Q/DQ has the proper zero points and constant per-tensor scales
         if not FusionUtils.check_qdq_node_for_fusion(quantize_v, self.model):
@@ -145,9 +149,7 @@ class FusionQOrderedAttention(Fusion):
             return
 
         # V MatMul weight
-        dequantize_v_matmul_weight = self.model.match_parent_path(matmul_v, 
-                                              ["DequantizeLinear"], 
-                                              [1])
+        dequantize_v_matmul_weight = self.model.match_parent_path(matmul_v, ["DequantizeLinear"], [1])
 
         if dequantize_v_matmul_weight is None:
             logger.debug("fuse_qordered_attention: failed to match v path")
@@ -164,19 +166,35 @@ class FusionQOrderedAttention(Fusion):
             return
 
         # QK nodes
-        qk_nodes = self.model.match_parent_path(matmul_qkv, 
-                                              ["DequantizeLinear", "QuantizeLinear",
-                                               "Softmax", "Add", "Div", 
-                                               "DequantizeLinear", "QuantizeLinear",
-                                               "MatMul"], 
-                                               [0, 0, 0, 0, None, 0, 0, 0])
+        qk_nodes = self.model.match_parent_path(
+            matmul_qkv,
+            [
+                "DequantizeLinear",
+                "QuantizeLinear",
+                "Softmax",
+                "Add",
+                "Div",
+                "DequantizeLinear",
+                "QuantizeLinear",
+                "MatMul",
+            ],
+            [0, 0, 0, 0, None, 0, 0, 0],
+        )
 
         if qk_nodes is None:
             logger.debug("fuse_qordered_attention: failed to match qk path")
             return
 
-        (dequantize_qk_softmax, quantize_qk_softmax, softmax_qk, 
-        add_qk, div_qk, dequantize_qk, quantize_qk, matmul_qk) = qk_nodes
+        (
+            dequantize_qk_softmax,
+            quantize_qk_softmax,
+            softmax_qk,
+            add_qk,
+            div_qk,
+            dequantize_qk,
+            quantize_qk,
+            matmul_qk,
+        ) = qk_nodes
 
         # Make sure the Q/DQ has the proper zero points and constant per-tensor scales
         if not FusionUtils.check_qdq_node_for_fusion(quantize_qk_softmax, self.model):
@@ -192,19 +210,19 @@ class FusionQOrderedAttention(Fusion):
             return
 
         # Q nodes
-        q_nodes = self.model.match_parent_path(matmul_qk, 
-                                              ["Transpose", "Reshape", 
-                                              "DequantizeLinear", "QuantizeLinear",
-                                              "Add", "MatMul"], 
-                                               [0, 0, 0, 0, 0, None])       
+        q_nodes = self.model.match_parent_path(
+            matmul_qk,
+            ["Transpose", "Reshape", "DequantizeLinear", "QuantizeLinear", "Add", "MatMul"],
+            [0, 0, 0, 0, 0, None],
+        )    
 
         if q_nodes is None:
             logger.debug("fuse_qordered_attention: failed to match q path")
             return
 
-        (_, reshape_q, dequantize_q, quantize_q,  add_q, matmul_q) = q_nodes
+        (_, reshape_q, dequantize_q, quantize_q, add_q, matmul_q) = q_nodes
 
-        # Make sure the Q/DQ has the proper zero points and constant per-tensor scales        
+        # Make sure the Q/DQ has the proper zero points and constant per-tensor scales   
         if not FusionUtils.check_qdq_node_for_fusion(quantize_q, self.model):
             return
 
@@ -212,9 +230,7 @@ class FusionQOrderedAttention(Fusion):
             return
 
         # Q MatMul weight
-        dequantize_q_matmul_weight = self.model.match_parent_path(matmul_q, 
-                                              ["DequantizeLinear"], 
-                                              [1])
+        dequantize_q_matmul_weight = self.model.match_parent_path(matmul_q, ["DequantizeLinear"], [1])
 
         if dequantize_q_matmul_weight is None:
             logger.debug("fuse_qordered_attention: failed to match q path")
@@ -231,23 +247,23 @@ class FusionQOrderedAttention(Fusion):
             return
 
         # K nodes
-        k_nodes = self.model.match_parent_path(matmul_qk, 
-                                              ["Transpose", "Reshape", 
-                                              "DequantizeLinear", "QuantizeLinear",
-                                              "Add", "MatMul"], 
-                                               [1, 0, 0, 0, 0, None])       
+        k_nodes = self.model.match_parent_path(
+            matmul_qk,
+            ["Transpose", "Reshape", "DequantizeLinear", "QuantizeLinear", "Add", "MatMul"],
+            [1, 0, 0, 0, 0, None],
+        )    
 
         if k_nodes is None:
             logger.debug("fuse_qordered_attention: failed to match k path")
             return
 
-        (_, _, dequantize_k, quantize_k,  add_k, matmul_k) = k_nodes
+        (_, _, dequantize_k, quantize_k, add_k, matmul_k) = k_nodes
 
         if k_nodes is None:
             logger.debug("fuse_qordered_attention: failed to match q path")
             return
 
-        # Make sure the Q/DQ has the proper zero points and constant per-tensor scales        
+        # Make sure the Q/DQ has the proper zero points and constant per-tensor scales      
         if not FusionUtils.check_qdq_node_for_fusion(quantize_k, self.model):
             return
 
@@ -255,9 +271,7 @@ class FusionQOrderedAttention(Fusion):
             return
 
         # K MatMul weight
-        dequantize_k_matmul_weight = self.model.match_parent_path(matmul_k, 
-                                              ["DequantizeLinear"], 
-                                              [1])
+        dequantize_k_matmul_weight = self.model.match_parent_path(matmul_k, ["DequantizeLinear"], [1])
 
         if dequantize_k_matmul_weight is None:
             logger.debug("fuse_qordered_attention: failed to match k path")
@@ -274,12 +288,12 @@ class FusionQOrderedAttention(Fusion):
             return
 
         # Mask nodes
-        mask_nodes =  self.model.match_parent_path(add_qk, ["Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"],
-                                                           [None, 0, 1, 0, 0])
+        mask_nodes = self.model.match_parent_path(
+            add_qk, ["Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"], [None, 0, 1, 0, 0]
+        )
 
         if mask_nodes is None:
-            mask_nodes =  self.model.match_parent_path(add_qk, ["Cast", "Mul", "Sub"],
-                                                            [None, None, None])
+            mask_nodes = self.model.match_parent_path(add_qk, ["Cast", "Mul", "Sub"], [None, None, None])
 
             if mask_nodes is None:
                 logger.debug("fuse_qordered_attention: failed to match mask_nodes path")
@@ -290,15 +304,15 @@ class FusionQOrderedAttention(Fusion):
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
             # TODO: Fix this
-            #num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)        
+            # num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)        
             num_heads, hidden_size = (12, 768)
 
             if hidden_size > 0 and (hidden_size % num_heads) != 0:
                 logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
                 return None
 
-            # Formulate the inputs      
-            # Actual quantized input 
+            # Formulate the inputs
+            # Actual quantized input
             attention_inputs = [dequantize_input.input[0]]
             attention_inputs.append(dequantize_input.input[1])
 
@@ -341,17 +355,17 @@ class FusionQOrderedAttention(Fusion):
             v_weight_tensor = self.model.get_initializer(dequantize_v_matmul_weight.input[0])
             FusionUtils.transpose_2d_int8_tensor(v_weight_tensor)
 
-            #q_bias_tensor = self.model.get_initializer(add_q.input[1])
-            #q_gemm_scale = self.model.get_constant_value(dequantize_q.input[1])
-            #self.model.scale_1d_tensor(q_bias_tensor, q_gemm_scale)
+            # q_bias_tensor = self.model.get_initializer(add_q.input[1])
+            # q_gemm_scale = self.model.get_constant_value(dequantize_q.input[1])
+            # self.model.scale_1d_tensor(q_bias_tensor, q_gemm_scale)
 
-            #k_bias_tensor = self.model.get_initializer(add_k.input[1])
-            #k_gemm_scale = self.model.get_constant_value(dequantize_k.input[1])
-            #self.model.scale_1d_tensor(k_bias_tensor, k_gemm_scale)
+            # k_bias_tensor = self.model.get_initializer(add_k.input[1])
+            # k_gemm_scale = self.model.get_constant_value(dequantize_k.input[1])
+            # self.model.scale_1d_tensor(k_bias_tensor, k_gemm_scale)
 
-            #v_bias_tensor = self.model.get_initializer(add_v.input[1])
-            #v_gemm_scale = self.model.get_constant_value(dequantize_v.input[1])
-            #self.model.scale_1d_tensor(v_bias_tensor, v_gemm_scale)
+            # v_bias_tensor = self.model.get_initializer(add_v.input[1])
+            # v_gemm_scale = self.model.get_constant_value(dequantize_v.input[1])
+            # self.model.scale_1d_tensor(v_bias_tensor, v_gemm_scale)
 
             # Name and create Attention node
             attention_node_name = self.model.create_node_name("QOrderedAttention")
@@ -376,7 +390,6 @@ class FusionQOrderedAttention(Fusion):
             self.nodes_to_add.append(attention_node)
             self.node_name_to_graph_name[attention_node.name] = self.this_graph_name
 
-            #self.nodes_to_remove.extend([dequantize_input])
             self.nodes_to_remove.extend([reshape_qkv, transpose_qkv, quantize_qkv, matmul_qkv])
             self.nodes_to_remove.extend(qk_nodes)
             self.nodes_to_remove.extend(q_nodes)
