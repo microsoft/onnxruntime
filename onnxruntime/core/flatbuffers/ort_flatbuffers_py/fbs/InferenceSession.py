@@ -43,18 +43,18 @@ class InferenceSession(object):
         return None
 
     # InferenceSession
-    def SessionState(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
+    def KernelTypeStrResolver(self):
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
-            from ort_flatbuffers_py.fbs.SessionState import SessionState
-            obj = SessionState()
+            from ort_flatbuffers_py.fbs.KernelTypeStrResolver import KernelTypeStrResolver
+            obj = KernelTypeStrResolver()
             obj.Init(self._tab.Bytes, x)
             return obj
         return None
 
-def InferenceSessionStart(builder): builder.StartObject(3)
+def InferenceSessionStart(builder): builder.StartObject(4)
 def InferenceSessionAddOrtVersion(builder, ortVersion): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(ortVersion), 0)
 def InferenceSessionAddModel(builder, model): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(model), 0)
-def InferenceSessionAddSessionState(builder, sessionState): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(sessionState), 0)
+def InferenceSessionAddKernelTypeStrResolver(builder, kernelTypeStrResolver): builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(kernelTypeStrResolver), 0)
 def InferenceSessionEnd(builder): return builder.EndObject()

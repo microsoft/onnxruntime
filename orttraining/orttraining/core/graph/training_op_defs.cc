@@ -3682,7 +3682,9 @@ Return true if all elements are true and false otherwise.
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
                       "PythonOp's ", i, "th input type must be a tensor.");
           ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i),
-                      "PythonOp's ", i, "th input type must be ", input_tensor_types_proto->ints().at(i));
+                      "PythonOp's ", i, "th input type must be ",
+                      TensorProto_DataType_Name(input_tensor_types_proto->ints().at(i)), " but got ",
+                      TensorProto_DataType_Name(inferred_input_type->tensor_type().elem_type()));
         }
 
         // The first output is a pointer which points to
