@@ -998,8 +998,9 @@ if (CPUINFO_SUPPORTED)
 endif()
 
 # GSL
-set(GSL_LITE_DIR ${REPO_ROOT}/cmake/external/gsl-lite)
-add_subdirectory(${GSL_LITE_DIR} EXCLUDE_FROM_ALL)
+set(GSL_DIR "${REPO_ROOT}/cmake/external/gsl-lite")
+add_subdirectory(${GSL_DIR} EXCLUDE_FROM_ALL)
+set(GSL_TARGET "gsl::gsl-lite")
 
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.

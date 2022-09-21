@@ -127,7 +127,7 @@ target_include_directories(onnxruntime_common
     PUBLIC
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
-target_link_libraries(onnxruntime_common safeint_interface Boost::mp11 gsl::gsl-lite)
+target_link_libraries(onnxruntime_common safeint_interface Boost::mp11 ${GSL_TARGET})
 
 if(NOT WIN32)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
