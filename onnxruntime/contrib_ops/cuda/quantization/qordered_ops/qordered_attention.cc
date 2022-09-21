@@ -94,10 +94,9 @@ Status QOrderedAttention::PutIntoMergedBias(const Tensor& tensor, AllocatorPtr a
   float* target = ((float*)merged_qkv_bias_.get()) + offset;
   int count = gsl::narrow_cast<int>(qkv_hidden_sizes_[qkv_index]);
   CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), count, tensor.Data<float>(), 1, target, 1));
-  // Suppose bias already adjusted, may change it later.
-  // ORT_ENFORCE(const_scale_qkv_layer_[qkv_index] > 0.0f, "qkv gemm scale should be positive constant at qkv_index", qkv_index);
-  // float scale = static_cast<float>(1.0 / const_scale_qkv_layer_[qkv_index]);
-  // CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), count, &scale, target, 1));
+  ORT_ENFORCE(const_scale_qkv_layer_[qkv_index] > 0.0f, "qkv gemm scale should be positive constant at qkv_index", qkv_index);
+  float scale = static_cast<float>(1.0 / const_scale_qkv_layer_[qkv_index]);
+  CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), count, &scale, target, 1));
   return Status::OK();
 }
 
@@ -153,7 +152,6 @@ inline void debug_print([[maybe_unused]] const T* arr,
   std::cout << std::endl;
 
 #endif
-
 }
 
 #endif
@@ -177,16 +175,11 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
   order_input_ = GetCublasLtOrderAttr(info, "order_input");
   order_weight_ = GetCublasLtOrderAttr(info, "order_weight");
   order_output_ = GetCublasLtOrderAttr(info, "order_output");
-  if (order_input_ == CUBLASLT_ORDER_ROW) {
-    ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL, "Only CUBLASLT_ORDER_COL is supported for order_weight_");
-    ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW is supported for order_output");
-  } else if (order_input_ == CUBLASLT_ORDER_COL32) {
-    ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL4_4R2_8C || order_weight_ == CUBLASLT_ORDER_COL32_2R_4R4,
-                "Only CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4 are supported for order_weight_");
-    ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_output");
-  } else {
-    ORT_ENFORCE(false, "Only CUBLASLT_ORDER_ROW or CUBLASLT_ORDER_COL32 are supported for order_input");
-  }
+
+  ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_ROW, "Currently only support ORDER_ROW input");
+  ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL, "Only CUBLASLT_ORDER_COL is supported for order_weight_");
+  ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW is supported for order_output");
+
   qkv_weight_const_count_ = scale_qkv_weight_const_count_ = qkv_bias_const_cout_ = 0;
   const_scale_input_ = const_scale_qkv_layer_[0] = const_scale_qkv_layer_[1] = const_scale_qkv_layer_[2] = 0.0f;
 
@@ -195,12 +188,11 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
   ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
 
 #endif
-
 }
 
 Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-  
+
   ORT_ENFORCE(qkv_bias_const_cout_ == 3 && scale_qkv_weight_const_count_ == 3 && qkv_weight_const_count_ == 3,
               "qkv gemm weight and their scales, qkv gemm bias must all be constant!");
   ORT_ENFORCE(const_scale_input_ > 0.0f, "input scale must be constant");

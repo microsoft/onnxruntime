@@ -235,12 +235,6 @@ static std::vector<int8_t> transpose(const std::vector<int8_t>& src, int h, int 
   return transposed;
 }
 
-static std::vector<float> scale_bias(const std::vector<float>& src, float scale) {
-  std::vector<float> scaled(src);
-  for (float& v : scaled) v /= scale;
-  return scaled;
-}
-
 TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
   int cuda_runtime_version = 0;
   // Need 11.4 or higher cuda runtime
@@ -272,9 +266,9 @@ TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
   test_qorder.AddInput<float>("scale_Q_weight", {hidden_size}, {qw_scale}, true);
   test_qorder.AddInput<float>("scale_K_weight", {hidden_size}, {kw_scale}, true);
   test_qorder.AddInput<float>("scale_V_weight", {hidden_size}, {vw_scale}, true);
-  test_qorder.AddInput<float>("Q_bias", {hidden_size}, scale_bias(q_bias, qlayer_scale), true);
-  test_qorder.AddInput<float>("K_bias", {hidden_size}, scale_bias(k_bias, klayer_scale), true);
-  test_qorder.AddInput<float>("V_bias", {hidden_size}, scale_bias(v_bias, vlayer_scale), true);
+  test_qorder.AddInput<float>("Q_bias", {hidden_size}, q_bias, true);
+  test_qorder.AddInput<float>("K_bias", {hidden_size}, k_bias, true);
+  test_qorder.AddInput<float>("V_bias", {hidden_size}, v_bias, true);
   test_qorder.AddInput<float>("scale_QKT_gemm", {}, {qk_scale}, true);
   test_qorder.AddInput<float>("scale_QKT_softmax", {}, {probs_scale}, true);
   test_qorder.AddInput<float>("scale_values_gemm", {}, {attn_out_scale}, true);
@@ -292,6 +286,6 @@ TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif // CUDA_VERSION
+#endif  // CUDA_VERSION
 
 #endif  // USE_CUDA

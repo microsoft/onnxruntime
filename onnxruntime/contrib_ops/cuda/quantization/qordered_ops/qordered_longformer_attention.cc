@@ -53,6 +53,8 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
   order_input_ = GetCublasLtOrderAttr(
       info, "order_input", 2, InputOrders,
       "QOrderedLongformerAttention: Only ORDER_ROW or ORDER_COL32 is supported for order_input");
+  ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_ROW, "Currently only support input with ORDER_ROW");
+
   if (order_input_ == CUBLASLT_ORDER_ROW) {
     num_allowed_weight_orders = 1;
     allowed_weight_orders = weight_tiles_for_input_row;
