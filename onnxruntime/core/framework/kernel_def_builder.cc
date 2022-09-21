@@ -138,7 +138,8 @@ KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* arg_name,
                                                    std::vector<MLDataType> types) {
-  return TypeConstraint(std::string{arg_name}, std::move(types));
+  kernel_def_->type_constraints_.insert_or_assign(std::string{arg_name}, std::move(types));
+  return *this;
 }
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
@@ -149,7 +150,8 @@ KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* arg_name,
                                                    MLDataType type) {
-  return TypeConstraint(std::string{arg_name}, type);
+  std::vector<MLDataType> types{type};
+  return TypeConstraint(arg_name, std::move(types));
 }
 
 KernelDefBuilder& KernelDefBuilder::MayInplace(const std::vector<std::pair<int, int>>& inplaces) {
