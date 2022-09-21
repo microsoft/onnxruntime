@@ -100,31 +100,56 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
   return !(output_memory_type_args_.empty() && !other.output_memory_type_args_.empty());
 }
 
-KernelDefBuilder& KernelDefBuilder::SetName(std::string_view op_name) {
+KernelDefBuilder& KernelDefBuilder::SetName(const std::string& op_name) {
+  kernel_def_->op_name_ = op_name;
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::SetName(const char* op_name) {
   kernel_def_->op_name_ = std::string{op_name};
   return *this;
 }
 
-KernelDefBuilder& KernelDefBuilder::SetDomain(std::string_view domain) {
+KernelDefBuilder& KernelDefBuilder::SetDomain(const std::string& domain) {
+  kernel_def_->op_domain_ = domain;
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::SetDomain(const char* domain) {
   kernel_def_->op_domain_ = std::string{domain};
   return *this;
 }
 
-KernelDefBuilder& KernelDefBuilder::Provider(std::string_view provider_type) {
+KernelDefBuilder& KernelDefBuilder::Provider(ProviderType provider_type) {
+  kernel_def_->provider_type_ = provider_type;
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::Provider(const char* provider_type) {
   kernel_def_->provider_type_ = std::string{provider_type};
   return *this;
 }
 
-KernelDefBuilder& KernelDefBuilder::TypeConstraint(std::string_view arg_name,
+KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
                                                    std::vector<MLDataType> types) {
-  kernel_def_->type_constraints_.insert_or_assign(std::string{arg_name}, std::move(types));
+  kernel_def_->type_constraints_.insert_or_assign(arg_name, std::move(types));
   return *this;
 }
 
-KernelDefBuilder& KernelDefBuilder::TypeConstraint(std::string_view arg_name,
+KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* arg_name,
+                                                   std::vector<MLDataType> types) {
+  return TypeConstraint(std::string{arg_name}, std::move(types));
+}
+
+KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
                                                    MLDataType type) {
   std::vector<MLDataType> types{type};
   return TypeConstraint(arg_name, std::move(types));
+}
+
+KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* arg_name,
+                                                   MLDataType type) {
+  return TypeConstraint(std::string{arg_name}, type);
 }
 
 KernelDefBuilder& KernelDefBuilder::MayInplace(const std::vector<std::pair<int, int>>& inplaces) {

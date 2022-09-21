@@ -6,7 +6,6 @@
 #include <limits.h>
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -171,9 +170,11 @@ class KernelDefBuilder {
   explicit KernelDefBuilder()
       : kernel_def_(std::make_unique<KernelDef>()) {}
 
-  KernelDefBuilder& SetName(std::string_view name);
+  KernelDefBuilder& SetName(const std::string& name);
+  KernelDefBuilder& SetName(const char* name);
 
-  KernelDefBuilder& SetDomain(std::string_view domain);
+  KernelDefBuilder& SetDomain(const std::string& domain);
+  KernelDefBuilder& SetDomain(const char* domain);
 
   /**
      This kernel supports operator definition since <since_version> (to latest).
@@ -199,7 +200,8 @@ class KernelDefBuilder {
   /**
      The execution provider type of the kernel.
   */
-  KernelDefBuilder& Provider(std::string_view provider_type);
+  KernelDefBuilder& Provider(ProviderType& provider_type);
+  KernelDefBuilder& Provider(const char* provider_type);
 
   /**
      Specify the set of types that this kernel supports. A further restriction
@@ -209,12 +211,14 @@ class KernelDefBuilder {
                      argument name specified in op schema, say "T".
      @param types The types that are supported in this build.
   */
-  KernelDefBuilder& TypeConstraint(std::string_view arg_name, std::vector<MLDataType> types);
+  KernelDefBuilder& TypeConstraint(const std::string& arg_name, std::vector<MLDataType> types);
+  KernelDefBuilder& TypeConstraint(const char* arg_name, std::vector<MLDataType> types);
 
   /**
      Like TypeConstraint but supports just a single type.
   */
-  KernelDefBuilder& TypeConstraint(std::string_view arg_name, MLDataType type);
+  KernelDefBuilder& TypeConstraint(const std::string& arg_name, MLDataType type);
+  KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType type);
 
   /**
      Inplace mapping from inputs to outputs allowed.
