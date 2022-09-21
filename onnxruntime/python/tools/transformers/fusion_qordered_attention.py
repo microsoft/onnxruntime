@@ -6,12 +6,11 @@
 from logging import getLogger
 from typing import Tuple
 
+from fusion_attention import AttentionMask
 from fusion_base import Fusion
-from fusion_utils import FusionUtils
+from fusion_utils import FusionUtils, NumpyHelper
 from onnx import NodeProto, helper
 from onnx_model import OnnxModel
-from fusion_attention import AttentionMask
-from fusion_utils import NumpyHelper
 
 logger = getLogger(__name__)
 
