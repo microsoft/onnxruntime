@@ -75,12 +75,13 @@ namespace standalone {
 void ReleaseNode(onnxruntime::Node* node) {
   if (node) {
     for (auto* input_arg : node->InputDefs()) {
-      delete input_arg;
+      std::unique_ptr<const onnxruntime::NodeArg>{input_arg};
     }
     for (auto* output_arg : node->OutputDefs()) {
-      delete output_arg;
+      std::unique_ptr<const onnxruntime::NodeArg>{output_arg};
+
     }
-    delete node;
+    std::unique_ptr<onnxruntime::Node>{node};
   }
 }
 
@@ -457,7 +458,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOpAttr,
 
 ORT_API(void, OrtApis::ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr* op_attr) {
   if (op_attr) {
-    delete reinterpret_cast<ONNX_NAMESPACE::AttributeProto*>(op_attr);
+    std::unique_ptr<ONNX_NAMESPACE::AttributeProto>{reinterpret_cast<ONNX_NAMESPACE::AttributeProto*>(op_attr)};
   }
 }
 
@@ -514,9 +515,8 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeOp,
 
 ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp* op) {
   if (op) {
-    auto kernel = reinterpret_cast<onnxruntime::OpKernel*>(op);
-    onnxruntime::standalone::NodeRepo::GetInstance().RemoveNode(kernel);
-    delete kernel;
+    std::unique_ptr<onnxruntime::OpKernel> op_ptr{reinterpret_cast<onnxruntime::OpKernel*>(op)};
+    onnxruntime::standalone::NodeRepo::GetInstance().RemoveNode(op_ptr.get());
   }
 }
 
@@ -531,8 +531,7 @@ ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo, _In_ const OrtKernelInfo* info, _Ou
 
 ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy) {
   if (info_copy) {
-    auto kernel_info = reinterpret_cast<onnxruntime::OpKernelInfo*>(info_copy);
-    delete kernel_info;
+    std::unique_ptr<onnxruntime::OpKernelInfo> info_copy_ptr{reinterpret_cast<onnxruntime::OpKernelInfo*>(info_copy)};
   }
 }
 
