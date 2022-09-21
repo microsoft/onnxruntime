@@ -224,10 +224,11 @@ def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
     are_close = torch.allclose(input, other, rtol=rtol, atol=atol)
     if not are_close:
         abs_diff = torch.abs(input - other)
+        max_abs_diff = torch.max(abs_diff)
         abs_other = torch.abs(other)
         max_atol = torch.max((abs_diff - rtol * abs_other))
         max_rtol = torch.max((abs_diff - atol) / abs_other)
-        err_msg = "The maximum atol is {}, maximum rtol is {}".format(max_atol, max_rtol)
+        err_msg = "The maximum atol is {}, maximum rtol is {} and the maximum abs diff is {}".format(max_atol, max_rtol, max_abs_diff)
         assert False, err_msg
 
 
