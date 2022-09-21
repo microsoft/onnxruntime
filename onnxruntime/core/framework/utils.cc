@@ -768,7 +768,8 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
-      InlinedVector<Stream*, feed_copy_info.size()> feed_streams;
+      InlinedVector<Stream*> feed_streams;
+      feed_streams.reserve(feed_copy_info.size());
       // TODO: we can pre-calculate the stream index for graph inputs in execution plan
       for (auto& copy_info : feed_copy_info) {
         auto& device = copy_info.target_device;
@@ -818,7 +819,8 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                               state,
                                               cache));
 
-    InlinedVector<Stream*, feeds_fetches_info.fetches_mlvalue_idxs.size()> fetch_streams;
+    InlinedVector<Stream*> fetches_streams;
+    fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
     auto& device_streams = device_stream_collection.GetStreams();
     for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
