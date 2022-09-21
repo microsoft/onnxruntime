@@ -113,7 +113,7 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
   RETURN_NULLPTR_IF_ERROR(EnableOrtCustomOps, session_options);
 #endif
 #if defined(USE_XNNPACK)
-  
+
   RETURN_NULLPTR_IF_ERROR(SessionOptionsAppendExecutionProvider, session_options, "XNNPACK", nullptr, nullptr, 0);
 #endif
   return session_options;
@@ -245,6 +245,12 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
   OrtAllocator* allocator = nullptr;
   size_t* p_dims = nullptr;
   void* p_string_data = nullptr;
+
+  ONNXType tensor_type;
+  RETURN_ERROR_CODE_IF_ERROR(GetValueType, tensor, &tensor_type);
+  if ( tensor_type != ONNX_TYPE_TENSOR ) {
+    return ORT_FAIL;
+  }
 
   RETURN_ERROR_CODE_IF_ERROR(GetTensorTypeAndShape, tensor, &info);
 
