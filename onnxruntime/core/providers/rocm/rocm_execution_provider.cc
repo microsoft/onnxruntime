@@ -353,7 +353,20 @@ Status ROCMExecutionProvider::EnqueueDeferredRelease() {
     // captured in CUDA graph). Once AMD adds similar feature,
     // we should replace the following line with
     //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
-    HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
+    if (cpu_buffers_info->allocator->Info().alloc_type == OrtArenaAllocator) {
+      // Release memory asynchronously to avoid blocking the compute stream.
+      HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
+    } else {
+
+      // Per
+      // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#implicit-synchronization
+      // cudaHostFree doesn't block stream, so a synchronitation is needed to make sure no kernels
+      // are using the host memory.
+      HIP_RETURN_IF_ERROR(hipStreamSynchronize(stream));
+      // hipHostFree and all other GPU APIs cannot be called by hipStreamAddCallback per spec.
+      // So we just do synchrous release.
+      ReleaseCpuBufferCallback(nullptr, hipSuccess, cpu_buffers_info.release());
+    }
   }
   // All buffers are scheduled for release.
   // Let's clear releated information so that

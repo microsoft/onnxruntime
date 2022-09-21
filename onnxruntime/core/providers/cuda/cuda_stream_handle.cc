@@ -120,7 +120,9 @@ static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
 Status CudaStream::CleanUpOnRunEnd() {
   if (deferred_cpu_buffers_.empty())
     return Status::OK();
-  if (release_cpu_buffer_on_cuda_stream_) {
+  // Release the ownership of cpu_buffers_info so that the underlying
+  // object will keep alive until the end of ReleaseCpuBufferCallback.
+  if (release_cpu_buffer_on_cuda_stream_ && cpu_allocator_->Info().alloc_type == OrtArenaAllocator) {
     auto cpu_buffers_info = new CpuBuffersInfo;
     cpu_buffers_info->allocator = cpu_allocator_;
     cpu_buffers_info->buffers = new void*[deferred_cpu_buffers_.size()];
