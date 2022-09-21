@@ -46,7 +46,9 @@ class TestOpLSTM(TestCaseTempDir):
             weight_data = np.random.normal(0, 0.3, [1, number_of_gates * hidden_size, input_size]).astype(np.float32)
             initializers.append(onnx.numpy_helper.from_array(weight_data, name=weight_name))
 
-            recurrence_weight_data = np.random.normal(0, 0.3, [1, number_of_gates * hidden_size, hidden_size]).astype(np.float32)
+            recurrence_weight_data = np.random.normal(0, 0.3, [1, number_of_gates * hidden_size, hidden_size]).astype(
+                np.float32
+            )
             initializers.append(onnx.numpy_helper.from_array(recurrence_weight_data, name=recurrence_weight_name))
 
             return onnx.helper.make_node(
