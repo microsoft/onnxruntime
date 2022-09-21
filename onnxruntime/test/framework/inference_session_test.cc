@@ -131,7 +131,7 @@ class FuseExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
+                const IKernelLookup& /*kernel_lookup*/) const override {
     // Fuse two add into one.
     std::vector<std::unique_ptr<ComputeCapability>> result;
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
@@ -668,10 +668,72 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
     }
   }
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
+#if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)) || (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING))
   ASSERT_TRUE(has_kernel_info);
 #endif
 }
+
+TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
+  SessionOptions so;
+
+  so.session_logid = "CheckRunProfiler";
+  so.enable_profiling = true;
+  so.profile_file_prefix = ORT_TSTR("onnxprofile_profile_test");
+
+  InferenceSession session_object(so, GetEnvironment());
+#ifdef USE_CUDA
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+#endif
+#ifdef USE_ROCM
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
+#endif
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = "RunTag";
+
+  RunModel(session_object, run_options);
+  std::string profile_file = session_object.EndProfiling();
+
+  std::ifstream profile(profile_file);
+  ASSERT_TRUE(profile);
+  std::string line;
+  std::vector<std::string> lines;
+
+  while (std::getline(profile, line)) {
+    lines.push_back(line);
+  }
+
+  auto size = lines.size();
+  ASSERT_TRUE(size > 1);
+  ASSERT_TRUE(lines[0].find("[") != string::npos);
+  ASSERT_TRUE(lines[1].find("model_loading_uri") != string::npos);
+  ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
+  std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
+
+  bool has_api_info = false;
+  for (size_t i = 1; i < size - 1; ++i) {
+    for (auto& s : tags) {
+      ASSERT_TRUE(lines[i].find(s) != string::npos);
+#ifdef USE_CUDA
+      has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
+                                               lines[i].find("cudaLaunch") != string::npos;
+#endif
+#ifdef USE_ROCM
+      has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
+                                               lines[i].find("hipLaunch") != string::npos;
+#endif
+    }
+  }
+
+#if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
+  ASSERT_TRUE(has_api_info);
+#else
+  ASSERT_TRUE(has_api_info || true);
+#endif
+}
+
 
 TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
   SessionOptions so;

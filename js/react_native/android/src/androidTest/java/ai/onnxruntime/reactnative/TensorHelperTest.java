@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.mockito.MockitoSession;
 
@@ -206,6 +207,7 @@ public class TensorHelperTest {
   }
 
   @Test
+  @Ignore("data type for Slice is not supported in mobile package")
   public void createOutputTensor_bool() throws Exception {
     MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
     try {
@@ -246,6 +248,7 @@ public class TensorHelperTest {
   }
 
   @Test
+  @Ignore("data type for Slice is not supported in mobile package")
   public void createOutputTensor_double() throws Exception {
     MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
     try {

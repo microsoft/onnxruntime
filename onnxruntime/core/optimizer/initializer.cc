@@ -44,6 +44,7 @@ Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const 
   data_ = std::move(w);
 }
 
+#if !defined(ORT_EXTENDED_MINIMAL_BUILD)
 namespace {
 template <typename T>
 struct ToFp16;
@@ -318,5 +319,5 @@ void Initializer::scale_by_axis(const Initializer& scalers, int axis) {
   utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
   t_disp.Invoke<ScaleByAxis>(data_, scalers.data_, block_size, num_blocks);
 }
-
+#endif  // ORT_EXTENDED_MINIMAL_BUILD
 }  // namespace onnxruntime

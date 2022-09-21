@@ -29,18 +29,83 @@ namespace {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/training_api/")
 
-void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
+void GenerateRandomData(std::vector<float>& data) {
   float scale = 1.f;
   float mean = 0.f;
   float seed = 123.f;
 
-  TensorShape shape(dims);
   std::default_random_engine generator_float{gsl::narrow_cast<uint32_t>(seed)};
   std::normal_distribution<float> distribution_float{mean, scale};
-  std::vector<float> data(shape.Size());
   std::for_each(data.begin(), data.end(),
                 [&generator_float, &distribution_float](float& value) { value = distribution_float(generator_float); });
+}
+
+void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
+  TensorShape shape(dims);
+  std::vector<float> data(shape.Size());
+  GenerateRandomData(data);
   onnxruntime::training::api::utils::CreateInputOrtValue<float>(dims, data, &input);
+}
+
+TEST(TrainingApiTest, ModuleParametersSize) {
+  auto model_uri = MODEL_FOLDER "training_model.onnx";
+
+  onnxruntime::training::api::CheckpointState state;
+  auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
+  ASSERT_STATUS_OK(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
+
+  onnxruntime::SessionOptions session_option;
+  std::unique_ptr<Environment> env;
+  ASSERT_STATUS_OK(Environment::Create(nullptr, env));
+  auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
+                                                                    state.module_checkpoint_state.named_parameters, session_option,
+                                                                    *env, std::vector<std::shared_ptr<IExecutionProvider>>());
+  size_t params_size = 0;
+  for (auto& param : model->Parameters()) {
+    params_size += param->Data().Get<Tensor>().Shape().Size();
+  }
+
+  // ((500*784) + 500 + (10*500) + 10) = 397510
+  ASSERT_EQ(params_size, 397510);
+  ASSERT_EQ(model->GetParametersSize(), 397510);
+}
+
+TEST(TrainingApiTest, ModuleCopyBufferToParameters) {
+  auto model_uri = MODEL_FOLDER "training_model.onnx";
+
+  onnxruntime::training::api::CheckpointState state;
+  auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
+  ASSERT_STATUS_OK(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
+
+  onnxruntime::SessionOptions session_option;
+  std::unique_ptr<Environment> env;
+  ASSERT_STATUS_OK(Environment::Create(nullptr, env));
+  auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
+                                                                    state.module_checkpoint_state.named_parameters, session_option,
+                                                                    *env, std::vector<std::shared_ptr<IExecutionProvider>>());
+  int64_t params_size = static_cast<int64_t>(model->GetParametersSize());
+  std::vector<float> expected_param_buffer(params_size);
+  GenerateRandomData(expected_param_buffer);
+
+  OrtValue input_params;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
+                       {params_size},
+                       reinterpret_cast<void*>(expected_param_buffer.data()),
+                       onnxruntime::test::TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault)->Info(),
+                       input_params, 0);
+  ASSERT_STATUS_OK(model->CopyBufferToParameters(input_params));
+
+  OrtValue output_params;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), {params_size},
+                       onnxruntime::test::TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+                       output_params);
+  ASSERT_STATUS_OK(model->CopyParametersToBuffer(output_params));
+
+  const float* buffer = output_params.Get<Tensor>().Data<float>();
+  ASSERT_TRUE(nullptr != buffer);
+  for (int64_t i = 0; i < params_size; i++) {
+    ASSERT_TRUE(*(buffer + i) == expected_param_buffer[i]);
+  }
 }
 
 TEST(TrainingApiTest, ModuleTrainStep) {
@@ -56,7 +121,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   auto model = std::make_unique<onnxruntime::training::api::Module>(ToUTF8String(model_uri),
                                                                     state.module_checkpoint_state.named_parameters, session_option,
                                                                     *env, std::vector<std::shared_ptr<IExecutionProvider>>());
-  ASSERT_EQ(model->GetTrainModeOutputCount(), 1);
+  ASSERT_EQ(model->GetTrainingModelOutputCount(), 1);
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
   onnxruntime::training::api::utils::CreateInputOrtValue<int32_t>(

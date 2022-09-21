@@ -14,7 +14,7 @@ from torch.onnx import symbolic_helper
 from onnxruntime.capi._pybind_state import register_torch_autograd_function
 
 from . import _logger
-from ._fallback import ORTModuleONNXModelException, ORTModuleTorchModelException, _FallbackManager, wrap_exception
+from ._fallback import ORTModuleONNXModelException, wrap_exception
 
 # Some autograd.Function's shouldn't be exported as PythonOp.
 # If CheckpointFunction is exported as PythonOp, the checkpointed computation
@@ -22,7 +22,40 @@ from ._fallback import ORTModuleONNXModelException, ORTModuleTorchModelException
 # for big models such as GPT-2. Exporting CheckpointFunction as PythonOp means
 # every transformer would be computed by Pytorch and ORT doesn't contribute
 # at all.
-BANNED_AUTOGRAD_FUNCTION_NAMES = set([torch.utils.checkpoint.CheckpointFunction.__name__])
+BANNED_AUTOGRAD_FUNCTION_NAMES = frozenset([torch.utils.checkpoint.CheckpointFunction.__name__])
+
+# Mapping from pytorch scalar type to onnx scalar type.
+_CAST_PYTORCH_TO_ONNX = {
+    "Byte": torch.onnx.TensorProtoDataType.UINT8,
+    "Char": torch.onnx.TensorProtoDataType.INT8,
+    "Double": torch.onnx.TensorProtoDataType.DOUBLE,
+    "Float": torch.onnx.TensorProtoDataType.FLOAT,
+    "Half": torch.onnx.TensorProtoDataType.FLOAT16,
+    "Int": torch.onnx.TensorProtoDataType.INT32,
+    "Long": torch.onnx.TensorProtoDataType.INT64,
+    "Short": torch.onnx.TensorProtoDataType.INT16,
+    "Bool": torch.onnx.TensorProtoDataType.BOOL,
+    "ComplexFloat": torch.onnx.TensorProtoDataType.COMPLEX64,
+    "ComplexDouble": torch.onnx.TensorProtoDataType.COMPLEX128,
+    "BFloat16": torch.onnx.TensorProtoDataType.BFLOAT16,
+    "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
+}
+
+
+def _pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+    try:
+        return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
+    except AttributeError:
+        return _CAST_PYTORCH_TO_ONNX[scalar_type]
+
+
+# For pointer needed for PythonOp execution, we firstly append it into a global store to hold a
+# reference (in case it is released after module exported).
+NONTENSOR_OBJECT_POINTER_STORE = {}
+
+
+def _clear_nontensor_object_references():
+    NONTENSOR_OBJECT_POINTER_STORE.clear()
 
 
 def _export_pt_1_10(g, n, *args, **kwargs):
@@ -76,7 +109,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             if call_type == "d":
                 # Got a tensor variable.
                 tensor_args.append(arg)
-                scalar_type = int(symbolic_helper.cast_pytorch_to_onnx[arg.type().scalarType()])
+                scalar_type = _pytorch_type_to_onnx(arg.type().scalarType())
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
             elif call_type == "c":
@@ -111,6 +144,8 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                     # All other inputs are accessed via "pointers".
                     input_pointer_scalar_positions.append(i)
                     input_pointer_scalars.append(id(arg))
+
+                    NONTENSOR_OBJECT_POINTER_STORE[id(arg)] = arg
             else:
                 raise wrap_exception(
                     ORTModuleONNXModelException,
@@ -121,7 +156,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         output_tensor_ranks = []
         for arg in n.outputs():
             # Type of tensor's elements.
-            scalar_type = int(symbolic_helper.cast_pytorch_to_onnx[arg.type().scalarType()])
+            scalar_type = _pytorch_type_to_onnx(arg.type().scalarType())
             output_tensor_types.append(scalar_type)
             output_tensor_ranks.append(arg.type().dim())
 

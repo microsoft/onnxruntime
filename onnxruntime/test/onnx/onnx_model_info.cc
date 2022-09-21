@@ -58,15 +58,13 @@ void OnnxModelInfo::InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {  /
     const std::string model_url_string = ToUTF8String(model_url);
     re2::StringPiece text(model_url_string);
     re2::StringPiece submatch;
-    re2::RE2 regex("onnx[0-9a-z]{3}", re2::RE2::Options());  //e.g. onnx141, onnx150, onnxtip
-    if (!regex.ok()) {
-      ORT_THROW("Failed to parse regex: onnx[0-9a-z]{3}");
-    }
-    bool match = regex.Match(text, 0, text.length(), re2_anchor, &submatch, 1);
+    re2::RE2 regex_op("opset[0-9a-z]{1,2}", re2::RE2::Options());  // e.g. opset14, opset15
+
+    bool match = regex_op.Match(text, 0, text.length(), re2_anchor, &submatch, 1);
     if (match) {
-      onnx_commit_tag_.assign(submatch.data(), submatch.length());
+      onnx_nominal_opset_vesion_.assign(submatch.data(), submatch.length());
     } else {
-      onnx_commit_tag_ = TestModelInfo::unknown_version;
+      onnx_nominal_opset_vesion_ = TestModelInfo::unknown_version;
     }
   }
   for (const auto& opset : model_pb.opset_import()) {
@@ -101,9 +99,6 @@ void OnnxModelInfo::InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url) {
   bytes.resize(num_bytes);
   std::ifstream bytes_stream(model_location, std::ifstream::in | std::ifstream::binary);
   bytes_stream.read(reinterpret_cast<char*>(bytes.data()), num_bytes);
-
-  // TODO use ort format version here?
-  onnx_commit_tag_ = TestModelInfo::unknown_version;
 
   // TODO, verify it is a valid ort format
   // TODO, version matches the ORT version
