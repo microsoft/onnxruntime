@@ -68,32 +68,19 @@ def check_op_type_count(testcase, model_path, **kwargs):
         )
 
 
-def check_per_channel_weight_count(testcase, model_path, node_name: str = 'conv_node_quant'):
+def check_conv_per_channel_counts(testcase, model_path, node_name: str = "conv_node_quant"):
     model = onnx.load(Path(model_path))
-    i = 0
-    count = 0
-    node_names_to_check = []
+    axis = 0
+    # minimum number of element in dims is -1
+    count = -2
     for initializer in model.graph.initializer:
         dims = initializer.dims
-        print(dims)
-    for node in model.graph.node:
-        inputs = node.input
-        print(inputs)
-            # print(node.input[3].shape)
-    for node_input in node_names_to_check:
-        if node_input == node_name:
-            count += 1
-    # for node in model.graph.node:
-    #     if node.name in node_names_to_check:
-    #         if len(node.attribute) > 0 and node.attribute["axis"] is not None:
-    #             continue
-    #         for node_intput in node.input:
-    #             shape = node_intput.shape
-    #             testcase.assertGreater(len(shape), node.attribute["axis"], "axis is out of range")
-    #             if i != 0:
-    #                 testcase.assertEqual(count, node_intput.shape[node.axis], "per channel weight count not same")
-    #                 i = i + 1
-    #             count = node_intput.shape[node.axis]
+        # skip if initializer is not a weight
+        if len(dims) > 0:
+            testcase.assertGreater(len(dims), axis)
+            if count > -2:
+                testcase.assertEqual(count, dims[axis])
+            count = dims[axis]
 
 
 def check_model_correctness(testcase, model_path_origin, model_path_to_check, inputs, rtol=1e-2, atol=0.05):

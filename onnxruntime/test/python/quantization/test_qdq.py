@@ -15,10 +15,10 @@ import onnx
 from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import (
     TestDataFeeds,
+    check_conv_per_channel_counts,
     check_model_correctness,
     check_op_type_count,
     check_op_type_order,
-    check_per_channel_weight_count,
     create_clip_node,
 )
 
@@ -302,6 +302,8 @@ class TestQDQFormatConv(TestQDQFormat):
             "DequantizeLinear": 4 if has_bias else 3,
         }
         check_op_type_count(self, model_int8_qdq_path, **qdq_nodes)
+        if per_channel:
+            check_conv_per_channel_counts(self, model_int8_qdq_path)
         check_model_correctness(self, model_fp32_path, model_int8_qdq_path, data_reader.get_next())
 
         data_reader.rewind()
@@ -319,8 +321,6 @@ class TestQDQFormatConv(TestQDQFormat):
         data_reader.rewind()
         qop_nodes = {"QLinearConv": 1, "QuantizeLinear": 1, "DequantizeLinear": 1}
         check_op_type_count(self, model_int8_qop_path, **qop_nodes)
-        if per_channel:
-            check_per_channel_weight_count(self, model_int8_qop_path)
         check_model_correctness(self, model_fp32_path, model_int8_qop_path, data_reader.get_next())
 
     def test_quantize_conv_without_bias(self):
