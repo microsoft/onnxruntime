@@ -18,6 +18,7 @@ from op_test_utils import (
     check_model_correctness,
     check_op_type_count,
     check_op_type_order,
+    check_per_channel_weight_count,
     create_clip_node,
 )
 
@@ -318,6 +319,8 @@ class TestQDQFormatConv(TestQDQFormat):
         data_reader.rewind()
         qop_nodes = {"QLinearConv": 1, "QuantizeLinear": 1, "DequantizeLinear": 1}
         check_op_type_count(self, model_int8_qop_path, **qop_nodes)
+        if per_channel:
+            check_per_channel_weight_count(self, model_int8_qop_path)
         check_model_correctness(self, model_fp32_path, model_int8_qop_path, data_reader.get_next())
 
     def test_quantize_conv_without_bias(self):
