@@ -1,12 +1,12 @@
+use onnxruntime::error::OrtDownloadError;
+use onnxruntime::tensor::ndarray_tensor::NdArrayTensor;
+
 use std::{
     fs,
     io::{self, BufRead, BufReader},
     path::Path,
     time::Duration,
 };
-
-use onnxruntime::error::OrtDownloadError;
-use onnxruntime::tensor::OrtOwnedTensor;
 
 mod download {
     use super::*;
@@ -93,16 +93,14 @@ mod download {
         }
 
         // Batch of 1
-        let input_tensor_values = vec![array];
+        let input_tensor_values = vec![array.into()];
 
         // Perform the inference
-        let outputs: Vec<
-            onnxruntime::tensor::OrtOwnedTensor<f32, ndarray::Dim<ndarray::IxDynImpl>>,
-        > = session.run(input_tensor_values).unwrap();
+        let outputs = session.run(input_tensor_values).unwrap();
 
         // Downloaded model does not have a softmax as final layer; call softmax on second axis
         // and iterate on resulting probabilities, creating an index to later access labels.
-        let output: &OrtOwnedTensor<f32, _> = &outputs[0];
+        let output = outputs[0].float_array().unwrap();
         let mut probabilities: Vec<(usize, f32)> = output
             .softmax(ndarray::Axis(1))
             .iter()
@@ -185,14 +183,12 @@ mod download {
         });
 
         // Batch of 1
-        let input_tensor_values = vec![array];
+        let input_tensor_values = vec![array.into()];
 
         // Perform the inference
-        let outputs: Vec<
-            onnxruntime::tensor::OrtOwnedTensor<f32, ndarray::Dim<ndarray::IxDynImpl>>,
-        > = session.run(input_tensor_values).unwrap();
+        let outputs = session.run(input_tensor_values).unwrap();
 
-        let output: &OrtOwnedTensor<f32, _> = &outputs[0];
+        let output = outputs[0].float_array().unwrap();
         let mut probabilities: Vec<(usize, f32)> = output
             .softmax(ndarray::Axis(1))
             .iter()
@@ -272,14 +268,12 @@ mod download {
                     });
 
                     // Batch of 1
-                    let input_tensor_values = vec![array];
+                    let input_tensor_values = vec![array.into()];
 
                     // Perform the inference
-                    let outputs: Vec<
-                        onnxruntime::tensor::OrtOwnedTensor<f32, ndarray::Dim<ndarray::IxDynImpl>>,
-                    > = session.run(input_tensor_values).unwrap();
+                    let outputs = session.run(input_tensor_values).unwrap();
 
-                    let output: &OrtOwnedTensor<f32, _> = &outputs[0];
+                    let output = &outputs[0].float_array().unwrap();
                     let mut probabilities: Vec<(usize, f32)> = output
                         .softmax(ndarray::Axis(1))
                         .iter()
@@ -362,14 +356,12 @@ mod download {
                     });
 
                     // Batch of 1
-                    let input_tensor_values = vec![array];
+                    let input_tensor_values = vec![array.into()];
 
                     // Perform the inference
-                    let outputs: Vec<
-                        onnxruntime::tensor::OrtOwnedTensor<f32, ndarray::Dim<ndarray::IxDynImpl>>,
-                    > = session.run(input_tensor_values).unwrap();
+                    let outputs = session.run(input_tensor_values).unwrap();
 
-                    let output: &OrtOwnedTensor<f32, _> = &outputs[0];
+                    let output = &outputs[0].float_array().unwrap();
                     let mut probabilities: Vec<(usize, f32)> = output
                         .softmax(ndarray::Axis(1))
                         .iter()
@@ -470,15 +462,13 @@ mod download {
         });
 
         // Just one input
-        let input_tensor_values = vec![array];
+        let input_tensor_values = vec![array.into()];
 
         // Perform the inference
-        let outputs: Vec<
-            onnxruntime::tensor::OrtOwnedTensor<f32, ndarray::Dim<ndarray::IxDynImpl>>,
-        > = session.run(input_tensor_values).unwrap();
+        let outputs = session.run(input_tensor_values).unwrap();
 
         assert_eq!(outputs.len(), 1);
-        let output = &outputs[0];
+        let output = outputs[0].float_array().unwrap();
 
         // The image should have doubled in size
         assert_eq!(output.shape(), [1, 448, 448, 3]);

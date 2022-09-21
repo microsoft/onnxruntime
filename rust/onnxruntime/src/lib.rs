@@ -90,7 +90,7 @@ to download.
 //!
 //! ```no_run
 //! # use std::error::Error;
-//! # use onnxruntime::{environment::Environment, LoggingLevel, GraphOptimizationLevel, tensor::OrtOwnedTensor};
+//! # use onnxruntime::{environment::Environment, LoggingLevel, GraphOptimizationLevel, tensor::construct::ConstructTensor};
 //! # fn main() -> Result<(), Box<dyn Error>> {
 //! # let environment = Environment::builder()
 //! #     .with_name("test")
@@ -103,8 +103,8 @@ to download.
 //! #     .with_model_from_file("squeezenet.onnx")?;
 //! let array = ndarray::Array::linspace(0.0_f32, 1.0, 100);
 //! // Multiple inputs and outputs are possible
-//! let input_tensor = vec![array];
-//! let outputs: Vec<OrtOwnedTensor<f32,_>> = session.run(input_tensor)?;
+//! let input_tensor = vec![array.into()];
+//! let outputs = session.run(input_tensor)?;
 //! # Ok(())
 //! # }
 //! ```

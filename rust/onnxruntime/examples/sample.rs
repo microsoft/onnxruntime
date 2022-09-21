@@ -1,9 +1,6 @@
 #![forbid(unsafe_code)]
 
-use onnxruntime::{
-    environment::Environment, ndarray::Array, tensor::OrtOwnedTensor, GraphOptimizationLevel,
-    LoggingLevel,
-};
+use onnxruntime::{environment::Environment, ndarray::Array, GraphOptimizationLevel, LoggingLevel};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -62,13 +59,15 @@ fn run() -> Result<(), Error> {
     let array = Array::linspace(0.0_f32, 1.0, n as usize)
         .into_shape(input0_shape)
         .unwrap();
-    let input_tensor_values = vec![array];
+    let input_tensor_values = vec![array.into()];
 
-    let outputs: Vec<OrtOwnedTensor<f32, _>> = session.run(input_tensor_values)?;
+    let outputs = session.run(input_tensor_values)?;
 
-    assert_eq!(outputs[0].shape(), output0_shape.as_slice());
+    let output = outputs[0].float_array().unwrap();
+
+    assert_eq!(output.shape(), output0_shape.as_slice());
     for i in 0..5 {
-        println!("Score for class [{}] =  {}", i, outputs[0][[0, i, 0, 0]]);
+        println!("Score for class [{}] =  {}", i, output[[0, i, 0, 0]]);
     }
 
     Ok(())

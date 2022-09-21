@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub(crate) struct MemoryInfo {
+pub struct MemoryInfo {
     pub ptr: *mut sys::OrtMemoryInfo,
 }
 
