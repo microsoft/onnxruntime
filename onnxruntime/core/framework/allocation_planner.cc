@@ -135,9 +135,8 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
   BarrierStep(size_t id) : SequentialExecutionPlan::ExecutionStep(),
                            barrier_id{id} {}
 
-  Status Execute(void* ctx, size_t /*stream_idx*/, bool& continue_flag) override {
-    ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-    continue_flag = execution_context->DecCountDownBarrier(barrier_id);
+  Status Execute(ExecutionContext* ctx, size_t /*stream_idx*/, bool& continue_flag) override {
+    continue_flag = ctx->DecCountDownBarrier(barrier_id);
     return Status::OK();
   }
 
@@ -157,14 +156,13 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
                                                                    wait_handle(handle),
                                                                    notification_idx(idx) {}
 
-  Status Execute(void* ctx, size_t stream_idx, bool& continue_flag) override {
-    ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-    wait_handle(*execution_context->GetDeviceStream(stream_idx), *execution_context->GetNotification(notification_idx));
+  Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) override {
+    wait_handle(*ctx->GetDeviceStream(stream_idx), *ctx->GetNotification(notification_idx));
     // update streams clock status
-    if (execution_context->GetDeviceStream(stream_idx)) {
-      execution_context->GetDeviceStream(stream_idx)->UpdateStreamClock(execution_context->GetNotification(notification_idx)->stream_clock_);
+    if (ctx->GetDeviceStream(stream_idx)) {
+      ctx->GetDeviceStream(stream_idx)->UpdateStreamClock(ctx->GetNotification(notification_idx)->stream_clock_);
     }
-    LOGS(execution_context->GetLogger(), INFO) << "stream " << stream_idx << " wait on Notification with id: " << notification_idx;
+    LOGS(ctx->GetLogger(), INFO) << "stream " << stream_idx << " wait on Notification with id: " << notification_idx;
     continue_flag = true;
     return Status::OK();
   }
@@ -185,20 +183,19 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
   LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(),
                                       node_index{index} {}
 
-  Status Execute(void* ctx, size_t stream_idx, bool& continue_flag) override {
-    auto* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
+  Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) override {
     if (!continue_flag) {
-      LOGS(execution_context->GetLogger(), WARNING) << "Exiting due to terminate flag being set to true.";
+      LOGS(ctx->GetLogger(), WARNING) << "Exiting due to terminate flag being set to true.";
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
     }
 #ifdef ENABLE_TRAINING
-    auto* node_to_execute = execution_context->GetNodeToExecute();
+    auto* node_to_execute = ctx->GetNodeToExecute();
     if (node_to_execute && node_to_execute->count(node_index) == 0) {
       continue_flag = true;
       return Status::OK();
     }
 #endif
-    onnxruntime::Status status = ExecuteKernel(*execution_context, node_index, stream_idx);
+    onnxruntime::Status status = ExecuteKernel(*ctx, node_index, stream_idx);
     continue_flag = status.IsOK();
     return status;
   }
@@ -218,12 +215,11 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
   ActivateNotificationStep(NotificationIndex notification_index) : SequentialExecutionPlan::ExecutionStep(),
                                                                    notification_idx(notification_index) {}
 
-  Status Execute(void* ctx, size_t stream_idx, bool& continue_flag) override {
-    ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-    if (execution_context->GetNotification(notification_idx)) {
-      execution_context->GetNotification(notification_idx)->ActivateAndUpdate();
+  Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) override {
+    if (ctx->GetNotification(notification_idx)) {
+      ctx->GetNotification(notification_idx)->ActivateAndUpdate();
     }
-    LOGS(execution_context->GetLogger(), INFO) << "stream " << stream_idx << " activate notification with index " << notification_idx;
+    LOGS(ctx->GetLogger(), INFO) << "stream " << stream_idx << " activate notification with index " << notification_idx;
     continue_flag = true;
     return Status::OK();
   }
@@ -243,9 +239,8 @@ class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
   TriggerDownstreamStep(size_t trigger_point_index) : SequentialExecutionPlan::ExecutionStep(),
                                                       trigger_point_index(trigger_point_index) {}
 
-  Status Execute(void* ctx, size_t /*stream_idx*/, bool& continue_flag) override {
-    ExecutionContext* execution_context = reinterpret_cast<ExecutionContext*>(ctx);
-    ScheduleDownstream(*execution_context, trigger_point_index, execution_context->SingleThreadMode());
+  Status Execute(ExecutionContext* ctx, size_t /*stream_idx*/, bool& continue_flag) override {
+    ScheduleDownstream(*ctx, trigger_point_index, ctx->SingleThreadMode());
     continue_flag = true;
     return Status::OK();
   }
