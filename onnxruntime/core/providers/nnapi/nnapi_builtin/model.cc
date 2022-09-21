@@ -61,13 +61,14 @@ const android::nn::wrapper::OperandType& Model::GetInputType(const std::string& 
   return operand_types_.at(name);
 }
 
-android::nn::wrapper::OperandType Model::GetOutputType(const std::string& name, const Execution& execution) const {
-  const auto& nnapi_output_name = onnx_to_nnapi_output_map_.at(name);
-  const auto& output_type = operand_types_.at(nnapi_output_name);
-  android::nn::wrapper::OperandType type(
-      output_type.type, execution.GetShaper()[nnapi_output_name], output_type.operandType.scale, output_type.operandType.zeroPoint);
-
-  return type;
+android::nn::wrapper::OperandType Model::GetOutputType(const std::string& name,
+                                                       const Execution& /* execution */) const {
+  // Note: Before we validate if it's required to get Shaper from execution (if encounter dynamic shapes,
+  // shape can get updated during execution), we commented the usage here for now.
+  /* android::nn::wrapper::OperandType type(
+      output_type.type, execution.GetShaper()[nnapi_output_name], output_type.operandType.scale,
+                                                                  output_type.operandType.zeroPoint); */
+  return operand_types_.at(name);
 }
 
 void Model::SetInputMap(std::unordered_map<std::string, size_t>&& input_map) {
@@ -99,7 +100,7 @@ Status Model::PrepareForExecution(std::unique_ptr<Execution>& execution) {
   RETURN_STATUS_ON_ERROR(
       nnapi_->ANeuralNetworksExecution_create(compilation_, &nnapi_execution));
 
-  execution.reset(new Execution(*nnapi_execution, shaper_));
+  execution.reset(new Execution(*nnapi_execution /*, shaper_*/));
   return Status::OK();
 }
 
@@ -146,10 +147,9 @@ Model::NNMemory::NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size)
 
 #pragma region Execution
 
-Execution::Execution(ANeuralNetworksExecution& execution, const Shaper& shaper)
+Execution::Execution(ANeuralNetworksExecution& execution /*, const Shaper& shaper */)
     : nnapi_(NnApiImplementation()),
-      execution_(&execution),
-      shaper_(shaper) {
+      execution_(&execution) {
 }
 
 Execution::~Execution() {
@@ -160,10 +160,8 @@ Status Execution::SetInputBuffers(const std::vector<InputBuffer>& inputs) {
   for (size_t i = 0; i < inputs.size(); i++) {
     const auto& input(inputs[i]);
     ORT_RETURN_IF_ERROR(SetInputBuffer(static_cast<int32_t>(i), input));
-    ORT_RETURN_IF_ERROR(shaper_.UpdateShape(input.name, input.type.dimensions));
   }
 
-  ORT_RETURN_IF_ERROR(shaper_.UpdateDynamicDimensions());
   return Status::OK();
 }
 
@@ -204,7 +202,7 @@ Status Execution::Predict(const std::vector<int32_t>& dynamic_outputs, std::vect
     uint32_t output_rank = 0;
     RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksExecution_getOutputOperandRank(execution_, i, &output_rank));
 
-    std::vector<uint32_t> output_shape(output_rank);
+    InlinedVector<uint32_t> output_shape(output_rank);
     RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksExecution_getOutputOperandDimensions(execution_, i, output_shape.data()));
 
     dynamic_output_shapes.push_back(output_shape);
