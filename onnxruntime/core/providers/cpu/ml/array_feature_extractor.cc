@@ -4,7 +4,7 @@
 #include "core/providers/cpu/ml/array_feature_extractor.h"
 
 /**
-https://github.com/onnx/onnx/blob/master/onnx/defs/traditionalml/defs.cc
+https://github.com/onnx/onnx/blob/main/onnx/defs/traditionalml/defs.cc
 ONNX_OPERATOR_SCHEMA(ArrayFeatureExtractor)
     .SetDomain("ai.onnx.ml")
     .SetDoc(R"DOC(

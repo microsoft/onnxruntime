@@ -155,9 +155,13 @@ class OnnxPrediction {
   //
   std::vector<char*> input_names;
 
+  std::vector<Ort::AllocatedStringPtr> input_names_ptrs;
+
   // Stores the output names
   //
   std::vector<char*> output_names;
+
+  std::vector<Ort::AllocatedStringPtr> output_names_ptrs;
 
   // Create a list of output values
   //

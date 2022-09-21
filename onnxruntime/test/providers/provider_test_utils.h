@@ -686,7 +686,7 @@ class OpTester {
   }
 
   // Generate the reference outputs with the model file
-  void AddReferenceOutputs(const std::string& model_path);
+  void AddReferenceOutputs(const std::string& model_path, float abs_error = 0.0f);
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
     custom_schema_registries_.push_back(registry->GetOpschemaRegistry());

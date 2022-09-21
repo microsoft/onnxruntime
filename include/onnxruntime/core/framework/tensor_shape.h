@@ -47,7 +47,7 @@ class TensorShapeVector : public std::vector<int64_t> {
   using Base = std::vector<int64_t>;
 
  public:
-   using Base::Base;
+  using Base::Base;
 };
 
 #endif  // DISABLE_ABSEIL
@@ -187,7 +187,7 @@ class TensorShape {
   void Allocate(size_t size);
 
   gsl::span<int64_t> values_;
-  int64_t small_buffer_[kTensorShapeSmallBufferElementsSize];
+  int64_t small_buffer_[kTensorShapeSmallBufferElementsSize]{0};
   std::unique_ptr<int64_t[]> allocated_buffer_;
 
   friend struct ProviderHostImpl;  // So that the shared provider interface can access Allocate

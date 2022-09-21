@@ -73,6 +73,15 @@ std::vector<NodeAndMoveInfo> ConvMoves() {
   return moves;
 }
 
+QDQReplaceWithNew SplitReplacer() {
+  NTO::NodeLocation dq{NTO::NodeType::kInput, 0};
+  NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
+  std::vector<NodeAndMoveInfo> moves{
+      MoveAndAppend(dq, ArgType::kInput, 0, ArgType::kInput),
+      MoveAll(q, ArgType::kOutput)};
+  return QDQReplaceWithNew(kOnnxDomain, "Split", std::move(moves));
+}
+
 QDQReplaceWithNew MatMulIntToFloatReplacer() {
   NTO::NodeLocation dq1{NTO::NodeType::kInput, 0};
   NTO::NodeLocation dq2{NTO::NodeType::kInput, 1};
@@ -130,7 +139,7 @@ struct SetOptionalZeroPoint {
 };
 
 void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& selected_nodes) {
-  std::vector<Node*> nodes = selected_nodes.AllNodes();
+  const auto nodes = selected_nodes.AllNodes();
   for (Node* node_ptr : nodes) {
     if (node_ptr == nullptr) {
       continue;
@@ -219,6 +228,10 @@ ConvReplaceWithQLinear::ConvReplaceWithQLinear()
 MatMulReplaceWithQLinear::MatMulReplaceWithQLinear()
     : matmul_int_to_float_replacer_{MatMulIntToFloatReplacer()},
       qlinear_matmul_replacer_{kOnnxDomain} {
+}
+
+Status SplitReplaceWithQuant::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+  return SplitReplacer().Run(graph, selected_nodes);
 }
 
 Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {

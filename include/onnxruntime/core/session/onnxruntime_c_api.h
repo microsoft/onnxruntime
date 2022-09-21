@@ -3461,7 +3461,7 @@ struct OrtApi {
    *   If SNPE is not available (due to a non Snpe enabled build or its dependencies not being installed), this function will fail.
    *
    * XNNPACK supported keys:
-   *   None currently
+   *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
    *
    * \since Version 1.12.
    */
@@ -3494,7 +3494,7 @@ struct OrtApi {
   *
   * \since Version 1.13
   */
-  const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+  const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version) NO_EXCEPTION;
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer

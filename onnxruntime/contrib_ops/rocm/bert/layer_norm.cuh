@@ -123,15 +123,6 @@ __device__ inline void LayerNormSmall(const T* input_v, const hipcub::KeyValuePa
   __shared__ T rsigma;  // 1 / std.dev.
   T beta_v[ILP], gamma_v[ILP], output_v[ILP];
 
-  if (beta != nullptr) {
-    VecT* beta_val = reinterpret_cast<VecT*>(&beta_v);
-    *beta_val = *reinterpret_cast<const VecT*>(&beta[threadIdx.x * ILP]);
-  }
-  VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
-  *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
-
-  VecT* output_val = reinterpret_cast<VecT*>(&output_v);
-
   KeyValuePairSum pair_sum;
   const hipcub::KeyValuePair<T, T> sum_kv = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
 
@@ -142,6 +133,14 @@ __device__ inline void LayerNormSmall(const T* input_v, const hipcub::KeyValuePa
   __syncthreads();
 
   if (ILP * threadIdx.x < ld) {
+    if (beta != nullptr) {
+      VecT* beta_val = reinterpret_cast<VecT*>(&beta_v);
+      *beta_val = *reinterpret_cast<const VecT*>(&beta[threadIdx.x * ILP]);
+    }
+
+    VecT* gamma_val = reinterpret_cast<VecT*>(&gamma_v);
+    *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
+
     #pragma unroll
     for (int i = 0; i < ILP; i++) {
       output_v[i] = (beta != nullptr) ? gamma_v[i] * (input_v[i] - mu) * rsigma + beta_v[i] :
@@ -154,4 +153,3 @@ __device__ inline void LayerNormSmall(const T* input_v, const hipcub::KeyValuePa
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
-

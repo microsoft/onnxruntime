@@ -1,5 +1,16 @@
 trigger: none
 
+parameters:
+- name: DebugLinuxBuild
+  displayName: Debug Linux Build?
+  type: boolean
+  default: false
+
+- name: WindowsBuild
+  displayName: Windows Build?
+  type: boolean
+  default: true
+
 resources:
   repositories:
   - repository: manylinux
@@ -20,3 +31,16 @@ stages:
     docker_file: Dockerfile.manylinux2014_training_cuda11_6
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'yes'
+    debug_build: ${{ parameters.DebugLinuxBuild }}
+
+- template: templates/py-packaging-stage.yml
+  parameters:
+    build_py_parameters: --enable_training
+    enable_linux_gpu: false
+    enable_ubuntu_cpu: false
+    enable_linux_cpu: false
+    enable_windows_cpu: ${{ parameters.WindowsBuild }}
+    enable_windows_gpu: false
+    enable_mac_cpu: false
+    enable_mac_silicon: false
+    enable_linux_arm: false
