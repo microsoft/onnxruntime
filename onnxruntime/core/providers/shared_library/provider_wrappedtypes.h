@@ -511,8 +511,6 @@ struct KernelRegistry final {
 
   Status Register(KernelCreateInfo&& create_info) { return g_host->KernelRegistry__Register(this, std::move(create_info)); }
 
-  Status TryFindKernel(const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) const { return g_host->KernelRegistry__TryFindKernel(this, node, exec_provider, out); }
-
   KernelRegistry() = delete;
   KernelRegistry(const KernelRegistry&) = delete;
   void operator=(const KernelRegistry&) = delete;

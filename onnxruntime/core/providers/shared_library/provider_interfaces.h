@@ -182,8 +182,7 @@ struct ProviderHost {
 #endif
 
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                             const std::string& provider_type,
-                                                             gsl::span<const KernelRegistry* const> kernel_registries,
+                                                             const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                              gsl::span<const NodeIndex> tentative_nodes) = 0;
 
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) = 0;
@@ -224,7 +223,7 @@ struct ProviderHost {
   virtual AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) = 0;
   virtual void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) = 0;
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-                                                                                            const std::vector<const KernelRegistry*>& kernel_registries) = 0;
+                                                                                            const IExecutionProvider::IKernelLookup& kernel_lookup) = 0;
 
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 
@@ -506,7 +505,6 @@ struct ProviderHost {
   virtual std::shared_ptr<KernelRegistry> KernelRegistry__construct() = 0;
   virtual void KernelRegistry__operator_delete(KernelRegistry* p) = 0;
   virtual Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) = 0;
-  virtual Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) = 0;
 
   // PrimitiveDataTypeBase
   virtual int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) = 0;
