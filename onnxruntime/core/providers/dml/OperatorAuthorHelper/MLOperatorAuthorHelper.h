@@ -10,6 +10,7 @@
 #define ML_CHECK_BOOL(x) ORT_THROW_HR_IF(E_INVALIDARG, !(x))
 #else
 #define ML_CHECK_BOOL(x) THROW_HR_IF(E_INVALIDARG, !(x))
+#define ML_CHECK_BOOL_MSG(x, msg) THROW_HR_IF_MSG(E_INVALIDARG, !(x), msg)
 #endif
 
 namespace onnxruntime

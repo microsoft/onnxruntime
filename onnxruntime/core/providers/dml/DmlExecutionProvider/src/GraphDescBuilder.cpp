@@ -139,9 +139,7 @@ namespace Dml::GraphDescBuilder
                 return tensor;
             };
 
-            GraphDesc operatorGraphDesc;
             DmlGraphNodeCreateInfo graphNodeCreateInfo;
-            
             graphNodeProps.internalRegInfo->graphNodeFactoryRegistration->factory(
                 node,
                 constantCpuNodeInputGetter,
@@ -154,15 +152,15 @@ namespace Dml::GraphDescBuilder
             // later.
             std::unordered_map<uint32_t, uint32_t> operatorGraphNodeIndexToMainGraphNodeIndexMap;
             uint32_t lastestNodeIndex = gsl::narrow_cast<uint32_t>(graphNodes.size());
-            uint32_t operatorGraphNodeCount = gsl::narrow_cast<uint32_t>(operatorGraphDesc.nodes.size());
+            uint32_t operatorGraphNodeCount = gsl::narrow_cast<uint32_t>(graphNodeCreateInfo.nodes.size());
             for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphNodeCount; nodeIndex++) 
             {
-                ORT_THROW_HR_IF(E_UNEXPECTED, !operatorGraphDesc.nodes[nodeIndex].opDesc);
+                ORT_THROW_HR_IF(E_UNEXPECTED, !graphNodeCreateInfo.nodes[nodeIndex]);
                 operatorGraphNodeIndexToMainGraphNodeIndexMap.emplace(lastestNodeIndex++, nodeIndex);
             }
 
             // map operatorGraphInputEdge as either mainGraphInputEdge or mainGraphIntermediateEdge
-            for (DML_INPUT_GRAPH_EDGE_DESC& operatorGraphInputEdge : operatorGraphDesc.inputEdges)
+            for (auto& operatorGraphInputEdge : graphNodeCreateInfo.inputEdges)
             {
                 uint32_t kernelInputIndex = operatorGraphInputEdge.GraphInputIndex;
 
@@ -188,7 +186,7 @@ namespace Dml::GraphDescBuilder
                         // If this is a constant input, set the appropriate flags on the desc
                         if (dmlFusedNodeInputIndex < isConstGpuGraphInputCount && isConstGpuGraphInput[dmlFusedNodeInputIndex])
                         {
-                            std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = operatorGraphDesc.nodes[operatorGraphInputEdge.ToNodeIndex].opDesc->GetInputTensors();
+                            std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = graphNodeCreateInfo.nodes[operatorGraphInputEdge.ToNodeIndex]->GetInputTensors();
                             DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorGraphInputEdge.ToNodeInputIndex];
                             tensorDesc->flags |= DML_TENSOR_FLAG_OWNED_BY_DML;
                         }
@@ -208,7 +206,7 @@ namespace Dml::GraphDescBuilder
             }
 
             // map operatorGraphIntermediateEdges as mainGraphIntermediateEdge
-            for (DML_INTERMEDIATE_GRAPH_EDGE_DESC& operatorGraphIntermediateEdge : operatorGraphDesc.intermediateEdges)
+            for (auto& operatorGraphIntermediateEdge : graphNodeCreateInfo.intermediateEdges)
             {
                 DML_INTERMEDIATE_GRAPH_EDGE_DESC edge = {};
                 edge.FromNodeIndex = operatorGraphNodeIndexToMainGraphNodeIndexMap[operatorGraphIntermediateEdge.FromNodeIndex];
@@ -219,7 +217,7 @@ namespace Dml::GraphDescBuilder
             }
 
             // populate nameToNodeAndIndexMap (which will be used by above loop) for operatorGraphOutputEdges
-            for (DML_OUTPUT_GRAPH_EDGE_DESC& operatorGraphOutputEdge : operatorGraphDesc.outputEdges)
+            for (auto& operatorGraphOutputEdge : graphNodeCreateInfo.outputEdges)
             {
                 const onnxruntime::NodeArg* arg = node.OutputDefs()[operatorGraphOutputEdge.GraphOutputIndex];
                 if (arg->Exists())
@@ -231,9 +229,9 @@ namespace Dml::GraphDescBuilder
             }
 
             // iterate on operatorGraphNodes to populate graphNodes with IDMLOperators
-            for (NodeInfo& nodeInfo : operatorGraphDesc.nodes)
+            for (auto& opDesc : graphNodeCreateInfo.nodes)
             {
-                DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc(*nodeInfo.opDesc, &allocator);
+                DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc(*opDesc, &allocator);
                 ComPtr<IDMLOperator> op;
                 ORT_THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
                 allocator.Reset();

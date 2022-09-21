@@ -1120,57 +1120,47 @@ namespace Windows::AI::MachineLearning::Adapter
         return (m_graphNodeCreateInfo != nullptr);
     }
 
-    void DmlGraphOpKernelInfoWrapper::SetDmlProperties(_In_ const MLOperatorKernelDmlProperties* dmlProperties) const
-    {
-        // Populate the mappings between DML in/outs and kernel in/outs.  By default they are the same.
-        if (dmlProperties && dmlProperties->kernelInputIndices)
-        {
-            m_graphNodeCreateInfo->kernelInputIndices.insert(
-                m_graphNodeCreateInfo->kernelInputIndices.begin(),
-                dmlProperties->kernelInputIndices,
-                dmlProperties->kernelInputIndices + dmlProperties->dmlInputCount);
-        }
-        else
-        {
-            m_graphNodeCreateInfo->kernelInputIndices.resize(dmlProperties ? dmlProperties->dmlInputCount : GetInputCount());
-            std::iota(m_graphNodeCreateInfo->kernelInputIndices.begin(), m_graphNodeCreateInfo->kernelInputIndices.end(), 0);
-        }
-
-        if (dmlProperties && dmlProperties->kernelOutputIndices)
-        {
-            m_graphNodeCreateInfo->kernelOutputIndices.insert(
-                m_graphNodeCreateInfo->kernelOutputIndices.begin(),
-                dmlProperties->kernelOutputIndices,
-                dmlProperties->kernelOutputIndices + dmlProperties->dmlOutputCount);
-        }
-        else
-        {
-            m_graphNodeCreateInfo->kernelOutputIndices.resize(dmlProperties ? dmlProperties->dmlOutputCount : GetOutputCount());
-            std::iota(m_graphNodeCreateInfo->kernelOutputIndices.begin(), m_graphNodeCreateInfo->kernelOutputIndices.end(), 0);
-        }
-
-        m_graphNodeCreateInfo->allowHalfPrecisionComputation = dmlProperties ? dmlProperties->allowHalfPrecisionComputation : true;
-    }
-
     HRESULT STDMETHODCALLTYPE DmlGraphOpKernelInfoWrapper::SetDmlOperator(
-        IDMLOperator* op,
-        _In_ const DML_OPERATOR_DESC* desc,
-        _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties) const noexcept
+        _In_ const MLOperatorGraphDesc* operatorGraphDesc) const noexcept
     {
         ORT_TRY
         {
-          ML_CHECK_BOOL(op != nullptr);
-          ML_CHECK_BOOL(dmlProperties != nullptr);
+            ML_CHECK_BOOL_MSG(operatorGraphDesc != nullptr, "OperatorGraphDesc can't be null while creating operator kernel for DML Graph");
 
-          m_graphNodeCreateInfo->initialized = true;
+            for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++) 
+            {
+                auto node = operatorGraphDesc->nodes + nodeIndex;
+                ML_CHECK_BOOL_MSG(node != nullptr, "Node of operatorGraph can't be null while creating operator kernel for DML Graph");
+                AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*node);
+                m_graphNodeCreateInfo->nodes.push_back(std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc)));
+            }
 
-          SetDmlProperties(dmlProperties);
+            // Need to iterate on each edges to check for nullptr
+            for (uint32_t inputEdgeIndex = 0; inputEdgeIndex < operatorGraphDesc->inputEdgeCount; inputEdgeIndex++) 
+            {
+                auto inputEdge = operatorGraphDesc->inputEdges + inputEdgeIndex;
+                ML_CHECK_BOOL_MSG(inputEdge != nullptr, "InputEdge of operatorGraph can't be null while creating operator kernel for DML Graph");
+                m_graphNodeCreateInfo->inputEdges.push_back(*inputEdge);
+            }
 
-          m_graphNodeCreateInfo->op = op;
-          AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*desc);
-          m_graphNodeCreateInfo->desc = std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc));
+            // Need to iterate on each edges to check for nullptr
+            for (uint32_t intermediateEdgeIndex = 0; intermediateEdgeIndex < operatorGraphDesc->intermediateEdgeCount; intermediateEdgeIndex++) 
+            {
+                auto intermediateEdge = operatorGraphDesc->intermediateEdges + intermediateEdgeIndex;
+                ML_CHECK_BOOL_MSG(intermediateEdge != nullptr, "IntermediateEdge of operatorGraph can't be null while creating operator kernel for DML Graph");
+                m_graphNodeCreateInfo->intermediateEdges.push_back(*intermediateEdge);
+            }
 
-          return S_OK;
+            // Need to iterate on each edges to check for nullptr
+            for (uint32_t outputEdgeIndex = 0; outputEdgeIndex < operatorGraphDesc->outputEdgeCount; outputEdgeIndex++) 
+            {
+                auto outputEdge = operatorGraphDesc->outputEdges + outputEdgeIndex;
+                ML_CHECK_BOOL_MSG(outputEdge != nullptr, "OutputEdge of operatorGraph can't be null while creating operator kernel for DML Graph");
+                m_graphNodeCreateInfo->outputEdges.push_back(*outputEdge);
+            }
+
+            m_graphNodeCreateInfo->initialized = true;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }

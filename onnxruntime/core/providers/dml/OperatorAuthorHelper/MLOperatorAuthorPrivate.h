@@ -6,6 +6,9 @@
 interface IDMLOperation;
 interface IDMLOperator;
 struct DML_OPERATOR_DESC;
+struct DML_INPUT_GRAPH_EDGE_DESC;
+struct DML_OUTPUT_GRAPH_EDGE_DESC;
+struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
 
 struct MLOperatorKernelDmlProperties
 {
@@ -16,6 +19,21 @@ struct MLOperatorKernelDmlProperties
     _Field_size_opt_(dmlOutputCount) const uint32_t* kernelOutputIndices;
 
     bool allowHalfPrecisionComputation = false;
+};
+
+struct MLOperatorGraphDesc
+{
+    uint32_t nodeCount;
+    _Field_size_opt_(nodeCount) const DML_OPERATOR_DESC* nodes;
+
+    uint32_t inputEdgeCount;
+    _Field_size_opt_(inputEdgeCount) const DML_INPUT_GRAPH_EDGE_DESC* inputEdges;
+
+    uint32_t intermediateEdgeCount;
+    _Field_size_opt_(intermediateEdgeCount) const DML_INTERMEDIATE_GRAPH_EDGE_DESC* intermediateEdges;
+
+    uint32_t outputEdgeCount;
+    _Field_size_opt_(outputEdgeCount) const DML_OUTPUT_GRAPH_EDGE_DESC* outputEdges;
 };
 
 
@@ -42,6 +60,10 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
         IDMLOperator* op,
         _In_ const DML_OPERATOR_DESC* desc,
         _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties
+    ) const noexcept PURE;
+
+    STDMETHOD(SetDmlOperator)(
+        _In_ const MLOperatorGraphDesc* operatorGraphDesc
     ) const noexcept PURE;
 };
 

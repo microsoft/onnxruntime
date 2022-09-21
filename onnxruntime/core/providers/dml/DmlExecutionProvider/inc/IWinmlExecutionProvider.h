@@ -12,6 +12,9 @@
 
 struct AbstractOperatorDesc;
 interface IMLOperatorTensor;
+struct DML_INPUT_GRAPH_EDGE_DESC;
+struct DML_OUTPUT_GRAPH_EDGE_DESC;
+struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
 
 namespace onnxruntime
 {
@@ -78,12 +81,10 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         bool initialized = false;
 
-        // Mapping between DML in/out indices and kernel in/out indices
-        std::vector<uint32_t> kernelInputIndices;
-        std::vector<uint32_t> kernelOutputIndices;
-
-        Microsoft::WRL::ComPtr<IDMLOperator> op;
-        std::unique_ptr<AbstractOperatorDesc> desc;
+        std::vector<std::unique_ptr<AbstractOperatorDesc>> nodes;
+        std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+        std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
+        std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
 
         bool allowHalfPrecisionComputation = false;
     };

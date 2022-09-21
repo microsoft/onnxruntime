@@ -71,6 +71,53 @@ namespace Dml
             properties.allowHalfPrecisionComputation = AllowHalfPrecisionComputation();
 
             ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(dmlOperator.Get(), &operatorDesc, &properties));
+
+
+            MLOperatorGraphDesc operatorGraphDesc = {};
+            operatorGraphDesc.nodeCount = 1;
+            operatorGraphDesc.nodes = &operatorDesc;
+
+            uint32_t inputEdgeCount = 0;
+            std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+            std::for_each(
+                m_kernelInputIndices.begin(),
+                m_kernelInputIndices.end(),
+                [&](std::optional<uint32_t>& inputIndex) {
+                    if (inputIndex.has_value()) 
+                    {
+                        inputEdgeCount++;
+                        DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
+                        inputEdge.GraphInputIndex = inputIndex.value();
+                        inputEdge.ToNodeIndex = 0;
+                        inputEdge.ToNodeInputIndex = inputIndex.value();
+                        inputEdges.push_back(inputEdge);
+                    }
+                }
+            );
+            operatorGraphDesc.inputEdgeCount = inputEdgeCount;
+            operatorGraphDesc.inputEdges = inputEdges.data();
+
+            uint32_t outputEdgeCount = 0;
+            std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
+            std::for_each(
+                m_kernelOutputIndices.begin(),
+                m_kernelOutputIndices.end(),
+                [&](std::optional<uint32_t>& outputIndex) {
+                    if (outputIndex.has_value()) 
+                    {
+                        outputEdgeCount++;
+                        DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
+                        outputEdge.FromNodeIndex = 0;
+                        outputEdge.FromNodeOutputIndex = outputIndex.value();
+                        outputEdge.GraphOutputIndex = outputIndex.value();
+                        outputEdges.push_back(outputEdge);
+                    }
+                }
+            );
+            operatorGraphDesc.outputEdgeCount = outputEdgeCount;
+            operatorGraphDesc.outputEdges = outputEdges.data();
+
+            ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(&operatorGraphDesc));
         }
         else
         {
