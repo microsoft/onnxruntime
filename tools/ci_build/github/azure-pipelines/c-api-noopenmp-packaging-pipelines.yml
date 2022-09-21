@@ -23,7 +23,7 @@ resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
     type: github
-    endpoint: ort-examples 
+    endpoint: ort-examples
     name: microsoft/onnxruntime-inference-examples
   - repository: manylinux
     type: Github
@@ -287,7 +287,7 @@ jobs:
         set -e -x
         cd $(Build.SourcesDirectory)
         mv manylinux onnxruntime
-        ls 
+        ls
 
   - template: templates/with-container-registry-steps.yml
     parameters:
@@ -352,7 +352,7 @@ jobs:
       script: |
         docker run --gpus all -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
         --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda116xtrt84build \
-        /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet 
+        /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishPipelineArtifact@1
@@ -433,8 +433,8 @@ jobs:
     displayName: 'Test C API application for GPU package'
     inputs:
       filename: $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet\run_capi_application.bat
-      arguments: $(Build.SourcesDirectory)\onnxruntime $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet 
-      workingFolder: '$(Build.ArtifactStagingDirectory)' 
+      arguments: $(Build.SourcesDirectory)\onnxruntime $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet
+      workingFolder: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Combined GPU Package Artifact'
@@ -518,17 +518,17 @@ jobs:
       script: |
         dotnet workload install android ios macos
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
-    
+
   - task: PowerShell@2
     displayName: Build .NET 6 targets using dotnet
     inputs:
       targetType: 'inline'
       # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
-      #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\ 
-      # which is inconsistent with the msbuild output path for the pre-.net6 targets 
+      #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
+      # which is inconsistent with the msbuild output path for the pre-.net6 targets
       #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
       # and makes it harder to do the packing
-      # 
+      #
       # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
       script: |
         dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6 -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu" -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
