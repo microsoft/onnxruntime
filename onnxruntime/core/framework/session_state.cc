@@ -1026,7 +1026,7 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   // If the user explicitly included the CPU provider anyway, then remain silent, but if it was implicitly added,
   // and unexpected fallback happened to a non-preferred provider, warn the user.
   size_t explicit_provider_count = providers.NumProviders() - (providers.GetCpuProviderWasImplicitlyAdded() ? 1 : 0);
-  if (node_placement_provider_set.size() > explicit_provider_count) {
+  if (node_placement_provider_set.size() > explicit_provider_count && explicit_provider_count > 0) {
     LOGS(logger, WARNING) << "Some nodes were not assigned to the preferred execution providers which may or may not have an negative impact on performance. e.g. ORT explicitly assigns shape related ops to CPU to improve perf.";
     if (!is_verbose_mode) {
       LOGS(logger, WARNING) << "Rerunning with verbose output on a non-minimal build will show node assignments.";
