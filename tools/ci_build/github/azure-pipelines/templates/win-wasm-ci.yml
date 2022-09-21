@@ -29,7 +29,7 @@ jobs:
   variables:
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    CommonBuildArgs: '--config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wasm --use_xnnpack --emsdk_version releases-upstream-4c3772879a04140298c3abde90962d5567b5e2fc-64bit ${{ parameters.ExtraBuildArgs }}'
+    CommonBuildArgs: '--config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wasm --emsdk_version releases-upstream-4c3772879a04140298c3abde90962d5567b5e2fc-64bit ${{ parameters.ExtraBuildArgs }}'
     runCodesignValidationInjection: false
   timeoutInMinutes: ${{ parameters.TimeoutInMinutes }}
   workspace:
@@ -76,13 +76,13 @@ jobs:
     displayName: 'Build and test'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm'
+      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm --use_xnnpack'
       workingDirectory: '$(Build.BinariesDirectory)'
   - task: PythonScript@0
     displayName: 'Build and test (threads)'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_threads --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --enable_wasm_threads'
+      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_threads --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --enable_wasm_threads --use_xnnpack'
       workingDirectory: '$(Build.BinariesDirectory)'
   - task: PythonScript@0
     displayName: 'Build and test (simd + threads)'
@@ -94,7 +94,7 @@ jobs:
     displayName: 'Build and test (simd)'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --enable_wasm_simd'
+      arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --enable_wasm_simd --use_xnnpack'
       workingDirectory: '$(Build.BinariesDirectory)'
   - ${{ if eq(parameters.SkipPublish, false) }}:
     - script: |
