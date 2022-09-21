@@ -12,22 +12,22 @@ int CeilingDivision(int n, int m) {
   return r;
 }
 
-Timer::Timer() {
+Timer::Timer(hipStream_t stream): stream_(stream) {
   HIP_CHECK(hipEventCreate(&start_));
   HIP_CHECK(hipEventCreate(&end_));
 }
 
 void Timer::Start() {
   HIP_CHECK(hipDeviceSynchronize());
-  HIP_CHECK(hipEventRecord(start_, nullptr));
+  HIP_CHECK(hipEventRecord(start_, stream_));
 }
 
 void Timer::End() {
-  HIP_CHECK(hipEventRecord(end_, nullptr));
+  HIP_CHECK(hipEventRecord(end_, stream_));
   HIP_CHECK(hipEventSynchronize(end_));
 }
 
-float Timer::time() {
+float Timer::Duration() {
   float time;
   // time is in ms with a resolution of 1 us
   HIP_CHECK(hipEventElapsedTime(&time, start_, end_));

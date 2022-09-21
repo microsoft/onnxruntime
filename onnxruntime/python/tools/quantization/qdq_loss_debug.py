@@ -103,7 +103,7 @@ def modify_model_output_intermediate_tensors(
             name=reshape_output,
         )
         model.graph.node.append(reshape_node)
-        reshape_output_value_info = helper.make_tensor_value_info(reshape_output, TensorProto.FLOAT, [1])
+        reshape_output_value_info = helper.make_tensor_value_info(reshape_output, TensorProto.FLOAT, [-1])
         model.graph.output.append(reshape_output_value_info)
     return model
 
@@ -144,8 +144,8 @@ def collect_activations(
     intermediate_outputs = []
     for input_d in input_reader:
         intermediate_outputs.append(inference_session.run(None, input_d))
-        if not intermediate_outputs:
-            raise RuntimeError("No data is collected while running augmented model!")
+    if not intermediate_outputs:
+        raise RuntimeError("No data is collected while running augmented model!")
 
     output_dict = {}
     output_info = inference_session.get_outputs()
@@ -343,9 +343,11 @@ def compute_signal_to_quantization_noice_ratio(
     left = numpy.concatenate(xlist).flatten()
     right = numpy.concatenate(ylist).flatten()
 
-    Ps = numpy.linalg.norm(left)
-    Pn = numpy.linalg.norm(left - right)
-    return 20 * math.log10(Ps / Pn)
+    epsilon = numpy.finfo("float").eps
+    tensor_norm = max(numpy.linalg.norm(left), epsilon)
+    diff_norm = max(numpy.linalg.norm(left - right), epsilon)
+    res = tensor_norm / diff_norm
+    return 20 * math.log10(res)
 
 
 def compute_weight_error(

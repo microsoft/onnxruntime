@@ -27,8 +27,10 @@
 #include "core/session/provider_bridge_ort.h"
 #include "core/util/math.h"
 #include "core/framework/sparse_utils.h"
-#include "core/common/string_helper.h"
 #include "core/graph/graph_proto_serializer.h"
+
+#include "core/session/onnxruntime_c_api.h"
+#include "core/common/string_helper.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -194,8 +196,8 @@ struct ProviderHostImpl : ProviderHost {
   void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
   void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
 
-  bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg); }
-  bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
+  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg); }
+  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
 #endif
 
 #ifdef USE_ROCM
@@ -209,17 +211,22 @@ struct ProviderHostImpl : ProviderHost {
   void rocm__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
   void rocm__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) override { return GetProviderInfo_ROCM().rocm__Impl_Cast(stream, input_data, output_data, count); }
 
-  bool RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_ROCM().RocmCall_false(retCode, exprString, libName, successCode, msg); }
-  bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_ROCM().RocmCall_true(retCode, exprString, libName, successCode, msg); }
+  Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_ROCM().RocmCall_false(retCode, exprString, libName, successCode, msg); }
+  void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { GetProviderInfo_ROCM().RocmCall_true(retCode, exprString, libName, successCode, msg); }
 #endif
 
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
 
+  unsigned int GetThreadId() override { return onnxruntime::logging::GetThreadId(); }
+  unsigned int GetProcessId() override { return onnxruntime::logging::GetProcessId(); }
+
+  std::string demangle(const char* name) override { return onnxruntime::profiling::demangle(name); }
+  std::string demangle(const std::string& name) override { return onnxruntime::profiling::demangle(name); }
+
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                     const std::string& provider_type,
-                                                     gsl::span<const KernelRegistry* const> kernel_registries,
+                                                     const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                      gsl::span<const NodeIndex> tentative_nodes) override {
-    return onnxruntime::GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
+    return onnxruntime::GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
   }
 
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
@@ -270,11 +277,10 @@ struct ProviderHostImpl : ProviderHost {
   // IExecutionProvider (direct)
   AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) override { return p->IExecutionProvider::GetAllocator(id, mem_type); }
   void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::InsertAllocator(allocator); }
-  std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-                                                                                    const std::vector<const KernelRegistry*>& kernel_registries) override { return p->IExecutionProvider::GetCapability(graph_viewer, kernel_registries); }
-  // !!! this api will be deprecated soon
-  common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) override {
-    return p->IExecutionProvider::Compile(fused_nodes, node_compute_funcs);
+  std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
+      const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
+      const IExecutionProvider::IKernelLookup& kernel_lookup) override {
+    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
   }
 
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
@@ -385,6 +391,7 @@ struct ProviderHostImpl : ProviderHost {
   void AttributeProto__operator_delete(ONNX_NAMESPACE::AttributeProto* p) override { delete p; }
   void AttributeProto__operator_assign(ONNX_NAMESPACE::AttributeProto* p, const ONNX_NAMESPACE::AttributeProto& v) override { *p = v; }
 
+  const std::string& AttributeProto__name(const ONNX_NAMESPACE::AttributeProto* p) const override { return p->name(); }
   ONNX_NAMESPACE::AttributeProto_AttributeType AttributeProto__type(const ONNX_NAMESPACE::AttributeProto* p) override { return p->type(); }
   int AttributeProto__ints_size(const ONNX_NAMESPACE::AttributeProto* p) override { return p->ints_size(); }
   int AttributeProto__floats_size(const ONNX_NAMESPACE::AttributeProto* p) override { return p->floats_size(); }
@@ -432,6 +439,13 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::GraphProto* ModelProto__mutable_graph(ONNX_NAMESPACE::ModelProto* p) override { return p->mutable_graph(); }
 
   void ModelProto__set_ir_version(ONNX_NAMESPACE::ModelProto* p, int64_t value) override { p->set_ir_version(value); }
+
+  // NodeProto (wrapped)
+  std::unique_ptr<ONNX_NAMESPACE::NodeProto> NodeProto__construct() override { return std::make_unique<ONNX_NAMESPACE::NodeProto>(); }
+  void NodeProto__operator_delete(ONNX_NAMESPACE::NodeProto* p) override { delete p; }
+  void NodeProto__operator_assign(ONNX_NAMESPACE::NodeProto* p, const ONNX_NAMESPACE::NodeProto& v) override { *p = v; }
+  int NodeProto__attribute_size(ONNX_NAMESPACE::NodeProto* p) override { return p->attribute_size(); }
+  const ONNX_NAMESPACE::AttributeProto& NodeProto__attribute(const ONNX_NAMESPACE::NodeProto* p, int index) const override { return p->attribute(index); }
 
   // TensorProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::TensorProto> TensorProto__construct() override { return std::make_unique<ONNX_NAMESPACE::TensorProto>(); }
@@ -575,10 +589,6 @@ struct ProviderHostImpl : ProviderHost {
   void KernelRegistry__operator_delete(KernelRegistry* p) override { delete p; }
   Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) override { return p->Register(std::move(create_info)); }
 
-  Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) override {
-    return p->TryFindKernel(node, exec_provider, out);
-  }
-
   // PrimitiveDataTypeBase (wrapped)
   int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) override { return p->GetDataType(); }
 
@@ -669,6 +679,7 @@ struct ProviderHostImpl : ProviderHost {
   ConstPointerContainer<std::vector<NodeArg*>> Node__InputDefs(const Node* p) noexcept override { return p->InputDefs(); }
   ConstPointerContainer<std::vector<NodeArg*>> Node__OutputDefs(const Node* p) noexcept override { return p->OutputDefs(); }
   NodeIndex Node__Index(const Node* p) noexcept override { return p->Index(); }
+  std::vector<gsl::not_null<const Graph*>> Node__GetSubgraphs(const Node* p) const noexcept override { return p->GetSubgraphs(); }
 
   void Node__ToProto(const Node* p, ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) override { p->ToProto(proto, update_subgraphs); }
 
@@ -715,6 +726,8 @@ struct ProviderHostImpl : ProviderHost {
     return std::make_unique<NodeAttributes_Iterator_Impl>(p->find(key));
   }
   void NodeAttributes__insert(NodeAttributes* p, const NodeAttributes& v) override { return p->insert(v.begin(), v.end()); }
+  void NodeAttributes__emplace(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) override { p->emplace(k, v); }
+  void NodeAttributes__reserve(NodeAttributes* p, size_t size) override { p->reserve(size); }
 
   // Model (wrapped)
   void Model__operator_delete(Model* p) override { delete p; }
@@ -739,6 +752,8 @@ struct ProviderHostImpl : ProviderHost {
   const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept override { return p->GetInputs(); }
   bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
 
+  const Node* Graph__ParentNode(const Graph* p) const override { return p->ParentNode(); }
+
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
   std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
@@ -747,7 +762,7 @@ struct ProviderHostImpl : ProviderHost {
                                    IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), graph_viewer->DomainToVersionMap(),
 #else
                                    IOnnxRuntimeOpSchemaRegistryList(), graph_viewer->DomainToVersionMap(),
-#endif // ORT_MINIMAL_BUILD
+#endif  // ORT_MINIMAL_BUILD
                                    std::vector<ONNX_NAMESPACE::FunctionProto>(), logger);
   }
 
@@ -758,7 +773,9 @@ struct ProviderHostImpl : ProviderHost {
   const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) override { return p->GetNodeArg(name); }
 
   bool GraphViewer__IsSubgraph(const GraphViewer* p) override { return p->IsSubgraph(); }
+  const Graph& GraphViewer__GetGraph(const GraphViewer* p) const override { return p->GetGraph(); }
   bool GraphViewer__IsConstantInitializer(const GraphViewer* p, const std::string& name, bool check_outer_scope) override { return p->IsConstantInitializer(name, check_outer_scope); }
+  const Node* GraphViewer__ParentNode(const GraphViewer* p) override { return p->ParentNode(); }
   int GraphViewer__NumberOfNodes(const GraphViewer* p) noexcept override { return p->NumberOfNodes(); }
   int GraphViewer__MaxNodeIndex(const GraphViewer* p) noexcept override { return p->MaxNodeIndex(); }
 
@@ -834,16 +851,16 @@ struct ProviderHostImpl : ProviderHost {
   const DataTransferManager& SessionState__GetDataTransferMgr(const SessionState* p) override { return p->GetDataTransferMgr(); }
 
   // Tensor (wrapped)
-  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override { 
-    return std::make_unique<Tensor>(p_type, shape, std::move(allocator)); 
+  std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) override {
+    return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
   }
 
   std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset) override {
-    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset); 
+    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset);
   }
 
   std::unique_ptr<Tensor> Tensor__construct_default() override {
-    return std::make_unique<Tensor>(); 
+    return std::make_unique<Tensor>();
   }
 
   virtual void Tensor__move_assign(Tensor& lhs, Tensor&& rhs) noexcept override {
@@ -1130,7 +1147,7 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const c
 
 // Adapter to convert the legacy OrtCUDAProviderOptions to the latest OrtCUDAProviderOptionsV2
 OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const OrtCUDAProviderOptions* legacy_cuda_options) {
-  OrtCUDAProviderOptionsV2 cuda_options_converted;
+  OrtCUDAProviderOptionsV2 cuda_options_converted{};
 
   cuda_options_converted.device_id = legacy_cuda_options->device_id;
   cuda_options_converted.cudnn_conv_algo_search = legacy_cuda_options->cudnn_conv_algo_search;

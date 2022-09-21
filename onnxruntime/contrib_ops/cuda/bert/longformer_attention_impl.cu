@@ -34,15 +34,8 @@ limitations under the License.
 using namespace onnxruntime::cuda;
 using namespace cub;
 
-#define CHECK(expr)         \
-  if (!CUBLAS_CALL(expr)) { \
-    return false;           \
-  }
-
-#define CHECK_CUDA(expr)  \
-  if (!CUDA_CALL(expr)) { \
-    return false;         \
-  }
+#define CHECK(expr) CUBLAS_RETURN_IF_ERROR(expr)
+#define CHECK_CUDA(expr) CUDA_RETURN_IF_ERROR(expr)
 
 namespace onnxruntime {
 namespace contrib {
@@ -63,7 +56,7 @@ namespace cuda {
 //    [scratch1: BxNxSxS] [scratch2: BxNxSxS]
 
 static size_t Align(size_t a) {
-  const size_t alignment = 128; // Align on a 16-byte boundary to avoid "misaligned address" error.
+  const size_t alignment = 128;  // Align on a 16-byte boundary to avoid "misaligned address" error.
   return CeilDiv(a, alignment) * alignment;
 }
 
@@ -88,7 +81,7 @@ size_t GetLongformerSoftmaxWorkspaceSize(
     size_t scratch2_size = GetScratch2Size();
     return Align(scratch1_size + scratch2_size);
   } else {
-    return static_cast<size_t>(2) * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
+    return 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, sequence_length);
   }
 }
 
@@ -368,7 +361,7 @@ __launch_bounds__(blockSize)
   }
 }
 
-bool LaunchLongformerSoftmaxKernel(
+Status LaunchLongformerSoftmaxKernel(
     cudaStream_t stream,
     cublasHandle_t cublas,
     void* workspace,
@@ -833,11 +826,11 @@ bool LaunchLongformerSoftmaxKernel(
     }
   }
 
-  return true;
+  return Status::OK();
 }
 
 template <typename T>
-bool LongformerQkvToContext(
+Status LongformerQkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t cublas,
     cudaStream_t stream,
@@ -899,9 +892,7 @@ bool LongformerQkvToContext(
                            global_input + 2 * elements, global_bias, qkv + 5 * elements,
                            use_half4);
   }
-  if (!CUDA_CALL(cudaPeekAtLastError())) {
-    return false;
-  }
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
   // Transposed Q, K, V with shape (B, N, S, H)
   const T* q = qkv;
@@ -921,7 +912,7 @@ bool LongformerQkvToContext(
   T* temp_output = qkv;  // Q will be overwritten
 
   if (disable_compact_memory) {
-    if (!LaunchLongformerSoftmaxSimpleKernel(
+    ORT_RETURN_IF_ERROR(LaunchLongformerSoftmaxSimpleKernel(
             stream,
             cublas,
             workspace,
@@ -943,13 +934,10 @@ bool LongformerQkvToContext(
             num_heads,
             head_size,
             window,
-            element_size)) {
-      return false;
-    }
+            element_size));
   } else {
     ORT_ENFORCE(max_num_global <= window);
-
-    if (!LaunchLongformerSoftmaxKernel(
+    ORT_RETURN_IF_ERROR(LaunchLongformerSoftmaxKernel(
             stream,
             cublas,
             workspace,
@@ -973,9 +961,7 @@ bool LongformerQkvToContext(
             num_heads,
             head_size,
             window,
-            element_size)) {
-      return false;
-    }
+            element_size));
   }
 
   // The temp_output is BxNxSxH, transpose it to final output BxSxNxH
@@ -983,7 +969,7 @@ bool LongformerQkvToContext(
                         num_heads, max_threads_per_block, false, temp_output, output);
 }
 
-bool LaunchLongformerAttentionKernel(
+Status LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,
     cublasHandle_t cublas,
     cudaStream_t stream,

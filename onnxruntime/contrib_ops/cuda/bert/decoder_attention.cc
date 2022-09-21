@@ -85,7 +85,7 @@ Status CheckInputs(const TensorShape& query_shape,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "q_weights shall have shape (hidden size, hidden size)");
   }
 
-  if (kv_weights_dims[0] != hidden_size || kv_weights_dims[1] != 2 * hidden_size) {
+  if (kv_weights_dims[0] != hidden_size || kv_weights_dims[1] != 2 * static_cast<int64_t>(hidden_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_weights shall have shape (hidden size, 2 * hidden size)");
   }
 
@@ -95,7 +95,7 @@ Status CheckInputs(const TensorShape& query_shape,
                            bias_dims.size());
   }
 
-  if (bias_dims[0] != 3 * hidden_size) {
+  if (bias_dims[0] != 3 * static_cast<int64_t>(hidden_size)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "bias shall have shape (3 * hidden size)");
   }
 
@@ -104,7 +104,8 @@ Status CheckInputs(const TensorShape& query_shape,
     const auto& kp_mask_dims = key_padding_mask->Shape().GetDims();
 
     if (kp_mask_dims.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key_padding_mask' is expected to have 2 dimension, got ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'key_padding_mask' is expected to have 2 dimension, got ",
                              kp_mask_dims.size());
     }
 
@@ -123,7 +124,8 @@ Status CheckInputs(const TensorShape& query_shape,
     }
 
     if (kp_mask_dims[1] != key_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "key_padding_mask shall have same sequence length as generated key");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "key_padding_mask shall have same sequence length as generated key");
     }
   }
 
@@ -188,10 +190,14 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   // Copy static_kv, use_past and has_layer_state to CPU
   auto pinned_buffer = AllocateBufferOnCPUPinned<void>(4 * sizeof(bool));
   bool* kernel_state_pinned = reinterpret_cast<bool*>(pinned_buffer.get());
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned, static_kv->Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 1, use_past->Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 2, has_layer_state->Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 3, has_key_padding_mask->Data<bool>(), sizeof(bool), cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned, static_kv->Data<bool>(), sizeof(bool),
+                                       cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 1, use_past->Data<bool>(), sizeof(bool),
+                                       cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 2, has_layer_state->Data<bool>(), sizeof(bool),
+                                       cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(kernel_state_pinned + 3, has_key_padding_mask->Data<bool>(), sizeof(bool),
+                                       cudaMemcpyDeviceToHost, stream));
 
   // Create an event to make sure the async copy is finished before reading the data.
   AutoDestoryCudaEvent new_event;
@@ -253,11 +259,13 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
                 has_key_padding_mask_)
   );
 
-  // calcualte q
+  // calculate q
   gemm_query_buffer_p = GetScratchBuffer<T>(batch_size * sequence_length * hidden_size * element_size);
   m = sequence_length * batch_size;
   n = hidden_size;
   k = hidden_size;
+
+  // TODO(tianleiwu): fuse bias and transpose
   // broadcast bias for query: (h2, S*B)
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
@@ -342,15 +350,18 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  auto qkv_buffer_p = GetScratchBuffer<void>(batch_size * (sequence_length + 2 * kv_sequence_length) * hidden_size * element_size);
-  auto workspace_p = GetScratchBuffer<void>(2 * batch_size * sequence_length * num_heads_ * element_size * (2 * head_size + kv_sequence_length));
+  size_t bytes = element_size * batch_size * (sequence_length + 2 * kv_sequence_length) * hidden_size;
+  auto qkv_buffer_p = GetScratchBuffer<void>(bytes);
+
+  bytes = element_size * 2 * batch_size * sequence_length * num_heads_ * (2 * head_size + kv_sequence_length);
+  auto workspace_p = GetScratchBuffer<void>(bytes);
 
   Tensor* output(context->Output(0, query_shape));
   TensorShape new_cache_shape({batch_size, num_heads_, kv_sequence_length, head_size});
   Tensor* new_key_cache(context->Output(1, new_cache_shape));
   Tensor* new_value_cache(context->Output(2, new_cache_shape));
 
-  if (!LaunchDecoderAttentionKernel(
+  return LaunchDecoderAttentionKernel(
           device_prop,
           stream,
           cublas,
@@ -373,13 +384,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
           workspace_p.get(),
           output->MutableData<T>(),
           nullptr == new_key_cache ? nullptr : new_key_cache->MutableData<T>(),
-          nullptr == new_value_cache ? nullptr : new_value_cache->MutableData<T>())) {
-    // Get last error to reset it to cudaSuccess.
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+          nullptr == new_value_cache ? nullptr : new_value_cache->MutableData<T>());
 }
 
 }  // namespace cuda

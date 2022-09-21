@@ -238,16 +238,15 @@ TEST(QDQTransformerTests, DQ_S8_to_U8) {
     auto* dq_w_output = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode<int8_t>(weight, .003f, -10, dq_w_output);
 
-
     builder.AddNode("MatMul", {dq1_output, dq_w_output}, {output_arg});
   };
 
   auto check_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
-      EXPECT_EQ(op_to_count["MatMul"], 0);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+    EXPECT_EQ(op_to_count["MatMul"], 0);
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
   };
 
   auto add_session_options = [&](SessionOptions& so) {
@@ -264,7 +263,7 @@ TEST(QDQTransformerTests, DQ_S8_to_U8) {
                     0.01 /*relative_per_sample_tolerance*/,
                     nullptr, add_session_options);
 }
-#endif // Only for X64 with contrib ops enabled
+#endif  // Only for X64 with contrib ops enabled
 
 template <typename InputType, typename OutputType>
 void QDQTransformerAveragePoolTests() {
@@ -763,6 +762,22 @@ TEST(QDQTransformerTests, Gather) {
   };
 
   test_case({12, 37}, {24, 12});
+}
+
+TEST(QDQTransformerTests, Split) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t& axis) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["Split"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    };
+    TransformerTester(BuildQDQSplitTestCase<int8_t, int8_t>(input_shape, axis),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2);
+  };
+  test_case({6, 18, 54}, 0);
 }
 
 TEST(QDQTransformerTests, Transpose) {
@@ -1865,7 +1880,7 @@ void QDQTransformerSoftmaxTests() {
       auto* output_arg = builder.MakeOutput();
       // add QDQ + Softmax
       auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .105f,
-                        (std::numeric_limits<OutputType>::max() / 255 * 255) / 2);
+                                                  (std::numeric_limits<OutputType>::max() / 255 * 255) / 2);
       auto* softmax_output = builder.MakeIntermediate();
       auto& softmax_node = builder.AddNode("Softmax", {dq_output}, {softmax_output});
       softmax_node.AddAttribute("axis", axis);
@@ -2506,8 +2521,8 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicDQQCleanUp) {
   auto test_case = [](bool use_matching_qdq_params) {
     // input -> Q -> DQ -> Q -> DQ -> output
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      const float scale_1 = 0.05f;
-      const uint8_t zp_1 = 128;
+      constexpr float scale_1 = 0.05f;
+      constexpr uint8_t zp_1 = 128;
       auto* const input = builder.MakeInput<float>({1, 2, 4}, -1.0f, 1.0f);
       auto* const dq_1_out = AddQDQNodePair<uint8_t>(builder, input, scale_1, zp_1);
 
@@ -2550,8 +2565,8 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
   auto test_case = [](bool is_q_dq) {
     // create model with input -> Q/DQ pair -> output
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      const float scale = 0.05f;
-      const uint8_t zp = 128;
+      constexpr float scale = 0.05f;
+      constexpr uint8_t zp = 128;
       NodeArg* input = is_q_dq ? builder.MakeInput<float>({1, 2, 4}, -1.f, 1.f)
                                : builder.MakeInput<uint8_t>({1, 2, 4},
                                                             std::numeric_limits<uint8_t>::min(),
