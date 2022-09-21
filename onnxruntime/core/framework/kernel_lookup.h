@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include "gsl/gsl"
-
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/framework/execution_provider.h"  // for IExecutionProvider::IKernelLookup
 #include "core/framework/kernel_registry.h"
 #include "core/framework/kernel_type_str_resolver.h"

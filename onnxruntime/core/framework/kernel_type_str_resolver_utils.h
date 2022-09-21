@@ -5,8 +5,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-#include "gsl/gsl"
-
+#include "core/common/gsl.h"
 #include "core/common/status.h"
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/graph/op_identifier.h"

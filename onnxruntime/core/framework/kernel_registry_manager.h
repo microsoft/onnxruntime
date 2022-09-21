@@ -7,8 +7,7 @@
 #include <variant>
 #include <unordered_map>
 
-#include "gsl/gsl"
-
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
 #include "core/framework/kernel_type_str_resolver.h"
