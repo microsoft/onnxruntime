@@ -3,6 +3,8 @@
 
 #include "activation_op_test.h"
 #include "core/providers/cpu/activation/activations.h"
+#include "test/common/cuda_op_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -50,15 +52,15 @@ void TestElementwiseGradientOp(
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
 }
 
-float ReluGrad(float dy, float x) {
+constexpr float ReluGrad(float dy, float x) {
   return x > 0 ? dy : 0;
 }
 
-float SigmoidGrad(float dy, float y) {
+constexpr float SigmoidGrad(float dy, float y) {
   return dy * y * (1 - y);
 }
 
-float TanhGrad(float dy, float y) {
+constexpr float TanhGrad(float dy, float y) {
   return dy * (1 - y * y);
 }
 }  // namespace
@@ -105,18 +107,212 @@ TEST_F(ActivationOpTest, Relu) {
   TestActivationOp<float>("Relu",
                           input_values,
                           [](float x) { return std::max(x, 0.0f); });
-  TestActivationOp<double>("Relu",
-                           input_values_double,
-                           [](double x) { return std::max(x, 0.0); },
-                           {},
-                           /*is_tensorrt_supported=*/ false);
-  TestActivationOp<int8_t>("Relu",
-                           input_values_int8,
-                           [](int8_t x) { return std::max(x, static_cast<int8_t>(0)); },
-                           {},
-                           /*is_tensorrt_supported=*/ false,
-                           /*opset_version= */ 14);
+  TestActivationOp<double>(
+      "Relu",
+      input_values_double,
+      [](double x) { return std::max(x, 0.0); },
+      {},
+      /*is_tensorrt_supported=*/false);
+  TestActivationOp<int8_t>(
+      "Relu",
+      input_values_int8,
+      [](int8_t x) { return std::max(x, static_cast<int8_t>(0)); },
+      {},
+      /*is_tensorrt_supported=*/false,
+      /*opset_version= */ 14);
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST_F(ActivationOpTest, Sigmoid_fp16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+  OpTester test("Sigmoid", 14);
+
+  auto formula = [](float x) {
+    auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
+    y = x > 0 ? y : 1 - y;
+    return y;
+  };
+
+  std::vector<float> X = input_values.front();
+  std::vector<float> Y;
+  for (unsigned i = 0; i < X.size(); i++)
+    Y.push_back(formula(X[i]));
+  std::vector<int64_t> dims{(int64_t)X.size()};
+
+  std::vector<MLFloat16> f_X(X.size());
+  std::vector<MLFloat16> f_Y(Y.size());
+  ConvertFloatToMLFloat16(X.data(), f_X.data(), static_cast<int>(X.size()));
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), static_cast<int>(Y.size()));
+
+  test.AddInput<MLFloat16>("X", dims, f_X);
+  test.AddOutput<MLFloat16>("Y", dims, f_Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST_F(ActivationOpTest, Tanh_fp16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+  OpTester test("Tanh", 14);
+
+  auto formula = [](float x) { return std::tanh(x); };
+
+  std::vector<float> X = input_values.front();
+  std::vector<float> Y;
+  for (unsigned i = 0; i < X.size(); i++)
+    Y.push_back(formula(X[i]));
+  std::vector<int64_t> dims{(int64_t)X.size()};
+
+  std::vector<MLFloat16> f_X(X.size());
+  std::vector<MLFloat16> f_Y(Y.size());
+  ConvertFloatToMLFloat16(X.data(), f_X.data(), static_cast<int>(X.size()));
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), static_cast<int>(Y.size()));
+
+  test.AddInput<MLFloat16>("X", dims, f_X);
+  test.AddOutput<MLFloat16>("Y", dims, f_Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST_F(ActivationOpTest, Relu_fp16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+  OpTester test("Relu", 14);
+
+  auto formula = [](float x) { return std::max(x, 0.0f); };
+
+  std::vector<float> X = input_values.front();
+  std::vector<float> Y;
+  for (unsigned i = 0; i < X.size(); i++)
+    Y.push_back(formula(X[i]));
+  std::vector<int64_t> dims{(int64_t)X.size()};
+
+  std::vector<MLFloat16> f_X(X.size());
+  std::vector<MLFloat16> f_Y(Y.size());
+  ConvertFloatToMLFloat16(X.data(), f_X.data(), static_cast<int>(X.size()));
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), static_cast<int>(Y.size()));
+
+  test.AddInput<MLFloat16>("X", dims, f_X);
+  test.AddOutput<MLFloat16>("Y", dims, f_Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST_F(ActivationOpTest, Sigmoid_bfloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester test("Sigmoid", 14);
+
+  auto formula = [](float x) {
+    auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
+    y = x > 0 ? y : 1 - y;
+    return y;
+  };
+
+  std::vector<float> X = input_values.front();
+  std::vector<float> Y;
+  for (unsigned i = 0; i < X.size(); i++)
+    Y.push_back(formula(X[i]));
+  std::vector<int64_t> dims{(int64_t)X.size()};
+
+  std::vector<BFloat16> bf_X = FloatsToBFloat16s(X);
+  std::vector<BFloat16> bf_Y = FloatsToBFloat16s(Y);
+
+  test.AddInput<BFloat16>("X", dims, bf_X);
+  test.AddOutput<BFloat16>("Y", dims, bf_Y);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST_F(ActivationOpTest, Tanh_bfloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester test("Tanh", 14);
+
+  auto formula = [](float x) { return std::tanh(x); };
+
+  std::vector<float> X = input_values.front();
+  std::vector<float> Y;
+  for (unsigned i = 0; i < X.size(); i++)
+    Y.push_back(formula(X[i]));
+  std::vector<int64_t> dims{(int64_t)X.size()};
+
+  std::vector<BFloat16> bf_X = FloatsToBFloat16s(X);
+  std::vector<BFloat16> bf_Y = FloatsToBFloat16s(Y);
+
+  test.AddInput<BFloat16>("X", dims, bf_X);
+  test.AddOutput<BFloat16>("Y", dims, bf_Y);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST_F(ActivationOpTest, Relu_bfloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester test("Relu", 14);
+
+  auto formula = [](float x) { return std::max(x, 0.0f); };
+
+  std::vector<float> X = input_values.front();
+  std::vector<float> Y;
+  for (unsigned i = 0; i < X.size(); i++)
+    Y.push_back(formula(X[i]));
+  std::vector<int64_t> dims{(int64_t)X.size()};
+
+  std::vector<BFloat16> bf_X = FloatsToBFloat16s(X);
+  std::vector<BFloat16> bf_Y = FloatsToBFloat16s(Y);
+
+  test.AddInput<BFloat16>("X", dims, bf_X);
+  test.AddOutput<BFloat16>("Y", dims, bf_Y);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 TEST_F(ActivationOpTest, Elu) {
   float alpha = 0.1f;
@@ -173,6 +369,16 @@ TEST_F(ActivationOpTest, Selu_Attributes) {
                           {{"alpha", alpha}, {"gamma", gamma}});
 }
 
+TEST_F(ActivationOpTest, Selu_GH10726) {
+  static constexpr float alpha = -2.0f;
+  static constexpr float gamma = -3.0f;
+
+  TestActivationOp<float>("Selu",
+                          {{1.f, -1.f}},
+                          [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
+                          {{"alpha", alpha}, {"gamma", gamma}});
+}
+
 TEST_F(ActivationOpTest, PRelu) {
   OpTester test("PRelu");
 
@@ -192,24 +398,31 @@ TEST_F(ActivationOpTest, PRelu) {
 }
 
 TEST_F(ActivationOpTest, PRelu_SingleSlope) {
-  OpTester test("PRelu");
+  auto test = [](bool slope_is_initializer) {
+    SCOPED_TRACE(MakeString("slope_is_initializer: ", slope_is_initializer));
 
-  auto formula = [](float x, float slope) { return x < 0 ? slope * x : x; };
+    OpTester test("PRelu");
 
-  auto inputs = {1.0f, -4.0f, 0.0f, -9.0f};
-  auto slope = 1.5f;
-  std::vector<float> outputs;
-  for (auto& input : inputs)
-    outputs.push_back(formula(input, slope));
+    auto formula = [](float x, float slope) { return x < 0 ? slope * x : x; };
 
-  std::vector<int64_t> dims{2, 2};
-  test.AddInput<float>("X", dims, inputs);
-  test.AddInput<float>("slope", {}, {slope});
-  test.AddOutput<float>("Y", dims, outputs);
-  test.Run();
+    auto inputs = {1.0f, 2.0f, -4.0f, 3.0f, 0.0f, 5.0f, -9.0f, 8.0f};
+    auto slope = 1.5f;
+    std::vector<float> outputs;
+    for (auto& input : inputs)
+      outputs.push_back(formula(input, slope));
+
+    std::vector<int64_t> dims{2, 2, 2};
+    test.AddInput<float>("X", dims, inputs);
+    test.AddInput<float>("slope", {}, {slope}, slope_is_initializer);
+    test.AddOutput<float>("Y", dims, outputs);
+    test.Run();
+  };
+
+  test(true /* slope_is_initializer */);
+  test(false /* slope_is_initializer */);
 }
 
-TEST_F(ActivationOpTest, PRelu_MultiChannel) {
+TEST_F(ActivationOpTest, PRelu_MultiChannel3D) {
   OpTester test("PRelu");
 
   auto formula = [](float x, float slope) { return x < 0 ? slope * x : x; };
@@ -217,9 +430,9 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel) {
   std::vector<float> inputs{1.0f, 2.0f, -4.0f, 3.0f, 0.0f, 5.0f, -9.0f, 8.0f};
   std::vector<float> slopes{1.0f, -2.0f};
   std::vector<float> outputs;
-  const int64_t num_images = 2;
-  const int64_t num_channels = 2;
-  const int64_t num_pixels = 2;
+  constexpr int64_t num_images = 2;
+  constexpr int64_t num_channels = 2;
+  constexpr int64_t num_pixels = 2;
   for (unsigned i = 0; i < inputs.size(); i++)
     outputs.push_back(formula(inputs[i], slopes[i / num_pixels % num_channels]));
 
@@ -231,14 +444,48 @@ TEST_F(ActivationOpTest, PRelu_MultiChannel) {
   test.Run();
 }
 
+TEST_F(ActivationOpTest, PRelu_MultiChannel4D) {
+  RandomValueGenerator random{2345};
+
+  auto test = [&](bool slope_is_initializer,
+                  int64_t n, int64_t c, int64_t h, int64_t w) {
+    SCOPED_TRACE(MakeString("slope_is_initializer: ", slope_is_initializer,
+                            ", n: ", n, ", c: ", c, ", h: ", h, ", w: ", w));
+
+    OpTester test("PRelu");
+
+    auto formula = [](float x, float slope) { return x < 0 ? slope * x : x; };
+
+    const std::vector<int64_t> x_dims{n, c, h, w};
+    const std::vector<int64_t> slope_dims{c, 1, 1};
+    std::vector<float> inputs = random.Uniform<float>(x_dims, -16.0f, 16.0f);
+    std::vector<float> slopes = random.Uniform<float>(slope_dims, -1.0f, 1.0f);
+    std::vector<float> outputs;
+    for (unsigned i = 0; i < inputs.size(); i++) {
+      outputs.push_back(formula(inputs[i], slopes[i / (h * w) % c]));
+    }
+
+    test.AddInput<float>("X", x_dims, inputs);
+    test.AddInput<float>("slope", slope_dims, slopes, slope_is_initializer);
+    test.AddOutput<float>("Y", x_dims, outputs);
+    test.Run();
+  };
+
+  test(true /* slope_is_initializer */, 5, 4, 3, 2);
+  test(false, 5, 4, 3, 2);
+
+  test(true, 3, 1, 1, 1);
+  test(false, 3, 1, 1, 1);
+}
+
 TEST_F(ActivationOpTest, Softplus) {
   TestActivationOp<float>("Softplus",
                           input_values,
                           [](float x) {
                             if (x > 0)
-                              return x + logf(expf(-x) + 1);
+                              return x + log1pf(expf(-x));
                             else
-                              return logf(expf(x) + 1);
+                              return log1pf(expf(x));
                           });
 }
 

@@ -74,8 +74,8 @@ if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
   GetFile https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2-Linux-x86_64.tar.gz /tmp/src/cmake-3.18.2-Linux-x86_64.tar.gz
   tar -zxf /tmp/src/cmake-3.18.2-Linux-x86_64.tar.gz --strip=1 -C /usr
   echo "Installing Node.js"
-  GetFile https://nodejs.org/dist/v12.16.3/node-v12.16.3-linux-x64.tar.xz /tmp/src/node-v12.16.3-linux-x64.tar.xz
-  tar -xf /tmp/src/node-v12.16.3-linux-x64.tar.xz --strip=1 -C /usr
+  GetFile https://nodejs.org/dist/v16.14.2/node-v16.14.2-linux-x64.tar.xz /tmp/src/node-v16.14.2-linux-x64.tar.xz
+  tar -xf /tmp/src/node-v16.14.2-linux-x64.tar.xz --strip=1 -C /usr
 else
   echo "Installing cmake"
   GetFile https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2.tar.gz /tmp/src/cmake-3.18.2.tar.gz

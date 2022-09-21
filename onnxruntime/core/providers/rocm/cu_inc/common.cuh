@@ -14,6 +14,82 @@
 namespace onnxruntime {
 namespace rocm {
 
+/// Arithmetic for BFloat16
+
+__device__ __forceinline__ BFloat16 operator+(const BFloat16& a, const BFloat16& b) {
+  return static_cast<float>(a) + static_cast<float>(b);
+}
+
+__device__ __forceinline__ BFloat16 operator-(const BFloat16& a, const BFloat16& b) {
+  return static_cast<float>(a) - static_cast<float>(b);
+}
+
+__device__ __forceinline__ BFloat16 operator*(const BFloat16& a, const BFloat16& b) {
+  return static_cast<float>(a) * static_cast<float>(b);
+}
+
+__device__ __forceinline__ BFloat16 operator/(const BFloat16& a, const BFloat16& b) {
+  return static_cast<float>(a) / static_cast<float>(b);
+}
+
+__device__ __forceinline__ BFloat16 operator-(const BFloat16& a) { return -static_cast<float>(a); }
+
+__device__ __forceinline__ BFloat16& operator+=(BFloat16& a, const BFloat16& b) {
+  a = a + b;
+  return a;
+}
+
+__device__ __forceinline__ BFloat16& operator-=(BFloat16& a, const BFloat16& b) {
+  a = a - b;
+  return a;
+}
+
+__device__ __forceinline__ BFloat16& operator*=(BFloat16& a, const BFloat16& b) {
+  a = a * b;
+  return a;
+}
+
+__device__ __forceinline__ BFloat16& operator/=(BFloat16& a, const BFloat16& b) {
+  a = a / b;
+  return a;
+}
+
+/// Arithmetic with floats
+
+__device__ __forceinline__ float operator+(BFloat16 a, float b) { return static_cast<float>(a) + b; }
+__device__ __forceinline__ float operator-(BFloat16 a, float b) { return static_cast<float>(a) - b; }
+__device__ __forceinline__ float operator*(BFloat16 a, float b) { return static_cast<float>(a) * b; }
+__device__ __forceinline__ float operator/(BFloat16 a, float b) { return static_cast<float>(a) / b; }
+
+__device__ __forceinline__ float operator+(float a, BFloat16 b) { return a + static_cast<float>(b); }
+__device__ __forceinline__ float operator-(float a, BFloat16 b) { return a - static_cast<float>(b); }
+__device__ __forceinline__ float operator*(float a, BFloat16 b) { return a * static_cast<float>(b); }
+__device__ __forceinline__ float operator/(float a, BFloat16 b) { return a / static_cast<float>(b); }
+
+__device__ __forceinline__ float& operator+=(float& a, const BFloat16& b) { return a += static_cast<float>(b); }
+__device__ __forceinline__ float& operator-=(float& a, const BFloat16& b) { return a -= static_cast<float>(b); }
+__device__ __forceinline__ float& operator*=(float& a, const BFloat16& b) { return a *= static_cast<float>(b); }
+__device__ __forceinline__ float& operator/=(float& a, const BFloat16& b) { return a /= static_cast<float>(b); }
+
+/// Arithmetic with doubles
+
+__device__ __forceinline__ double operator+(BFloat16 a, double b) { return static_cast<double>(a) + b; }
+__device__ __forceinline__ double operator-(BFloat16 a, double b) { return static_cast<double>(a) - b; }
+__device__ __forceinline__ double operator*(BFloat16 a, double b) { return static_cast<double>(a) * b; }
+__device__ __forceinline__ double operator/(BFloat16 a, double b) { return static_cast<double>(a) / b; }
+
+__device__ __forceinline__ double operator+(double a, BFloat16 b) { return a + static_cast<double>(b); }
+__device__ __forceinline__ double operator-(double a, BFloat16 b) { return a - static_cast<double>(b); }
+__device__ __forceinline__ double operator*(double a, BFloat16 b) { return a * static_cast<double>(b); }
+__device__ __forceinline__ double operator/(double a, BFloat16 b) { return a / static_cast<double>(b); }
+
+// Overloading < and > operators
+
+__device__ __forceinline__ bool operator==(BFloat16& lhs, BFloat16& rhs) { return float(lhs) == float(rhs); }
+__device__ __forceinline__ bool operator!=(BFloat16& lhs, BFloat16& rhs) { return float(lhs) != float(rhs); }
+__device__ __forceinline__ bool operator>(BFloat16& lhs, BFloat16& rhs) { return float(lhs) > float(rhs); }
+__device__ __forceinline__ bool operator<(BFloat16& lhs, BFloat16& rhs) { return float(lhs) < float(rhs); }
+
 template <typename T>
 __device__ __inline__ T _Ceil(T a);
 
@@ -184,9 +260,59 @@ __device__ __inline__ double _Normcdf(double a) { return normcdf(a); }
 template <>
 __device__ __inline__ half _Normcdf(half a) { return half(normcdff((float)a)); }
 
+template <>
+__device__ __inline__ BFloat16 _Sqrt(BFloat16 a) { return sqrtf(static_cast<float>(a)); }
+
+template <>
+__device__ __inline__ BFloat16 _Exp(BFloat16 a) { return expf(static_cast<float>(a)); }
+
+template <>
+__device__ __inline__ BFloat16 _Log(BFloat16 a) { return logf(static_cast<float>(a)); }
+
+template <>
+__device__ __inline__ BFloat16 _Tanh(BFloat16 a) { return tanhf(static_cast<float>(a)); }
+
+template <>
+__device__ __inline__ BFloat16 _Normcdf(BFloat16 a) { return normcdff(static_cast<float>(a)); }
+
 template <typename T>
 __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
+}
+
+template <typename T>
+__device__ __inline__ T _Mod(T a, T b) {
+  T r = a % b;
+  T zero = T(0);
+  if ((r > zero && b < zero) || (r < zero && b > zero)) {
+    r += b;
+  }
+  return r;
+}
+
+template <typename T>
+__device__ __inline__ T _Fmod(T a, T b) {
+  return a % b;
+}
+
+template <>
+__device__ __inline__ float _Fmod(float a, float b) {
+  return fmodf(a, b);
+}
+
+template <>
+__device__ __inline__ double _Fmod(double a, double b) {
+  return fmod(a, b);
+}
+
+template <>
+__device__ __inline__ half _Fmod(half a, half b) {
+  return fmodf((float)a, (float)b);
+}
+
+template <>
+__device__ __inline__ BFloat16 _Fmod(BFloat16 a, BFloat16 b) {
+  return fmodf((float)a, (float)b);
 }
 
 // We would like to use 64-bit integer to support large matrices. However, ROCM seems to support only 32-bit integer
@@ -225,7 +351,8 @@ struct alignas(sizeof(T) * vec_size) aligned_vector {
 //#define HIP_KERNEL_ASSERT(...) assert(__VA_ARGS__)
 
 // WARP related definitions and functions
-constexpr int GPU_WARP_SIZE = 64;
+constexpr int GPU_WARP_SIZE = warpSize;
+inline int GPU_WARP_SIZE_HOST= warpSizeDynamic();
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {

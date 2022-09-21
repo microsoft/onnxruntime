@@ -17,13 +17,13 @@
 #include "core/framework/ort_value.h"
 #include "core/session/inference_session.h"
 
+PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
+
 namespace onnxruntime {
 namespace python {
 
 extern const char* PYTHON_ORTVALUE_OBJECT_NAME;
 extern const char* PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR;
-
-bool IsNumericNumpyType(int npy_type);
 
 bool IsNumericNumpyArray(const pybind11::object& py_object);
 
@@ -37,9 +37,7 @@ TensorShape GetShape(const pybind11::array& arr);
 
 int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type);
 
-MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type);
-
-MLDataType NumpyToOnnxRuntimeTensorType(int numpy_type);
+MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type);
 
 using MemCpyFunc = void (*)(void*, const void*, size_t);
 
@@ -57,6 +55,8 @@ pybind11::object AddNonTensorAsPyObj(const OrtValue& val,
                                      const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions);
 
 OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device);
+
+int32_t GetTensorProtoType(const OrtValue& ort_value);
 
 #ifdef USE_CUDA
 

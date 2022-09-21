@@ -17,9 +17,10 @@
 
 #pragma once
 
-#include <algorithm>
-#include <cstring>
 #include <climits>
+#include <cstring>
+#include <algorithm>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -28,25 +29,19 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
-#include <chrono>
 
 #include "core/common/code_location.h"
 #include "core/common/exceptions.h"
 #include "core/common/make_string.h"
 #include "core/common/status.h"
+#include "core/common/gsl_suppress.h"
 
-#ifdef USE_MIMALLOC_ARENA_ALLOCATOR
-#include <mimalloc.h>
-#endif
 
 namespace onnxruntime {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
-
-// Using statements for common classes that we refer to in ONNXRuntime very often.
-// TODO(Task:137) Remove 'using' statements from header files
-using common::Status;
 
 #ifdef _WIN32
 #define ORT_UNUSED_PARAMETER(x) (x)
@@ -257,13 +252,6 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     }                                  \
   } while (0)
 
-// C++ Core Guideline check suppression.
-#if defined(_MSC_VER) && !defined(__NVCC__) && !defined(__clang__)
-#define GSL_SUPPRESS(tag) [[gsl::suppress(tag)]]
-#else
-#define GSL_SUPPRESS(tag)
-#endif
-
 inline long long TimeDiffMicroSeconds(TimePoint start_time) {
   auto end_time = std::chrono::high_resolution_clock::now();
   return std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
@@ -274,13 +262,12 @@ inline long long TimeDiffMicroSeconds(TimePoint start_time, TimePoint end_time) 
 }
 
 struct null_type {};
-inline std::string ToMBString(const std::string& s) { return s; }
+inline std::string ToUTF8String(const std::string& s) { return s; }
 #ifdef _WIN32
 /**
- * Convert a wide character string into a narrow one, with local ANSI code page(like CP936)
- * DO NOT assume the result string is encoded in UTF-8
+ * Convert a wide character string to a UTF-8 string
  */
-std::string ToMBString(const std::wstring& s);
+std::string ToUTF8String(const std::wstring& s);
 
 std::wstring ToWideString(const std::string& s);
 inline std::wstring ToWideString(const std::wstring& s) { return s; }
@@ -288,12 +275,15 @@ inline std::wstring ToWideString(const std::wstring& s) { return s; }
 inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 
-#if ((__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)))
-#define ORT_IF_CONSTEXPR if constexpr
-#else
-#define ORT_IF_CONSTEXPR if
-#endif
-
 constexpr size_t kMaxStrLen = 2048;
+
+// Returns whether `key` is in `container`.
+// Like C++20's map/set contains() member function.
+template <typename Key, typename... OtherContainerArgs,
+          template <typename...> typename AssociativeContainer,
+          typename LookupKey>
+inline bool Contains(const AssociativeContainer<Key, OtherContainerArgs...>& container, LookupKey&& key) {
+  return container.find(std::forward<LookupKey>(key)) != container.end();
+}
 
 }  // namespace onnxruntime

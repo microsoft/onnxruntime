@@ -10,6 +10,13 @@
 #pragma GCC diagnostic ignored "-Wignored-qualifiers"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-result"
+// cmake/external/eigen/Eigen/src/Core/arch/NEON/PacketMath.h:1633:9:
+// error: ‘void* memcpy(void*, const void*, size_t)’ copying an object of non-trivial type ‘Eigen::internal::Packet4c’
+// {aka ‘struct Eigen::internal::eigen_packet_wrapper<int, 2>’} from an array of ‘const int8_t’
+// {aka ‘const signed char’} [-Werror=class-memaccess]
+#ifdef HAS_CLASS_MEMACCESS
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
 #endif
 #include <google/protobuf/message_lite.h>
 #include <Eigen/Core>
@@ -68,8 +75,8 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
                                                           double per_sample_tolerance,
                                                           double relative_per_sample_tolerance, bool post_processing) {
   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
-  const FLOAT_TYPE* expected_output = expected_value.template Data<FLOAT_TYPE>();
-  const FLOAT_TYPE* real_output = outvalue.template Data<FLOAT_TYPE>();
+  const FLOAT_TYPE* expected_output = expected_value.Data<FLOAT_TYPE>();
+  const FLOAT_TYPE* real_output = outvalue.Data<FLOAT_TYPE>();
   std::pair<COMPARE_RESULT, std::string> res = std::make_pair(COMPARE_RESULT::SUCCESS, "");
   double max_diff = 0;
   size_t diff_count = 0;
@@ -109,8 +116,8 @@ std::pair<COMPARE_RESULT, std::string> CompareFloatResult(const Tensor& outvalue
 template <typename T>
 std::pair<COMPARE_RESULT, std::string> IsResultExactlyMatch(const Tensor& outvalue, const Tensor& expected_value) {
   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
-  const T* expected_output = expected_value.template Data<T>();
-  const T* real_output = outvalue.template Data<T>();
+  const T* expected_output = expected_value.Data<T>();
+  const T* real_output = outvalue.Data<T>();
   for (size_t di = 0; di != size1; ++di) {
     if (expected_output[di] != real_output[di]) {
       std::ostringstream oss;
@@ -126,8 +133,8 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
                                                             double relative_per_sample_tolerance,
                                                             bool post_processing) {
   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
-  const MLFloat16* expected_output = expected_value.template Data<MLFloat16>();
-  const MLFloat16* real_output = outvalue.template Data<MLFloat16>();
+  const MLFloat16* expected_output = expected_value.Data<MLFloat16>();
+  const MLFloat16* real_output = outvalue.Data<MLFloat16>();
   std::ostringstream oss;
   COMPARE_RESULT result = COMPARE_RESULT::SUCCESS;
   for (size_t di = 0; di != size1; ++di) {
@@ -149,8 +156,8 @@ std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outva
                                                              double relative_per_sample_tolerance,
                                                              bool post_processing) {
   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
-  const BFloat16* expected_output = expected_value.template Data<BFloat16>();
-  const BFloat16* real_output = outvalue.template Data<BFloat16>();
+  const BFloat16* expected_output = expected_value.Data<BFloat16>();
+  const BFloat16* real_output = outvalue.Data<BFloat16>();
   for (size_t di = 0; di != size1; ++di) {
     float expected = expected_output[di].ToFloat();
     float real = real_output[di].ToFloat();
@@ -416,7 +423,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
 static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorTypeProto(const ONNX_NAMESPACE::TypeProto_Tensor& t,
                                                                                       const Ort::Value& o) {
   // below code doesn't work
-  //if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
+  // if (((TensorTypeBase*)o.Type())->GetElementType() != DataTypeImpl::ElementTypeFromProto(t.elem_type())) {
   //	return COMPARE_RESULT::TYPE_MISMATCH;
   //}
 
@@ -438,7 +445,7 @@ static std::pair<COMPARE_RESULT, std::string> CompareTensorOrtValueAndTensorType
     if (tensor_shape_proto.dim_size() == 0) {
       oss << "(unknown)";
     } else {
-      oss << tensor_shape_proto;
+      oss << utils::GetTensorShapeFromTensorShapeProto(tensor_shape_proto);
     }
     oss << "', real output is ";
     VectorToString(shape, oss);

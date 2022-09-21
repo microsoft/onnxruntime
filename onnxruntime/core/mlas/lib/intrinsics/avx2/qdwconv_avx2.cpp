@@ -18,12 +18,12 @@ Abstract:
 
 #include "mlasi.h"
 
-template<typename FilterType>
+template<typename InputType, typename FilterType>
 void
 MLASCALL
 MlasConvDepthwiseKernelAvx2(
-    const uint8_t* const* Input,
-    uint8_t InputZeroPoint,
+    const InputType* const* Input,
+    InputType InputZeroPoint,
     const FilterType* Filter,
     FilterType FilterZeroPoint,
     int32_t* Output,
@@ -48,7 +48,13 @@ MlasConvDepthwiseKernelAvx2(
 
             for (size_t k = 0; k < KernelSize; k++) {
 
-                __m256i InputVector = _mm256_cvtepu8_epi16(_mm_loadu_si128((const __m128i*)&Input[k][ChannelOffset]));
+                __m256i InputVector;
+                if (std::is_signed<InputType>::value) {
+                    InputVector = _mm256_cvtepi8_epi16(_mm_loadu_si128((const __m128i*)&Input[k][ChannelOffset]));
+                } else {
+                    InputVector = _mm256_cvtepu8_epi16(_mm_loadu_si128((const __m128i*)&Input[k][ChannelOffset]));
+                }
+
                 __m256i FilterVector;
 
                 if (std::is_signed<FilterType>::value) {
@@ -100,7 +106,11 @@ MlasConvDepthwiseKernelAvx2(
                 __m128i InputVector = _mm_loadl_epi64((const __m128i*)&Input[k][ChannelOffset]);
                 __m128i FilterVector = _mm_loadl_epi64((const __m128i*)&Filter[ChannelKernelOffset]);
 
-                InputVector = _mm_cvtepu8_epi16(InputVector);
+                if (std::is_signed<InputType>::value) {
+                    InputVector = _mm_cvtepi8_epi16(InputVector);
+                } else {
+                    InputVector = _mm_cvtepu8_epi16(InputVector);
+                }
 
                 if (std::is_signed<FilterType>::value) {
                     FilterVector = _mm_cvtepi8_epi16(FilterVector);
@@ -157,7 +167,7 @@ MlasConvDepthwiseKernelAvx2(
 template
 void
 MLASCALL
-MlasConvDepthwiseKernelAvx2<int8_t>(
+MlasConvDepthwiseKernelAvx2<uint8_t, int8_t>(
     const uint8_t* const* Input,
     uint8_t InputZeroPoint,
     const int8_t* Filter,
@@ -171,9 +181,37 @@ MlasConvDepthwiseKernelAvx2<int8_t>(
 template
 void
 MLASCALL
-MlasConvDepthwiseKernelAvx2<uint8_t>(
+MlasConvDepthwiseKernelAvx2<uint8_t, uint8_t>(
     const uint8_t* const* Input,
     uint8_t InputZeroPoint,
+    const uint8_t* Filter,
+    uint8_t FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+template
+void
+MLASCALL
+MlasConvDepthwiseKernelAvx2<int8_t, int8_t>(
+    const int8_t* const* Input,
+    int8_t InputZeroPoint,
+    const int8_t* Filter,
+    int8_t FilterZeroPoint,
+    int32_t* Output,
+    size_t Channels,
+    size_t OutputCount,
+    size_t KernelSize
+    );
+
+template
+void
+MLASCALL
+MlasConvDepthwiseKernelAvx2<int8_t, uint8_t>(
+    const int8_t* const* Input,
+    int8_t InputZeroPoint,
     const uint8_t* Filter,
     uint8_t FilterZeroPoint,
     int32_t* Output,

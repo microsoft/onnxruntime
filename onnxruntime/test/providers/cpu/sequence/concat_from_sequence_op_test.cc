@@ -95,6 +95,9 @@ TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis1) {
 
 TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis2) {
   OpTester test("ConcatFromSequence", 11);
+  // Don't provide input shapes so it doesn't fail during shape inferencing,
+  // to test the expected failure in compute.
+  test.AddShapeToTensorData(false, -1);
   test.AddAttribute<int64_t>("axis", 2);
   test.AddAttribute<int64_t>("new_axis", 0);  // concat mode
   SeqTensors<int64_t> input;
@@ -120,6 +123,9 @@ TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis1_WithEmptyInput) {
 
 TEST(SequenceOpsTest, ConcatFromSequence_Concat_ScalarInputs) {
   OpTester test("ConcatFromSequence", 11);
+  // Don't provide input shapes so it doesn't fail during shape inferencing,
+  // to test the expected failure in compute.
+  test.AddShapeToTensorData(false, -1);
   test.AddAttribute<int64_t>("axis", 0);
   test.AddAttribute<int64_t>("new_axis", 0);  // concat mode
   SeqTensors<int64_t> input;

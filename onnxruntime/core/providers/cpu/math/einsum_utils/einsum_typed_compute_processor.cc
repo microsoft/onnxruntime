@@ -7,10 +7,10 @@ namespace onnxruntime {
 
 template <typename T>
 void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_output,
-                                                    const std::vector<int64_t>& ordered_subscript_indices_in_candidate) {
+                                                    const gsl::span<const int64_t>& ordered_subscript_indices_in_candidate) {
   const std::vector<int64_t>& subscript_indices_to_output_indices =
       einsum_compute_preprocessor_.GetMappedSubscriptIndicesToOutputindices();
-  const auto& output_dims = einsum_compute_preprocessor_.GetOutputDims();
+  const auto output_dims = einsum_compute_preprocessor_.GetOutputDims();
   TensorShape output_shape = TensorShape(output_dims);
   const auto output_rank = output_dims.size();
   Tensor& output = *context_->Output(0, output_dims);
@@ -18,12 +18,12 @@ void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_outp
   ORT_ENFORCE(candidate_output.Shape().Size() == output_shape.Size(),
               "Einsum op: The candidate output cannot be reshaped into the op's output");
 
-  const auto& candidate_output_dims = candidate_output.Shape().GetDims();
+  const auto candidate_output_dims = candidate_output.Shape().GetDims();
   const auto candidate_output_rank = candidate_output_dims.size();
 
   // This vector holds the shape of the candidate_output after removing the dims that have
   // been reduced in the final output
-  std::vector<int64_t> candidate_output_shape_without_reduced_dims;
+  TensorShapeVector candidate_output_shape_without_reduced_dims;
   candidate_output_shape_without_reduced_dims.reserve(candidate_output_rank);  // reserve upper bound
 
   // Identify the permutation required by the op's output
@@ -70,9 +70,9 @@ void EinsumTypedComputeProcessor<T>::FinalizeOutput(const Tensor& candidate_outp
   }
 }
 
-static bool IsTransposeReshapeForEinsum(const std::vector<size_t>& perm,
+static bool IsTransposeReshapeForEinsum(const gsl::span<const size_t>& perm,
                                         gsl::span<const int64_t> input_dims,
-                                        std::vector<int64_t>& new_shape) {
+                                        TensorShapeVector& new_shape) {
   // As long as the dims with values > 1 stay in the same order, it's a reshape.
   // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
   size_t last_permuted_axis = 0;
@@ -83,7 +83,7 @@ static bool IsTransposeReshapeForEinsum(const std::vector<size_t>& perm,
       return false;
     last_permuted_axis = perm[i];
   }
-  new_shape = std::vector<int64_t>(input_dims.begin(), input_dims.end());
+  new_shape.assign(input_dims.cbegin(), input_dims.cend());
   for (size_t i = 0; i < perm.size(); ++i) {
     new_shape[i] = input_dims[perm[i]];
   }
@@ -95,7 +95,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
                                                                                const TensorShape& left_shape_override,
                                                                                const Tensor& right,
                                                                                const TensorShape& right_shape_override,
-                                                                               const std::vector<int64_t>& reduce_dims,
+                                                                               const gsl::span<const int64_t>& reduce_dims,
                                                                                bool is_final_pair) {
   // Use the provided dim overrides instead of the actual shapes of the operands
   ORT_ENFORCE(left.Shape().Size() == left_shape_override.Size(),
@@ -123,14 +123,14 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   // lro: dim indices that are present in left, right, and reduce_dims
   // lo: dim indices that are present in left and reduce_dims
   // ro: dim indices that are present in right and reduce_dims
-  std::vector<size_t> lro;
-  lro.reserve(8);  // Reserve an arbitrary amount of space for this vector (not bound to see a tensor of rank > 8)
+  InlinedVector<size_t> lro;
+  lro.reserve(kTensorShapeSmallBufferElementsSize);  // Reserve an arbitrary amount of space for this vector (not bound to see a tensor of rank > kTensorShapeSmallBufferElementsSize)
 
-  std::vector<size_t> lo;
-  lo.reserve(8);  // Reserve an arbitrary amount of space for this vector (not bound to see a tensor of rank > 8)
+  InlinedVector<size_t> lo;
+  lo.reserve(kTensorShapeSmallBufferElementsSize);  // Reserve an arbitrary amount of space for this vector (not bound to see a tensor of rank > kTensorShapeSmallBufferElementsSize)
 
-  std::vector<size_t> ro;
-  ro.reserve(8);  // Reserve an arbitrary amount of space for this vector (not bound to see a tensor of rank > 8)
+  InlinedVector<size_t> ro;
+  ro.reserve(kTensorShapeSmallBufferElementsSize);  // Reserve an arbitrary amount of space for this vector (not bound to see a tensor of rank > kTensorShapeSmallBufferElementsSize)
 
   // Maintain sizes to create reshaped "views"
   int64_t lro_size = 1;
@@ -192,14 +192,14 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   }
 
   // Permutate the left operand so that the axes order go like this: [lro, lo, reduce_dims, ro]
-  std::vector<int64_t> reshaped_dims;
-  std::vector<size_t> left_permutation;
+  TensorShapeVector reshaped_dims;
+  InlinedVector<size_t> left_permutation;
   left_permutation.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
   left_permutation.insert(left_permutation.end(), lro.begin(), lro.end());
   left_permutation.insert(left_permutation.end(), lo.begin(), lo.end());
   left_permutation.insert(left_permutation.end(), reduce_dims.begin(), reduce_dims.end());
   left_permutation.insert(left_permutation.end(), ro.begin(), ro.end());
-  if (EinsumOp::IsTransposeRequired(current_left ? current_left->Shape().GetDims().size() : left_dims.size(),
+  if (EinsumOp::IsTransposeRequired(current_left ? current_left->Shape().NumDimensions() : left_dims.size(),
                                     left_permutation)) {
     if (current_left && IsTransposeReshapeForEinsum(left_permutation,
                                                     current_left->Shape().GetDims(),
@@ -219,7 +219,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   }
 
   // Permutate the right operand so that the axes order go like this: [lro, reduce_dims, ro, lo]
-  std::vector<size_t> right_permutation;
+  InlinedVector<size_t> right_permutation;
   right_permutation.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
   right_permutation.insert(right_permutation.end(), lro.begin(), lro.end());
   right_permutation.insert(right_permutation.end(), reduce_dims.begin(), reduce_dims.end());
@@ -249,7 +249,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   //  dim_value of `lo` dims,
   // `1` for each of the `reduce_dims`,
   // dim_value of `ro` dims]
-  std::vector<int64_t> output_dims;
+  TensorShapeVector output_dims;
   output_dims.reserve(lro.size() + lo.size() + reduce_dims.size() + ro.size());
   for (size_t i = 0; i < lro.size(); ++i) {
     output_dims.push_back(left_dims[lro[i]]);
@@ -266,14 +266,14 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
     output_dims.push_back(right_dims[ro[i]]);
   }
 
-  std::vector<int64_t> current_subscript_order;
+  TensorShapeVector current_subscript_order;
 
   // Calculate output permutation
   // After the MatMul op, the because the two operands have been permutated,
   // the output is permutated as well with respect to the original ordering of the axes.
   // The permutated order will be the dims in: [lro, lo, reduced_dims, ro]
   // Hence invert the permutation by a permutation that puts the axes in the same ordering
-  std::vector<size_t> output_permutation;
+  InlinedVector<size_t> output_permutation;
   if (!is_final_pair) {  // If this is not the final pair, we need to permutate the result to match the pre-fixed order for the next iteration
     output_permutation.resize(lro.size() + lo.size() + reduce_dims.size() + ro.size(), 0);
     size_t iter = 0;
@@ -298,8 +298,8 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   }
 
   // Multiply the mutated inputs
-  auto output = EinsumOp::MatMul<T>(current_left ? *current_left : left, {lro_size, lo_size, reduced_size},
-                                    current_right ? *current_right : right, {lro_size, reduced_size, ro_size},
+  auto output = EinsumOp::MatMul<T>(current_left ? *current_left : left, TensorShapeVector{lro_size, lo_size, reduced_size},
+                                    current_right ? *current_right : right, TensorShapeVector{lro_size, reduced_size, ro_size},
                                     allocator_, tp_, einsum_ep_assets_, device_matmul_func_);
 
   output->Reshape(output_dims);
@@ -353,9 +353,9 @@ Status EinsumTypedComputeProcessor<T>::Run() {
   std::unique_ptr<const Tensor> result;
 
   {
-    std::vector<int64_t> reduced_dims;
-    std::vector<int64_t> preserved_dims;           // dims which were not reduced
-    std::vector<int64_t> preserved_shape;          // shape pertaining to only the dims that were preserved (not reduced)
+    TensorShapeVector reduced_dims;
+    TensorShapeVector preserved_dims;              // dims which were not reduced
+    TensorShapeVector preserved_shape;             // shape pertaining to only the dims that were preserved (not reduced)
     reduced_dims.reserve(num_subscript_labels);    // num_subscript_labels is the upper bound. No harm in over-reserving.
     preserved_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving.
 
@@ -395,7 +395,7 @@ Status EinsumTypedComputeProcessor<T>::Run() {
     bool is_final_pair = false;
     // Keep processing each input pair-wise
     for (int input = 1; input < num_inputs; ++input) {
-      std::vector<int64_t> reduced_dims;
+      TensorShapeVector reduced_dims;
       reduced_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving by a small margin.
       for (int64_t dim = 0; dim < num_subscript_labels; ++dim) {
         if (mapped_indices_to_last_input_index[dim] == input) {

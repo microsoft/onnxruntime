@@ -3,7 +3,7 @@
 
 #pragma once
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include <string>
 #include <unordered_map>
@@ -11,10 +11,6 @@
 
 #include "core/common/common.h"
 #include "core/graph/runtime_optimization_record.h"
-
-#if !defined(ORT_MINIMAL_BUILD)
-#define ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -32,13 +28,19 @@ struct RuntimeOptimizationRecordContainerEntry;
 
 class RuntimeOptimizationRecordContainer {
  public:
-  bool IsEmpty() const { return sat_to_optimizations_.empty(); }
+  bool IsEmpty() const { return optimizer_name_to_records_.empty(); }
 
-#if defined(ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS)
-  void AddRecord(const std::string& optimizer_key, RuntimeOptimizationRecord&& runtime_optimization_record);
-#endif
+#if !defined(ORT_MINIMAL_BUILD)
 
-  // TODO add a way to access and remove them
+  bool RecordExists(const std::string& optimizer_name,
+                    const std::string& action_id,
+                    const NodesToOptimizeIndices& nodes_to_optimize_indices) const;
+
+  void AddRecord(const std::string& optimizer_name, RuntimeOptimizationRecord&& runtime_optimization_record);
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+  std::vector<RuntimeOptimizationRecord> RemoveRecordsForOptimizer(const std::string& optimizer_name);
 
   using FbsRuntimeOptimizationRecordContainer =
       flatbuffers::Vector<flatbuffers::Offset<
@@ -50,10 +52,10 @@ class RuntimeOptimizationRecordContainer {
   Status LoadFromOrtFormat(const FbsRuntimeOptimizationRecordContainer& fbs_runtime_optimizations);
 
  private:
-  using SatToOptimizationRecordsMap = std::unordered_map<std::string, std::vector<RuntimeOptimizationRecord>>;
-  SatToOptimizationRecordsMap sat_to_optimizations_;
+  using OptimizerNameToRecordsMap = std::unordered_map<std::string, std::vector<RuntimeOptimizationRecord>>;
+  OptimizerNameToRecordsMap optimizer_name_to_records_;
 };
 
 }  // namespace onnxruntime
 
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

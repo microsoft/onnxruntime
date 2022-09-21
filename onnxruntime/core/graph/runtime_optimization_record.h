@@ -4,10 +4,12 @@
 #pragma once
 
 #include <limits>
-#include <vector>
 #include <string>
+#include <tuple>  // for std::tie
 
+#include "core/common/inlined_containers.h"
 #include "core/graph/basic_types.h"
+#include "core/graph/op_identifier.h"
 
 /* Runtime optimization limitations
  *
@@ -47,7 +49,7 @@ an ORT format model. This also means that non-empty node indices here must be in
   static_assert(kEmptyNodeIndex <= std::numeric_limits<NodeIndex>::max());
 
   /** Indices of the nodes in the graph that are considered for optimization. */
-  std::vector<NodeIndex> nodes;
+  InlinedVector<NodeIndex> nodes;
   /** The number of inputs of the target node. */
   int num_inputs;
   /** The number of outputs of the target node. */
@@ -60,23 +62,33 @@ an ORT format model. This also means that non-empty node indices here must be in
   int num_variadic_inputs;
   /** The number of variadic output values of the target node. */
   int num_variadic_outputs;
-};
 
-struct NodeIndexAndKernelDefHash {
-  NodeIndex node_index;
-  uint64_t kernel_def_hash;
+  friend bool operator==(const NodesToOptimizeIndices& a, const NodesToOptimizeIndices& b) {
+    const auto tied = [](const NodesToOptimizeIndices& n) {
+      return std::tie(n.nodes, n.num_inputs, n.num_outputs, n.variadic_input, n.variadic_output,
+                      n.num_variadic_inputs, n.num_variadic_outputs);
+    };
+    return tied(a) == tied(b);
+  }
+
+  friend bool operator!=(const NodesToOptimizeIndices& a, const NodesToOptimizeIndices& b) {
+    return !(a == b);
+  }
 };
 
 /** Information for a single runtime optimization.
-It does not contain information about the optimizer itself, that should be maintained seperately.
+It does not contain information about the optimizer itself, that should be maintained separately.
 */
 struct RuntimeOptimizationRecord {
   /** The optimization action identifier. */
   std::string action_id;
+
   /** The nodes to consider for optimization. */
   NodesToOptimizeIndices nodes_to_optimize_indices;
-  /** Any new nodes introduced by the optimization. */
-  std::vector<NodeIndexAndKernelDefHash> produced_nodes;
+
+  using ProducedOpIdVector = InlinedVector<OpIdentifier, 1>;
+  /** Op identifiers for any new nodes introduced by the optimization. */
+  ProducedOpIdVector produced_op_ids;
 };
 
 }  // namespace onnxruntime

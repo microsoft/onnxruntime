@@ -61,8 +61,8 @@ Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs
 }
 
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
-                    std::vector<int64_t>& directions, size_t num_entries) {
-  if (info.GetAttrs<int64_t>(attr_name, directions).IsOK()) {
+                    TensorShapeVector& directions, size_t num_entries) {
+  if (info.GetAttrs(attr_name, directions).IsOK()) {
     ORT_ENFORCE(directions.size() == num_entries,
                 "Number of entries in '", attr_name, "' was ", directions.size(),
                 " but expected ", num_entries);
@@ -73,7 +73,7 @@ void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
     ORT_ENFORCE(valid, "Invalid values in '", attr_name, "'. 0 == forward. 1 == reverse.");
   } else {
     // default to forward if we know how many entries there should be
-    directions = std::vector<int64_t>(num_entries, static_cast<int64_t>(ScanDirection::kForward));
+    directions = TensorShapeVector(num_entries, static_cast<int64_t>(ScanDirection::kForward));
   }
 }
 
@@ -97,7 +97,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
   TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
   auto graph_output_dims(output_shape.GetDims());
 
-  std::vector<int64_t> scan_output_dims;
+  TensorShapeVector scan_output_dims;
   scan_output_dims.reserve(graph_output_dims.size() + 2);
 
   // v8 has batch size. v9 and later do not.
@@ -142,7 +142,7 @@ Status CreateFeedsFetchesManager(const Node& node,
   // we need the names of the Scan inputs to determine what device they are available on,
   // so first create a list using those value
   std::vector<std::string> feed_names;
-  feed_names.reserve(info.num_variadic_inputs + info.num_implicit_inputs);
+  feed_names.reserve(static_cast<size_t>(info.num_variadic_inputs) + info.num_implicit_inputs);
 
   const auto& scan_inputs = node.InputDefs();
   int start = is_v8 ? 1 : 0;  // skip sequence_lens for v8
@@ -217,7 +217,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
         feeds[input] = loop_state_variables[input].Input();
       } else {
         // add sliced input
-        auto& iterator = scan_input_stream_iterators[input - num_loop_state_variables];
+        auto& iterator = scan_input_stream_iterators[static_cast<ptrdiff_t>(input) - num_loop_state_variables];
         feeds[input] = *iterator;
 
         ++iterator;
@@ -300,7 +300,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
 };
 
 void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,
-                                      std::vector<size_t>& permutations, std::vector<int64_t>& transposed_shape) {
+                                      InlinedVector<size_t>& permutations, TensorShapeVector& transposed_shape) {
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 
@@ -319,7 +319,7 @@ void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t
 }
 
 void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis,
-                                       std::vector<size_t>& permutations, std::vector<int64_t>& transposed_shape) {
+                                       InlinedVector<size_t>& permutations, TensorShapeVector& transposed_shape) {
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 

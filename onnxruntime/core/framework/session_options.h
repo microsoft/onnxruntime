@@ -5,6 +5,8 @@
 
 #include <string>
 #include <vector>
+#include "core/common/gsl_suppress.h"
+#include "core/common/inlined_containers.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
@@ -81,7 +83,7 @@ struct SessionOptions {
   std::string session_logid;  ///< logger id to use for session output
 
   /// Log severity for the inference session. Applies to session load, initialization, etc.
-  /// See https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+  /// See https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/logging/severity.h
   /// Default = -1 (use default logger severity)
   int session_log_severity_level = -1;
   int session_log_verbosity_level = 0;  ///< VLOG level if debug build and session_log_severity_level is 0 (VERBOSE).
@@ -118,7 +120,13 @@ struct SessionOptions {
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 
   // See onnxruntime_c_api.h for detailed documentation.
-  Status AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val) noexcept;
+  Status AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val);
+
+#if !defined(ORT_MINIMAL_BUILD)  && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  // Customer supplied pre-processed data for external initializers
+  InlinedHashMap<std::string, OrtValue> external_initializers;
+  Status AddExternalInitializers(gsl::span<const std::string> names, gsl::span<const OrtValue> values);
+#endif
 
   // custom function callback to create a thread
   OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;

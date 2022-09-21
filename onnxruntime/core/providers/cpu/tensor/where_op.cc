@@ -10,10 +10,29 @@
 
 namespace onnxruntime {
 // kernel builder functions
+#define WHERE_VERSIONED_TYPED_KERNEL_WITH_TYPE_NAME(type, type_name)               \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \
+      Where,                                                                       \
+      9,                                                                           \
+      15,                                                                          \
+      type_name,                                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
+      Where<type>)
+
+#define WHERE_VERSIONED_TYPED_KERNEL(type) \
+  WHERE_VERSIONED_TYPED_KERNEL_WITH_TYPE_NAME(type, type)
+
+WHERE_VERSIONED_TYPED_KERNEL(uint8_t)
+WHERE_VERSIONED_TYPED_KERNEL(int32_t)
+WHERE_VERSIONED_TYPED_KERNEL(int64_t)
+WHERE_VERSIONED_TYPED_KERNEL(float)
+WHERE_VERSIONED_TYPED_KERNEL(double)
+WHERE_VERSIONED_TYPED_KERNEL_WITH_TYPE_NAME(std::string, string)
+
 #define WHERE_TYPED_KERNEL_WITH_TYPE_NAME(type, type_name)                         \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
       Where,                                                                       \
-      9,                                                                           \
+      16,                                                                          \
       type_name,                                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
       Where<type>)

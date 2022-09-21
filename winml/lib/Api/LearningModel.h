@@ -55,6 +55,8 @@ struct LearningModel : LearningModelT<LearningModel> {
   wfc::IVectorView<winml::ILearningModelFeatureDescriptor>
   OutputFeatures();
 
+  void SetName(const hstring& name);
+
   /* IClosable methods. */
   void Close();
 

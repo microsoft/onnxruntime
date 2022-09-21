@@ -140,7 +140,7 @@ struct AlgoSearch<T_BwdDataAlgo> {
     static constexpr int num_algos = MIOPEN_CONVOLUTION_BWD_DATA_ALGO_COUNT;
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing MIOpen convolution backward data algorithms.");
     int perf_count;
-    std::unique_ptr<T_BwdDataPerf[]> candidates(new T_BwdDataPerf[num_algos]);
+    std::unique_ptr<T_BwdDataPerf[]> candidates = std::make_unique<T_BwdDataPerf[]>(num_algos);
     size_t max_workspace_size = provider->GetMiopenConvUseMaxWorkspace() ? GetMaxWorkspaceSize(args, algos, num_algos)
                                                                           : AlgoSearchWorkspaceSize;
     // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
@@ -169,7 +169,7 @@ struct AlgoSearch<T_BwdFilterAlgo> {
 
     static constexpr int num_algos = MIOPEN_CONVOLUTION_BWD_FILTER_ALGO_COUNT;
     ORT_ENFORCE(sizeof(algos) / sizeof(algos[0]) == num_algos, "Missing MIOpen convolution backward filter algorithms.");
-    std::unique_ptr<T_BwdFilterPerf[]> candidates(new T_BwdFilterPerf[num_algos]);
+    std::unique_ptr<T_BwdFilterPerf[]> candidates = std::make_unique<T_BwdFilterPerf[]>(num_algos);
     int perf_count;
     size_t max_workspace_size = provider->GetMiopenConvUseMaxWorkspace() ? GetMaxWorkspaceSize(args, algos, num_algos)
                                                                           : AlgoSearchWorkspaceSize;
@@ -233,15 +233,15 @@ template <typename T>
 Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX,
                                 Tensor* dW) const {
   const TensorShape& x_shape = x.Shape();
-  std::vector<int64_t> x_dims = x_shape.GetDimsAsVector();
+  auto x_dims = x_shape.AsShapeVector();
   args_.x_data = reinterpret_cast<const HipT*>(x.template Data<T>());
 
   const TensorShape& dy_shape = dY.Shape();
-  std::vector<int64_t> dy_dims = dy_shape.GetDimsAsVector();
+  auto dy_dims = dy_shape.AsShapeVector();
   args_.dy_data = reinterpret_cast<const HipT*>(dY.template Data<T>());
 
   const TensorShape& w_shape = w.Shape();
-  std::vector<int64_t> w_dims = w_shape.GetDimsAsVector();
+  auto w_dims = w_shape.AsShapeVector();
   args_.w_data = reinterpret_cast<const HipT*>(w.template Data<T>());
 
   args_.db_data = dB ? reinterpret_cast<HipT*>(dB->template MutableData<T>()) : nullptr;
@@ -257,21 +257,21 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
     // Update Attributes
     ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(&x, &w));
 
-    std::vector<int64_t> kernel_shape;
+    TensorShapeVector kernel_shape;
     ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(w_shape, kernel_shape));
     auto rank = kernel_shape.size();
 
-    std::vector<int64_t> pads(conv_attrs_.pads);
+    ConvAttributes::ConvPadVector pads(conv_attrs_.pads);
     if (pads.empty()) {
       pads.resize(rank * 2, 0);
     }
 
-    std::vector<int64_t> dilations(conv_attrs_.dilations);
+    TensorShapeVector dilations(conv_attrs_.dilations);
     if (dilations.empty()) {
       dilations.resize(rank, 1);
     }
 
-    std::vector<int64_t> strides(conv_attrs_.strides);
+    TensorShapeVector strides(conv_attrs_.strides);
     if (strides.empty()) {
       strides.resize(rank, 1);
     }
@@ -316,7 +316,7 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
     if (dB) {
       const TensorShape& db_shape = dB->Shape();
       ORT_RETURN_IF_NOT(db_shape.NumDimensions() == 1, "bias should be 1D");
-      std::vector<int64_t> db_dims(2 + kernel_shape.size(), 1);
+      TensorShapeVector db_dims(2 + kernel_shape.size(), 1);
       db_dims[1] = db_shape[0];
       ORT_RETURN_IF_ERROR(args_.b_tensor.Set(db_dims, MiopenTensor::GetDataType<HipT>()));
     }

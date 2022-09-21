@@ -45,11 +45,11 @@ Status SplitTraining::ComputeInternal(OpKernelContext* ctx) const {
   auto input_data = input_tensor->DataRaw();
 
   auto input_dims = input_shape.GetDims();
-  std::vector<int64_t> output_dimensions{input_shape.GetDimsAsVector()};
+  auto output_dimensions{input_shape.AsShapeVector()};
 
   CudaAsyncBuffer<void*> output_ptr(this, num_outputs);
   gsl::span<void*> output_ptr_span = output_ptr.CpuSpan();
-  std::vector<int64_t> axis_dimension_input_output_mapping(input_dims[axis]);
+  TensorShapeVector axis_dimension_input_output_mapping(input_dims[axis]);
   int index = 0;
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on

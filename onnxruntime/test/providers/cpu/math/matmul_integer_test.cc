@@ -8,6 +8,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
 
@@ -47,7 +48,10 @@ TEST(MatmulIntegerOpTest, MatMulInteger) {
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t) {
-  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+  if (DefaultCudaExecutionProvider() &&
+      !HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    return;
+  }
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -67,13 +71,14 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t) {
                           {-55, 16, 89, -44,
                            122, 154, 68, -39});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND) {
-  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+  if (DefaultCudaExecutionProvider() &&
+      !HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    return;
+  }
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -101,13 +106,14 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND) {
                            -9, 57, 69,
                            -33, 153, 45});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_B_ND) {
-  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+  if (DefaultCudaExecutionProvider() &&
+      !HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    return;
+  }
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -135,13 +141,14 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_B_ND) {
                            -45, -61, -11,
                            -20, 103, 68});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND_B_ND) {
-  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+  if (DefaultCudaExecutionProvider() &&
+      !HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    return;
+  }
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -172,13 +179,14 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_ND_B_ND) {
                            -55, 16, 89, -44,
                            122, 154, 68, -39});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_Has_Zero_Point) {
-  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+  if (DefaultCudaExecutionProvider() &&
+      !HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    return;
+  }
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -208,13 +216,14 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_A_Has_Zero_Point) {
                            -55, 16, 89, -44,
                            122, 154, 68, -39});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_No_Zero_Point) {
-  if (!DefaultCudaExecutionProvider() || !HasCudaEnvironment(530 /*min_cuda_architecture*/)) return;
+  if (DefaultCudaExecutionProvider() &&
+      !HasCudaEnvironment(530 /*min_cuda_architecture*/)) {
+    return;
+  }
 
   OpTester test("MatMulInteger", 10);
   test.AddInput<int8_t>("T1",
@@ -243,9 +252,7 @@ TEST(MatmulIntegerOpTest, MatMulInteger_int8_t_No_Zero_Point) {
                            -55, 16, 89, -44,
                            122, 154, 68, -39});
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.Run();
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_WithZero_ZeroPoint) {
@@ -295,72 +302,43 @@ TEST(MatmulIntegerOpTest, MatMulInteger_PerColumn_ND) {
 }
 
 // [M x N] = [M x K] x [K x N] = [batch_seq x input_dim] x [input_dim x embed_dim]
-template <typename ScalarB>
-void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_zero_zp, bool B_is_initializer, bool per_column_zp = false) {
+template <typename WeightType>
+void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool B_is_initializer) {
   OpTester test("MatMulInteger", 10);
   static std::default_random_engine e(123);
   static std::uniform_int_distribution<int> n_unsigned(0, 127);
-  static std::uniform_int_distribution<int> n_xint8(std::numeric_limits<ScalarB>::min(), std::numeric_limits<ScalarB>::max());
+  static std::uniform_int_distribution<int> n_xint8(std::numeric_limits<WeightType>::min(), std::numeric_limits<WeightType>::max());
 
   Eigen::MatrixXi matrix_a = Eigen::MatrixXi::Random(K, M)
                                  .unaryExpr([](int) { return n_unsigned(e); });
   std::vector<uint8_t> matrix_a_data = ToVector<uint8_t>(matrix_a.data(), M * K);
-  uint8_t a_zero_point = non_zero_zp ? GetMiddle(matrix_a_data) : 0;
+  uint8_t a_zero_point =  0;
   Eigen::MatrixXi matrix_a_offset = matrix_a - a_zero_point * Eigen::MatrixXi::Ones(K, M);
 
   Eigen::MatrixXi matrix_b = Eigen::MatrixXi::Random(N, K)
                                  .unaryExpr([](int) { return n_xint8(e); });
-  std::vector<ScalarB> matrix_b_data = ToVector<ScalarB>(matrix_b.data(), N * K);
-  ScalarB b_zero_point = non_zero_zp ? GetMiddle(matrix_b_data) : 0;
-  std::vector<ScalarB> b_zp_per_column(N, b_zero_point);
+  std::vector<WeightType> matrix_b_data = ToVector<WeightType>(matrix_b.data(), N * K);
+  WeightType b_zero_point = 0;
+  std::vector<WeightType> b_zp_per_column(N, b_zero_point);
   Eigen::MatrixXi b_zp_matrix = b_zero_point * Eigen::MatrixXi::Ones(N, K);
-  if (non_zero_zp && per_column_zp) {
-    for (int i = 0; i < N; i++) {
-      b_zp_per_column[i] += i % 2 == 0 ? 1 : -1;
-      b_zp_matrix.row(i).setConstant(b_zp_per_column[i]);
-    }
-  }
-
   Eigen::MatrixXi matrix_c = ((matrix_b - b_zp_matrix) * matrix_a_offset).eval();
 
   test.AddInput<uint8_t>("T1", {M, K}, std::move(matrix_a_data));
-  test.AddInput<ScalarB>("T2", {K, N}, std::move(matrix_b_data), B_is_initializer);
-  if (non_zero_zp) {
-    test.AddInput<uint8_t>("a_zero_point", {}, {a_zero_point});
-    if (per_column_zp) {
-      test.AddInput<ScalarB>("b_zero_point", {N}, b_zp_per_column);
-    } else {
-      test.AddInput<ScalarB>("b_zero_point", {}, {b_zero_point});
-    }
-  }
+  test.AddInput<WeightType>("T2", {K, N}, std::move(matrix_b_data), B_is_initializer);
 
   test.AddOutput<int32_t>("T3", {M, N}, ToVector<int32_t>(matrix_c.data(), M * N));
-
-  // Nuphar provider does not support non-zero zero point
-  if (non_zero_zp) {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider});
-  } else {
-    test.Run();
-  }
+  test.Run();
 }
 
 void RunMatMulIntegerU8X8TestBatch(const int M, const int N, const int K) {
-  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/, false /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/, false /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/, false /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/, false /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/, false /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/, false /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/, false /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/, false /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/, true /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/, true /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/, true /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/, true /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/, true /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/, true /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/, true /*per_column_zp*/);
-  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/, true /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false);
+  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true);
+  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false);
+  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true);
+  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false);
+  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true);
+  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false);
+  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true);
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_Scalar) {

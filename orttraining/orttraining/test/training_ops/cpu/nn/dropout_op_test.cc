@@ -39,7 +39,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
       input_shape.begin(), input_shape.end(), static_cast<int64_t>(1), std::multiplies<>{});
   std::vector<float> input(input_size);
   std::iota(input.begin(), input.end(), 1.0f);
-  const int64_t seed = 42;
+  constexpr int64_t seed = 42;
 
   t.AddAttribute("seed", seed);
   t.AddInput("data", input_shape, input);
@@ -169,7 +169,7 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
   if (default_ratio) {
     ratio = 0.5f;
   }
-  const float input_constant = 3.0f;
+  constexpr float input_constant = 3.0f;
 
   std::vector<float> dy_data(input_shape.Size(), input_constant);
   std::vector<float> ratio_data(1, ratio);
@@ -189,8 +189,8 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
       mask_buffer.get(), mask_buffer.get() + input_shape.Size(), std::back_inserter(dx_data),
       [output_constant](bool mask_value) { return mask_value ? output_constant : 0.0f; });
 
-  test.AddInput<float>("dy", input_shape.GetDimsAsVector(), dy_data);
-  test.AddInput<bool>("mask", input_shape.GetDimsAsVector(), mask_buffer.get(), input_shape.Size());
+  test.AddInput<float>("dy", input_shape.AsShapeVector(), dy_data);
+  test.AddInput<bool>("mask", input_shape.AsShapeVector(), mask_buffer.get(), input_shape.Size());
   if (!default_ratio) {
     test.AddInput<float>("ratio", {1}, ratio_data);
   } else {
@@ -198,7 +198,7 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
   }
 
   test.AddInput<bool>("training_mode", {}, {true});
-  test.AddOutput<float>("dx", input_shape.GetDimsAsVector(), dx_data);
+  test.AddOutput<float>("dx", input_shape.AsShapeVector(), dx_data);
   test.Run();
 }
 }  // namespace

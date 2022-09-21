@@ -32,7 +32,7 @@ Status EinsumComputePreprocessor::Run() {
   return Status::OK();
 }
 
-const std::vector<int64_t>& EinsumComputePreprocessor::GetOutputDims() const {
+const TensorShapeVector& EinsumComputePreprocessor::GetOutputDims() const {
   return output_dims_;
 }
 
@@ -114,7 +114,7 @@ Status EinsumComputePreprocessor::ProcessSubscripts() {
           // Example for the following line of code
           // Subscript "...ij" for an input of rank 6
           // num_of_ellipsis_dims = 6 - 5 + 3 = 4
-          int64_t current_num_of_ellipsis_dims = rank - subscript.length() + 3;
+          int64_t current_num_of_ellipsis_dims = static_cast<int64_t>(rank) - subscript.length() + 3;
           if (current_num_of_ellipsis_dims < 0) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                    "Einsum subscripts string contains too many subscript labels when compared to the rank of the input");
@@ -424,7 +424,7 @@ Status EinsumComputePreprocessor::PreprocessInputs() {
     std::vector<int64_t> subscript_indices_to_input_index(num_subscript_indices_, -1);
 
     // This is the input dims after re-ordering so that all inputs have same axes order
-    std::vector<int64_t> homogenized_input_dims(num_subscript_indices_, 1);
+    TensorShapeVector homogenized_input_dims(num_subscript_indices_, 1);
 
     // Preprocessed dim rank may not be the same as original input rank if we need to parse diagonals along the way
     // (which reduces rank in the preprocessed input by 1 for each diagonal we parse)

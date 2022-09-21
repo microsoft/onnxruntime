@@ -82,12 +82,12 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
   const auto* weights_data = static_cast<const uint8_t*>(weights.DataRaw());
   weights_is_signed_ = weights.IsDataType<int8_t>();
 
-  packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size, weights_is_signed_);
+  packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size, false /*AIsSigned*/, weights_is_signed_);
   if (packed_weights_size_ == 0) {
     return Status::OK();
   }
 
-  const size_t loop_len = 3 * num_heads_;
+  const size_t loop_len = 3 * static_cast<size_t>(num_heads_);
   size_t packed_weights_data_size = packed_weights_size_ * loop_len;
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_data_size));
 
@@ -96,10 +96,10 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_weights_data, 0, packed_weights_data_size);
 
-  packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
+  packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(std::move(alloc)));
 
   for (size_t i = 0; i < loop_len; i++) {
-    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, weights_is_signed_, packed_weights_data);
+    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, false /*AIsSigned*/, weights_is_signed_, packed_weights_data);
     packed_weights_data += packed_weights_size_;
     weights_data += head_size;
   }
@@ -163,10 +163,10 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
-  T input_scale = *(input_scale_tensor->template Data<T>());
+  T input_scale = *(input_scale_tensor->Data<T>());
 
   bool is_weight_scale_per_column = !IsScalarOr1ElementVector(weight_scale_tensor);
-  const T* weight_scale_data = weight_scale_tensor->template Data<T>();
+  const T* weight_scale_data = weight_scale_tensor->Data<T>();
 
   std::vector<T> dequant_scales(weight_scale_data, weight_scale_data + weight_scale_tensor->Shape().Size());
   std::for_each(dequant_scales.begin(), dequant_scales.end(), [&input_scale](float& dequant_scale) {
@@ -177,7 +177,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   if (i_zp_tensor != nullptr) {
     ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(i_zp_tensor),
                       "input zero point must be a scalar or 1D tensor of size 1.");
-    input_zero_point = *i_zp_tensor->template Data<uint8_t>();
+    input_zero_point = *i_zp_tensor->Data<uint8_t>();
   }
 
   bool is_weight_zp_per_column = false;
@@ -212,7 +212,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   // STEP.1: gemm_data(BS, 3NH) = Scale(input(BS, D) x weights(D, 3NH)) + bias(3NH)
   // D is hidden dimension of input, where input_hidden_size (D) could be larger than hidden_size (NH) when model is pruned.
   auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size);
-  BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
+  BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(std::move(allocator)));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
   auto K = Q + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
@@ -221,19 +221,19 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
-    const auto* input_data = input->template Data<uint8_t>();
-    const auto* bias_data = bias->template Data<T>();
+    const auto* input_data = input->Data<uint8_t>();
+    const auto* bias_data = bias->Data<T>();
 
     const auto* weights_data = packed_weights_ ? nullptr : static_cast<const uint8_t*>(weights->DataRaw());
     const bool weights_is_signed = packed_weights_ ? weights_is_signed_ : weights->IsDataType<int8_t>();
 
-    MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+    MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
     gemm_shape.M = sequence_length;
     gemm_shape.N = head_size;
     gemm_shape.K = input_hidden_size;
     gemm_shape.BIsSigned = weights_is_signed;
 
-    std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(loop_len);
+    std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(loop_len);
     std::vector<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> scale_bias_procs;
     scale_bias_procs.reserve(loop_len);
 

@@ -16,7 +16,7 @@ Status GemmSumFusion::Apply(Graph& graph, Node& gemm_node, RewriteRuleEffect& mo
   const bool transA = static_cast<bool>(gemm_node.GetAttributes().at("transA").i());
   const bool transB = static_cast<bool>(gemm_node.GetAttributes().at("transB").i());
   const float alpha = gemm_node.GetAttributes().at("alpha").f();
-  const float beta = 1.0f;
+  constexpr float beta = 1.0f;
 
   Node& sum_node = *graph.GetNode(gemm_node.OutputEdgesBegin()->GetNode().Index());
 

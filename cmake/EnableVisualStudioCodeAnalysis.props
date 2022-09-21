@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <CodeAnalysisRuleSet>$(MSBuildThisFileDirectory)Sdl.ruleset</CodeAnalysisRuleSet>
+    <!-- External libraries are in or below the directory with the sln file. Source is under \onnxruntime so not affected by this.
+         Also need to exclude things under \cmake such as \cmake\external\protobuf, and the easiest way to do that in all
+         environments is to use the directory this file is in.
+         -->
+    <CAExcludePath>$(SolutionDir);$(MSBuildThisFileDirectory)</CAExcludePath>
+	<RunCodeAnalysis>true</RunCodeAnalysis>
+  </PropertyGroup>  
+</Project>

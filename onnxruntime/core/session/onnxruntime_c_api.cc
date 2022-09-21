@@ -36,6 +36,7 @@
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
+#include "core/common/string_helper.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -43,6 +44,11 @@
 namespace onnxruntime {
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
+#endif
+
+#ifdef ENABLE_TRAINING_ON_DEVICE
+#include "orttraining/training_api/include/onnxruntime_training_c_api.h"
+#include "orttraining/training_api/include/ort_training_apis.h"
 #endif
 
 #ifdef USE_DML
@@ -53,7 +59,11 @@ const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 #include "onnxruntime_extensions.h"
 #endif
-
+#if defined(_MSC_VER) && !defined(__clang__)
+// The warning is: "Do not assign the result of an allocation or a function call with an owner<T> return value to a raw pointer, use owner<T> instead(i .11)."
+// But this file is for C API. It can't use unique_ptr/shared_ptr in function signature.
+#pragma warning(disable : 26400)
+#endif
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
@@ -236,6 +246,12 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorAsOrtValue, _Inout_ OrtAllocator*
   *out = value.release();
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(dense_shape);
+  ORT_UNUSED_PARAMETER(dense_shape_len);
+  ORT_UNUSED_PARAMETER(type);
+  ORT_UNUSED_PARAMETER(out);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -302,6 +318,14 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _
   }
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(data_mem_info);
+  ORT_UNUSED_PARAMETER(values_shape);
+  ORT_UNUSED_PARAMETER(values_shape_len);
+  ORT_UNUSED_PARAMETER(values);
+  ORT_UNUSED_PARAMETER(indices_data);
+  ORT_UNUSED_PARAMETER(indices_num);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -329,6 +353,15 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _
   }
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(data_mem_info);
+  ORT_UNUSED_PARAMETER(values_shape);
+  ORT_UNUSED_PARAMETER(values_shape_len);
+  ORT_UNUSED_PARAMETER(values);
+  ORT_UNUSED_PARAMETER(inner_indices_data);
+  ORT_UNUSED_PARAMETER(inner_indices_num);
+  ORT_UNUSED_PARAMETER(outer_indices_data);
+  ORT_UNUSED_PARAMETER(outer_indices_num);
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -359,6 +392,15 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorBlockSparse, _Inout_ OrtValue* ort_
   }
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(data_mem_info);
+  ORT_UNUSED_PARAMETER(values_shape);
+  ORT_UNUSED_PARAMETER(values_shape_len);
+  ORT_UNUSED_PARAMETER(values);
+  ORT_UNUSED_PARAMETER(indices_shape_data);
+  ORT_UNUSED_PARAMETER(indices_shape_len);
+  ORT_UNUSED_PARAMETER(indices_data);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -389,6 +431,15 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorWithValuesAsOrtValue, _In_ const 
   *out = value.release();
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(info);
+  ORT_UNUSED_PARAMETER(p_data);
+  ORT_UNUSED_PARAMETER(dense_shape);
+  ORT_UNUSED_PARAMETER(dense_shape_len);
+  ORT_UNUSED_PARAMETER(values_shape);
+  ORT_UNUSED_PARAMETER(values_shape_len);
+  ORT_UNUSED_PARAMETER(type);
+  ORT_UNUSED_PARAMETER(out);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -406,6 +457,10 @@ ORT_API_STATUS_IMPL(OrtApis::UseCooIndices, _Inout_ OrtValue* ort_value, _Inout_
   ORT_THROW_IF_ERROR(sparse_tensor.UseCooIndices(indices_span));
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(indices_data);
+  ORT_UNUSED_PARAMETER(indices_num);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -426,13 +481,19 @@ ORT_API_STATUS_IMPL(OrtApis::UseCsrIndices, _Inout_ OrtValue* ort_value,
   ORT_THROW_IF_ERROR(sparse_tensor.UseCsrIndices(inner_span, outer_span));
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(inner_data);
+  ORT_UNUSED_PARAMETER(inner_num);
+  ORT_UNUSED_PARAMETER(outer_data);
+  ORT_UNUSED_PARAMETER(outer_num);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::UseBlockSparseIndices, _Inout_ OrtValue* ort_value, const int64_t* indices_shape, size_t indices_shape_len,
-                    _Inout_ int32_t* indices_data) {
+ORT_API_STATUS_IMPL(OrtApis::UseBlockSparseIndices, _Inout_ OrtValue* ort_value, const int64_t* indices_shape,
+                    size_t indices_shape_len, _Inout_ int32_t* indices_data) {
   API_IMPL_BEGIN
 #if !defined(DISABLE_SPARSE_TENSORS)
   auto& sparse_tensor = SparseTensor::GetSparseTensorFromOrtValue(*ort_value);
@@ -440,6 +501,11 @@ ORT_API_STATUS_IMPL(OrtApis::UseBlockSparseIndices, _Inout_ OrtValue* ort_value,
   ORT_THROW_IF_ERROR(sparse_tensor.UseBlockSparseIndices(ind_shape, indices_data));
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(indices_shape);
+  ORT_UNUSED_PARAMETER(indices_shape_len);
+  ORT_UNUSED_PARAMETER(indices_data);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -456,6 +522,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorFormat, _In_ const OrtValue* ort_val
   *out = static_cast<OrtSparseFormat>(sparse_tensor.Format());
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(out);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -472,6 +541,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorValues, _In_ const OrtValue* ort_val
   *out = values.DataRaw();
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(ort_value);
+  ORT_UNUSED_PARAMETER(out);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
   API_IMPL_END
@@ -505,7 +577,7 @@ ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _Inout_ OrtSessionOptions* optio
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle) {
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, _Outptr_ void** library_handle) {
   API_IMPL_BEGIN
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().LoadDynamicLibrary(library_path, false, library_handle));
@@ -683,7 +755,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
                     _Inout_updates_all_(output_names_len) OrtValue** output) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  const int queue_id = 0;
+  constexpr int queue_id = 0;
 
   std::vector<std::string> feed_names(input_len);
   std::vector<OrtValue> feeds(input_len);
@@ -908,6 +980,26 @@ ORT_API(void, OrtApis::ClearBoundOutputs, _Inout_ OrtIoBinding* binding_ptr) {
   binding_ptr->binding_->ClearOutputs();
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SynchronizeBoundInputs, _Inout_ OrtIoBinding* binding_ptr) {
+  API_IMPL_BEGIN
+  auto st = binding_ptr->binding_->SynchronizeInputs();
+  if (!st.IsOK()) {
+    return ToOrtStatus(st);
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SynchronizeBoundOutputs, _Inout_ OrtIoBinding* binding_ptr) {
+  API_IMPL_BEGIN
+  auto st = binding_ptr->binding_->SynchronizeOutputs();
+  if (!st.IsOK()) {
+    return ToOrtStatus(st);
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::IsTensor, _In_ const OrtValue* value, _Out_ int* out) {
   auto v = reinterpret_cast<const ::OrtValue*>(value);
   *out = v->IsTensor() ? 1 : 0;
@@ -926,6 +1018,9 @@ ORT_API_STATUS_IMPL(OrtApis::IsSparseTensor, _In_ const OrtValue* value, _Out_ i
   *out = v->IsSparseTensor() ? 1 : 0;
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(value);
+  ORT_UNUSED_PARAMETER(out);
+
   return OrtApis::CreateStatus(ORT_FAIL, "SparseTensor is not supported in this build.");
 #endif
 }
@@ -933,7 +1028,7 @@ ORT_API_STATUS_IMPL(OrtApis::IsSparseTensor, _In_ const OrtValue* value, _Out_ i
 ORT_API_STATUS_IMPL(OrtApis::GetTensorMutableData, _Inout_ OrtValue* value, _Outptr_ void** output) {
   TENSOR_READWRITE_API_BEGIN
   // Uncomment when WinML fixed their code
-  //if (tensor->IsDataTypeString()) {
+  // if (tensor->IsDataTypeString()) {
   //  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "this API does not support strings");
   //}
   *output = tensor->MutableDataRaw();
@@ -949,7 +1044,7 @@ ORT_API_STATUS_IMPL(OrtApis::FillStringTensor, _Inout_ OrtValue* value, _In_ con
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input array doesn't equal tensor size");
   }
   for (size_t i = 0; i != len; ++i) {
-    //allocate and copy
+    // allocate and copy
     dst[i] = s[i];
   }
   return nullptr;
@@ -1165,7 +1260,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetOverridableInitializerTypeInfo, _In_ cons
   return GetNodeDefTypeInfoHelper(sess, get_overridable_initializers_fn, index, out);
 }
 
-static char* StrDup(const std::string& str, _Inout_ OrtAllocator* allocator) {
+char* onnxruntime::StrDup(const std::string& str, OrtAllocator* allocator) {
   char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
   memcpy(output_string, str.c_str(), str.size());
   output_string[str.size()] = '\0';
@@ -1293,17 +1388,31 @@ ORT_API_STATUS_IMPL(OrtApis::ModelMetadataGetCustomMetadataMapKeys,
     // To guard against overflow in the next step where we compute bytes to allocate
     SafeInt<size_t> alloc_count(count);
 
+    InlinedVector<Ort::AllocatedStringPtr> string_holders;
+    string_holders.reserve(count);
+
+    auto deletor = Ort::detail::AllocatedFree(allocator);
     // alloc_count * sizeof(...) will throw if there was an overflow which will be caught in API_IMPL_END
     // and be returned to the user as a status
     char** p = reinterpret_cast<char**>(allocator->Alloc(allocator, alloc_count * sizeof(char*)));
     assert(p != nullptr);
-    auto map_iter = custom_metadata_map.cbegin();
+
+    // StrDup may throw
+    std::unique_ptr<void, decltype(deletor)> array_guard(p, deletor);
+
     int64_t i = 0;
-    while (map_iter != custom_metadata_map.cend()) {
-      p[i++] = StrDup(map_iter->first, allocator);
-      ++map_iter;
+    for (const auto& e : custom_metadata_map) {
+      auto* s = StrDup(e.first, allocator);
+      string_holders.push_back(Ort::AllocatedStringPtr(s, deletor));
+      p[i++] = s;
     }
+
+    for (auto& s : string_holders) {
+      s.release();
+    }
+
     *keys = p;
+    array_guard.release();
   }
 
   *num_keys = static_cast<int64_t>(count);
@@ -1370,7 +1479,7 @@ ORT_STATUS_PTR OrtGetNumSequenceElements(const OrtValue* p_ml_value, size_t* out
 }
 
 #if !defined(DISABLE_ML_OPS)
-static const int NUM_MAP_INDICES = 2;
+static constexpr int NUM_MAP_INDICES = 2;
 #endif
 
 static ORT_STATUS_PTR OrtGetValueCountImpl(const OrtValue* value, size_t* out) {
@@ -1875,10 +1984,10 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
 ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
                     _In_ int* providers_length) {
   API_IMPL_BEGIN
-  //TODO: there is no need to manually malloc/free these memory, it is insecure
-  //and inefficient. Instead, the implementation could scan the array twice,
-  //and use a single string object to hold all the names.
-  const size_t MAX_LEN = 30;
+  // TODO: there is no need to manually malloc/free these memory, it is insecure
+  // and inefficient. Instead, the implementation could scan the array twice,
+  // and use a single string object to hold all the names.
+  constexpr size_t MAX_LEN = 30;
   const auto& available_providers = GetAvailableExecutionProviderNames();
   const int available_count = gsl::narrow<int>(available_providers.size());
   char** const out = new char*[available_count];
@@ -1902,7 +2011,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
   return nullptr;
 }
 
-//TODO: we don't really need the second parameter
+// TODO: we don't really need the second parameter
 ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
                     _In_ int providers_length) {
   API_IMPL_BEGIN
@@ -2042,6 +2151,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
   API_IMPL_END
 }
 
+// Allow using raw new/delete because this is for C.
+GSL_SUPPRESS(r .11)
 ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
   delete ptr;
 }
@@ -2136,6 +2247,21 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
   API_IMPL_END
 }
 
+ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
+#ifdef ENABLE_TRAINING_ON_DEVICE
+  return OrtTrainingApis::GetTrainingApi(version);
+#else
+
+  ORT_UNUSED_PARAMETER(version);
+  fprintf(stderr,
+          "Training APIs are not supported with this build. Please build onnxruntime "
+          "from source with the build flags enable_training and enable_training_on_device to "
+          "retrieve the training APIs.\n");
+
+  return nullptr;
+#endif
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,
@@ -2180,7 +2306,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_10 = {
+static constexpr OrtApi ort_api_1_to_12 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2409,7 +2535,6 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::GetSparseTensorIndices,
     // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 10 - In development, feel free to add/remove/rearrange here
     &OrtApis::HasValue,
     &OrtApis::KernelContext_GetGPUComputeStream,
     &OrtApis::GetTensorMemoryInfo,
@@ -2420,6 +2545,31 @@ static constexpr OrtApi ort_api_1_to_10 = {
     &OrtApis::SetGlobalCustomCreateThreadFn,
     &OrtApis::SetGlobalCustomThreadCreationOptions,
     &OrtApis::SetGlobalCustomJoinThreadFn,
+    &OrtApis::SynchronizeBoundInputs,
+    &OrtApis::SynchronizeBoundOutputs,
+    // End of Version 10 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2,
+    &OrtApis::CreateCUDAProviderOptions,
+    &OrtApis::UpdateCUDAProviderOptions,
+    &OrtApis::GetCUDAProviderOptionsAsString,
+    &OrtApis::ReleaseCUDAProviderOptions,
+    &OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
+    // End of Version 11 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::AddExternalInitializers,
+    &OrtApis::CreateOpAttr,
+    &OrtApis::ReleaseOpAttr,
+    &OrtApis::CreateOp,
+    &OrtApis::InvokeOp,
+    &OrtApis::ReleaseOp,
+    &OrtApis::SessionOptionsAppendExecutionProvider,
+    &OrtApis::CopyKernelInfo,
+    &OrtApis::ReleaseKernelInfo,
+    // End of Version 12 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Start of Version 13 API in progress, safe to modify/rename/rearrange until we ship
+    &OrtApis::GetTrainingApi,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
@@ -2432,17 +2582,21 @@ static_assert(offsetof(OrtApi, SetGlobalSpinControl) / sizeof(void*) == 149, "Si
 static_assert(offsetof(OrtApi, ReleaseArenaCfg) / sizeof(void*) == 157, "Size of version 6 API cannot change");
 static_assert(offsetof(OrtApi, GetCurrentGpuDeviceId) / sizeof(void*) == 161, "Size of version 7 API cannot change");
 static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContainer) / sizeof(void*) == 169, "Size of version 8 API cannot change");
+static_assert(offsetof(OrtApi, GetSparseTensorIndices) / sizeof(void*) == 191, "Size of version 9 API cannot change");
+static_assert(offsetof(OrtApi, SynchronizeBoundOutputs) / sizeof(void*) == 203, "Size of version 10 API cannot change");
+static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) / sizeof(void*) == 209, "Size of version 11 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size of version 12 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.10.0", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
+static_assert(std::string_view(ORT_VERSION) == "1.13.0", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_10 above:
+// 2. If there were any APIs added to ort_api_1_to_13 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_10;
+    return &ort_api_1_to_12;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);

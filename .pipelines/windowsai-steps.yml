@@ -1,0 +1,176 @@
+parameters:
+- name: BuildArch
+  displayName: BuildArch
+  type: string
+  default: 'x64'
+  
+- name: Runtime
+  displayName: MSVC Runtime, should be 'dynamic' or 'static'.
+  type: string
+  default: 'dynamic'
+  
+- name: PythonPackageName
+  displayName: PythonPackageName on nuget.org to use
+  type: string
+  default: 'python'
+
+jobs:
+- job: Windows_Packaging_${{ parameters.BuildArch }}_${{ parameters.Runtime }}
+  pool:
+    type: windows  
+    
+  variables:
+    ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
+    ob_sdl_binskim_break: true
+    ob_sdl_binskim_scanOutputDirectoryOnly: true
+  steps:
+    - template: ../tools/ci_build/github/azure-pipelines/templates/telemetry-steps.yml@self
+
+    - task: NuGetCommand@2
+      displayName: 'NuGet restore'
+      inputs:
+        feedsToUse: config
+        nugetConfigPath: NuGet.config
+        restoreDirectory: '$(Build.BinariesDirectory)'
+        ${{ if eq(parameters.BuildArch, 'x64') }}:
+          restoreSolution: $(Build.SourcesDirectory)\.pipelines\nuget_config\x64\packages.config
+        ${{ if eq(parameters.BuildArch, 'x86') }}:
+          restoreSolution: $(Build.SourcesDirectory)\.pipelines\nuget_config\x86\packages.config
+        ${{ if eq(parameters.BuildArch, 'arm') }}:
+          restoreSolution: $(Build.SourcesDirectory)\.pipelines\nuget_config\x64\packages.config
+        ${{ if eq(parameters.BuildArch, 'arm64') }}:
+          restoreSolution: $(Build.SourcesDirectory)\.pipelines\nuget_config\x64\packages.config
+    
+    - script: |
+        @echo off
+        set vswherepath="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+        for /f "usebackq delims=" %%i in (`%vswherepath% -latest -property installationPath`) do (
+          set vslatest="%%i"
+          if exist "%%i\Common7\Tools\vsdevcmd.bat" (
+            set vsdevcmd="%%i\Common7\Tools\vsdevcmd.bat"
+          )
+        )
+        
+        @echo vslatest %vslatest%
+        @echo vsdevcmd %vsdevcmd%
+        
+        @echo ##vso[task.setvariable variable=vslatest]%vslatest%
+        @echo ##vso[task.setvariable variable=vsdevcmd]%vsdevcmd% -arch=${{ parameters.BuildArch }}
+      displayName: 'locate vsdevcmd via vswhere'
+
+    - powershell: |
+       Write-Host "##vso[task.setvariable variable=BuildFlags]"
+       Write-Host "##vso[task.setvariable variable=ArtifactName]Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}"
+      displayName: Initialize build flags
+
+    - powershell: |
+       Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --${{ parameters.BuildArch }}"
+      displayName: Add cross compilation flags for ARM
+      condition: and(ne('${{ parameters.BuildArch }}', 'x64'), ne('${{ parameters.BuildArch }}', 'x86'))
+
+    - powershell: |
+       Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --enable_msvc_static_runtime"
+       Write-Host "##vso[task.setvariable variable=ArtifactName]$(ArtifactName).StaticRuntime"
+      displayName: Add static runtime flags
+      condition: eq('${{ parameters.Runtime }}', 'static')
+
+    # must call vsdevcmd first to add cmake to PATH
+    - script: |
+        curl -O -L https://github.com/Kitware/CMake/releases/download/v3.22.2/cmake-3.22.2-windows-x86_64.zip
+        7z x cmake-3.22.2-windows-x86_64.zip
+        set PYTHONHOME=$(Build.BinariesDirectory)\${{ parameters.PythonPackageName }}.3.7.9\tools
+        set PYTHONPATH=$(Build.BinariesDirectory)\${{ parameters.PythonPackageName }}.3.7.9\tools
+        $(Build.BinariesDirectory)\${{ parameters.PythonPackageName }}.3.7.9\tools\python.exe "$(Build.SourcesDirectory)\tools\ci_build\build.py" --build_dir $(Build.BinariesDirectory) --build_shared_lib --enable_onnx_tests --ms_experimental --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --use_telemetry --disable_rtti --enable_wcos $(BuildFlags) --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.19041.0 --cmake_path $(Build.BinariesDirectory)\cmake-3.22.2-windows-x86_64\bin\cmake.exe --ctest_path $(Build.BinariesDirectory)\cmake-3.22.2-windows-x86_64\bin\ctest.exe
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Generate cmake config'
+
+    - task: VSBuild@1
+      displayName: 'Build'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        ${{ if ne(parameters.BuildArch, 'x86') }}:
+          platform: ${{ parameters.BuildArch }}
+        ${{ if eq(parameters.BuildArch, 'x86') }}:
+          platform: 'Win32'
+        configuration: RelWithDebInfo
+        msbuildArchitecture: ${{ parameters.BuildArch }}
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        createLogFile: true 
+
+    - ${{ if eq(parameters.Runtime, 'dynamic') }}:
+      - script: |
+         xcopy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\winml_test_api.exe $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\winml_test_scenario.exe $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\winml\test\api\models\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\winml\test\scenario\cppwinrt\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\winml\test\scenario\models\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\winml\test\common\testdata\squeezenet\* $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\winml\test\collateral\models\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+         xcopy $(Build.SourcesDirectory)\winml\test\collateral\models\ModelSubdirectory $(Build.ArtifactStagingDirectory)\test_artifact\ModelSubdirectory\ /i
+         copy $(Build.SourcesDirectory)\winml\test\collateral\images\*.png $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\winml\test\collateral\images\*.jpg $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\onnxruntime\test\testdata\sequence_length.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\onnxruntime\test\testdata\sequence_construct.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+        displayName: 'Copy WinML test collateral to artifact directory'
+        
+        
+    - ${{ if eq(parameters.BuildArch, 'x64') }}:
+      - script: |
+          call $(vsdevcmd)
+          msbuild Microsoft.AI.MachineLearning.Interop.csproj /p:Configuration=RelWithDebInfo /p:Platform="Any CPU" /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) -restore
+        workingDirectory: '$(Build.SourcesDirectory)\csharp\src\Microsoft.AI.MachineLearning.Interop'
+        displayName: 'Build Microsoft.AI.MachineLearning.Interop.dll'
+
+    - task: onebranch.pipeline.signing@1
+      inputs:
+        command: 'sign'
+        signing_profile: 'external_distribution'
+        files_to_sign: '**/*.exe;**/*.dll'
+        search_root: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+      displayName: 'Sign runtime DLLs'        
+        
+    - ${{ if eq(parameters.BuildArch, 'x64') }}:
+      - script: |
+         call $(vsdevcmd)
+         msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory)
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Create NuGet Package'
+
+    - ${{ if eq(parameters.BuildArch, 'x86') }}:
+      - script: |
+         call $(vsdevcmd)
+         msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=x86
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Create NuGet Package'
+
+    - ${{ if eq(parameters.BuildArch, 'arm64') }}:
+      - script: |
+         call $(vsdevcmd)
+         msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=arm64 /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Create NuGet Package'
+
+    - ${{ if eq(parameters.BuildArch, 'arm') }}:
+      - script: |
+         call $(vsdevcmd)
+         msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=arm /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Create NuGet Package'
+
+    - task: onebranch.pipeline.signing@1
+      inputs:
+        command: 'sign'
+        signing_profile: 'external_distribution'
+        files_to_sign: '**/*.exe;**/*.dll'
+        search_root: '$(Build.ArtifactStagingDirectory)\test_artifact'
+      displayName: 'Sign test_artifact'

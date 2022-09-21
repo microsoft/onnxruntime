@@ -10,7 +10,6 @@
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
-
 #ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
 #endif
@@ -23,22 +22,16 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/providers/cpu/cpu_provider_factory_creator.h"
+#include "core/providers/provider_factory_creators.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #define BACKEND_PROC "GPU"
 #else
 #define BACKEND_PROC "CPU"
-#endif
-
-#if _OPENMP
-#define BACKEND_OPENMP "-OPENMP"
-#else
-#define BACKEND_OPENMP ""
 #endif
 
 #if USE_DNNL
@@ -85,10 +78,10 @@ struct OrtStatus {
 #define BACKEND_OPENVINO ""
 #endif
 
-#ifdef USE_NUPHAR
-#define BACKEND_NUPHAR "-NUPHAR"
+#ifdef USE_TVM
+#define BACKEND_TVM "-TVM"
 #else
-#define BACKEND_NUPHAR ""
+#define BACKEND_TVM ""
 #endif
 
 #if USE_VITISAI
@@ -146,14 +139,8 @@ extern std::string openvino_device_type;
 }
 }  // namespace onnxruntime
 #endif
-#ifdef USE_NUPHAR
-#include "core/providers/nuphar/nuphar_provider_factory.h"
-// TODO remove deprecated global config
-namespace onnxruntime {
-namespace python {
-extern std::string nuphar_settings;
-}
-}  // namespace onnxruntime
+#ifdef USE_TVM
+#include "core/providers/tvm/tvm_ep_options.h"
 #endif
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"
@@ -202,7 +189,7 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 #include "core/providers/shared_library/provider_host_api.h"
 
 namespace onnxruntime {
-#ifndef SHARED_PROVIDER
+#if !defined(SHARED_PROVIDER) && !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
 #endif
 namespace python {
@@ -303,10 +290,11 @@ inline const PySessionOptions& GetDefaultCPUSessionOptions() {
 }
 
 inline AllocatorPtr& GetAllocator() {
-  static AllocatorPtr alloc = std::make_shared<TAllocator>();
+  static AllocatorPtr alloc = std::make_shared<CPUAllocator>();
   return alloc;
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 // This class exposes SparseTensor to Python
 // The class serves two major purposes
 // - to be able to map numpy arrays memory and use it on input, this serves as a reference holder
@@ -375,7 +363,7 @@ class PySparseTensor {
   std::unique_ptr<OrtValue> AsOrtValue() const;
 
  private:
-  //  instance_ represents data that comes as input. Thus we depend on numpy
+  // instance_ represents data that comes as input. Thus we depend on numpy
   // arrays that own the underlying memory to stay around. We store copies
   // of py::objects for those arrays in backing_storage_ as an extra ref-count.
 
@@ -387,7 +375,13 @@ class PySparseTensor {
   // We create a copy of OrtValue when we obtain it from a run method.
   OrtValue ort_value_;
 };
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// You can attempt to make 'onnxruntime::python::SessionObjectInitializer::Get' constexpr
+#pragma warning(disable : 26497)
+#endif
 class SessionObjectInitializer {
  public:
   typedef const PySessionOptions& Arg1;
@@ -408,7 +402,9 @@ class SessionObjectInitializer {
     return SessionObjectInitializer();
   }
 };
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 Environment& GetEnv();
 
 // Initialize an InferenceSession.
@@ -457,17 +453,25 @@ PyObject* ToDlpack(OrtValue ort_value);
 // create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
 OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor);
 
+// Destructor for Capsule object holding a DLPack structure.
+void DlpackCapsuleDestructor(PyObject* data);
+
 #endif
 
 }  // namespace python
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptionsV2* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const OrtMIGraphXProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
+#ifdef USE_TVM
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);
+#endif
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id,
                                                                                   const char* export_runtime_module,
                                                                                   const char* load_runtime_module);

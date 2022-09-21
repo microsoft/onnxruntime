@@ -40,14 +40,6 @@ class RocmKernel : public OpKernel {
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
-    AllocatorPtr allocator = provider_->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-    if (!allocator)
-      return nullptr;
-    return IAllocator::MakeUniquePtr<T>(allocator, count_or_bytes);
-  }
-
-  template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
     return provider_->GetScratchBuffer<T>(count_or_bytes);
   }
@@ -61,6 +53,10 @@ class RocmKernel : public OpKernel {
     return provider_->GetTransientScratchBuffer<T>(count_or_bytes);
   }
 
+  template <typename T>
+  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
+    return provider_->AllocateBufferOnCPUPinned<T>(count_or_bytes);
+  }
 
   inline void AddDeferredReleaseCPUPtr(void* p) const {
     provider_->AddDeferredReleaseCPUPtr(p);
@@ -89,7 +85,7 @@ class RocmKernel : public OpKernel {
       }
     }
 
-    RocmAsyncBuffer(const RocmKernel* op_kernel, const std::vector<T>& vec) : RocmAsyncBuffer(op_kernel, vec.size()) {
+    RocmAsyncBuffer(const RocmKernel* op_kernel, gsl::span<const T> vec) : RocmAsyncBuffer(op_kernel, vec.size()) {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 

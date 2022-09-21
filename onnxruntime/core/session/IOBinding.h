@@ -50,30 +50,30 @@ class IOBinding {
   common::Status BindInput(const std::string& name, const OrtValue& ml_value);
 
   /**
-    * If the BindInput calls are async this function acts as a barrier to ensure all inputs are fully copied
-    * before you call the Run() method. There is no point calling Run() if you're inputs are not ready at the 
-    * desired location.
-    * This is a blocking call and is a wrapper over IExecutionProvider::Sync().
-    * Call InferenceSession::Run() only after calling this method or else you'll end up wasting cycles inside Run().
-    */
+   * If the BindInput calls are async this function acts as a barrier to ensure all inputs are fully copied
+   * before you call the Run() method. There is no point calling Run() if you're inputs are not ready at the
+   * desired location.
+   * This is a blocking call and is a wrapper over IExecutionProvider::Sync().
+   * Call InferenceSession::Run() only after calling this method or else you'll end up wasting cycles inside Run().
+   */
   common::Status SynchronizeInputs();
   common::Status SynchronizeOutputs();
 
   /**
-    * Bind an output name to a provided pre-allocated OrtValue. 
-    */
+   * Bind an output name to a provided pre-allocated OrtValue.
+   */
   common::Status BindOutput(const std::string& name, const OrtValue& ml_value);
 
   /**
-    * Bind an output name to a device. 
-    * 
-    * @param device Device to allocate the output on. Default is CPU. 
-    */
+   * Bind an output name to a device.
+   *
+   * @param device Device to allocate the output on. Default is CPU.
+   */
   common::Status BindOutput(const std::string& name, OrtDevice device = {});
 
   /**
-    * This simply collects the outputs obtained after calling Run() inside the @param outputs.
-    */
+   * This simply collects the outputs obtained after calling Run() inside the @param outputs.
+   */
   const std::vector<std::string>& GetOutputNames() const;
   const std::vector<OrtValue>& GetOutputs() const;
   std::vector<OrtValue>& GetOutputs();
@@ -82,26 +82,28 @@ class IOBinding {
   const std::vector<OrtValue>& GetInputs() const;
 
   /**
-    * Get a CPU allocator from provider for async copy later if the provider supports that
-    * If it doesn't support that, return the default allocator from CPU provider
-    * \return a nonnull pointer
-    */
+   * Get a CPU allocator from provider for async copy later if the provider supports that
+   * If it doesn't support that, return the default allocator from CPU provider
+   * \return a nonnull pointer
+   */
   AllocatorPtr GetCPUAllocator(int id, onnxruntime::ProviderType provider_type) const;
 
   /**
-    * clear inputs or outputs. IOBinding is stateful. There are cases we need to reset its state.
-    */
+   * clear inputs or outputs. IOBinding is stateful. There are cases we need to reset its state.
+   */
   void ClearOutputs();
   void ClearInputs();
+  IOBinding(const SessionState& session_state);
 
  private:
   friend InferenceSession;
 
-  IOBinding(const SessionState& session_state);
   const SessionState& session_state_;
   std::vector<std::string> feed_names_;
+  std::unordered_map<std::string, size_t> mapped_feed_names_;
   std::vector<OrtValue> feeds_;
   std::vector<std::string> output_names_;
+  std::unordered_map<std::string, size_t> mapped_output_names_;
   std::vector<OrtValue> outputs_;
   std::vector<OrtDevice> outputs_device_info_;
 

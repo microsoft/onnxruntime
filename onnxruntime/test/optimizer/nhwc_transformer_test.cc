@@ -270,7 +270,7 @@ TEST(NhwcTransformerTests, ConvSplit) {
       auto* qladd_output_arg = builder.MakeIntermediate();
       auto* output_arg = builder.MakeOutput();
 
-      const int64_t conv1_output_channels = 32;
+      constexpr int64_t conv1_output_channels = 32;
       auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {conv1_output_channels, 23, 3, 3});
 
       Node& conv_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
@@ -315,7 +315,7 @@ TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
       auto* qlconcat_output_arg = builder.MakeIntermediate();
       auto* output_arg = builder.MakeOutput();
 
-      const int64_t conv1_output_channels = 32;
+      constexpr int64_t conv1_output_channels = 32;
       auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {conv1_output_channels, 23, 3, 3});
       Node& conv_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
                                                             conv1_weight_arg, .02f, 126,

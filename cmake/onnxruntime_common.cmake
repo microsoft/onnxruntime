@@ -75,6 +75,14 @@ file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
     ${onnxruntime_common_src_patterns}
     )
 
+# Remove new/delete intercept. To deal with memory leaks
+# Use either non-mimalloc build OR use mimalloc built-in features.
+if(WIN32 AND onnxruntime_USE_MIMALLOC)
+    list(REMOVE_ITEM onnxruntime_common_src 
+    "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.h")
+endif()
+
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
@@ -83,18 +91,33 @@ if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()
 
-if (onnxruntime_USE_MIMALLOC_STL_ALLOCATOR OR onnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR)
+if (onnxruntime_USE_MIMALLOC)
+    if(NOT WIN32)
+        message(FATAL_ERROR "Currently do not support MIMALLOC in GPU builds")
+    endif()
     if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO)
-        message(WARNING "Ignoring directive to use mimalloc on unimplemented targets")
-    elseif (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
-        # Some of the non-windows targets see strange runtime failures
-        message(WARNING "Ignoring request to link to mimalloc - only windows supported")
+        message(WARNING "Currently do not support MIMALLOC in GPU builds")
     else()
         include(external/mimalloc.cmake)
         list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)
         list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mimalloc-static)
-        target_link_libraries(onnxruntime_common mimalloc-static)
+        set(onnxruntime_mimalloc_shim_src "${ONNXRUNTIME_ROOT}/core/platform/windows/mimalloc/mimalloc_overloads.cc")
+        add_library(onnxruntime_mimalloc_shim ${onnxruntime_mimalloc_shim_src})
+        target_link_libraries(onnxruntime_mimalloc_shim mimalloc-static)
+        target_link_libraries(onnxruntime_common onnxruntime_mimalloc_shim)
     endif()
+endif()
+
+if(NOT onnxruntime_DISABLE_ABSEIL)
+  include(external/abseil-cpp.cmake)
+  target_include_directories(onnxruntime_common PRIVATE ${ABSEIL_SOURCE_DIR})
+  if (MSVC)
+    set(ABSEIL_NATVIS_FILE "abseil-cpp.natvis")
+    target_sources(
+        onnxruntime_common
+        INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ABSEIL_NATVIS_FILE}>
+    )
+  endif()
 endif()
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)
@@ -110,19 +133,11 @@ if(NOT WIN32)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()
 
-if(NOT onnxruntime_USE_OPENMP)
-  target_compile_definitions(onnxruntime_common PUBLIC EIGEN_USE_THREADS)
-endif()
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_common PROPERTIES FOLDER "ONNXRuntime")
-
-if(WIN32)
-    # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-    set_target_properties(onnxruntime_common PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
-endif()
 
 # check if we need to link against librt on Linux
 include(CheckLibraryExists)
@@ -201,16 +216,25 @@ endif()
 
 
 if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
-  if(WINDOWS_STORE OR (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib) OR ((ARM64 OR ARM) AND MSVC))
+  if((WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib) OR ((ARM64 OR ARM) AND MSVC))
     # msvc compiler report syntax error with cpuinfo arm source files
     # and cpuinfo does not have code for getting arm uarch info under windows
   else()
-    # Link cpuinfo
+    # Link cpuinfo if supported
     # Using it mainly in ARM with Android.
     # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
 
-    target_include_directories(onnxruntime_common PRIVATE ${PYTORCH_CPUINFO_INCLUDE_DIR})
-    target_link_libraries(onnxruntime_common cpuinfo)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
+    if (CPUINFO_SUPPORTED)
+      target_link_libraries(onnxruntime_common cpuinfo)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
+    endif()
   endif()
+endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_common
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

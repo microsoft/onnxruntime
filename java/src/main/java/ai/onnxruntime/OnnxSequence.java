@@ -65,11 +65,11 @@ public class OnnxSequence implements OnnxValue {
   @Override
   public List<Object> getValue() throws OrtException {
     if (info.sequenceOfMaps) {
-      List<Object> outputSequence = new ArrayList<>();
+      List<Object> outputSequence = new ArrayList<>(info.length);
       for (int i = 0; i < info.length; i++) {
-        HashMap<Object, Object> map = new HashMap<>();
         Object[] keys = getMapKeys(i);
         Object[] values = getMapValues(i);
+        HashMap<Object, Object> map = new HashMap<>(OrtUtil.capacityFromSize(keys.length));
         for (int j = 0; j < keys.length; j++) {
           map.put(keys[j], values[j]);
         }

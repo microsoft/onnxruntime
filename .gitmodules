@@ -9,16 +9,13 @@
 	url = https://github.com/google/benchmark.git
 [submodule "cmake/external/onnx"]
 	path = cmake/external/onnx
-	url = https://github.com/onnx/onnx
-[submodule "cmake/external/tvm"]
-	path = cmake/external/tvm
-	url = https://github.com/microsoft/onnxruntime-tvm.git
+	url = https://github.com/onnx/onnx.git
 [submodule "cmake/external/date"]
 	path = cmake/external/date
 	url = https://github.com/HowardHinnant/date.git
 [submodule "cmake/external/nsync"]
 	path = cmake/external/nsync
-	url = https://github.com/google/nsync
+	url = https://github.com/google/nsync.git
 [submodule "cmake/external/re2"]
 	path = cmake/external/re2
 	url = https://github.com/google/re2.git
@@ -39,14 +36,10 @@
 	url = https://github.com/NVlabs/cub.git
 [submodule "cmake/external/wil"]
 	path = cmake/external/wil
-	url = https://github.com/microsoft/wil
+	url = https://github.com/microsoft/wil.git
 [submodule "cmake/external/json"]
 	path = cmake/external/json
-	url = https://github.com/nlohmann/json
-[submodule "server/external/spdlog"]
-	path = server/external/spdlog
-	url = https://github.com/gabime/spdlog.git
-	branch = master
+	url = https://github.com/nlohmann/json.git
 [submodule "cmake/external/libprotobuf-mutator"]
 	path = cmake/external/libprotobuf-mutator
 	url = https://github.com/google/libprotobuf-mutator.git
@@ -59,23 +52,29 @@
 [submodule "cmake/external/mp11"]
 	path = cmake/external/mp11
 	url = https://github.com/boostorg/mp11.git
-[submodule "cmake/external/coremltools"]
-	path = cmake/external/coremltools
-	url = https://github.com/apple/coremltools.git
 [submodule "cmake/external/dlpack"]
 	path = cmake/external/dlpack
 	url = https://github.com/dmlc/dlpack.git
 [submodule "cmake/external/emsdk"]
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
-	branch = 2.0.26
+	branch = 3.1.19
 [submodule "cmake/external/onnxruntime-extensions"]
 	path = cmake/external/onnxruntime-extensions
 	url = https://github.com/microsoft/onnxruntime-extensions.git
 [submodule "cmake/external/pytorch_cpuinfo"]
 	path = cmake/external/pytorch_cpuinfo
 	url = https://github.com/pytorch/cpuinfo.git
-
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
+	branch = 8.4-GA
+[submodule "cmake/external/pthreadpool"]
+	path = cmake/external/pthreadpool
+	url = https://github.com/Maratyszcza/pthreadpool.git
+[submodule "cmake/external/FP16"]
+	path = cmake/external/FP16
+	url = https://github.com/Maratyszcza/FP16.git
+[submodule "cmake/external/XNNPACK"]
+	path = cmake/external/XNNPACK
+	url = https://github.com/google/XNNPACK.git

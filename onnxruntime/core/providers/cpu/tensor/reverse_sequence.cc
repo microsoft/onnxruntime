@@ -22,8 +22,8 @@
 #include "core/framework/utils.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_shape.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 
 namespace onnxruntime {
 
@@ -79,7 +79,7 @@ Status ReverseSequenceOp::Compute(OpKernelContext* context) const {
   return status;
 }
 
-static int64_t TimeMajorInputOffset(const int64_t max_seq_len,
+constexpr static int64_t TimeMajorInputOffset(const int64_t max_seq_len,
                                     const int64_t batch_size,
                                     const int64_t input_size,
                                     const int64_t batch_num,
@@ -88,7 +88,7 @@ static int64_t TimeMajorInputOffset(const int64_t max_seq_len,
   return seq_num * batch_size * input_size + batch_num * input_size;
 }
 
-static int64_t BatchMajorInputOffset(const int64_t max_seq_len,
+constexpr static int64_t BatchMajorInputOffset(const int64_t max_seq_len,
                                      const int64_t batch_size,
                                      const int64_t input_size,
                                      const int64_t batch_num,
@@ -97,7 +97,7 @@ static int64_t BatchMajorInputOffset(const int64_t max_seq_len,
   return batch_num * max_seq_len * input_size + seq_num * input_size;
 }
 
-static int64_t TimeMajorOutputOffset(const int64_t max_seq_len,
+constexpr static int64_t TimeMajorOutputOffset(const int64_t max_seq_len,
                                      const int64_t batch_size,
                                      const int64_t input_size,
                                      const int64_t batch_num,
@@ -107,7 +107,7 @@ static int64_t TimeMajorOutputOffset(const int64_t max_seq_len,
   return (seq_len - seq_num - 1) * batch_size * input_size + batch_num * input_size;
 }
 
-static int64_t BatchMajorOutputOffset(const int64_t max_seq_len,
+constexpr static int64_t BatchMajorOutputOffset(const int64_t max_seq_len,
                                       const int64_t batch_size,
                                       const int64_t input_size,
                                       const int64_t batch_num,

@@ -16,9 +16,10 @@
 
 #pragma once
 
+#include <cassert>
+
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
-#include "core/framework/tensor.h"
 #endif
 
 #ifndef CBLAS_ENUM_DEFINED_H
@@ -89,8 +90,7 @@ void RowwiseSum(int N, int D, const T* x, T* y,
 
 // Sum of vector x, and writes the result to a single value y.
 template <typename T, class Provider>
-void Sum(int N, const T* x, T* y, Provider* provider,
-         Tensor* scratch_ptr = nullptr);
+void Sum(int N, const T* x, T* y, Provider* provider);
 
 template <typename T, class Provider>
 void Scale(int N, float alpha, const T* x, T* y, Provider* provider);
@@ -308,12 +308,16 @@ void CopyMatrix(
     int ldb,
     TypedCopy copy) {
   {
+    assert(M >= 0);
+    assert(N >= 0);
+    assert(lda >= 0);
+    assert(ldb >= 0);
     if (lda == N && ldb == N) {
-      copy(A, B, static_cast<size_t>(N * M));
+      copy(A, B, static_cast<size_t>(N) * static_cast<size_t>(M));
       return;
     }
 
-    for (int i = 0; i < M; ++i) {
+    for (size_t i = 0; i < static_cast<size_t>(M); ++i) {
       copy(A + lda * i, B + ldb * i, static_cast<size_t>(N));
     }
   }
@@ -330,7 +334,7 @@ void CopyVector(int N, const T* A, T* B, Provider* provider);
 // negative value of a parameter converts it to value higher than
 // 0x800...
 // The casting allows to use one condition instead of two.
-inline bool is_a_ge_zero_and_a_lt_b(int64_t a, int64_t b) {
+constexpr inline bool is_a_ge_zero_and_a_lt_b(int64_t a, int64_t b) {
   return static_cast<uint64_t>(a) < static_cast<uint64_t>(b);
 }
 

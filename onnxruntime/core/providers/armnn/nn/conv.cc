@@ -121,7 +121,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
 
-  std::vector<int64_t> pads(conv_attrs_.pads);
+  ConvAttributes::ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }
@@ -142,15 +142,15 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
   bool biasEnabled = B != nullptr;
 
-  const T* x_data = X->template Data<T>();
-  const T* k_data = W->template Data<T>();
+  const T* x_data = X->Data<T>();
+  const T* k_data = W->Data<T>();
 
   const T* b_data;
   if (biasEnabled) {
-    b_data = B->template Data<T>();
+    b_data = B->Data<T>();
   }
 
-  T* y_data = Y->template MutableData<T>();
+  T* y_data = Y->MutableData<T>();
 
   armnn::NetworkId* pNetworkId;
   ConvLayersIterator it = Conv::convLayers.find((OpKernel*)this);

@@ -87,6 +87,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     const GraphViewer& graph_viewer,
     const IsNodeSupportedFn& is_node_supported_fn,
     const OnGroupClosedFn& on_group_closed_fn,
+    const std::string& execution_provider_type,
     bool debug_output) {
 #ifdef NDEBUG
   ORT_UNUSED_PARAMETER(debug_output);
@@ -94,6 +95,10 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
 
   ORT_ENFORCE(is_node_supported_fn, "Node support test is required.");
 
+  /*
+  * NOTE: when making change here PLEASE update the logic that replicates the C++ partitioning in 
+  * /tools/python/util/mobile_helpers/usability_checker.py:check_partitioning
+  */
   std::vector<std::vector<const Node*>> supported_groups{};
 
   // number of inputs from unprocessed nodes (in-degree) per node
@@ -104,7 +109,8 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
   std::deque<const Node*> nodes_to_process_with_next_group{};
 
   // initialize in-degrees and find root nodes
-  for (const auto& node : graph_viewer.Nodes()) {
+  for (const auto& node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+    const auto& node = *graph_viewer.GetNode(node_index);
     const auto node_input_edge_count = node.GetInputEdgesCount();
     in_degree.insert({node.Index(), node_input_edge_count});
     if (node_input_edge_count == 0) {
@@ -114,7 +120,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
 
   std::vector<const Node*> supported_group{};
   // the partition node group's border is the aggregate of its nodes' output nodes
-  std::unordered_set<const Node*> supported_group_border{};
+  InlinedHashSet<const Node*> supported_group_border{};
 
   auto close_group = [&]() {
     if (!supported_group.empty()) {
@@ -156,9 +162,9 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     const Node& node = *nodes_to_process.front();
     nodes_to_process.pop_front();
 
+    // a node that is already assigned to an EP other than current EP is unsupported
     const bool is_node_supported =
-        node.GetExecutionProviderType().empty() &&  // a node that is already assigned to an EP is unsupported
-        is_node_supported_fn(node);
+        (node.GetExecutionProviderType().empty() || node.GetExecutionProviderType() == execution_provider_type) && is_node_supported_fn(node);
 
     if (!is_node_supported && Contains(supported_group_border, &node)) {
       // an unsupported node on the border will be processed after the current partition node group
@@ -199,13 +205,11 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
 }
 }  // namespace
 
-std::unordered_set<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewer,
-                                                      const std::unordered_set<std::string>& stop_ops) {
-  std::unordered_set<const Node*> excluded_nodes;
+InlinedHashSet<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewer,
+                                                  const std::unordered_set<std::string>& stop_ops) {
+  InlinedHashSet<const Node*> excluded_nodes;
 
-  for (const NodeIndex node_index : graph_viewer.GetNodesInTopologicalOrder()) {
-    const Node& node = *graph_viewer.GetNode(node_index);
-
+  for (const auto& node : graph_viewer.Nodes()) {
     if (!Contains(excluded_nodes, &node) && Contains(stop_ops, node.OpType())) {
       excluded_nodes.insert(&node);
 
@@ -309,10 +313,12 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const OnGroupClosedFn& on_partition_closed_fn,
                           const GenerateMetadefNameFn& generate_metadef_name_fn,
                           const std::string& execution_provider_name,
+                          const std::string& execution_provider_type,
                           bool debug_output) {
   const auto groups = CreateSupportedPartitionNodeGroups(graph_viewer,
                                                          is_node_supported_fn,
                                                          on_partition_closed_fn,
+                                                         execution_provider_type,
                                                          debug_output);
 
   std::vector<std::unique_ptr<ComputeCapability>> partitions{};
@@ -335,6 +341,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::unordered_set<std::string>& stop_ops,
                           const GenerateMetadefNameFn& generate_metadef_name_fn,
                           const std::string& execution_provider_name,
+                          const std::string& execution_provider_type,
                           bool debug_output) {
   const auto excluded_nodes = CreateExcludedNodeSet(graph_viewer, stop_ops);
   const bool check_excluded_nodes = !excluded_nodes.empty();
@@ -348,6 +355,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
       {},
       generate_metadef_name_fn,
       execution_provider_name,
+      execution_provider_type,
       debug_output);
 }
 

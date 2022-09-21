@@ -35,7 +35,7 @@ namespace DeviceHelpers {
 // These are CUDA EP specific device helper implementations
 namespace CudaDeviceHelpers {
 
-Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
+Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets);
 
 Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets);

@@ -11,7 +11,7 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 
 bool GeluRecompute::SatisfyCondition(const Node& node) const {
-  static const std::unordered_set<std::string> target_optypes = {"Gelu", "FastGelu", "BiasGelu"};
+  static const InlinedHashSet<std::string_view> target_optypes = {"Gelu", "FastGelu", "BiasGelu"};
   if (target_optypes.find(node.OpType()) == target_optypes.end()) {
     return false;
   }

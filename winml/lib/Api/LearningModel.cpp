@@ -15,6 +15,50 @@
 #include <robuffer.h>
 
 namespace WINMLP {
+
+// IBuffer implementation to avoid calling into WinTypes.dll to create wss::Buffer.
+// This will enable model creation on VTL1 without pulling in additional binaries on load.
+template <typename T>
+class STLVectorBackedBuffer : public winrt::implements<
+                                  STLVectorBackedBuffer<T>,
+                                  wss::IBuffer,
+                                  ::Windows::Storage::Streams::IBufferByteAccess> {
+ private:
+  std::vector<T> data_;
+  size_t length_ = 0;
+
+ public:
+  STLVectorBackedBuffer(size_t num_elements) : data_(num_elements) {}
+
+  uint32_t Capacity() const try {
+    // Return the size of the backing vector in bytes
+    return static_cast<uint32_t>(data_.size() * sizeof(T));
+  }
+  WINML_CATCH_ALL
+
+  uint32_t Length() const try {
+    // Return the used buffer in bytes
+    return static_cast<uint32_t>(length_);
+  }
+  WINML_CATCH_ALL
+
+  void Length(uint32_t value) try {
+    // Set the use buffer length in bytes
+    WINML_THROW_HR_IF_TRUE_MSG(E_INVALIDARG, value > Capacity(), "Parameter 'value' cannot be greater than the buffer's capacity.");
+    length_ = value;
+  }
+  WINML_CATCH_ALL
+
+  STDMETHOD(Buffer)
+  (_Outptr_ BYTE** value) {
+    // Return the buffer
+    RETURN_HR_IF_NULL(E_POINTER, value);
+    *value = reinterpret_cast<BYTE*>(data_.data());
+    return S_OK;
+  }
+};
+
+
 LearningModel::LearningModel(
     const hstring& path,
     const winml::ILearningModelOperatorProvider op_provider) try : operator_provider_(op_provider) {
@@ -90,12 +134,11 @@ static HRESULT CreateModelFromStream(
     _winml::IModel** model) {
   auto content = stream.OpenReadAsync().get();
 
-  wss::Buffer buffer(static_cast<uint32_t>(content.Size()));
+  auto buffer = winrt::make<STLVectorBackedBuffer<BYTE>>(static_cast<size_t>(content.Size()));
   auto result = content.ReadAsync(
                            buffer,
                            buffer.Capacity(),
-                           wss::InputStreamOptions::None)
-                    .get();
+                           wss::InputStreamOptions::None).get();
 
   auto bytes = buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>();
   WINML_THROW_HR_IF_NULL_MSG(E_UNEXPECTED, bytes, "Model stream is invalid.");
@@ -209,6 +252,13 @@ LearningModel::OutputFeatures() try {
   WINML_THROW_IF_FAILED(model_info_->GetOutputFeatures(&features));
   winrt::attach_abi(out, features);
   return out;
+}
+WINML_CATCH_ALL
+
+void LearningModel::SetName(const hstring& name) try {
+  auto name_std_str = _winml::Strings::UTF8FromHString(name);
+  auto name_c_str = name_std_str.c_str();
+  WINML_THROW_IF_FAILED(model_->SetName(name_c_str));
 }
 WINML_CATCH_ALL
 

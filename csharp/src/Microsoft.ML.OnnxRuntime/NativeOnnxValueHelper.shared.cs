@@ -102,25 +102,42 @@ namespace Microsoft.ML.OnnxRuntime
             return result;
         }
 
+        /// <summary>
+        /// Converts C# UTF-16 string to UTF-8 zero terminated
+        /// byte[] instance
+        /// </summary>
+        /// <param name="str">string to be converted</param>
+        /// <returns>UTF-8 encoded equivalent</returns>
+        internal static byte[] GetPlatformSerializedString(string str)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                return System.Text.Encoding.Unicode.GetBytes(str + Char.MinValue);
+            else
+                return StringToZeroTerminatedUtf8(str);
+        }
+
         // Delegate for string extraction from an arbitrary input/output object
         internal delegate string NameExtractor<in TInput>(TInput input);
     }
 
     internal static class TensorElementTypeConverter
     {
-        public static void GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
+        public static bool GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
         {
-            TensorElementTypeInfo result = TensorBase.GetElementTypeInfo(elemType);
-            if(result != null)
+            bool result = true;
+            TensorElementTypeInfo typeInfo = TensorBase.GetElementTypeInfo(elemType);
+            if(typeInfo != null)
             {
-                type = result.TensorType;
-                width = result.TypeSize;
+                type = typeInfo.TensorType;
+                width = typeInfo.TypeSize;
             }
             else
             {
                 type = null;
                 width = 0;
+                result = false;
             }
+            return result;
         }
     }
 }

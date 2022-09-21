@@ -5,6 +5,7 @@
 
 #include <vector>
 
+#include "core/common/basic_types.h"
 #include "core/framework/buffer_deleter.h"
 #include "core/framework/tensor_shape.h"
 
@@ -19,7 +20,7 @@ struct PrePackedWeights final {
   std::vector<size_t> buffer_sizes_;                           // cache sizes of pre-packed buffers (in bytes)
 
   // Produces a hash of the buffers stored in the given instance of this class
-  uint64_t GetHash() const;
+  HashValue GetHash() const;
 };
 
 }  // namespace onnxruntime

@@ -2,10 +2,12 @@ import sys
 import threading
 import time
 
+
 class OutputGrabber(object):
     """
     Class used to grab standard output or another stream.
     """
+
     escape_char = "\b"
 
     def __init__(self, stream=None, threaded=False):
@@ -40,7 +42,7 @@ class OutputGrabber(object):
             self.workerThread.start()
             # Make sure that the thread is running and os.read() has executed:
             time.sleep(0.01)
-            
+
     def stop(self):
         """
         Stop capturing the stream data and save the text in `capturedtext`.
@@ -70,10 +72,11 @@ class OutputGrabber(object):
         and save the text in `capturedtext`.
         """
         while True:
-            char = os.read(self.pipe_out,1).decode(self.origstream.encoding)
+            char = os.read(self.pipe_out, 1).decode(self.origstream.encoding)
             if not char or self.escape_char in char:
                 break
             self.capturedtext += char
+
 
 import torch
 from onnxruntime.capi import _pybind_state as torch_ort_eager
@@ -84,8 +87,10 @@ import os
 from onnxruntime.training import optim, orttrainer, orttrainer_options
 import unittest
 
+
 def my_loss(x, target):
     return F.nll_loss(F.log_softmax(x, dim=1), target)
+
 
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
@@ -100,6 +105,7 @@ class NeuralNet(nn.Module):
         out = self.fc2(out)
         return my_loss(out, target)
 
+
 class OrtEPTests(unittest.TestCase):
     def test_external_graph_transformer_triggering(self):
         input_size = 784
@@ -107,20 +113,30 @@ class OrtEPTests(unittest.TestCase):
         num_classes = 10
         batch_size = 128
         model = NeuralNet(input_size, hidden_size, num_classes)
-        
-        model_desc = {'inputs': [('x', [batch_size, input_size]),
-                                    ('target', [batch_size,])],
-                                    'outputs': [('loss', [], True)]}
+
+        model_desc = {
+            "inputs": [
+                ("x", [batch_size, input_size]),
+                (
+                    "target",
+                    [
+                        batch_size,
+                    ],
+                ),
+            ],
+            "outputs": [("loss", [], True)],
+        }
         optim_config = optim.SGDConfig()
-        opts =  orttrainer.ORTTrainerOptions({'device':{'id':'cpu'}})
+        opts = orttrainer.ORTTrainerOptions({"device": {"id": "cpu"}})
         model = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
         # because orttrainer is lazy initialized, feed in a random data to trigger the graph transformer
         data = torch.rand(batch_size, input_size)
         target = torch.randint(0, 10, (batch_size,))
-        
+
         with OutputGrabber() as out:
             loss = model.train_step(data, target)
-        assert '******************Trigger Customized Graph Transformer:  MyGraphTransformer!' in out.capturedtext
+        assert "******************Trigger Customized Graph Transformer:  MyGraphTransformer!" in out.capturedtext
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

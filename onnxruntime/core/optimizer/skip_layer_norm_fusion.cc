@@ -135,7 +135,7 @@ Note: This fusion doesn't consider the following case:
 Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+  InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
     Node* p_layernorm = graph.GetNode(node_index);
     if (p_layernorm == nullptr)
@@ -220,10 +220,10 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     NodeArg beta_place_holder("", nullptr);
 
     // Get the inputs for the new SkipLayerNormalization node.
-    std::vector<NodeArg*> skip_layer_norm_input_defs{p_add1->MutableInputDefs()[0],
-                                                     p_add1->MutableInputDefs()[1],
-                                                     ln_node.MutableInputDefs()[1],
-                                                     ln_node.MutableInputDefs().size() == 2 ? &beta_place_holder : ln_node.MutableInputDefs()[2]};
+    InlinedVector<NodeArg*> skip_layer_norm_input_defs{p_add1->MutableInputDefs()[0],
+                                                       p_add1->MutableInputDefs()[1],
+                                                       ln_node.MutableInputDefs()[1],
+                                                       ln_node.MutableInputDefs().size() == 2 ? &beta_place_holder : ln_node.MutableInputDefs()[2]};
 
     if (matched_format == Format::Format1) {
       skip_layer_norm_input_defs[0] = p_add2->MutableInputDefs()[0];
@@ -248,7 +248,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     NodeAttributes ln_attrs = ln_node.GetAttributes();
     NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
     if (epsilon != ln_attrs.end()) {
-      skip_layer_norm_node.AddAttribute("epsilon", epsilon->second);
+      skip_layer_norm_node.AddAttributeProto(epsilon->second);
     } else {
       skip_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultSkipLayerNormEpsilon);
     }

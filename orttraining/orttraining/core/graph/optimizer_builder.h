@@ -18,36 +18,73 @@ const std::vector<std::string> MOMENTS_PREFIXES({"Moment_1", "Moment_2"});
 const std::string LAMB_STEP_TENSOR_NAME = "Step";
 const std::string ADAM_UC_PREFIX = "Update_Count";
 
+namespace training_internal {
+constexpr int64_t single_span_element = 1;
+}
+
 template <class T>
-ONNX_NAMESPACE::TensorProto CreateTensorProto(
+inline ONNX_NAMESPACE::TensorProto CreateTensorProto(
     const std::string& name,
-    T val,
-    const std::vector<int64_t>& dims = {1}) {
-  size_t count = static_cast<size_t>(std::accumulate(dims.begin(), dims.end(), int64_t(1), std::multiplies<int64_t>{}));
-  std::vector<T> values(count, val);
+    const std::vector<T>& values,
+    std::initializer_list<int64_t> dims) {
+  return CreateTensorProto<T>(name, values, gsl::make_span<const int64_t>(dims.begin(), dims.end()));
+}
+
+template <class T>
+inline ONNX_NAMESPACE::TensorProto CreateTensorProto(
+    const std::string& name,
+    const std::vector<T>& values,
+    gsl::span<const int64_t> dims = gsl::span<const int64_t>(training_internal::single_span_element)) {
+  const size_t count = static_cast<size_t>(std::accumulate(dims.cbegin(), dims.cend(), int64_t(1), std::multiplies<int64_t>{}));
+  ORT_ENFORCE(values.size() == count);
   ONNX_NAMESPACE::TensorProto tensor_proto = ONNX_NAMESPACE::ToTensor<T>(values);
   tensor_proto.set_name(name);
-  std::for_each(dims.begin(), dims.end(), [&](auto dim) { tensor_proto.add_dims(dim); });
+  std::for_each(dims.cbegin(), dims.cend(), [&](auto dim) { tensor_proto.add_dims(dim); });
   return tensor_proto;
 }
 
 template <class T>
-ONNX_NAMESPACE::TensorProto CreateTensorProto(
+inline ONNX_NAMESPACE::TensorProto CreateTensorProto(
     const std::string& name,
-    const std::vector<T>& values,
-    const std::vector<int64_t>& dims = {1}) {
-  size_t count = static_cast<size_t>(std::accumulate(dims.begin(), dims.end(), int64_t(1), std::multiplies<int64_t>{}));
-  ORT_ENFORCE(values.size() == count);
+    gsl::span<const T> values_span,
+    gsl::span<const int64_t> dims = gsl::span<const int64_t>(training_internal::single_span_element)) {
+  std::vector<T> values;
+  values.reserve(values_span.size());
+  values.assign(values_span.cbegin(), values_span.cend());
+  return CreateTensorProto(name, values, dims);
+}
+
+
+template <class T>
+inline ONNX_NAMESPACE::TensorProto CreateTensorProto(
+    const std::string& name,
+    T val,
+    gsl::span<const int64_t> dims = gsl::span<const int64_t>(training_internal::single_span_element)) {
+  size_t count = static_cast<size_t>(std::accumulate(dims.cbegin(), dims.cend(), int64_t(1), std::multiplies<int64_t>{}));
+  std::vector<T> values(count, val);
   ONNX_NAMESPACE::TensorProto tensor_proto = ONNX_NAMESPACE::ToTensor<T>(values);
   tensor_proto.set_name(name);
-  std::for_each(dims.begin(), dims.end(), [&](auto dim) { tensor_proto.add_dims(dim); });
+  std::for_each(dims.cbegin(), dims.cend(), [&](auto dim) { tensor_proto.add_dims(dim); });
   return tensor_proto;
+}
+
+template <class T>
+inline ONNX_NAMESPACE::TensorProto CreateTensorProto(
+    const std::string& name,
+    T val,
+    std::initializer_list<int64_t> dims) {
+  return CreateTensorProto(name, val, gsl::make_span<const int64_t>(dims.begin(), dims.end()));
 }
 
 Status IsMatchingTypeAndShape(
     const onnxruntime::Tensor& tensor,
     const int32_t element_type,
-    const std::vector<int64_t>& expected_shape);
+    gsl::span<const int64_t> expected_shape);
+
+Status IsMatchingTypeAndShape(
+    const onnxruntime::Tensor& tensor,
+    const int32_t element_type,
+    std::initializer_list<int64_t> expected_dims);
 
 /**
    * The configuration for optimizer builder.

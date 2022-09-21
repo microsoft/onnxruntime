@@ -25,7 +25,9 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include <wil/wrl.h>
+#ifndef _GAMING_XBOX
 #include <dxgi1_6.h>
+#endif
 
 #define ENABLE_GRAPH_COMPILATION
 
@@ -36,7 +38,7 @@ namespace Dml
     using namespace onnxruntime::common;
 
     ExecutionProvider::~ExecutionProvider()
-    { 
+    {
         if (m_impl)
         {
             m_impl->Close();
@@ -51,7 +53,7 @@ namespace Dml
         Dml::RegisterDmlOperators(abiRegistry.Get());
 
         assert(abiRegistry->GetRegistries().size() == 1);
-        
+
         auto customRegistry = *abiRegistry->GetRegistries().begin();
         *registry = customRegistry->GetKernelRegistry();
         *internalRegInfoMap = abiRegistry->GetInternalRegInfoMap();
@@ -71,7 +73,7 @@ namespace Dml
         }
 
         ComPtr<ID3D12Device> device;
-        ORT_THROW_IF_FAILED(commandQueue->GetDevice(IID_PPV_ARGS(&device)));
+        GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
         m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
 
@@ -84,12 +86,12 @@ namespace Dml
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     ExecutionProvider::GetCapability(
         const onnxruntime::GraphViewer& graph,
-        const std::vector<const onnxruntime::KernelRegistry*>& kernel_registries) const
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const
     {
 #ifdef ENABLE_GRAPH_COMPILATION
-        return m_impl->GetCapability(graph, kernel_registries);
+        return m_impl->GetCapability(graph, kernel_lookup);
 #else
-        return onnxruntime::IExecutionProvider::GetCapability(graph, kernel_registries);
+        return onnxruntime::IExecutionProvider::GetCapability(graph, kernel_lookup);
 #endif
     }
 
@@ -97,11 +99,17 @@ namespace Dml
     {
         m_context->Close();
     }
-    
+
+    void ExecutionProviderImpl::WaitForOutstandingWork()
+    {
+        Flush();
+        m_context->GetCurrentCompletionEvent().WaitForSignal();
+    }
+
     HRESULT __stdcall ExecutionProviderImpl::AllocatePooledResource(
-        size_t size, 
+        size_t size,
         AllocatorRoundingMode roundingMode,
-        ID3D12Resource **d3dResource, 
+        ID3D12Resource **d3dResource,
         IUnknown** pooledResource
     ) const noexcept
     {
@@ -134,7 +142,7 @@ namespace Dml
     }
 
 // ORT release pipelines agent pools do not have 19H1 SDK installed which defines D3D_FEATURE_LEVEL_1_0_CORE.
-// Once ORT/WinML github project can be built with VS2019, we can update these pools to use install the 19H1 SDK 
+// Once ORT/WinML github project can be built with VS2019, we can update these pools to use install the 19H1 SDK
 // using the command line installer tool with VS2019
 // Task 24384515: Update ORT AIInfra release agent pool to install 19H1 SDK on VM bootstrap
 #define D3D_FEATURE_LEVEL_1_0_CORE_PRIVATE ((D3D_FEATURE_LEVEL)0x1000)
@@ -181,7 +189,7 @@ namespace Dml
 
         m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
-        
+
         // CPU Allocator used to create buffers for the MemcpyFromHost operator.
         m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
         m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
@@ -263,8 +271,8 @@ namespace Dml
         inputBufferArrayDesc.BindingCount = gsl::narrow_cast<uint32_t>(inputBufferBindings.size());
         inputBufferArrayDesc.Bindings = inputBufferBindings.data();
 
-        DML_BINDING_DESC inputArrayBindingDesc = hasInputsToBind ? 
-            DML_BINDING_DESC{ DML_BINDING_TYPE_BUFFER_ARRAY, &inputBufferArrayDesc } : 
+        DML_BINDING_DESC inputArrayBindingDesc = hasInputsToBind ?
+            DML_BINDING_DESC{ DML_BINDING_TYPE_BUFFER_ARRAY, &inputBufferArrayDesc } :
             DML_BINDING_DESC{ DML_BINDING_TYPE_NONE, nullptr };
 
         m_context->InitializeOperator(
@@ -352,7 +360,7 @@ namespace Dml
         FillBindings(outputBufferBindings, outputBindings, outputTensors);
 
         ORT_THROW_IF_FAILED(ExecuteOperator(op, persistentResourceBinding, inputBindings, outputBindings));
-        
+
         return S_OK;
         }
         ORT_CATCH_RETURN
@@ -368,14 +376,14 @@ namespace Dml
         ORT_TRY
         {
         assert(!m_closed);
-        
+
         DML_BINDING_DESC persistentResourceBindingDesc =
             persistentResourceBinding
             ? DML_BINDING_DESC{ DML_BINDING_TYPE_BUFFER, persistentResourceBinding }
             : DML_BINDING_DESC{ DML_BINDING_TYPE_NONE, nullptr };
 
         m_context->ExecuteOperator(
-            op, 
+            op,
             persistentResourceBindingDesc,
             inputTensors,
             outputTensors);
@@ -412,11 +420,11 @@ namespace Dml
 
         if (src->IsCpuData() && !dst->IsCpuData())
         {
-            // 
+            //
             // CPU -> GPU copy (upload)
-            // 
+            //
             const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
-            
+
             ID3D12Resource* dstData = dstAllocInfo->GetResource();
             const void* srcData = src->GetData();
 
@@ -427,9 +435,9 @@ namespace Dml
         }
         else if (!src->IsCpuData() && dst->IsCpuData())
         {
-            // 
+            //
             // GPU -> CPU copy (readback)
-            // 
+            //
 
             void* dstData = dst->GetData();
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src).GetDataInterface().Get());
@@ -444,9 +452,9 @@ namespace Dml
         }
         else if (!src->IsCpuData() && !dst->IsCpuData())
         {
-            // 
+            //
             // GPU -> GPU copy
-            // 
+            //
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src).GetDataInterface().Get());
             const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
 
@@ -513,7 +521,7 @@ namespace Dml
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     ExecutionProviderImpl::GetCapability(
         const onnxruntime::GraphViewer& graph,
-        const std::vector<const onnxruntime::KernelRegistry*>& registries) const
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const
     {
         std::string partitionKernelPrefix = std::to_string(m_partitionKernelPrefixVal++) + "_";
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask();
@@ -521,16 +529,16 @@ namespace Dml
         return PartitionGraph(
             graph,
             *m_internalRegInfoMap,
-            registries,
+            kernel_lookup,
             deviceDataTypeMask,
             m_kernelRegistry.get(),
             partitionKernelPrefix
         );
     }
-    
-    bool IsGpuTensor(const onnxruntime::Tensor& tensor) 
+
+    bool IsGpuTensor(const onnxruntime::Tensor& tensor)
     {
-        return strcmp(tensor.Location().name, onnxruntime::CPU) && 
+        return strcmp(tensor.Location().name, onnxruntime::CPU) &&
             !(tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput || tensor.Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput);
     }
 
@@ -541,14 +549,14 @@ namespace Dml
         auto provider = const_cast<ExecutionProviderImpl*>(this);
 
         TensorWrapper destInternal(
-            &dst, 
-            IsGpuTensor(dst), 
+            &dst,
+            IsGpuTensor(dst),
             provider,
             true);
 
         TensorWrapper srcInternal(
-            const_cast<onnxruntime::Tensor*>(&src), 
-            IsGpuTensor(src), 
+            const_cast<onnxruntime::Tensor*>(&src),
+            IsGpuTensor(src),
             provider,
             true);
 
@@ -571,21 +579,21 @@ namespace Dml
         {
             // This batching implementation only handles GPU -> CPU copies.  Other copies do not require synchronization
             // and are batched across multiple calls to CopyTensor.
-            if (!IsGpuTensor(src_dst_pairs[i].src) || IsGpuTensor(src_dst_pairs[i].dst)) 
+            if (!IsGpuTensor(src_dst_pairs[i].src) || IsGpuTensor(src_dst_pairs[i].dst))
             {
                 ORT_RETURN_IF_ERROR(CopyTensor(src_dst_pairs[i].src, src_dst_pairs[i].dst));
                 continue;
             }
-            
+
             TensorWrapper srcWrapper = TensorWrapper(
-                const_cast<onnxruntime::Tensor*>(&src_dst_pairs[i].src.get()), 
+                const_cast<onnxruntime::Tensor*>(&src_dst_pairs[i].src.get()),
                 true,
                 provider,
                 true);
 
             TensorWrapper dstWrapper = TensorWrapper(
-                &src_dst_pairs[i].dst.get(), 
-                false, 
+                &src_dst_pairs[i].dst.get(),
+                false,
                 provider,
                 true);
 
@@ -611,7 +619,7 @@ namespace Dml
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
         m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcState);
-        
+
         return onnxruntime::common::Status::OK();
     }
 
@@ -631,7 +639,7 @@ namespace Dml
          m_context->ReleaseCompletedReferences();
     }
 
-    void ExecutionProviderImpl::QueueReference(IUnknown* object) 
+    void ExecutionProviderImpl::QueueReference(IUnknown* object)
     {
         assert(!m_closed);
         m_context->QueueReference(object);
@@ -661,10 +669,15 @@ namespace Dml
             data->AddRef();
         }
         else
-        {         
+        {
+#ifdef _GAMING_XBOX
+            ComPtr<GraphicsUnknownWrapper> wrappedResource = Microsoft::WRL::Make<GraphicsUnknownWrapper>(m_allocator->DecodeDataHandle(data)->GetResource());
+            *abiData = wrappedResource.Detach();
+#else
             ComPtr<ID3D12Resource> resource = m_allocator->DecodeDataHandle(data)->GetResource();
             *abiData = resource.Detach();
-        } 
+#endif
+        }
     }
 
     uint64_t ExecutionProviderImpl::TryGetPooledAllocationId(
@@ -675,9 +688,9 @@ namespace Dml
         return m_allocator->DecodeDataHandle(data)->GetPooledResourceId();
     }
 
-    void ExecutionProviderImpl::GetABIExecutionInterface(
+    void ExecutionProviderImpl::GetABIExecutionInterfaceAndInvalidateState(
         bool isInternalOperator,
-        IUnknown** abiExecutionObject) const 
+        IUnknown** abiExecutionObject) const
     {
         assert(!m_closed);
 
@@ -689,11 +702,16 @@ namespace Dml
         else
         {
             ComPtr<ID3D12GraphicsCommandList> commandList;
-            m_context->GetCommandListForRecording(commandList.GetAddressOf());
+            m_context->GetCommandListForRecordingAndInvalidateState(commandList.GetAddressOf());
+#ifdef _GAMING_XBOX
+            ComPtr<GraphicsUnknownWrapper> wrappedCommandList = Microsoft::WRL::Make<GraphicsUnknownWrapper>(commandList.Get());
+            *abiExecutionObject = wrappedCommandList.Detach();
+#else
             *abiExecutionObject = commandList.Detach();
-        }  
+#endif
+        }
     }
-    
+
     bool ExecutionProviderImpl::TransitionsRequiredForOperator(
         bool isInternalOperator
     )
@@ -707,7 +725,7 @@ namespace Dml
         bool isBeforeOp,
         uint32_t resourceCount,
         IUnknown** resources
-    ) 
+    )
     {
         std::vector<D3D12_RESOURCE_BARRIER> barriers;
         barriers.reserve(resourceCount);
@@ -720,8 +738,8 @@ namespace Dml
             // Custom operators receive resources in Common state and must return them to Common
             // state when finished.  Resources are otherwise kept in UAV state (or are promotable to UAV).
             barriers.push_back(CD3DX12_RESOURCE_BARRIER::Transition(
-                resource.Get(), 
-                isBeforeOp ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_COMMON, 
+                resource.Get(),
+                isBeforeOp ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_COMMON,
                 isBeforeOp ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_UNORDERED_ACCESS
             ));
         }
@@ -736,7 +754,7 @@ namespace Dml
     {
         return m_context->GetCommandListTypeForQueue();
     }
-    
+
     bool __stdcall ExecutionProviderImpl::IsMcdmDevice() const noexcept
     {
         return m_isMcdmDevice;
@@ -747,7 +765,7 @@ namespace Dml
         return m_areMetacommandsEnabled;
     }
 
-    std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> 
+    std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
     ExecutionProviderImpl::GetInternalRegistrationInfoMap() const
     {
         return m_internalRegInfoMap;
@@ -768,8 +786,8 @@ namespace Dml
         return m_cpuOutputAllocator;
     }
 
-    
-    onnxruntime::common::Status ExecutionProviderImpl::OnSessionInitializationEnd() 
+
+    onnxruntime::common::Status ExecutionProviderImpl::OnSessionInitializationEnd()
     {
         // Flush and trim resources, including staging memory used to upload weights.
         // This reduces memory usage immediately after session creation, and avoids
@@ -815,8 +833,8 @@ namespace Dml
     }
 
     onnxruntime::common::Status CopyTensor(
-        onnxruntime::IExecutionProvider* provider, 
-        const onnxruntime::Tensor& src, 
+        onnxruntime::IExecutionProvider* provider,
+        const onnxruntime::Tensor& src,
         onnxruntime::Tensor& dst
     )
     {

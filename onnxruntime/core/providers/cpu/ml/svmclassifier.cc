@@ -3,6 +3,11 @@
 
 #include "core/providers/cpu/ml/svmclassifier.h"
 #include "core/platform/threadpool.h"
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 
 namespace onnxruntime {
 namespace ml {
@@ -76,7 +81,7 @@ static void ChooseClass(Tensor& output, const int64_t output_idx, float max_weig
                         bool have_proba, bool weights_are_all_positive,
                         const std::vector<LabelType>& classlabels,
                         const LabelType& posclass, const LabelType& negclass) {
-  LabelType& output_data = *(output.template MutableData<LabelType>() + output_idx);
+  LabelType& output_data = *(output.MutableData<LabelType>() + output_idx);
 
   if (classlabels.size() == 2) {
     if (!have_proba) {
@@ -357,9 +362,9 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
       }
     } else {  //multiclass
       if (using_strings_) {
-        Y.template MutableData<std::string>()[n] = classlabels_strings_[maxclass];
+        Y.MutableData<std::string>()[n] = classlabels_strings_[maxclass];
       } else {
-        Y.template MutableData<int64_t>()[n] = classlabels_ints_[maxclass];
+        Y.MutableData<int64_t>()[n] = classlabels_ints_[maxclass];
       }
     }
 

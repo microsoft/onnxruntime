@@ -21,8 +21,7 @@ TEST(TensorOpTest, Reshape) {
   test.AddInput<int64_t>("shape", {3}, {-1, 0, 2});
   test.AddOutput<float>("reshaped", {1, 3, 2}, std::vector<float>(6, 1.0f));
   // TensorRT doesn't support dynamic shape tensor for now
-  // Nuphar only supports reshape shape from initializer
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, ReshapeWithEmptyDim) {
@@ -83,8 +82,7 @@ TEST(TensorOpTest, Reshape_WithOutAllowZero) {
   test.AddAttribute<int64_t>("allowzero", 0);
   test.AddOutput<float>("reshaped", {2, 3}, std::vector<float>(6, 1.0f));
   // TensorRT doesn't support dynamic shape tensor for now
-  // Nuphar only supports reshape shape from initializer
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(TensorOpTest, Reshape_WithAllowZero) {
@@ -95,26 +93,24 @@ TEST(TensorOpTest, Reshape_WithAllowZero) {
   test.AddAttribute<int64_t>("allowzero", 1);
   test.AddOutput<float>("reshaped", {2, 3}, std::vector<float>(6, 1.0f));
   // TensorRT doesn't support dynamic shape tensor for now
-  // Nuphar only supports reshape shape from initializer
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "The input tensor cannot be reshaped to the requested shape",
-           {kNupharExecutionProvider, kTensorrtExecutionProvider});
+           {kTensorrtExecutionProvider});
 }
 
-TEST(TensorOpTest, Reshape_EmptyInputWihtoutAllowZero) {
+TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero) {
   OpTester test("Reshape");
 
   test.AddInput<float>("data", {0, 3, 4}, std::vector<float>());
   test.AddInput<int64_t>("shape", {3}, {3, 4, 0});
   test.AddOutput<float>("reshaped", {3, 4, 0}, std::vector<float>());
   // TensorRT doesn't support dynamic shape tensor for now
-  // Nuphar only supports reshape shape from initializer
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "The input tensor cannot be reshaped to the requested shape",
-           {kNupharExecutionProvider, kTensorrtExecutionProvider});
+           {kTensorrtExecutionProvider});
 }
 
-TEST(TensorOpTest, Reshape_EmptyInputWihtAllowZero) {
+TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero) {
   OpTester test("Reshape", 14);
 
   test.AddInput<float>("data", {0, 3, 4}, std::vector<float>());
@@ -123,8 +119,26 @@ TEST(TensorOpTest, Reshape_EmptyInputWihtAllowZero) {
   test.AddOutput<float>("reshaped", {3, 4, 0}, std::vector<float>());
 
   // TensorRT doesn't support dynamic shape tensor for now
-  // Nuphar only supports reshape shape from initializer
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero) {
+  OpTester test("Reshape");
+
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddInput<int64_t>("shape", {2}, {-1, 6});
+  test.AddOutput<float>("reshaped", {1, 6}, std::vector<float>(6, 1.0f));
+  test.Run();
+}
+
+TEST(TensorOpTest, Reshape_UnknownDimWithAllowZero) {
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddInput<int64_t>("shape", {2}, {-1, 6});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {1, 6}, std::vector<float>(6, 1.0f));
+  test.Run();
 }
 
 TEST(TensorOpTest, ShapeTest2D) {
@@ -146,7 +160,7 @@ TEST(TensorOpTest, ShapeTest3D) {
 }
 
 void MeanVarianceNormalizationFunctionDefaultPerChannel() {
-  const int64_t N = 2, C = 2, H = 2, W = 3;
+  constexpr int64_t N = 2, C = 2, H = 2, W = 3;
 
   std::vector<float> N1C1 = {3.0f, -3.0f, -1.0f,
                              1.0f, 2.0f, -1.0f};
@@ -205,11 +219,15 @@ void MeanVarianceNormalizationFunctionDefaultPerChannel() {
   OpTester test("MeanVarianceNormalization", 9);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Unsupported combination of indices in layer "output"
+#else
   test.Run();
+#endif
 }
 
 void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) {
-  const int64_t N = 2, C = 2, H = 2, W = 3;
+  constexpr int64_t N = 2, C = 2, H = 2, W = 3;
 
   std::vector<float> X = {3.0f, -3.0f, -1.0f,
                           1.0f, 2.0f, -1.0f,
@@ -228,7 +246,11 @@ void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) 
   test.AddAttribute("axes", axes);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Unsupported combination of indices in layer "output"
+#else
   test.Run();
+#endif
 }
 
 TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {

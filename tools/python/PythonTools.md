@@ -133,7 +133,7 @@ optional arguments:
 image_to_pb:
   image_to_pb specific options
 
-  --resize RESIZE       Provide the shape as comma separated values to resize the image to. e.g. --shape 200,200
+  --resize RESIZE       Provide the height and width to resize to as comma separated values. e.g. --shape 200,300 will resize to height 200 and width 300.
   --channels_last       Transpose image from channels first to channels last.
   --add_batch_dim       Prepend a batch dimension with value of 1 to the shape. i.e. convert from CHW to NCHW
 

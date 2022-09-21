@@ -6,12 +6,12 @@
 #include "orttraining/training_ops/cuda/communication/recv.h"
 #include "orttraining/training_ops/communication_common.h"
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
-#include "core/providers/cuda/nvtx_profile.h" 
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
-#include <mpi.h>
 
+#include "orttraining/core/framework/communication/mpi/mpi_include.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 
 namespace onnxruntime {
@@ -89,10 +89,10 @@ void Recv::ReceiveData(
     assert(tensor_offset_in_bytes + tensor->SizeInBytes() <= aggregated_aligned_tensor_bytes);
     // Copy data out from buffer.
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+    CUDA_CALL_THROW(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
                               tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
 #else
-    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+    CUDA_CALL_THROW(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
                               tensor->SizeInBytes(), cudaMemcpyHostToDevice, Stream()));
 #endif
 
@@ -231,8 +231,8 @@ Status Recv::ComputeInternal(OpKernelContext* ctx) const {
     // we need to create outputs after receiving shapes.
     size_t begin = 0;
     for (int i = 0; i < num_tensors; ++i) {
-      std::vector<int64_t> tensor_shape(aggregated_tensor_shapes.begin() + begin,
-                                        aggregated_tensor_shapes.begin() + prefix_tensor_shape_sizes[i]);
+      TensorShapeVector tensor_shape(aggregated_tensor_shapes.begin() + begin,
+                                     aggregated_tensor_shapes.begin() + prefix_tensor_shape_sizes[i]);
       received_tensors[i] = ctx->Output(i + 1, tensor_shape);
       // Move the "begin" to the beginning dimension of the next received tensor.
       begin = prefix_tensor_shape_sizes[i];

@@ -53,39 +53,36 @@ void ORTTensorImpl::shallow_copy_from(
     allow_tensor_metadata_change());
 }
 
-at::IntArrayRef ORTTensorImpl::sizes() const {
+at::IntArrayRef ORTTensorImpl::sizes_custom() const {
   const_cast<ORTTensorImpl*>(this)->cacheSizeMetadata();
-  return c10::TensorImpl::sizes();
+  return c10::TensorImpl::sizes_default();
 }
 
-int64_t ORTTensorImpl::dim() const {
+int64_t ORTTensorImpl::dim_custom() const {
   const_cast<ORTTensorImpl*>(this)->cacheSizeMetadata();
-  return c10::TensorImpl::dim();
+  return c10::TensorImpl::dim_default();
 }
 
-int64_t ORTTensorImpl::numel() const {
+int64_t ORTTensorImpl::numel_custom() const {
   const_cast<ORTTensorImpl*>(this)->cacheSizeMetadata();
-  return c10::TensorImpl::numel();
+  return c10::TensorImpl::numel_default();
 }
 
-bool ORTTensorImpl::is_contiguous(at::MemoryFormat memory_format) const {
-  return true;
-}
-
-int64_t ORTTensorImpl::size(int64_t d) const {
-  const_cast<ORTTensorImpl*>(this)->cacheSizeMetadata();
-  return c10::TensorImpl::size(d);
+bool ORTTensorImpl::is_contiguous_custom(at::MemoryFormat memory_format) const {
+  auto& tensor = tensor_.Get<onnxruntime::Tensor>();
+  return tensor.IsContiguous();
 }
 
 void ORTTensorImpl::cacheSizeMetadata() {
   // TODO: wrap with change generation guard
   auto& tensor = tensor_.Get<onnxruntime::Tensor>();
-  auto shape = tensor.Shape();
-  auto strides = GetStrides(shape.GetDims());
+  const auto& shape = tensor.Shape();
+  const auto dims = shape.GetDims();
+  auto strides = tensor.Strides();
 
   numel_ = shape.Size();
 
-  sizes_and_strides_.set_sizes(shape.GetDimsAsVector());
+  sizes_and_strides_.set_sizes(c10::IntArrayRef(dims.data(), dims.size()));
 
   for (std::size_t i = 0; i < strides.size(); i++) {
     sizes_and_strides_.stride_at_unchecked(i) = strides[i];
@@ -100,9 +97,9 @@ bool ORTTensorImpl::has_storage() const {
   return false;
 }
 
-at::IntArrayRef ORTTensorImpl::strides() const {
+at::IntArrayRef ORTTensorImpl::strides_custom() const {
   const_cast<ORTTensorImpl*>(this)->cacheSizeMetadata();
-  return sizes_and_strides_.strides_arrayref(); 
+  return sizes_and_strides_.strides_arrayref();
 }
 
 } // namespace eager

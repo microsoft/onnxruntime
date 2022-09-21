@@ -3,20 +3,17 @@
 
 #include "core/providers/common.h"
 
-#include "helper.h"
 #include "shaper.h"
+#include "helper.h"
 
 namespace onnxruntime {
 namespace nnapi {
 
-using std::string;
-using std::vector;
-
 std::pair<uint32_t, uint32_t> ComputeConvOutputShape(const uint32_t input_size_y, const uint32_t input_size_x,
                                                      const uint32_t weight_size_y, const uint32_t weight_size_x,
-                                                     const vector<int32_t>& onnx_pads,
-                                                     const vector<int32_t>& onnx_strides,
-                                                     const vector<int32_t>& onnx_dilations) {
+                                                     const std::vector<int32_t>& onnx_pads,
+                                                     const std::vector<int32_t>& onnx_strides,
+                                                     const std::vector<int32_t>& onnx_dilations) {
   int32_t padding_top = onnx_pads[0];
   int32_t padding_bottom = onnx_pads[2];
   int32_t padding_left = onnx_pads[1];
@@ -53,9 +50,9 @@ std::pair<uint32_t, uint32_t> ComputeConvOutputShape(const uint32_t input_size_y
 
 Status Shaper::Conv(const std::string& input_name,
                     const std::string& weight_name,
-                    const vector<int32_t>& onnx_pads,
-                    const vector<int32_t>& onnx_strides,
-                    const vector<int32_t>& onnx_dilations,
+                    const std::vector<int32_t>& onnx_pads,
+                    const std::vector<int32_t>& onnx_strides,
+                    const std::vector<int32_t>& onnx_dilations,
                     bool nchw,
                     const std::string& output_name) {
   SHAPER_FUNC(Conv,
@@ -126,10 +123,29 @@ Status Shaper::Concat(const std::vector<std::string>& input_names,
   SHAPER_FUNC(Concat, input_names, axis, output_name);
 }
 
+Status Shaper::Split(const std::string& input_name, int32_t axis,
+                     const std::vector<std::string>& output_names) {
+  SHAPER_FUNC(Split, input_name, axis, output_names);
+}
+
 Status Shaper::Squeeze(const std::string& input_name,
                        const std::vector<int32_t>& axes,
                        const std::string& output_name) {
   SHAPER_FUNC(Squeeze, input_name, axes, output_name);
+}
+
+Status Shaper::DepthToSpace(const std::string& input_name,
+                            const int32_t blocksize,
+                            bool nchw,
+                            const std::string& output_name) {
+  SHAPER_FUNC(DepthToSpace, input_name, blocksize, nchw, output_name);
+}
+
+Status Shaper::Gather(const std::string& input_name1,
+                      const std::string& input_name2,
+                      const int32_t axis,
+                      const std::string& output_name) {
+  SHAPER_FUNC(Gather, input_name1, input_name2, axis, output_name);
 }
 
 Status Shaper::ResizeUsingScales(const std::string& input_name,
@@ -146,13 +162,19 @@ Status Shaper::ResizeUsingOutputSizes(const std::string& input_name,
   SHAPER_FUNC(ResizeUsingOutputSizes, input_name, output_h, output_w, nchw, output_name);
 }
 
+Status Shaper::Pad(const std::string& input_name,
+                   const std::vector<int32_t>& pads,
+                   const std::string& output_name) {
+  SHAPER_FUNC(Pad, input_name, pads, output_name);
+}
+
 #undef SHAPER_FUNC
 
 Status Shaper::ConvImpl(const std::string& input_name,
                         const std::string& weight_name,
-                        const vector<int32_t>& onnx_pads,
-                        const vector<int32_t>& onnx_strides,
-                        const vector<int32_t>& onnx_dilations,
+                        const std::vector<int32_t>& onnx_pads,
+                        const std::vector<int32_t>& onnx_strides,
+                        const std::vector<int32_t>& onnx_dilations,
                         bool nchw,
                         const std::string& output_name) {
   const Shape& input_dimen = shape_map_.at(input_name);
@@ -252,7 +274,7 @@ Status Shaper::ReshapeImpl(const std::string& input_name,
     ORT_RETURN_IF_NOT(dim_i != 0, "NNAPI does not support 0 reshape dimension");
     if (dim_i == -1) {
       ORT_RETURN_IF_NOT(unk_dim_idx == -1, "Only one input dimension of Attr(shape) can be unknown!");
-      unk_dim_idx = i;
+      unk_dim_idx = static_cast<int>(i);
     } else {
       capacity *= dim_i;
       output_dimen[i] = static_cast<uint32_t>(dim_i);
@@ -263,7 +285,7 @@ Status Shaper::ReshapeImpl(const std::string& input_name,
     if (input_size == 0)
       output_dimen[unk_dim_idx] = 0;
     else
-      output_dimen[unk_dim_idx] = input_size / capacity;
+      output_dimen[unk_dim_idx] = static_cast<uint32_t>(input_size / capacity);
 
     capacity *= output_dimen[unk_dim_idx];
   }
@@ -345,13 +367,6 @@ Status Shaper::ConcatImpl(const std::vector<std::string>& input_names,
   std::vector<Shape> dimens;
   for (const auto& input_name : input_names) {
     const Shape& dimen = shape_map_.at(input_name);
-    if (!dimens.empty()) {
-      for (size_t i = 0; i < dimens[0].size(); i++) {
-        if ((int32_t)i == axis)
-          continue;
-      }
-    }
-
     dimens.push_back(dimen);
   }
 
@@ -371,11 +386,29 @@ Status Shaper::ConcatImpl(const std::vector<std::string>& input_names,
   return Status::OK();
 }
 
+Status Shaper::SplitImpl(const std::string& input_name, int32_t axis,
+                         const std::vector<std::string>& output_names) {
+  const auto& input_shape = shape_map_.at(input_name);
+  const auto count = static_cast<uint32_t>(output_names.size());
+
+  ORT_RETURN_IF_NOT(input_shape[axis] % count == 0,
+                    "count [", count, "] does not evenly divide dimension ", axis, " [", input_shape[axis], "]");
+
+  Shape output_shape = input_shape;
+  output_shape[axis] = input_shape[axis] / count;
+
+  for (const auto& output_name : output_names) {
+    shape_map_[output_name] = output_shape;
+  }
+
+  return Status::OK();
+}
+
 Status Shaper::SqueezeImpl(const std::string& input_name,
                            const std::vector<int32_t>& axes,
                            const std::string& output_name) {
   const Shape& input_dimen = shape_map_.at(input_name);
-  int32_t input_size = input_dimen.size();
+  int32_t input_size = static_cast<int32_t>(input_dimen.size());
   std::unordered_set<int32_t> axes_to_be_squeezed;
 
   // If the Op is squeezing all by not specifying axes, the axes is pre-populate
@@ -400,17 +433,65 @@ Status Shaper::SqueezeImpl(const std::string& input_name,
   return Status::OK();
 }
 
+Status Shaper::DepthToSpaceImpl(const std::string& input_name,
+                                const int32_t blocksize,
+                                bool nchw,
+                                const std::string& output_name) {
+  const Shape& input_dimen = shape_map_.at(input_name);
+
+  // Make output dimensions
+  Shape output_dimen = shape_map_.at(input_name);
+  if (nchw) {
+    output_dimen[0] = input_dimen[0];
+    output_dimen[1] = input_dimen[1] / (blocksize * blocksize);
+    output_dimen[2] = input_dimen[2] * blocksize;
+    output_dimen[3] = input_dimen[3] * blocksize;
+  } else {  // nhwc
+    output_dimen[0] = input_dimen[0];
+    output_dimen[1] = input_dimen[1] * blocksize;
+    output_dimen[2] = input_dimen[2] * blocksize;
+    output_dimen[3] = input_dimen[3] / (blocksize * blocksize);
+  }
+
+  shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::GatherImpl(const std::string& input_name1,
+                          const std::string& input_name2,
+                          const int32_t axis,
+                          const std::string& output_name) {
+  const Shape& input_dimen = shape_map_.at(input_name1);
+  const Shape& indices_dimen = shape_map_.at(input_name2);
+
+  std::vector<uint32_t> output_dimen;
+  output_dimen.reserve(indices_dimen.size() + input_dimen.size() - 1);
+
+  // Calculate the output dim
+  for (int32_t i = 0; i < axis; ++i)
+    output_dimen.push_back(input_dimen[i]);
+
+  for (const auto dim : indices_dimen)
+    output_dimen.push_back(dim);
+
+  for (size_t i = axis + 1; i < input_dimen.size(); ++i)
+    output_dimen.push_back(input_dimen[i]);
+
+  shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
 Status Shaper::ResizeUsingScalesImpl(const std::string& input_name,
                                      const float scale_h, const float scale_w,
                                      bool nchw,
                                      const std::string& output_name) {
   Shape output_dimen = shape_map_.at(input_name);
   if (nchw) {
-    output_dimen[2] *= scale_h;
-    output_dimen[3] *= scale_w;
+    output_dimen[2] = static_cast<uint32_t>(output_dimen[2] * scale_h);
+    output_dimen[3] = static_cast<uint32_t>(output_dimen[3] * scale_w);
   } else {  // nhwc
-    output_dimen[1] *= scale_h;
-    output_dimen[2] *= scale_w;
+    output_dimen[1] = static_cast<uint32_t>(output_dimen[1] * scale_h);
+    output_dimen[2] = static_cast<uint32_t>(output_dimen[2] * scale_w);
   }
   shape_map_[output_name] = output_dimen;
   return Status::OK();
@@ -429,6 +510,19 @@ Status Shaper::ResizeUsingOutputSizesImpl(const std::string& input_name,
     output_dimen[2] = output_w;
   }
   shape_map_[output_name] = output_dimen;
+  return Status::OK();
+}
+
+Status Shaper::PadImpl(const std::string& input_name,
+                       const std::vector<int32_t>& pads,
+                       const std::string& output_name) {
+  Shape padded_shape = shape_map_.at(input_name);
+  const size_t rank = padded_shape.size();
+  ORT_RETURN_IF_NOT(pads.size() == 2 * rank, "Expected 2*rank (", 2 * rank, ") pad values but got ", pads.size());
+  for (size_t i = 0; i < rank; ++i) {
+    padded_shape[i] += pads[2*i] + pads[2*i + 1];
+  }
+  shape_map_[output_name] = padded_shape;
   return Status::OK();
 }
 

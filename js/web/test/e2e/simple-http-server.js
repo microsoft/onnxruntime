@@ -24,6 +24,9 @@ const validRequests = {
   // .js files
   '/dist/ort.min.js': ['dist/ort.min.js', 'text/javascript'],
   '/dist/ort.js': ['dist/ort.js', 'text/javascript'],
+  '/dist/ort.webgl.min.js': ['dist/ort.webgl.min.js', 'text/javascript'],
+  '/dist/ort.wasm.min.js': ['dist/ort.wasm.min.js', 'text/javascript'],
+  '/dist/ort.wasm-core.min.js': ['dist/ort.wasm-core.min.js', 'text/javascript'],
 };
 
 module.exports = function (dir) {

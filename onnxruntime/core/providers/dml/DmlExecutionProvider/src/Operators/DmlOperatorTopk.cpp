@@ -22,8 +22,7 @@ public:
         std::vector<std::optional<uint32_t>> inputIndices = { 0 }; // Use only the first tensor. The second tensor is CPU-based.
         std::vector<std::optional<uint32_t>> outputIndices = { 0, 1 };
         DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices);
-        DmlOperator::Remap64bitDmlDataTypesTo32bit();
-        m_outputTensorDescs[1].ForceUnsignedDataType();
+        m_outputTensorDescs[1].ForceUnsignedDataType(); // DML operator accepts uint32_t/uint64 for indices tensor.
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();

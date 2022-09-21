@@ -7,7 +7,7 @@ if(UNIX)
     set(OUTPUT_STYLE xcode)
   else()
     set(OUTPUT_STYLE gcc)
-  endif()  
+  endif()
 else()
   set(SYMBOL_FILE ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_dll.def)
   set(OUTPUT_STYLE vc)
@@ -105,6 +105,7 @@ target_compile_definitions(onnxruntime PRIVATE VER_MINOR=${VERSION_MINOR_PART})
 target_compile_definitions(onnxruntime PRIVATE VER_BUILD=${VERSION_BUILD_PART})
 target_compile_definitions(onnxruntime PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
 target_compile_definitions(onnxruntime PRIVATE VER_STRING=\"${VERSION_STRING}\")
+target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
 
 if(UNIX)
   if (APPLE)
@@ -135,6 +136,16 @@ if (NOT WIN32)
 endif()
 
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_MINIMAL_BUILD)
+  # target onnxruntime is a shared library, the dummy __cxa_demangle is only attach to it to avoid
+  # affecting downstream ort library users with the behaviour of dummy __cxa_demangle. So the dummy
+  # __cxa_demangle must not expose to libonnxruntime_common.a. It works as when the linker is
+  # creating the DSO, our dummy __cxa_demangle always comes before libc++abi.a so the
+  # __cxa_demangle in libc++abi.a is discarded, thus, huge binary size reduction.
+  target_sources(onnxruntime PRIVATE "${ONNXRUNTIME_ROOT}/core/platform/android/cxa_demangle.cc")
+  target_compile_definitions(onnxruntime PRIVATE USE_DUMMY_EXA_DEMANGLE=1)
+endif()
+
 # strip binary on Android, or for a minimal build on Unix
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR (onnxruntime_MINIMAL_BUILD AND UNIX))
   if (onnxruntime_MINIMAL_BUILD AND ADD_DEBUG_INFO_TO_MINIMAL_BUILD)
@@ -157,6 +168,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
   endforeach()
 endif()
 
+# This list is a reversed topological ordering of library dependencies.
+# Earlier entries may depend on later ones. Later ones should not depend on earlier ones.
 set(onnxruntime_INTERNAL_LIBRARIES
   onnxruntime_session
   ${onnxruntime_libs}
@@ -164,20 +177,22 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_ARMNN}
   ${PROVIDERS_COREML}
   ${PROVIDERS_DML}
-  ${PROVIDERS_MIGRAPHX}
   ${PROVIDERS_NNAPI}
+  ${PROVIDERS_SNPE}
   ${PROVIDERS_NUPHAR}
+  ${PROVIDERS_TVM}
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_ROCM}
   ${PROVIDERS_VITISAI}
+  ${PROVIDERS_XNNPACK}
   ${PROVIDERS_INTERNAL_TESTING}
   ${onnxruntime_winml}
   onnxruntime_optimizer
   onnxruntime_providers
-  onnxruntime_util
   ${onnxruntime_tvm_libs}
   onnxruntime_framework
   onnxruntime_graph
+  onnxruntime_util
   ${ONNXRUNTIME_MLAS_LIBS}
   onnxruntime_common
   onnxruntime_flatbuffers
@@ -211,8 +226,39 @@ install(TARGETS onnxruntime
 
 set_target_properties(onnxruntime PROPERTIES FOLDER "ONNXRuntime")
 
-if (WINDOWS_STORE)
-  target_link_options(onnxruntime PRIVATE /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll)
+if (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+  # Workaround STL bug https://github.com/microsoft/STL/issues/434#issuecomment-921321254
+  # Note that the workaround makes std::system_error crash before Windows 10
+
+  # The linker warns "LNK4199: /DELAYLOAD:api-ms-win-core-heapl2-1-0.dll ignored; no imports found from api-ms-win-core-heapl2-1-0.dll"
+  # when you're not using imports directly, even though the import exists in the STL and the DLL would have been linked without DELAYLOAD
+  target_link_options(onnxruntime PRIVATE /DELAYLOAD:api-ms-win-core-heapl2-1-0.dll /ignore:4199)
+endif()
+
+if (winml_is_inbox)
+  # Apply linking flags required by inbox static analysis tools
+  target_link_options(onnxruntime PRIVATE ${os_component_link_flags_list})
+  # Link *_x64/*_arm64 DLLs for the ARM64X forwarder
+  function(duplicate_shared_library target new_target)
+    get_target_property(sources ${target} SOURCES)
+    get_target_property(compile_definitions ${target} COMPILE_DEFINITIONS)
+    get_target_property(compile_options ${target} COMPILE_OPTIONS)
+    get_target_property(include_directories ${target} INCLUDE_DIRECTORIES)
+    get_target_property(link_libraries ${target} LINK_LIBRARIES)
+    get_target_property(link_flags ${target} LINK_FLAGS)
+    get_target_property(link_options ${target} LINK_OPTIONS)
+    add_library(${new_target} SHARED ${sources})
+    add_dependencies(${target} ${new_target})
+    target_compile_definitions(${new_target} PRIVATE ${compile_definitions})
+    target_compile_options(${new_target} PRIVATE ${compile_options})
+    target_include_directories(${new_target} PRIVATE ${include_directories})
+    target_link_libraries(${new_target} PRIVATE ${link_libraries})
+    set_property(TARGET ${new_target} PROPERTY LINK_FLAGS "${link_flags}")
+    target_link_options(${new_target} PRIVATE ${link_options})
+  endfunction()
+  if (WAI_ARCH STREQUAL x64 OR WAI_ARCH STREQUAL arm64)
+    duplicate_shared_library(onnxruntime onnxruntime_${WAI_ARCH})
+  endif()
 endif()
 
 # Assemble the Apple static framework (iOS and macOS)

@@ -43,7 +43,7 @@ CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                       const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // We do not run CoreML EP on subgraph, instead we cover this in the control flow nodes
@@ -63,13 +63,13 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   const auto supported_nodes = coreml::GetSupportedNodes(graph_viewer, logger);
 
   const auto gen_metadef_name = [&]() {
-    uint64_t model_hash;
+    HashValue model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     return MakeString(COREML, "_", model_hash, "_", metadef_id);
   };
 
   result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
-                                            gen_metadef_name, COREML);
+                                            gen_metadef_name, COREML, kCoreMLExecutionProvider);
 
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::transform_reduce(
@@ -139,7 +139,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       ORT_UNUSED_PARAMETER(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
       coreml::Model* model = reinterpret_cast<coreml::Model*>(state);
       const size_t num_inputs = ort.KernelContext_GetInputCount(context);
@@ -243,7 +243,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) { return 0; };
     compute_info.release_state_func = [](FunctionState /*state*/) {};
-    compute_info.compute_func = [](FunctionState /* state */, const OrtCustomOpApi* /* api */,
+    compute_info.compute_func = [](FunctionState /* state */, const OrtApi* /* api */,
                                    OrtKernelContext* /* context */) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Compute is not supported in this build.");
     };

@@ -4,9 +4,9 @@
 #include "core/providers/cpu/nn/shrink.h"
 
 #include "core/framework/element_type_lists.h"
+#include "core/framework/math.h"
 #include "core/framework/utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/util/math_cpuonly.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
@@ -31,7 +31,10 @@ ONNX_CPU_OPERATOR_KERNEL(
                         BuildKernelDefConstraintsFromTypeList<ShrinkDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledShrinkDataTypes>()),
     Shrink);
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 namespace shrink_internal {
 template <class T>
 inline T ShrinkCore(const T& val, float bias, float lambd) {
@@ -56,7 +59,7 @@ Status ShrinkImpl(const Tensor* input, Tensor* output, float bias, float lambd) 
 template <>
 Status ShrinkImpl<MLFloat16>(const Tensor* input, Tensor* output, float bias, float lambd) {
   const auto& span = gsl::make_span(input->Data<MLFloat16>(), input->Shape().Size());
-  auto* output_data = output->template MutableData<MLFloat16>();
+  auto* output_data = output->MutableData<MLFloat16>();
   std::transform(span.cbegin(), span.cend(), output_data, [bias, lambd](const MLFloat16& val) {
     float fl = math::halfToFloat(val.val);
     return MLFloat16(math::floatToHalf(ShrinkCore<float>(fl, bias, lambd)));
@@ -67,7 +70,7 @@ Status ShrinkImpl<MLFloat16>(const Tensor* input, Tensor* output, float bias, fl
 template <>
 Status ShrinkImpl<BFloat16>(const Tensor* input, Tensor* output, float bias, float lambd) {
   const auto& span = gsl::make_span(input->Data<BFloat16>(), input->Shape().Size());
-  auto* output_data = output->template MutableData<BFloat16>();
+  auto* output_data = output->MutableData<BFloat16>();
   std::transform(span.cbegin(), span.cend(), output_data, [bias, lambd](const BFloat16& val) {
     float fl = val.ToFloat();
     return BFloat16(ShrinkCore<float>(fl, bias, lambd));

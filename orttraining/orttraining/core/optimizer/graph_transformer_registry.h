@@ -14,10 +14,10 @@ namespace onnxruntime {
 namespace training {
 
 typedef GenericRegistry<GraphTransformer,
-                        const std::unordered_set<std::string>&> // supported EP list
+                        const InlinedHashSet<std::string_view>&> // supported EP list
     GraphTransformerRegistryType;
 
-typedef std::function<std::unique_ptr<GraphTransformer>(const std::unordered_set<std::string>&)> GraphTransformerCreator;
+typedef std::function<std::unique_ptr<GraphTransformer>(const InlinedHashSet<std::string_view>&)> GraphTransformerCreator;
 
 struct GraphTransformerMeta {
   TransformerLevel level;
@@ -44,7 +44,7 @@ class GraphTransformerRegistry {
     return name_to_meta_map_;
   }
 
-  std::unique_ptr<GraphTransformer> CreateTransformer(const std::string& name, const std::unordered_set<std::string>& ep_list) const {
+  std::unique_ptr<GraphTransformer> CreateTransformer(const std::string& name, const InlinedHashSet<std::string_view>& ep_list) const {
     return transformer_registry_.MakeUnique(name, ep_list);
   }
 
@@ -68,7 +68,7 @@ class GraphTransformerRegisterOnce final {
 #define ONNX_REGISTER_EXTERNAL_GRAPH_TRANSFORMER_UNIQ(Counter, name, level, flag) \
   static ONNX_UNUSED onnxruntime::training::GraphTransformerRegisterOnce \
       graph_transformer_register_once##name##Counter(       \
-      #name, [](const std::unordered_set<std::string>& eps) { \
+      #name, [](const InlinedHashSet<std::string_view>& eps) { \
         return std::make_unique<name>(eps);   \
       }, TransformerLevel::level, flag); 
 
@@ -77,7 +77,7 @@ class GraphTransformerRegisterOnce final {
 #define ONNX_REGISTER_EXTERNAL_REWRITE_RULE_UNIQ(Counter, name, level, flag) \
   static ONNX_UNUSED onnxruntime::training::GraphTransformerRegisterOnce \
       graph_transformer_register_once##name##Counter(       \
-      #name, [](const std::unordered_set<std::string>& eps) { \
+      #name, [](const InlinedHashSet<std::string_view>& eps) { \
         auto rule_base_transformer = std::make_unique<RuleBasedGraphTransformer>(#name, eps); \
         ORT_THROW_IF_ERROR(rule_base_transformer->Register(std::make_unique<name>())); \
         return rule_base_transformer;   \
@@ -86,7 +86,7 @@ class GraphTransformerRegisterOnce final {
 void GenerateExternalTransformers(
     TransformerLevel level,
     bool before_gradient_builder,
-    const std::unordered_set<std::string>& ep_list,
+    const InlinedHashSet<std::string_view>& ep_list,
     std::vector<std::unique_ptr<GraphTransformer>>& output);
 
 }  // namespace training

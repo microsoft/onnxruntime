@@ -8,6 +8,12 @@
 #include <cmath>
 #include <mutex>
 
+#ifdef USE_CUDA
+#include <cuda_runtime.h>
+template <typename T1, typename T2, typename T3>
+void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
+#endif
+
 static const char* c_OpDomain = "test.customop";
 
 struct OrtCustomOpDomainDeleter {
@@ -40,9 +46,8 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 };
 
 struct KernelOne {
-  KernelOne(OrtApi api)
-      : api_(api),
-        ort_(api_) {
+  KernelOne(const OrtApi& api)
+      : ort_(api) {
   }
 
   void Compute(OrtKernelContext* context) {
@@ -63,20 +68,23 @@ struct KernelOne {
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
     // Do computation
+#ifdef USE_CUDA
+    cudaStream_t stream = reinterpret_cast<cudaStream_t>(ort_.KernelContext_GetGPUComputeStream(context));
+    cuda_add(size, out, X, Y, stream);
+#else
     for (int64_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
+#endif
   }
 
  private:
-  OrtApi api_;  // keep a copy of the struct, whose ref is used in the ort_
   Ort::CustomOpApi ort_;
 };
 
 struct KernelTwo {
-  KernelTwo(OrtApi api)
-      : api_(api),
-        ort_(api_) {
+  KernelTwo(const OrtApi& api)
+      : ort_(api) {
   }
 
   void Compute(OrtKernelContext* context) {
@@ -101,16 +109,19 @@ struct KernelTwo {
   }
 
  private:
-  OrtApi api_;  // keep a copy of the struct, whose ref is used in the ort_
   Ort::CustomOpApi ort_;
 };
 
 struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
+  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* /* info */) const {
     return new KernelOne(api);
   };
 
   const char* GetName() const { return "CustomOpOne"; };
+
+#ifdef USE_CUDA
+  const char* GetExecutionProviderType() const { return "CUDAExecutionProvider"; };
+#endif
 
   size_t GetInputTypeCount() const { return 2; };
   ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
@@ -121,7 +132,7 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
 } c_CustomOpOne;
 
 struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
+  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* /* info */) const {
     return new KernelTwo(api);
   };
 

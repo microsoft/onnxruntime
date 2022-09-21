@@ -17,7 +17,7 @@ class MegatronTransformer : public GraphTransformer {
                       std::unordered_map<std::string, training::TrainingSession::PartitionInfo>& weight_partition_info,
                       training::TrainingSession::OptimizerState& initial_optimizer_states,
                       const IExecutionProvider& cpu_execution_provider , // Required to get allocator for optimizer partitioning by Col                   
-                      const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+                      const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("MegatronTransformer", compatible_execution_providers),
         horizontal_parallel_rank_(horizontal_parallel_rank),
         horizontal_parallel_size_(horizontal_parallel_size),
@@ -33,38 +33,38 @@ class MegatronTransformer : public GraphTransformer {
  private:
   // GPT2 Pattern Match
   Status TransformGPT2MLP(Graph& graph, bool& modified,
-                          std::vector<Node*>& nodes_to_clear_shape,
+                          InlinedVector<Node*>& nodes_to_clear_shape,
                           int32_t& counter,
                           NodeIndex node_index) const;
 
   Status TransformGPT2Attention(Graph& graph, bool& modified,
-                                std::vector<Node*>& nodes_to_clear_shape,
-                                std::unordered_set<Node*>& dropout_nodes_to_transform,
+                                InlinedVector<Node*>& nodes_to_clear_shape,
+                                InlinedHashSet<Node*>& dropout_nodes_to_transform,
                                 int32_t& counter,
                                 NodeIndex node_index) const;
 
   // BART Pattern Match
   Status TransformBARTMLP(Graph& graph, bool& modified,
-                          std::vector<Node*>& nodes_to_clear_shape,
-                          std::unordered_set<Node*>& dropout_nodes_to_transform,
+                          InlinedVector<Node*>& nodes_to_clear_shape,
+                          InlinedHashSet<Node*>& dropout_nodes_to_transform,
                           int32_t& counter,
                           NodeIndex node_index) const;
 
   Status TransformBARTAttention(Graph& graph, bool& modified,
-                                std::vector<Node*>& nodes_to_clear_shape,
-                                std::unordered_set<Node*>& dropout_nodes_to_transform,
+                                InlinedVector<Node*>& nodes_to_clear_shape,
+                                InlinedHashSet<Node*>& dropout_nodes_to_transform,
                                 int32_t& counter,
                                 NodeIndex node_index) const;
 
   // Shared Utilities
   Status DoTransform(Graph& graph, bool& modified, int graph_level,
                      const logging::Logger& logger,
-                     std::vector<Node*>& nodes_to_clear_shape,
-                     std::unordered_set<Node*>& dropout_nodes_to_transform) const;
+                     InlinedVector<Node*>& nodes_to_clear_shape,
+                     InlinedHashSet<Node*>& dropout_nodes_to_transform) const;
 
   Status TransformDropout(Graph& graph, bool& modified, int graph_level,
                           const logging::Logger& logger,
-                          std::unordered_set<Node*>& dropout_nodes_to_transform,
+                          InlinedHashSet<Node*>& dropout_nodes_to_transform,
                           int32_t& counter) const;
 
   template <class T>
@@ -73,7 +73,7 @@ class MegatronTransformer : public GraphTransformer {
                                const int64_t column_count,
                                const int64_t column_stride,
                                const int stride,
-                               std::vector<T>& result) const;
+                               InlinedVector<T>& result) const;
 
   bool PartitionWeightByColumn(const Graph& graph, const NodeArg& input_arg,
                                ONNX_NAMESPACE::TensorProto& initializer_partition,

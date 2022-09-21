@@ -134,7 +134,7 @@ bool GistEncodeDecode::AddEncodeDecode(Graph& graph, Node& curr_node, std::strin
     auto element_type = curr_node_output_arg->TypeAsProto()->tensor_type().elem_type();
     output_type.set_i(static_cast<int64_t>(element_type));
 
-    const int num_attributes = 1;  // one attribute: decoder's output data type
+    constexpr int num_attributes = 1;  // one attribute: decoder's output data type
     NodeAttributes attributes;
     attributes.reserve(num_attributes);
     attributes[output_type.name()] = output_type;

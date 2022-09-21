@@ -112,6 +112,77 @@ TEST(BiasGeluTest, Two_One_Dim) {
   RunBiasGeluTest(input_a_data, input_b_data, {2, 4}, {4});
 }
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(BiasGeluTest, Two_One_Dim_fp16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+  OpTester tester("BiasGelu", 1, onnxruntime::kMSDomain);
+
+  std::vector<float> A = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> B = {
+      -0.5f, 0.6f, 1.2f, 2.1f};
+
+  std::vector<float> Y = ComputeGeluWithErf(Add_Simple(A, B));
+
+  std::vector<MLFloat16> f_A(8);
+  std::vector<MLFloat16> f_B(4);
+  std::vector<MLFloat16> f_Y(8);
+  ConvertFloatToMLFloat16(A.data(), f_A.data(), 8);
+  ConvertFloatToMLFloat16(B.data(), f_B.data(), 4);
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 8);
+
+  tester.AddInput<MLFloat16>("A", {2, 4}, f_A);
+  tester.AddInput<MLFloat16>("B", {4}, f_B);
+  tester.AddOutput<MLFloat16>("Y", {2, 4}, f_Y);
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: fp16 is not supported
+}
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(BiasGeluTest, Two_One_Dim_bfloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester tester("BiasGelu", 1, onnxruntime::kMSDomain);
+
+  std::vector<float> A = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> B = {
+      -0.5f, 0.6f, 1.2f, 2.1f};
+
+  std::vector<float> Y = ComputeGeluWithErf(Add_Simple(A, B));
+
+  std::vector<BFloat16> f_A = FloatsToBFloat16s(A);
+  std::vector<BFloat16> f_B = FloatsToBFloat16s(B);
+  std::vector<BFloat16> f_Y = FloatsToBFloat16s(Y);
+
+  tester.AddInput<BFloat16>("A", {2, 4}, f_A);
+  tester.AddInput<BFloat16>("B", {4}, f_B);
+  tester.AddOutput<BFloat16>("Y", {2, 4}, f_Y);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 TEST(MathOpTest, ComplexMul) {
   if (DefaultCudaExecutionProvider() == nullptr) return;
 

@@ -43,20 +43,24 @@ Status SetEnvironmentVar(const std::string& name, const optional<std::string>& v
 Status GetEnvironmentVar(const std::string& name, optional<std::string>& value) {
   constexpr DWORD kBufferSize = 32767;
 
-  char buffer[kBufferSize];
+  std::string buffer(kBufferSize, '\0');
 
-  const auto char_count = GetEnvironmentVariableA(name.c_str(), buffer, kBufferSize);
-  if (char_count > 0) {
-    value = std::string{buffer, buffer + char_count};
-    return Status::OK();
+  const DWORD char_count = GetEnvironmentVariableA(name.c_str(), buffer.data(), kBufferSize);
+  if (0 == char_count) {
+    DWORD dwErr = GetLastError();
+    if (ERROR_ENVVAR_NOT_FOUND == dwErr) {
+      value = optional<std::string>{};
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetEnvironmentVariableA() failed: ", dwErr);
   }
-
-  if (GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
-    value = optional<std::string>{};
-    return Status::OK();
+  if (kBufferSize < char_count) {
+    //Shouldn't reach here, 32767 is the max size.
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetEnvironmentVariableA() failed: not enough memory");
   }
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetEnvironmentVariableA() failed: ", GetLastError());
+  buffer.resize(char_count);
+  value = buffer;
+  return Status::OK();
 }
 #endif
 

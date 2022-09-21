@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -61,7 +62,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         #region SafeHandle
-        
+
         /// <summary>
         /// Overrides SafeHandle.IsInvalid
         /// </summary>
@@ -257,7 +258,7 @@ namespace Microsoft.ML.OnnxRuntime
         public override bool Equals(object obj)
         {
             var other = obj as OrtMemoryInfo;
-            if(other == null)
+            if (other == null)
             {
                 return false;
             }
@@ -271,7 +272,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <returns>true if instances are equal according to OrtCompareMemoryInfo.</returns>
         public bool Equals(OrtMemoryInfo other)
         {
-            if(this == other)
+            if (this == other)
             {
                 return true;
             }
@@ -308,6 +309,78 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         #endregion
+    }
+
+    /// <summary>
+    /// This class represents an arbitrary buffer of memory
+    /// allocated and owned by the user. It can be either a CPU, GPU or other device memory
+    /// that can be suitably represented by IntPtr.
+    /// This is just a composite of the buffer related information.
+    /// The memory is assumed to be pinned if necessary and usable immediately
+    /// in the native code.
+    /// </summary>
+    public class OrtExternalAllocation
+    {
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="memInfo">use to accurately describe a piece of memory that this is wrapping</param>
+        /// <param name="shape">shape of this buffer</param>
+        /// <param name="elementType">element type</param>
+        /// <param name="pointer">the actual pointer to memory</param>
+        /// <param name="sizeInBytes">size of the allocation in bytes</param>
+        public OrtExternalAllocation(OrtMemoryInfo memInfo, long[] shape, Tensors.TensorElementType elementType, IntPtr pointer, long sizeInBytes)
+        {
+            Type type;
+            int width;
+            if (!TensorElementTypeConverter.GetTypeAndWidth(elementType, out type, out width))
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, 
+                    "Unable to query type information for data type: " + elementType.ToString());
+            }
+
+            if (elementType == TensorElementType.String)
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                    "Strings are not supported by this API");
+            }
+
+            var shapeSize = ArrayUtilities.GetSizeForShape(shape);
+            var requiredBufferSize = shapeSize * width;
+            if (requiredBufferSize > sizeInBytes)
+            {
+                var message = String.Format("Shape of {0} elements requires a buffer of at least {1} bytes. Provided: {2} bytes",
+                    shapeSize, requiredBufferSize, sizeInBytes);
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, message);
+            }
+
+            Info = memInfo;
+            Shape = shape;
+            ElementType = elementType;
+            Pointer = pointer;
+            Size = sizeInBytes;
+        }
+
+        /// <summary>
+        /// OrtMemoryInfo
+        /// </summary>
+        public OrtMemoryInfo Info { get; private set; }
+        /// <summary>
+        /// Shape
+        /// </summary>
+        public long[] Shape { get; private set; }
+        /// <summary>
+        /// Data type
+        /// </summary>
+        public Tensors.TensorElementType ElementType { get; private set; }
+        /// <summary>
+        /// Actual memory ptr
+        /// </summary>
+        public IntPtr Pointer { get; private set; }
+        /// <summary>
+        /// Size of the allocation in bytes
+        /// </summary>
+        public long Size { get; private set; }
     }
 
     /// <summary>

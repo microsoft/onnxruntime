@@ -57,6 +57,7 @@ struct AttributeProto final {
   void operator=(const AttributeProto& v) { g_host->AttributeProto__operator_assign(this, v); }
   static void operator delete(void* p) { g_host->AttributeProto__operator_delete(reinterpret_cast<AttributeProto*>(p)); }
 
+  const std::string& name() const { return g_host->AttributeProto__name(this); }
   AttributeProto_AttributeType type() const { return g_host->AttributeProto__type(this); }
   int ints_size() const { return g_host->AttributeProto__ints_size(this); }
   int floats_size() const { return g_host->AttributeProto__floats_size(this); }
@@ -136,6 +137,17 @@ struct ModelProto final {
   void operator=(const ModelProto&) = delete;
 };
 
+struct NodeProto final {
+  static std::unique_ptr<NodeProto> Create() { return g_host->NodeProto__construct(); }
+  static void operator delete(void* p) { g_host->NodeProto__operator_delete(reinterpret_cast<NodeProto*>(p)); }
+  void operator=(const NodeProto& v) { g_host->NodeProto__operator_assign(this, v); }
+  int attribute_size() { return g_host->NodeProto__attribute_size(this); }
+  const AttributeProto& attribute(int index) const { return g_host->NodeProto__attribute(this, index); }
+
+  NodeProto() = delete;
+  NodeProto(const NodeProto&) = delete;
+};
+
 struct TensorProto final {
   static std::unique_ptr<TensorProto> Create() { return g_host->TensorProto__construct(); }
   static void operator delete(void* p) { g_host->TensorProto__operator_delete(reinterpret_cast<TensorProto*>(p)); }
@@ -158,6 +170,8 @@ struct TensorProto final {
   static constexpr DataType UNDEFINED = TensorProto_DataType_UNDEFINED;
 
   static bool DataType_IsValid(int value) { return g_host->TensorProto_DataType_IsValid(value); }
+
+  void copy_from(const TensorProto* other) { return g_host->TensorProto__CopyFrom(this, other); }
 
   TensorProto() = delete;
   TensorProto(const TensorProto&) = delete;
@@ -240,6 +254,8 @@ struct TypeProto_Sequence final {
 };
 
 struct TypeProto final {
+  static std::unique_ptr<TypeProto> Create() { return g_host->TypeProto__construct(); }
+
   const TypeProto_Tensor& tensor_type() const { return g_host->TypeProto__tensor_type(this); }
   TypeProto_Tensor* mutable_tensor_type() { return g_host->TypeProto__mutable_tensor_type(this); }
 
@@ -268,7 +284,10 @@ struct TypeProto final {
 
   ValueCase value_case() const { return ValueCase(g_host->TypeProto__value_case(this)); }
 
-  PROVIDER_DISALLOW_ALL(TypeProto)
+  void copy_from(const TypeProto* other) { return g_host->TypeProto__CopyFrom(this, other); }
+
+  TypeProto() = delete;
+  TypeProto(const TypeProto&) = delete;
 };
 
 struct ValueInfoProto final {
@@ -348,6 +367,8 @@ struct IndexedSubGraph_MetaDef final {
   const std::vector<std::string>& inputs() const { return g_host->IndexedSubGraph_MetaDef__inputs(const_cast<IndexedSubGraph_MetaDef*>(this)); }
   std::vector<std::string>& inputs() { return g_host->IndexedSubGraph_MetaDef__inputs(this); }
   const std::vector<std::string>& outputs() const { return g_host->IndexedSubGraph_MetaDef__outputs(const_cast<IndexedSubGraph_MetaDef*>(this)); }
+  const std::vector<std::string>& constant_initializers() const { return g_host->IndexedSubGraph_MetaDef__constant_initializers(const_cast<IndexedSubGraph_MetaDef*>(this)); }
+  std::vector<std::string>& constant_initializers() { return g_host->IndexedSubGraph_MetaDef__constant_initializers(this); }
   std::vector<std::string>& outputs() { return g_host->IndexedSubGraph_MetaDef__outputs(this); }
   NodeAttributes& attributes() { return g_host->IndexedSubGraph_MetaDef__attributes(this); }
 
@@ -463,6 +484,18 @@ struct KernelDefBuilder final {
     return *this;
   }
 
+#ifdef ENABLE_TRAINING
+  KernelDefBuilder& MayStridedInput(int input_index) {
+    g_host->KernelDefBuilder__MayStridedInput(this, input_index);
+    return *this;
+  }
+
+  KernelDefBuilder& MayStridedOutput(int input_index, int output_index) {
+    g_host->KernelDefBuilder__MayStridedOutput(this, input_index, output_index);
+    return *this;
+  }
+#endif
+
   std::unique_ptr<KernelDef> Build() {
     return g_host->KernelDefBuilder__Build(this);
   }
@@ -477,8 +510,6 @@ struct KernelRegistry final {
   static void operator delete(void* p) { g_host->KernelRegistry__operator_delete(reinterpret_cast<KernelRegistry*>(p)); }
 
   Status Register(KernelCreateInfo&& create_info) { return g_host->KernelRegistry__Register(this, std::move(create_info)); }
-
-  Status TryFindKernel(const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) const { return g_host->KernelRegistry__TryFindKernel(this, node, exec_provider, out); }
 
   KernelRegistry() = delete;
   KernelRegistry(const KernelRegistry&) = delete;
@@ -553,6 +584,8 @@ struct Node final {
   ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept { return g_host->Node__OutputDefs(this); }
   NodeIndex Index() const noexcept { return g_host->Node__Index(this); }
 
+  std::vector<gsl::not_null<const Graph*>> GetSubgraphs() const noexcept { return g_host->Node__GetSubgraphs(this); }
+
   void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const { return g_host->Node__ToProto(this, proto, update_subgraphs); }
 
   const NodeAttributes& GetAttributes() const noexcept { return g_host->Node__GetAttributes(this); }
@@ -625,6 +658,8 @@ struct NodeAttributes final {
   IteratorHolder<NodeAttributes_Iterator, std::pair<const std::string, ONNX_NAMESPACE::AttributeProto>> end() const { return g_host->NodeAttributes__end(this); }
   IteratorHolder<NodeAttributes_Iterator, std::pair<const std::string, ONNX_NAMESPACE::AttributeProto>> find(const std::string& key) const { return g_host->NodeAttributes__find(this, key); }
   void insert(const NodeAttributes& v) { return g_host->NodeAttributes__insert(this, v); }
+  void emplace(const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) { g_host->NodeAttributes__emplace(this, k, v); }
+  void reserve(size_t size) { g_host->NodeAttributes__reserve(this, size); }
 
   NodeAttributes() = delete;
   NodeAttributes(const NodeAttributes&) = delete;
@@ -650,14 +685,16 @@ struct Graph final {
 
   Status Resolve() { return g_host->Graph__Resolve(this); }
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor) { return g_host->Graph__AddInitializedTensor(this, tensor); }
-  Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, const std::vector<NodeArg*>& input_args, const std::vector<NodeArg*>& output_args, const NodeAttributes* attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, attributes, domain); }
+  Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, gsl::span<NodeArg* const> input_args, gsl::span<NodeArg* const> output_args, const NodeAttributes* attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, attributes, domain); }
 
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return g_host->Graph__GetOutputs(this); }
-  void SetOutputs(const std::vector<const NodeArg*>& outputs) { return g_host->Graph__SetOutputs(this, outputs); }
+  void SetOutputs(gsl::span<const NodeArg* const> outputs) { return g_host->Graph__SetOutputs(this, outputs); }
 
   const std::vector<const NodeArg*>& GetInputs() const noexcept { return g_host->Graph__GetInputs(this); }
 
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const { return g_host->Graph__GetInitializedTensor(this, tensor_name, value); }
+
+  const Node* ParentNode() const { return g_host->Graph__ParentNode(this); }
 
   PROVIDER_DISALLOW_ALL(Graph)
 };
@@ -674,7 +711,9 @@ struct GraphViewer final {
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->GraphViewer__GetNodeArg(this, name); }
 
   bool IsSubgraph() const { return g_host->GraphViewer__IsSubgraph(this); }
+  const Graph& GetGraph() const { return g_host->GraphViewer__GetGraph(this); }
   bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const { return g_host->GraphViewer__IsConstantInitializer(this, name, check_outer_scope); }
+  const Node* ParentNode() const { return g_host->GraphViewer__ParentNode(this); }
 
   int NumberOfNodes() const noexcept { return g_host->GraphViewer__NumberOfNodes(this); }
   int MaxNodeIndex() const noexcept { return g_host->GraphViewer__MaxNodeIndex(this); }
@@ -690,6 +729,8 @@ struct GraphViewer final {
 
   const std::vector<NodeIndex>& GetNodesInTopologicalOrder() const { return g_host->GraphViewer__GetNodesInTopologicalOrder(this); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->GraphViewer__GetInputsIncludingInitializers(this); }
+
+  void ToProto(ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers, bool include_outer_scope_args) const { g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args); }
 
   GraphViewer() = delete;
   GraphViewer(const GraphViewer&) = delete;
@@ -723,6 +764,8 @@ struct OpKernelContext final {
   int OutputCount() const { return g_host->OpKernelContext__OutputCount(this); }
 
   Status GetTempSpaceAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceAllocator(this, output); }
+
+  Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceCPUAllocator(this, output); }
 
   bool GetUseDeterministicCompute() const { return g_host->OpKernelContext__GetUseDeterministicCompute(this); }
 
@@ -795,6 +838,13 @@ struct OpKernelInfo final {
     return GetAttrs<T>(name, tmp).IsOK() ? tmp : default_value;
   }
 
+  template <typename T>
+  Status GetAttrsAsSpan(const std::string& name, gsl::span<const T>& out) const;
+
+  Status GetAttrs(const std::string& name, TensorShapeVector& out) const;
+
+  TensorShapeVector GetAttrsOrDefault(const std::string& name, const TensorShapeVector& default_value = TensorShapeVector{}) const;
+
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const { return g_host->OpKernelInfo__TryGetConstantInput(this, input_index, constant_input_value); }
 
   const DataTransferManager& GetDataTransferManager() const noexcept { return g_host->OpKernelInfo__GetDataTransferManager(this); }
@@ -824,6 +874,23 @@ template <>
 inline Status OpKernelInfo::GetAttrs<float>(const std::string& name, std::vector<float>& values) const { return g_host->OpKernelInfo__GetAttrs(this, name, values); }
 template <>
 inline Status OpKernelInfo::GetAttrs<std::string>(const std::string& name, std::vector<std::string>& values) const { return g_host->OpKernelInfo__GetAttrs(this, name, values); }
+template <>
+inline Status OpKernelInfo::GetAttrsAsSpan<int64_t>(const std::string& name, gsl::span<const int64_t>& values) const { return g_host->OpKernelInfo__GetAttrsAsSpan(this, name, values); }
+
+inline Status OpKernelInfo::GetAttrs(const std::string& name, TensorShapeVector& out) const {
+  gsl::span<const int64_t> span;
+  Status status = this->GetAttrsAsSpan<int64_t>(name, span);
+  if (status.IsOK()) {
+    out.reserve(span.size());
+    out.assign(span.cbegin(), span.cend());
+  }
+  return status;
+}
+
+inline TensorShapeVector OpKernelInfo::GetAttrsOrDefault(const std::string& name, const TensorShapeVector& default_value) const {
+  TensorShapeVector tmp;
+  return GetAttrs(name, tmp).IsOK() ? tmp : default_value;
+}
 
 class SessionState {
  public:
@@ -833,10 +900,11 @@ class SessionState {
 };
 
 struct Tensor final {
+  static std::unique_ptr<Tensor> CreateDefault() { return g_host->Tensor__construct_default(); }
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) { return g_host->Tensor__construct(p_type, shape, std::move(allocator)); }
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset = 0) { return g_host->Tensor__construct(p_type, shape, p_data, alloc, offset); }
 
-  static void operator delete(void* p) { g_host->Tensor__operator_delete(reinterpret_cast<Tensor*>(p)); }
+  static void operator delete(void* p) noexcept { g_host->Tensor__operator_delete(reinterpret_cast<Tensor*>(p)); }
 
   static void InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) {
     g_host->Tensor__InitOrtValue(elt_type, shape, std::move(allocator), ort_value);
@@ -872,12 +940,24 @@ struct Tensor final {
   MLDataType DataType() const { return g_host->Tensor__DataType(this); }
   bool IsDataTypeString() const { return g_host->Tensor__IsDataTypeString(this); }
 
+#ifdef ENABLE_TRAINING
+  gsl::span<const int64_t> Strides() const noexcept { return g_host->Tensor__Strides(this); }
+  bool IsContiguous() const { return g_host->Tensor__IsContiguous(this); }
+  void SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides) {
+    return g_host->Tensor__SetShapeAndStrides(this, new_shape, new_strides);
+  }
+#endif
+
   template <class T>
   bool IsDataType() const;
 
   Tensor() = delete;
   Tensor(const Tensor&) = delete;
   void operator=(const Tensor&) = delete;
+  Tensor& operator=(Tensor&& o) noexcept {
+    g_host->Tensor__move_assign(*this, std::move(o));
+    return *this;
+  }
 };
 
 template <>
@@ -969,7 +1049,7 @@ struct SparseTensor final {
 };
 #endif
 
-//TensorSeq
+// TensorSeq
 struct TensorSeq final {
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }

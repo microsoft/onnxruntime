@@ -47,7 +47,7 @@ Status AdamOptimizerBuilder::Build(
       const auto uc_state_it = initial_states.find(ADAM_UC_PREFIX);
       if (uc_state_it != initial_states.end()) {
         const auto& init_tensor = uc_state_it->second.Get<Tensor>();
-        ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
+        ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, TensorShapeVector{1}));
         uc_tensor_proto = utils::TensorToTensorProto(init_tensor, update_count_string);
       } else {
         uc_tensor_proto = CreateTensorProto<int64_t>(update_count_string, 1);

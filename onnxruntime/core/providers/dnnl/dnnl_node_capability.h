@@ -112,6 +112,45 @@ class DnnlDefaultMultiInputNodeCapability : public DnnlNodeCapability {
  private:
   std::vector<std::unordered_set<ORT_DataType>> inputTypes_;
 };
+/*
+ * Works similar to the `DnnlDefaultMultiInputNodeCapability` class except that this
+ * will check the input of all input nodes and supports optional inputs with different 
+ * supported datatypes by using the input position to evaluate if the node is supported.
+ *
+ * Example usage:
+ * rule_map rules = {
+ *                   {0, {true, {type_uint8, type_int8, type_int32}}},
+ *                   {1, {true, {type_float32}}},
+ *                   {2, {false, {type_uint8, type_int8, type_int32}}},
+ *                  };
+ * DnnlDefaultOptionalMultiInputNodeCapability(rules)
+ *
+ * In general node_data consist of a tuple that has:
+ * (INPUT_POS, <IsThisInputMandatory?(true or false)>, {list, of, suppurted, types})
+ *
+ * We always asume that the input 0 of the map corresponds to the node input with index 0,
+ * so if a node has M mandatory inputs and O optional, the map should contain the first
+ * N inputs followed by the other M optional.
+ *
+ * The evaluation will be done in order of appearance, so if we have K number of rules
+ * with K = M + O, and the evaluated node has M+1 inputs, only the first optional rule (O[0])
+ * will be evaluated.
+ */
+class DnnlDefaultOptionalMultiInputNodeCapability : public DnnlNodeCapability {
+ public:
+  typedef std::map<size_t, std::pair<bool, std::unordered_set<ORT_DataType>>> rule_map;
+  DnnlDefaultOptionalMultiInputNodeCapability(rule_map op_rules);
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ protected:
+  unsigned int num_mandatory = 0;
+  unsigned int GetNumMandatoryInputs();
+  bool IsTypeSupported(const Node* node) const;
+
+ private:
+  rule_map op_rules_;
+};
 
 /**
  * Decide if a Pool op is supported by DnnlExecutionProvider
@@ -142,22 +181,6 @@ class DnnlBatchNormalizationNodeCapability : public DnnlDefaultNodeCapability {
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
-  bool IsDimensionSupported(const Node* node) const;
-};
-
-/**
- * Decide if a ReduceMean op is supported by DnnlExecutionProvider
- *
- * Dnnl does not support the "keepdims" attribute when it is `0`
- */
-class DnnlReduceMeanNodeCapability : public DnnlDefaultNodeCapability {
- public:
-  DnnlReduceMeanNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
-
-  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
-
- private:
-  bool IsAttributeSupported(const Node* node) const;
   bool IsDimensionSupported(const Node* node) const;
 };
 
@@ -199,7 +222,8 @@ class DnnlMatMulIntegerNodeCapability : public DnnlDefaultNodeCapability {
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 
  private:
-  bool IsDimensionSupported(const Node* node) const;
+  bool IsDimensionSupported(const Node* node, const GraphViewer& graph_viewer) const;
+  bool IsWeightZeroPointConstantZero(const NodeArg* node, const GraphViewer& graph_viewer) const;
 };
 
 /**
@@ -228,9 +252,6 @@ class DnnlBinaryNodeCapability : public DnnlDefaultNodeCapability {
   DnnlBinaryNodeCapability() : DnnlDefaultNodeCapability({type_int8, type_uint8, type_float32}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
-
- private:
-  bool IsDimensionSupported(const Node* node) const;
 };
 
 /**
@@ -246,6 +267,21 @@ class DnnlElementwiseCapability : public DnnlDefaultNodeCapability {
 
  private:
   bool IsDimensionSupported(const Node* node) const;
+};
+
+/**
+ * Decide if a Reduce op is supported by DnnlExecutionProvider
+ */
+class DnnlReduceNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlReduceNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+  DnnlElementwiseCapability _eltwise;
+
 };
 
 class DnnlPowNodeCapability : public DnnlDefaultMultiInputNodeCapability {
@@ -301,4 +337,109 @@ class DnnlDynamicQuantizeLinearNodeCapability : public DnnlDefaultNodeCapability
  private:
 };
 
+class DnnlSqueezeNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlSqueezeNodeCapability() : DnnlDefaultNodeCapability({type_float32,
+                                                           type_float16,
+                                                           type_bfloat16,
+                                                           type_int32,
+                                                           type_int8,
+                                                           type_uint8}) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node, const GraphViewer& graph_viewer) const;
+};
+
+class DnnlErfNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlErfNodeCapability() : DnnlDefaultNodeCapability({type_float32}) {}
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsErfPartOfGelu(const Node* node, const GraphViewer& graph_viewer) const;
+  bool IsInitilizedWithExpectedValue(const GraphViewer& graph_viewer, const NodeArg* node_arg, float expected_value) const;
+  const Node* FirstParentByType(const Node& node, const std::string& parent_type) const;
+  bool IsNodeFusable(const Node* node, const GraphViewer& graph_viewer) const;
+  DnnlBinaryNodeCapability _binary;
+};
+
+
+class DnnlQAttentionNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlQAttentionNodeCapability() : DnnlDefaultNodeCapability({type_float32,
+                                                              type_int8,
+                                                              type_uint8}) {}
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+};
+
+/**
+ * We need to access the valid input types in order to check if the cast target
+ * is valid, and since inputTypes_ is private, we generate our own copy
+ */
+class DnnlCastNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlCastNodeCapability(std::vector<ORT_DataType> validTypes = {type_float32,
+                                                                 type_float16,
+                                                                 type_bfloat16,
+                                                                 type_int32,
+                                                                 type_int8,
+                                                                 type_uint8});
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  std::vector<ORT_DataType> validTypes_;
+  bool IsCastSupported(const Node* node) const;
+};
+
+class DnnlDequantizeLinearNodeCapability : public DnnlDefaultOptionalMultiInputNodeCapability {
+ public:
+  enum InputTensors : int {
+    IN_X = 0,
+    IN_X_SCALE = 1,
+    IN_X_ZERO_POINT = 2,  // Optional
+  };
+  DnnlDequantizeLinearNodeCapability()
+      // ONNX spec requires x and zp to support int32 but
+      // OneDNN doesn't support it on GPU
+      : DnnlDefaultOptionalMultiInputNodeCapability({
+            {IN_X, {true, {type_uint8, type_int8}}},
+            {IN_X_SCALE, {true, {type_float32}}},
+            {IN_X_ZERO_POINT, {false, {type_uint8, type_int8}}},
+        }) {}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+};
+
+class DnnlLayerNormalizationNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+ // Default constructor
+  DnnlLayerNormalizationNodeCapability() : DnnlDefaultNodeCapability({type_float16,
+                                                                      type_bfloat16,
+                                                                      type_float32,
+                                                                      type_double}) {}
+  // Constructor for other LayerNorm flavors
+  DnnlLayerNormalizationNodeCapability(std::vector<ORT_DataType> supported_dt)
+    : DnnlDefaultNodeCapability(supported_dt){}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsAxisSupported(const Node* node) const;
+  bool IsTrainingSupported(const Node* node) const;
+  bool IsDimensionSupported(const Node* node) const;
+};
+
+class DnnlSkipLayerNormalizationNodeCapability : public DnnlLayerNormalizationNodeCapability {
+ public:
+  DnnlSkipLayerNormalizationNodeCapability() : DnnlLayerNormalizationNodeCapability({type_float32,
+                                                                                    type_float16}) {}
+};
+
+                                 
 }  // namespace onnxruntime

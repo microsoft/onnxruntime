@@ -9,6 +9,8 @@
 namespace torch_ort {
 namespace eager {
 
+constexpr const char* kORTVirtualDeviceCount="ORT_VIRTUAL_DEVICE_COUNT";
+
 struct ORTGuardImpl final : public c10::impl::DeviceGuardImplInterface {
   ORTGuardImpl() {
   }
@@ -63,7 +65,9 @@ struct ORTGuardImpl final : public c10::impl::DeviceGuardImplInterface {
 
   at::DeviceIndex deviceCount() const noexcept override {
     ORT_LOG_FN();
-    return 1;
+    const std::string ort_virtual_device_count = onnxruntime::Env::Default().GetEnvironmentVar(kORTVirtualDeviceCount);
+    // by default set device count to 1
+    return ort_virtual_device_count.empty() ? 1 : std::stoi(ort_virtual_device_count);
   }
 
 //  #pragma region events

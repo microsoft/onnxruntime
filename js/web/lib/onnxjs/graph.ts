@@ -5,9 +5,10 @@ import {onnx} from 'onnx-proto';
 
 import {Attribute} from './attribute';
 import {onnxruntime} from './ort-schema/ort-generated';
-import ortFbs = onnxruntime.experimental.fbs;
 import {Tensor} from './tensor';
-import {LongUtil, ProtoUtil, MIN_CLIP, MAX_CLIP} from './util';
+import {LongUtil, MAX_CLIP, MIN_CLIP, ProtoUtil} from './util';
+
+import ortFbs = onnxruntime.experimental.fbs;
 
 export declare namespace Graph {
   export interface Shape {

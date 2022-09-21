@@ -73,6 +73,9 @@ IModelInfo : IUnknown {
   STDMETHOD(GetName)
   (const char** out, size_t* len) PURE;
 
+  STDMETHOD(SetName)
+  (const char* name) PURE;
+
   STDMETHOD(GetDomain)
   (const char** out, size_t* len) PURE;
 
@@ -106,6 +109,9 @@ IModel : IUnknown {
   STDMETHOD(SaveModel)
   (_In_ const wchar_t* const file_name,
    _In_ unsigned size) PURE;
+
+  STDMETHOD(SetName)
+  (const char* name) PURE;
 
   STDMETHOD(AddOperator)
   (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const op_domain,
@@ -208,6 +214,11 @@ IEngine : IUnknown {
   (wfc::IMapView<winrt::hstring, uint32_t>& overrides) PURE;
 };
 
+MIDL_INTERFACE("69fbc1d5-66ff-4c79-b14d-fad288dbf8ca")
+IThreading : IUnknown {
+    
+};
+
 MIDL_INTERFACE("8ac0b6b9-4561-492b-b63d-a07bdd8292c6")
 IEngineBuilder : IUnknown {
   STDMETHOD(SetD3D12Resources)
@@ -236,10 +247,14 @@ IEngineBuilder : IUnknown {
 
   STDMETHOD(SetIntraOpThreadSpinning)
   (bool allow_spinning) PURE;
+  
+  STDMETHOD(SetThreadPool)
+  (IThreading* thread_pool) PURE;
 
   STDMETHOD(CreateEngine)
   (IEngine **out) PURE;
 };
+
 
 MIDL_INTERFACE("5eddd25a-70ad-46ef-a445-78fbaf792c2f")
 IEngineFactory : IUnknown {
@@ -273,6 +288,9 @@ IEngineFactory : IUnknown {
 
   STDMETHOD(CreateMapDescriptorInfo)
   (_Out_ IDescriptorInfo **info) PURE;
+
+  STDMETHOD(CreateThreadPool)
+  (_In_ bool allow_spinning, _In_ uint32_t num_intra_op_threads, _Out_ IThreading** thread_pool) PURE;
 };
 
 }  // namespace _winml

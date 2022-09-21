@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
 #include "core/providers/shared_library/provider_api.h"
@@ -34,8 +34,10 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param, std::string 
     data_ops_ = new DataOps(graph_viewer_, V_2021_3, device_type_);
   } else if (version_param == "V_2021_4") {
     data_ops_ = new DataOps(graph_viewer_, V_2021_4, device_type_);
+  } else if (version_param == "V_2022_1") {
+    data_ops_ = new DataOps(graph_viewer_, V_2022_1, device_type_);
   } else {
-    data_ops_ = new DataOps(graph_viewer_, V_2021_4, device_type_);
+    data_ops_ = new DataOps(graph_viewer_, V_2022_1, device_type_);
   }
 }
 

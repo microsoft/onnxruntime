@@ -47,7 +47,9 @@ void IAllocatorImplWrappingOrtAllocator::Free(void* p) {
 }
 
 }  // namespace onnxruntime
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26409)
+#endif
 ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess,
                     const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
   API_IMPL_BEGIN

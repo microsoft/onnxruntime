@@ -143,6 +143,14 @@ class LoggingManager final {
   static void SetDefaultLoggerSeverity(Severity severity);
 
   /**
+     Change the maximum verbosity level for log messages to be output by the default logger.
+     @remarks
+     To activate the verbose log, the logger severity must also be set to kVERBOSE.
+     @param vlog_level The verbosity level.
+  */
+  static void SetDefaultLoggerVerbosity(int vlog_level);
+
+  /**
      Logs a FATAL level message and creates an exception that can be thrown with error information.
      @param category The log category.
      @param location The location the log message was generated.
@@ -211,7 +219,7 @@ class Logger {
         id_{id},
         min_severity_{severity},
         filter_user_data_{filter_user_data},
-        max_vlog_level_{severity > Severity::kVERBOSE ? -1 : vlog_level} {  // disable unless logging VLOG messages
+        max_vlog_level_{vlog_level} {
   }
 
   /**
@@ -227,6 +235,14 @@ class Logger {
   void SetSeverity(Severity severity) noexcept { min_severity_ = severity; }
 
   /**
+     Change the maximum verbosity level for log messages to be output.
+     @remarks
+     To activate the verbose log, the logger severity must also be set to kVERBOSE.
+     @param vlog_level The verbosity.
+  */
+  void SetVerbosity(int vlog_level) noexcept { max_vlog_level_ = vlog_level; }
+
+  /**
      Check if output is enabled for the provided LogSeverity and DataType values.
      @param severity The severity.
      @param data_type Type of the data.
@@ -237,10 +253,10 @@ class Logger {
   }
 
   /**
-     Return the maximum VLOG level allowed.
+     Return the maximum VLOG level allowed. Disabled unless logging VLOG messages
   */
   int VLOGMaxLevel() const noexcept {
-    return max_vlog_level_;
+    return min_severity_ > Severity::kVERBOSE ? -1 : max_vlog_level_;
   }
 
   /**
@@ -264,7 +280,7 @@ class Logger {
   const std::string id_;
   Severity min_severity_;
   const bool filter_user_data_;
-  const int max_vlog_level_;
+  int max_vlog_level_;
 };
 
 inline const Logger& LoggingManager::DefaultLogger() {
@@ -283,6 +299,15 @@ inline void LoggingManager::SetDefaultLoggerSeverity(Severity severity) {
   }
 
   s_default_logger_->SetSeverity(severity);
+}
+
+inline void LoggingManager::SetDefaultLoggerVerbosity(int vlog_level) {
+  if (s_default_logger_ == nullptr) {
+    // fail early for attempted misuse. don't use logging macros as we have no logger.
+    ORT_THROW("Attempt to use DefaultLogger but none has been registered.");
+  }
+
+  s_default_logger_->SetVerbosity(vlog_level);
 }
 
 inline Timestamp LoggingManager::GetTimestamp() const noexcept {

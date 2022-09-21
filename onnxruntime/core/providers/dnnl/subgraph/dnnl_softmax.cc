@@ -36,8 +36,11 @@ void DnnlSoftmax::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto softmax_op = dnnl::softmax_forward(softmax_pd);
   sp.AddPrimitive(softmax_op, {{DNNL_ARG_SRC, softmax_src_mem},
                            {DNNL_ARG_DST, softmax_dst_mem}});
-
-  sp.SetMemory(node.Output(OUT_Y), softmax_dst_mem);
+  if (sp.IsScalar(node.Input(IN_X))) {
+    sp.SetMemory(node.Output(OUT_Y), softmax_dst_mem, false, true);
+  } else {
+    sp.SetMemory(node.Output(OUT_Y), softmax_dst_mem);
+  }
 }
 
 int64_t DnnlSoftmax::ReadAxis(DnnlNode& node) {

@@ -39,7 +39,7 @@ void DataTaskRequestContext::Request(const Callback& cb, concurrency::ThreadPool
                                      const ITestCase& c, Ort::Session& session,
                                      OrtAllocator* allocator, size_t task_id) {
   assert(cb);
-  std::unique_ptr<DataTaskRequestContext> self(new DataTaskRequestContext(cb, c, session, allocator, task_id));
+  std::unique_ptr<DataTaskRequestContext> self = std::make_unique<DataTaskRequestContext>(cb, c, session, allocator, task_id);
   CallableFactory<DataTaskRequestContext, void> f(self.get());
   auto runnable = f.GetCallable<&DataTaskRequestContext::RunAsync>();
   onnxruntime::concurrency::ThreadPool::Schedule(tp, [runnable]() { runnable.Invoke(); });
@@ -84,10 +84,9 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
   size_t output_count = session_.GetOutputCount();
   std::vector<std::string> output_names(output_count);
   for (size_t i = 0; i != output_count; ++i) {
-    char* output_name = session_.GetOutputName(i, default_allocator_);
+    auto output_name = session_.GetOutputNameAllocated(i, default_allocator_);
     assert(output_name != nullptr);
-    output_names[i] = output_name;
-    Ort::ThrowOnError(Ort::GetApi().AllocatorFree(default_allocator_, output_name));
+    output_names[i] = output_name.get();
   }
 
   TIME_SPEC start_time;

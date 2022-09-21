@@ -6,8 +6,8 @@ import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 import {getCoordsDataType, getGlChannels} from '../utils';
-import {ConcatAttributes} from './concat';
 
+import {ConcatAttributes} from './concat';
 import {getChannels, unpackFromChannel} from './packing-utils';
 
 const createPackedConcatProgramMetadata = (inputCount: number, cacheHint: string) => ({

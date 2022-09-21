@@ -19,7 +19,7 @@ void GraphTransformerRegistry::RegisterExternalGraphTransformers() {
 void GenerateExternalTransformers(
     TransformerLevel level,
     bool before_gradient_builder,
-    const std::unordered_set<std::string>& ep_list,
+    const InlinedHashSet<std::string_view>& ep_list,
     std::vector<std::unique_ptr<GraphTransformer>>& output) {
   auto& registered_transformers = GraphTransformerRegistry::GetInstance().GetAllRegisteredTransformers();
   for (auto& [k, v] : registered_transformers) {

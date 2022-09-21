@@ -228,7 +228,7 @@ TEST(TransformerTest, Fp16NodeWithSubgraph) {
 
   const Graph& subgraph = *node_with_subgraph_iter->GetSubgraphs().front();
 
-  const bool recurse_into_subgraphs = false;
+  constexpr bool recurse_into_subgraphs = false;
   std::map<std::string, int> orig_graph_ops = CountOpsInGraph(graph, recurse_into_subgraphs);
   std::map<std::string, int> orig_subgraph_ops = CountOpsInGraph(subgraph, recurse_into_subgraphs);
 

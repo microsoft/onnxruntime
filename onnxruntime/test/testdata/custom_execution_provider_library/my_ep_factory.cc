@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/common/gsl_suppress.h"
 #include "my_ep_factory.h"
 #include "my_execution_provider.h"
 #include "core/providers/shared/common.h"
@@ -9,10 +10,6 @@
 using namespace onnxruntime;
 
 namespace onnxruntime {
-
-void Shutdown_DeleteRegistry() {
-
-}
 
 struct MyProviderFactory : IExecutionProviderFactory {
   MyProviderFactory(const MyProviderInfo& info) : info_{info} {}
@@ -34,6 +31,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MyEP(c
 }
 
 struct MyEP_Provider : Provider {
+  GSL_SUPPRESS(c.35)
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
     ProviderOptions* options = (ProviderOptions*)(provider_options);
     MyProviderInfo info;
@@ -55,8 +53,10 @@ struct MyEP_Provider : Provider {
     return std::make_shared<MyProviderFactory>(info);
   }
 
+  void Initialize() override {
+  }
+
   void Shutdown() override {
-    Shutdown_DeleteRegistry();
   }
 
 } g_provider;

@@ -27,8 +27,8 @@ ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool
   }
 }
 
-Status ParallelExecutor::Execute(const SessionState& session_state, const std::vector<int>& feed_mlvalue_idxs,
-                                 const std::vector<OrtValue>& feeds, const std::vector<int>& fetch_mlvalue_idxs,
+Status ParallelExecutor::Execute(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
+                                 gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                  std::vector<OrtValue>& fetches,
                                  const std::unordered_map<size_t, CustomAllocator>& fetch_allocators,
                                  const logging::Logger& logger) {
@@ -82,21 +82,18 @@ Status ParallelExecutor::Execute(const SessionState& session_state, const std::v
   VLOGS(logger, 1) << "Done execution.";
 
   if (root_frame_->HasMemoryPatternPlanner()) {
-    std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
       if (!(feed.IsTensor())) {
         all_tensors = false;
         break;
       }
-      auto& tensor = feed.Get<Tensor>();
-      input_shapes.push_back(std::cref(tensor.Shape()));
     }
 
     if (all_tensors) {
-      auto mem_patterns = std::make_unique<MemoryPatternGroup>();
-      ORT_RETURN_IF_ERROR(root_frame_->GeneratePatterns(mem_patterns.get()));
-      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
+      MemoryPatternGroup mem_patterns;
+      ORT_RETURN_IF_ERROR(root_frame_->GeneratePatterns(mem_patterns));
+      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(feeds, std::move(mem_patterns)));
     }
   }
 

@@ -7,15 +7,16 @@
 #include <unordered_map>
 
 #include "core/framework/element_type_lists.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
+
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
@@ -77,12 +78,12 @@ ONNX_CPU_OPERATOR_KERNEL(
 // Updates starts and steps to match flattened_output_dims if it is.
 // e.g. if input shape is { 2, 2, 2 }, output shape is { 1, 2, 2 }, and the 'steps' value for the last two dims is 1,
 // we are keeping all the data of the inner most two dimensions so can combine those into dims of { 1, 4 }
-static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions,
-                              gsl::span<const int64_t> output_dims,
-                              std::vector<int64_t>& starts,
-                              std::vector<int64_t>& ends,
-                              std::vector<int64_t>& steps,
-                              std::vector<int64_t>*& flattened_output_dims) {
+static void FlattenOutputDims(const gsl::span<const int64_t>& input_dimensions,
+                              const gsl::span<const int64_t>& output_dims,
+                              TensorShapeVector& starts,
+                              TensorShapeVector& ends,
+                              TensorShapeVector& steps,
+                              TensorShapeVector*& flattened_output_dims) {
   int num_to_combine = 0;
   for (int64_t i = static_cast<int64_t>(starts.size()) - 1; i >= 0; --i) {
     // if we're keeping all the data for the dimension and not reversing the direction we can potentially combine it
@@ -94,7 +95,7 @@ static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions,
 
   if (num_to_combine > 1) {
     auto num_dims = output_dims.size() - num_to_combine + 1;
-    *flattened_output_dims = std::vector<int64_t>(output_dims.begin(), output_dims.end());
+    flattened_output_dims->assign(output_dims.cbegin(), output_dims.cend());
     flattened_output_dims->resize(num_dims);
 
     int64_t dim_value = 1;
@@ -118,9 +119,9 @@ static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions,
 }
 
 // Slice V1-9 & DynamicSlice
-Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                    const std::vector<int64_t>& raw_ends,
-                                    const std::vector<int64_t>& raw_axes,
+Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
+                                    const gsl::span<const int64_t>& raw_ends,
+                                    const gsl::span<const int64_t>& raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
@@ -129,10 +130,10 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
 }
 
 // DynamicSlice & Slice V10
-Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                    const std::vector<int64_t>& raw_ends,
-                                    const std::vector<int64_t>& raw_axes,
-                                    const std::vector<int64_t>& raw_steps,
+Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
+                                    const gsl::span<const int64_t>& raw_ends,
+                                    const gsl::span<const int64_t>& raw_axes,
+                                    const gsl::span<const int64_t>& raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
@@ -141,15 +142,41 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
   return Status::OK();
 }
 
+namespace {
+template <typename T>
+void CopyData(const Tensor& start_tensor,
+              const Tensor& ends_tensor,
+              const Tensor* axes_tensor,
+              const Tensor* steps_tensor,
+              TensorShapeVector& input_starts,
+              TensorShapeVector& input_ends,
+              TensorShapeVector& input_axes,
+              TensorShapeVector& input_steps) {
+  auto start_data = start_tensor.DataAsSpan<T>();
+  std::copy(start_data.cbegin(), start_data.cend(), std::back_inserter(input_starts));
+  auto ends_data = ends_tensor.DataAsSpan<T>();
+  std::copy(ends_data.cbegin(), ends_data.cend(), std::back_inserter(input_ends));
+  if (nullptr != axes_tensor) {
+    auto axes_data = axes_tensor->DataAsSpan<T>();
+    std::copy(axes_data.cbegin(), axes_data.cend(), std::back_inserter(input_axes));
+  }
+  // Slice V10
+  if (nullptr != steps_tensor) {
+    auto steps_data = steps_tensor->DataAsSpan<T>();
+    std::copy(steps_data.cbegin(), steps_data.cend(), std::back_inserter(input_steps));
+  }
+}
+}  // namespace
+
 // Slice V10 & DynamicSlice
 Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
                                        const Tensor& ends_tensor,
                                        const Tensor* axes_tensor,
                                        const Tensor* steps_tensor,
-                                       std::vector<int64_t>& input_starts,
-                                       std::vector<int64_t>& input_ends,
-                                       std::vector<int64_t>& input_axes,
-                                       std::vector<int64_t>& input_steps) {
+                                       TensorShapeVector& input_starts,
+                                       TensorShapeVector& input_ends,
+                                       TensorShapeVector& input_axes,
+                                       TensorShapeVector& input_steps) {
   ORT_RETURN_IF_NOT(start_tensor.Shape().NumDimensions() == 1, "Starts must be a 1-D array");
   ORT_RETURN_IF_NOT(ends_tensor.Shape().NumDimensions() == 1, "Ends must be a 1-D array");
   ORT_RETURN_IF_NOT(start_tensor.Shape() == ends_tensor.Shape(), "Starts and ends shape mismatch");
@@ -158,40 +185,24 @@ Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
   ORT_RETURN_IF_NOT(nullptr == steps_tensor || start_tensor.Shape() == steps_tensor->Shape(),
                     "Starts and steps shape mismatch");
 
-  const auto& size = start_tensor.Shape().Size();
-  input_starts.resize(size);
-  input_ends.resize(size);
+  const auto size = start_tensor.Shape().Size();
+  input_starts.reserve(size);
+  input_ends.reserve(size);
   if (nullptr != axes_tensor)
-    input_axes.resize(size);
+    input_axes.reserve(size);
   // Slice V10
   if (nullptr != steps_tensor)
-    input_steps.resize(size);
+    input_steps.reserve(size);
 
   // check for type reduction of supported indices types
   constexpr bool int32_enabled = utils::HasType<EnabledIndicesTypes, int32_t>();
   constexpr bool int64_enabled = utils::HasType<EnabledIndicesTypes, int64_t>();
 
   if (int32_enabled && start_tensor.IsDataType<int32_t>()) {
-    std::copy(start_tensor.Data<int32_t>(), start_tensor.Data<int32_t>() + size, input_starts.begin());
-    std::copy(ends_tensor.Data<int32_t>(), ends_tensor.Data<int32_t>() + size, input_ends.begin());
-    if (nullptr != axes_tensor)
-      std::copy(axes_tensor->Data<int32_t>(), axes_tensor->Data<int32_t>() + size, input_axes.begin());
-    // Slice V10
-    if (nullptr != steps_tensor)
-      std::copy(steps_tensor->Data<int32_t>(), steps_tensor->Data<int32_t>() + size, input_steps.begin());
-  }
-
-  else if (int64_enabled && start_tensor.IsDataType<int64_t>()) {
-    std::copy(start_tensor.Data<int64_t>(), start_tensor.Data<int64_t>() + size, input_starts.begin());
-    std::copy(ends_tensor.Data<int64_t>(), ends_tensor.Data<int64_t>() + size, input_ends.begin());
-    if (nullptr != axes_tensor)
-      std::copy(axes_tensor->Data<int64_t>(), axes_tensor->Data<int64_t>() + size, input_axes.begin());
-    // Slice V10
-    if (nullptr != steps_tensor)
-      std::copy(steps_tensor->Data<int64_t>(), steps_tensor->Data<int64_t>() + size, input_steps.begin());
-  }
-
-  else {
+    CopyData<int32_t>(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps);
+  } else if (int64_enabled && start_tensor.IsDataType<int64_t>()) {
+    CopyData<int64_t>(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps);
+  } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Data type for starts and ends inputs' is not supported in this build. Got ",
                            start_tensor.DataType());
@@ -232,10 +243,10 @@ static Status SliceImpl(OpKernelContext* ctx,
   if (compute_metadata.p_flattened_output_dims_) {
     // if we have flattened output dims we need to also flatten the input dims.
     // as we're combining the innermost dims and keeping all values we can just copy the size of the last dim
-    auto flattened_input_dims=input_tensor.Shape().GetDimsAsVector();
+    auto flattened_input_dims = input_tensor.Shape().AsShapeVector();
     flattened_input_dims.resize(compute_metadata.p_flattened_output_dims_->size());
     flattened_input_dims.back() = compute_metadata.p_flattened_output_dims_->back();
-    TensorShape input_shape(std::move(flattened_input_dims));
+    TensorShape input_shape(flattened_input_dims);
 
     auto input_iterator2 = SliceIterator<T>(input_tensor, input_shape, compute_metadata.starts_,
                                             *compute_metadata.p_flattened_output_dims_, compute_metadata.steps_);
@@ -275,13 +286,14 @@ Status SliceBase::Compute(OpKernelContext* ctx) const {
 
   // Slice V10 & DynamicSlice
   if (dynamic_) {
-    std::vector<int64_t> input_starts;
-    std::vector<int64_t> input_ends;
-    std::vector<int64_t> input_axes;
-    std::vector<int64_t> input_steps;
+    TensorShapeVector input_starts;
+    TensorShapeVector input_ends;
+    TensorShapeVector input_axes;
+    TensorShapeVector input_steps;
     ORT_RETURN_IF_ERROR(FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2),
                                              ctx->Input<Tensor>(3), ctx->Input<Tensor>(4),
-                                             input_starts, input_ends, input_axes, input_steps));
+                                             input_starts, input_ends,
+                                             input_axes, input_steps));
 
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
   }

@@ -10,7 +10,7 @@
 #include "core/framework/data_types_internal.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/providers/op_kernel_type_control_utils.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #endif
 
 namespace onnxruntime {

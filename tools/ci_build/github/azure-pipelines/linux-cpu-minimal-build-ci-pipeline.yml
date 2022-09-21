@@ -11,9 +11,24 @@
 # 4. Build minimal ORT with type reduction from a globally allowed types list.
 #    This step uses a hard-coded list of types which may not include the types needed by the models
 #    in <repo root>/onnxruntime/test/testdata/, so the tests for those models are skipped.
-# 5. Build baseline minimal ORT for Android arm64-v8a including no kernels and disable exceptions.
-#    This step is to report the baseline binary size for Android.
-# 6. Build full (6a) and extended minimal (6b) ORT with runtime optimizations enabled.
+# 5. Build extended minimal ORT and run tests.
+# 6. Build with all optional features disabled and no kernels.
+#    6a: regular build with python enabled checks that the exclusions don't break code paths in a full build.
+#    6b: minimal build with exceptions and python disabled checks that the exclusions don't break code paths in a
+#        minimal build.
+#    6c: extended minimal build with exceptions and python disabled checks that the exclusions don't break code paths
+#        in an extended minimal build.
+# 7. Build extended minimal ORT with NNAPI, with exceptions/RTTI/ml_ops disabled, for Android(arm64-v8a),
+#    this safe-guards the extended minimal build with NNAPI EP.
+
+resources:
+  repositories:
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: a8099af1b3e25f0489717ad9c4f9a2e25a8c5b36
+
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
   timeoutInMinutes: 120
@@ -29,20 +44,22 @@ jobs:
     clean: true
     submodules: recursive
 
-  - task: CmdLine@2
-    displayName: Create test data directory
-    inputs:
-      script: |
-        # Create a folder for all test data
-        mkdir -p $(test_data_directory)
-      workingDirectory: $(Build.SourcesDirectory)
-
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
+
+  - task: CmdLine@2
+    displayName: Create test data directory
+    inputs:
+      script: |
+        # Create a folder for all test data
+        mkdir -p $(test_data_directory)
+        # create empty config used in some parts
+        touch $(test_data_directory)/include_no_operators.config
+      workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
     displayName: 1. Build full onnxruntime and generate ORT format test files
@@ -103,10 +120,6 @@ jobs:
               --enable-custom-ops
       workingDirectory: $(Build.SourcesDirectory)
 
-  - script: git checkout -- .
-    displayName: Discard local changes to Git repository files
-    workingDirectory: $(Build.SourcesDirectory)
-
   - task: CmdLine@2
     displayName: 3b. Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
     inputs:
@@ -124,10 +137,6 @@ jobs:
               --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config \
               --enable-type-reduction
       workingDirectory: $(Build.SourcesDirectory)
-
-  - script: git checkout -- .
-    displayName: Discard local changes to Git repository files
-    workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
     displayName: 4. Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
@@ -152,12 +161,116 @@ jobs:
               --skip-model-tests
       workingDirectory: $(Build.SourcesDirectory)
 
-  - script: git checkout -- .
-    displayName: Discard local changes to Git repository files
-    workingDirectory: $(Build.SourcesDirectory)
+  - task: CmdLine@2
+    displayName: 5. Build extended minimal onnxruntime and run tests
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build/5 --cmake_generator Ninja \
+              --config Debug \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --minimal_build extended
+      workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: 5. Build onnxruntime minimal baseline for Android arm64-v8a and report binary size
+    displayName: 6a. Regular build with python and all optional features disabled.
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build/6a \
+              --cmake_generator Ninja \
+              --config MinSizeRel \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --build_wheel \
+              --parallel \
+              --skip_tests \
+              --disable_ml_ops \
+              --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
+              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
+                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
+                                    onnxruntime_BUILD_UNIT_TESTS=OFF
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: 6b. Minimal build with all optional features disabled.
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build/6b \
+              --cmake_generator Ninja \
+              --config MinSizeRel \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --minimal_build \
+              --disable_exceptions \
+              --disable_ml_ops \
+              --skip_tests \
+              --enable_reduced_operator_type_support \
+              --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
+              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
+                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
+                                    onnxruntime_BUILD_UNIT_TESTS=OFF
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: 6c. Extended minimal build with all optional features disabled.
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build/6c \
+              --cmake_generator Ninja \
+              --config MinSizeRel \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --minimal_build extended \
+              --disable_exceptions \
+              --disable_ml_ops \
+              --skip_tests \
+              --enable_reduced_operator_type_support \
+              --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
+              --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
+                                    onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
+                                    onnxruntime_BUILD_UNIT_TESTS=OFF
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: 7. Extended minimal build with NNAPI EP for Android(arm64-v8a) and skip tests.
     inputs:
       script: |
         NDK_HOME=$(realpath $ANDROID_NDK_HOME)
@@ -166,97 +279,26 @@ jobs:
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
           --volume $NDK_HOME:/ndk_home \
-          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          -e BUILD_SOURCEVERSION=$(Build.SourceVersion) \
-          -e BUILD_ID=$(Build.BuildId) \
-          -e BUILD_REASON=$(Build.Reason) \
-          -e BUILD_BRANCH=$(Build.SourceBranch) \
-          onnxruntimecpubuild \
-            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh \
-              /build/5
-      workingDirectory: $(Build.SourcesDirectory)
-
-
-  - task: AzureCLI@2
-    displayName: 'Publish binary size data'
-    condition: and(succeededOrFailed(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
-    inputs:
-      azureSubscription: AIInfraBuild
-      scriptLocation: inlineScript
-      scriptType: bash
-      inlineScript: |
-        BINARY_SIZE_DATA_FILE="$(Build.BinariesDirectory)/5/MinSizeRel/binary_size_data.txt"
-        if [[ ! -f "${BINARY_SIZE_DATA_FILE}" ]]; then
-          echo "File not found: ${BINARY_SIZE_DATA_FILE}"
-          exit 1
-        fi
-        /usr/bin/python3 $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py \
-          --commit_hash=$(Build.SourceVersion) \
-          --size_data_file="${BINARY_SIZE_DATA_FILE}" \
-          --build_project=onnxruntime \
-          --build_id=$(Build.BuildId)
-      workingDirectory: '$(Build.BinariesDirectory)'
-
-  - script: git checkout -- .
-    displayName: Discard local changes to Git repository files
-    workingDirectory: $(Build.SourcesDirectory)
-
-  - task: CmdLine@2
-    displayName: 6a. Build full onnxruntime with runtime optimizations enabled
-    inputs:
-      script: |
-        docker run --rm \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build/6a --cmake_generator Ninja \
-              --config Debug \
+              --build_dir /build/7 \
+              --cmake_generator Ninja \
+              --config MinSizeRel \
               --skip_submodule_sync \
-              --build_shared_lib \
               --parallel \
-              --cmake_extra_defines onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION=ON
-      workingDirectory: $(Build.SourcesDirectory)
-
-  - task: CmdLine@2
-    displayName: 6b. Build extended minimal onnxruntime with runtime optimizations enabled
-    inputs:
-      script: |
-        docker run --rm \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          onnxruntimecpubuild \
-            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build/6b --cmake_generator Ninja \
-              --config Debug \
-              --skip_submodule_sync \
-              --build_shared_lib \
-              --parallel \
+              --android \
+              --android_sdk_path /android_home \
+              --android_ndk_path /ndk_home \
+              --android_abi=arm64-v8a \
+              --android_api=29 \
+              --use_nnapi \
               --minimal_build extended \
-              --cmake_extra_defines onnxruntime_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION=ON
+              --build_shared_lib \
+              --disable_ml_ops \
+              --disable_exceptions \
+              --skip_tests
       workingDirectory: $(Build.SourcesDirectory)
 
-  - task: PublishTestResults@2
-    displayName: 'Publish unit test results'
-    inputs:
-      testResultsFiles: '**/*.results.xml'
-      searchFolder: '$(Build.BinariesDirectory)'
-      testRunTitle: 'Unit Test Run'
-    condition: succeededOrFailed()
-
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters:
-      condition: 'succeeded'
-
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
+  - template: templates/clean-agent-build-directory-step.yml

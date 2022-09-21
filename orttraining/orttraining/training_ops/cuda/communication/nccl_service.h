@@ -15,7 +15,7 @@
 
 #include <nccl.h>
 
-#include <mpi.h>
+#include "orttraining/core/framework/communication/mpi/mpi_include.h"
 
 namespace onnxruntime {
 namespace cuda {

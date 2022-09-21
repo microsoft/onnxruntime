@@ -10,20 +10,23 @@
 import unittest
 import torch
 
+
 class OrtInitTests(unittest.TestCase):
-  def test_ort_init(self):
-    config_match = 'ORT is enabled'
+    def test_ort_init(self):
+        config_match = "ORT is enabled"
 
-    def ort_alloc():
-      torch.zeros(5, 5, device='ort')
+        def ort_alloc():
+            torch.zeros(5, 5, device="ort")
 
-    self.assertNotIn(config_match, torch._C._show_config())
-    with self.assertRaises(BaseException):
-      ort_alloc()
+        self.assertNotIn(config_match, torch._C._show_config())
+        with self.assertRaises(BaseException):
+            ort_alloc()
 
-    import onnxruntime_pybind11_state as torch_ort
-    ort_alloc()
-    self.assertIn(config_match, torch._C._show_config())
+        import onnxruntime_pybind11_state as torch_ort
 
-if __name__ == '__main__':
-  unittest.main()
+        ort_alloc()
+        self.assertIn(config_match, torch._C._show_config())
+
+
+if __name__ == "__main__":
+    unittest.main()

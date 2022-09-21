@@ -3,6 +3,11 @@
 
 #pragma once
 
+#include "gsl/gsl"
+
+#include "core/common/basic_types.h"
+#include "core/common/inlined_containers.h"
+#include "core/graph/graph.h"
 #include "core/graph/runtime_optimization_record.h"
 
 namespace onnxruntime {
@@ -36,9 +41,9 @@ class NodesToOptimize {
 
   // nodes to assemble. num_inputs and num_outputs default to the size of input_nodes and output_nodes.
   // specify num_input_defs/num_output_defs if the last input/output is variadic
-  NodesToOptimize(const std::vector<Node*>& input_nodes,
+  NodesToOptimize(gsl::span<Node* const> input_nodes,
                   Node& target_node,
-                  const std::vector<Node*>& output_nodes,
+                  gsl::span<Node* const> output_nodes,
                   int num_input_defs = -1, int num_output_defs = -1);
 
   // construct from saved NodeIndex values. IsValid() will return false if one or more nodes were missing.
@@ -80,7 +85,7 @@ class NodesToOptimize {
   }
 
   // inputs filtered by index. includes all variadic.
-  std::vector<Node*> Inputs(const std::vector<int>& indices, bool required = true) const;
+  InlinedVector<Node*> Inputs(gsl::span<const int> indices, bool required = true) const;
 
   Node& Target() const {
     return *GetNode(NumInputEntries() + 0, /*required*/ true);
@@ -91,40 +96,40 @@ class NodesToOptimize {
   }
 
   // outputs filtered by index. includes all variadic.
-  std::vector<Node*> Outputs(const std::vector<int>& indices, bool required = true) const;
+  InlinedVector<Node*> Outputs(const std::vector<int>& indices, bool required = true) const;
 
   // Get the Node or Nodes (if variadic) at a specific index.
-  std::vector<Node*> GetNodesAtLocation(const NodeLocation& location, bool required = true) const;
+  InlinedVector<Node*> GetNodesAtLocation(const NodeLocation& location, bool required = true) const;
 
-  const std::vector<Node*>& AllNodes() const { return nodes_; }
+  gsl::span<Node* const> AllNodes() const { return nodes_; }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(NodesToOptimize);
 
  private:
-  Node* GetNode(int index, bool required) const {
+  Node* GetNode(size_t index, bool required) const {
     Node* node = nullptr;
-    ORT_ENFORCE(static_cast<size_t>(index) < nodes_.size() &&
+    ORT_ENFORCE(index < nodes_.size() &&
                 ((node = nodes_[index]) != nullptr || !required));
 
     return node;
   }
 
-  int NumInputEntries() const;
-  int NumOutputEntries() const;
+  size_t NumInputEntries() const;
+  size_t NumOutputEntries() const;
 
   bool variadic_input_{false};  // is last input variadic
   bool variadic_output_{false};
   int num_variadic_inputs_{0};  // how many values does the variadic input have. can be zero or more.
   int num_variadic_outputs_{0};
-  std::vector<Node*> nodes_;
+  InlinedVector<Node*> nodes_;
 };
 
 // Helper to build a NodesToOptimizeIndices instance
 // Use in selector to incrementally add pieces
 struct NodesToOptimizeIndicesBuilder {
-  std::vector<NodeIndex> input_nodes;
+  InlinedVector<NodeIndex> input_nodes;
   NodeIndex target_node{NodesToOptimizeIndices::kEmptyNodeIndex};
-  std::vector<NodeIndex> output_nodes;
+  InlinedVector<NodeIndex> output_nodes;
   int num_input_defs{-1};
   int num_output_defs{-1};
 
@@ -134,9 +139,6 @@ struct NodesToOptimizeIndicesBuilder {
 //
 // Action helpers
 //
-
-enum class ArgType { kInput,
-                     kOutput };
 
 // struct to define the location of an input or output definition for a Node
 struct InOutDefSlot {
@@ -160,18 +162,24 @@ struct ValueMoveInfo {
   }
 
   // append single value (may be variadic) from source to destination
-  ValueMoveInfo(InOutDefSlot src_slot_in, ArgType dest_slot_type, bool is_optional = false)
+  ValueMoveInfo(InOutDefSlot src_slot_in,
+                ArgType dest_slot_type,
+                bool is_optional = false,
+                bool fill_optional_with_empty = false)
       : src_slot(src_slot_in),
         dest_slot{dest_slot_type, -1},
         copy_all{false},
         append{true},
-        optional{is_optional} {}
+        optional{is_optional},
+        fill_optional_with_empty{fill_optional_with_empty} {}
 
   InOutDefSlot src_slot;
   InOutDefSlot dest_slot;
-  bool copy_all{false};  // ignore src_slot.idx and copy all values
-  bool append{false};    // ignore dest_slot.idx and append to existing values
-  bool optional{false};  // optional copy that can be skipped if source node is missing
+  bool copy_all{false};           // ignore src_slot.idx and copy all values
+  bool append{false};             // ignore dest_slot.idx and append to existing values
+  bool optional{false};           // optional copy that can be skipped if source node is missing
+  bool fill_optional_with_empty;  // fill optional NodeArg by NodeArg with empty name.
+                                  // Only support in 'append single value' mode.
 
  private:
   ValueMoveInfo() = default;
@@ -213,10 +221,12 @@ inline NodeAndMoveInfo MoveToSlot(const NodesToOptimize::NodeLocation& src_node,
 inline NodeAndMoveInfo MoveAndAppend(const NodesToOptimize::NodeLocation& src_node,
                                      ArgType src_direction, int src_slot,
                                      ArgType dest_direction,
-                                     bool optional = false) {
+                                     bool optional = false,
+                                     bool fill_optional_with_empty = false) {
   return NodeAndMoveInfo{src_node, ValueMoveInfo{
                                        InOutDefSlot{src_direction, src_slot},  // move from this slot
-                                       dest_direction, optional}};             // append here
+                                       dest_direction, optional,
+                                       fill_optional_with_empty}};  // append here
 }
 
 // move all inputs/outputs from the source node to the target/replacement node

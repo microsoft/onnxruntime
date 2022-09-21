@@ -118,7 +118,7 @@ namespace Dml
                     &buffer,
                     m_initialState,
                     nullptr,
-                    IID_PPV_ARGS(&resource)
+                    IID_GRAPHICS_PPV_ARGS(resource.ReleaseAndGetAddressOf())
                 ));
 
                 resourceId = ++m_currentResourceId;
@@ -143,7 +143,7 @@ namespace Dml
                 &buffer,
                 m_initialState,
                 nullptr,
-                IID_PPV_ARGS(&resource)
+                IID_GRAPHICS_PPV_ARGS(resource.ReleaseAndGetAddressOf())
             ));
 
             resourceId = ++m_currentResourceId;
@@ -203,7 +203,11 @@ namespace Dml
         else
         {
             // Free the underlying allocation once queued work has completed.
+#ifdef _GAMING_XBOX
+            m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
+#else
             m_context->QueueReference(allocInfo->GetResource());
+#endif
             allocInfo->DetachResource();
         }
 

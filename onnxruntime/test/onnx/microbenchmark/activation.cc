@@ -69,7 +69,7 @@ struct KernelAndDef {
                   .SetDomain(domain)
                   .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
                   .Build();
-    OpKernelInfo info(main_node, *out.def, *out.a, {}, {}, {}, {});
+    OpKernelInfo info(main_node, *out.def, *out.a, {}, {}, {});
     out.kernel = std::make_unique<KernelType>(info);
     return out;
   }
@@ -147,12 +147,11 @@ static void RunSingleNode(const std::string& op_name, const std::string& domain,
 
   std::vector<OrtValue> feeds(1);
   std::vector<OrtValue> fetches(1);
-  std::vector<int64_t> shapes(static_cast<size_t>(1), batch_size);
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  TensorShapeVector shapes(static_cast<size_t>(1), batch_size);
   OrtMemoryInfo info("cpu", OrtDeviceAllocator);
-  feeds[0].Init(new Tensor(DataTypeImpl::GetType<float>(), shapes, data, info), ml_tensor, ml_tensor->GetDeleteFunc());
-  fetches[0].Init(new Tensor(DataTypeImpl::GetType<float>(), shapes, output, info), ml_tensor,
-                  ml_tensor->GetDeleteFunc());
+  auto ml_float = DataTypeImpl::GetType<float>();
+  Tensor::InitOrtValue(ml_float, shapes, data, info, feeds[0]);
+  Tensor::InitOrtValue(ml_float, shapes, output, info, fetches[0]);
   GraphViewer v(k.model->MainGraph());
   NodeIndexInfo node_index_info(v, *k.ort_value_idx_map);
   OrtThreadPoolParams tpo;

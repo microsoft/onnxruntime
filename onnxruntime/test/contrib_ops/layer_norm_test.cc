@@ -80,6 +80,11 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
 #endif
 }
 
+TEST(CudaKernelTest, LayerNorm_NullInput) {
+  const std::vector<int64_t> X_dims{0, 20, 128};
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor) {
   const std::vector<int64_t> X_dims{4, 20, 128};
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
@@ -87,7 +92,7 @@ TEST(CudaKernelTest, LayerNorm_SmallSizeTensor) {
 
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor_IntermediateAxis) {
   const std::vector<int64_t> X_dims{4, 20, 8, 16};
-  const int64_t axis = -2;
+  constexpr int64_t axis = -2;
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default, axis);
 }
 
@@ -103,9 +108,9 @@ TEST(CudaKernelTest, LayerNorm_LargeSizeTensor) {
 
 TEST(CudaKernelTest, LayerNorm_MidSizeTensor_NoBias) {
   std::vector<int64_t> X_dims{8, 80, 768};
-  const int64_t axis = -1;
-  const int64_t keep_dims = 1;
-  const bool no_bias = true;
+  constexpr int64_t axis = -1;
+  constexpr int64_t keep_dims = 1;
+  constexpr bool no_bias = true;
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default, axis, keep_dims, no_bias);
 }
 
@@ -116,7 +121,7 @@ TEST(CudaKernelTest, SimplifiedLayerNorm_SmallSizeTensor) {
 
 TEST(CudaKernelTest, SimplifiedLayerNorm_SmallSizeTensor_IntermediateAxis) {
   const std::vector<int64_t> X_dims{4, 20, 8, 16};
-  const int64_t axis = -2;
+  constexpr int64_t axis = -2;
   TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default, axis);
 }
 

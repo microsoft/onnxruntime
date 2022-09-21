@@ -3,8 +3,11 @@
 
 #pragma once
 
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
+#include "core/common/inlined_containers.h"
+#endif  // !#if !defined(ORT_MINIMAL_BUILD)
 
 namespace onnxruntime {
 class Graph;
@@ -12,11 +15,10 @@ class NodeArg;
 
 namespace optimizer_utils {
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 // Check if TensorProto contains a floating point type.
 bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
-
-// Check if NodeArg takes in a scalar tensor.
-bool IsScalar(const NodeArg& input_arg);
 
 /** Check whether a input is initializer with specified float value.
 @param expected_value is the expected value of the initializer.
@@ -50,7 +52,7 @@ bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_nam
 /** Get values of an integer tensor from initializer, and append them to a vector.
 @remarks only support int32 and int64 tensor. This function does not clear vector before appending.
 */
-bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data, bool require_constant = true);
+bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, InlinedVector<int64_t>& data, bool require_constant = true);
 
 /** Check Shape of node input or output.
 @remarks when expected dim value > 0, the dim is expected to known and match the dim value.
@@ -92,6 +94,19 @@ bool IsSupportedDataType(const Node& node, const T& supported_data_types) {
   }
   return true;
 }
+
+
+bool IsOperationDeterministic(const std::string& domain, const std::string& op);
+
+#endif  // !#if !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+/** Get min/max values from Clip if they are constant.
+@returns false if mutable and cannot be used.
+*/
+bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max);
+
 /** Check whether node's output edges count is expected.
 @remarks graph output is not included in output edges, and this node shall not have graph output.
         A node with graph output cannot be fused unless the graph output also exists in outputs of fused node.
@@ -99,7 +114,10 @@ bool IsSupportedDataType(const Node& node, const T& supported_data_types) {
 */
 bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges);
 
-bool IsOperationDeterministic(const std::string& domain, const std::string& op);
+// Check if NodeArg takes in a scalar tensor.
+bool IsScalar(const NodeArg& input_arg);
+
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

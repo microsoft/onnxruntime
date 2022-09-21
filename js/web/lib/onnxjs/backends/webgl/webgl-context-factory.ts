@@ -83,7 +83,16 @@ export function createNewWebGLContext(contextId?: 'webgl'|'webgl2'): WebGLContex
   throw new Error('WebGL is not supported');
 }
 
+// eslint-disable-next-line @typescript-eslint/naming-convention
+declare let OffscreenCanvas: {new (width: number, height: number): HTMLCanvasElement};
+
 function createCanvas(): HTMLCanvasElement {
+  if (typeof document === 'undefined') {
+    if (typeof OffscreenCanvas === 'undefined') {
+      throw new TypeError('failed to create canvas: OffscreenCanvas is not supported');
+    }
+    return new OffscreenCanvas(1, 1);
+  }
   const canvas: HTMLCanvasElement = document.createElement('canvas');
   canvas.width = 1;
   canvas.height = 1;

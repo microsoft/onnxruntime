@@ -8,7 +8,8 @@ import {BroadcastUtil, ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 import {getCoordsDataType, getGlChannels} from '../utils';
-import {getActicationSnippet, InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
+
+import {getActivationSnippet, InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
 import {createPackedMatmulProgramInfoLoader} from './matmul-pack';
 
 export const matMul: OperatorImplementation<InternalActivationAttributes> =
@@ -44,7 +45,7 @@ function createMatmulProgramInfo(
   }
   const coordsDataType = getCoordsDataType(outputShape.length);
   const allGlChannels = getGlChannels();
-  const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
+  const {activationFunction, applyActivation} = getActivationSnippet(activationAttributes);
 
   const hasBias = inputs.length > 2;
   const processBias = hasBias ? 'value += getBiasForMatmul();' : '';

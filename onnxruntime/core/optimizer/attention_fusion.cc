@@ -242,7 +242,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           fused_count++;
           modified = true;
         }
-      } else if (reshape_count == 1 && (shape_count == 1 || shape_count == 3) && (reshape_count + shape_count) == node.GetOutputEdgesCount()) {  // GPT
+      } else if (reshape_count == 1 && (shape_count == 1 || shape_count == 3) && (static_cast<size_t>(reshape_count) + shape_count) == node.GetOutputEdgesCount()) {  // GPT
         if (AttentionFusionHelper::FuseGptAttention(node, graph, hidden_size, mask_int32_map, shape_count == 1, logger)) {
           fused_count++;
           modified = true;
@@ -269,7 +269,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
                                int64_t num_heads,
                                int64_t head_size,
                                const logging::Logger& logger) {
-  std::vector<std::reference_wrapper<const Node>> pivot_nodes;
+  InlinedVector<std::reference_wrapper<const Node>> pivot_nodes;
   if (edges.size() == 2) {
     const Node& qk_div = (edges[0]->GetNode().OpType() == "Div") ? edges[0]->GetNode() : edges[1]->GetNode();
     const Node& qk_matmul = (edges[1]->GetNode().OpType() == "MatMul") ? edges[1]->GetNode() : edges[0]->GetNode();
@@ -375,8 +375,8 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
   NodeArg& qkv_bias = MergeQkvWeights(graph, hidden_size, q_bias_tensor, k_bias_tensor, v_bias_tensor, false);
   // Create Attention Node.
   const Node& reshape = parent_path_nodes[0];
-  const std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_int32};
-  const std::vector<NodeArg*> output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
+  const std::array input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_int32};
+  const std::array output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
   Node& attention_node = graph.AddNode(
       graph.GenerateNodeName("Attention"),
       "Attention",

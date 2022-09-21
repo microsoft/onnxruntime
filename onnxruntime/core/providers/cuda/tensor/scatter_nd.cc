@@ -37,7 +37,7 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
   const auto& updates_shape = updates_tensor->Shape();
 
   // Validate input shapes
-  ORT_RETURN_IF_ERROR(ValidateShapes(input_shape, indices_shape, updates_shape));
+  ORT_RETURN_IF_ERROR(onnxruntime::ScatterND::ValidateShapes(input_shape, indices_shape, updates_shape));
 
   auto* output_tensor = context->Output(0, input_shape);
 
@@ -48,7 +48,8 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
 
   if (input_data != output_data) {
     // TODO: Run benchmarks to determine if a dedicated kernel doing data copy will be faster than invoking cudaMemcpy ?
-    CUDA_CALL(cudaMemcpyAsync(output_data, input_data, input_tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+    CUDA_RETURN_IF_ERROR(
+      cudaMemcpyAsync(output_data, input_data, input_tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
   }
 
   // Bail out early

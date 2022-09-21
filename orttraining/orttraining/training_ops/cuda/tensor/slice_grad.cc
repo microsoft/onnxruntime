@@ -40,9 +40,9 @@ const Tensor* SliceGrad::GetSlicedOrUnslicedTensor(OpKernelContext* ctx) const {
   return GetOutputGradientTensor(ctx);
 }
 
-Status SliceGrad::FillInputVectors(OpKernelContext* ctx, std::vector<int64_t>& input_starts,
-                                   std::vector<int64_t>& input_ends, std::vector<int64_t>& input_axes,
-                                   std::vector<int64_t>& input_steps) const {
+Status SliceGrad::FillInputVectors(OpKernelContext* ctx, TensorShapeVector& input_starts,
+                                   TensorShapeVector& input_ends, TensorShapeVector& input_axes,
+                                   TensorShapeVector& input_steps) const {
   return FillVectorsFromInput(*ctx->Input<Tensor>(2), *ctx->Input<Tensor>(3), ctx->Input<Tensor>(4),
                               ctx->Input<Tensor>(5), input_starts, input_ends, input_axes, input_steps);
 }

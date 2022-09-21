@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/data_types_internal.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
+
+#include "core/framework/data_types_internal.h"
+#include "core/framework/math.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
 #include <unsupported/Eigen/SpecialFunctions>
@@ -350,15 +352,27 @@ REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, int64_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, float, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, double, Equal);
 
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 12, float, LessOrEqual);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 12, double, LessOrEqual);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 12, int32_t, LessOrEqual);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 12, int64_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, float, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, double, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, int32_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, int64_t, LessOrEqual);
 
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 12, float, GreaterOrEqual);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 12, double, GreaterOrEqual);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 12, int32_t, GreaterOrEqual);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 12, int64_t, GreaterOrEqual);
+// Opset-16 adds BFloat16 to allowed types for the LessOrEqual operator
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, float, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, double, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, int32_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, int64_t, LessOrEqual);
+
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, float, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, double, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, int32_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, int64_t, GreaterOrEqual);
+
+// Opset-16 adds BFloat16 to allowed types for the GreaterOrEqual operator
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, float, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, double, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, int32_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, int64_t, GreaterOrEqual);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 6, 7, float, Mean_6);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 8, 12, float, Mean_8);
@@ -383,8 +397,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     Not,
     1,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()),
     Not);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -1329,8 +1342,8 @@ class Asinh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
 
-    auto X_data = X.template Data<float>();
-    auto Y_data = Y.template MutableData<float>();
+    auto X_data = X.Data<float>();
+    auto Y_data = Y.MutableData<float>();
 
     auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
     auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
@@ -1361,8 +1374,8 @@ class Acosh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
 
-    auto X_data = X.template Data<float>();
-    auto Y_data = Y.template MutableData<float>();
+    auto X_data = X.Data<float>();
+    auto Y_data = Y.MutableData<float>();
 
     auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
     auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
@@ -1393,8 +1406,8 @@ class Atanh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
 
-    auto X_data = X.template Data<float>();
-    auto Y_data = Y.template MutableData<float>();
+    auto X_data = X.Data<float>();
+    auto Y_data = Y.MutableData<float>();
 
     auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
     auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
@@ -1447,9 +1460,17 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     PRelu<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     PRelu,
     9,
+    15,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    PRelu<float>);
+
+// Opset-16 adds BFloat16 to allowed types for the PRelu operator
+ONNX_CPU_OPERATOR_KERNEL(
+    PRelu,
+    16,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     PRelu<float>);
 
@@ -1535,7 +1556,7 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   auto* Y = context->Output(0, x_shape);
   const size_t N = static_cast<size_t>(x_shape.Size());
 
-  MlasComputeErf(X->template Data<float>(), Y->template MutableData<float>(), N);
+  MlasComputeErf(X->Data<float>(), Y->MutableData<float>(), N);
 
   return Status::OK();
 }
@@ -1794,8 +1815,8 @@ void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFun
 
     concurrency::ThreadPool::TryParallelFor(
         tp, output_size / span_size,
-        TensorOpCost{static_cast<float>(input_broadcaster.Input0ElementSize() * span_size),
-                     static_cast<float>(output_tensor.DataType()->Size() * span_size),
+        TensorOpCost{static_cast<double>(input_broadcaster.Input0ElementSize()) * span_size,
+                     static_cast<double>(output_tensor.DataType()->Size()) * span_size,
                      unit_cost * span_size},
         [span_size, &const_input_broadcaster, &output_tensor, &funcs, user_data](std::ptrdiff_t first_span,
                                                                                  std::ptrdiff_t last_span) {

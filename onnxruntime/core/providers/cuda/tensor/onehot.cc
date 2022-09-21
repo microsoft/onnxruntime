@@ -49,7 +49,7 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
 
   // prepare output shape
   int64_t prefix_dim_size, suffix_dim_size;
-  std::vector<int64_t> output_shape;
+  TensorShapeVector output_shape;
   ORT_RETURN_IF_ERROR(PrepareOutputShape(indices, depth_val, axis_, prefix_dim_size, suffix_dim_size, output_shape));
 
   // allocate output

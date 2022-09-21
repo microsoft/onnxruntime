@@ -1,0 +1,35 @@
+parameters:
+- name: NpmPublish
+  displayName: 'NPM packages publish configuration'
+  type: string
+  values:
+  - 'nightly (@dev)'
+  - 'release candidate (@rc)'
+  - 'production (@latest)'
+  - 'custom'
+  default: 'nightly (@dev)'
+
+resources:
+  repositories:
+  - repository: manylinux # The name used to reference this repository in the checkout step
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: a8099af1b3e25f0489717ad9c4f9a2e25a8c5b36
+
+variables:
+  ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
+    NpmPackagingMode: 'dev'
+  ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
+    NpmPackagingMode: 'rc'
+  ${{ if eq(parameters.NpmPublish, 'production (@latest)') }}:
+    NpmPackagingMode: 'release'
+  ${{ if eq(parameters.NpmPublish, 'custom') }}:
+    NpmPackagingMode: '$(VersionSuffix)'
+
+jobs:
+- template: templates/react-native-ci.yml
+  parameters:
+    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+    BuildConfig: 'Release'
+    PoolName: 'Linux-CPU-2019'

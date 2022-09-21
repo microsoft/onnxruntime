@@ -33,8 +33,10 @@ from orttraining_run_glue import verify_old_and_new_api_are_equal
 
 logger = logging.getLogger(__name__)
 
+
 def simple_accuracy(preds, labels):
     return (preds == labels).mean()
+
 
 @dataclass
 class ModelArguments:
@@ -42,9 +44,7 @@ class ModelArguments:
     Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
     """
 
-    model_name_or_path: str = field(
-        metadata={"help": "model identifier from huggingface.co/models"}
-    )
+    model_name_or_path: str = field(metadata={"help": "model identifier from huggingface.co/models"})
     config_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
     )
@@ -54,6 +54,7 @@ class ModelArguments:
     cache_dir: Optional[str] = field(
         default=None, metadata={"help": "Where do you want to store the pretrained models downloaded from s3"}
     )
+
 
 @dataclass
 class DataTrainingArguments:
@@ -70,12 +71,10 @@ class DataTrainingArguments:
             "than this will be truncated, sequences shorter will be padded."
         },
     )
-    overwrite_cache: bool = field(
-        default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
-    )
+    overwrite_cache: bool = field(default=False, metadata={"help": "Overwrite the cached training and evaluation sets"})
+
 
 class ORTMultipleChoiceTest(unittest.TestCase):
-
     def setUp(self):
         # configurations not to be changed accoss tests
         self.max_seq_length = 80
@@ -88,7 +87,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         self.gradient_accumulation_steps = 8
         self.data_dir = "/bert_data/hf_data/swag/swagaf/data"
         self.output_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "multiple_choice_test_output/")
-        self.cache_dir = '/tmp/multiple_choice/'
+        self.cache_dir = "/tmp/multiple_choice/"
         self.logging_steps = 10
         self.rtol = 2e-01
 
@@ -97,8 +96,8 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         expected_loss = 0.64
 
         results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=False)
-        assert(results['acc'] >= expected_acc)
-        assert(results['loss'] <= expected_loss)
+        assert results["acc"] >= expected_acc
+        assert results["loss"] <= expected_loss
 
     def test_bert_fp16_with_swag(self):
         # larger batch can be handled with mixed precision
@@ -108,20 +107,29 @@ class ORTMultipleChoiceTest(unittest.TestCase):
         expected_loss = 0.68
 
         results = self.run_multiple_choice(model_name="bert-base-cased", task_name="swag", fp16=True)
-        assert(results['acc'] >= expected_acc)
-        assert(results['loss'] <= expected_loss)
+        assert results["acc"] >= expected_acc
+        assert results["loss"] <= expected_loss
 
     def run_multiple_choice(self, model_name, task_name, fp16):
         model_args = ModelArguments(model_name_or_path=model_name, cache_dir=self.cache_dir)
-        data_args = DataTrainingArguments(task_name=task_name, data_dir=self.data_dir,
-            max_seq_length=self.max_seq_length)
+        data_args = DataTrainingArguments(
+            task_name=task_name, data_dir=self.data_dir, max_seq_length=self.max_seq_length
+        )
 
-        training_args = TrainingArguments(output_dir=os.path.join(self.output_dir, task_name), do_train=True, do_eval=True,
+        training_args = TrainingArguments(
+            output_dir=os.path.join(self.output_dir, task_name),
+            do_train=True,
+            do_eval=True,
             per_gpu_train_batch_size=self.train_batch_size,
             per_gpu_eval_batch_size=self.eval_batch_size,
-            learning_rate=self.learning_rate, num_train_epochs=self.num_train_epochs,local_rank=self.local_rank,
-            overwrite_output_dir=self.overwrite_output_dir, gradient_accumulation_steps=self.gradient_accumulation_steps,
-            fp16=fp16, logging_steps=self.logging_steps)
+            learning_rate=self.learning_rate,
+            num_train_epochs=self.num_train_epochs,
+            local_rank=self.local_rank,
+            overwrite_output_dir=self.overwrite_output_dir,
+            gradient_accumulation_steps=self.gradient_accumulation_steps,
+            fp16=fp16,
+            logging_steps=self.logging_steps,
+        )
 
         # Setup logging
         logging.basicConfig(
@@ -200,23 +208,46 @@ class ORTMultipleChoiceTest(unittest.TestCase):
             preds = np.argmax(p.predictions, axis=1)
             return {"acc": simple_accuracy(preds, p.label_ids)}
 
-        if model_name.startswith('bert'):
+        if model_name.startswith("bert"):
             model_desc = {
-                'inputs': [
-                    ('input_ids', ['batch', num_labels, 'max_seq_len_in_batch'],),
-                    ('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch'],),
-                    ('token_type_ids', ['batch', num_labels, 'max_seq_len_in_batch'],),
-                    ('labels', ['batch', num_labels],)],
-                'outputs': [('loss', [], True),
-                            ('reshaped_logits', ['batch', num_labels])]}
+                "inputs": [
+                    (
+                        "input_ids",
+                        ["batch", num_labels, "max_seq_len_in_batch"],
+                    ),
+                    (
+                        "attention_mask",
+                        ["batch", num_labels, "max_seq_len_in_batch"],
+                    ),
+                    (
+                        "token_type_ids",
+                        ["batch", num_labels, "max_seq_len_in_batch"],
+                    ),
+                    (
+                        "labels",
+                        ["batch", num_labels],
+                    ),
+                ],
+                "outputs": [("loss", [], True), ("reshaped_logits", ["batch", num_labels])],
+            }
         else:
             model_desc = {
-                'inputs': [
-                    ('input_ids', ['batch', num_labels, 'max_seq_len_in_batch'],),
-                    ('attention_mask', ['batch', num_labels, 'max_seq_len_in_batch'],),
-                    ('labels', ['batch', num_labels],)],
-                'outputs': [('loss', [], True),
-                            ('reshaped_logits', ['batch', num_labels])]}
+                "inputs": [
+                    (
+                        "input_ids",
+                        ["batch", num_labels, "max_seq_len_in_batch"],
+                    ),
+                    (
+                        "attention_mask",
+                        ["batch", num_labels, "max_seq_len_in_batch"],
+                    ),
+                    (
+                        "labels",
+                        ["batch", num_labels],
+                    ),
+                ],
+                "outputs": [("loss", [], True), ("reshaped_logits", ["batch", num_labels])],
+            }
 
         # Initialize the ORTTrainer within ORTTransformerTrainer
         trainer = ORTTransformerTrainer(
@@ -242,11 +273,12 @@ class ORTMultipleChoiceTest(unittest.TestCase):
 
             logger.info("***** Eval results {} *****".format(data_args.task_name))
             for key, value in result.items():
-               logger.info("  %s = %s", key, value)
+                logger.info("  %s = %s", key, value)
 
             results.update(result)
 
         return results
+
 
 if __name__ == "__main__":
     unittest.main()

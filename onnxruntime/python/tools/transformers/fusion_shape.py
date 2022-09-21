@@ -1,14 +1,15 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+
+from logging import getLogger
+from typing import Dict, List, Union
 
 from fusion_base import Fusion
-from logging import getLogger
-from onnx import TensorProto, NodeProto
-from onnx_model import OnnxModel
 from fusion_utils import FusionUtils
-from typing import Union, Dict, List
+from onnx import NodeProto, TensorProto
+from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 
@@ -21,7 +22,7 @@ class FusionShape(Fusion):
         self.shape_infer_done = False
 
     def get_dimensions_from_tensor_proto(self, tensor_proto: TensorProto) -> Union[int, None]:
-        if tensor_proto.type.tensor_type.HasField('shape'):
+        if tensor_proto.type.tensor_type.HasField("shape"):
             return len(tensor_proto.type.tensor_type.shape.dim)
         else:
             return None
@@ -40,8 +41,12 @@ class FusionShape(Fusion):
 
         return None
 
-    def fuse(self, concat_node: NodeProto, input_name_to_nodes: Dict[str, List[NodeProto]],
-             output_name_to_node: Dict[str, NodeProto]):
+    def fuse(
+        self,
+        concat_node: NodeProto,
+        input_name_to_nodes: Dict[str, List[NodeProto]],
+        output_name_to_node: Dict[str, NodeProto],
+    ):
         """
         Smplify subgraph like
 
@@ -64,8 +69,12 @@ class FusionShape(Fusion):
         root = None
         shape_output = None
         for i in range(inputs):
-            path = self.model.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [i, 0, 0],
-                                                output_name_to_node)
+            path = self.model.match_parent_path(
+                concat_node,
+                ["Unsqueeze", "Gather", "Shape"],
+                [i, 0, 0],
+                output_name_to_node,
+            )
             if path is None:
                 return
 
@@ -79,18 +88,19 @@ class FusionShape(Fusion):
             elif shape.input[0] != root:
                 return
 
-            if not FusionUtils.check_node_attribute(unsqueeze, 'axis', 0, default_value=0):
+            if not FusionUtils.check_node_attribute(unsqueeze, "axis", 0, default_value=0):
                 return
 
             if opset_version < 13:
-                if not FusionUtils.check_node_attribute(unsqueeze, 'axes', [0]):
+                if not FusionUtils.check_node_attribute(unsqueeze, "axes", [0]):
                     return
             else:
                 if not self.utils.check_node_input_value(unsqueeze, 1, [0]):
                     return
 
             value = self.model.get_constant_value(gather.input[1])
-            from numpy import ndarray, array_equal
+            from numpy import array_equal, ndarray
+
             if not (isinstance(value, ndarray) and value.size == 1 and value.item() == i):
                 return
 

@@ -290,6 +290,15 @@ ORT_API_STATUS_IMPL(winmla::ModelGetName, _In_ const OrtModel* model, _Out_ cons
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(winmla::ModelSetName, _In_ const OrtModel* model, _In_ const char* const name) {
+  API_IMPL_BEGIN
+  auto model_proto = model->UseModelProto();
+  ONNX_NAMESPACE::GraphProto& graph = *model_proto->mutable_graph();
+  graph.set_name(name);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(winmla::ModelGetDomain, _In_ const OrtModel* model, _Out_ const char** const domain, _Out_ size_t* len) {
   API_IMPL_BEGIN
   *domain = model->UseModelInfo()->domain_.c_str();
@@ -792,6 +801,34 @@ ORT_API_STATUS_IMPL(winmla::OperatorGetOutputName, _In_ const char* const op_typ
   *name = schema->outputs().at(index).GetName().c_str();
   return nullptr;
   API_IMPL_END
+}
+#include "core/platform/threadpool.h"
+#include "core/platform/env.h"
+
+ORT_API_STATUS_IMPL(winmla::CreateThreadPool,
+  _In_ ThreadPoolType type,
+  _In_ OrtThreadPoolOptions* options,
+  _Outptr_ OrtThreadPool** out) {
+  API_IMPL_BEGIN
+  OrtThreadPoolParams params = {};
+  params.thread_pool_size = options->thread_pool_size;
+  params.auto_set_affinity = options->auto_set_affinity;
+  params.allow_spinning = options->allow_spinning;
+  params.dynamic_block_base_ = options->dynamic_block_base_;
+  params.stack_size = options->stack_size;
+  params.affinity_vec = options->affinity_vec;
+  params.affinity_vec_len = options->affinity_vec_len;
+  params.name = options->name;
+  params.set_denormal_as_zero = options->set_denormal_as_zero;
+
+  auto unique_tp = onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(), params, (onnxruntime::concurrency::ThreadPoolType)type);
+  *out = reinterpret_cast<OrtThreadPool*>(unique_tp.release()); 
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, winmla::ReleaseThreadPool, OrtThreadPool* ptr) {
+  delete reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(ptr);
 }
 
 ORT_API_STATUS_IMPL(winmla::JoinModels,

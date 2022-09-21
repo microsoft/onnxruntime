@@ -86,8 +86,11 @@ set onnx_export_options=-i %input_counts% -v -b 0 -f fusion.csv --overwrite
 set benchmark_options=-b %batch_sizes% -s %sequence_length% -t %average_over% -f fusion.csv -r result.csv -d detail.csv
 
 if %use_optimizer% == true (
-  set onnx_export_options=%onnx_export_options% -o
-  set benchmark_options=%benchmark_options% -o
+  set onnx_export_options=%onnx_export_options% -o by_script
+  set benchmark_options=%benchmark_options% -o by_script
+) else (
+  set onnx_export_options=%onnx_export_options% -o by_ort
+  set benchmark_options=%benchmark_options% -o by_ort
 )
 
 if %run_gpu_fp32% == true (

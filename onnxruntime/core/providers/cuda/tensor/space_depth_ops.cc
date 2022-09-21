@@ -79,9 +79,11 @@ static Status SpaceDepthOpCudaImpl(const cudaDeviceProp& prop,
                                    const std::vector<size_t>& permutation,
                                    const int64_t batch_size,
                                    const int64_t in_dim1, const int64_t in_dim2, const int64_t in_dim3,
-                                   const int64_t in_dim4, const int64_t in_dim5) {
+                                   const int64_t in_dim4, const int64_t in_dim5,
+                                   const TensorShape& virtual_output_shape) {
   TensorShape virtual_input_shape{batch_size, in_dim1, in_dim2, in_dim3, in_dim4, in_dim5};
-  return Transpose::DoTranspose(prop, stream, cublas_handle, permutation, input, output, &virtual_input_shape);
+  return Transpose::DoTranspose(prop, stream, cublas_handle, permutation, input, output,
+                                &virtual_input_shape, &virtual_output_shape);
 }
 
 Status SpaceToDepth::ComputeInternal(OpKernelContext* context) const {
@@ -105,17 +107,18 @@ Status SpaceToDepth::ComputeInternal(OpKernelContext* context) const {
                                                         output_depth, output_height, output_width,
                                                         true));
 
-  // We use the "virtual" output shape to construct the output tensor
-  Tensor& output = *context->Output(0,
-                                    {batch, blocksize_, blocksize_, input_depth, input_height / blocksize_, input_width / blocksize_});
+  // We use the "actual" output shape to construct the output tensor
+  Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
+
+  // We will pass in the "virtual" output shape to be used by DoTranspose() in SpaceDepthOpCudaImpl(...)
+  TensorShape virtual_output_shape{batch, blocksize_, blocksize_, input_depth,
+                                   input_height / blocksize_, input_width / blocksize_};
 
   std::vector<size_t> permutation = {0, 3, 5, 1, 2, 4};
 
   ORT_RETURN_IF_ERROR(SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(), CublasHandle(), input, output, permutation, batch,
-                                           input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_));
-
-  // Reshape to "actual" output shape
-  output.Reshape({batch, output_depth, output_height, output_width});
+                                           input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_,
+                                           virtual_output_shape));
 
   return Status::OK();
 }
@@ -141,9 +144,12 @@ Status DepthToSpace::ComputeInternal(OpKernelContext* context) const {
                                                         output_depth, output_height, output_width,
                                                         false));
 
-  // We use the "virtual" output shape to construct the output tensor
-  Tensor& output = *context->Output(0,
-                                    {batch, input_depth / blocksize_ / blocksize_, input_height, blocksize_, input_width, blocksize_});
+  // We use the "actual" output shape to construct the output tensor
+  Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
+
+  // We will pass in the "virtual" output shape to be used by DoTranspose() in SpaceDepthOpCudaImpl(...)
+  TensorShape virtual_output_shape{batch, input_depth / blocksize_ / blocksize_,
+                                   input_height, blocksize_, input_width, blocksize_};
 
   std::vector<size_t> permutation;
   permutation.reserve(6);
@@ -170,10 +176,8 @@ Status DepthToSpace::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(), CublasHandle(), input, output,
                                            permutation,
                                            batch,
-                                           dim1, blocksize_, dim3, input_height, input_width));
-
-  // Reshape to "actual" output shape
-  output.Reshape({batch, output_depth, output_height, output_width});
+                                           dim1, blocksize_, dim3, input_height, input_width,
+                                           virtual_output_shape));
 
   return Status::OK();
 }

@@ -16,9 +16,9 @@ namespace onnxruntime {
 namespace AttentionFusionHelper {
 
 struct MatchGemmResult {
-  const Node* gemm;                     // the Gemm node.
-  const Node* input_node;               // one node in the subgraph that accept the input.
-  const Node* output_node;              // the node that have output of the subgraph.
+  const Node* gemm = nullptr;                     // the Gemm node.
+  const Node* input_node = nullptr;     // one node in the subgraph that accept the input.
+  const Node* output_node = nullptr;              // the node that have output of the subgraph.
   std::vector<NodeIndex> node_indices;  // id of all nodes.
 };
 
@@ -35,7 +35,7 @@ bool CheckSliceParameters(const Graph& graph, const Node& slice, const std::vect
   for (size_t i = 0; i < expected_values.size(); i++) {
     const NodeArg& input = *(slice.InputDefs()[input_indices[i]]);
     if (expected_values[i] >= static_cast<int64_t>(INT_MAX)) {
-      std::vector<int64_t> ends;
+      InlinedVector<int64_t> ends;
       if (!(optimizer_utils::AppendTensorFromInitializer(graph, input, ends, true) && ends.size() == 1 && ends[0] >= INT_MAX)) {
         DEBUG_LOG("Slice ends is less than INT_MAX");
         return false;
@@ -199,7 +199,7 @@ bool MatchGemmSubgraph(Graph& graph,
       return false;
     }
 
-    std::vector<int64_t> axes;
+    InlinedVector<int64_t> axes;
     if (!(graph_utils::GetRepeatedNodeAttributeValues(unsqueeze_after_gather, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
       DEBUG_LOG("unsqueeze_after_gather axes value not expected");
       return false;
@@ -264,8 +264,8 @@ bool ValidateGemmInitializer(const Graph& graph, const Node& gemm, int64_t hidde
 }
 
 struct MatchUnidirMaskResult {
-  const Node* div_node;                 // the root node (Div) of the subgraph
-  bool is_unidirectional;               // whether the mask is unidirectional.
+  const Node* div_node = nullptr;       // the root node (Div) of the subgraph
+  bool is_unidirectional = false;               // whether the mask is unidirectional.
   std::vector<NodeIndex> node_indices;  // id of all nodes in the subgraph for removing later.
 };
 
@@ -394,7 +394,7 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
   const Node& where_node = edges[0]->GetNode();
   const Node& div_node = edges[1]->GetNode();
 
-  const float expected_value = -10000.0f;
+  constexpr float expected_value = -10000.0f;
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where_node.InputDefs()[2]), expected_value, true)) {
     return false;
   }
@@ -694,7 +694,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
     return false;
   }
 
-  std::vector<int64_t> axes;
+  InlinedVector<int64_t> axes;
   if (!(graph_utils::GetRepeatedNodeAttributeValues(mask_unsqueeze_1, "axes", axes) && axes.size() == 1 && axes[0] == 1)) {
     DEBUG_LOG("mask_unsqueeze_1 axes not matched. Expect: 1");
     return false;
@@ -852,7 +852,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
   if (concat.InputDefs().size() != 4) {
     return false;
   }
-  std::vector<int64_t> shape_value;
+  InlinedVector<int64_t> shape_value;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(concat.InputDefs()[1]), shape_value, true) ||
       shape_value.size() != 1 ||
       shape_value[0] != 1) {
@@ -877,8 +877,8 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
 }
 
 struct MatchPastResult {
-  NodeArg* past;
-  NodeArg* present;
+  NodeArg* past = nullptr;
+  NodeArg* present = nullptr;
   std::vector<NodeIndex> node_indices;
 };
 
@@ -945,7 +945,7 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
   }
 
   if (!transpose_optimized_pattern) {
-    std::vector<int64_t> perm;
+    InlinedVector<int64_t> perm;
     if (!(graph_utils::GetRepeatedNodeAttributeValues(*past_k_transpose, "perm", perm)
         && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
       DEBUG_LOG("past_k_transpose perm attribute not matched");
@@ -959,7 +959,7 @@ bool MatchPastSubgraph(Graph& graph, const Node& k_concat, const Node& v_concat,
     }
   }
 
-  std::vector<int64_t> axes;
+  InlinedVector<int64_t> axes;
   if (!(graph_utils::GetRepeatedNodeAttributeValues(present_k_unsqueeze, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
     DEBUG_LOG("present_k_unsqueeze axes value not expected");
     return false;
@@ -1039,7 +1039,7 @@ bool CheckDistilBertReshapeShape(const Graph& graph, const Node& reshape, int64_
   }
   record_node_idx = edges[1]->GetNode().Index();
 
-  std::vector<int64_t> shape;
+  InlinedVector<int64_t> shape;
   const NodeArg& concat_input_arg_1 = *((*p_concat).InputDefs()[1]);
   if (!optimizer_utils::AppendTensorFromInitializer(graph, concat_input_arg_1, shape) ||
       shape.size() != 1 ||
@@ -1083,7 +1083,7 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
     DEBUG_LOG("Output edge count not expected for nodes in path v");
     return false;
   }
-  std::vector<int64_t> perm;
+  InlinedVector<int64_t> perm;
   if (!(graph_utils::GetRepeatedNodeAttributeValues(transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 2 && perm[2] == 1 && perm[3] == 3)) {
     DEBUG_LOG("Failed in match Transpose attribute perm. Expected: 0, 2, 1, 3");
     return false;
@@ -1100,7 +1100,7 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   }
 
   // Check reshape for q, k or v has shape input (0, 0, N, -1) or (0, 0, N, H)
-  std::vector<int64_t> v_reshape_shape;
+  InlinedVector<int64_t> v_reshape_shape;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(v_reshape.InputDefs()[1]), v_reshape_shape) ||
       v_reshape_shape.size() != 4 ||
       v_reshape_shape[0] != 0 ||
@@ -1119,7 +1119,7 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   // Check reshape for attention output has shape input (0, 0, -1) or (0, 0, N*H)
   // In DistilBert, the reshape after qkv paths can not be fused during reshape fusion, so we do not have the correspondig
   // initializer. We need to get the shape information from the input of concat.
-  std::vector<int64_t> reshape_shape;
+  InlinedVector<int64_t> reshape_shape;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(reshape.InputDefs()[1]), reshape_shape)) {
     if (CheckDistilBertReshapeShape(graph, reshape, hidden_size, record_node_idx, logger)) {
       DEBUG_LOG("Pass CheckNodesInPathV");
@@ -1151,7 +1151,7 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
 
 bool CheckNodesInPathQ(const Graph& graph, const Node& qk_div, const Node& q_reshape, const Node& q_transpose, int64_t num_heads, int64_t head_size, const logging::Logger& logger) {
   DEBUG_LOG("Start CheckNodesInPathQ");
-  std::vector<int64_t> q_reshape_shape;
+  InlinedVector<int64_t> q_reshape_shape;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(q_reshape.InputDefs()[1]), q_reshape_shape) ||
       q_reshape_shape.size() != 4 ||
       q_reshape_shape[0] != 0 ||
@@ -1168,7 +1168,7 @@ bool CheckNodesInPathQ(const Graph& graph, const Node& qk_div, const Node& q_res
     return false;
   }
 
-  std::vector<int64_t> perm;
+  InlinedVector<int64_t> perm;
   if (!(graph_utils::GetRepeatedNodeAttributeValues(q_transpose, "perm", perm) && perm.size() == 4 && perm[0] == 0 && perm[1] == 2 && perm[2] == 1 && perm[3] == 3)) {
     DEBUG_LOG("q_transpose perm attribute not matched");
     return false;
@@ -1180,7 +1180,7 @@ bool CheckNodesInPathQ(const Graph& graph, const Node& qk_div, const Node& q_res
 bool CheckNodesInPathK(const Graph& graph, const Node& k_reshape, const Node& k_transpose, int64_t num_heads,
                        int64_t head_size, bool tranpose_optimized_pattern, const logging::Logger& logger) {
   DEBUG_LOG("Start CheckNodesInPathK");
-  std::vector<int64_t> perm;
+  InlinedVector<int64_t> perm;
 
   if (!graph_utils::GetRepeatedNodeAttributeValues(k_transpose, "perm", perm)) {
     DEBUG_LOG("k_transpose has not perm attribute");
@@ -1199,7 +1199,7 @@ bool CheckNodesInPathK(const Graph& graph, const Node& k_reshape, const Node& k_
     return false;
   }
 
-  std::vector<int64_t> k_reshape_shape;
+  InlinedVector<int64_t> k_reshape_shape;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(k_reshape.InputDefs()[1]), k_reshape_shape) ||
       k_reshape_shape.size() != 4 ||
       k_reshape_shape[0] != 0 ||
@@ -1227,8 +1227,8 @@ NodeArg& CastMaskToInt32(Graph& graph, NodeArg* mask_input, ProviderType provide
   }
 
   NodeArg& cast32 = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("Mask_Int32"), &mask_int32);
-  const std::vector<NodeArg*> input_defs{mask_input};
-  const std::vector<NodeArg*> output_defs{&cast32};
+  const std::array input_defs{mask_input};
+  const std::array output_defs{&cast32};
   Node& node = graph.AddNode(graph.GenerateNodeName("MaskCast"),
                              "Cast",
                              "Cast mask from int64 to int32",
@@ -1238,11 +1238,7 @@ NodeArg& CastMaskToInt32(Graph& graph, NodeArg* mask_input, ProviderType provide
                              kOnnxDomain);
 
   // Add attribute: "to" = 6
-  ONNX_NAMESPACE::AttributeProto to;
-  to.set_name("to");
-  to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-  to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
-  node.AddAttribute("to", to);
+  node.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
 
   node.SetExecutionProviderType(provider_type);
   return cast32;
@@ -1463,7 +1459,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
       transpose_optimized_pattern = true;
       DEBUG_LOG("Using transpose optimized pattern");
       opt_k_transpose = k_concat;
-      std::vector<int64_t> perm;
+      InlinedVector<int64_t> perm;
 
       if (!(graph_utils::GetRepeatedNodeAttributeValues(*opt_k_transpose, "perm", perm) 
           && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {

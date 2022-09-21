@@ -63,27 +63,23 @@ TEST(FeatureVectorizerTest, TraditionalMlOpTest) {
   map_value_type->set_elem_type(TensorProto::FLOAT);
   map_value_type->mutable_shape();
 
-  NodeArg* input_arg1 = new NodeArg("node_1_in_1", &map_int64_float);
+  std::unique_ptr<NodeArg> input_arg1 = std::make_unique<NodeArg>("node_1_in_1", &map_int64_float);
   inputs.clear();
-  inputs.push_back(input_arg1);
-  NodeArg* output_arg1 = new NodeArg("node_1_out_1", &tensor_float);
+  inputs.push_back(input_arg1.get());
+  std::unique_ptr<NodeArg> output_arg1 = std::make_unique<NodeArg>("node_1_out_1", &tensor_float);
   outputs.clear();
-  outputs.push_back(output_arg1);
+  outputs.push_back(output_arg1.get());
   graph.AddNode("node_1", "CastMap", "node 1", inputs, outputs, nullptr, kMLDomain);
 
   inputs.clear();
-  inputs.push_back(output_arg1);
+  inputs.push_back(output_arg1.get());
 
-  NodeArg* output_arg4 = new NodeArg("node_4_out_1", &tensor_float);
+  std::unique_ptr<NodeArg> output_arg4 = std::make_unique<NodeArg>("node_4_out_1", &tensor_float);
   outputs.clear();
-  outputs.push_back(output_arg4);
+  outputs.push_back(output_arg4.get());
   graph.AddNode("node_4", "FeatureVectorizer", "node 4", inputs, outputs, nullptr, kMLDomain);
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-
-  delete input_arg1;
-  delete output_arg1;
-  delete output_arg4;
 }
 #endif
 

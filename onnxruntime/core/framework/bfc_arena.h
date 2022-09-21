@@ -211,7 +211,7 @@ class BFCArena : public IAllocator {
       ORT_ENFORCE(0 == memory_size % kMinAllocationSize);
       const size_t n_handles =
           (memory_size + kMinAllocationSize - 1) / kMinAllocationSize;
-      handles_ = new ChunkHandle[n_handles];
+      handles_ = std::make_unique<ChunkHandle[]>(n_handles);
       for (size_t i = 0; i < n_handles; i++) {
         handles_[i] = kInvalidChunkHandle;
       }
@@ -219,11 +219,11 @@ class BFCArena : public IAllocator {
 
     AllocationRegion() = default;
 
-    ~AllocationRegion() { delete[] handles_; }
+    ~AllocationRegion() = default;
 
     AllocationRegion(AllocationRegion&& other) noexcept { Swap(other); }
 
-    AllocationRegion& operator=(AllocationRegion&& other) {
+    AllocationRegion& operator=(AllocationRegion&& other) noexcept {
       Swap(other);
       return *this;
     }
@@ -266,7 +266,7 @@ class BFCArena : public IAllocator {
     // Array of size "memory_size / kMinAllocationSize".  It is
     // indexed by (p-base) / kMinAllocationSize, contains ChunkHandle
     // for the memory allocation represented by "p"
-    ChunkHandle* handles_ = nullptr;
+    std::unique_ptr<ChunkHandle[]> handles_;
 
     ORT_DISALLOW_ASSIGNMENT(AllocationRegion);
   };

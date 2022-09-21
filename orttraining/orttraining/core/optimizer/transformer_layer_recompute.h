@@ -11,7 +11,7 @@ namespace onnxruntime {
 class TransformerLayerRecompute : public GraphTransformer {
  public:
   TransformerLayerRecompute(int number_recompute_layers,
-                            const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+                            const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("TransformerLayerRecompute", compatible_execution_providers),
         number_recompute_layers_(number_recompute_layers) {}
 

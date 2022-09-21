@@ -95,8 +95,9 @@ KernelDefBuilder FooKernelDef(const char* schema_name) {
   return def;
 }
 
-OpKernel* CreateFooKernel(const OpKernelInfo& kernel_info) {
-  return new FooKernel<float>(kernel_info);
+Status CreateFooKernel(FuncManager&, const OpKernelInfo& kernel_info, std::unique_ptr<OpKernel>& out) {
+  out = std::make_unique<FooKernel<float>>(kernel_info);
+  return Status::OK();
 }
 
 // kernel with optional outputs
@@ -181,8 +182,9 @@ class OptionalOpKernel : public OpKernel {
   }
 };
 
-OpKernel* CreateOptionalOpKernel(const OpKernelInfo& kernel_info) {
-  return new OptionalOpKernel<float>(kernel_info);
+Status CreateOptionalOpKernel(FuncManager&, const OpKernelInfo& kernel_info, std::unique_ptr<OpKernel>& out) {
+  out = std::make_unique<OptionalOpKernel<float>>(kernel_info);
+  return Status::OK();
 }
 
 static const std::string MUL_MODEL_URI = "testdata/mul_1.onnx";
@@ -216,7 +218,7 @@ void RunSession(InferenceSession& session_object,
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(dims_y);
   EXPECT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<float> found(rtensor.template Data<float>(), rtensor.template Data<float>() + expected_shape.Size());
+  const std::vector<float> found(rtensor.Data<float>(), rtensor.Data<float>() + expected_shape.Size());
   ASSERT_EQ(values_y, found);
 }
 

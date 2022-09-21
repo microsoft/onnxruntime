@@ -56,6 +56,7 @@ ElementWiseRangedTransform<T>::~ElementWiseRangedTransform() {
   Status Init(const onnxruntime::NodeAttributes& attributes) {     \
     return (GetFloatParam(#X, attributes, X));                     \
   }                                                                \
+  GSL_SUPPRESS(r .11)                                              \
   ElementWiseRangedTransform<T>* Copy() const final {              \
     using T1 = typename std::remove_pointer<decltype(this)>::type; \
     using T2 = typename std::remove_const<T1>::type;               \
@@ -70,6 +71,7 @@ ElementWiseRangedTransform<T>::~ElementWiseRangedTransform() {
     ORT_RETURN_IF_ERROR(GetFloatParam(#Y, attributes, Y));         \
     return Status::OK();                                           \
   }                                                                \
+  GSL_SUPPRESS(r .11)                                              \
   ElementWiseRangedTransform<T>* Copy() const final {              \
     using T1 = typename std::remove_pointer<decltype(this)>::type; \
     using T2 = typename std::remove_const<T1>::type;               \
@@ -94,8 +96,8 @@ class ElementWiseKernel final : public OpKernel {
       return Status::OK();
     ORT_ENFORCE(input_size < std::numeric_limits<std::ptrdiff_t>::max());
     F f = f_;
-    f.input = X->template Data<T>();
-    f.output = Y->template MutableData<T>();
+    f.input = X->Data<T>();
+    f.output = Y->MutableData<T>();
     concurrency::ThreadPool::TryParallelFor(tp, static_cast<std::ptrdiff_t>(input_size),
                                             {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), f.Cost()},
                                             f);

@@ -7,7 +7,7 @@ interface BackendInfo {
   backend: Backend;
   priority: number;
 
-  initializing?: boolean;
+  initPromise?: Promise<void>;
   initialized?: boolean;
   aborted?: boolean;
 }
@@ -67,22 +67,25 @@ export const resolveBackend = async(backendHints: readonly string[]): Promise<Ba
     if (backendInfo) {
       if (backendInfo.initialized) {
         return backendInfo.backend;
-      } else if (backendInfo.initializing) {
-        throw new Error(`backend "${backendName}" is being initialized; cannot initialize multiple times.`);
       } else if (backendInfo.aborted) {
         continue;  // current backend is unavailable; try next
       }
 
+      const isInitializing = !!backendInfo.initPromise;
       try {
-        backendInfo.initializing = true;
-        await backendInfo.backend.init();
+        if (!isInitializing) {
+          backendInfo.initPromise = backendInfo.backend.init();
+        }
+        await backendInfo.initPromise;
         backendInfo.initialized = true;
         return backendInfo.backend;
       } catch (e) {
-        errors.push({name: backendName, err: e});
+        if (!isInitializing) {
+          errors.push({name: backendName, err: e});
+        }
         backendInfo.aborted = true;
       } finally {
-        backendInfo.initializing = false;
+        delete backendInfo.initPromise;
       }
     }
   }

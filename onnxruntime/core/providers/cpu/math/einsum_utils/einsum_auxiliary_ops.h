@@ -28,7 +28,7 @@ namespace DeviceHelpers {
 using DataCopy = std::function<Status(const Tensor& input, Tensor& output, void* einsum_cuda_assets)>;
 
 // Transpose op - Transposes given input based on data in `permutation`
-using Transpose = std::function<Status(const std::vector<size_t>& permutation, const Tensor& input,
+using Transpose = std::function<Status(const gsl::span<const size_t>& permutation, const Tensor& input,
                                        Tensor& output, const TensorShape* input_shape_override,
                                        void* einsum_cuda_assets)>;
 
@@ -63,7 +63,7 @@ namespace CpuDeviceHelpers {
 
 Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets);
 
-Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
+Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets);
 
 template <typename T>
@@ -85,19 +85,19 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
 }  // namespace DeviceHelpers
 
 // This helps decide if we need to apply (and pay the cost) of a Transpose
-bool IsTransposeRequired(size_t input_rank, const std::vector<size_t>& permutation);
+bool IsTransposeRequired(size_t input_rank, const gsl::span<const size_t>& permutation);
 
 // Thin wrapper over the Transpose op to be called from Einsum that does some checks and invokes the device specific helper
 std::unique_ptr<Tensor> Transpose(const Tensor& input, const TensorShape& input_shape_override,
-                                  const std::vector<size_t>& permutation, AllocatorPtr allocator, void* einsum_cuda_assets,
+                                  const gsl::span<const size_t>& permutation, AllocatorPtr allocator, void* einsum_cuda_assets,
                                   const DeviceHelpers::Transpose& device_transpose_func);
 
 // Thin wrapper over the MatMul op to be called from Einsum that does some checks and invokes the device specific helper
 // Not using the MatMulHelper for checks and to compute output dims as it adds a lot of checking overhead involving transposes of the inputs
 // In our case, we have a more simplistic version which doesn't need to have those checks
 template <typename T>
-std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>& input_1_shape_override,
-                               const Tensor& input_2, const std::vector<int64_t>& input_2_shape_override,
+std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const gsl::span<const int64_t>& input_1_shape_override,
+                               const Tensor& input_2, const gsl::span<const int64_t>& input_2_shape_override,
                                AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
                                const DeviceHelpers::MatMul<T>& device_matmul_func);
 

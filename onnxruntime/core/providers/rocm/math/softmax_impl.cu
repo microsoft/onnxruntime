@@ -38,7 +38,7 @@ void dispatch_warpwise_softmax_forward(hipStream_t stream, output_t* dst, const 
     const int next_power_of_two = 1 << log2_elements;
 
     // This value must match the WARP_SIZE constexpr value computed inside softmax_warp_forward.
-    int warp_size = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
+    int warp_size = (next_power_of_two < GPU_WARP_SIZE_HOST) ? next_power_of_two : GPU_WARP_SIZE_HOST;
 
     // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_forward.
     int batches_per_warp = 1;
@@ -97,6 +97,7 @@ template void dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, true>(
 SPECIALIZED_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_SOFTMAX_IMPL(half, half, float)
 SPECIALIZED_SOFTMAX_IMPL(double, double, double)
+SPECIALIZED_SOFTMAX_IMPL(BFloat16, BFloat16, float)
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
 void dispatch_blockwise_softmax_forward(hipStream_t stream, output_t* output, const input_t* input, int softmax_elements, int softmax_elements_stride, int batch_count) {
@@ -119,6 +120,7 @@ template void dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, true>
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, half, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(double, double, double)
+SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(BFloat16, BFloat16, float)
 
 
 }
