@@ -97,10 +97,14 @@ jobs:
             --build_dir build \
             --update \
             --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON
+      # https://github.com/ZedThree/clang-tidy-review#use-in-a-non-default-location
+      - name: Set base_dir
+        run: echo "base_dir=$(pwd)" >> $GITHUB_ENV
       - name: Run clang-tidy
         uses: ZedThree/clang-tidy-review@526cbfb043719639f1ebdeedae0cc1eacd219d8f
         with:
           token: ${{ secrets.github_token }}
+          base_dir: ${{ env.base_dir }}
           build_dir: "build/Debug/compile_commands.json"
           config_file: ".clang-tidy"
           lgtm_comment_body: ""
