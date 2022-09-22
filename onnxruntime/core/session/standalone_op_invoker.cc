@@ -72,21 +72,11 @@ ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo*) {
 namespace onnxruntime {
 namespace standalone {
 
-void ReleaseNode(onnxruntime::Node* node) {
-  if (node) {
-    for (auto* input_arg : node->InputDefs()) {
-      std::unique_ptr<const onnxruntime::NodeArg>{input_arg};
-    }
-    for (auto* output_arg : node->OutputDefs()) {
-      std::unique_ptr<const onnxruntime::NodeArg>{output_arg};
-
-    }
-    std::unique_ptr<onnxruntime::Node>{node};
-  }
-}
-
-using NodePtr = std::unique_ptr<onnxruntime::Node, void (*)(onnxruntime::Node*)>;
+using NodePtr = std::unique_ptr<onnxruntime::Node>;
 using StandAloneNodesMap = InlinedHashMap<const onnxruntime::OpKernel*, NodePtr>;
+using ArgPtr = std::unique_ptr<onnxruntime::NodeArg>;
+using ArgPtrs = absl::InlinedVector<ArgPtr, 10>;
+using StandAloneArgsMap = InlinedHashMap<const onnxruntime::OpKernel*, ArgPtrs>;
 
 class NodeRepo {
  public:
@@ -95,13 +85,18 @@ class NodeRepo {
     return node_repo;
   }
 
-  onnxruntime::Status AddNode(const onnxruntime::OpKernel* kernel, NodePtr node_ptr) {
+  onnxruntime::Status AddNode(const onnxruntime::OpKernel* kernel, NodePtr node_ptr, ArgPtrs& args) {
     std::lock_guard<std::mutex> guard(mutex_);
-    auto iter = node_map_.find(kernel);
-    if (iter != node_map_.end()) {
+    auto node_iter = node_map_.find(kernel);
+    if (node_iter != node_map_.end()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing node");
     }
     node_map_.insert({kernel, std::move(node_ptr)});
+    auto arg_iter = arg_map_.find(kernel);
+    if (arg_iter != arg_map_.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing arg");
+    }
+    arg_map_.insert({kernel, std::move(args)});
     return Status::OK();
   }
 
@@ -136,6 +131,7 @@ class NodeRepo {
   void RemoveNode(const onnxruntime::OpKernel* kernel) {
     std::lock_guard<std::mutex> guard(mutex_);
     node_map_.erase(kernel);
+    arg_map_.erase(kernel);
   }
 
  private:
@@ -144,6 +140,7 @@ class NodeRepo {
 
   std::mutex mutex_;
   StandAloneNodesMap node_map_;
+  StandAloneArgsMap arg_map_;
 };
 
 // For invoking kernels without a graph
@@ -378,18 +375,21 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
                                                &kernel_create_info);
   ORT_RETURN_IF_ERROR(status);
 
+  ArgPtrs arg_ptrs;
   std::vector<onnxruntime::NodeArg*> input_args;
-  for (int i = 0; i < input_count; ++i) {
-    auto arg_ptr = std::make_unique<onnxruntime::NodeArg>(std::to_string(i), nullptr);
-    input_args.push_back(arg_ptr.release());
-  }
   std::vector<onnxruntime::NodeArg*> output_args;
-  for (int i = 0; i < output_count; ++i) {
-    auto arg_ptr = std::make_unique<onnxruntime::NodeArg>(std::to_string(i), nullptr);
-    output_args.push_back(arg_ptr.release());
+
+  for (int i = 0; i < input_count; ++i) {
+    arg_ptrs.push_back(std::make_unique<NodeArg>(std::to_string(i), nullptr));
+    input_args.push_back(arg_ptrs.back().get());
   }
-  auto tmp_node_holder = std::make_unique<onnxruntime::Node>(std::string("standalone_") + op_name, op_name, "", input_args, output_args, nullptr, domain);
-  NodePtr node_ptr(tmp_node_holder.release(), ReleaseNode);
+
+  for (int i = 0; i < output_count; ++i) {
+    arg_ptrs.push_back(std::make_unique<NodeArg>(std::to_string(i), nullptr));
+    output_args.push_back(arg_ptrs.back().get());
+  }
+
+  NodePtr node_ptr = std::make_unique<onnxruntime::Node>(std::string("standalone_") + op_name, op_name, "", input_args, output_args, nullptr, domain);
   for (int i = 0; i < attr_count; ++i) {
     auto attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr_values[i]);
     node_ptr->AddAttributeProto(*attr_proto);
@@ -410,7 +410,7 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   static FuncManager kFuncMgr;
   status = kernel_create_info->kernel_create_func(kFuncMgr, tmp_kernel_info, op_kernel);
   ORT_RETURN_IF_ERROR(status);
-  status = NodeRepo::GetInstance().AddNode(op_kernel.get(), std::move(node_ptr));
+  status = NodeRepo::GetInstance().AddNode(op_kernel.get(), std::move(node_ptr), arg_ptrs);
   ORT_RETURN_IF_ERROR(status);
   *op = reinterpret_cast<OrtOp*>(op_kernel.release());
   return status;
