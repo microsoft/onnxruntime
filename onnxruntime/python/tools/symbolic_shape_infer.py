@@ -567,13 +567,8 @@ class SymbolicShapeInference:
 
     def _pass_on_shape_and_type(self, node):
         vi = self.known_vi_[node.output[0]]
-        vi.CopyFrom(
-            helper.make_tensor_value_info(
-                node.output[0],
-                self.known_vi_[node.input[0]].type.tensor_type.elem_type,
-                self._get_shape(node, 0),
-            )
-        )
+        assert vi.name == node.output[0]
+        vi.type.CopyFrom(self.known_vi_[node.input[0]].type)
 
     def _new_symbolic_dim(self, prefix, dim):
         new_dim = "{}_d{}".format(prefix, dim)
