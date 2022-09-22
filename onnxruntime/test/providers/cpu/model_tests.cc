@@ -917,6 +917,8 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("cntk_simple_seg"),
       ORT_TSTR("GPT2_LM_HEAD"),
       ORT_TSTR("mlperf_ssd_mobilenet_300"),
+      ORT_TSTR("fp16_coreml_FNS-Candy"),
+      ORT_TSTR("fp16_test_tiny_yolov2"),
       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight"),
       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded"),
       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight"),
