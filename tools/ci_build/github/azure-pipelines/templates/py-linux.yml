@@ -55,7 +55,7 @@ jobs:
               -w /onnxruntime_src \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimecpubuilpython${{ parameters.arch }} /bin/bash tools/ci_build/github/linux/build_linux_arm64_python_package.sh
+              onnxruntimecpubuilpython${{ parameters.arch }} tools/ci_build/github/linux/build_linux_arm64_python_package.sh
             rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
             rm -f $(Build.BinariesDirectory)/Release/models
             rm -rf $(Build.BinariesDirectory)/Release/_deps $(Build.BinariesDirectory)/Release/CMakeFiles
