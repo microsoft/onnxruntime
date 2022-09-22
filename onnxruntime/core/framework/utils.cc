@@ -342,12 +342,19 @@ static bool FinalizeCopyInfoForFetches(gsl::span<const OrtMemoryInfo* const>& fe
   for (size_t i = 0; i < num_outputs; ++i) {
     const OrtMemoryInfo* alloc_info = fetch_alloc_info[i];
 
-    if (alloc_info != nullptr) {
+    if (alloc_info) {
+      // Somehow we get a location requirement for this fetched OrtValue,
+      // let's honor it.
       copy_info[i].target_device = alloc_info->device;
-    }
-
-    if (copy_info[i].source_device != copy_info[i].target_device) {
-      copy_needed = true;
+      if (copy_info[i].source_device != copy_info[i].target_device) {
+        // Copy is needed if the allocation plan puts this output on
+        // a different device.
+        copy_needed = true;
+      }
+    } else {
+      // If this fetched OrtValue doesn't have allocation requirement,
+      // we just don't move it.
+      copy_info[i].target_device = copy_info[i].source_device;
     }
   }
 
