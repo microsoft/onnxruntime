@@ -450,7 +450,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
                                               gsl::span<const OrtValue> orig_feeds,
                                               std::vector<OrtValue>& new_feeds,
                                               gsl::span<const MLValueCopyInfo> copy_info,
-                                              gsl::span<Stream*> feed_streams) {
+                                              gsl::span<Stream* const> feed_streams) {
   size_t num_feeds = orig_feeds.size();
   ORT_ENFORCE(copy_info.size() == num_feeds);
   ORT_ENFORCE(feed_streams.size() == num_feeds);
@@ -521,7 +521,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
                                                gsl::span<const OrtValue> fetches,
                                                std::vector<OrtValue>& user_fetches,
                                                gsl::span<const MLValueCopyInfo> copy_info,
-                                               gsl::span<Stream*> fetch_streams) {
+                                               gsl::span<Stream* const> fetch_streams) {
   auto num_outputs = fetches.size();
   user_fetches.resize(num_outputs);
 
