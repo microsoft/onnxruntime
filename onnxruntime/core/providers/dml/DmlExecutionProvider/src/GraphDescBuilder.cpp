@@ -162,8 +162,7 @@ namespace Dml::GraphDescBuilder
             for (uint32_t inputIndex = 0; inputIndex < graphNodeCreateInfo.inputEdges.size(); inputIndex++)
             {
                 auto& operatorGraphInputEdge = graphNodeCreateInfo.inputEdges[inputIndex];
-                uint32_t kernelInputIndex = operatorGraphInputEdge.GraphInputIndex;
-
+                
                 // operatorGraphInputEdge.GraphInputIndex will be the operator input kernel index.
                 const onnxruntime::NodeArg* arg = node.InputDefs()[operatorGraphInputEdge.GraphInputIndex];
 
