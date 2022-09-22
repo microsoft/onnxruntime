@@ -261,7 +261,7 @@ InlinedVector<Node*> NodesToOptimize::Inputs(gsl::span<const int> indices, bool 
   return results;
 }
 
-InlinedVector<Node*> NodesToOptimize::Outputs(const std::vector<int>& indices, bool required) const {
+InlinedVector<Node*> NodesToOptimize::Outputs(gsl::span<const int> indices, bool required) const {
   InlinedVector<Node*> results;
   results.reserve(NumOutputEntries());
 
@@ -309,7 +309,7 @@ Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo&
 }
 
 Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest,
-                       const std::vector<NodeAndMoveInfo>& moves, bool only_update_dest_definitions) {
+                       gsl::span<const NodeAndMoveInfo> moves, bool only_update_dest_definitions) {
   for (const auto& move : moves) {
     auto src_nodes = selected_nodes.GetNodesAtLocation(move.src_node, !move.value_move_info.optional);
 
