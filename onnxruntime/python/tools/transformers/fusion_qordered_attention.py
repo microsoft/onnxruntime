@@ -6,6 +6,7 @@
 from logging import getLogger
 from typing import Tuple
 
+import numpy as np
 from fusion_attention import AttentionMask
 from fusion_base import Fusion
 from fusion_utils import FusionUtils, NumpyHelper
@@ -41,7 +42,22 @@ class FusionQOrderedAttention(Fusion):
         q_shape = self.model.get_initializer(reshape_q.input[1])
         if q_shape is None:
             logger.debug(f"{reshape_q.input[1]} is not initializer.")
-            return self.num_heads, self.hidden_size  # Fall back to user specified value
+
+            # Check if the second input to Reshape flows through a Constant node
+            # TODO: Investigate why FusionAttention doesn't have such logic
+            constant_node = self.model.match_parent_path(
+                reshape_q, ["Constant"], [1])
+            
+            if constant_node is None:
+                return self.num_heads, self.hidden_size  # Fall back to user specified value
+            else:
+                constant_node = constant_node[0]
+
+                if len(constant_node.attribute) != 1:
+                    return self.num_heads, self.hidden_size  # Fall back to user specified value
+
+                # This is assuming it is a Tensor attribute (this is a safe assumption)
+                q_shape = constant_node.attribute[0].t
 
         q_shape_value = NumpyHelper.to_array(q_shape)
         if len(q_shape_value) != 4 or (q_shape_value[2] <= 0 or q_shape_value[3] <= 0):
@@ -294,17 +310,25 @@ class FusionQOrderedAttention(Fusion):
                 logger.debug("fuse_qordered_attention: failed to match mask_nodes path")
                 return
 
+        # Ascertain `qkv_hidden_sizes` attribute value
+        q_weight = self.model.get_initializer(dequantize_q_matmul_weight.input[0])
+        k_weight = self.model.get_initializer(dequantize_k_matmul_weight.input[0])
+        v_weight = self.model.get_initializer(dequantize_v_matmul_weight.input[0])
+
+        qw = NumpyHelper.to_array(q_weight)
+        kw = NumpyHelper.to_array(k_weight)
+        vw = NumpyHelper.to_array(v_weight)
+
+        qw_out_size = np.prod(qw.shape[1:])
+        kw_out_size = np.prod(kw.shape[1:])
+        vw_out_size = np.prod(vw.shape[1:])
+
         # Form QOrderedAttention node
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
-            # TODO: Fix this
-            # num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
-            num_heads, hidden_size = (12, 768)
-
-            if hidden_size > 0 and (hidden_size % num_heads) != 0:
-                logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
-                return None
+            # Ascertain `num_heads` and `hidden_size`
+            num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
 
             # Formulate the inputs
             # Actual quantized input
@@ -379,6 +403,9 @@ class FusionQOrderedAttention(Fusion):
             attention_node.attribute.extend([helper.make_attribute("order_input", 1)])
             attention_node.attribute.extend([helper.make_attribute("order_weight", 0)])
             attention_node.attribute.extend([helper.make_attribute("order_output", 1)])
+            attention_node.attribute.extend(
+                [helper.make_attribute("qkv_hidden_sizes", [qw_out_size, kw_out_size, vw_out_size])]
+            )
 
             attention_node.domain = "com.microsoft"
 
