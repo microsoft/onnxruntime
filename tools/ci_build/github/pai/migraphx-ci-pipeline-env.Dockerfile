@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm5.2_ubuntu20.04_py3.7_pytorch_1.11.0
+FROM rocm/pytorch:rocm5.2.3_ubuntu20.04_py3.7_pytorch_1.12.1
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV MIGRAPHX_DISABLE_FAST_GELU=1
@@ -25,8 +25,7 @@ RUN cd /usr/local && \
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-Linux-x86_64/bin:${PATH}
 
 RUN apt-get update &&\
-    apt-get install -y sudo git bash build-essential rocm-dev python3.7 python3-pip miopen-hip \
-    rocblas half libnuma-dev
+    apt-get install -y half libnuma-dev
 
 # Install rbuild
 RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz numpy yapf==0.28.0
