@@ -450,7 +450,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
                                               gsl::span<const OrtValue> orig_feeds,
                                               std::vector<OrtValue>& new_feeds,
                                               gsl::span<const MLValueCopyInfo> copy_info,
-                                              std::vector<Stream*>& feed_streams) {
+                                              gsl::span<Stream* const> feed_streams) {
   size_t num_feeds = orig_feeds.size();
   ORT_ENFORCE(copy_info.size() == num_feeds);
   ORT_ENFORCE(feed_streams.size() == num_feeds);
@@ -518,10 +518,10 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
 }
 
 static common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
-                                               const std::vector<OrtValue>& fetches,
+                                               gsl::span<const OrtValue> fetches,
                                                std::vector<OrtValue>& user_fetches,
-                                               const std::vector<MLValueCopyInfo>& copy_info,
-                                               const std::vector<Stream*>& fetch_streams) {
+                                               gsl::span<const MLValueCopyInfo> copy_info,
+                                               gsl::span<Stream* const> fetch_streams) {
   auto num_outputs = fetches.size();
   user_fetches.resize(num_outputs);
 
@@ -638,7 +638,8 @@ ExecuteGraphImpl(const SessionState& session_state,
 
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
-      std::vector<Stream*> feed_streams;
+      InlinedVector<Stream*> feed_streams;
+      feed_streams.reserve(feed_copy_info.size());
       // TODO: we can pre-calculate the stream index for graph inputs in execution plan
       for (auto& copy_info : feed_copy_info) {
         auto& device = copy_info.target_device;
@@ -678,7 +679,6 @@ ExecuteGraphImpl(const SessionState& session_state,
     }
 
     // no device copies are needed so simple execute
-    std::vector<Stream*> fetches_streams;
     auto ret = ExecuteThePlan(session_state,
                               feeds_fetches_info.feeds_mlvalue_idxs, feeds_to_use,
                               feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
@@ -688,6 +688,8 @@ ExecuteGraphImpl(const SessionState& session_state,
                               only_execute_path_to_fetches,
                               single_thread_mode);
     ORT_RETURN_IF_ERROR(ret);
+    InlinedVector<Stream*> fetches_streams;
+    fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
     auto& device_streams = device_stream_collection.GetStreams();
     for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
@@ -766,7 +768,8 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
-      std::vector<Stream*> feed_streams;
+      InlinedVector<Stream*> feed_streams;
+      feed_streams.reserve(feed_copy_info.size());
       // TODO: we can pre-calculate the stream index for graph inputs in execution plan
       for (auto& copy_info : feed_copy_info) {
         auto& device = copy_info.target_device;
@@ -816,7 +819,8 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                               state,
                                               cache));
 
-    std::vector<Stream*> fetches_streams;
+    InlinedVector<Stream*> fetches_streams;
+    fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
     auto& device_streams = device_stream_collection.GetStreams();
     for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {

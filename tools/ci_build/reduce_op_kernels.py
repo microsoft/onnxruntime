@@ -16,7 +16,7 @@ from logger import get_logger
 # directory containing the reduced op files, relative to the build directory
 OP_REDUCTION_DIR = "op_reduction.generated"
 
-# add the path to /tools/python so we can import the config parsing and type reduction processing
+# add the path to tools/python so we can import the config parsing and type reduction processing
 SCRIPT_DIR = Path(__file__).parent.resolve()
 ORT_ROOT = SCRIPT_DIR.parents[1]
 sys.path.append(str(ORT_ROOT / "tools" / "python"))
@@ -34,13 +34,18 @@ def _adapt_filters_for_extended_minimal_build(
     Adapts the values returned by parse_config() for an extended minimal build or higher.
     In particular:
     - Includes ONNX ops needed by layout transformation
+    - Includes MS ops needed by NHWC optimizer
     """
-    # layout transformation requires certain ONNX ops to be available
-    layout_transformation_required_ops = dict()  # op name -> set of opset versions
-    layout_transformation_required_ops_file = ORT_ROOT / "onnxruntime/core/framework/kernel_def_hash_helpers.cc"
-    with open(layout_transformation_required_ops_file, mode="r") as f:
-        region_boundary_pattern = re.compile(r"@@region_(begin|end)\(layout_transformation_required_kernels\)@@")
-        op_to_hash_pattern = re.compile(r'\{"(\w+)_(\d+)",\s+\w+\},')
+    # graph transformations in an extended minimal build require certain ops to be available
+    extended_minimal_build_required_op_ids = set()  # set of (domain, optype, opset)
+    with open(
+        ORT_ROOT / "onnxruntime/core/optimizer/transpose_optimizer/layout_transformation_potentially_added_ops.h",
+        mode="r",
+    ) as f:
+        region_boundary_pattern = re.compile(r"@@region_(begin|end)\(extended_minimal_build_required_kernels\)@@")
+        op_id_pattern = re.compile(
+            r'OpIdentifierWithStringViews{(?P<domain>\w+),\s+"(?P<optype>\w+)",\s+(?P<opset>\d+)}'
+        )
         in_region = False
         for line in f:
             region_boundary_match = region_boundary_pattern.search(line)
@@ -51,31 +56,36 @@ def _adapt_filters_for_extended_minimal_build(
             if not in_region:
                 continue
 
-            op_to_hash_match = op_to_hash_pattern.search(line)
-            if op_to_hash_match:
-                op_name, opset = op_to_hash_match.group(1, 2)
-                layout_transformation_required_ops.setdefault(op_name, set()).add(int(opset))
+            op_id_match = op_id_pattern.search(line)
+            if op_id_match:
+                domain = op_registration_utils.map_ort_constant_to_domain(
+                    op_id_match.group("domain"), allow_unknown_constant=False
+                )
+                optype = op_id_match.group("optype")
+                opset = int(op_id_match.group("opset"))
+                extended_minimal_build_required_op_ids.add((domain, optype, opset))
 
     adapted_required_ops = None
     if base_required_ops is not None:
         adapted_required_ops = base_required_ops.copy()
-        required_onnx_ops = adapted_required_ops.setdefault("ai.onnx", dict())
-        for op_type, opsets in layout_transformation_required_ops.items():
-            for opset in opsets:
-                required_onnx_opset_ops = required_onnx_ops.setdefault(opset, set())
-                required_onnx_opset_ops.add(op_type)
+        for domain, optype, opset in extended_minimal_build_required_op_ids:
+            adapted_required_ops.setdefault(domain, dict()).setdefault(opset, set()).add(optype)
 
     adapted_op_type_impl_filter = None
     if base_op_type_impl_filter is not None:
 
         class _AdaptedFilter(OpTypeImplFilterInterface):
-            def __init__(self, filter_to_adapt: OpTypeImplFilterInterface, required_optypes: typing.Set[str]):
+            def __init__(
+                self,
+                filter_to_adapt: OpTypeImplFilterInterface,
+                required_domain_and_optypes: typing.Set[typing.Tuple[str, str]],
+            ):
                 self.filter_to_adapt = filter_to_adapt
-                self.required_optypes = required_optypes
+                self.required_domain_and_optypes = required_domain_and_optypes
 
             def is_typed_registration_needed(self, domain: str, optype: str, type_registration_str: str):
-                # Always require registration for ONNX ops in self.required_optypes.
-                if domain == "ai.onnx" and optype in self.required_optypes:
+                # Always require registration for ops in self.required_domain_and_optypes.
+                if (domain, optype) in self.required_domain_and_optypes:
                     return True
                 return self.filter_to_adapt.is_typed_registration_needed(domain, optype, type_registration_str)
 
@@ -86,7 +96,8 @@ def _adapt_filters_for_extended_minimal_build(
                 return self.filter_to_adapt.get_cpp_entries()
 
         adapted_op_type_impl_filter = _AdaptedFilter(
-            base_op_type_impl_filter, set(layout_transformation_required_ops.keys())
+            base_op_type_impl_filter,
+            set([(domain, optype) for (domain, optype, opset) in extended_minimal_build_required_op_ids]),
         )
 
     return (adapted_required_ops, adapted_op_type_impl_filter)
@@ -284,23 +295,23 @@ def reduce_ops(
     :param is_extended_minimal_build_or_higher: Whether this build has at least the features of an extended minimal
                                                 build enabled.
     """
-    build_dir = Path(build_dir).resolve()
-    build_dir.mkdir(parents=True, exist_ok=True)
+    build_dir_path = Path(build_dir).resolve()
+    build_dir_path.mkdir(parents=True, exist_ok=True)
 
     required_ops, op_type_impl_filter = parse_config(config_path, enable_type_reduction)
     if is_extended_minimal_build_or_higher:
         required_ops, op_type_impl_filter = _adapt_filters_for_extended_minimal_build(required_ops, op_type_impl_filter)
 
     # delete any existing generated files first
-    op_reduction_root = _get_op_reduction_root(build_dir)
+    op_reduction_root = _get_op_reduction_root(build_dir_path)
     if op_reduction_root.is_dir():
         log.info(f"Deleting existing op reduction file root directory: {op_reduction_root}")
         shutil.rmtree(op_reduction_root)
 
-    _generate_provider_registrations(ORT_ROOT, build_dir, use_cuda, required_ops, op_type_impl_filter)
+    _generate_provider_registrations(ORT_ROOT, build_dir_path, use_cuda, required_ops, op_type_impl_filter)
 
     type_control_cpp_code = op_type_impl_filter.get_cpp_entries() if op_type_impl_filter is not None else []
-    _generate_type_control_overrides(ORT_ROOT, build_dir, type_control_cpp_code)
+    _generate_type_control_overrides(ORT_ROOT, build_dir_path, type_control_cpp_code)
 
 
 if __name__ == "__main__":

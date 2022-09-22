@@ -131,7 +131,7 @@ class FuseExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
+                const IKernelLookup& /*kernel_lookup*/) const override {
     // Fuse two add into one.
     std::vector<std::unique_ptr<ComputeCapability>> result;
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();

@@ -244,7 +244,7 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
     bool continue_flag = true;
     Status status;
     ORT_TRY {
-      status = logic_stream->steps_[since]->GetStepFun()(&ctx, stream_idx, continue_flag);
+      status = logic_stream->steps_[since]->Execute(&ctx, stream_idx, continue_flag);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -281,7 +281,7 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
     bool continue_flag = true;
     Status status;
     ORT_TRY {
-      status = logic_stream->steps_[since]->GetStepFun()(&ctx, stream_idx, continue_flag);
+      status = logic_stream->steps_[since]->Execute(&ctx, stream_idx, continue_flag);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
