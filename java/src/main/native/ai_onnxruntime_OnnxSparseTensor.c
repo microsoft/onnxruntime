@@ -18,8 +18,9 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesBuffer
     (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
   (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
+  const OrtValue* ortValue = (const OrtValue*) handle;
   OrtSparseFormat format;
-  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetSparseTensorFormat((OrtValue*) handle, &format));
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetSparseTensorFormat(ortValue, &format));
   if (code != ORT_OK) {
     return NULL;
   }
@@ -41,7 +42,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesBuffer
   }
 
   OrtTensorTypeAndShapeInfo* info = NULL;
-  code = checkOrtStatus(jniEnv, api, api->GetSparseTensorIndicesTypeShape((OrtValue*) handle, indicesFormat, &info));
+  code = checkOrtStatus(jniEnv, api, api->GetSparseTensorIndicesTypeShape(ortValue, indicesFormat, &info));
   if (code != ORT_OK) {
     return NULL;
   }
@@ -63,7 +64,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesBuffer
 
   uint8_t* arr = NULL;
   size_t indices_size = 0;
-  code = checkOrtStatus(jniEnv, api, api->GetSparseTensorIndices((OrtValue*)handle, indicesFormat, &indices_size, (const void**)&arr));
+  code = checkOrtStatus(jniEnv, api, api->GetSparseTensorIndices(ortValue, indicesFormat, &indices_size, (const void**)&arr));
   if (code != ORT_OK) {
     return NULL;
   }
@@ -85,8 +86,9 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndicesBu
     (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
   (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
+  const OrtValue* ortValue = (const OrtValue*) handle;
   OrtSparseFormat format;
-  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetSparseTensorFormat((OrtValue*) handle, &format));
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetSparseTensorFormat(ortValue, &format));
   if (code != ORT_OK) {
     return NULL;
   }
@@ -105,7 +107,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndicesBu
   }
 
   OrtTensorTypeAndShapeInfo* info = NULL;
-  code = checkOrtStatus(jniEnv, api, api->GetSparseTensorIndicesTypeShape((OrtValue*) handle, indicesFormat, &info));
+  code = checkOrtStatus(jniEnv, api, api->GetSparseTensorIndicesTypeShape(ortValue, indicesFormat, &info));
   if (code != ORT_OK) {
     return NULL;
   }
@@ -127,7 +129,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndicesBu
 
   uint8_t* arr;
   size_t indices_size;
-  code = checkOrtStatus(jniEnv, api, api->GetSparseTensorIndices((OrtValue*)handle, indicesFormat, &indices_size, (const void**)&arr));
+  code = checkOrtStatus(jniEnv, api, api->GetSparseTensorIndices(ortValue, indicesFormat, &indices_size, (const void**)&arr));
   if (code != ORT_OK) {
     return NULL;
   }
@@ -149,8 +151,9 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getValuesBuffer
     (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
   (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
+  const OrtValue* ortValue = (const OrtValue*) handle;
   OrtSparseFormat format;
-  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetSparseTensorFormat((OrtValue*) handle, &format));
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetSparseTensorFormat(ortValue, &format));
   if (code != ORT_OK) {
     return NULL;
   }
@@ -159,7 +162,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getValuesBuffer
     case ORT_SPARSE_CSRC:
     case ORT_SPARSE_BLOCK_SPARSE: {
         OrtTensorTypeAndShapeInfo* info = NULL;
-        checkOrtStatus(jniEnv, api, api->GetSparseTensorValuesTypeAndShape((OrtValue*) handle, &info));
+        checkOrtStatus(jniEnv, api, api->GetSparseTensorValuesTypeAndShape(ortValue, &info));
         if (code != ORT_OK) {
           return NULL;
         }
@@ -180,7 +183,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getValuesBuffer
         size_t sizeBytes = arrSize * typeSize;
 
         uint8_t* arr = NULL;
-        checkOrtStatus(jniEnv, api, api->GetSparseTensorValues((OrtValue*)handle, (const void**)&arr));
+        checkOrtStatus(jniEnv, api, api->GetSparseTensorValues(ortValue, (const void**)&arr));
 
         return (*jniEnv)->NewDirectByteBuffer(jniEnv, arr, sizeBytes);
     }
@@ -228,6 +231,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndicesSh
   // Free the info
   api->ReleaseTensorTypeAndShapeInfo(info);
   if (code != ORT_OK) {
+    free((void*)dimensions);
     return NULL;
   }
 
@@ -237,7 +241,6 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndicesSh
 
   // Free the dimensions array
   free((void*)dimensions);
-  dimensions = NULL;
 
   return shape;
 }
@@ -301,6 +304,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesShape
   // Free the info
   api->ReleaseTensorTypeAndShapeInfo(info);
   if (code != ORT_OK) {
+    free((void*)dimensions);
     return NULL;
   }
 
@@ -309,7 +313,6 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesShape
   (*jniEnv)->SetLongArrayRegion(jniEnv, shape, 0, safecast_size_t_to_jsize(numDim), (jlong*)dimensions);
   // Free the dimensions array
   free((void*)dimensions);
-  dimensions = NULL;
 
   return shape;
 }
@@ -349,6 +352,7 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getValuesShape
   // Free the info
   api->ReleaseTensorTypeAndShapeInfo(info);
   if (code != ORT_OK) {
+    free((void*)dimensions);
     return NULL;
   }
 
@@ -358,7 +362,6 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getValuesShape
 
   // Free the dimensions array
   free((void*)dimensions);
-  dimensions = NULL;
 
   return shape;
 }
@@ -417,7 +420,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxSparseTensor_createCSRCSparseTen
   jsize valuesShapeLen = (*jniEnv)->GetArrayLength(jniEnv, valuesShape);
 
   // Create the OrtValue
-  OrtValue* ortValue;
+  OrtValue* ortValue = NULL;
   code = checkOrtStatus(jniEnv, api, api->CreateSparseTensorWithValuesAsOrtValue(allocatorInfo, dataBufferArr,
                         (int64_t*) shapeArr, shapeLen, (int64_t*) valuesShapeArr, valuesShapeLen, onnxType, &ortValue));
   // Release shapes
