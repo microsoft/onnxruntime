@@ -386,6 +386,16 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
     d_logit->Reshape(new_shape);
   }
 
+  // Bias.
+  const Tensor* p_bias = context->Input<Tensor>(5);
+  if (p_bias) {
+    ORT_ENFORCE(probability_shape.Size() == p_bias->Shape().Size());
+    const T1* bias_data = p_bias->Data<T1>();
+    for (size_t i = 0; i < static_cast<size_t>(probability_shape.Size()); ++i) {
+      d_logit_data[i] += bias_data[i];
+    }
+  }
+
   return Status::OK();
 }
 

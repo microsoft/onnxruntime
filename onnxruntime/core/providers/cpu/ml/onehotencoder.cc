@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/onehotencoder.h"
 /**
-https://github.com/onnx/onnx/blob/master/onnx/defs/traditionalml/defs.cc
+https://github.com/onnx/onnx/blob/main/onnx/defs/traditionalml/defs.cc
 ONNX_OPERATOR_SCHEMA(OneHotEncoder)
 .SetDomain("ai.onnx.ml")
 .SetDoc(R"DOC(

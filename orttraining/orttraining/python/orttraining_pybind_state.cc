@@ -34,6 +34,7 @@
 
 #ifdef ENABLE_TRAINING_ON_DEVICE
 #include "orttraining/training_api/include/checkpoint.h"
+
 #endif
 
 PYBIND11_MAKE_OPAQUE(onnxruntime::OrtValueCache);
@@ -821,8 +822,64 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
         });
-
 #ifdef ENABLE_TRAINING_ON_DEVICE
+  // Python apis only supports CPU device for now.
+  // TODO(adamlouly) : Add support for CUDA device.
+  py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module.)pbdoc");
+  training_module
+      .def(py::init([](const std::string& model_uri,
+                       onnxruntime::training::api::CheckpointState& state,
+                       std::optional<std::string> eval_model_uri) {
+        onnxruntime::SessionOptions session_option;
+        return std::make_unique<onnxruntime::training::api::Module>(
+            model_uri,
+            state.module_checkpoint_state.named_parameters, session_option,
+            GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>(), eval_model_uri);
+      }))
+      .def("train_step",
+           [](onnxruntime::training::api::Module* model,
+              const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
+             ORT_THROW_IF_ERROR(model->TrainStep(user_inputs, user_outputs));
+           })
+      .def("eval_step",
+           [](onnxruntime::training::api::Module* model,
+              const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
+             ORT_THROW_IF_ERROR(model->EvalStep(user_inputs, user_outputs));
+           })
+      .def("reset_grad", [](onnxruntime::training::api::Module* model) -> void {
+        ORT_THROW_IF_ERROR(model->ResetGrad());
+      })
+      .def("save_checkpoint", [](onnxruntime::training::api::Module* model, const std::string& checkpoint_path) -> void {
+        onnxruntime::training::api::CheckpointState state;
+        ORT_THROW_IF_ERROR(model->GetStateDict(state.module_checkpoint_state));
+        ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(state,
+                                                                      ToPathString(checkpoint_path)));
+      });
+
+  py::class_<onnxruntime::training::api::CheckpointState>
+      checkpoint_state(m, "CheckpointState", R"pbdoc(CheckpointState.)pbdoc");
+  checkpoint_state.def(py::init([](
+                                    const std::string& ckpt_uri) {
+    onnxruntime::training::api::CheckpointState state;
+    ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(ckpt_uri, state));
+    return state;
+  }));
+
+  py::class_<onnxruntime::training::api::Optimizer>
+      training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
+  training_optimizer.def(py::init([](
+                                      const std::string optimizer_model_uri,
+                                      onnxruntime::training::api::Module* model) {
+                      onnxruntime::SessionOptions session_option;
+                      return std::make_unique<onnxruntime::training::api::Optimizer>(
+                          optimizer_model_uri,
+                          model->NamedParameters(), session_option,
+                          GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>());
+                    }))
+      .def("optimizer_step", [](onnxruntime::training::api::Optimizer* optimizer) -> void {
+        ORT_THROW_IF_ERROR(optimizer->Step());
+      });
+
   m.def("save_checkpoint",
         [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
            const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,
@@ -855,7 +912,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
 
           std::istringstream buffer(serialized_model);
           ORT_THROW_IF_ERROR(Model::Load(buffer, &model_proto));
-          ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpointToModel(ToPathString(checkpoint_path), model_proto));
+          ORT_THROW_IF_ERROR(
+              onnxruntime::training::api::LoadCheckpointToModel(ToPathString(checkpoint_path), model_proto));
 
           std::string model_proto_str;
           ORT_ENFORCE(model_proto.SerializeToString(&model_proto_str), "Serializing Model failed.");

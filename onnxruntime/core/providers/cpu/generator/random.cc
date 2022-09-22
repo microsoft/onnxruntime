@@ -132,7 +132,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                         BuildKernelDefConstraintsFromTypeList<EnabledRandomUniformLikeOutputTypes>()),
     RandomUniformLike);
 
-// https://github.com/onnx/onnx/blob/master/docs/Operators.md#multinomial
+// https://github.com/onnx/onnx/blob/main/docs/Operators.md#multinomial
 ONNX_CPU_OPERATOR_KERNEL(
     Multinomial,
     7,

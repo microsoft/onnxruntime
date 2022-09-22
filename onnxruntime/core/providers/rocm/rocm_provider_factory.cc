@@ -104,26 +104,26 @@ struct ProviderInfo_ROCM_Impl : ProviderInfo_ROCM {
     return rocm::Impl_Cast(static_cast<hipStream_t>(stream), input_data, output_data, count);
   }
 
-  bool RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return RocmCall<hipError_t, false>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg); }
-  bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return RocmCall<hipError_t, true>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg); }
+  Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return RocmCall<hipError_t, false>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg); }
+  void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { RocmCall<hipError_t, true>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg); }
 
   void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) override {
     ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
 
     // Current ROCM device.
     int device;
-    HIP_CALL(hipGetDevice(&device));
+    HIP_CALL_THROW(hipGetDevice(&device));
 
     if (device != src_location.id) {
       // Need to switch to the allocating device.
-      HIP_CALL(hipSetDevice(src_location.id));
+      HIP_CALL_THROW(hipSetDevice(src_location.id));
       // Copy from GPU to CPU.
-      HIP_CALL(hipMemcpy(dst_ptr, src_ptr, size, hipMemcpyDeviceToHost));
+      HIP_CALL_THROW(hipMemcpy(dst_ptr, src_ptr, size, hipMemcpyDeviceToHost));
       // Switch back to current device.
-      HIP_CALL(hipSetDevice(device));
+      HIP_CALL_THROW(hipSetDevice(device));
     } else {
       // Copy from GPU to CPU.
-      HIP_CALL(hipMemcpy(dst_ptr, src_ptr, size, hipMemcpyDeviceToHost));
+      HIP_CALL_THROW(hipMemcpy(dst_ptr, src_ptr, size, hipMemcpyDeviceToHost));
     }
   }
 

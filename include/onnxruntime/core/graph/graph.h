@@ -18,6 +18,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
+#include "core/common/inlined_containers.h"
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
@@ -1092,13 +1093,6 @@ class Graph {
   */
   Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
-  /**
-  If we have BeginFuseSubGraph, but somehow hit errors, such as Compile of an EP failed on thesub_graph.
-  We can call CancelFuseSubGraph to undo the changes of BeginFuseSubGraph
-  @param fused_node The fused node and it's function body to be removed from the graph
-  */
-  void CancelFuseSubGraph(const Node& fused_node);
-
   void FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node);
 #endif
 
@@ -1338,20 +1332,6 @@ class Graph {
 
   RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
     return runtime_optimizations_;
-  }
-
-  // Stores information collected during the replay of loaded runtime optimizations
-  struct RuntimeOptimizationReplayContext {
-    std::unordered_map<NodeIndex, HashValue> produced_node_index_to_kernel_def_hash{};
-    size_t num_replayed_optimizations{};
-  };
-
-  const RuntimeOptimizationReplayContext& RuntimeOptimizationReplayCtx() const {
-    return runtime_optimization_replay_context_;
-  }
-
-  RuntimeOptimizationReplayContext& MutableRuntimeOptimizationReplayCtx() {
-    return runtime_optimization_replay_context_;
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -1594,8 +1574,6 @@ class Graph {
   // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
   std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ptr_;
   RuntimeOptimizationRecordContainer& runtime_optimizations_;
-
-  RuntimeOptimizationReplayContext runtime_optimization_replay_context_;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -1605,6 +1583,9 @@ class Graph {
   // for the fused kernel. I really don't like it. but for short-term solution, let's host
   // those schemas here.
   InlinedVector<std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_containers_;
+  // in some case, a fused sub-graph will happens multiple times in one model, we use a map
+  // to store reusable-schema in lookup.
+  InlinedHashMap<std::string, std::reference_wrapper<ONNX_NAMESPACE::OpSchema>> reusable_fused_schema_map_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Graph nodes.

@@ -126,10 +126,8 @@ std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(con
 
 std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapability(
     const GraphViewer& graph_viewer,
-    const std::vector<const KernelRegistry*>& kernel_registries) const {
+    const IKernelLookup& /*kernel_lookup*/) const {
   //follow from coreml ep's Getcapability
-
-  ORT_UNUSED_PARAMETER(kernel_registries);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
 

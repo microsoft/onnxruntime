@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//https://github.com/onnx/onnx/blob/master/docs/Operators.md#Scatter
+//https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
 #include <type_traits>
 
 #include "core/common/gsl.h"

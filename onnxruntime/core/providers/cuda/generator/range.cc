@@ -71,10 +71,7 @@ static Status ComputeRange(cudaStream_t stream, OpKernelContext* ctx) {
   T* y = ctx->Output(0, shape)->MutableData<T>();
 
   if (count > 0) {
-    if (!RangeImpl(stream, start, delta, count, y)) {
-      CUDA_CALL(cudaGetLastError());
-      return Status(common::ONNXRUNTIME, common::FAIL);
-    }
+    ORT_RETURN_IF_ERROR(RangeImpl(stream, start, delta, count, y));
   }
 
   return Status::OK();

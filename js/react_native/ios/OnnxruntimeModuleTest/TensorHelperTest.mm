@@ -5,6 +5,7 @@
 
 #import <XCTest/XCTest.h>
 #import <onnxruntime/onnxruntime_cxx_api.h>
+#include <vector>
 
 @interface TensorHelperTest : XCTestCase
 
@@ -142,27 +143,29 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
   NSBundle *bundle = [NSBundle bundleForClass:[TensorHelperTest class]];
   NSString *dataPath = [bundle pathForResource:testDataFileName ofType:testDataFileExtension];
 
-  std::unique_ptr<Ort::Env> ortEnv{new Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default")};
+  Ort::Env ortEnv{ORT_LOGGING_LEVEL_INFO, "Default"};
   Ort::SessionOptions sessionOptions;
-  std::unique_ptr<Ort::Session> session{new Ort::Session(*ortEnv, [dataPath UTF8String], sessionOptions)};
+  Ort::Session session{ortEnv, [dataPath UTF8String], sessionOptions};
 
   Ort::AllocatorWithDefaultOptions ortAllocator;
-  std::vector<Ort::MemoryAllocation> allocations;
+  std::vector<Ort::AllocatedStringPtr> names;
+
+  names.reserve(session.GetInputCount() + session.GetOutputCount());
 
   std::vector<const char *> inputNames;
-  inputNames.reserve(session->GetInputCount());
-  for (size_t i = 0; i < session->GetInputCount(); ++i) {
-    auto inputName = session->GetInputName(i, ortAllocator);
-    allocations.emplace_back(ortAllocator, inputName, strlen(inputName) + 1);
-    inputNames.emplace_back(inputName);
+  inputNames.reserve(session.GetInputCount());
+  for (size_t i = 0; i < session.GetInputCount(); ++i) {
+    auto inputName = session.GetInputNameAllocated(i, ortAllocator);
+    inputNames.emplace_back(inputName.get());
+    names.emplace_back(std::move(inputName));
   }
 
   std::vector<const char *> outputNames;
-  outputNames.reserve(session->GetOutputCount());
-  for (size_t i = 0; i < session->GetOutputCount(); ++i) {
-    auto outputName = session->GetOutputName(i, ortAllocator);
-    allocations.emplace_back(ortAllocator, outputName, strlen(outputName) + 1);
-    outputNames.emplace_back(outputName);
+  outputNames.reserve(session.GetOutputCount());
+  for (size_t i = 0; i < session.GetOutputCount(); ++i) {
+    auto outputName = session.GetOutputNameAllocated(i, ortAllocator);
+    outputNames.emplace_back(outputName.get());
+    names.emplace_back(std::move(outputName));
   }
 
   NSMutableDictionary *inputTensorMap = [NSMutableDictionary dictionary];
@@ -185,7 +188,7 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
 
   NSString *dataEncoded = [byteBufferRef base64EncodedStringWithOptions:0];
   inputTensorMap[@"data"] = dataEncoded;
-
+  std::vector<Ort::MemoryAllocation> allocations;
   Ort::Value inputTensor = [TensorHelper createInputTensor:inputTensorMap
                                               ortAllocator:ortAllocator
                                                allocations:allocations];
@@ -194,8 +197,8 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
   feeds.emplace_back(std::move(inputTensor));
 
   Ort::RunOptions runOptions;
-  auto output = session->Run(runOptions, inputNames.data(), feeds.data(), inputNames.size(), outputNames.data(),
-                             outputNames.size());
+  auto output = session.Run(runOptions, inputNames.data(), feeds.data(), inputNames.size(), outputNames.data(),
+                            outputNames.size());
 
   NSDictionary *resultMap = [TensorHelper createOutputTensor:outputNames values:output];
 
@@ -210,6 +213,7 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
 }
 
 - (void)testCreateOutputTensorDouble {
+  XCTSkip(@"data type for Slice is not supported in mobile package");
   std::array<double_t, 5> outValues{std::numeric_limits<double_t>::min(), 1.0f, 2.0f, 3.0f,
                                     std::numeric_limits<double_t>::max()};
   std::function<NSNumber *(double_t value)> convert = [](double_t value) { return [NSNumber numberWithDouble:value]; };
@@ -217,6 +221,7 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
 }
 
 - (void)testCreateOutputTensorBool {
+  XCTSkip(@"data type for Slice is not supported in mobile package");
   std::array<bool, 5> outValues{false, true, true, false, true};
   std::function<NSNumber *(bool value)> convert = [](bool value) { return [NSNumber numberWithBool:value]; };
   testCreateOutputTensorT<bool>(outValues, convert, JsTensorTypeBool, @"test_types_bool", @"ort");
