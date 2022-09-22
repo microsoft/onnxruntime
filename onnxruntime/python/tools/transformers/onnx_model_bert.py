@@ -60,7 +60,6 @@ class BertOnnxModel(OnnxModel):
 
     def fuse_attention(self):
         self.attention_fusion.apply()
-
         # Only relevant in models with Q-DQ nodes
         self.qordered_attention_fusion.apply()
 
@@ -69,7 +68,6 @@ class BertOnnxModel(OnnxModel):
         fusion.apply()
         fusion = FusionFastGelu(self)
         fusion.apply()
-
         # Only relevant in models with Q-DQ nodes
         fusion = FusionQOrderedGelu(self)
         fusion.apply()
