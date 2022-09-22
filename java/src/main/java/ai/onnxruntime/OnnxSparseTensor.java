@@ -482,6 +482,8 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   /**
    * Creates a sparse CSRC sparse tensor.
    *
+   * <p>The buffers must be kept alive for the lifetime of the ORT sparse tensor object.
+   *
    * @param apiHandle The ORT API pointer.
    * @param allocatorHandle The allocator pointer.
    * @param indicesData The outer indices.
@@ -516,6 +518,8 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
 
   /**
    * Creates a sparse COO or block sparse tensor.
+   *
+   * <p>The buffers must be kept alive for the lifetime of the ORT sparse tensor object.
    *
    * @param apiHandle The ORT API pointer.
    * @param allocatorHandle The allocator pointer.
