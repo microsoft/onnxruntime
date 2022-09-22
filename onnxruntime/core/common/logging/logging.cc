@@ -14,7 +14,7 @@
 #include <Windows.h>
 #else
 #include <unistd.h>
-#if defined(__MACH__) || defined(__wasm__)
+#if defined(__MACH__) || defined(__wasm__) || defined(_AIX)
 #include <pthread.h>
 #else
 #include <sys/syscall.h>
@@ -218,7 +218,7 @@ unsigned int GetThreadId() {
   long tid;
   thr_self(&tid);
   return static_cast<unsigned int>(tid);
-#elif defined(__wasm__)
+#elif defined(__wasm__) || defined(_AIX)
   return static_cast<unsigned int>(pthread_self());
 #else
   return static_cast<unsigned int>(syscall(SYS_gettid));
@@ -231,7 +231,7 @@ unsigned int GetThreadId() {
 unsigned int GetProcessId() {
 #ifdef _WIN32
   return static_cast<unsigned int>(GetCurrentProcessId());
-#elif defined(__MACH__) || defined(__wasm__)
+#elif defined(__MACH__) || defined(__wasm__) || defined(_AIX)
   return static_cast<unsigned int>(getpid());
 #else
   return static_cast<unsigned int>(syscall(SYS_getpid));

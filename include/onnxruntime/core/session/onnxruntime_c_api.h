@@ -3454,7 +3454,6 @@ struct OrtApi {
    *   GPU_FLOAT16 => zdl::DlSystem::Runtime_t::GPU_FLOAT16;
    *   DSP, DSP_FIXED8_TF => zdl::DlSystem::Runtime_t::DSP.
    *   AIP_FIXED_TF, AIP_FIXED8_TF => zdl::DlSystem::Runtime_t::AIP_FIXED_TF.
-   *   SNPE Runtime_t refers to https://developer.qualcomm.com/docs/snpe/group__c__plus__plus__apis.html
    *   "priority": execution priority, options: "low", "normal".
    *   "buffer_type": ITensor or user buffers, options: "ITENSOR", user buffer with different types - "TF8", "TF16", "UINT8", "FLOAT".
    *   "ITENSOR" -- default, ITensor which is float only.
@@ -3495,7 +3494,7 @@ struct OrtApi {
   *
   * \since Version 1.13
   */
-  const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
+  const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version) NO_EXCEPTION;
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer

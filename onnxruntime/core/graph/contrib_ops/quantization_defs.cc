@@ -559,7 +559,7 @@ and produces one output data (Tensor<T>) where the function `f(x) = quantize(alp
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
   const char* QLinearSigmoidDoc_ver1 = R"DOC(
-QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data 
+QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data
 (Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
 Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
 
@@ -584,6 +584,62 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
           {"tensor(uint8)", "tensor(int8)"},
           "Constrain input and output types to 8 bit tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QLinearSoftmax, 1, OpSchema().SetDoc(R"DOC(
+QLinearSoftmax computes the normalized exponential values for the given input:
+Softmax(input, axis) = Exp(input) / ReduceSum(Exp(input), axis=axis, keepdims=1)
+The input does not need to explicitly be a 2D vector. The "axis" attribute
+indicates the dimension along which QLinearSoftmax will be performed for onnx v.13+.
+or the dimension coerced to NxD Matrix for onnx v.12-.
+The output tensor has the same shape.
+)DOC")
+      .Attr("axis", "apply softmax to elements for dimensions axis,"
+      "or all dims along with axis according to op-version", AttributeProto::INT, static_cast<int64_t>(-1))
+      .Attr("opset", "opset version of corresponding SoftMax.", AttributeProto::INT)
+      .Input(0, "X", "The input tensor", "T")
+      .Input(1, "X_scale", "Scale of quantized input 'X'. It must be a scalar.", "tensor(float)")
+      .Input(2, "x_zero_point",
+            "Zero point tensor for input 'X'."
+            "It must be a scalar.",
+            "T", OpSchema::Optional)
+      .Input(3, "y_scale", "Scale of quantized output 'Y'. It must be a scalar.", "tensor(float)")
+      .Input(4, "y_zero_point",
+            "Zero point tensor for output 'Y'. "
+            "It must be a scalar.",
+            "T")
+      .Output(0, "Y",
+              "Output data tensor from pooling across the input "
+              "tensor. The output tensor has the same rank as the input. ",
+              "T")
+      .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"},
+              "Constrain input and output types to singed/unsigned int8 tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        // Shape inference starts
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+
+        // Validate the value of 'axis'
+        const ONNX_NAMESPACE::TensorShapeProto& input_shape =
+            ctx.getInputType(0)->tensor_type().shape();
+        int r = input_shape.dim_size();
+        int axis = static_cast<int>(getAttribute(ctx, "axis", -1));
+        if (axis < -r || axis >= r) {
+          fail_shape_inference(
+              "'axis' must be in [",
+              -r,
+              " , ",
+              (r - 1),
+              "]. Its actual value is: ",
+              axis);
+        }
+
+        // Shape inference
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      }));
 
   ONNX_MS_OPERATOR_SET_SCHEMA(DynamicQuantizeLSTM, 1, OpSchema()
       .Attr(
@@ -1075,5 +1131,89 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
                                   .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
                                   .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
                                   .TypeAndShapeInferenceFunction(EmbedLayerNormalizationShapeInference));
+
+  constexpr const char* QOrderedMatMul_ver1_doc = R"DOC(TODO)DOC";
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedMatMul, 1,
+                              OpSchema()
+                                  .SetDoc(QOrderedMatMul_ver1_doc)
+                                  .Attr("order_A", "cublasLt order of matrix A. Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .Attr("order_B", "cublasLt order of matrix B. Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .Attr("order_Y",
+                                        "cublasLt order of matrix Y and optional matrix C. Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .Input(0, "A", "3-dimensional matrix A", "Q")
+                                  .Input(1, "scale_A", "scale of the input A", "S")
+                                  .Input(2, "B", "2-dimensional matrix B", "Q")
+                                  .Input(3, "scale_B", "scale of the input B", "S")
+                                  .Input(4, "scale_Y", "scale of the output Y", "S")
+                                  .Input(5, "bias", "1d bias", "S", OpSchema::Optional)
+                                  .Input(6, "C",
+                                         "3d or 2d matrix C. if 2d expand to 3d first. "
+                                         "Shape[0] should be 1 or same as A.shape[0] ",
+                                         "Q", OpSchema::Optional)
+                                  .Input(7, "scale_C", "scale of the input A", "S", OpSchema::Optional)
+                                  .Output(0, "Y", "Matrix multiply results from A * B", "Q")
+                                  .TypeConstraint("Q", {"tensor(int8)"},
+                                                  "Constrain input and output types to int8 tensors.")
+                                  .TypeConstraint("S", {"tensor(float)"}, "Constrain bias and scales to float32")
+                                  .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                    propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                    ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 2);
+                                  }));
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedLayerNormalization, 1,
+                              OpSchema()
+                                  .SetDoc("QOrderedLayerNormalization")
+                                  .Attr("axis",
+                                        "The first normalization dimension: normalization "
+                                        "will be performed along dimensions axis "
+                                        ": rank(inputs).",
+                                        AttributeProto::INT,
+                                        static_cast<int64_t>(-1))
+                                  .Attr("epsilon", "The epsilon value to use to avoid division by zero.",
+                                        AttributeProto::FLOAT, 1e-5f)
+                                  .Attr("order_X", "cublasLt order of input X. Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .Attr("order_Y",
+                                        "cublasLt order of matrix Y, must be same as order_X. "
+                                        "Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .AllowUncheckedAttributes()
+                                  .Input(0, "X", "Input data tensor from the previous layer.", "Q")
+                                  .Input(1, "scale_X", "scale of the quantized X", "S")
+                                  .Input(2, "scale", "Scale tensor, i.e., gamma vector.", "F")
+                                  .Input(3, "B", "Bias tensor.", "F", OpSchema::Optional)
+                                  .Input(4, "scale_Y", "scale of the quantized X", "S")
+                                  .Output(0, "Y", "Output data tensor.", "Q")
+                                  .TypeConstraint("F", {"tensor(float16)", "tensor(float)"},
+                                                  "Constrain input gamma and bias could be float16/float tensors. "
+                                                  "float may get better precision, float16 runs faster.")
+                                  .TypeConstraint("S", {"tensor(float)"}, "quantization scale must be float tensors.")
+                                  .TypeConstraint("Q", {"tensor(int8)"}, "quantization tensor must be int8 tensors.")
+                                  .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                    propagateShapeAndTypeFromFirstInput(ctx);
+                                    propagateElemTypeFromInputToOutput(ctx, 0, 0);
+                                  }));
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedGelu, 1,
+                              OpSchema()
+                                  .SetDoc(R"DOC(Ordered Quantize Gelu.)DOC")
+                                  .Attr("order_X", "cublasLt order of input X. Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .Attr("order_Y",
+                                        "cublasLt order of matrix Y, must be same as order_X. "
+                                        "Default is ROW MAJOR.",
+                                        AttributeProto::INT, static_cast<int64_t>(1))
+                                  .Input(0, "X", "N-dimensional input A", "Q")
+                                  .Input(1, "scale_X", "scale of the input A", "S")
+                                  .Input(2, "scale_Y", "scale of the output Y", "S")
+                                  .Output(0, "Y", "Output of the Gelu", "Q")
+                                  .TypeConstraint("Q", {"tensor(int8)"},
+                                                  "Constrain input and output types to int8 tensors.")
+                                  .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32")
+                                  .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
   }  // namespace contrib
 }  // namespace onnxruntime

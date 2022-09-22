@@ -76,7 +76,7 @@ struct OrtTrainingApi {
   * \snippet{doc} snippets.dox OrtStatus Return Value
   *
   */
-  ORT_API2_STATUS(TrainingSessionGetTrainModeOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+  ORT_API2_STATUS(TrainingSessionGetTrainingModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
 
   /** \brief Retrieves the number of user outputs in the eval model.
   *
@@ -89,7 +89,11 @@ struct OrtTrainingApi {
   * \snippet{doc} snippets.dox OrtStatus Return Value
   *
   */
-  ORT_API2_STATUS(TrainingSessionGetEvalModeOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+  ORT_API2_STATUS(TrainingSessionGetEvalModelOutputCount, _In_ const OrtTrainingSession* sess, _Out_ size_t* out);
+
+  ORT_API2_STATUS(TrainingSessionGetTrainingModelOutputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
+
+  ORT_API2_STATUS(TrainingSessionGetEvalModelOutputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator, _Outptr_ char** output);
 
   /** \brief Reset the training model gradients to zero lazily.
   *
@@ -144,6 +148,38 @@ struct OrtTrainingApi {
                   size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,
                   size_t outputs_len, _Inout_updates_all_(outputs_len) OrtValue** outputs);
 
+  /** \brief Sets the learning rate for this training session.
+  *
+  * This function allows users to set the learning rate for the training session. The current
+  * learning rate is maintained by the training session and can be overwritten by invoking
+  * this function with the desired learning rate. This function should not be used when a valid
+  * learning rate scheduler is registered. It should be used either to set the learning rate
+  * derived from a custom learning rate scheduler or to set the learning rate constant to be used
+  * throughout the training session.
+  * Please note that this function does not set the initial learning rate that may be needed
+  * by the predefined learning rate schedulers. To set the initial learning rate for learning
+  * rate schedulers, please look at the function `RegisterLinearLRScheduler`.
+  *
+  * \param[in] sess The training session on which the learning rate needs to be set.
+  * \param[in] learning_rate Desired learning rate to set.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(SetLearningRate, _Inout_ OrtTrainingSession* sess, _In_ float learning_rate);
+
+  /** \brief Gets the current learning rate for this training session.
+  *
+  * This function allows users to get the learning rate for the training session. The current
+  * learning rate is maintained by the training session
+  *
+  * \param[in] sess The training session on which the learning rate needs to be set.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(GetLearningRate, _Inout_ OrtTrainingSession* sess, _Out_ float* learning_rate);
+
   /** \brief Performs the weight updates for the trainable parameters using the optimizer model.
   *
   * This function performs the weight update step that updates the trainable parameters such that they
@@ -160,6 +196,90 @@ struct OrtTrainingApi {
   */
   ORT_API2_STATUS(OptimizerStep, _Inout_ OrtTrainingSession* sess,
                   _In_opt_ const OrtRunOptions* run_options);
+
+  /** \brief Registers the use of the Linear learning rate scheduler for the training session.
+  *
+  * Register a Linear learning rate scheduler with the given
+  * learning rate scheduler parameters. Optionally specify the initial learning rate
+  * that should be used with this learning rate scheduler and training session.
+  *
+  * \param[in] sess The training session that should use the linear learning rate scheduler.
+  * \param[in] warmup_step_count Warmup steps for LR warmup.
+  * \param[in] total_step_count Total step count.
+  * \param[in] initial_lr The initial learning rate to be used by the training session.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(RegisterLinearLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ const int64_t warmup_step_count,
+                    _In_ const int64_t total_step_count, _In_ const float initial_lr);
+
+  /** \brief Update the learning rate based on the registered learing rate scheduler.
+  *
+  * Takes a scheduler step that updates the learning rate that is being used by the training session.
+  * This function should typically be called before invoking the optimizer step for each round,
+  * or as determined necessary to update the learning rate being used by the training session.
+  * Please note that a valid predefined learning rate scheduler must be first registered to invoke this
+  * function.
+  *
+  * \param[in] sess The training session that has the registered learning rate scheduler.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(SchedulerStep, _Inout_ OrtTrainingSession* sess);
+
+  /** \brief Retrieves the size of all the parameters.
+  *
+  * Calculates the size of all the parameters for the training session.
+  * When 'trainable_only' is true, the size is calculated for trainable params only.
+  *
+  * \param[in] sess The training session.
+  * \param[in] trainable_only Whether to skip non-trainable parameters
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(GetParametersSize, _Inout_ OrtTrainingSession* sess,
+                  _Out_ size_t* out, bool trainable_only);
+
+  /** \brief Copy parameters onto contiguous buffer held by parameters_buffer
+  *
+  * The parameters_buffer has to be of the size given by GetParametersSize api call,
+  * with matching setting for 'trainable_only'. All the target parameters must be of the same
+  * datatype. The OrtValue must be pre-allocated onto
+  * the desired device. This is a complementary function to 'CopyBufferToParameters'.
+  * Parameter ordering is preserved.
+  * User is responsible for allocating/freeing the 'parameters_buffer'.
+  *
+  * \param[in] sess The training session.
+  * \param[in] trainable_only Whether to skip non-trainable parameters
+  * \param[out] parameters_buffer The pre-allocated OrtValue buffer to copy onto.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(CopyParametersToBuffer, _Inout_ OrtTrainingSession* sess,
+                    _Inout_ OrtValue* parameters_buffer, bool trainable_only);
+
+  /** \brief Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
+  *
+  * The parameters_buffer has to be of the size given by GetParametersSize api call,
+  * with matching setting for 'trainable_only'. All the target parameters must be of the same
+  * datatype. This is a complementary function to 'CopyBufferToParameters'
+  * and can be used to load updated buffer values onto the parameters. 
+  * Parameter ordering is preserved.
+  * User is responsible for allocating/freeing the 'parameters_buffer'.
+  *
+  * \param[in] sess The training session.
+  * \param[in] trainable_only Whether to skip non-trainable parameters
+  * \param[out] parameters_buffer The pre-allocated OrtValue buffer to copy from.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  */
+  ORT_API2_STATUS(CopyBufferToParameters, _Inout_ OrtTrainingSession* sess,
+                    _Inout_ OrtValue* parameters_buffer, bool trainable_only);
 
   /** \brief Frees up the memory used up by the training session.
   *

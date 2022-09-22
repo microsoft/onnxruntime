@@ -10,6 +10,7 @@
 #include <stack>
 #include <queue>
 
+#include "core/common/common.h"
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
 #include "core/common/inlined_containers.h"
@@ -104,7 +105,8 @@ static Status MergeShapeInfo(const std::string& output_name,
       // target.shape() was empty. 'assert' just in case that ever changes.
       assert(utils::HasShape(source) && utils::HasShape(target));
       LOGS(logger, WARNING) << "Error merging shape info for output. '" << output_name
-                            << "' source:" << utils::GetShape(source) << " target:" << utils::GetShape(target)
+                            << "' source:" << utils::GetTensorShapeFromTensorShapeProto(utils::GetShape(source))
+                            << " target:" << utils::GetTensorShapeFromTensorShapeProto(utils::GetShape(target))
                             << ". Falling back to lenient merge.";
       if (utils::HasTensorType(source)) {
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_tensor_type());
@@ -166,6 +168,12 @@ static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
     shape->add_dim()->set_dim_value(dim);
 
   return t;
+}
+
+static std::string GenerateSchemaKey(const IndexedSubGraph& subgraph_ptr) {
+    return MakeString(subgraph_ptr.GetMetaDef()->domain, "_",
+                      subgraph_ptr.GetMetaDef()->name, "_",
+                      subgraph_ptr.GetMetaDef()->since_version);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -714,12 +722,15 @@ flatbuffers::Offset<fbs::NodeEdge> Node::SaveEdgesToOrtFormat(flatbuffers::FlatB
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
+                               bool can_use_flatbuffer_for_initializers,
                                const logging::Logger& logger, std::unique_ptr<Node>& node) {
   node = std::make_unique<Node>(fbs_node.index(), graph);
-  return node->LoadFromOrtFormat(fbs_node, logger);
+  return node->LoadFromOrtFormat(fbs_node, can_use_flatbuffer_for_initializers, logger);
 }
 
-Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, const logging::Logger& logger) {
+Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
+                               bool can_use_flatbuffer_for_initializers,
+                               const logging::Logger& logger) {
   auto LoadNodeArgsFromOrtFormat =
       [&](const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>* fbs_node_arg_names,
           std::vector<NodeArg*>& node_args,
@@ -758,7 +769,8 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, const log
       AttributeProto attr_proto;
       std::unique_ptr<Graph> subgraph;
       ORT_RETURN_IF_ERROR(
-          fbs::utils::LoadAttributeOrtFormat(*fbs_attr, attr_proto, subgraph, *graph_, *this, logger));
+          fbs::utils::LoadAttributeOrtFormat(*fbs_attr, attr_proto, subgraph, *graph_, *this,
+                                             can_use_flatbuffer_for_initializers, logger));
 
       // If we have a sub graph in this attributes, it will be loaded into subgraph ptr
       // while the attribute proto contains the sub graph will have the empty g() field
@@ -1411,39 +1423,6 @@ Status Graph::VerifyNoDuplicateName() {
   return Status::OK();
 }
 
-// Recurse into any subgraphs to update the list of NodeArg values in outer scope.
-// This information is needed to resolve any dependencies on outer scope values.
-common::Status Graph::SetOuterScopeNodeArgs(const std::unordered_set<std::string>& outer_scope_node_args) {
-  resolve_context_.outer_scope_node_args = outer_scope_node_args;
-
-  if (!resolve_context_.nodes_with_subgraphs.empty()) {
-    // Build the list of NodeArg's that are valid for a subgraph of this GraphBase instance:
-    //   - outer scope for this graph
-    //   - any inputs/initializers from this graph
-    //   - any outputs from nodes in this graph
-    //
-    // We provide outputs from all nodes in this graph at this stage.
-    // BuildConnections will link the node with the subgraph to any outer scope Node/NodeArgs it consumes.
-    // PerformTopologicalSortAndCheckIsAcyclic will validate these links.
-    std::unordered_set<std::string> node_args_in_scope_for_subgraph = outer_scope_node_args;
-
-    node_args_in_scope_for_subgraph.insert(resolve_context_.inputs_and_initializers.cbegin(),
-                                           resolve_context_.inputs_and_initializers.cend());
-
-    std::transform(resolve_context_.output_args.cbegin(), resolve_context_.output_args.cend(),
-                   std::inserter(node_args_in_scope_for_subgraph, node_args_in_scope_for_subgraph.end()),
-                   [](const std::pair<std::string, std::pair<Node*, int>>& entry) { return entry.first; });
-
-    for (auto* node : resolve_context_.nodes_with_subgraphs) {
-      for (auto& subgraph : node->MutableSubgraphs()) {
-        auto status = subgraph->SetOuterScopeNodeArgs(node_args_in_scope_for_subgraph);
-        ORT_RETURN_IF_ERROR(status);
-      }
-    }
-  }
-
-  return Status::OK();
-}
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1536,10 +1515,6 @@ void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int s
 #if !defined(ORT_MINIMAL_BUILD)
 GSL_SUPPRESS(es .84)  // ignoring return value from unordered_map::insert causes noisy complaint
 Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node_args_consumed) {
-  const std::unordered_set<std::string>& outer_scope_node_args = resolve_context_.outer_scope_node_args;
-
-  std::unordered_set<std::string> node_args_consumed_by_subgraphs;
-
   // recurse into subgraphs first so we can update any nodes in this graph that are used by those subgraphs
   if (!resolve_context_.nodes_with_subgraphs.empty()) {
     for (auto* node : resolve_context_.nodes_with_subgraphs) {
@@ -1574,11 +1549,12 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
                   " Graph may not conform to the ONNX spec and contain initializers that are not graph inputs.");
             }
           } else {
-            // this value may be produced by this graph, or it could still be coming from a parent graph if it
-            // is also directly consumed at this level as we create a NodeArg for all Node inputs in this graph.
-            // due to that we need to check the outputs from this level to determine if it is an outer scope value.
-            // we don't have that info yet so store and check before returning from BuildConnections
-            ORT_IGNORE_RETURN_VALUE(node_args_consumed_by_subgraphs.insert(node_arg_name));
+            // as we create a NodeArg instance for all Node inputs the value could be produced by this graph,
+            // or could be coming from outer scope. check the valid values for just this Graph using resolve_context_.
+            // if none are found, it's an outer scope value.
+            if (resolve_context_.IsLocalValue(node_arg_name) == false) {
+              ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(node_arg_name));
+            }
           }
 
           // add it to the Node's list of implicit inputs
@@ -1644,7 +1620,7 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
               // If it is present in the outer scope it will be 'fed' by the execution frame
               // providing access to the OrtValue from the outer scope. Pass the name back up so nodes can
               // be linked correctly at that level.
-              if (outer_scope_node_args.find(input_arg_name) != outer_scope_node_args.cend()) {
+              if (resolve_context_.IsOuterScopeValue(input_arg_name)) {
                 ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(input_arg_name));
               }
             }
@@ -1678,15 +1654,6 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
   }
 
   ORT_RETURN_IF_ERROR(PopulateNodeArgToProducerConsumerLookupsFromNodes());
-
-  // finally check any node args consumed by subgraphs to see if they're available locally.
-  // if not we add them to the list of outer scope values consumed.
-  for (const auto& name : node_args_consumed_by_subgraphs) {
-    if (node_arg_to_producer_node_.find(name) == node_arg_to_producer_node_.cend() &&
-        resolve_context_.inputs_and_initializers.find(name) == resolve_context_.inputs_and_initializers.cend()) {
-      ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(name));
-    }
-  }
 
   return Status::OK();
 }
@@ -2454,19 +2421,25 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
           node_arg->SetShape(inferred_shape);
         }
       } else {
+        bool invalid = false;
+
         if (p_existing_shape->dim_size() != tensor_proto->dims_size()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Type Error: Shape of initializer ", name, " does not match. ",
-                                 *p_existing_shape, " != ", *tensor_proto);
+          invalid = true;
+        } else {
+          for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
+            auto& d = p_existing_shape->dim(i);
+            if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
+              invalid = true;
+              break;
+            }
+          }
         }
 
-        for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
-          auto& d = p_existing_shape->dim(i);
-          if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Type Error: Shape of initializer ", name, " does not match. ",
-                                   *p_existing_shape, " != ", *tensor_proto);
-          }
+        if (invalid) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Type Error: Shape of initializer ", name, " does not match. ",
+                                 utils::GetTensorShapeFromTensorShapeProto(*p_existing_shape), " != ",
+                                 utils::GetTensorShapeFromTensorProto(*tensor_proto));
         }
       }
     }
@@ -2483,21 +2456,28 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   // Set the parent directory of model path to load external tensors if exist
   ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
 
-  LexicalScopeContext lsc;
-  lsc.output_names.insert(resolve_context_.inputs_and_initializers.cbegin(),
-                          resolve_context_.inputs_and_initializers.cend());
+  LexicalScopeContext parent;
+  if (parent_node_) {
+    // add outer scope values. these are set as implicit inputs to the node containing the subgraph
+    // in BuildConnections, which happens prior to this being called during Graph::Resolve
+    const auto& outer_scope_values = parent_node_->ImplicitInputDefs();
+    parent.output_names.reserve(outer_scope_values.size());
 
-  // technically we could add values from Node.GetDefinitions().implicit_input_defs on a per-node basis inside
-  // the below loop so that we only check against the specific outer dependencies of the node.
-  // doing that requires lots of copies of LexicalScopeContext.output_names to clear out the per-Node values
-  // after each loop. instead add all the outer scope values upfront so we can just accumulate new inner scope values
-  // during each loop iteration.
-  lsc.output_names.insert(resolve_context_.outer_scope_node_args.cbegin(),
-                          resolve_context_.outer_scope_node_args.cend());
+    for (const auto* implicit_inputs : outer_scope_values) {
+      parent.output_names.insert(implicit_inputs->Name());
+    }
+  } else {
+    // we may have some locally defined outer scope args if we're in the middle of constructing a subgraph
+    // and need to call Resolve. parent_node_ would be null in this case
+    parent.output_names.insert(outer_scope_node_arg_names_.cbegin(), outer_scope_node_arg_names_.cend());
+  }
 
-  // we may have some locally defined outer scope args if we're in the middle of constructing a subgraph
-  // and need to call Resolve
-  lsc.output_names.insert(outer_scope_node_arg_names_.cbegin(), outer_scope_node_arg_names_.cend());
+  LexicalScopeContext lsc{parent};
+  lsc.output_names.reserve(resolve_context_.inputs_and_initializers.size() + resolve_context_.output_args.size());
+
+  for (const std::string_view& input : resolve_context_.inputs_and_initializers) {
+    lsc.output_names.insert(std::string(input));
+  }
 
   for (auto node_index : nodes_in_topological_order_) {
     // Node verification.
@@ -2601,9 +2581,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 }
 
 Status Graph::VerifyInputAndInitializerNames() {
-  std::unordered_set<std::string>& inputs_and_initializers = resolve_context_.inputs_and_initializers;
+  std::unordered_set<std::string_view>& inputs_and_initializers = resolve_context_.inputs_and_initializers;
 
-  for (auto* input : GetInputs()) {
+  const auto& graph_inputs = GetInputs();
+  inputs_and_initializers.reserve(graph_inputs.size() + name_to_initial_tensor_.size());
+
+  for (auto* input : graph_inputs) {
     auto result = inputs_and_initializers.insert(input->Name());
     if (!result.second) {
       Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
@@ -2623,8 +2606,6 @@ Status Graph::VerifyInputAndInitializerNames() {
 }
 
 Status Graph::InitInputsInitializersOutputs() {
-  resolve_context_.Clear();
-
   // clear the previous relationships, as we re-create them when resolving.
   // same applies to the implicit input defs as they are built from any subgraphs within this graph.
   for (auto& node : Nodes()) {
@@ -2708,12 +2689,9 @@ Status Graph::Resolve(const ResolveOptions& options) {
     return Status::OK();
   }
 
-  // init all graph/subgraphs. non-recursive.
+  // init all graph/subgraphs. non-recursive so call via ForThisAndAllSubgraphs.
   auto init_func = [](Graph& graph) { return graph.InitInputsInitializersOutputs(); };
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, init_func));
-
-  // recursively set the outer scope node args.
-  ORT_RETURN_IF_ERROR(SetOuterScopeNodeArgs(resolve_context_.outer_scope_node_args));
 
   std::unordered_set<std::string> outer_scope_node_args_consumed;
 
@@ -2742,6 +2720,8 @@ Status Graph::Resolve(const ResolveOptions& options) {
                 graph.GraphProtoSyncNeeded(false);
             }
 
+            graph.resolve_context_.Clear();
+
             return Status::OK(); };
 
   ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, finalize_func));
@@ -2759,6 +2739,20 @@ void Graph::SetDescription(const std::string& description) {
   graph_proto_->set_doc_string(description);
 }
 
+bool Graph::ResolveContext::IsLocalValue(const std::string& name) const {
+  return output_args.find(name) != output_args.cend() ||
+         inputs_and_initializers.find(name) != inputs_and_initializers.cend();
+}
+
+bool Graph::ResolveContext::IsInputInitializerOrOutput(const std::string& name, bool check_ancestors) const {
+  return IsLocalValue(name) ||
+         (check_ancestors && graph.parent_graph_ &&
+          graph.parent_graph_->resolve_context_.IsInputInitializerOrOutput(name, check_ancestors));
+}
+
+bool Graph::ResolveContext::IsOuterScopeValue(const std::string& name) const {
+  return graph.parent_graph_ && graph.parent_graph_->resolve_context_.IsInputInitializerOrOutput(name, true);
+}
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -3817,13 +3811,13 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   std::unordered_map<std::string, int> output_indexes;
 
   int cur_idx = 0;
-  for (auto& arg_name : func_meta_def->inputs) {
+  for (const auto& arg_name : func_meta_def->inputs) {
     input_args.push_back(GetNodeArg(arg_name));
     input_indexes[arg_name] = cur_idx++;
   }
 
   cur_idx = 0;
-  for (auto& arg_name : func_meta_def->outputs) {
+  for (const auto& arg_name : func_meta_def->outputs) {
     output_args.push_back(GetNodeArg(arg_name));
     output_indexes[arg_name] = cur_idx++;
   }
@@ -3842,12 +3836,20 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   // kernel lookup works as per usual, if not using an existing schema.
   // in an extended minimal build we do the lookup via a hash so don't need a schema.
   fused_node.SetSinceVersion(func_meta_def->since_version);
-  if (sub_graph.use_existing_schema) {
+  if (sub_graph.schema_source == IndexedSubGraph::SourceOfSchema::EXISTING) {
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
+  } else if (IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE == sub_graph.schema_source) {
+    auto schema_key = GenerateSchemaKey(sub_graph);
+    if (!reusable_fused_schema_map_.contains(schema_key)) {
+      fused_schemas_containers_.push_back(
+          function_utils::CreateSchema(*this, sub_graph, /*allow_aggregated_tensor_type=*/true));
+      reusable_fused_schema_map_.emplace(schema_key, *fused_schemas_containers_.back());
+    }
+
+    fused_node.op_ = &(reusable_fused_schema_map_.at(schema_key).get());
   } else {
-    auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
-    fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
+    fused_schemas_containers_.push_back(function_utils::CreateSchema(*this, sub_graph));
     fused_node.op_ = fused_schemas_containers_.back().get();
   }
 #endif
@@ -3858,31 +3860,6 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
   Node& node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
 
   return node;
-}
-
-void Graph::CancelFuseSubGraph(const Node& fused_node) {
-  auto node_idx = fused_node.Index();
-  if (!GetNode(node_idx))
-    return;
-
-  if (fused_node.NodeType() != Node::Type::Fused)
-    return;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // Remove the tempoary schema from schema container container
-  auto* temp_schema_ptr = fused_node.Op();
-  auto it = std::find_if(
-      fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
-      [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
-        return schema.get() == temp_schema_ptr;
-      });
-  if (it != fused_schemas_containers_.end()) {
-    fused_schemas_containers_.erase(it);
-  }
-#endif
-
-  // Remove the fused_node
-  RemoveNode(node_idx);
 }
 
 void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node) {
@@ -4220,6 +4197,7 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
 #if !defined(ORT_MINIMAL_BUILD)
                                 IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
+                                bool can_use_flatbuffer_for_initializers,
                                 const logging::Logger& logger, std::unique_ptr<Graph>& graph) {
   graph = std::make_unique<Graph>(owning_model, domain_to_version,
 #if !defined(ORT_MINIMAL_BUILD)
@@ -4229,7 +4207,7 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   // Assume anything in ORT format has already been validated.
                                   false);
 
-  ORT_RETURN_IF_ERROR(graph->LoadFromOrtFormat(fbs_graph));
+  ORT_RETURN_IF_ERROR(graph->LoadFromOrtFormat(fbs_graph, can_use_flatbuffer_for_initializers));
 
 #if !defined(ORT_MINIMAL_BUILD)
   // in a full build we need to run Resolve to fully populate ResolveContext and Node::op_,
@@ -4245,6 +4223,7 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
 
 Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                 Graph& parent_graph, const Node& parent_node,
+                                bool can_use_flatbuffer_for_initializers,
                                 const logging::Logger& logger, std::unique_ptr<Graph>& graph) {
   graph = std::make_unique<Graph>(parent_graph.owning_model_,
                                   parent_graph.domain_to_version_,
@@ -4256,7 +4235,7 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   // Assume anything in ORT format has already been validated.
                                   false);
 
-  return graph->LoadFromOrtFormat(fbs_graph);
+  return graph->LoadFromOrtFormat(fbs_graph, can_use_flatbuffer_for_initializers);
 }
 
 Graph::Graph(const Model& owning_model,
@@ -4285,7 +4264,8 @@ Graph::Graph(const Model& owning_model,
       is_loaded_from_model_file_(true) {  // true as the Graph isn't manually constructed from scratch
 }
 
-common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph) {
+common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
+                                        bool can_use_flatbuffer_for_initializers) {
   // We deserialize the graph from ORT format in the following order:
   // 1. Deserialize the initializers and sparse initializers. Convert sparse to dense.
   // 2. Deserialize the NodeArgs
@@ -4315,7 +4295,8 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     for (const auto* fbs_tensor : *fbs_initializers) {
       ORT_RETURN_IF(nullptr == fbs_tensor, "Initializer tensor is missing. Invalid ORT format model.");
       TensorProto* initializer = deserialized_proto_data_.add_initializer();
-      ORT_RETURN_IF_ERROR(fbs::utils::LoadInitializerOrtFormat(*fbs_tensor, *initializer));
+      ORT_RETURN_IF_ERROR(fbs::utils::LoadInitializerOrtFormat(*fbs_tensor, *initializer,
+                                                               can_use_flatbuffer_for_initializers));
       auto p = name_to_initial_tensor_.emplace(initializer->name(), initializer);
       if (!p.second) {
         LOGS(logger_, WARNING) << "Duplicate initializer (dense or ConstantNode): '" << initializer->name()
@@ -4375,7 +4356,8 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     for (const auto* fbs_node : *fbs_nodes) {
       ORT_RETURN_IF(nullptr == fbs_node, "Node is missing. Invalid ORT format model.");
       std::unique_ptr<Node> node;
-      ORT_RETURN_IF_ERROR(Node::LoadFromOrtFormat(*fbs_node, *this, logger_, node));
+      ORT_RETURN_IF_ERROR(Node::LoadFromOrtFormat(*fbs_node, *this, can_use_flatbuffer_for_initializers, logger_,
+                                                  node));
       ORT_RETURN_IF(node->Index() >= fbs_graph.max_node_index(), "Node index is out of range");
       nodes_[node->Index()] = std::move(node);
       ++num_of_nodes_;

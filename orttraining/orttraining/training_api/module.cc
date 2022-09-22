@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/framework/execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
@@ -72,7 +73,6 @@ Module::Module(const std::string& train_model_path_or_bytes,
   // Reorder the extracted input names in the following order:
   // user inputs, weights, gradients, reset_grad
   std::vector<std::string> user_input_names, param_input_names, grad_input_names, reset_grad_name;
-  std::string name;
 
   std::unordered_map<std::string, size_t> param_name_to_grad_input_index_map;
   for (const auto& input_name : train_input_names) {
@@ -81,8 +81,8 @@ Module::Module(const std::string& train_model_path_or_bytes,
       param_input_names.emplace_back(input_name);
     } else if (input_name == ACCUMULATE_GRAD_CONTROL_INPUT_NAME) {
       reset_grad_name.emplace_back(input_name);
-    } else if (utils::GetParamNameFromGradient(input_name, name)) {
-      param_name_to_grad_input_index_map.insert({name, grad_input_names.size()});
+    } else if (std::string param_name; utils::GetParamNameFromGradient(input_name, param_name)) {
+      param_name_to_grad_input_index_map.insert({param_name, grad_input_names.size()});
       grad_input_names.emplace_back(input_name);
     } else {
       user_input_names.emplace_back(input_name);
@@ -97,7 +97,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
   train_input_names_.insert(train_input_names_.end(), reset_grad_name.begin(), reset_grad_name.end());
 
   for (const auto& output_name : train_output_names) {
-    if (!utils::GetParamNameFromGradient(output_name, name)) {
+    if (std::string param_name; !utils::GetParamNameFromGradient(output_name, param_name)) {
       train_output_names_.emplace_back(output_name);
     }
   }
@@ -139,6 +139,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
     }
 
     weights_.push_back(param_data);
+    weight_names_.push_back(param_name);
 
     // Create gradient buffer when parameter requires gradient.
     if (params_iter->second->RequiresGrad()) {
@@ -187,12 +188,33 @@ Module::Module(const std::string& train_model_path_or_bytes,
   }
 }
 
-size_t Module::GetTrainModeOutputCount() const noexcept {
+size_t Module::GetTrainingModelOutputCount() const noexcept {
   return train_output_names_.size();
 }
 
-size_t Module::GetEvalModeOutputCount() const noexcept {
+size_t Module::GetEvalModelOutputCount() const noexcept {
   return eval_output_names_.size();
+}
+
+std::string Module::GetTrainingModelOutputName(size_t index) const {
+  ORT_ENFORCE(index < train_output_names_.size(), "Train output name index out of range. Expected in range [0-", train_output_names_.size(), "). Actual: ", index);
+  return train_output_names_.at(index);
+}
+
+std::string Module::GetEvalModelOutputName(size_t index) const {
+  ORT_ENFORCE(index < eval_output_names_.size(), "Eval output name index out of range. Expected in range [0-", eval_output_names_.size(), "). Actual: ", index);
+  return eval_output_names_.at(index);
+}
+
+size_t Module::GetParametersSize(const bool trainable_only) const {
+  SafeInt<size_t> parameters_size = 0;
+  for (const auto& it : named_parameters_) {
+    if (trainable_only && !it.second->RequiresGrad()) {
+      continue;
+    }
+    parameters_size += it.second->Data().Get<Tensor>().Shape().Size();
+  }
+  return parameters_size;
 }
 
 std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {
@@ -201,6 +223,92 @@ std::vector<std::shared_ptr<Parameter>> Module::Parameters() const {
     params.push_back(it.second);
   }
   return params;
+}
+
+Status Module::CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only) {
+  ORT_ENFORCE(parameters_buffer.IsAllocated(), "Parameters buffer should be pre-allocated.");
+  ORT_ENFORCE(parameters_buffer.IsTensor(), "Parameters buffer should be of tensor type.");
+  auto* init_tensor = parameters_buffer.GetMutable<Tensor>();
+  ORT_ENFORCE(nullptr != init_tensor);
+  auto expected_buffer_size = static_cast<int64_t>(GetParametersSize(trainable_only));
+  ORT_ENFORCE(init_tensor->Shape().Size() == expected_buffer_size,
+              "Parameters buffer size incorrect. Expected:",expected_buffer_size,
+              ", Actual:", init_tensor->Shape().Size());
+
+  const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();
+
+  size_t offset = 0;
+  for (const auto& param_name : weight_names_) {
+    auto& param = named_parameters_.at(param_name);
+    if (trainable_only && !param->RequiresGrad()) {
+      continue;
+    }
+    OrtValue& weight = param->Data();
+    auto* weight_tensor = weight.GetMutable<Tensor>();
+
+    const TensorShape& shape = weight_tensor->Shape();
+    auto element_type = init_tensor->DataType();
+    ORT_ENFORCE(weight_tensor->DataType() == element_type, "Data types must match.");
+
+    const OrtMemoryInfo& info = init_tensor->Location();
+    std::unique_ptr<Tensor> p_tensor;
+
+    if (onnxruntime::utils::IsPrimitiveDataType<float>(element_type)) {
+      float* data_buffer = init_tensor->MutableData<float>();
+      p_tensor = std::make_unique<Tensor>(element_type,
+                                          shape,
+                                          data_buffer + offset,
+                                          info);
+    } else {
+      ORT_THROW("Unsupported type: ", element_type);
+    }
+    ORT_THROW_IF_ERROR(sess_data_transfer_manager.CopyTensor(*weight_tensor, *p_tensor.get()));
+    offset += shape.Size();
+  }
+  return Status::OK();
+}
+
+Status Module::CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only) {
+  ORT_ENFORCE(parameters_buffer.IsAllocated(), "Parameters buffer should be pre-allocated.");
+  ORT_ENFORCE(parameters_buffer.IsTensor(), "Parameters buffer should be of tensor type.");
+  auto* init_tensor = parameters_buffer.GetMutable<Tensor>();
+  ORT_ENFORCE(nullptr != init_tensor);
+  auto expected_buffer_size = static_cast<int64_t>(GetParametersSize(trainable_only));
+  ORT_ENFORCE(init_tensor->Shape().Size() == expected_buffer_size,
+              "Parameters buffer size incorrect. Expected:",expected_buffer_size,
+              ", Actual:", init_tensor->Shape().Size());
+
+  const DataTransferManager& sess_data_transfer_manager = train_sess_->GetDataTransferManager();
+
+  size_t offset = 0;
+  for (const auto& param_name : weight_names_) {
+    auto& param = named_parameters_.at(param_name);
+    if (trainable_only && !param->RequiresGrad()) {
+      continue;
+    }
+    OrtValue& weight = param->Data();
+    auto* weight_tensor = weight.GetMutable<Tensor>();
+
+    const TensorShape& shape = weight_tensor->Shape();
+    auto element_type = init_tensor->DataType();
+    ORT_ENFORCE(weight_tensor->DataType() == element_type, "Data types must match.");
+
+    const OrtMemoryInfo& info = init_tensor->Location();
+    std::unique_ptr<Tensor> p_tensor;
+
+    if (onnxruntime::utils::IsPrimitiveDataType<float>(element_type)) {
+      float* data_buffer = init_tensor->MutableData<float>();
+      p_tensor = std::make_unique<Tensor>(element_type,
+                                          shape,
+                                          data_buffer + offset,
+                                          info);
+    } else {
+      ORT_THROW("Unsupported type: ", element_type);
+    }
+    ORT_THROW_IF_ERROR(sess_data_transfer_manager.CopyTensor(*p_tensor.get(), *weight_tensor));
+    offset += shape.Size();
+  }
+  return Status::OK();
 }
 
 Status Module::ResetGrad() {

@@ -45,8 +45,6 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders(
         result.emplace_back(DefaultRocmExecutionProvider());
       } else if (entry->Type() == onnxruntime::kDnnlExecutionProvider) {
         result.emplace_back(DefaultDnnlExecutionProvider());
-      } else if (entry->Type() == onnxruntime::kNupharExecutionProvider) {
-        result.emplace_back(DefaultNupharExecutionProvider());
       } else if (entry->Type() == onnxruntime::kTensorrtExecutionProvider) {
         result.emplace_back(DefaultTensorrtExecutionProvider());
       }

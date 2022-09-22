@@ -1,10 +1,12 @@
 """
 @brief      test log(time=3s)
 """
-import unittest
 import copy
+import unittest
+
 import numpy as np
 import torch
+
 from onnxruntime.training.ortmodule import ORTModule
 
 
@@ -77,7 +79,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         for onnx_model in [onnx_graph_inf, onnx_graph_train]:
             for oimp in onnx_model.opset_import:
                 if oimp.domain == "":
-                    self.assertEqual(oimp.version, 14)
+                    self.assertEqual(oimp.version, 15)
         if op_grad_type is not None:
             if isinstance(op_grad_type, tuple):
                 text = str(onnx_graph_train)

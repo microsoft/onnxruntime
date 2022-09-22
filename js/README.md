@@ -161,7 +161,7 @@ This project is a library for running ONNX models on browsers. It is the success
 
    - Setup by script.
 
-     In `<ORT_ROOT>/js/web/`, run `npm run pull:wasm` to pull WebAssembly artifacts for latest master branch from CI pipeline.
+     In `<ORT_ROOT>/js/web/`, run `npm run pull:wasm` to pull WebAssembly artifacts for latest main branch from CI pipeline.
 
    - Download artifacts from pipeline manually.
 

@@ -1,7 +1,7 @@
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 
 
@@ -24,11 +24,11 @@ class QLinearBinaryOp(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [0, 1], initializer_use_weight_qType=False)
+        ) = self.quantizer.quantize_activation(node, [0, 1])
         if not data_found or quantized_input_names is None:
             return super().quantize()
 
-        qlinear_binary_math_output = node.output[0] + "_quantized"
+        qlinear_binary_math_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         qlinear_binary_math_name = node.name + "_quant" if node.name != "" else ""
 
         kwargs = {}
