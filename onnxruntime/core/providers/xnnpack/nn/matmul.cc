@@ -52,7 +52,7 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
         break;
     }
 
-    supported = true;
+    supported = false;
 
   } while (false);
 
