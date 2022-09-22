@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import onnx
 from onnx import TensorProto, helper, save
 from op_test_utils import (
     InputFeedsNegOneZeroOne,
@@ -21,10 +22,13 @@ from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
 
 class TestONNXModel(TestCaseTempDir):
+    # input -> conv -> reshape -> split
     def construct_model(self, model_path):
         #             (input)
         #                |
+        #               Conv
         #                |
+        #             Reshape
         #                |
         #              Split
         #           /    |    \
@@ -36,20 +40,34 @@ class TestONNXModel(TestCaseTempDir):
         # (output_1) (output_2) (output_3)
 
         initializers = []
-        input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [3, 6])
-        output_1 = helper.make_tensor_value_info("output_1", TensorProto.FLOAT, [1, 6])
-        output_2 = helper.make_tensor_value_info("output_2", TensorProto.FLOAT, [1, 6])
-        output_3 = helper.make_tensor_value_info("output_3", TensorProto.FLOAT, [1, 6])
+        input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [6, 3])
 
+        output_1 = helper.make_tensor_value_info("output_1", TensorProto.FLOAT, [1, 12])
+        output_2 = helper.make_tensor_value_info("output_2", TensorProto.FLOAT, [1, 12])
+        output_3 = helper.make_tensor_value_info("output_3", TensorProto.FLOAT, [1, 12])
+
+        reshape_shape = "reshape_shape"
+        initializers.append(
+            onnx.numpy_helper.from_array(
+                np.random.randint(-1, 2, [6, 3]).astype(np.float32),
+                name="conv_weight",
+            )
+        )
+        conv_node = helper.make_node("Conv", ["input", "conv_weight"], ["conv_output"], name="conv_node")
+        initializers.append(onnx.numpy_helper.from_array(np.array([3, 12], dtype=np.int64), name=reshape_shape))
+        reshape_node = helper.make_node(
+            "Reshape", ["conv_output", reshape_shape], ["reshape_output"], name="reshape_node"
+        )
+        initializers.append(onnx.numpy_helper.from_array(np.array([1, 1, 1], dtype=np.int64), name="split"))
         split_node = helper.make_node(
             "Split",
-            inputs=["input"],
+            inputs=["reshape_output", "split"],
             outputs=["output_1", "output_2", "output_3"],
             name="split_node",
             axis=0,
         )
         graph = helper.make_graph(
-            [split_node],
+            [conv_node, reshape_node, split_node],
             "qlinear_split_op_test",
             [input],
             [output_1, output_2, output_3],
@@ -63,7 +81,7 @@ class TestONNXModel(TestCaseTempDir):
         model_fp32_path = "split_fp32.onnx"
         model_fp32_path = Path(self._tmp_model_dir.name).joinpath(model_fp32_path).as_posix()
         self.construct_model(model_fp32_path)
-        data_reader = InputFeedsNegOneZeroOne(1, {"input": [3, 6]})
+        data_reader = InputFeedsNegOneZeroOne(1, {"input": [6, 3]})
 
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
@@ -114,8 +132,8 @@ class TestONNXModel(TestCaseTempDir):
         )
         qdqnode_counts = {
             "Split": 1,
-            "QuantizeLinear": 4,
-            "DequantizeLinear": 4,
+            "QuantizeLinear": 6,
+            "DequantizeLinear": 7,
         }
         check_op_type_count(self, model_uint8_qdq_path, **qdqnode_counts)
         qnode_io_qtypes = {
