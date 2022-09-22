@@ -4,17 +4,13 @@
 #pragma once
 
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker_factory.h"
 
 namespace onnxruntime {
 
 class NodeUnit;
 
 namespace nnapi {
-
-struct OpSupportCheckerRegistrations {
-  std::vector<std::unique_ptr<IOpSupportChecker>> support_checkers;
-  std::unordered_map<std::string, const IOpSupportChecker*> op_support_checker_map;
-};
 
 template <class T>
 void CreateSharedOpSupportCheckerImpl(const std::string& op_type,
@@ -38,11 +34,6 @@ class BaseOpSupportChecker : public IOpSupportChecker {
 
   bool IsOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                      const OpSupportCheckParams& params) const override;
-
-  // This is for ops which are by default supported and do not have their own impl of OpSupportChecker
-  // for those ops (Relu, Identity) we use BaseOpSupportChecker
-  static void CreateSharedOpSupportChecker(
-      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
 
  protected:
   virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& /* node_unit */,

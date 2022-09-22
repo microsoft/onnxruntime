@@ -8,15 +8,12 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_support_checker.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_helpers.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker_factory.h"
 
 namespace onnxruntime {
 namespace nnapi {
 
 class ConvOpSupportChecker : public BaseOpSupportChecker {
- public:
-  static void CreateSharedOpSupportChecker(
-      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
-
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
@@ -33,8 +30,7 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-/* static */ void ConvOpSupportChecker::CreateSharedOpSupportChecker(
-    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+void CreateConvOpSupportChecker(const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
   CreateSharedOpSupportCheckerImpl<ConvOpSupportChecker>(
       op_type, op_registrations,
       {

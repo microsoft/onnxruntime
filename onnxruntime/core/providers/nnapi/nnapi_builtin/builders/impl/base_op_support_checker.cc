@@ -72,8 +72,9 @@ bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializer
   return IsOpSupportedImpl(initializers, node_unit, params);
 }
 
-/* static */ void BaseOpSupportChecker::CreateSharedOpSupportChecker(
-    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+// This is for ops which are by default supported and do not have their own impl of OpSupportChecker
+// for those ops (Relu, Identity) we use BaseOpSupportChecker
+void CreateBaseOpSupportChecker(const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
   CreateSharedOpSupportCheckerImpl<BaseOpSupportChecker>(
       op_type, op_registrations,
       {

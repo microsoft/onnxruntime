@@ -13,7 +13,8 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_support_checker.h"
-#include "core/providers/nnapi/nnapi_builtin/builders/impl/conv_op_support_checker.cc"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker_factory.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_support_helpers.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -21,10 +22,6 @@ namespace nnapi {
 #pragma region op_binary
 
 class BinaryOpSupportChecker : public BaseOpSupportChecker {
- public:
-  static void CreateSharedOpSupportChecker(
-      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
-
  private:
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_unit,
                                            const OpSupportCheckParams& params) const override;
@@ -39,7 +36,7 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-/* static */ void BinaryOpSupportChecker::CreateSharedOpSupportChecker(
+void CreateBinaryOpSupportChecker(
     const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
   CreateSharedOpSupportCheckerImpl<BinaryOpSupportChecker>(
       op_type, op_registrations,
@@ -181,6 +178,12 @@ class TransposeOpSupportChecker : public BaseOpSupportChecker {
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
+void CreateTransposeOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<TransposeOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
+
 bool TransposeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQTranspose;
 }
@@ -244,6 +247,13 @@ class ReshapeOpSupportChecker : public BaseOpSupportChecker {
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+void CreateReshapeOpSupportChecker(
+    const std::string& op_type,
+    OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<ReshapeOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
 
 bool ReshapeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQReshape;
@@ -326,6 +336,11 @@ class UnsqueezeOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 };
 
+void CreateUnsqueezeOpSupportChecker(const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<UnsqueezeOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
+
 bool UnsqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                   const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
@@ -366,6 +381,13 @@ class BatchNormalizationOpSupportChecker : public BaseOpSupportChecker {
   // BatchNormalization opset 6- has unsupported attributes
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 7; }
 };
+
+void CreateBatchNormalizationOpSupportChecker(
+    const std::string& op_type,
+    OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<BatchNormalizationOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
 
 bool BatchNormalizationOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                            const OpSupportCheckParams& /* params */) const {
@@ -423,10 +445,6 @@ bool BatchNormalizationOpSupportChecker::IsOpSupportedImpl(const InitializedTens
 #pragma region op_pool
 
 class PoolOpSupportChecker : public BaseOpSupportChecker {
- public:
-  static void CreateSharedOpSupportChecker(
-      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
-
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
@@ -443,7 +461,7 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-/* static */ void PoolOpSupportChecker::CreateSharedOpSupportChecker(
+void CreatePoolOpSupportChecker(
     const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
   CreateSharedOpSupportCheckerImpl<PoolOpSupportChecker>(
       op_type, op_registrations,
@@ -625,6 +643,12 @@ class CastOpSupportChecker : public BaseOpSupportChecker {
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 6; }
 };
 
+void CreateCastOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<CastOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
+
 bool CastOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& /* params */) const {
   NodeAttrHelper helper(node_unit);
@@ -647,6 +671,12 @@ class DepthToSpaceOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
+
+void CreateDepthToSpaceOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<DepthToSpaceOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
 
 bool DepthToSpaceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                      const OpSupportCheckParams& params) const {
@@ -702,6 +732,12 @@ class SoftMaxOpSupportChecker : public BaseOpSupportChecker {
 
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+void CreateSoftMaxOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<SoftMaxOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
 
 bool SoftMaxOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQSoftmax;
@@ -765,10 +801,6 @@ bool SoftMaxOpSupportChecker::HasSupportedInputOutputsImpl(
 #pragma region op_gemm
 
 class GemmOpSupportChecker : public BaseOpSupportChecker {
- public:
-  static void CreateSharedOpSupportChecker(
-      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
-
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
@@ -806,7 +838,7 @@ bool GemmOpSupportChecker::HasSupportedInputOutputsImpl(
   return true;
 }
 
-/* static */ void GemmOpSupportChecker::CreateSharedOpSupportChecker(
+void CreateGemmOpSupportChecker(
     const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
   CreateSharedOpSupportCheckerImpl<GemmOpSupportChecker>(
       op_type, op_registrations,
@@ -968,10 +1000,6 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 #pragma region op_unary
 
 class UnaryOpSupportChecker : public BaseOpSupportChecker {
- public:
-  static void CreateSharedOpSupportChecker(
-      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
-
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
@@ -989,7 +1017,7 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
                                      const OpSupportCheckParams& params);
 };
 
-/* static */ void UnaryOpSupportChecker::CreateSharedOpSupportChecker(
+void CreateUnaryOpSupportChecker(
     const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
   CreateSharedOpSupportCheckerImpl<UnaryOpSupportChecker>(
       op_type, op_registrations,
@@ -1089,6 +1117,12 @@ class ConcatOpSupportChecker : public BaseOpSupportChecker {
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+void CreateConcatOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<ConcatOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
 
 bool ConcatOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   // TODO add support of QLinearConcat
@@ -1197,6 +1231,12 @@ class SqueezeOpSupportChecker : public BaseOpSupportChecker {
   }
 };
 
+void CreateSqueezeOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<SqueezeOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
+
 bool SqueezeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
@@ -1241,6 +1281,12 @@ class QuantizeLinearOpSupportChecker : public BaseOpSupportChecker {
   }
 };
 
+void CreateQuantizeLinearOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<QuantizeLinearOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
+
 #pragma endregion
 
 #pragma region op_dequantizelinear
@@ -1259,6 +1305,12 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
   }
 };
 
+void CreateDequantizeLinearOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<DequantizeLinearOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
+
 #pragma endregion
 
 #pragma region op_LRN
@@ -1273,6 +1325,12 @@ class LRNOpSupportChecker : public BaseOpSupportChecker {
     return ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 };
+
+void CreateLRNOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<LRNOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
 
 bool LRNOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                             const OpSupportCheckParams& /* params */) const {
@@ -1299,6 +1357,12 @@ class ClipOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
+
+void CreateClipOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<ClipOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
 
 bool ClipOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& /* params */) const {
@@ -1339,6 +1403,12 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+void CreateResizeOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<ResizeOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
 
 bool ResizeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
@@ -1519,6 +1589,12 @@ class FlattenOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 };
 
+void CreateFlattenOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<FlattenOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
+
 bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
@@ -1558,6 +1634,12 @@ class GatherOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
+
+void CreateGatherOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<GatherOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
 
 bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& /* params */) const {
@@ -1605,10 +1687,6 @@ bool GatherOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
 #pragma region op_minmax
 
 class MinMaxOpSupportChecker : public BaseOpSupportChecker {
- public:
-  static void CreateSharedOpSupportChecker(
-      const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
-
  private:
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
                                            const OpSupportCheckParams& /* params */) const override {
@@ -1622,7 +1700,7 @@ class MinMaxOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 };
 
-/* static */ void MinMaxOpSupportChecker::CreateSharedOpSupportChecker(
+void CreateMinMaxOpSupportChecker(
     const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
   CreateSharedOpSupportCheckerImpl<MinMaxOpSupportChecker>(
       op_type, op_registrations,
@@ -1659,6 +1737,12 @@ class EluOpSupportChecker : public BaseOpSupportChecker {
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 6; }
 };
 
+void CreateEluOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<EluOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
+
 #pragma endregion
 
 #pragma region op_slice
@@ -1676,6 +1760,12 @@ class SliceOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
+
+void CreateSliceOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<SliceOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
 
 bool SliceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                               const OpSupportCheckParams& /* params */) const {
@@ -1737,6 +1827,12 @@ class PadOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
+
+void CreatePadOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<PadOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
+}
 
 bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                             const OpSupportCheckParams& /* params */) const {
@@ -1815,7 +1911,7 @@ bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initiali
 
 #pragma endregion op_pad
 
-#pragma region CreateGetOpSupportCheckers
+/* #pragma region CreateGetOpSupportCheckers
 
 // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
 // such that we can reduce binary size.
@@ -1917,7 +2013,7 @@ const std::unordered_map<std::string, const IOpSupportChecker*>& GetOpSupportChe
   return op_registrations.op_support_checker_map;
 }
 
-#pragma endregion
+#pragma endregion */
 
 }  // namespace nnapi
 }  // namespace onnxruntime
