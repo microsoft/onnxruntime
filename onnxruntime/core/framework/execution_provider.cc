@@ -28,28 +28,18 @@ AllocatorPtr IExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type
 
 std::vector<std::unique_ptr<ComputeCapability>>
 IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                  const std::vector<const KernelRegistry*>& kernel_registries) const {
+                                  const IKernelLookup& kernel_lookup) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
-#if !defined(ORT_MINIMAL_BUILD)
-  for (auto& node : graph.Nodes()) {
-    for (auto registry : kernel_registries) {
-      if (KernelRegistry::HasImplementationOf(*registry, node, Type())) {
-        std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
-        sub_graph->nodes.push_back(node.Index());
-        result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
-        break;
-      }
+  for (const auto& node : graph.Nodes()) {
+    if (const KernelCreateInfo* kernel_create_info = kernel_lookup.LookUpKernel(node);
+        kernel_create_info != nullptr) {
+      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+      sub_graph->nodes.push_back(node.Index());
+      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
     }
   }
 
   return result;
-#else
-  // We have saved hashes to lookup static kernels in an ORT format model so the default behavior is to return an
-  // empty vector to leave that in place. An EP that compiles nodes can override this in a minimal build.
-  ORT_UNUSED_PARAMETER(graph);
-  ORT_UNUSED_PARAMETER(kernel_registries);
-  return result;
-#endif
 }
 
 // Update allocator in the provider if already present; ignore if not.

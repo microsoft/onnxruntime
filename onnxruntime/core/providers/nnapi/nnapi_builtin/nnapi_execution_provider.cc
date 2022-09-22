@@ -71,7 +71,7 @@ NnapiExecutionProvider::~NnapiExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                      const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // TODO: Task 812756: NNAPI EP, add support for subgraph (If and Loop operators)
@@ -207,7 +207,7 @@ DataLayout NnapiExecutionProvider::GetPreferredLayout() const {
 static Status GetOutputBuffer(Ort::KernelContext& context,
                               const nnapi::Model& model,
                               const std::string& output_name,
-                              const std::vector<uint32_t>& output_shape,
+                              const InlinedVector<uint32_t>& output_shape,
                               const android::nn::wrapper::Type output_type,
                               void** output_buffer) {
   using namespace android::nn::wrapper;
@@ -317,7 +317,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         auto input_idx = model->GetMappedInputIdx(input_name);
         auto input_tensor = ctx.GetInput(input_idx);
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
-        std::vector<uint32_t> dimensions;
+        InlinedVector<uint32_t> dimensions;
         for (const auto& dim : tensor_info.GetShape())
           dimensions.push_back(static_cast<uint32_t>(dim));
 
@@ -412,7 +412,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         }
 
         ORT_RETURN_IF_ERROR(execution->SetOutputBuffers(outputs));
-        std::vector<std::vector<uint32_t>> dynamic_output_shapes;
+        std::vector<InlinedVector<uint32_t>> dynamic_output_shapes;
         ORT_RETURN_IF_ERROR(
             execution->Predict(dynamic_shape_output_indices, dynamic_output_shapes));
 

@@ -267,6 +267,26 @@ void GetFlattenOutputShape(const NodeUnit& node_unit, const Shape& input_shape, 
   dim_2 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies<int32_t>());
 }
 
+Shape GetShapeInfoFromNodeArg(const GraphViewer& graph_viewer, const std::string& name) {
+  // can be applied to both input and output
+  Shape shape;
+  const auto* node_arg = graph_viewer.GetNodeArg(name);
+  const auto* shape_proto = node_arg->Shape();
+
+  shape.reserve(shape_proto->dim_size());
+  for (const auto& shape_dim : shape_proto->dim()) {
+    // shape_dim here can possibly have dim_param, but as dynamic shape is not supported in NNAPI for now
+    // (checked already in BaseOpSupportChecker), call dim_value here only.
+    shape.push_back(SafeInt<uint32_t>(shape_dim.dim_value()));
+  }
+  // If we have an empty shape, (scalar input), we need to make it as {1} as
+  // nnapi will treat empty shape as dynamic ranking and onnx does not support that
+  if (shape_proto->dim_size() == 0) {
+    shape.push_back(1);
+  }
+  return shape;
+}
+
 bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_partition) {
   if (supported_node_partition.size() == 1) {
     const auto* node = supported_node_partition[0];
@@ -356,7 +376,7 @@ bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_
   return true;
 }
 
-std::string Shape2String(const std::vector<uint32_t>& shape) {
+std::string Shape2String(const Shape& shape) {
   std::ostringstream os;
   os << "[ ";
   for (const auto& dim : shape)

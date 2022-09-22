@@ -790,8 +790,6 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, ST
 // !!PLEASE READ BELOW!! Following that, add new entries above this comment
 
 /*  *** IMPORTANT! ***
- If kernel registrations are incorrectly updated, ORT format models get broken as the kernel hashes may be invalidated.
-
  NEVER update a versioned entry to change the start or end version. These MUST be treated as immutable.
    i.e. if the macro has 'VERSIONED' in it, do not modify that entry
 
