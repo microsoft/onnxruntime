@@ -447,6 +447,7 @@ requirements_file = "requirements.txt"
 
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, "--enable_training")
+enable_training_on_device = parse_arg_remove_boolean(sys.argv, "--enable_training_on_device")
 disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, "--disable_auditwheel_repair")
 default_training_package_device = parse_arg_remove_boolean(sys.argv, "--default_training_package_device")
 
@@ -463,10 +464,10 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
 ]
 
 if not enable_training:
@@ -492,6 +493,10 @@ if enable_training:
             "onnxruntime.training.utils.data",
         ]
     )
+    if enable_training_on_device:
+        packages.append("onnxruntime.training.onnxblock")
+        packages.append("onnxruntime.training.onnxblock.loss")
+        packages.append("onnxruntime.training.onnxblock.optim")
     package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor"] = ["*.cc"]
     package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc"]
     package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator"] = ["*.cc"]
@@ -513,17 +518,25 @@ if enable_training:
         # To support the package consisting of both openvino and training modules part of it
         package_name = "onnxruntime-training"
 
-    # we want put default training packages to pypi. pypi does not accept package with a local version.
-    if not default_training_package_device or nightly_build:
-        if cuda_version:
-            # removing '.' to make Cuda version number in the same form as Pytorch.
-            local_version = "+cu" + cuda_version.replace(".", "")
-        elif rocm_version:
-            # removing '.' to make Rocm version number in the same form as Pytorch.
-            local_version = "+rocm" + rocm_version.replace(".", "")
-        else:
-            # cpu version for documentation
-            local_version = "+cpu"
+    disable_local_version = environ.get("ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION", "0")
+    disable_local_version = (
+        disable_local_version == "1"
+        or disable_local_version.lower() == "true"
+        or disable_local_version.lower() == "yes"
+    )
+    # local version should be disabled for internal feeds.
+    if not disable_local_version:
+        # we want put default training packages to pypi. pypi does not accept package with a local version.
+        if not default_training_package_device or nightly_build:
+            if cuda_version:
+                # removing '.' to make Cuda version number in the same form as Pytorch.
+                local_version = "+cu" + cuda_version.replace(".", "")
+            elif rocm_version:
+                # removing '.' to make Rocm version number in the same form as Pytorch.
+                local_version = "+rocm" + rocm_version.replace(".", "")
+            else:
+                # cpu version for documentation
+                local_version = "+cpu"
 
 if package_name == "onnxruntime-nuphar":
     packages += ["onnxruntime.nuphar"]

@@ -14,6 +14,12 @@ __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
 onnx_domain = "ai.onnx"
 ms_domain = "com.microsoft"
+QUANT_OP_NAME = "QuantizeLinear"
+QUANT_INPUT_SUFFIX = "_QuantizeLinear_Input"
+DEQUANT_OP_NAME = "DequantizeLinear"
+DEQUANT_OUTPUT_SUFFIX = "_DequantizeLinear_Output"
+TENSOR_NAME_QUANT_SUFFIX = "_quantized"
+
 
 type_to_name = {
     1: "FLOAT",
@@ -117,8 +123,7 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
 
 
 def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
-    """
-    Calculate the scale s and zero point z for the quantization relation
+    """Calculate the scale s and zero point z for the quantization relation
     r = s(q-z), where r are the original values and q are the corresponding
     quantized values.
 
@@ -136,6 +141,9 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
 
     """
 
+    if qmin > 0 or qmax < 0:
+        raise ValueError(f"qmin and qmax must meet requirement: qmin <= 0 <= qmax while qmin:{qmin}, qmmax:{qmax}")
+
     # Adjust rmin and rmax such that 0 is included in the range. This is
     # required to make sure zero can be represented by the quantization data
     # type (i.e. to make sure qmin <= zero_point <= qmax)
@@ -147,8 +155,12 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
         rmin = -absmax
         rmax = +absmax
 
-    scale = (rmax - rmin) / float(qmax - qmin) if rmax != rmin else 1.0
-    zero_point = round(qmin - rmin / scale)
+    scale = (rmax - rmin) / float(qmax - qmin)
+    if scale < numpy.finfo(numpy.float32).tiny:
+        scale = 1.0
+        zero_point = 0
+    else:
+        zero_point = round(qmin - rmin / scale)
 
     return [zero_point, scale]
 
@@ -294,7 +306,7 @@ def attribute_to_kwarg(attribute):
         raise ValueError("attribute {} does not have type specified.".format(attribute.name))
 
     # Based on attribute type definitions from AttributeProto
-    # definition in https://github.com/onnx/onnx/blob/master/onnx/onnx.proto
+    # definition in https://github.com/onnx/onnx/blob/main/onnx/onnx.proto
     if attribute.type == 1:
         value = attribute.f
     elif attribute.type == 2:
@@ -358,7 +370,7 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
     """
     Helper function to generate a identifiable filepath by concatenating the given identifier as a suffix.
     """
-    return filename.parent.joinpath(filename.stem + identifier).with_suffix(filename.suffix)
+    return filename.parent.joinpath(filename.stem + identifier + filename.suffix)
 
 
 def apply_plot(hist, hist_edges):
@@ -498,6 +510,24 @@ def optimize_model(model_path: Path, opt_model_path: Path):
     _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"])
 
 
+def add_pre_process_metadata(model):
+    """Tag the model that it went through quantization pre-processing"""
+    metadata_props = {"onnx.quant.pre_process": "onnxruntime.quant"}
+    if model.metadata_props:
+        for prop in model.metadata_props:
+            metadata_props.update({prop.key: prop.value})
+    onnx.helper.set_model_props(model, metadata_props)
+
+
+def model_has_pre_process_metadata(model):
+    """Check the model whether it went through quantization pre-processing"""
+    if model.metadata_props:
+        for prop in model.metadata_props:
+            if prop.key == "onnx.quant.pre_process" and prop.value == "onnxruntime.quant":
+                return True
+    return False
+
+
 def add_infer_metadata(model):
     metadata_props = {"onnx.infer": "onnxruntime.quant"}
     if model.metadata_props:
@@ -549,3 +579,36 @@ def clone_model_with_shape_infer(model):
     else:
         cloned_model = save_and_reload_model(model)
     return cloned_model
+
+
+def tensor_proto_to_array(initializer):
+    if initializer.data_type == onnx_proto.TensorProto.FLOAT:
+        return onnx.numpy_helper.to_array(initializer)
+
+    raise ValueError(
+        f"Only float type is supported. Weights {initializer.name} is {type_to_name[initializer.data_type]}"
+    )
+
+
+def add_quant_suffix(tensor_name):
+    return tensor_name + "_QuantizeLinear"
+
+
+def add_quant_input_suffix(tensor_name):
+    return tensor_name + QUANT_INPUT_SUFFIX
+
+
+def add_quant_output_suffix(tensor_name):
+    return tensor_name + "_QuantizeLinear_Output"
+
+
+def add_dequant_suffix(tensor_name):
+    return tensor_name + "_DequantizeLinear"
+
+
+def add_dequant_input_suffix(tensor_name):
+    return tensor_name + "_DequantizeLinear_Input"
+
+
+def add_dequant_output_suffix(tensor_name):
+    return tensor_name + DEQUANT_OUTPUT_SUFFIX

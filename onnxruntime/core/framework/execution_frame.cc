@@ -357,7 +357,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
       fetches);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  MemoryInfo::IncreaseIteration();
+  session_state.GetMemoryProfiler()->GetMemoryInfo().IncreaseIteration();
 #endif
 
   // map the custom allocators to ort_value_idx entries
@@ -385,7 +385,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
       }
     }
 
-    //if there are some traditional ml value type in inputs disable the memory pattern optimization.
+    // if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
       mem_patterns_ = session_state.GetMemoryPatternGroup(feeds, feed_mlvalue_idxs, inferred_shapes_);
       // if no existing patterns, generate one in this execution frame
@@ -439,16 +439,19 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
               buffers_[location] = BufferUniquePtr(buffer, alloc);
             }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-            //Record activation memory pattern
-            MemoryInfo::ClearMemoryInfoPerExecution();
+            // Record activation memory pattern
+            auto mem_profier_ptr = session_state.GetMemoryProfiler();
+            mem_profier_ptr->GetMemoryInfo().ClearMemoryInfoPerExecution();
             if (mem_patterns_ && buffer != nullptr) {
-              MemoryInfo::RecordPatternInfo(*mem_patterns_, MemoryInfo::MapType::StaticActivation);
-              MemoryInfo::MemoryInfoProfile::CreateEvents("static activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                          MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 0);
+              mem_profier_ptr->GetMemoryInfo().RecordPatternInfo(*mem_patterns_, MemoryInfo::MapType::StaticActivation);
+              mem_profier_ptr->CreateEvents(
+                  "static activations_" + std::to_string(mem_profier_ptr->GetMemoryInfo().GetIteration()),
+                  mem_profier_ptr->GetAndIncreasePid(), MemoryInfo::MapType::StaticActivation, "", 0);
             }
 #endif
             // log size of activation. Keep it commented out for now to avoid log flooding.
-            // VLOGS(session_state_.Logger(), 1) << "**** Allocated memory for activations, size: " <<mem_patterns_->patterns[i].PeakSize();
+            // VLOGS(session_state_.Logger(), 1) << "**** Allocated memory for activations, size: "
+            //                                   << mem_patterns_->patterns[i].PeakSize();
           }
         }
       }
@@ -542,7 +545,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     }
   }
 
-  //no memory pattern, or the pattern is not correct.
+  // no memory pattern, or the pattern is not correct.
   if (!alloc) alloc = GetAllocator(location);
   Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
 
@@ -560,7 +563,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     // if parallel executor is used.
     std::unique_lock<std::mutex> lock(mtx_);
     dynamic_activation_memory_sizes_in_byte_[location.name] += size;
-    MemoryInfo::SetDynamicAllocation(ort_value_index);
+    session_state_.GetMemoryProfiler()->GetMemoryInfo().SetDynamicAllocation(ort_value_index);
 #endif
   }
 
@@ -569,32 +572,40 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
 
 Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse,
                                                               MLDataType element_type, const OrtMemoryInfo& location,
-                                                              const TensorShape& shape, bool create_fence) {
+                                                              const TensorShape& shape, bool create_fence,
+                                                              bool is_strided_tensor) {
   OrtValue& ort_value_reuse = GetMutableMLValue(ort_value_index_reuse);
 
   auto* reuse_tensor = ort_value_reuse.GetMutable<Tensor>();
-  auto buffer_num_elements = reuse_tensor->Shape().Size();
-  auto required_num_elements = shape.Size();
 
-  // check number of elements matches. shape may not be an exact match (e.g. Reshape op)
-  if (buffer_num_elements != required_num_elements) {
-    // could be an allocation planner bug (less likely) or the model incorrectly uses something like 'None'
-    // as a dim_param, or -1 in dim_value in multiple places making the planner think those shapes are equal.
-    auto message = onnxruntime::MakeString(
-        "Shape mismatch attempting to re-use buffer. ",
-        reuse_tensor->Shape(), " != ", shape,
-        ". Validate usage of dim_value (values should be > 0) and "
-        "dim_param (all values with the same string should equate to the same size) in shapes in the model.");
-
-    // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
-    if (buffer_num_elements >= required_num_elements) {
-      // View Operator is reusing the buffer bigger than the required size.
-      // Disabling warning message for now. The op is in the process of being deprecated.
+  // Training starts to support strided tensor that the shape size may be larger (like Expand), smaller (like Split) or
+  // equal (like Transpose) to the shared tensor's shape size, so below check is no longer valid.
 #ifndef ENABLE_TRAINING
-      LOGS(session_state_.Logger(), WARNING) << message;
-#endif
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
+  ORT_ENFORCE(!is_strided_tensor);
+#endif  // ENABLE_TRAINING
+  if (!is_strided_tensor) {
+    auto buffer_num_elements = reuse_tensor->Shape().Size();
+    auto required_num_elements = shape.Size();
+
+    // check number of elements matches. shape may not be an exact match (e.g. Reshape op)
+    if (buffer_num_elements != required_num_elements) {
+      // could be an allocation planner bug (less likely) or the model incorrectly uses something like 'None'
+      // as a dim_param, or -1 in dim_value in multiple places making the planner think those shapes are equal.
+      auto message = onnxruntime::MakeString(
+          "Shape mismatch attempting to re-use buffer. ", reuse_tensor->Shape(), " != ", shape,
+          ". Validate usage of dim_value (values should be > 0) and "
+          "dim_param (all values with the same string should equate to the same size) in shapes in the model.");
+
+      // be generous and use the buffer if it's large enough. log a warning though as it indicates a bad model
+      if (buffer_num_elements >= required_num_elements) {
+        // View Operator is reusing the buffer bigger than the required size.
+        // Disabling warning message for now. The op is in the process of being deprecated.
+#ifndef ENABLE_TRAINING
+        LOGS(session_state_.Logger(), WARNING) << message;
+#endif  // ENABLE_TRAINING
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
+      }
     }
   }
 
@@ -721,8 +732,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 
         ORT_RETURN_IF_ERROR(AllocateReusedOrtValueIfNotAllocatedHelper(reuse_mlvalue_index, shape));
 
-        ORT_RETURN_IF_ERROR(AllocateMLValueTensorPreAllocateBuffer(
-            ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape, per_alloc_plan.create_fence_if_async));
+        bool is_strided_tensor = false;
+#ifdef ENABLE_TRAINING
+        is_strided_tensor = per_alloc_plan.is_strided_tensor;
+#endif  // ENABLE_TRAINING
+        ORT_RETURN_IF_ERROR(
+            AllocateMLValueTensorPreAllocateBuffer(ort_value, reuse_mlvalue_index, ml_data_type, alloc_info, *shape,
+                                                   per_alloc_plan.create_fence_if_async, is_strided_tensor));
         break;
       }
       case AllocKind::kShare: {
@@ -740,7 +756,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
     }
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-    MemoryInfo::RecordActivationAllocInfo(ort_value_index, ort_value);
+    session_state_.GetMemoryProfiler()->GetMemoryInfo().RecordActivationAllocInfo(ort_value_index, ort_value);
 #endif
 
     return Status::OK();
@@ -809,9 +825,9 @@ void ExecutionFrame::VerifyOutputSizes(int output_index, const Node& node, const
   }
 
   if (!compatible) {
-    LOGS(session_state_.Logger(), WARNING) << "Expected shape from model of " << *expected_shape
-                                           << " does not match actual shape of " << output_shape
-                                           << " for output " << output_def->Name();
+    LOGS(session_state_.Logger(), WARNING)
+        << "Expected shape from model of " << utils::GetTensorShapeFromTensorShapeProto(*expected_shape)
+        << " does not match actual shape of " << output_shape << " for output " << output_def->Name();
   }
 }
 

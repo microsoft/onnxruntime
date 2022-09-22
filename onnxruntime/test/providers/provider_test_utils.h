@@ -686,7 +686,7 @@ class OpTester {
   }
 
   // Generate the reference outputs with the model file
-  void AddReferenceOutputs(const std::string& model_path);
+  void AddReferenceOutputs(const std::string& model_path, float abs_error = 0.0f);
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
     custom_schema_registries_.push_back(registry->GetOpschemaRegistry());
@@ -897,7 +897,7 @@ class OpTester {
         // values *could* be nullptr for a non-optional tensor if it is empty.
         // Update the data buffer of the input only if values if non-nullptr.
         if (values != nullptr) {
-          auto* data_ptr = value.GetMutable<Tensor>()->template MutableData<T>();
+          auto* data_ptr = value.GetMutable<Tensor>()->MutableData<T>();
           for (int64_t i = 0; i < values_count; i++) {
             data_ptr[i] = values[i];
           }
@@ -979,7 +979,7 @@ class OpTester {
                         shape,
                         allocator);
 
-        auto* data_ptr = tensor.template MutableData<T>();
+        auto* data_ptr = tensor.MutableData<T>();
         for (int64_t x = 0; x < values_count; ++x) {
           data_ptr[x] = seq_tensors->tensors[i].data[x];
         }

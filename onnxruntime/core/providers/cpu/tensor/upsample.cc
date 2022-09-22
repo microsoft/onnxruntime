@@ -444,7 +444,8 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
   p.input_width_mul_y2 = p.input_width_mul_y1 + output_height;
 
   // stride for width is 1 (no multiplication needed)
-  p.in_x1 = p.input_width_mul_y1 + 2 * output_height;
+  const auto output_height_x2 = output_height * 2;  // this is to make prefast happy
+  p.in_x1 = p.input_width_mul_y1 + output_height_x2;
   p.in_x2 = p.in_x1 + output_width;
 
   auto* const scale_data = reinterpret_cast<float*>(p.in_x2 + output_width);
@@ -452,7 +453,7 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
   p.dy1 = scale_data;
   p.dy2 = p.dy1 + output_height;
 
-  p.dx1 = p.dy1 + 2 * output_height;
+  p.dx1 = p.dy1 + output_height_x2;
   p.dx2 = p.dx1 + output_width;
 
   // Start processing
@@ -549,7 +550,8 @@ BilinearParamsInteger SetupUpsampleBilinearInteger(const int32_t input_height,
   p.input_width_mul_y2 = p.input_width_mul_y1 + output_height;
 
   // stride for width is 1 (no multiplication needed)
-  p.in_x1 = p.input_width_mul_y1 + 2 * output_height;
+  const auto output_height_x2 = output_height * 2;  // this is to make prefast happy
+  p.in_x1 = p.input_width_mul_y1 + output_height_x2;
   p.in_x2 = p.in_x1 + output_width;
 
   auto* const scale_data = reinterpret_cast<int32_t*>(p.in_x2 + output_width);
@@ -557,7 +559,7 @@ BilinearParamsInteger SetupUpsampleBilinearInteger(const int32_t input_height,
   p.dy1_scale_10 = scale_data;
   p.dy2_scale_10 = p.dy1_scale_10 + output_height;
 
-  p.dx1_scale_10 = p.dy1_scale_10 + 2 * output_height;
+  p.dx1_scale_10 = p.dy1_scale_10 + output_height_x2;
   p.dx2_scale_10 = p.dx1_scale_10 + output_width;
 
   // Start processing
@@ -623,19 +625,19 @@ struct TrilinearParams {
 
   BufferUniquePtr idx_scale_data_buffer_holder;
 
-  int64_t* in_x1;
-  int64_t* in_x2;
-  int64_t* input_width_mul_y1;
-  int64_t* input_width_mul_y2;
-  int64_t* input_height_width_mul_z1;
-  int64_t* input_height_width_mul_z2;
+  int64_t* in_x1{nullptr};
+  int64_t* in_x2{nullptr};
+  int64_t* input_width_mul_y1{nullptr};
+  int64_t* input_width_mul_y2{nullptr};
+  int64_t* input_height_width_mul_z1{nullptr};
+  int64_t* input_height_width_mul_z2{nullptr};
 
-  float* dx1;
-  float* dx2;
-  float* dy1;
-  float* dy2;
-  float* dz1;
-  float* dz2;
+  float* dx1{nullptr};
+  float* dx2{nullptr};
+  float* dy1{nullptr};
+  float* dy2{nullptr};
+  float* dz1{nullptr};
+  float* dz2{nullptr};
 };
 
 static TrilinearParams SetupUpsampleTrilinear(int64_t input_depth,
@@ -1173,7 +1175,6 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         } else {
           if (use_extrapolation_) {
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
             if (!is_2D &&
                 (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
                  Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
@@ -1183,17 +1184,13 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                   alloc, get_original_coordinate_,
                   output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
             } else {
-#endif
               NhwcUpsampleBilinear<T, true>(
                   batch_size, num_channels, input_height, input_width, output_height, output_width,
                   height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
                   alloc, get_original_coordinate_,
                   output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
             }
-#endif
           } else {
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
             if (!is_2D &&
                 (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
                  Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
@@ -1203,15 +1200,12 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                   alloc, get_original_coordinate_,
                   output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
             } else {
-#endif
               NhwcUpsampleBilinear<T, false>(
                   batch_size, num_channels, input_height, input_width, output_height, output_width,
                   height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
                   alloc, get_original_coordinate_,
                   output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
             }
-#endif
           }
         }
         return Status::OK();

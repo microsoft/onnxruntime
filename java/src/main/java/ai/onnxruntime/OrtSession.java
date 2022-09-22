@@ -987,6 +987,27 @@ public class OrtSession implements AutoCloseable {
       addCoreML(OnnxRuntime.ortApiHandle, nativeHandle, OrtFlags.aggregateToInt(flags));
     }
 
+    /**
+     * Adds Xnnpack as an execution backend. Needs to list all options here if a new option
+     * supported. current supported options: {}
+     *
+     * @param providerOptions options pass to XNNPACK EP for initialization.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addXnnpack(Map<String, String> providerOptions) throws OrtException {
+      checkClosed();
+      String[] providerOptionKey = new String[providerOptions.size()];
+      String[] providerOptionVal = new String[providerOptions.size()];
+      int i = 0;
+      for (Map.Entry<String, String> entry : providerOptions.entrySet()) {
+        providerOptionKey[i] = entry.getKey();
+        providerOptionVal[i] = entry.getValue();
+        i++;
+      }
+      addExecutionProvider(
+          OnnxRuntime.ortApiHandle, nativeHandle, "XNNPACK", providerOptionKey, providerOptionVal);
+    }
+
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
         throws OrtException;
 
@@ -1097,6 +1118,14 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
+        throws OrtException;
+
+    private native void addExecutionProvider(
+        long apiHandle,
+        long nativeHandle,
+        String epName,
+        String[] providerOptionKey,
+        String[] providerOptionVal)
         throws OrtException;
   }
 

@@ -14,9 +14,10 @@
 namespace onnxruntime {
 namespace xnnpack {
 
-bool MatMul::IsOnnxNodeSupported(const onnxruntime::Node& node, const GraphViewer& graph) {
+bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
 
   bool supported = false;
+  const onnxruntime::Node& node = node_unit.GetNode();
 
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
@@ -71,7 +72,7 @@ MatMul::MatMul(const OpKernelInfo& info) : OpKernel(info){
 
 Status MatMul::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
                      /*out*/ bool& is_packed,
-                     /*out*/ PrePackedWeights* prepacked_weights) {
+                     /*out*/ PrePackedWeights*) {
 
   is_packed = false;
 
@@ -100,6 +101,11 @@ Status MatMul::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
       output_min,
       output_max,
       flags,
+#ifdef XNN_CACHE_ENABLE
+      &xnn_caches_,
+#else
+      0,
+#endif
       &p);
 
   if (status != xnn_status_success) {

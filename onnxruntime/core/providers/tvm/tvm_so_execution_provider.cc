@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//#include <fstream>
 #include <map>
 #include <unordered_set>
 #include <utility>
@@ -18,9 +17,12 @@
 #include "tvm_allocator.h"  // NOLINT(build/include_subdir)
 #include "tvm_utils.h"  // NOLINT(build/include_subdir)
 #include "tvm_api.h"  // NOLINT(build/include_subdir)
-
+#ifdef USE_TVM_HASH
+#include "hash_alg/hasher.h"  // NOLINT(build/include_subdir)
+#endif
 
 using ONNX_NAMESPACE::TensorShapeProto;
+
 
 namespace onnxruntime {
 namespace tvm {
@@ -54,7 +56,7 @@ TvmSoExecutionProvider::~TvmSoExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 TvmSoExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
-                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                      const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
     return result;
@@ -107,6 +109,12 @@ common::Status TvmSoExecutionProvider::Compile(const std::vector<FusedNodeAndGra
   for (auto& fused_node_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
+#ifdef USE_TVM_HASH
+    if (options_.check_hash) {
+      ORT_ENFORCE(checkHash(ToUTF8String(fused_node.ModelPath().ToPathString())),
+                  "Hash check shows that used tuning files were not obtained for the given onnx-model");
+    }
+#endif
     const std::string func_name = fused_node.Name();
 
     compilers_[func_name] = std::make_shared<TVMSoCompiler>();
@@ -145,6 +153,23 @@ AllocatorPtr TvmSoExecutionProvider::GetAllocator(int id, OrtMemType mem_type) c
 void TvmSoExecutionProvider::printOptions() {
   LOGS(*GetLogger(), INFO) << options_;
 }
+
+#ifdef USE_TVM_HASH
+bool TvmSoExecutionProvider::checkHash(const std::string& onnx_path) const {
+  auto hasher = Hasher("sha256");
+  std::string onnx_str = readFromFile(onnx_path);
+  std::string onnx_hash = hasher.hash(onnx_str.c_str(), onnx_str.size());
+  onnx_str.clear();
+  std::string hash;
+  if (options_.hash_file_path.empty()) {
+    // TODO(vvchernov): align hash file name with OctoML team
+    hash = readFromFile(options_.so_folder + "/hash.txt");
+  } else {
+    hash = readFromFile(options_.hash_file_path);
+  }
+  return onnx_hash == hash;
+}
+#endif
 
 std::shared_ptr<TvmModule> TvmSoExecutionProvider::compileModel(const std::string& func_name,
                                                                 const GraphViewer& graph_viewer,

@@ -23,7 +23,7 @@ class MatMul : public OpKernel {
   Status Compute(OpKernelContext* /*context*/) const override;
 
   // Required for checking XNNpack restrictions on ORT side
-  static bool IsOnnxNodeSupported(const onnxruntime::Node& nchw_node, const GraphViewer& graph);
+  static bool IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph);
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
@@ -51,6 +51,14 @@ private:
   bool trans_batch_b_;
   std::optional<std::pair<float, float>> clip_min_max_;
   XnnpackOperator op0_ = nullptr;
+
+#ifdef XNN_CACHE_ENABLE
+#if XNN_PLATFORM_JIT
+  xnn_code_cache code_cache_;
+#endif
+  xnn_caches xnn_caches_ = {0, 0};
+  xnn_weights_cache weights_cache_;
+#endif
 
 };
 

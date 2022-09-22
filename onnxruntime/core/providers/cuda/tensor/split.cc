@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/tensor/split.h"
+
 #include "core/providers/cuda/tensor/split_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
 
@@ -34,7 +35,7 @@ ONNX_OPERATOR_KERNEL_EX(Split,
 
 Status Split::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input_tensor = ctx->Input<Tensor>(0);
-  ORT_ENFORCE(nullptr != input_tensor);
+  ORT_ENFORCE(input_tensor);
   auto& input_shape = input_tensor->Shape();
   auto num_outputs = ctx->OutputCount();
   int64_t axis = HandleNegativeAxis(axis_, input_shape.NumDimensions());
@@ -44,10 +45,10 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int64_t> split_sizes(num_outputs);
 
   const Tensor* split_tensor = ctx->Input<Tensor>(1);
-  if (split_tensor != nullptr) {
+  if (split_tensor) {
     ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
-    const int64_t* data = split_tensor->template Data<int64_t>();
+    const int64_t* data = split_tensor->Data<int64_t>();
     split_sizes.assign(data, data + nDims);
   } else {
     split_sizes.assign(split_sizes_.begin(), split_sizes_.end());
@@ -83,35 +84,38 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  if (input_tensor->Shape().Size() > 0) {
-    ORT_RETURN_IF_ERROR(output_ptr.CopyToGpu());
+  if (input_tensor->Shape().Size() <= 0) return Status::OK();
 
+  size_t element_size = input_tensor->DataType()->Size();
+  if (std::all_of(split_sizes.begin(), split_sizes.end(), [&](int64_t size) { return size == split_sizes[0]; })) {
+    if (num_outputs <= 32) {
+      TArray<void*, 32> output_ptr_array(num_outputs);
+      for (int i = 0; i < num_outputs; ++i) output_ptr_array[i] = output_ptr_span[i];
+      ORT_RETURN_IF_ERROR(SplitSameSplitDimImpl(Stream(), element_size, block_size_including_axis_dim,
+                                                block_size_inside_axis_dim, split_sizes[0], num_outputs, input_data,
+                                                output_ptr_array, static_cast<size_t>(input_shape.Size())));
+    } else {
+      ORT_RETURN_IF_ERROR(output_ptr.CopyToGpu());
+      ORT_RETURN_IF_ERROR(SplitSameSplitDimImpl(Stream(), element_size, block_size_including_axis_dim,
+                                                block_size_inside_axis_dim, split_sizes[0], num_outputs, input_data,
+                                                output_ptr.GpuPtr(), static_cast<size_t>(input_shape.Size())));
+    }
+  } else {
+    ORT_RETURN_IF_ERROR(output_ptr.CopyToGpu());
     CudaAsyncBuffer<int64_t> split_sizes_gpu(this, split_sizes);
     ORT_RETURN_IF_ERROR(split_sizes_gpu.CopyToGpu());
-
     std::vector<int64_t> split_sizes_range(split_sizes);
     for (size_t i = 1; i < split_sizes_range.size(); ++i) {
       split_sizes_range[i] += split_sizes_range[i - 1];
     }
-
     CudaAsyncBuffer<int64_t> split_sizes_range_gpu(this, split_sizes_range);
     ORT_RETURN_IF_ERROR(split_sizes_range_gpu.CopyToGpu());
-
     CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
     ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu());
-
-    size_t element_size = input_tensor->DataType()->Size();
-    ORT_RETURN_IF_ERROR(SplitImpl(Stream(),
-                                  element_size,
-                                  block_size_including_axis_dim,
-                                  block_size_inside_axis_dim,
-                                  split_sizes_gpu.GpuPtr(),
-                                  split_sizes_range_gpu.GpuPtr(),
-                                  axis_dimension_input_output_mapping_gpu.GpuPtr(),
-                                  num_outputs,
-                                  input_data,
-                                  output_ptr.GpuPtr(),
-                                  input_shape.Size()));
+    ORT_RETURN_IF_ERROR(SplitImpl(Stream(), element_size, block_size_including_axis_dim, block_size_inside_axis_dim,
+                                  split_sizes_gpu.GpuPtr(), split_sizes_range_gpu.GpuPtr(),
+                                  axis_dimension_input_output_mapping_gpu.GpuPtr(), num_outputs, input_data,
+                                  output_ptr.GpuPtr(), static_cast<size_t>(input_shape.Size())));
   }
 
   return Status::OK();

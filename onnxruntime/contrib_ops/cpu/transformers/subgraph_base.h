@@ -8,7 +8,7 @@
 #include "gsl/gsl"
 #include "core/framework/allocator.h"
 #include "core/framework/feeds_fetches_manager.h"
-#include "contrib_ops/cpu/transformers/beam_search_device_helper.h"
+#include "contrib_ops/cpu/transformers/generation_device_helper.h"
 
 namespace onnxruntime {
 class SessionState;
@@ -48,7 +48,9 @@ class Subgraph {
   Status Setup(const SessionState& session_state,
                const SessionState& subgraph_session_state);
 
-  FeedsFetchesManager* GetFeedsFetchesManager() const { return feeds_fetches_manager_.get(); }
+  FeedsFetchesManager* GetFeedsFetchesManager() { 
+    return (feeds_fetches_manager_.has_value()) ? &*feeds_fetches_manager_ : nullptr;
+  }
 
   const IExecutionProvider* GetProvider() const;
 
@@ -65,7 +67,7 @@ class Subgraph {
   AllocatorPtr allocator_;
   const SessionState* session_state_;
   const SessionState* subgraph_session_state_;
-  std::unique_ptr<FeedsFetchesManager> feeds_fetches_manager_;
+  std::optional<FeedsFetchesManager> feeds_fetches_manager_;
   bool is_output_float16_;
 };
 

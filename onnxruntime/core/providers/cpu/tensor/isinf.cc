@@ -11,7 +11,7 @@
 #include "core/providers/op_kernel_type_control.h"
 
 namespace onnxruntime {
-// https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsInf
+// https://github.com/onnx/onnx/blob/main/docs/Operators.md#IsInf
 
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
@@ -57,12 +57,12 @@ template <class T>
 struct ComputeDispatchTarget {
   void operator()(const Tensor& X, Tensor& Y, bool detect_positive, bool detect_negative) const {
     const auto total_items = X.Shape().Size();
-    auto output_data = Y.template MutableData<bool>();
+    auto output_data = Y.MutableData<bool>();
 
     if (detect_positive && detect_negative) {
       EigenMap<bool>(Y) = EigenMap<T>(X).array().isInf();
     } else if (detect_positive) {
-      auto input_data = X.template Data<T>();
+      auto input_data = X.Data<T>();
       auto end_data = input_data + total_items;
       std::transform(
           input_data, end_data, output_data, [](T v) {
@@ -70,7 +70,7 @@ struct ComputeDispatchTarget {
           });
 
     } else if (detect_negative) {
-      auto input_data = X.template Data<T>();
+      auto input_data = X.Data<T>();
       auto end_data = input_data + total_items;
       std::transform(
           input_data, end_data, output_data, [](T v) {

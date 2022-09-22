@@ -65,7 +65,7 @@ std::vector<std::vector<int>> RknpuExecutionProvider::GetSupportedNodes(
 
 std::vector<std::unique_ptr<ComputeCapability>>
 RknpuExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                      const IKernelLookup& /*kernel_lookup*/) const {
   // Find inputs, initializers and outputs for each supported subgraph
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
@@ -315,7 +315,7 @@ common::Status RknpuExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     };
 
     compute_info.compute_func = [](FunctionState state,
-                                   const OrtCustomOpApi* api,
+                                   const OrtApi* api,
                                    OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
       RknpuFuncState* rk_state = reinterpret_cast<RknpuFuncState*>(state);

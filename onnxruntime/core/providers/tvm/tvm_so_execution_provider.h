@@ -34,7 +34,7 @@ class TvmSoExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
+                const IKernelLookup& /*kernel_lookup*/) const override;
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
@@ -43,6 +43,9 @@ class TvmSoExecutionProvider : public IExecutionProvider {
 
  private:
   void printOptions();
+#ifdef USE_TVM_HASH
+  bool checkHash(const std::string& onnx_path) const;
+#endif
   std::shared_ptr<TvmModule> compileModel(const std::string& func_name,
                                           const GraphViewer& graph_viewer,
                                           InputsInfoMap& inputs_info);    // NOLINT

@@ -119,7 +119,7 @@ def parse_arguments():
         required=False,
         default="None",
         type=str,
-        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "None"],
+        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "tvm", "None"],
         help="The selected execution provider for this build.",
     )
     parser.add_argument("--dependency_id", required=False, default="None", type=str, help="ependency id.")
@@ -188,9 +188,7 @@ def generate_dependencies(xml_text, package_name, version, dependency_id, depend
         xml_text.append("</dependencies>")
         return
 
-    dml_dependency = (
-        '<dependency id="Microsoft.AI.DirectML.Preview" version="1.9.0-devb9b146539f535988728c8eb4791840db54add4a7"/>'
-    )
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.9.1"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
@@ -210,7 +208,7 @@ def generate_dependencies(xml_text, package_name, version, dependency_id, depend
 
         xml_text.append("</dependencies>")
     else:
-        include_dml = package_name == "Microsoft.ML.OnnxRuntime.DirectML.Preview"
+        include_dml = package_name == "Microsoft.ML.OnnxRuntime.DirectML"
 
         xml_text.append("<dependencies>")
         # Support .Net Core
@@ -238,6 +236,18 @@ def generate_dependencies(xml_text, package_name, version, dependency_id, depend
             xml_text.append("</group>")
             # Support xamarinios10
             xml_text.append('<group targetFramework="xamarinios10">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
+            # Support net6.0-android
+            xml_text.append('<group targetFramework="net6.0-android31.0">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
+            # Support net6.0-ios
+            xml_text.append('<group targetFramework="net6.0-ios15.4">')
+            xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
+            xml_text.append("</group>")
+            # Support net6.0-macos
+            xml_text.append('<group targetFramework="net6.0-macos12.3">')
             xml_text.append('<dependency id="Microsoft.ML.OnnxRuntime.Managed"' + ' version="' + version + '"/>')
             xml_text.append("</group>")
         # Support Native C++
@@ -325,6 +335,7 @@ def generate_files(list, args):
             "tensorrt_ep_shared_lib": "onnxruntime_providers_tensorrt.dll",
             "openvino_ep_shared_lib": "onnxruntime_providers_openvino.dll",
             "cuda_ep_shared_lib": "onnxruntime_providers_cuda.dll",
+            "tvm_ep_shared_lib": "onnxruntime_providers_tvm.lib",
             "onnxruntime_perf_test": "onnxruntime_perf_test.exe",
             "onnx_test_runner": "onnx_test_runner.exe",
         }
@@ -376,6 +387,14 @@ def generate_files(list, args):
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h")
         + '" target="build\\native\\include" />'
     )
+
+    if args.execution_provider == "tvm":
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\tvm\\tvm_provider_factory.h")
+            + '" target="build\\native\\include" />'
+        )
 
     if args.execution_provider == "openvino":
         files_list.append(
@@ -598,6 +617,38 @@ def generate_files(list, args):
             + args.target_architecture
             + '\\native" />'
         )
+
+    if args.execution_provider == "tvm":
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["tvm_ep_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+
+        tvm_build_path = os.path.join(args.ort_build_path, args.build_config, "_deps", "tvm-build")
+        if is_windows():
+            files_list.append(
+                "<file src="
+                + '"'
+                + os.path.join(tvm_build_path, args.build_config, nuget_dependencies["tvm"])
+                + runtimes_target
+                + args.target_architecture
+                + '\\native" />'
+            )
+        else:
+            # TODO(agladyshev): Add support for Linux.
+            raise RuntimeError("Now only Windows is supported for TVM EP.")
 
     if args.execution_provider == "openvino":
         openvino_path = get_env_var("INTEL_OPENVINO_DIR")
@@ -861,7 +912,6 @@ def generate_files(list, args):
                 "monoandroid11.0",
                 args.package_name + ".targets",
             )
-            os.system(copy_command + " " + monoandroid_source_targets + " " + monoandroid_target_targets)
 
             xamarinios_source_targets = os.path.join(
                 args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "xamarinios10", "targets.xml"
@@ -875,15 +925,83 @@ def generate_files(list, args):
                 "xamarinios10",
                 args.package_name + ".targets",
             )
+
+            net6_android_source_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-android",
+                "targets.xml",
+            )
+            net6_android_target_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-android",
+                args.package_name + ".targets",
+            )
+
+            net6_ios_source_targets = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-ios", "targets.xml"
+            )
+            net6_ios_target_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-ios",
+                args.package_name + ".targets",
+            )
+
+            net6_macos_source_targets = os.path.join(
+                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "net6.0-macos", "targets.xml"
+            )
+            net6_macos_target_targets = os.path.join(
+                args.sources_path,
+                "csharp",
+                "src",
+                "Microsoft.ML.OnnxRuntime",
+                "targets",
+                "net6.0-macos",
+                args.package_name + ".targets",
+            )
+
+            os.system(copy_command + " " + monoandroid_source_targets + " " + monoandroid_target_targets)
             os.system(copy_command + " " + xamarinios_source_targets + " " + xamarinios_target_targets)
+            os.system(copy_command + " " + net6_android_source_targets + " " + net6_android_target_targets)
+            os.system(copy_command + " " + net6_ios_source_targets + " " + net6_ios_target_targets)
+            os.system(copy_command + " " + net6_macos_source_targets + " " + net6_macos_target_targets)
 
             files_list.append("<file src=" + '"' + monoandroid_target_targets + '" target="build\\monoandroid11.0" />')
             files_list.append(
                 "<file src=" + '"' + monoandroid_target_targets + '" target="buildTransitive\\monoandroid11.0" />'
             )
+
             files_list.append("<file src=" + '"' + xamarinios_target_targets + '" target="build\\xamarinios10" />')
             files_list.append(
                 "<file src=" + '"' + xamarinios_target_targets + '" target="buildTransitive\\xamarinios10" />'
+            )
+
+            files_list.append(
+                "<file src=" + '"' + net6_android_target_targets + '" target="build\\net6.0-android31.0" />'
+            )
+            files_list.append(
+                "<file src=" + '"' + net6_android_target_targets + '" target="buildTransitive\\net6.0-android31.0" />'
+            )
+
+            files_list.append("<file src=" + '"' + net6_ios_target_targets + '" target="build\\net6.0-ios15.4" />')
+            files_list.append(
+                "<file src=" + '"' + net6_ios_target_targets + '" target="buildTransitive\\net6.0-ios15.4" />'
+            )
+
+            files_list.append("<file src=" + '"' + net6_macos_target_targets + '" target="build\\net6.0-macos12.3" />')
+            files_list.append(
+                "<file src=" + '"' + net6_macos_target_targets + '" target="buildTransitive\\net6.0-macos12.3" />'
             )
 
     # Process License, ThirdPartyNotices, Privacy

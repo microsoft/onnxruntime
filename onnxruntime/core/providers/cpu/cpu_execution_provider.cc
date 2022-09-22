@@ -24,13 +24,41 @@ struct KernelRegistryAndStatus {
 }  // namespace
 
 namespace onnxruntime {
+CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info, bool delay_allocator_registration)
+    : IExecutionProvider{onnxruntime::kCpuExecutionProvider}, info_{info} {
+  if (!delay_allocator_registration) {
+    AllocatorManager mgr;  // needed only to call RegisterAllocator
+    RegisterAllocator(mgr);
+  }
+}
+
 void CPUExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  auto cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
-
+  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
+  auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
   if (!cpu_alloc) {
-    // share our allocator
-    allocator_manager.InsertAllocator(GetAllocator(cpu_device.Id(), OrtMemTypeDefault));
+    // use shared allocator if available
+    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
+
+    if (!cpu_alloc) {
+      // create our allocator
+      bool create_arena = info_.create_arena;
+#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
+      // JEMalloc/mimalloc already have memory pool, so just use device allocator.
+      create_arena = false;
+#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+      // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+      create_arena = false;
+#endif
+      AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
+                                        DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
+
+      cpu_alloc = CreateAllocator(device_info);
+      // enable sharing of our allocator
+      allocator_manager.InsertAllocator(cpu_alloc);
+    }
+
+    InsertAllocator(cpu_alloc);
   }
 }
 
@@ -751,11 +779,17 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 16, int32_t, LessOrEqual);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 16, int64_t, LessOrEqual);
 
+// Opset 17
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, DFT);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, BlackmanWindow);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, HammingWindow);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, HannWindow);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, MelWeightMatrix);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, STFT);
+
 // !!PLEASE READ BELOW!! Following that, add new entries above this comment
 
 /*  *** IMPORTANT! ***
- If kernel registrations are incorrectly updated, ORT format models get broken as the kernel hashes may be invalidated.
-
  NEVER update a versioned entry to change the start or end version. These MUST be treated as immutable.
    i.e. if the macro has 'VERSIONED' in it, do not modify that entry
 
@@ -783,7 +817,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 
  opset.
 
  To double-check what versions an operator should have registrations for see
- https://github.com/onnx/onnx/blob/master/docs/Operators.md
+ https://github.com/onnx/onnx/blob/main/docs/Operators.md
 *****/
 
 template <>
@@ -1953,6 +1987,14 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
                                                                 LessOrEqual)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 16, int64_t,
                                                                 LessOrEqual)>,
+
+    // Opset 17
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, DFT)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, BlackmanWindow)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, HammingWindow)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, HannWindow)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, MelWeightMatrix)>,
+    BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 17, STFT)>,
   };
 
   for (auto& function_table_entry : function_table) {

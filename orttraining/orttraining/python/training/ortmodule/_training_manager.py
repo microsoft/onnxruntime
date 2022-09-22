@@ -3,17 +3,18 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _utils, _io, _logger, _are_deterministic_algorithms_enabled, _use_deterministic_algorithms
-from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
-from ._execution_agent import TrainingAgent
-from .debug_options import DebugOptions
-from ._fallback import ORTModuleFallbackException, _FallbackPolicy, _FallbackManager
+import warnings
+
+import torch
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
-import torch
-import warnings
+from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
+from ._execution_agent import TrainingAgent
+from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
+from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
+from .debug_options import DebugOptions
 
 
 class TrainingManager(GraphExecutionManager):
@@ -322,6 +323,7 @@ class TrainingManager(GraphExecutionManager):
                 )
             ] * len(bw_fetches_names)
 
+        local_device_rank = self._device.index if device_type == "ort" else _utils.get_device_index(self._device)
         self._execution_agent = TrainingAgent(
             self._onnx_models.optimized_model.SerializeToString(),
             fw_feed_names,
@@ -331,6 +333,7 @@ class TrainingManager(GraphExecutionManager):
             session_options,
             providers,
             provider_options,
+            local_device_rank,
         )
 
     def _reinitialize_graph_builder(self, input_info):

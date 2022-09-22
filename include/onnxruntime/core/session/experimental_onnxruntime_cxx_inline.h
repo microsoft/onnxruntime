@@ -35,9 +35,8 @@ inline std::vector<std::string> Session::GetInputNames() const {
   size_t node_count = GetInputCount();
   std::vector<std::string> out(node_count);
   for (size_t i = 0; i < node_count; i++) {
-    char* tmp = GetInputName(i, allocator);
-    out[i] = tmp;
-    allocator.Free(tmp);  // prevent memory leak
+    auto tmp = GetInputNameAllocated(i, allocator);
+    out[i] = tmp.get();
   }
   return out;
 }
@@ -47,9 +46,8 @@ inline std::vector<std::string> Session::GetOutputNames() const {
   size_t node_count = GetOutputCount();
   std::vector<std::string> out(node_count);
   for (size_t i = 0; i < node_count; i++) {
-    char* tmp = GetOutputName(i, allocator);
-    out[i] = tmp;
-    allocator.Free(tmp);  // prevent memory leak
+    auto tmp = GetOutputNameAllocated(i, allocator);
+    out[i] = tmp.get();
   }
   return out;
 }
@@ -59,9 +57,8 @@ inline std::vector<std::string> Session::GetOverridableInitializerNames() const 
   size_t init_count = GetOverridableInitializerCount();
   std::vector<std::string> out(init_count);
   for (size_t i = 0; i < init_count; i++) {
-    char* tmp = GetOverridableInitializerName(i, allocator);
-    out[i] = tmp;
-    allocator.Free(tmp);  // prevent memory leak
+    auto tmp = GetOverridableInitializerNameAllocated(i, allocator);
+    out[i] = tmp.get();
   }
   return out;
 }

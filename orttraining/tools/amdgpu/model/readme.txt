@@ -1,1 +1,0 @@
-Since BERT-L ONNX file is very big, it is not uploaded to github. So, if you want to build BERT-L ONNX model in your docker image, then you need to copy it to this folder. Otherwise, you need to comment out the line "ADD model ${WORKSPACE_DIR}/model" in the Dockerfile not to add model to Docker image.

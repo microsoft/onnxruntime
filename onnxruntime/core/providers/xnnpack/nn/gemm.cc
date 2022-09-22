@@ -9,13 +9,15 @@
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "gsl/gsl-lite.hpp"
 
 namespace onnxruntime {
 namespace xnnpack {
 
-bool Gemm::IsOnnxNodeSupported(const onnxruntime::Node& node, const GraphViewer& graph) {
+bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
 
   bool supported = false;
+  const onnxruntime::Node& node = node_unit.GetNode();
 
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
@@ -70,6 +72,9 @@ bool Gemm::IsOnnxNodeSupported(const onnxruntime::Node& node, const GraphViewer&
       }
     }
 
+    ProtoHelperNodeContext nc(node_unit.GetNode());
+    OpNodeProtoHelper info(&nc);
+
     supported = true;
 
   } while (false);
@@ -101,20 +106,21 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), OpKernel(info){
 
 Status Gemm::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
                      /*out*/ bool& is_packed,
-                     /*out*/ PrePackedWeights* prepacked_weights) {
+                     /*out*/ PrePackedWeights*) {
   is_packed = false;
 
   if (input_idx == 0) {
     return Status::OK();
   }
 
-  is_packed = true;
-
   if (input_idx ==  1) {
-    B_ = Tensor::Create(tensor.DataType(), TensorShape(tensor.Shape()), alloc);
-    SingleAxisTranspose(std::vector<size_t> {0, 1}, tensor, *B_, /*from*/ 1, /*to*/ 1);
+    B_ = Tensor(tensor.DataType(), TensorShape(tensor.Shape()), alloc);
+    SingleAxisTranspose(std::vector<size_t>{0, 1}, tensor, B_, /*from*/ 1, /*to*/ 1);
     return Status::OK();
   }
+
+  is_packed = true;
+
   uint32_t flags = trans_B_ != CblasNoTrans ? 0:XNN_FLAG_TRANSPOSE_WEIGHTS;
 
   float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
@@ -125,15 +131,20 @@ Status Gemm::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
 
     struct xnn_operator* p = nullptr;
     status = xnn_create_fully_connected_nc_f32(
-        B_->Shape()[0],          // size_t input_channels,
-        B_->Shape()[1],          // size_t output_channels,
-        B_->Shape()[0],          // size_t input_stride,
-        B_->Shape()[1],          // size_t output_stride,
-        B_->Data<float>(),       // const float* kernel,
+        B_.Shape()[0],   // size_t input_channels,
+        B_.Shape()[1],          // size_t output_channels,
+        B_.Shape()[0],          // size_t input_stride,
+        B_.Shape()[1],          // size_t output_stride,
+        B_.Data<float>(),       // const float* kernel,
         tensor.Data<float>(),    // const float* bias,
         output_min,
         output_max,
         flags,
+#ifdef XNN_CACHE_ENABLE
+        &xnn_caches_,
+#else
+        0,
+#endif
         &p);
 
     if (status != xnn_status_success) {

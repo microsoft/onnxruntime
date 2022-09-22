@@ -12,12 +12,12 @@ export const TEST_ROOT = __dirname;
 export const TEST_DATA_ROOT = path.join(TEST_ROOT, 'testdata');
 
 export const ORT_ROOT = path.join(__dirname, '../../..');
-export const NODE_TESTS_ROOT = path.join(ORT_ROOT, 'cmake/external/onnx/onnx/backend/test/data/node');
+export const NODE_TESTS_ROOT = path.join(ORT_ROOT, 'js/test/data/node');
 
 export const SQUEEZENET_INPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT, 'squeezenet.input0.json'));
 export const SQUEEZENET_OUTPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT, 'squeezenet.output0.json'));
 
-export const BACKEND_TEST_SERIES_FILTERS: {[name: string]: string[]} =
+const BACKEND_TEST_SERIES_FILTERS: {[name: string]: Array<string|[string, string]>} =
     jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc'));
 
 const OVERRIDES: {
@@ -82,7 +82,7 @@ export function warmup(): void {
     this.timeout(0);
     // we have test cases to verify correctness in other place, so do no check here.
     try {
-      const session = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_INT32.pb'));
+      const session = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_int32.onnx'));
       await session.run({input: new Tensor(new Float32Array(5), [1, 5])}, {output: null}, {});
     } catch (e) {
     }
@@ -260,8 +260,8 @@ export function loadTensorFromFile(pbFile: string): Tensor {
   }
 }
 
-export function shouldSkipModel(model: string, eps: string[]): boolean {
-  const filters = ['(FLOAT16)'];
+function loadFiltersRegex(): Array<{opset?: RegExp | undefined; name: RegExp}> {
+  const filters: Array<string|[string, string]> = ['(FLOAT16)'];
   filters.push(...BACKEND_TEST_SERIES_FILTERS.current_failing_tests);
 
   if (process.arch === 'x32') {
@@ -273,10 +273,24 @@ export function shouldSkipModel(model: string, eps: string[]): boolean {
   filters.push(...BACKEND_TEST_SERIES_FILTERS.failing_permanently);
   filters.push(...BACKEND_TEST_SERIES_FILTERS.test_with_types_disabled_due_to_binary_size_concerns);
 
-  for (const filter of filters) {
-    const regex = new RegExp(filter);
+  filters.push(...BACKEND_TEST_SERIES_FILTERS.failing_permanently_nodejs_binding);
+
+  return filters.map(
+      filter => typeof filter === 'string' ? {name: new RegExp(filter)} :
+                                             {opset: new RegExp(filter[0]), name: new RegExp(filter[1])});
+}
+
+const BACKEND_TEST_SERIES_FILTERS_REGEX = loadFiltersRegex();
+
+export function shouldSkipModel(model: string, opset: string, eps: string[]): boolean {
+  for (const regex of BACKEND_TEST_SERIES_FILTERS_REGEX) {
+    if (regex.opset) {
+      if (!regex.opset.test(opset)) {
+        continue;
+      }
+    }
     for (const ep of eps) {
-      if (regex.test(`${model}_${ep}`)) {
+      if (regex.name.test(`${model}_${ep}`)) {
         return true;
       }
     }

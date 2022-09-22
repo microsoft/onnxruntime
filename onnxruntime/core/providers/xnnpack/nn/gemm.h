@@ -22,7 +22,7 @@ class Gemm : protected GemmBase, public OpKernel {
 
   Status Compute(OpKernelContext* /*context*/) const override;
 
-  static bool IsOnnxNodeSupported(const onnxruntime::Node& nchw_node, const GraphViewer& graph);
+  static bool IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph);
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
@@ -43,7 +43,7 @@ class Gemm : protected GemmBase, public OpKernel {
 
   TensorShape b_shape_;
   BufferUniquePtr packed_b_=nullptr;
-  std::unique_ptr<Tensor> B_;
+  Tensor B_;
 
   int64_t M=-1;
   int64_t K=-1;
@@ -52,6 +52,14 @@ class Gemm : protected GemmBase, public OpKernel {
   std::optional<std::pair<float, float>> clip_min_max_;
 
   XnnpackOperator op0_ = nullptr;
+
+#ifdef XNN_CACHE_ENABLE
+#if XNN_PLATFORM_JIT
+  xnn_code_cache code_cache_;
+#endif
+  xnn_caches xnn_caches_ = {0, 0};
+  xnn_weights_cache weights_cache_;
+#endif
 };
 
 }  // namespace xnnpack

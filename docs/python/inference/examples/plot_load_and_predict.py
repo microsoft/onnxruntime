@@ -19,7 +19,7 @@ from onnxruntime.datasets import get_example
 
 #########################
 # Let's load a very simple model.
-# The model is available on github `onnx...test_sigmoid <https://github.com/onnx/onnx/tree/master/onnx/backend/test/data/node/test_sigmoid>`_.
+# The model is available on github `onnx...test_sigmoid <https://github.com/onnx/onnx/blob/main/onnx/backend/test/data/node/test_sigmoid>`_.
 
 example1 = get_example("sigmoid.onnx")
 sess = rt.InferenceSession(example1, providers=rt.get_available_providers())

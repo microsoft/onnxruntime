@@ -13,6 +13,7 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
+#include "core/optimizer/initializer.h"
 
 #include "helper.h"
 #include "op_builder.h"
@@ -214,6 +215,9 @@ static Status GetInputDataType(
           initializers, *node_unit, name, scale, zero_point, ArgType::kInput));
       break;
     }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      type = Type::TENSOR_INT32;
+      break;
       // case ONNX_NAMESPACE::TensorProto_DataType_INT8:
       // We also do not consider ONNX_NAMESPACE::TensorProto_DataType_INT8 case here, since that can only
       // be input 2 of Qlinear[Conv/MatMul], which has to be an initializer tensor and will be added
@@ -282,26 +286,15 @@ Status ModelBuilder::RegisterInitializers() {
     if (Contains(skipped_initializers_, tensor.name()))
       continue;
 
-    uint32_t index;
-    size_t size, padded_size;
-    std::tie(index, size, padded_size) = initializers[i++];
+    auto [index, size, padded_size] = initializers[i++];
     const uint8_t* src = nullptr;
-    // uint8_t data need unpack, need a holder for free memory after copy
-    std::vector<uint8_t> unpacked_tensor;
-    switch (tensor.data_type()) {
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-        ORT_RETURN_IF_ERROR(
-            onnxruntime::utils::UnpackInitializerData(tensor, graph_viewer_.ModelPath(), unpacked_tensor));
-        ORT_RETURN_IF_NOT(size == unpacked_tensor.size(),
-                          "initializer tensor: ", tensor.name(), "'s size: ", unpacked_tensor.size(),
-                          " should match the calculated size: ", size);
-        src = unpacked_tensor.data();
-        break;
-        // default:
-        // We should not get anything else here since we already checked in the 1st pass
-    }
-
+    // TensorProto_DataType_UINT8 or TensorProto_DataType_FLOAT:
+    Initializer unpacked_tensor(tensor, graph_viewer_.ModelPath());
+    size_t size_in_bytes = unpacked_tensor.DataAsByteSpan().size();
+    ORT_RETURN_IF_NOT(size == size_in_bytes,
+                      "initializer tensor: ", tensor.name(), "'s size: ",
+                      size_in_bytes, " should match the calculated size: ", size);
+    src = unpacked_tensor.DataAsByteSpan().data();
     uint8_t* dest = nnapi_model_->mem_initializers_->GetDataPtr() + offset;
     memcpy(dest, src, size);
     ORT_RETURN_IF_ERROR(SetOperandValue(index, nnapi_model_->mem_initializers_.get(), size, offset));
@@ -621,11 +614,11 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 }
 
 int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
-  const auto& output_nodes = node_unit.GetOutputNodes();
-  if (node_unit.GetOutputNodes().size() != 1) {
+  const auto& output_def_size = node_unit.Outputs().size();
+  if (output_def_size != 1) {
     LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
                           << "] type [" << node_unit.OpType()
-                          << "], with " << output_nodes.size() << " output nodes";
+                          << "], with " << output_def_size << " output nodes";
     return ANEURALNETWORKS_FUSED_NONE;
   }
 
@@ -653,10 +646,9 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
     return ANEURALNETWORKS_FUSED_NONE;
   }
 
-  const auto& output_node = *output_nodes[0];
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   bool fuse_code_assigned_from_activation = false;
-  for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
+  for (auto it = node_unit.OutputEdgesBegin(0), end = node_unit.OutputEdgesEnd(0); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
 

@@ -11,7 +11,7 @@ import os
 import sys
 
 import torch
-from t5_helper import PRETRAINED_T5_MODELS, T5Helper
+from t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS, T5Helper
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger  # noqa: E402
@@ -22,13 +22,23 @@ logger = logging.getLogger("")
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
+    pretrained_models = PRETRAINED_T5_MODELS + PRETRAINED_MT5_MODELS
     parser.add_argument(
         "-m",
         "--model_name_or_path",
         required=False,
         default=PRETRAINED_T5_MODELS[0],
         type=str,
-        help="Model path, or pretrained model name in the list: " + ", ".join(PRETRAINED_T5_MODELS),
+        help="Model path, or pretrained model name in the list: " + ", ".join(pretrained_models),
+    )
+
+    parser.add_argument(
+        "--model_type",
+        required=False,
+        type=str,
+        default="t5",
+        choices=["t5", "mt5"],
+        help="Model type: either t5 (default) or mt5",
     )
 
     parser.add_argument(
@@ -136,10 +146,11 @@ def export_onnx_models(
     overwrite: bool = False,
     disable_auto_mixed_precision: bool = False,
     use_int32_inputs: bool = True,
+    model_type: str = "t5",
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
-    models = T5Helper.load_model(model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init)
+    models = T5Helper.load_model(model_name_or_path, cache_dir, device, merge_encoder_and_decoder_init, model_type)
     config = models["decoder"].config
 
     if (not use_external_data_format) and (config.num_layers > 24):
@@ -154,7 +165,7 @@ def export_onnx_models(
             output_dir,
             model_name_or_path,
             suffix=filename_suffix,
-            new_folder=use_external_data_format,
+            new_folder=False,
         )
 
         if overwrite or not os.path.exists(onnx_path):
@@ -179,7 +190,7 @@ def export_onnx_models(
                 output_dir,
                 model_name_or_path,
                 suffix=filename_suffix + "_" + str(precision),
-                new_folder=use_external_data_format,
+                new_folder=False,
             )
 
             if overwrite or not os.path.exists(output_path):
@@ -217,6 +228,7 @@ def export_onnx_models(
 
 def main():
     args = parse_arguments()
+
     setup_logger(args.verbose)
 
     logger.info(f"Arguments:{args}")
@@ -248,6 +260,7 @@ def main():
         args.overwrite,
         args.disable_auto_mixed_precision,
         not args.use_int64_inputs,
+        args.model_type,
     )
 
     logger.info(f"Done! Outputs: {output_paths}")

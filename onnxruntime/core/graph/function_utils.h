@@ -2,6 +2,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string>
+
 #include "core/common/common.h"
 #include "onnx/onnx_pb.h"
 #include "core/graph/graph.h"
@@ -12,13 +14,17 @@
 namespace onnxruntime {
 namespace function_utils {
 
-/** Create a OpSchema given a subgraph EP whant to fuse.
-* This is used when EP return fusion in GetCapability implementation.
-* @param graph The graph which host the subgraph.
-* @param nodes_to_fuse The metadata for the subgraph that EP want to fuse.
-*/
+/** Create a OpSchema given a subgraph EP want to fuse.
+ * This is used when EP return fusion in GetCapability implementation.
+ * @param graph The graph which host the subgraph.
+ * @param nodes_to_fuse The metadata for the subgraph that EP want to fuse.
+ * @param allow_aggregated_tensor_type if true, it will use a type constraint called
+ * TAggregatedTypes for all inputs and outputs,
+ * and that this will match all tensor types in the all_tensor_types_with_bfloat list.
+ */
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
-                                                       const IndexedSubGraph& nodes_to_fuse);
+                                                       const IndexedSubGraph& nodes_to_fuse,
+                                                       bool allow_aggregated_tensor_type = false);
 
 /** Create a OpSchema given from a local function in onnx model.
 * @param function_domain The domain of the function.
@@ -38,7 +44,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
                                                        const logging::Logger& logger,
                                                        bool allow_released_opsets_only);
 
-/** Get the unique id for function. This is used as a key to find the 
+/** Get the unique id for function. This is used as a key to find the
 * relevant model local function from it's container.
 * @param function_domain Domain for the function.
 * @param function_name Name of the function. Name should match the OpType of the node which references the function.
@@ -47,10 +53,10 @@ inline std::string GetFunctionIdentifier(std::string_view function_domain, std::
   return function_domain.data() + std::string(":") + function_name.data();
 }
 
-Status Instantiate(onnxruntime::Graph& graph,
-       const onnxruntime::NodeIndex node_index,
-       const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
-       std::unique_ptr<Function>& output);
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto calling_node,
+                const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix);
+
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, Node& calling_node, std::string unique_prefix);
 
 }
 

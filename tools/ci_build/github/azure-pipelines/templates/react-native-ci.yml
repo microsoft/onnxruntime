@@ -133,7 +133,8 @@ jobs:
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
       testRunTitle: 'React Native Android Instrumented Test results'
-      javaHomeOption: 'JDKVersion'
+      javaHomeOption: 'path'
+      jdkDirectory: '$(JAVA_HOME_11_X64)'
       sonarQubeRunAnalysis: false
       spotBugsAnalysis: false
     displayName: Run React Native Android Instrumented Tests
@@ -202,8 +203,8 @@ jobs:
     inputs:
       sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
       contents: onnxruntime-mobile-*.aar
-      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/node_modules/onnxruntime-react-native/android/libs
-    displayName: Copy Android package to React Native e2e directory
+      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
+    displayName: Copy Android package to Android e2e test directory
 
   - task: Gradle@3
     inputs:
@@ -214,7 +215,8 @@ jobs:
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
       testRunTitle: 'React Native Android e2e Test results'
-      javaHomeOption: 'JDKVersion'
+      javaHomeOption: 'path'
+      jdkDirectory: '$(JAVA_HOME_11_X64)'
       sonarQubeRunAnalysis: false
       spotBugsAnalysis: false
     displayName: Run React Native Android e2e Tests

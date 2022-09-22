@@ -427,7 +427,7 @@ static void CloseSession()
                               });
 }
 
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
+#if !defined(BUILD_INBOX)
 static void WindowFunction(
   const wchar_t* window_operator_name,
   TensorKind kind,
@@ -437,7 +437,7 @@ static void WindowFunction(
   auto double_data_type = TensorInt64Bit::CreateFromArray({}, {11});
 
   auto window_operator =
-    Operator(window_operator_name, MS_EXPERIMENTAL_DOMAIN)
+    Operator(window_operator_name)
       .SetInput(L"size", L"Input")
       .SetOutput(L"output", L"Output");
 
@@ -446,7 +446,7 @@ static void WindowFunction(
   }
 
   auto model =
-      LearningModelBuilder::Create(13)
+      LearningModelBuilder::Create(17)
               .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", TensorKind::Int64, scalar_shape))
               .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", kind, output_shape))
               .Operators().Add(window_operator)
@@ -491,8 +491,8 @@ static void SaveSoftwareBitmap(const wchar_t* filename, winrt::Windows::Graphics
   encoder.FlushAsync().get();
 }
 
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
-static void DiscreteFourierTransform_2D() {
+#if !defined(BUILD_INBOX)
+static void DiscreteFourierTransform_2D(LearningModelDeviceKind kind) {
 
   using namespace winrt::Windows::Storage;
   using namespace winrt::Windows::Storage::Streams;
@@ -534,7 +534,7 @@ static void DiscreteFourierTransform_2D() {
   printf("\n  Is Onesided: false");
 
   auto builder =
-      LearningModelBuilder::Create(13)
+      LearningModelBuilder::Create(17)
         .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.Signal", TensorKind::Float, input_shape))
         .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
         .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Inverse", TensorKind::Float, output_shape))
@@ -543,21 +543,23 @@ static void DiscreteFourierTransform_2D() {
             .SetInput(L"data", L"Input.Signal")
             .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(height), INT64(width), INT64(1) }))
             .SetOutput(L"reshaped", L"reshaped_output"))
-      .Operators().Add(Operator(L"DFT", MS_EXPERIMENTAL_DOMAIN)
+      .Operators().Add(Operator(L"DFT")
           .SetInput(L"input", L"reshaped_output")
           .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
           .SetOutput(L"output", L"DFT.Output.1"))
-       .Operators().Add(Operator(L"DFT", MS_EXPERIMENTAL_DOMAIN)
+       .Operators().Add(Operator(L"DFT")
           .SetInput(L"input", L"DFT.Output.1")
           .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(2)}))
           .SetOutput(L"output", L"DFT.Output.2"))
-       .Operators().Add(Operator(L"IDFT", MS_EXPERIMENTAL_DOMAIN)
+       .Operators().Add(Operator(L"DFT")
           .SetInput(L"input", L"DFT.Output.2")
           .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(2)}))
+          .SetAttribute(L"inverse", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
           .SetOutput(L"output", L"IDFT.Output.1"))
-       .Operators().Add(Operator(L"IDFT", MS_EXPERIMENTAL_DOMAIN)
+       .Operators().Add(Operator(L"DFT")
           .SetInput(L"input", L"IDFT.Output.1")
           .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
+          .SetAttribute(L"inverse", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
           .SetOutput(L"output", L"IDFT.Output.2"))
         .Operators().Add(Operator(L"ReduceSumSquare")
           .SetInput(L"data", L"DFT.Output.2")
@@ -591,8 +593,8 @@ static void DiscreteFourierTransform_2D() {
           .SetOutput(L"C", L"Output.Error"));
 
   auto model = builder.CreateModel();
-
-  LearningModelSession session(model);
+  auto device = LearningModelDevice(kind);
+  LearningModelSession session(model, device);
   LearningModelBinding binding(session);
 
   // Bind input
@@ -630,6 +632,7 @@ static void DiscreteFourierTransform_2D() {
 
 template <typename T>
 static void DiscreteFourierTransform(
+    LearningModelDeviceKind kind,
     const std::vector<T>& input,
     const std::vector<int64_t>& input_shape,
     const std::vector<std::complex<float>>& expected_output,
@@ -664,19 +667,19 @@ static void DiscreteFourierTransform(
   printf("\n  Is Onesided: %s", is_onesided ? "true" : "false");
 
   auto model =
-    LearningModelBuilder::Create(13)
+    LearningModelBuilder::Create(17)
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.Signal", TensorKind::Float, input_shape))
       .Inputs().AddConstant(L"Input.DFTLength", TensorInt64Bit::CreateFromArray({}, {INT64(dft_length)}))
       .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
-      .Operators().Add(Operator(L"DFT", MS_EXPERIMENTAL_DOMAIN)
+      .Operators().Add(Operator(L"DFT")
         .SetInput(L"input", L"Input.Signal")
         .SetInput(L"dft_length", L"Input.DFTLength")
         .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
         .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {is_onesided}))
         .SetOutput(L"output", L"Output.Spectra"))
       .CreateModel();
-
-  LearningModelSession session(model);
+  auto device = LearningModelDevice(kind);
+  LearningModelSession session(model, device);
   LearningModelBinding binding(session);
 
   auto is_real_input = input_shape.size() == 2 || input_shape[input_shape.size() - 1] == 1;
@@ -753,7 +756,7 @@ static auto MakeThreeTones(size_t signal_size, size_t sample_rate) {
   return middle_c;
 }
 
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
+#if !defined(BUILD_INBOX)
 static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
     size_t hop_size, size_t sample_rate, bool is_onesided = false) {
   auto n_dfts = static_cast<size_t>(1 + floor((signal_size - dft_size) / hop_size));
@@ -768,14 +771,14 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
   auto dft_length = TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)});
 
   auto model =
-      LearningModelBuilder::Create(13)
+      LearningModelBuilder::Create(17)
           .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, input_shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.STFT", TensorKind::Float, output_shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.HannWindow", TensorKind::Float, {INT64(dft_size)}))
-          .Operators().Add(Operator(L"HannWindow", MS_EXPERIMENTAL_DOMAIN)
+          .Operators().Add(Operator(L"HannWindow")
               .SetConstant(L"size", dft_length)
               .SetOutput(L"output", L"Output.HannWindow"))
-          .Operators().Add(Operator(L"STFT", MS_EXPERIMENTAL_DOMAIN)
+          .Operators().Add(Operator(L"STFT")
               .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {INT64(is_onesided)}))
               .SetInput(L"signal", L"Input.TimeSignal")
               .SetInput(L"window", L"Output.HannWindow")
@@ -830,12 +833,12 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
 #endif
 
 static void ModelBuilding_MelWeightMatrix() {
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
+#if !defined(BUILD_INBOX)
   std::vector<int64_t> output_shape = {INT64(9), INT64(8)};
   auto builder =
-    LearningModelBuilder::Create(13)
+    LearningModelBuilder::Create(17)
       .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelWeightMatrix", TensorKind::Float, output_shape))
-      .Operators().Add(Operator(L"MelWeightMatrix", MS_EXPERIMENTAL_DOMAIN)
+      .Operators().Add(Operator(L"MelWeightMatrix")
         .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(8)}))
         .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(16)}))
         .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(8192)}))
@@ -865,7 +868,7 @@ static void ModelBuilding_MelWeightMatrix() {
 #endif
 }
 
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
+#if !defined(BUILD_INBOX)
 static void MelSpectrogramOnThreeToneSignal(
     size_t batch_size, size_t signal_size, size_t window_size, size_t dft_size,
     size_t hop_size, size_t n_mel_bins, size_t sampling_rate) {
@@ -875,13 +878,13 @@ static void MelSpectrogramOnThreeToneSignal(
   std::vector<int64_t> mel_spectrogram_shape = {INT64(batch_size), 1, INT64(n_dfts), INT64(n_mel_bins)};
 
   auto builder =
-    LearningModelBuilder::Create(13)
+    LearningModelBuilder::Create(17)
       .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, signal_shape))
       .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.MelSpectrogram", TensorKind::Float, mel_spectrogram_shape))
-      .Operators().Add(Operator(L"HannWindow", MS_EXPERIMENTAL_DOMAIN)
+      .Operators().Add(Operator(L"HannWindow")
         .SetConstant(L"size", TensorInt64Bit::CreateFromArray({}, {INT64(window_size)}))
         .SetOutput(L"output", L"hann_window"))
-      .Operators().Add(Operator(L"STFT", MS_EXPERIMENTAL_DOMAIN)
+      .Operators().Add(Operator(L"STFT")
         .SetName(L"STFT_NAMED_NODE")
         .SetInput(L"signal", L"Input.TimeSignal")
         .SetInput(L"window", L"hann_window")
@@ -897,7 +900,7 @@ static void MelSpectrogramOnThreeToneSignal(
         .SetInput(L"A", L"magnitude_squared")
         .SetConstant(L"B", TensorFloat::CreateFromArray({}, {static_cast<float>(dft_size)}))
         .SetOutput(L"C", L"power_frames"))
-      .Operators().Add(Operator(L"MelWeightMatrix", MS_EXPERIMENTAL_DOMAIN)
+      .Operators().Add(Operator(L"MelWeightMatrix")
         .SetConstant(L"num_mel_bins", TensorInt64Bit::CreateFromArray({}, {INT64(n_mel_bins)}))
         .SetConstant(L"dft_length", TensorInt64Bit::CreateFromArray({}, {INT64(dft_size)}))
         .SetConstant(L"sample_rate", TensorInt64Bit::CreateFromArray({}, {INT64(sampling_rate)}))
@@ -1113,18 +1116,9 @@ static void ModelBuilding_ConstantMatmul() {
 #endif
 }
 
-static void ModelBuilding_DiscreteFourierTransform() {
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
-  std::vector<float> legacy_real_input =
-  {
-      1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
-  };
-
-  std::vector<std::complex<float>> legacy_real_expected_axis_0_two_sided = {
-    {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
-  };
-  DiscreteFourierTransform(legacy_real_input, {1, 8}, legacy_real_expected_axis_0_two_sided, 1, 8, false /*onesided*/);
-
+#if !defined(BUILD_INBOX)
+static void ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceKind kind) {
+  bool isCPU = (kind == LearningModelDeviceKind::Default || kind == LearningModelDeviceKind::Cpu);
   std::vector<float> real_input =
   {
       1.00f, 2.00, 3.00f, 4.00f, 5.00f, 6.00f, 7.00f, 8.00f,
@@ -1141,7 +1135,11 @@ static void ModelBuilding_DiscreteFourierTransform() {
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
     {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f},
   };
-  DiscreteFourierTransform(real_input, {1, 5, 8, 1}, real_expected_axis_0_two_sided, 1, 5, false /*onesided*/);
+  if (isCPU)
+  {
+    // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
+    DiscreteFourierTransform(kind, real_input, {1, 5, 8, 1}, real_expected_axis_0_two_sided, 1, 5, false /*onesided*/);
+  }
 
   std::vector<std::complex<float>> real_expected_axis_1_two_sided = {
     {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
@@ -1150,7 +1148,7 @@ static void ModelBuilding_DiscreteFourierTransform() {
     {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
     {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
   };
-  DiscreteFourierTransform(real_input, {1, 5, 8, 1}, real_expected_axis_1_two_sided, 2, 8, false /*onesided*/);
+  DiscreteFourierTransform(kind, real_input, {1, 5, 8, 1}, real_expected_axis_1_two_sided, 2, 8, false /*onesided*/);
 
   std::vector<std::complex<float>> input =
   {
@@ -1180,7 +1178,11 @@ static void ModelBuilding_DiscreteFourierTransform() {
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
     {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}, {-0.000f, 0.000f}
   };
-  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_0_two_sided, 1, 5, false /*onesided*/);
+  if (isCPU)
+  {
+    // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
+    DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided, 1, 5, false /*onesided*/);
+  }
 
   std::vector<std::complex<float>> expected_axis_0_two_sided_small_dft_length = {
     {4.000f, 0.000f}, {8.000f, 0.000f}, {12.000f, 0.000f}, {16.000f, 0.000f}, {20.000f, 0.000f}, {24.000f, 0.000f}, {28.000f, 0.000f}, {32.000f, 0.000f},
@@ -1193,7 +1195,7 @@ static void ModelBuilding_DiscreteFourierTransform() {
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f},
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
   };
-  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_0_two_sided_small_dft_length, 1, 4, false /*onesided*/);
+  DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided_small_dft_length, 1, 4, false /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_0_two_sided_bigger_dft_length = {
     {5.000000f, 0.000000f},   {10.000000f, 0.000000f},  {15.000000f, 0.000000f},  {20.000000f, 0.000000f},  {25.000000f, 0.000000f},  {30.000000f, 0.000000f},  {35.000000f, 0.000000f},  {40.000000f, 0.000000f},
@@ -1210,7 +1212,11 @@ static void ModelBuilding_DiscreteFourierTransform() {
     {0.133975f, 2.232051f},   {0.267951f, 4.464102f},   {0.401926f, 6.696153f},   {0.535901f, 8.928205f},   {0.669876f, 11.160257f},   {0.803851f, 13.392306f},   {0.937826f, 15.624360f},   {1.071802f, 17.856409f},
     {-1.866026f, 1.232052f},  {-3.732052f, 2.464104f},  {-5.598077f, 3.696155f},  {-7.464104f, 4.928207f},  {-9.330130f, 6.160261f},   {-11.196154f, 7.392309f},  {-13.062180f, 8.624363f},  {-14.928207f, 9.856415f},
   };
-  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_0_two_sided_bigger_dft_length, 1, 6, false /*onesided*/);
+  if (isCPU)
+  {
+    // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
+    DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_two_sided_bigger_dft_length, 1, 6, false /*onesided*/);
+  }
 
   std::vector<std::complex<float>> expected_axis_0_one_sided = {
     {5.000f, 0.000f}, {10.000f, 0.000f}, {15.000f, 0.000f}, {20.000f, 0.000f}, {25.000f, 0.000f}, {30.000f, 0.000f}, {35.000f, 0.000f}, {40.000f, 0.000f},
@@ -1221,7 +1227,11 @@ static void ModelBuilding_DiscreteFourierTransform() {
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f},
     {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f}, {-0.000f, 0.000f}, {0.000f, 0.000f},
   };
-  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_0_one_sided, 1, 5, true /*onesided*/);
+  if (isCPU)
+  {
+    // Only enabled for CPU, as GPU does not support non-power2 DFTs yet.
+    DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_0_one_sided, 1, 5, true /*onesided*/);
+  }
 
   std::vector<std::complex<float>> expected_axis_1_two_sided = {
     {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f}, {-4.000f, -1.657f}, {-4.000f, -4.000f}, {-4.000f, -9.657f},
@@ -1236,7 +1246,7 @@ static void ModelBuilding_DiscreteFourierTransform() {
     {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f}, {-6.343f, -7.314f}, {-4.000f, -12.000f}, {1.657f, -23.314f},
     {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f}, {-6.343f, -7.314f}, {-4.000f, -12.000f}, {1.657f, -23.314f},
   };
-  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_1_two_sided, 2, 8, false /*onesided*/);
+  DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_1_two_sided, 2, 8, false /*onesided*/);
 
   std::vector<std::complex<float>> expected_axis_1_one_sided = {
     {36.000f, 0.000f}, {-4.000f, 9.657f}, {-4.000f, 4.000f}, {-4.000f, 1.657f}, {-4.000f, 0.000f},
@@ -1250,35 +1260,47 @@ static void ModelBuilding_DiscreteFourierTransform() {
     {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f},
     {72.000f, 36.000f}, {-17.657f, 15.314f}, {-12.000f, 4.000f}, {-9.657f, -0.686f}, {-8.000f, -4.000f},
   };
-  DiscreteFourierTransform(input, {2, 5, 8, 2}, expected_axis_1_one_sided, 2, 8, true /*onesided*/);
+  DiscreteFourierTransform(kind, input, {2, 5, 8, 2}, expected_axis_1_one_sided, 2, 8, true /*onesided*/);
 
-  DiscreteFourierTransform_2D();
+  DiscreteFourierTransform_2D(kind);
+}
+#endif
 
+static void ModelBuilding_DiscreteFourierTransform() {
+#if !defined(BUILD_INBOX)
+  ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceKind::Cpu);
 #endif
 }
 
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
-static void DiscreteFourierTransformInverse(size_t axis) {
+static void ModelBuilding_DiscreteFourierTransformDeviceDirectX() {
+#if !defined(BUILD_INBOX)
+  ModelBuilding_DiscreteFourierTransform_Internal(LearningModelDeviceKind::DirectX);
+#endif
+}
+
+#if !defined(BUILD_INBOX)
+static void DiscreteFourierTransformInverse(size_t axis, LearningModelDeviceKind kind) {
   std::vector<int64_t> shape = {2, 5, 8, 1};
   std::vector<int64_t> output_shape = {2, 5, 8, 2};
 
   auto model =
-      LearningModelBuilder::Create(13)
+      LearningModelBuilder::Create(17)
           .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Inverse", TensorKind::Float, output_shape))
-          .Operators().Add(Operator(L"DFT", MS_EXPERIMENTAL_DOMAIN)
+          .Operators().Add(Operator(L"DFT")
                              .SetInput(L"input", L"Input.TimeSignal")
                              .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
                              .SetOutput(L"output", L"Output.Spectra"))
-          .Operators().Add(Operator(L"DFT", MS_EXPERIMENTAL_DOMAIN)
+          .Operators().Add(Operator(L"DFT")
                              .SetInput(L"input", L"Output.Spectra")
                              .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
                              .SetAttribute(L"inverse", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
                              .SetOutput(L"output", L"Output.Inverse"))
           .CreateModel();
 
-  LearningModelSession session(model);
+  auto device = LearningModelDevice(kind);
+  LearningModelSession session(model, device);
   LearningModelBinding binding(session);
 
   auto input_vector =
@@ -1317,14 +1339,22 @@ static void DiscreteFourierTransformInverse(size_t axis) {
 #endif
 
 static void ModelBuilding_DiscreteFourierTransformInverseIdentity() {
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
-  DiscreteFourierTransformInverse(1);
-  DiscreteFourierTransformInverse(2);
+#if !defined(BUILD_INBOX)
+  DiscreteFourierTransformInverse(1, LearningModelDeviceKind::Cpu);
+  DiscreteFourierTransformInverse(2, LearningModelDeviceKind::Cpu);
+#endif
+}
+
+static void ModelBuilding_DiscreteFourierTransformInverseIdentityDeviceDirectX() {
+#if !defined(BUILD_INBOX)
+  // Only powers of 2 dft supported on GPU currently!
+  // DiscreteFourierTransformInverse(1, LearningModelDeviceKind::DirectX);
+  DiscreteFourierTransformInverse(2, LearningModelDeviceKind::DirectX);
 #endif
 }
 
 static void ModelBuilding_HannWindow() {
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
+#if !defined(BUILD_INBOX)
   auto expected = std::vector<float> {
     0.000000f, 0.009607f, 0.038060f, 0.084265f, 0.146447f,
     0.222215f, 0.308658f, 0.402455f, 0.500000f, 0.597545f,
@@ -1340,7 +1370,7 @@ static void ModelBuilding_HannWindow() {
 }
 
 static void ModelBuilding_HammingWindow() {
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
+#if !defined(BUILD_INBOX)
   auto expected = std::vector<float> {
     0.086957f, 0.095728f, 0.121707f, 0.163894f, 0.220669f,
     0.289848f, 0.368775f, 0.454415f, 0.543478f, 0.632541f,
@@ -1356,7 +1386,7 @@ static void ModelBuilding_HammingWindow() {
 }
 
 static void ModelBuilding_BlackmanWindow() {
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
+#if !defined(BUILD_INBOX)
   auto expected = std::vector<float> {
     0.000000f, 0.003518f, 0.014629f, 0.034880f, 0.066447f,
     0.111600f, 0.172090f, 0.248544f, 0.340000f, 0.443635f,
@@ -1372,7 +1402,7 @@ static void ModelBuilding_BlackmanWindow() {
 }
 
 static void ModelBuilding_STFT() {
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
+#if !defined(BUILD_INBOX)
   size_t batch_size = 1;
   size_t sample_rate = 8192;
   float signal_duration_in_seconds = 5.f;
@@ -1387,7 +1417,7 @@ static void ModelBuilding_STFT() {
 }
 
 static void ModelBuilding_MelSpectrogramOnThreeToneSignal() {
-#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
+#if !defined(BUILD_INBOX)
   size_t batch_size = 1;
   size_t sample_rate = 8192;
   float signal_duration_in_seconds = 5.f;
@@ -1538,6 +1568,8 @@ const LearningModelSessionAPITestsApi& getapi() {
     ModelBuilding_ConstantMatmul,
     ModelBuilding_DiscreteFourierTransform,
     ModelBuilding_DiscreteFourierTransformInverseIdentity,
+    ModelBuilding_DiscreteFourierTransformDeviceDirectX,
+    ModelBuilding_DiscreteFourierTransformInverseIdentityDeviceDirectX,
     ModelBuilding_HannWindow,
     ModelBuilding_HammingWindow,
     ModelBuilding_BlackmanWindow,
@@ -1554,6 +1586,8 @@ const LearningModelSessionAPITestsApi& getapi() {
     api.CreateSessionWithCastToFloat16InModel = SkipTest;
     api.CreateSessionWithFloat16InitializersInModel = SkipTest;
     api.AdapterIdAndDevice = SkipTest;
+    api.ModelBuilding_DiscreteFourierTransformDeviceDirectX = SkipTest;
+    api.ModelBuilding_DiscreteFourierTransformInverseIdentityDeviceDirectX = SkipTest;
   }
   if (RuntimeParameterExists(L"EdgeCore")) {
     api.AdapterIdAndDevice = SkipTest;

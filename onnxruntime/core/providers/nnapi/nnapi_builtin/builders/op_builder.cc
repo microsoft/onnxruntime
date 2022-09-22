@@ -4,6 +4,7 @@
 #include "op_builder.h"
 
 #include <onnx/onnx_pb.h>
+#include <algorithm>
 
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
@@ -13,9 +14,11 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "helper.h"
 #include "model_builder.h"
 #include "op_support_checker.h"
+#include "core/optimizer/initializer.h"
 
 using namespace android::nn::wrapper;
 
@@ -29,37 +32,9 @@ struct OpBuilderRegistrations {
   std::unordered_map<std::string, const IOpBuilder*> op_builder_map;
 };
 
-#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)             \
-  do {                                                                             \
-    uint32_t _index = 0;                                                           \
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromScalar(scalar_value, _index)); \
-    input_indices.push_back(_index);                                               \
-  } while (0)
-
-Status AddTransposeOperator(ModelBuilder& model_builder,
-                            const std::string& input,
-                            const std::string& perm_name,
-                            std::vector<int32_t> perm,
-                            const std::string& output) {
-  auto& shaper(model_builder.GetShaper());
-  const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto& operand_types(model_builder.GetOperandTypes());
-
-  std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input));  // input
-
-  Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
-  OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type));
-  uint32_t perm_idx = operand_indices.at(perm_name);
-
-  input_indices.push_back(perm_idx);  // permutation
-  ORT_RETURN_IF_ERROR(shaper.Transpose(input, perm, output));
-  OperandType output_operand_type = operand_types.at(input);
-  output_operand_type.SetDimensions(shaper[output]);
-  return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
-                                    {output_operand_type});
-}
+#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)          \
+  ORT_RETURN_IF_ERROR(onnxruntime::nnapi::op_builder_helpers::AddScalarOperand( \
+      model_builder, input_indices, scalar_value))
 
 static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
@@ -153,9 +128,8 @@ static Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const N
     if (node_unit.Inputs().size() > 1) {
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
-      std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axes_tensor, unpacked_tensor));
-      const int64_t* raw_axes = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+      Initializer unpacked_tensor(axes_tensor);
+      auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
       const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
       axes.resize(size);
       for (uint32_t i = 0; i < size; i++) {
@@ -190,16 +164,11 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 
   // TODO support other data types
   const uint8_t* src = nullptr;
-  std::vector<uint8_t> unpacked_tensor;
 
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor));
-      src = unpacked_tensor.data();
       break;
     }
     default:
@@ -207,7 +176,8 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                              "The initializer of graph ", name,
                              " doesn't have valid type: ", tensor.data_type());
   }
-
+  Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
+  src = unpacked_tensor.DataAsByteSpan().data();
   const auto out_t = shape[0], in_t = shape[1],
              h_t = shape[2], w_t = shape[3];
   Shape dest_shape;
@@ -275,15 +245,10 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
 
   // TODO support other data types
   const uint8_t* src = nullptr;
-  std::vector<uint8_t> unpacked_tensor;
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor));
-      src = unpacked_tensor.data();
       break;
     }
     default:
@@ -291,7 +256,9 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
                              "The initializer of graph ", name,
                              " doesn't have valid type: ", tensor.data_type());
   }
-
+  Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
+  // could be float/u8/s8, so we have to use raw data here.
+  src = unpacked_tensor.DataAsByteSpan().data();
   const auto x_t = shape[0], y_t = shape[1];
   Shape dest_shape = {y_t, x_t};
   OperandType operand_type = source_operand_type;
@@ -449,11 +416,10 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
   w_zero_point = 0;
 
   // We need to copy the 1d scales array for per-channel quantization
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scale_tensor, unpacked_tensor));
-  const float* scales = reinterpret_cast<const float*>(unpacked_tensor.data());
+  Initializer unpacked_tensor(scale_tensor);
+  auto scales = unpacked_tensor.DataAsSpan<float>();
   const size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
-  std::vector<float> scales_vec(scales, scales + scales_size);
+  std::vector<float> scales_vec(scales.begin(), scales.begin() + scales_size);
   w_scales = onnxruntime::make_optional(std::move(scales_vec));
   return Status::OK();
 }
@@ -776,7 +742,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
   std::string perm_name = model_builder.GetUniqueName(node_unit.Name() + input + "perm");
 
-  ORT_RETURN_IF_ERROR(AddTransposeOperator(model_builder, input, perm_name, perm, output));
+  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiTranspose(model_builder, input, perm_name, perm, output));
 
   return Status::OK();
 }
@@ -828,7 +794,6 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   // and the node_unit has only one output node.
   const auto& output_node_arg = node_unit.Outputs()[0].node_arg;
   const auto& output_name = output_node_arg.Name();
-  const auto& output_node = *node_unit.GetOutputNodes()[0];
 
   // Check if the Reshape output is a graph output, if so we cannot skip the Reshape
   // We do not care the case where the Reshape output is a dead end
@@ -841,7 +806,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   }
 
   // We will go through all the output edges
-  for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
+  for (auto it = node_unit.OutputEdgesBegin(0), end = node_unit.OutputEdgesEnd(0); it != end; ++it) {
     const auto& dest_node_unit = model_builder.GetNodeUnit(&it->GetNode());
     const auto& op_type = dest_node_unit.OpType();
     // TODO add quantized matmul when reshape support quantized input
@@ -854,7 +819,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     }
 
     // Now the dest node is Gemm/Matmul, we want to make sure it is supported
-    if (!BaseOpBuilder::IsOpSupported(model_builder, node_unit)) {
+    if (!BaseOpBuilder::IsOpSupported(model_builder, dest_node_unit)) {
       return false;
     }
 
@@ -905,16 +870,9 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   } else {
     // We still need to perform a reshape here
-    // Add input
-    std::vector<uint32_t> input_indices;
-    input_indices.push_back(operand_indices.at(input));
-    // Add new shape
-    Shape shape_dimen = {static_cast<uint32_t>(shape.size())};
     std::string shape_name = model_builder.GetUniqueName(node_unit.Name() + input + "newshape");
-    OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
-    input_indices.push_back(operand_indices.at(shape_name));
-    ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices, {output}, {output_operand_type}));
+    ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape_name, shape, output,
+                                                            &shaper[output]));
   }
 
   return Status::OK();
@@ -927,9 +885,8 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto input = node_unit.Inputs()[0].node_arg.Name();
 
   const auto& shape_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(shape_tensor, unpacked_tensor));
-  const int64_t* raw_shape = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+  Initializer unpacked_tensor(shape_tensor);
+  auto raw_shape = unpacked_tensor.DataAsSpan<int64_t>();
   const auto size = SafeInt<uint32_t>(shape_tensor.dims()[0]);
 
   Shape input_shape = shaper[input];
@@ -1041,21 +998,15 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   a.reserve(size);
   b.reserve(size);
 
-  std::vector<uint8_t> unpacked_scale_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scale_tensor, unpacked_scale_tensor));
-  const float* scale_data = reinterpret_cast<const float*>(unpacked_scale_tensor.data());
+  Initializer unpacked_scale_tensor(scale_tensor);
+  Initializer unpacked_bias_tensor(bias_tensor);
+  Initializer unpacked_mean_tensor(mean_tensor);
+  Initializer unpacked_var_tensor(var_tensor);
 
-  std::vector<uint8_t> unpacked_bias_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_bias_tensor));
-  const float* bias_data = reinterpret_cast<const float*>(unpacked_bias_tensor.data());
-
-  std::vector<uint8_t> unpacked_mean_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(mean_tensor, unpacked_mean_tensor));
-  const float* mean_data = reinterpret_cast<const float*>(unpacked_mean_tensor.data());
-
-  std::vector<uint8_t> unpacked_var_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(var_tensor, unpacked_var_tensor));
-  const float* var_data = reinterpret_cast<const float*>(unpacked_var_tensor.data());
+  auto scale_data = unpacked_scale_tensor.DataAsSpan<float>();
+  auto bias_data = unpacked_bias_tensor.DataAsSpan<float>();
+  auto mean_data = unpacked_mean_tensor.DataAsSpan<float>();
+  auto var_data = unpacked_var_tensor.DataAsSpan<float>();
 
   for (int64_t i = 0; i < size; i++) {
     a.push_back(scale_data[i] / sqrt(var_data[i] + eps));
@@ -1425,12 +1376,10 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     Shape bias_dimen;
     for (auto dim : bias_tensor.dims())
       bias_dimen.push_back(SafeInt<uint32_t>(dim));
-
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
+    Initializer unpacked_tensor(bias_tensor);
     OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
     ORT_RETURN_IF_ERROR(
-        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
+        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data<int32_t>(), bias_operand_type));
   }
 
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
@@ -1722,6 +1671,11 @@ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 }
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetNNAPIFeatureLevel())) {
+    // no initializers to skip for batch matmul
+    return;
+  }
+
   const auto& inputs = node_unit.Inputs();
   if (IsQuantizedOp(node_unit)) {
     if (node_unit.OpType() == "QLinearMatMul" || node_unit.OpType() == "MatMul") {                 // QLinearMatMul/QDQMatMul
@@ -1758,6 +1712,10 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 }
 
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetNNAPIFeatureLevel())) {
+    return op_builder_helpers::BuildBatchMatMul(model_builder, node_unit);
+  }
+
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -1845,11 +1803,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       Shape bias_dimen;
       for (auto dim : bias_tensor.dims())
         bias_dimen.push_back(SafeInt<uint32_t>(dim));
-      std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
+      Initializer unpacked_tensor(bias_tensor);
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale);
       ORT_RETURN_IF_ERROR(
-          model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
+          model_builder.AddOperandFromPersistMemoryBuffer(
+              bias,
+              unpacked_tensor.data<int32_t>(), bias_operand_type));
 
       bias_idx = operand_indices.at(bias);
     }
@@ -2407,17 +2366,15 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   if (inputs.size() == 3) {  // we are using scales
     const auto& scales_name = inputs[2].node_arg.Name();
     const auto& scales_tensor = *initializers.at(scales_name);
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor));
-    const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
+    Initializer unpacked_tensor(scales_tensor);
+    auto scales_data = unpacked_tensor.DataAsSpan<float>();
     ORT_RETURN_IF_ERROR(
         shaper.ResizeUsingScales(input, scales_data[h_idx], scales_data[w_idx], use_nchw, output));
   } else {  // we are using sizes
     const auto& sizes_name = inputs[3].node_arg.Name();
     const auto& sizes_tensor = *initializers.at(sizes_name);
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor));
-    const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+    Initializer unpacked_tensor(sizes_tensor);
+    auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
     ORT_RETURN_IF_ERROR(
         shaper.ResizeUsingOutputSizes(input, SafeInt<uint32_t>(sizes_data[h_idx]), SafeInt<uint32_t>(sizes_data[w_idx]), use_nchw, output));
   }
@@ -2494,9 +2451,15 @@ class GatherOpBuilder : public BaseOpBuilder {
 };
 
 void GatherOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  // Skip the second input `indices` for Gather
   const auto& inputs = node_unit.Inputs();
-  model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // indices
+  const auto& indices_name = inputs[1].node_arg.Name();
+  int32_t indices_data_type;
+  GetType(node_unit.Inputs()[1].node_arg, indices_data_type);
+  if (Contains(model_builder.GetInitializerTensors(), indices_name) &&
+      indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    // Skip the second input `indices` for Gather if it is an initializer
+    model_builder.AddInitializerToSkip(indices_name);
+  }
 }
 
 Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2516,39 +2479,36 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   input_indices.push_back(operand_indices.at(input1));
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
-  // Add indices operand into nnapi
-  const auto& indices_tensor = *initializers.at(input2);
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(indices_tensor, unpacked_tensor));
+  int32_t indices_data_type;
+  GetType(node_unit.Inputs()[1].node_arg, indices_data_type);
+  if (Contains(model_builder.GetInitializerTensors(), input2) &&
+      indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    // Add indices operand into nnapi
+    const auto& indices_tensor = *initializers.at(input2);
+    Initializer unpacked_tensor(indices_tensor);
 
-  const auto data_type = indices_tensor.data_type();
-  const auto indices_shape = indices_tensor.dims();
-  uint32_t size = 1;
-  Shape indices_dimen;
-  indices_dimen.reserve(indices_tensor.dims_size());
-  for (auto i = 0; i < indices_tensor.dims_size(); i++) {
-    size *= indices_shape[i];
-    indices_dimen.push_back(static_cast<uint32_t>(indices_shape[i]));
-  }
-
-  std::vector<int32_t> indices(size);
-  // see https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#type-punning-arrays for the usage of memcpy here
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    for (uint32_t i = 0; i < size; i++) {
-      int64_t index_i64;
-      memcpy(&index_i64, unpacked_tensor.data() + i * sizeof(int64_t), sizeof(int64_t));
-      indices[i] = SafeInt<int32_t>(index_i64);
+    const auto data_type = indices_tensor.data_type();
+    const auto indices_shape = indices_tensor.dims();
+    Shape indices_dimen;
+    indices_dimen.reserve(indices_tensor.dims_size());
+    for (auto i = 0; i < indices_tensor.dims_size(); i++) {
+      indices_dimen.push_back(static_cast<uint32_t>(indices_shape[i]));
     }
-  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    for (uint32_t i = 0; i < size; i++) {
-      int32_t index;
-      memcpy(&index, unpacked_tensor.data() + i * sizeof(int32_t), sizeof(int32_t));
-      indices[i] = SafeInt<int32_t>(index);
-    }
-  }
 
-  OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type));
+    std::vector<int32_t> indices(unpacked_tensor.size());
+
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+      auto indice_span = unpacked_tensor.DataAsSpan<int64_t>();
+      std::transform(indice_span.begin(), indice_span.end(), indices.begin(),
+                     [](int64_t indice_n) -> int32_t { return SafeInt<int32_t>(indice_n); });
+    } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+      auto indice_span = unpacked_tensor.DataAsSpan<int32_t>();
+      indices.assign(indice_span.begin(), indice_span.end());
+    }
+
+    OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
+    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type));
+  }
   input_indices.push_back(operand_indices.at(input2));
   ORT_RETURN_IF_ERROR(shaper.Gather(input1, input2, axis, output));
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
@@ -2699,20 +2659,14 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       const auto& initializers(model_builder.GetInitializerTensors());
 
       const auto& tensor = *initializers.at(input_name);
-      std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor));
-      size_t tensor_byte_size = unpacked_tensor.size();
+      Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
       const auto data_type = tensor.data_type();
       if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-        const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
-        size_t size = tensor_byte_size / sizeof(int64_t);
-        data.insert(data.end(), tensor_data, tensor_data + size);
+        auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
+        data.insert(data.end(), tensor_data.begin(), tensor_data.end());
       } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-        const int32_t* tensor_data = reinterpret_cast<const int32_t*>(unpacked_tensor.data());
-        size_t size = tensor_byte_size / sizeof(int32_t);
-        data.insert(data.end(), tensor_data, tensor_data + size);
+        auto tensor_data = unpacked_tensor.DataAsSpan<int32_t>();
+        data.insert(data.end(), tensor_data.begin(), tensor_data.end());
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Data type for starts and ends inputs' is not supported in this build. Got ",
@@ -2858,29 +2812,14 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto* pads_initializer = model_builder.GetConstantInitializer(pads);
   ORT_RETURN_IF_NOT(pads_initializer, "pads must be a constant");
 
-  std::vector<uint8_t> pads_initializer_raw_data{};
-  ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*pads_initializer, pads_initializer_raw_data));
+  Initializer pads_initializer_raw_data(*pads_initializer);
   // assume pads_initializer has int64 data, per ONNX spec
-  ORT_RETURN_IF_NOT(pads_initializer_raw_data.size() == 2 * data_rank * sizeof(int64_t),
-                    "Expected pads initializer size in bytes: ", 2 * data_rank * sizeof(int64_t),
-                    ", actual: ", pads_initializer_raw_data.size());
-
   std::vector<int32_t> converted_pads_data{};
   converted_pads_data.reserve(2 * data_rank);
-
-  auto copy_and_convert = [](const void* raw_i64_src,
-                             std::back_insert_iterator<decltype(converted_pads_data)> i32_dst) {
-    int64_t i64;
-    memcpy(&i64, raw_i64_src, sizeof(i64));
-    *i32_dst = SafeInt<int32_t>(i64);
-  };
-
+  auto pads_span = pads_initializer_raw_data.DataAsSpan<int64_t>();
   for (size_t i = 0; i < data_rank; ++i) {
-    copy_and_convert(&pads_initializer_raw_data[i * sizeof(int64_t)],
-                     std::back_inserter(converted_pads_data));
-
-    copy_and_convert(&pads_initializer_raw_data[(i + data_rank) * sizeof(int64_t)],
-                     std::back_inserter(converted_pads_data));
+    converted_pads_data.push_back(SafeInt<int32_t>(pads_span[i]));
+    converted_pads_data.push_back(SafeInt<int32_t>(pads_span[i + data_rank]));
   }
 
   const Shape converted_pads_shape{data_rank, 2};
@@ -2895,15 +2834,8 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
     const auto& constant_value = inputs[2].node_arg.Name();
     const auto* constant_value_initializer = model_builder.GetConstantInitializer(constant_value);
     ORT_RETURN_IF_NOT(constant_value_initializer, "constant_value must be a constant");
-
-    std::vector<uint8_t> pad_value_raw_data{};
-    ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*constant_value_initializer, pad_value_raw_data));
-    // assume constant_value_initializer has float data
-    // ONNX spec says it matches `data` input type, and op support checker limits that to float
-    ORT_RETURN_IF_NOT(pad_value_raw_data.size() == sizeof(float),
-                      "Expected constant_value initializer size in bytes: ", sizeof(float),
-                      ", actual size: ", pad_value_raw_data.size());
-    memcpy(&pad_value, pad_value_raw_data.data(), sizeof(float));
+    Initializer pad_value_raw_data_init(*constant_value_initializer);
+    pad_value = pad_value_raw_data_init.DataAsSpan<float>()[0];
   }
 
   ADD_SCALAR_OPERAND(model_builder, input_indices, pad_value);

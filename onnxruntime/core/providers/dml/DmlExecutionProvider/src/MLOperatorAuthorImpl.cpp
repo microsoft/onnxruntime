@@ -1408,11 +1408,14 @@ namespace Windows::AI::MachineLearning::Adapter
                 ComPtr<IMLOperatorTensor> tensor;
                 ORT_THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
 
-                ComPtr<IUnknown> resource;
-                tensor->GetDataInterface(resource.GetAddressOf());
-                if (resource)
+                if (tensor)
                 {
-                    resourcesToTransition.push_back(resource.Get());
+                    ComPtr<IUnknown> resource;
+                    tensor->GetDataInterface(resource.GetAddressOf());
+                    if (resource)
+                    {
+                        resourcesToTransition.push_back(resource.Get());
+                    }
                 }
             }
 
@@ -1467,7 +1470,7 @@ namespace Windows::AI::MachineLearning::Adapter
             m_abiExecutionObject = m_providerExecutionObject;
             if (m_winmlProvider)
             {
-                m_winmlProvider->GetABIExecutionInterface(isInternalOperator, m_abiExecutionObject.ReleaseAndGetAddressOf());
+                m_winmlProvider->GetABIExecutionInterfaceAndInvalidateState(isInternalOperator, m_abiExecutionObject.ReleaseAndGetAddressOf());
             }
 
             TransitionResourcesForOperatorIfRequired(true);
@@ -1525,21 +1528,27 @@ namespace Windows::AI::MachineLearning::Adapter
 
           ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
 
+          auto opKernelContextWrapper = const_cast<OpKernelContextWrapper*>(this);
           if (m_inputTensors[inputIndex]->GetInterface() == nullptr)
           {
             auto inputTensor = m_impl->Input<onnxruntime::Tensor>(inputIndex);
+            if (inputTensor != nullptr)
+            {
+              ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                  const_cast<onnxruntime::Tensor*>(inputTensor),
+                  IsAllocationInterface(inputTensor->Location()),
+                  m_winmlProvider.Get(),
+                  m_internalOperator);
 
-            ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
-                const_cast<onnxruntime::Tensor*>(inputTensor),
-                IsAllocationInterface(inputTensor->Location()),
-                m_winmlProvider.Get(),
-                m_internalOperator);
-
-            const_cast<OpKernelContextWrapper*>(this)->m_inputTensors[inputIndex] = tensorWrapper;
+              opKernelContextWrapper->m_inputTensors[inputIndex] = tensorWrapper;
+            }
           }
 
-          const_cast<OpKernelContextWrapper*>(this)->m_inputTensors[inputIndex].CopyTo(tensor);
 
+          if (opKernelContextWrapper->m_inputTensors[inputIndex] != nullptr)
+          {
+            opKernelContextWrapper->m_inputTensors[inputIndex].CopyTo(tensor);
+          }
           return S_OK;
         }
         ORT_CATCH_RETURN
@@ -1737,7 +1746,7 @@ namespace Windows::AI::MachineLearning::Adapter
             if (m_winmlProvider)
             {
                 // Get the particular object to return to a isInternalOperator based on the registration of that kernel.
-                m_winmlProvider->GetABIExecutionInterface(isInternalOperator, m_abiExecutionObject.ReleaseAndGetAddressOf());
+                m_winmlProvider->GetABIExecutionInterfaceAndInvalidateState(isInternalOperator, m_abiExecutionObject.ReleaseAndGetAddressOf());
             }
         }
 

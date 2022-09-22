@@ -1,0 +1,46 @@
+trigger: none
+
+parameters:
+- name: DebugLinuxBuild
+  displayName: Debug Linux Build?
+  type: boolean
+  default: false
+
+- name: WindowsBuild
+  displayName: Windows Build?
+  type: boolean
+  default: true
+
+resources:
+  repositories:
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: a8099af1b3e25f0489717ad9c4f9a2e25a8c5b36
+
+stages:
+- template: templates/py-packaging-training-cuda-stage.yml
+  parameters:
+    build_py_parameters: --enable_training --update --build
+    torch_version: '1.11.0'
+    opset_version: '15'
+    cuda_version: '11.6'
+    gcc_version: 10
+    cmake_cuda_architectures: 37;50;52;60;61;70;75;80;86;87
+    docker_file: Dockerfile.manylinux2014_training_cuda11_6
+    agent_pool: Onnxruntime-Linux-GPU
+    upload_wheel: 'yes'
+    debug_build: ${{ parameters.DebugLinuxBuild }}
+
+- template: templates/py-packaging-stage.yml
+  parameters:
+    build_py_parameters: --enable_training
+    enable_linux_gpu: false
+    enable_ubuntu_cpu: false
+    enable_linux_cpu: false
+    enable_windows_cpu: ${{ parameters.WindowsBuild }}
+    enable_windows_gpu: false
+    enable_mac_cpu: false
+    enable_mac_silicon: false
+    enable_linux_arm: false
