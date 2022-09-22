@@ -1151,7 +1151,7 @@ TODO: Support them if needed in the future.
           .SetDoc(R"DOC(Ordered Quantize Gelu.)DOC")
           .Attr("order_X", "cublasLt order of input X. Optional. See the schema of QuantizeWithOrder for order definition.",
                 AttributeProto::INT, OPTIONAL_VALUE)
-          .Attr("order_Y", "cublasLt order of matrix Y, must be same as order_X if specified together. Optional."
+          .Attr("order_Y", "cublasLt order of matrix Y, must be same as order_X if specified together. Optional.",
                 AttributeProto::INT, OPTIONAL_VALUE)
           .Input(0, "X", "N-dimensional input A", "Q")
           .Input(1, "scale_X", "scale of the input A", "S")
