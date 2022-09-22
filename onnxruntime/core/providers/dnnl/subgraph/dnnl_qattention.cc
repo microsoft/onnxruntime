@@ -164,14 +164,14 @@ void DnnlQAttention::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) 
 
     if (has_input_zero_point) {
       auto zp_mem_desc = dnnl::memory::desc({1}, dnnl::memory::data_type::s32, {1});
-      auto tensor = node.Input(INPUT_ZP);
+      auto& tensor = node.Input(INPUT_ZP);
       auto zp_mem = sp.GetMemoryAndReshape(tensor, zp_mem_desc, eng);
       mem_map[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC] = zp_mem;
     }
 
     if (has_weights_zero_point) {
       auto zp_mem_desc = dnnl::memory::desc({1}, dnnl::memory::data_type::s32, {1});
-      auto tensor = node.Input(WEIGHTS_ZP);
+      auto& tensor = node.Input(WEIGHTS_ZP);
       auto zp_mem = sp.GetMemoryAndReshape(tensor, zp_mem_desc, eng);
       mem_map[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS] = zp_mem;
     }

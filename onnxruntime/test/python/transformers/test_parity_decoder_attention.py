@@ -11,12 +11,13 @@
 # -------------------------------------------------------------------------
 
 import math
+import os
+from typing import Dict, List, Optional, Tuple
+
 import numpy
 import torch
 from torch import Tensor, nn
 from torch.nn import functional as F
-from typing import Dict, List, Optional, Tuple
-import os
 
 torch.manual_seed(0)
 
@@ -83,6 +84,7 @@ def my_bart_attention_forward(
     return attn_output, None, layer_state
 """
 
+
 class Config:
     batch_size = 0
     sequence_length = 0
@@ -98,6 +100,7 @@ class Config:
         self.num_heads = n
         self.head_size = h
         self.embed_dim = self.num_heads * self.head_size
+
 
 class AttentionProjection(nn.Module):
     def __init__(self, num_heads, head_dim, embed_dim, bias=True):
@@ -148,6 +151,7 @@ class AttentionProjection(nn.Module):
 
         return k, v
 
+
 class AttentionForONNX(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
@@ -165,7 +169,7 @@ class AttentionForONNX(nn.Module):
         self.dropout = dropout
         self.head_dim = embed_dim // num_heads
         assert self.head_dim * num_heads == self.embed_dim, "embed_dim must be divisible by num_heads"
-        self.scaling = self.head_dim ** -0.5
+        self.scaling = self.head_dim**-0.5
 
         self.encoder_decoder_attention = encoder_decoder_attention
         self.k_v_proj = torch.jit.script(AttentionProjection(num_heads, self.head_dim, embed_dim, bias))
@@ -183,9 +187,9 @@ class AttentionForONNX(nn.Module):
         key_padding_mask: Optional[Tensor] = None,
         layer_state: Optional[List[Tensor]] = None,
         attn_mask: Optional[Tensor] = None,
-        output_attentions: bool=False,
+        output_attentions: bool = False,
         use_past=torch.tensor(False),
-        has_key_padding_mask: bool=False
+        has_key_padding_mask: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time(SeqLen) x Batch x Channel"""
         static_kv: bool = self.encoder_decoder_attention
@@ -198,7 +202,12 @@ class AttentionForONNX(nn.Module):
 
         # Update cache
         if layer_state is not None:
-            cached_shape = (bsz, self.num_heads, -1, self.head_dim)  # bsz must be first for reorder_cache
+            cached_shape = (
+                bsz,
+                self.num_heads,
+                -1,
+                self.head_dim,
+            )  # bsz must be first for reorder_cache
             if static_kv:
                 # cross-attn
                 new_key_cache = k.view(*cached_shape)
@@ -237,9 +246,9 @@ class AttentionForONNX(nn.Module):
         key_padding_mask: Optional[Tensor] = None,
         layer_state: Optional[List[Tensor]] = None,
         attn_mask: Optional[Tensor] = None,
-        output_attentions: bool=False,
+        output_attentions: bool = False,
         use_past=torch.tensor(False),
-        has_key_padding_mask: bool=False
+        has_key_padding_mask: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time(SeqLen) x Batch x Channel"""
         # For readability
@@ -247,16 +256,36 @@ class AttentionForONNX(nn.Module):
         has_layer_state = True if layer_state is not None else False
         use_past_cache = True if use_past else False
 
-        q_weight = self.q_proj.weight.transpose(0,1)
+        q_weight = self.q_proj.weight.transpose(0, 1)
         q_weight = q_weight.reshape(self.embed_dim, self.embed_dim)
 
-        kv_weight = torch.stack((self.k_v_proj.k_proj.weight.transpose(0,1), self.k_v_proj.v_proj.weight.transpose(0,1)), dim=1)
+        kv_weight = torch.stack(
+            (
+                self.k_v_proj.k_proj.weight.transpose(0, 1),
+                self.k_v_proj.v_proj.weight.transpose(0, 1),
+            ),
+            dim=1,
+        )
         kv_weight = kv_weight.reshape(self.embed_dim, 2 * self.embed_dim)
 
-        bias = torch.stack((self.q_proj.bias, self.k_v_proj.k_proj.bias, self.k_v_proj.v_proj.bias), dim=0)
+        bias = torch.stack(
+            (self.q_proj.bias, self.k_v_proj.k_proj.bias, self.k_v_proj.v_proj.bias),
+            dim=0,
+        )
         bias = bias.reshape(3 * self.embed_dim)
 
-        onnx_model_str = create_decoder_attention_graph(query, key, q_weight, kv_weight, bias, self.num_heads, static_kv, use_past_cache, has_layer_state, has_key_padding_mask)
+        onnx_model_str = create_decoder_attention_graph(
+            query,
+            key,
+            q_weight,
+            kv_weight,
+            bias,
+            self.num_heads,
+            static_kv,
+            use_past_cache,
+            has_layer_state,
+            has_key_padding_mask,
+        )
 
         self_p_k, self_p_v, enc_dec_p_k, enc_dec_p_v = layer_state
         if self.encoder_decoder_attention:
@@ -265,16 +294,17 @@ class AttentionForONNX(nn.Module):
             key_cache, value_cache = self_p_k, self_p_v
 
         ort_inputs = {
-            'query': numpy.ascontiguousarray(query.cpu().numpy()),
-            'key': numpy.ascontiguousarray(key.cpu().numpy()),
-            'key_padding_mask': numpy.ascontiguousarray(key_padding_mask.cpu().numpy()),
-            'key_cache': numpy.ascontiguousarray(key_cache.detach().cpu().numpy()),
-            'value_cache': numpy.ascontiguousarray(value_cache.detach().cpu().numpy())
+            "query": numpy.ascontiguousarray(query.cpu().numpy()),
+            "key": numpy.ascontiguousarray(key.cpu().numpy()),
+            "key_padding_mask": numpy.ascontiguousarray(key_padding_mask.cpu().numpy()),
+            "key_cache": numpy.ascontiguousarray(key_cache.detach().cpu().numpy()),
+            "value_cache": numpy.ascontiguousarray(value_cache.detach().cpu().numpy()),
         }
 
-        from onnxruntime import SessionOptions, InferenceSession
+        from onnxruntime import InferenceSession, SessionOptions
+
         sess_options = SessionOptions()
-        ort_session = InferenceSession(onnx_model_str, sess_options, providers=['CUDAExecutionProvider'])
+        ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
         ort_output = ort_session.run(None, ort_inputs)
         output, new_key_cache, new_value_cache = ort_output
 
@@ -284,8 +314,19 @@ class AttentionForONNX(nn.Module):
         return attn_output, torch.tensor(new_key_cache), torch.tensor(new_value_cache)
 
 
-def create_decoder_attention_graph(query, key, q_weight, kv_weight, bias, num_heads_, static_kv, use_past, has_layer_state, has_key_padding_mask):
-    from onnx import helper, TensorProto
+def create_decoder_attention_graph(
+    query,
+    key,
+    q_weight,
+    kv_weight,
+    bias,
+    num_heads_,
+    static_kv,
+    use_past,
+    has_layer_state,
+    has_key_padding_mask,
+):
+    from onnx import TensorProto, helper
 
     S, B, NH = query.size()
     S2 = key.size()[0]
@@ -293,60 +334,77 @@ def create_decoder_attention_graph(query, key, q_weight, kv_weight, bias, num_he
     H = int(NH / N)
 
     nodes = [
-        helper.make_node("DecoderAttention",
-                         ["query", "key", "q_weight", "kv_weight", "bias", "key_padding_mask", "key_cache", "value_cache", "static_kv", "use_past", "has_layer_state", "has_key_padding_mask"],
-                         ["output", "new_key_cache", "new_value_cache"],
-                         "DecoderAttention_0",
-                         num_heads=num_heads_,
-                         domain="com.microsoft"),
+        helper.make_node(
+            "DecoderAttention",
+            [
+                "query",
+                "key",
+                "q_weight",
+                "kv_weight",
+                "bias",
+                "key_padding_mask",
+                "key_cache",
+                "value_cache",
+                "static_kv",
+                "use_past",
+                "has_layer_state",
+                "has_key_padding_mask",
+            ],
+            ["output", "new_key_cache", "new_value_cache"],
+            "DecoderAttention_0",
+            num_heads=num_heads_,
+            domain="com.microsoft",
+        ),
     ]
 
     initializers = [
-        helper.make_tensor('q_weight', TensorProto.FLOAT, [NH, NH],
-                           q_weight.flatten().tolist()),
-        helper.make_tensor('kv_weight', TensorProto.FLOAT, [NH, 2 * NH],
-                           kv_weight.flatten().tolist()),
-        helper.make_tensor('bias', TensorProto.FLOAT, [3 * NH],
-                           bias.flatten().tolist()),
-        helper.make_tensor('static_kv', TensorProto.BOOL, [1],
-                           [static_kv]),
-        helper.make_tensor('use_past', TensorProto.BOOL, [1],
-                            [use_past]),
-        helper.make_tensor('has_layer_state', TensorProto.BOOL, [1],
-                            [has_layer_state]),
-        helper.make_tensor('has_key_padding_mask', TensorProto.BOOL, [1],
-                            [has_key_padding_mask]),
+        helper.make_tensor("q_weight", TensorProto.FLOAT, [NH, NH], q_weight.flatten().tolist()),
+        helper.make_tensor("kv_weight", TensorProto.FLOAT, [NH, 2 * NH], kv_weight.flatten().tolist()),
+        helper.make_tensor("bias", TensorProto.FLOAT, [3 * NH], bias.flatten().tolist()),
+        helper.make_tensor("static_kv", TensorProto.BOOL, [1], [static_kv]),
+        helper.make_tensor("use_past", TensorProto.BOOL, [1], [use_past]),
+        helper.make_tensor("has_layer_state", TensorProto.BOOL, [1], [has_layer_state]),
+        helper.make_tensor("has_key_padding_mask", TensorProto.BOOL, [1], [has_key_padding_mask]),
     ]
 
-    graph = helper.make_graph(nodes, "DecoderAttention_Graph", [
-        helper.make_tensor_value_info('query', TensorProto.FLOAT, [S, B, NH]),
-        helper.make_tensor_value_info('key', TensorProto.FLOAT, [S2, B, NH]),
-        helper.make_tensor_value_info('key_padding_mask', TensorProto.BOOL, [B, "mask_len"]),
-        helper.make_tensor_value_info('key_cache', TensorProto.FLOAT, [B, N, "cache_len", H]),
-        helper.make_tensor_value_info('value_cache', TensorProto.FLOAT, [B, N, "cache_len", H]),
-    ], [
-        helper.make_tensor_value_info('output', TensorProto.FLOAT, [S, B, NH]),
-        helper.make_tensor_value_info('new_key_cache', TensorProto.FLOAT, [B, N, "new_cache_len", H]),
-        helper.make_tensor_value_info('new_value_cache', TensorProto.FLOAT, [B, N, "new_cache_len", H]),
-    ], initializers)
+    graph = helper.make_graph(
+        nodes,
+        "DecoderAttention_Graph",
+        [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT, [S, B, NH]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT, [S2, B, NH]),
+            helper.make_tensor_value_info("key_padding_mask", TensorProto.BOOL, [B, "mask_len"]),
+            helper.make_tensor_value_info("key_cache", TensorProto.FLOAT, [B, N, "cache_len", H]),
+            helper.make_tensor_value_info("value_cache", TensorProto.FLOAT, [B, N, "cache_len", H]),
+        ],
+        [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, [S, B, NH]),
+            helper.make_tensor_value_info("new_key_cache", TensorProto.FLOAT, [B, N, "new_cache_len", H]),
+            helper.make_tensor_value_info("new_value_cache", TensorProto.FLOAT, [B, N, "new_cache_len", H]),
+        ],
+        initializers,
+    )
 
     model = helper.make_model(graph)
     return model.SerializeToString()
 
 
-def create_inputs(config: Config, has_layer_state: bool, use_past: bool, encoder_decoder_attention:bool):
-    query = torch.normal(mean=0.0,
-                         std=0.1,
-                         size=(config.sequence_length,
-                               config.batch_size,
-                               config.embed_dim)
-                        ).to(torch.float32)
-    key = torch.normal(mean=0.0,
-                       std=0.1,
-                       size=(config.kv_sequence_length,
-                             config.batch_size,
-                             config.embed_dim)
-                       ).to(torch.float32)
+def create_inputs(
+    config: Config,
+    has_layer_state: bool,
+    use_past: bool,
+    encoder_decoder_attention: bool,
+):
+    query = torch.normal(
+        mean=0.0,
+        std=0.1,
+        size=(config.sequence_length, config.batch_size, config.embed_dim),
+    ).to(torch.float32)
+    key = torch.normal(
+        mean=0.0,
+        std=0.1,
+        size=(config.kv_sequence_length, config.batch_size, config.embed_dim),
+    ).to(torch.float32)
 
     key_length = None
     if not has_layer_state or not use_past:
@@ -360,64 +418,175 @@ def create_inputs(config: Config, has_layer_state: bool, use_past: bool, encoder
         else:
             key_length = config.kv_sequence_length
 
-    key_padding_mask = torch.normal(mean=0.0,
-                                    std=0.1,
-                                    size=(config.batch_size,
-                                          key_length)
-                                    ) > 0
+    key_padding_mask = torch.normal(mean=0.0, std=0.1, size=(config.batch_size, key_length)) > 0
     # The following line ensure not all the mask are true
     key_padding_mask[0][0] = False
 
-    cache = torch.normal(mean=0.0,
-                         std=0.1,
-                         size=(config.batch_size,
-                               config.num_heads,
-                               config.kv_sequence_length,
-                               config.head_size)
-                         ).to(torch.float32)
+    cache = torch.normal(
+        mean=0.0,
+        std=0.1,
+        size=(
+            config.batch_size,
+            config.num_heads,
+            config.kv_sequence_length,
+            config.head_size,
+        ),
+    ).to(torch.float32)
     layer_state = [cache, cache, cache, cache]
 
     return query, key, key_padding_mask, layer_state, torch.tensor(use_past)
 
 
-def parity_check(config, has_layer_state, use_past, static_kv, has_key_padding_mask, rtol = 1e-4, atol = 1e-4):
-    query, key, key_padding_mask, layer_state, use_past = create_inputs(config,
-                                                                        has_layer_state,
-                                                                        use_past,
-                                                                        static_kv)
-    attn = AttentionForONNX(config.embed_dim,
-                            config.num_heads,
-                            encoder_decoder_attention = static_kv)
-    attn_output, new_key_cache, new_value_cache = attn.forward(query, key, key_padding_mask, layer_state, None, False, use_past, has_key_padding_mask)
-    attn_output_ort, new_key_cache_ort, new_value_cache_ort = attn.ORT_forward(query, key, key_padding_mask, layer_state, None, False, use_past, has_key_padding_mask)
-    attn_output_ort_1, _, _ = attn.ORT_forward(query, key, key_padding_mask, layer_state, None, False, use_past, has_key_padding_mask)
-    print(" B:", config.batch_size,
-          " S:", config.sequence_length,
-          " S*:", config.kv_sequence_length,
-          " h:", config.embed_dim,
-          " has_layer_state:", has_layer_state,
-          " use_past:", use_past,
-          " static_kv:", static_kv,
-          " has_key_padding_mask:", has_key_padding_mask,
-          "[attn_output, randomness, key, value] parity:",
-          numpy.allclose(attn_output.detach().numpy(), attn_output_ort.detach().numpy(), rtol = rtol, atol = atol, equal_nan = True),
-          numpy.allclose(attn_output_ort_1.detach().numpy(), attn_output_ort.detach().numpy(), rtol = rtol, atol = atol, equal_nan = True),
-          numpy.allclose(new_key_cache.detach().numpy(), new_key_cache_ort.detach().numpy(), rtol = rtol, atol = atol, equal_nan = True),
-          numpy.allclose(new_value_cache.detach().numpy(), new_value_cache_ort.detach().numpy(), rtol = rtol, atol = atol, equal_nan = True))
+def parity_check(
+    config,
+    has_layer_state,
+    use_past,
+    static_kv,
+    has_key_padding_mask,
+    rtol=1e-4,
+    atol=1e-4,
+):
+    query, key, key_padding_mask, layer_state, use_past = create_inputs(config, has_layer_state, use_past, static_kv)
+    attn = AttentionForONNX(config.embed_dim, config.num_heads, encoder_decoder_attention=static_kv)
+    attn_output, new_key_cache, new_value_cache = attn.forward(
+        query,
+        key,
+        key_padding_mask,
+        layer_state,
+        None,
+        False,
+        use_past,
+        has_key_padding_mask,
+    )
+    attn_output_ort, new_key_cache_ort, new_value_cache_ort = attn.ORT_forward(
+        query,
+        key,
+        key_padding_mask,
+        layer_state,
+        None,
+        False,
+        use_past,
+        has_key_padding_mask,
+    )
+    attn_output_ort_1, _, _ = attn.ORT_forward(
+        query,
+        key,
+        key_padding_mask,
+        layer_state,
+        None,
+        False,
+        use_past,
+        has_key_padding_mask,
+    )
+    print(
+        " B:",
+        config.batch_size,
+        " S:",
+        config.sequence_length,
+        " S*:",
+        config.kv_sequence_length,
+        " h:",
+        config.embed_dim,
+        " has_layer_state:",
+        has_layer_state,
+        " use_past:",
+        use_past,
+        " static_kv:",
+        static_kv,
+        " has_key_padding_mask:",
+        has_key_padding_mask,
+        "[attn_output, randomness, key, value] parity:",
+        numpy.allclose(
+            attn_output.detach().numpy(),
+            attn_output_ort.detach().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        ),
+        numpy.allclose(
+            attn_output_ort_1.detach().numpy(),
+            attn_output_ort.detach().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        ),
+        numpy.allclose(
+            new_key_cache.detach().numpy(),
+            new_key_cache_ort.detach().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        ),
+        numpy.allclose(
+            new_value_cache.detach().numpy(),
+            new_value_cache_ort.detach().numpy(),
+            rtol=rtol,
+            atol=atol,
+            equal_nan=True,
+        ),
+    )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     for b in [1, 32, 128]:
         for s in [1, 2, 128]:
             for s2 in [1, 64, 256]:
                 for n in [8]:
                     for h in [64]:
                         config = Config(b, s, s2, n, h)
-                        parity_check(config, has_layer_state = True, use_past = True, static_kv = True, has_key_padding_mask = False)
-                        parity_check(config, has_layer_state = True, use_past = True, static_kv = False, has_key_padding_mask = False)
-                        parity_check(config, has_layer_state = True, use_past = False, static_kv = True, has_key_padding_mask = False)
-                        parity_check(config, has_layer_state = True, use_past = False, static_kv = False, has_key_padding_mask = False)
-                        parity_check(config, has_layer_state = True, use_past = True, static_kv = True, has_key_padding_mask = True)
-                        parity_check(config, has_layer_state = True, use_past = True, static_kv = False, has_key_padding_mask = True)
-                        parity_check(config, has_layer_state = True, use_past = False, static_kv = True, has_key_padding_mask = True)
-                        parity_check(config, has_layer_state = True, use_past = False, static_kv = False, has_key_padding_mask = True)
+                        parity_check(
+                            config,
+                            has_layer_state=True,
+                            use_past=True,
+                            static_kv=True,
+                            has_key_padding_mask=False,
+                        )
+                        parity_check(
+                            config,
+                            has_layer_state=True,
+                            use_past=True,
+                            static_kv=False,
+                            has_key_padding_mask=False,
+                        )
+                        parity_check(
+                            config,
+                            has_layer_state=True,
+                            use_past=False,
+                            static_kv=True,
+                            has_key_padding_mask=False,
+                        )
+                        parity_check(
+                            config,
+                            has_layer_state=True,
+                            use_past=False,
+                            static_kv=False,
+                            has_key_padding_mask=False,
+                        )
+                        parity_check(
+                            config,
+                            has_layer_state=True,
+                            use_past=True,
+                            static_kv=True,
+                            has_key_padding_mask=True,
+                        )
+                        parity_check(
+                            config,
+                            has_layer_state=True,
+                            use_past=True,
+                            static_kv=False,
+                            has_key_padding_mask=True,
+                        )
+                        parity_check(
+                            config,
+                            has_layer_state=True,
+                            use_past=False,
+                            static_kv=True,
+                            has_key_padding_mask=True,
+                        )
+                        parity_check(
+                            config,
+                            has_layer_state=True,
+                            use_past=False,
+                            static_kv=False,
+                            has_key_padding_mask=True,
+                        )

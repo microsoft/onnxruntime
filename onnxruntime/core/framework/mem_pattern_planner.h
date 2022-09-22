@@ -235,8 +235,9 @@ class MemPatternPlanner {
 
     MemoryPattern pattern;
     pattern.peak_size_ = buffer_size_;
+    pattern.patterns_.reserve(allocs_.size());
     for (auto& alloc : allocs_) {
-      pattern.patterns_[alloc.index_] = alloc.block_;
+      pattern.patterns_.insert_or_assign(alloc.index_, alloc.block_);
     }
 
     return pattern;

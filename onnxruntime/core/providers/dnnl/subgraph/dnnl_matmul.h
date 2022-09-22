@@ -4,6 +4,7 @@
 #pragma once
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
+#include <string>
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -13,7 +14,7 @@ class DnnlMatMul {
   enum InputTensors : int {
     IN_A = 0,
     IN_B = 1,
-    IN_BINARY = 2 // the extra input due to matmulbinary fusion
+    IN_BINARY_0 = 2  // the first binary input due to matmul + binary fusion
   };
 
   enum OutputTensors : int {
@@ -29,6 +30,7 @@ class DnnlMatMul {
   bool GetTransB(DnnlNode& node);
   bool GetTransBatchB(DnnlNode& node);
   float GetAlpha(DnnlNode& node);
+  float GetFloatAttr(DnnlNode& node, std::string attr_name, float default_value);
   dnnl::memory::dims GetStrides(dnnl::memory::dims& data_dims,
                                 bool trans,
                                 bool transBatch,

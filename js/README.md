@@ -161,7 +161,7 @@ This project is a library for running ONNX models on browsers. It is the success
 
    - Setup by script.
 
-     In `<ORT_ROOT>/js/web/`, run `npm run pull:wasm` to pull WebAssembly artifacts for latest master branch from CI pipeline.
+     In `<ORT_ROOT>/js/web/`, run `npm run pull:wasm` to pull WebAssembly artifacts for latest main branch from CI pipeline.
 
    - Download artifacts from pipeline manually.
 
@@ -408,7 +408,7 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    yarn bootstrap
    ```
 
-   When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/e2e/node_modules/onnxruntime-react-native/android/libs` directory. Using a custom built ONNX Runtime iOS package, copy `onnxruntime-mobile-c.zip` into `<ORT_ROOT>/js/react_native/local_pods` directory if it's not already done.
+   When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/e2e/android/app/libs` directory. Using a custom built ONNX Runtime iOS package, copy `onnxruntime-mobile-c.zip` into `<ORT_ROOT>/js/react_native/local_pods` directory if it's not already done.
 
    From `<ORT_ROOT>/js/react_native/e2e/android`, run e2e Android tests as follows,
 
@@ -435,13 +435,11 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
 1. Update a version using `npm verison <version>` from `<ORT_ROOT>/js/react_native` folder. If it's for a dev, use `npm version <version>-dev.<subversion>`
 
-2. Run `yarn prepack-rel` to change `onnxruntime-common` to point to a published npm package
+2. Run `npm pack` and verify NPM package contents
 
-3. Run `npm pack` and verify NPM package contents
+3. Run `npm publish <tgz> --dry-run` to see how it's going to be published
 
-4. Run `npm publish <tgz> --dry-run` to see how it's going to be published
-
-5. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
+4. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
 
 ### Distribution
 

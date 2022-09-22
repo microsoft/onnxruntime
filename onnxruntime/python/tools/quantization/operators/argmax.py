@@ -1,5 +1,6 @@
 from .base_operator import QuantOperatorBase
 
+
 # Use the quantized tensor as input without DQ.
 class QArgMax(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):

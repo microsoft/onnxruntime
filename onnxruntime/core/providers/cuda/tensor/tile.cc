@@ -73,7 +73,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must have the same length as the 'input' tensor");
 
   // Calculate the shape of the output tensor
-  auto* repeats = repeats_tensor.template Data<int64_t>();
+  auto* repeats = repeats_tensor.Data<int64_t>();
   const auto& input_shape = input_tensor.Shape();
   const auto input_dims = input_shape.GetDims();
   auto output_dims(input_shape.AsShapeVector());
@@ -95,8 +95,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
 
   // Repeat tensor has all 1s in it
   if (output_shape == input_shape) {
-    CUDA_CALL(cudaMemcpyAsync(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
-    return Status::OK();
+    return CUDA_CALL(cudaMemcpyAsync(output_tensor.MutableDataRaw(), input_tensor.DataRaw(), input_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
   }
 
   bool is_batched_memcpy = false;

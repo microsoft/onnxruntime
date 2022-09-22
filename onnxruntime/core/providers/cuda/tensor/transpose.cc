@@ -86,13 +86,14 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
                               cudaStream_t stream,
                               const cublasHandle_t cublas_handle,
                               const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
-                              const TensorShape* input_shape_override) {
+                              const TensorShape* input_shape_override,
+                              const TensorShape* output_shape_override) {
   // special case when there is a dim value of 0 in the shape.
   if (output.Shape().Size() == 0)
     return Status::OK();
 
   const auto input_dims = input_shape_override ? input_shape_override->GetDims() : input.Shape().GetDims();
-  const auto output_dims = output.Shape().GetDims();
+  const auto output_dims = output_shape_override ? output_shape_override->GetDims() : output.Shape().GetDims();
   auto rank = static_cast<int32_t>(input_dims.size());
 
   // flatten the adjacent dimensions which are contiguous

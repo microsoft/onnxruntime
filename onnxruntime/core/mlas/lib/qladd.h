@@ -368,4 +368,100 @@ MlasPackS16_128<int8_t>(
     return _mm_packs_epi16(a, b);
 }
 
+#elif defined(MLAS_TARGET_POWER)
+typedef __vector signed char MLAS_INT8;
+typedef __vector short MLAS_SHORT;
+template <typename DataType>
+MLAS_FORCEINLINE
+MLAS_INT8
+MlasPackL8(
+    const DataType* Input,
+    __vector unsigned char vmask
+    );
+
+template <>
+MLAS_FORCEINLINE
+MLAS_INT8
+MlasPackL8<uint8_t>(
+    const uint8_t* Input,
+    __vector unsigned char vmask
+    )
+{
+    __vector unsigned char va =  vec_vsx_ld(0,Input);
+    return reinterpret_cast<MLAS_INT8>(vec_sub(reinterpret_cast<__vector unsigned char>(va), vmask));
+}
+
+template <>
+MLAS_FORCEINLINE
+MLAS_INT8
+MlasPackL8<int8_t>(
+   const int8_t* Input,
+    __vector unsigned char vmask
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(vmask);
+    return reinterpret_cast<MLAS_INT8>(vec_vsx_ld(0,Input));
+}
+
+template <typename DataType>
+MLAS_FORCEINLINE
+MLAS_SHORT
+MlasPackS16(
+    __vector short a,
+    __vector short b
+    );
+
+template <>
+MLAS_FORCEINLINE
+MLAS_SHORT
+MlasPackS16<uint8_t>(
+    __vector short a,
+    __vector short b
+    )
+{
+    return vec_add(a, b);
+}
+
+template <>
+MLAS_FORCEINLINE
+MLAS_SHORT
+MlasPackS16<int8_t>(
+    __vector short a,
+    __vector short b
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(b);
+    return a;
+}
+
+template <typename DataType>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasPackS16_128(
+    __vector short a,
+    __vector short b
+    );
+
+template <>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasPackS16_128<uint8_t>(
+    __vector short a,
+    __vector short b
+    )
+{
+    return reinterpret_cast<MLAS_INT32X4>(vec_packsu(a, b));
+}
+
+template <>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasPackS16_128<int8_t>(
+    __vector short a,
+    __vector short b
+    )
+{
+    return reinterpret_cast<MLAS_INT32X4>(vec_packs(a, b));
+}
+
 #endif

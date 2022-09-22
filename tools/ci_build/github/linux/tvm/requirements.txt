@@ -1,0 +1,13 @@
+numpy
+decorator
+scipy
+wheel
+setuptools
+onnx==1.11.0
+protobuf==3.18.1
+flatbuffers
+tornado
+psutil
+xgboost
+cloudpickle
+pytest

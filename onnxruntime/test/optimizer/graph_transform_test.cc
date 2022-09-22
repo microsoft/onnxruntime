@@ -19,12 +19,12 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
-#include "core/optimizer/bias_dropout_fusion.h"
-#include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
+#include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_activation_fusion.h"
@@ -40,8 +40,8 @@
 #include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
-#include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_config.h"
@@ -49,6 +49,7 @@
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/isinf_reducesum_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
@@ -56,14 +57,13 @@
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/propagate_cast_ops.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
-#include "core/optimizer/isinf_reducesum_fusion.h"
-#include "core/optimizer/propagate_cast_ops.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
@@ -73,13 +73,17 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"
 #include "test/framework/test_utils.h"
+#include "test/optimizer/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
-#include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
+#endif
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -710,6 +714,37 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
   ASSERT_TRUE(op_to_count["Relu"] == 0);  // Relu removed from graph
 }
 
+// Currently the ConvAddRelu fusion is only backed by a float kernel for the
+// the CUDA EP.
+
+// When we see the corresponding pattern for the fp16 data type, the fusion
+// should not be triggered as there is no kernel to back the fused pattern.
+
+// TODO(hasesh): Limit the test to using the CUDA EP for now as the level of
+// data type support in other compatible EPs is still yet to be ascertained.
+
+// TODO(hasesh): If at all the fp16 type is supported for the fusion, adjust/remove
+// this test.
+TEST_F(GraphTransformationTests, FuseCudaConvAddRelu_UnsupportedType) {
+  auto model_uri = MODEL_FOLDER "fusion/conv_add_relu_fp16.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Add"], 1);
+  ASSERT_EQ(op_to_count["Relu"], 1);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Add"], 1);   // Add not removed from graph (fusion not triggered)
+  ASSERT_EQ(op_to_count["Relu"], 1);  // Relu not removed from graph (fusion not triggered)
+}
+
 // Conv->Add->Relu will be left intact since there is Identity depend on Add
 TEST_F(GraphTransformationTests, FuseCudaConvAddReluIdentity) {
   auto model_uri = MODEL_FOLDER "fusion/conv_add_relu_identity.onnx";
@@ -751,7 +786,6 @@ TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
 }
 
 #endif
-
 
 #if !defined(DISABLE_CONTRIB_OPS)
 // Conv->Add->Relu will be transformed to FusedConv
@@ -822,6 +856,7 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
   std::unordered_map<PathString, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"}};
 #else
   std::unordered_map<PathString, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"},
+                                                               {ORT_TSTR("fusion/conv_relu_opset12.onnx"), "Relu"},
                                                                {ORT_TSTR("fusion/conv_clip.onnx"), "Clip"},
                                                                {ORT_TSTR("fusion/conv_sigmoid.onnx"), "Sigmoid"},
                                                                {ORT_TSTR("fusion/conv_tanh.onnx"), "Tanh"},
@@ -1964,8 +1999,8 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims_prod);
   ASSERT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<MLFloat16> found(rtensor.template Data<MLFloat16>(),
-                                     rtensor.template Data<MLFloat16>() + expected_dims_prod.size());
+  const std::vector<MLFloat16> found(rtensor.Data<MLFloat16>(),
+                                     rtensor.Data<MLFloat16>() + expected_dims_prod.size());
   ASSERT_EQ(expected_values_prod, found);
 }
 
@@ -2075,13 +2110,13 @@ TEST_F(GraphTransformationTests, ReluClip11Fusion) {
 
   // add initializer for min_input_1 so it's constant
   TensorProto const_min_1;
-  Initializer i1(TensorProto_DataType_FLOAT16, "min_input_1", {1});
+  Initializer i1(TensorProto_DataType_FLOAT16, "min_input_1", AsSpan<int64_t>({1}));
   i1.data<MLFloat16>()->val = math::floatToHalf(-1.f);
   i1.ToProto(const_min_1);
   graph.AddInitializedTensor(const_min_1);
 
   TensorProto const_min_2;
-  Initializer i2(TensorProto_DataType_FLOAT, "min_input_2", {1});
+  Initializer i2(TensorProto_DataType_FLOAT, "min_input_2", AsSpan<int64_t>({1}));
   *i2.data<float>() = 1.f;
   i2.ToProto(const_min_2);
   graph.AddInitializedTensor(const_min_2);
@@ -3511,11 +3546,8 @@ struct BiasSoftmaxFusionTester {
     }
   }
 
-  void TestFusionOccurs(int expected_broadcast_axis) {
+  void TestFusionOccurs(int expected_axis, bool expected_is_inner_broadcast) {
     ASSERT_STATUS_OK(model_load_);
-
-    int expected_softmax_axis = 1;
-    GetAxis("Softmax", "axis", &expected_softmax_axis);
 
     ASSERT_STATUS_OK(graph_transformation_mgr_.ApplyTransformers(p_model_->MainGraph(), TransformerLevel::Level2, *logger_));
     std::map<std::string, int> op_to_count = CountOpsInGraph(p_model_->MainGraph());
@@ -3524,12 +3556,12 @@ struct BiasSoftmaxFusionTester {
     ASSERT_EQ(op_to_count["Softmax"], 0);
     ASSERT_EQ(op_to_count["com.microsoft.BiasSoftmax"], 1);
 
-    int actual_softmax_axis, actual_broadcast_axis;
-    ASSERT_TRUE(GetAxis("BiasSoftmax", "softmax_axis", &actual_softmax_axis));
-    ASSERT_EQ(actual_softmax_axis, expected_softmax_axis);
+    int actual_axis = 1, actual_broadcast_type = 1;
+    ASSERT_TRUE(GetAxis("BiasSoftmax", "axis", &actual_axis));
+    ASSERT_EQ(actual_axis, expected_axis);
 
-    ASSERT_TRUE(GetAxis("BiasSoftmax", "broadcast_axis", &actual_broadcast_axis));
-    ASSERT_EQ(actual_broadcast_axis, expected_broadcast_axis);
+    ASSERT_TRUE(GetAxis("BiasSoftmax", "is_inner_broadcast", &actual_broadcast_type));
+    ASSERT_EQ(actual_broadcast_type, expected_is_inner_broadcast ? 1 : 0);
   }
 
   void TestNoFusionOccurs() {
@@ -3553,25 +3585,37 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_GpuOnly) {
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Rocm) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get(), kRocmExecutionProvider);
-  tester.TestFusionOccurs(1);
+  tester.TestFusionOccurs(1, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Cuda) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(1);
+  tester.TestFusionOccurs(1, true);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Opset13_DefaultAxis) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple_no_axis_opset13.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(1, true);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BFloat16_Input) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_bfloat16.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestNoFusionOccurs();
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_MiddleOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(3);
+  tester.TestFusionOccurs(6, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_ReversedInputs) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones_reversed.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(3);
+  tester.TestFusionOccurs(6, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BadAxis) {
@@ -3583,19 +3627,99 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BadAxis) {
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_AllLeadingOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_allleadingones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(0);
+  tester.TestFusionOccurs(6, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_SomeLeadingOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_someleadingones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(0);
+  tester.TestFusionOccurs(6, false);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_NoLeadingOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_noleadingones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(0);
+  tester.TestFusionOccurs(6, false);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    for (auto& node : graph.Nodes()) node.SetExecutionProviderType(kCudaExecutionProvider);
+    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"], 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "BiasSoftmax") {
+        auto& attrs = node.GetAttributes();
+        ASSERT_TRUE(attrs.find("axis") != attrs.end());
+        ASSERT_TRUE(attrs.find("is_inner_broadcast") != attrs.end());
+        ASSERT_EQ(6, static_cast<int>(attrs.at("axis").i()));
+        ASSERT_EQ(static_cast<int>(attrs.at("is_inner_broadcast").i()), 0);
+      }
+    }
+  };
+
+  // Input and bias have different ranks.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3, 2, 3, 3, 3}});
+      auto* bias_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* add_out = builder.MakeIntermediate();
+      auto* softmax_out = builder.MakeOutput();
+
+      builder.AddNode("Add", {input_arg, bias_arg}, {add_out});
+      builder.AddNode("Softmax", {add_out}, {softmax_out}).AddAttribute("axis", static_cast<int64_t>(6));
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
+    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // Input and bias have same rank.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3, 2, 3, 3, 3}});
+      auto* bias_arg = builder.MakeInput<float>({{1, 1, 1, 1, 2, 3, 3, 3}});
+      auto* add_out = builder.MakeIntermediate();
+      auto* softmax_out = builder.MakeOutput();
+
+      builder.AddNode("Add", {input_arg, bias_arg}, {add_out});
+      builder.AddNode("Softmax", {add_out}, {softmax_out}).AddAttribute("axis", static_cast<int64_t>(6));
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
+    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OpSet13InValidAxis) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3, 2, 3, 3, 3}});
+    auto* bias_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+    auto* add_out = builder.MakeIntermediate();
+    auto* softmax_out = builder.MakeOutput();
+
+    builder.AddNode("Add", {input_arg, bias_arg}, {add_out});
+    builder.AddNode("Softmax", {add_out}, {softmax_out}).AddAttribute("axis", static_cast<int64_t>(6));
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    for (auto& node : graph.Nodes()) node.SetExecutionProviderType(kCudaExecutionProvider);
+    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"], 0);
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
+  TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                       pre_graph_checker, post_graph_checker);
 }
 
 static void TestBiasDropoutFusion(const PathString& file_path, const logging::Logger& logger, const int add_count = 0) {
@@ -3629,6 +3753,50 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_same_shape_fusion_dim_is_param.onnx", *logger_);
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_same_shape_fusion_dim_is_param.onnx", *logger_);
 }
+
+#ifdef ENABLE_TRAINING
+static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_dropout, const logging::Logger& logger,
+                                     const int add_count, const int dropout_count, const int bitmask_dropout_count,
+                                     const int bias_dropout_count, const int bitmask_bias_dropout_count,
+                                     const int dropout_grad_count, const int bitmask_dropout_grad_count) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, logger).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  if (is_bias_dropout) {
+    ASSERT_STATUS_OK(
+        graph_transformation_mgr.Register(std::make_unique<BiasDropoutFusion>(), TransformerLevel::Level2));
+  } else {
+    ASSERT_STATUS_OK(
+        graph_transformation_mgr.Register(std::make_unique<BitmaskDropoutReplacement>(), TransformerLevel::Level2));
+  }
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Add"], add_count);
+  ASSERT_EQ(op_to_count["Dropout"], dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BitmaskDropout"], bitmask_dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BiasDropout"], bias_dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BitmaskBiasDropout"], bitmask_bias_dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.DropoutGrad"], dropout_grad_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BitmaskDropoutGrad"], bitmask_dropout_grad_count);
+}
+
+TEST_F(GraphTransformationTests, BitmaskDropoutFusionTest) {
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_replacement_basic.onnx", false, *logger_, 0, 0, 1, 0, 0,
+                           0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_replacement_multiple_mask_uses.onnx", false, *logger_,
+                           0, 1, 0, 0, 0, 1, 0);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_replacement_basic.onnx", false, *logger_, 0, 0, 0,
+                           0, 1, 0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_basic.onnx", true, *logger_, 0, 0, 0, 0, 1,
+                           0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_residual.onnx", true, *logger_, 0, 0, 0, 0,
+                           1, 0, 1);
+}
+#endif
 
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/layer_norm.onnx";
@@ -3800,27 +3968,7 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   }
 }
 
-TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_PrecisionChangeDisallowed) {
-  auto model_uri = MODEL_FOLDER "fusion/simplified_layer_norm_with_casts.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Div"] == 1);
-  ASSERT_TRUE(op_to_count["Add"] == 1);
-  ASSERT_TRUE(op_to_count["ReduceMean"] == 1);
-  ASSERT_TRUE(op_to_count["Pow"] == 1);
-  ASSERT_TRUE(op_to_count["Sqrt"] == 1);
-  ASSERT_TRUE(op_to_count["Cast"] == 2);
-  ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 0);
-}
-
-TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_PrecisionChangeAllowed) {
+TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/simplified_layer_norm_with_casts.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
@@ -3828,7 +3976,7 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_Precisio
 
   InlinedHashSet<std::string_view> compatible_eps;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps, true), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -4727,6 +4875,18 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
       {kCpuExecutionProvider});
 }
 
+TEST_F(GraphTransformationTests, MatMulScaleFusionWithScaleInput) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_with_scale_input.onnx", *logger_,
+      [](const Graph&,
+         const std::map<std::string, int>&,
+         std::map<std::string, int> transformed_op_counts) {
+        EXPECT_EQ(transformed_op_counts["Mul"], 1);
+        EXPECT_EQ(transformed_op_counts["MatMul"], 1);
+        EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 0);
+      });
+}
+
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST_F(GraphTransformationTests, IsInfReduceSum_Test) {
   auto model_uri = MODEL_FOLDER "fusion/isinf_reducesum.onnx";
@@ -4943,6 +5103,69 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
     }
   }
 }
+
+#ifdef ENABLE_TRAINING
+TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
+  using Strategy = GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy;
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+      auto* cast_out_0 = builder.MakeIntermediate();
+      auto* gelu_out = builder.MakeIntermediate();
+      auto* cast_out_1 = builder.MakeIntermediate();
+      auto* identity_out = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out_0})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Gelu", {cast_out_0}, {gelu_out}, kMSDomain);
+      builder.AddNode("Cast", {gelu_out}, {cast_out_1})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+      builder.AddNode("Identity", {cast_out_1}, {identity_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 0);
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<BFloat16>({{2, -1, 3, -1}});
+      auto* cast_out_0 = builder.MakeIntermediate();
+      auto* gelu_out = builder.MakeIntermediate();
+      auto* cast_out_1 = builder.MakeIntermediate();
+      auto* identity_out = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out_0})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Gelu", {cast_out_0}, {gelu_out}, kMSDomain);
+      builder.AddNode("Cast", {gelu_out}, {cast_out_1})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16));
+      builder.AddNode("Identity", {cast_out_1}, {identity_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

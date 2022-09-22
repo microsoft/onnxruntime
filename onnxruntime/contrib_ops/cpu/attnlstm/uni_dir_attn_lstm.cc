@@ -264,10 +264,6 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc_.data(), total_rows, hidden_size_x4);
 
-  int fused_hidden_rows = batch_size_ / hidden_num_threads_;
-  if (batch_size_ % hidden_num_threads_ != 0)
-    fused_hidden_rows++;
-
   // NOTE: we could refine the bounds checking in the calls below that use these values to instead
   // explicitly check just the range for each iteration, however if it's going to run over
   // it should also run over on the last iteration, so this should be good enough to catch any

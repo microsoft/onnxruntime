@@ -155,6 +155,12 @@ class NodeRef {
 
   /// <param name="name">Name of the attribute to return</param>
   /// <returns>
+  /// The attribute value, or nullopt if the attribute is not present on the node, or is not of type string.
+  /// </returns>
+  virtual std::optional<std::string> GetAttributeString(std::string_view name) const = 0;
+
+  /// <param name="name">Name of the attribute to return</param>
+  /// <returns>
   /// The attribute value, or nullopt if the attribute is not present on the node, or is not of type int[].
   /// </returns>
   virtual std::optional<std::vector<int64_t>> GetAttributeInts(std::string_view name) const = 0;
@@ -353,8 +359,11 @@ class GraphRef {
   /// </summary>
   /// <param name="op_type">The new node's op type</param>
   /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
+  /// <param name="since_version">The new node's since_version. If unspecified, use that of the old node.</param>
   /// <returns>The new node</returns>
-  virtual std::unique_ptr<NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type, std::string_view domain = "") = 0;
+  virtual std::unique_ptr<NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type,
+                                            std::string_view domain = "",
+                                            std::optional<int> since_version = std::nullopt) = 0;
 
   /// <summary>
   /// Deletes a node from the graph. Behavior is undefined if node has any consumers.
@@ -428,7 +437,7 @@ class GraphRef {
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 16;
+constexpr int64_t kMaxSupportedOpset = 17;
 
 enum class OptimizerMode {
   OPTIMIZE_TRANSPOSE,        // simple transpose optimization
@@ -526,9 +535,10 @@ std::vector<int64_t> ChannelFirstToLastPerm(size_t rank);
 std::vector<int64_t> ChannelLastToFirstPerm(size_t rank);
 
 /// <summary>
-/// Swaps out a node for a new copy of that node with the specified op type and domain. Current API does not all nodes
-/// to have their op types or domains changed, so a new node is needed. All attributes, inputs, and outputs are moved
-/// to the new node. The old node is removed from the graph and should no longer be accessed.
+/// Swaps out a node for a new copy of that node with the specified op type and domain.
+/// Current API does not allow nodes to have their op types or domains changed, so a new node is needed. All
+/// attributes, inputs, and outputs are moved to the new node. The old node is removed from the graph and should no
+/// longer be accessed.
 /// </summary>
 /// <param name="graph">Graph containing the node</param>
 /// <param name="node">Node to copy and remove</param>
@@ -537,5 +547,21 @@ std::vector<int64_t> ChannelLastToFirstPerm(size_t rank);
 /// <returns>The newly created node.</returns>
 std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
                                                       std::string_view op_type, std::string_view domain);
+
+/// <summary>
+/// Swaps out a node for a new copy of that node with the specified op type, domain, and since version.
+/// Current API does not allow nodes to have their op types or domains changed, so a new node is needed. All
+/// attributes, inputs, and outputs are moved to the new node. The old node is removed from the graph and should no
+/// longer be accessed.
+/// </summary>
+/// <param name="graph">Graph containing the node</param>
+/// <param name="node">Node to copy and remove</param>
+/// <param name="op_type">New node op_type</param>
+/// <param name="domain">New node domain. "" for the default domain.</param>
+/// <param name="op_type">New node since version.</param>
+/// <returns>The newly created node.</returns>
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeDomainAndSinceVersion(api::GraphRef& graph, api::NodeRef& node,
+                                                                  std::string_view op_type, std::string_view domain,
+                                                                  int since_version);
 
 }  // namespace onnx_layout_transformation

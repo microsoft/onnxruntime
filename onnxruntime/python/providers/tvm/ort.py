@@ -4,17 +4,16 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import os
 import collections
 import copy
 import logging
+import os
 
 import onnx
 import tvm
-from tvm import relay, auto_scheduler
-from tvm.relay import vm
+from tvm import auto_scheduler, autotvm, relay
 from tvm.contrib import graph_executor
-from tvm import autotvm
+from tvm.relay import vm
 
 log = logging.getLogger("tvm_ep")
 
@@ -23,18 +22,20 @@ AUTO_TVM_TYPE = "AutoTVM"
 
 
 @tvm.register_func("tvm_onnx_import_and_compile")
-def onnx_compile(model_string,
-                 model_path,
-                 executor,
-                 target,
-                 target_host,
-                 opt_level,
-                 opset,
-                 freeze_params,
-                 input_shapes,
-                 nhwc=False,
-                 tuning_logfile="",
-                 tuning_type=AUTO_TVM_TYPE):
+def onnx_compile(
+    model_string,
+    model_path,
+    executor,
+    target,
+    target_host,
+    opt_level,
+    opset,
+    freeze_params,
+    input_shapes,
+    nhwc=False,
+    tuning_logfile="",
+    tuning_type=AUTO_TVM_TYPE,
+):
     def get_tvm_executor(irmod, executor, target, params):
         if executor == "vm":
             log.info("Build TVM virtual machine")
@@ -47,8 +48,9 @@ def onnx_compile(model_string,
             log.info("Build TVM graph executor")
             lib = relay.build(irmod, target=target, params=params)
         else:
-            log.error("Executor type {} is unsupported. ".format(executor) +
-                      "Only \"vm\" and \"graph\" types are supported")
+            log.error(
+                "Executor type {} is unsupported. ".format(executor) + 'Only "vm" and "graph" types are supported'
+            )
             return None
         return lib
 
@@ -94,7 +96,7 @@ def onnx_compile(model_string,
                     config={
                         "relay.backend.use_auto_scheduler": True,
                         "relay.FuseOps.max_depth": 30,
-                        }
+                    },
                 ):
                     if nhwc:
                         seq = tvm.transform.Sequential(
@@ -113,8 +115,10 @@ def onnx_compile(model_string,
                 with autotvm.apply_history_best(tuning_logfile):
                     lib = get_tvm_executor(irmod, executor, tvm_target, params)
         else:
-            log.error("Tuning log type {} is unsupported. ".format(tuning_type) +
-                      "Only {} and {} types are supported".format(ANSOR_TYPE, AUTO_TVM_TYPE))
+            log.error(
+                "Tuning log type {} is unsupported. ".format(tuning_type)
+                + "Only {} and {} types are supported".format(ANSOR_TYPE, AUTO_TVM_TYPE)
+            )
             return None
     else:
         with tvm.transform.PassContext(opt_level=opt_level):
@@ -129,8 +133,10 @@ def onnx_compile(model_string,
     elif executor == "graph":
         m = graph_executor.GraphModule(lib["default"](ctx))
     else:
-        print("ERROR: Executor type {} is unsupported. ".format(executor),
-              "Only \"vm\" and \"graph\" types are supported")
+        print(
+            "ERROR: Executor type {} is unsupported. ".format(executor),
+            'Only "vm" and "graph" types are supported',
+        )
         return None
 
     return m.module

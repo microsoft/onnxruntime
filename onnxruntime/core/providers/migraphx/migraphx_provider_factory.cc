@@ -4,6 +4,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "migraphx_execution_provider.h"
+#include "migraphx_provider_factory_creator.h"
 #include "hip_allocator.h"
 #include "gpu_data_transfer.h"
 #include "core/framework/provider_options.h"
@@ -13,10 +14,10 @@
 
 using namespace onnxruntime;
 
-
 namespace onnxruntime {
 
-void Shutdown_DeleteRegistry();
+void InitializeRegistry();
+void DeleteRegistry();
 
 struct MIGraphXProviderFactory : IExecutionProviderFactory {
   MIGraphXProviderFactory(const MIGraphXExecutionProviderInfo& info) : info_{info} {}
@@ -30,10 +31,6 @@ struct MIGraphXProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> MIGraphXProviderFactory::CreateProvider() {
   return std::make_unique<MIGraphXExecutionProvider>(info_);
-}
-
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const MIGraphXExecutionProviderInfo& info) {
-  return std::make_shared<onnxruntime::MIGraphXProviderFactory>(info);
 }
 
 struct MIGraphX_Provider : Provider {
@@ -67,8 +64,12 @@ struct MIGraphX_Provider : Provider {
     return onnxruntime::MIGraphXExecutionProviderInfo::ToProviderOptions(options);
   }
 
+  void Initialize() override {
+    InitializeRegistry();
+  }
+
   void Shutdown() override {
-    Shutdown_DeleteRegistry();
+    DeleteRegistry();
   }
 
 } g_provider;
@@ -80,5 +81,4 @@ extern "C" {
 ORT_API(onnxruntime::Provider*, GetProvider) {
   return &onnxruntime::g_provider;
 }
-
 }

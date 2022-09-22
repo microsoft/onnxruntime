@@ -36,6 +36,7 @@ struct OrtModelTestInfo {
   std::vector<std::pair<std::string, std::string>> configs;
   bool run_use_buffer{false};
   bool disable_copy_ort_buffer{false};
+  bool use_buffer_for_initializers{false};
 };
 
 static void RunOrtModel(const OrtModelTestInfo& test_info) {
@@ -47,6 +48,10 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
 
   if (test_info.disable_copy_ort_buffer) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "1"));
+
+    if (test_info.use_buffer_for_initializers) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesForInitializers, "1"));
+    }
   }
 
   std::vector<char> model_data;
@@ -364,7 +369,7 @@ TEST(OrtModelOnlyTests, MetadataSerialization) {
 #if !defined(DISABLE_ML_OPS)
 TEST(OrtModelOnlyTests, SerializeToOrtFormatMLOps) {
   const std::basic_string<ORTCHAR_T> ort_file =
-      ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft_converted.test_output.ort");
+      ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft.onnx.test_output.ort");
   SaveAndCompareModels("testdata/sklearn_bin_voting_classifier_soft.onnx", ort_file);
 
   OrtModelTestInfo test_info;
@@ -460,12 +465,21 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBufferNoCopy) {
   RunOrtModel(test_info);
 }
 
+// Load the model from a buffer instead of a file path, and not copy the buffer in session creation
+TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBufferNoCopyInitializersUseBuffer) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  test_info.run_use_buffer = true;
+  test_info.disable_copy_ort_buffer = true;
+  test_info.use_buffer_for_initializers = true;
+  RunOrtModel(test_info);
+}
+
 #if !defined(DISABLE_ML_OPS)
 // test that we can deserialize and run a previously saved ORT format model
 // for a model with sequence and map outputs
 OrtModelTestInfo GetTestInfoForLoadOrtFormatModelMLOps() {
   OrtModelTestInfo test_info;
-  test_info.model_filename = ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft.ort");
+  test_info.model_filename = ORT_TSTR("testdata/sklearn_bin_voting_classifier_soft.onnx.ort");
   test_info.logid = "LoadOrtFormatModelMLOps";
 
   OrtValue ml_value;
@@ -522,27 +536,6 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBufferNoCopy) {
   RunOrtModel(test_info);
 }
 
-TEST(OrtModelOnlyTests, TestBackwardsCompat) {
-  auto v110_dir = ORT_TSTR("testdata/ort_backwards_compat/ORTv1.10/");
-  std::vector<std::string> models = {"gathernd9.basic.ort",
-                                     "not1.basic.ort",
-                                     "roialign10.basic.ort",
-                                     "scan9.basic.ort"};
-
-  SessionOptions session_options;
-  session_options.session_logid = "TestBackwardsCompat";
-
-  for (const auto& model : models) {
-    // test loading old model succeeds. if it does the hash replacement worked.
-    InferenceSession session{session_options, GetEnvironment()};
-    auto model_uri = v110_dir + ToPathString(model);
-
-    ASSERT_STATUS_OK(session.Load(model_uri));
-    ASSERT_STATUS_OK(session.Initialize());
-  }
-}
-
 #endif  // !defined(DISABLE_ML_OPS)
-
 }  // namespace test
 }  // namespace onnxruntime

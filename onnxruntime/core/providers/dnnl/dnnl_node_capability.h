@@ -416,5 +416,30 @@ class DnnlDequantizeLinearNodeCapability : public DnnlDefaultOptionalMultiInputN
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 };
 
+class DnnlLayerNormalizationNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+ // Default constructor
+  DnnlLayerNormalizationNodeCapability() : DnnlDefaultNodeCapability({type_float16,
+                                                                      type_bfloat16,
+                                                                      type_float32,
+                                                                      type_double}) {}
+  // Constructor for other LayerNorm flavors
+  DnnlLayerNormalizationNodeCapability(std::vector<ORT_DataType> supported_dt)
+    : DnnlDefaultNodeCapability(supported_dt){}
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  bool IsAxisSupported(const Node* node) const;
+  bool IsTrainingSupported(const Node* node) const;
+  bool IsDimensionSupported(const Node* node) const;
+};
+
+class DnnlSkipLayerNormalizationNodeCapability : public DnnlLayerNormalizationNodeCapability {
+ public:
+  DnnlSkipLayerNormalizationNodeCapability() : DnnlLayerNormalizationNodeCapability({type_float32,
+                                                                                    type_float16}) {}
+};
+
                                  
 }  // namespace onnxruntime

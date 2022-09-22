@@ -125,14 +125,6 @@ static bool IsRelevantOutput(const Node* node, const NodeArg* output) {
   return true;
 }
 
-namespace {
-// borrowed from providers/common.h
-template <class AssociativeContainer, class Key>
-inline bool Contains(const AssociativeContainer& container, const Key& key) {
-  return container.find(key) != container.end();
-}
-}  // namespace
-
 // Check whether the given opcode is fp16 allowed for the given level of optimization.
 static bool IsFP16Allow(const std::string& op_type, size_t level, const FP16AllowOps& fp16_allow_level0_ops) {
   // XXX: Shall we add a check for unsupported level or just ignore it as the current code does?
@@ -140,9 +132,9 @@ static bool IsFP16Allow(const std::string& op_type, size_t level, const FP16Allo
 
   using OpsSetType = InlinedHashSet<std::string_view>;
   static const OpsSetType level1_fp16_allow_set =
-      {"Expand", "Transpose", "Relu", "Reshape", "Split", "Tanh", "Squeeze", "Unsqueeze"};
+      {"Expand", "Transpose", "Relu", "Reshape", "Split", "Tanh", "Squeeze", "Unsqueeze", "Gelu"};
   static const OpsSetType level2_fp16_allow_set = {
-      "Add", "BiasGelu", "Dropout", "FastGelu", "Gather", "Gelu", "LayerNormalization", "Where"};
+      "Add", "BiasGelu", "Dropout", "FastGelu", "Gather", "LayerNormalization", "Where"};
 
   // To support new optimization levels, you need to extend the below array with a set ops for the new level
   static const std::array<std::reference_wrapper<const OpsSetType>, MaxSupportedCastPropagationLevel> allowed_ops =

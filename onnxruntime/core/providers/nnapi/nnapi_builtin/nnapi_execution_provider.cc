@@ -10,16 +10,13 @@
 #include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
+#include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/session/onnxruntime_cxx_api.h"
-
-#ifdef __ANDROID__
-#include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
-#include "core/providers/nnapi/nnapi_builtin/model.h"
-#endif
 
 namespace onnxruntime {
 
@@ -74,7 +71,7 @@ NnapiExecutionProvider::~NnapiExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                      const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // TODO: Task 812756: NNAPI EP, add support for subgraph (If and Loop operators)
@@ -211,7 +208,7 @@ static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               OrtKernelContext* context,
                               const nnapi::Model& model,
                               const std::string& output_name,
-                              const std::vector<uint32_t>& output_shape,
+                              const InlinedVector<uint32_t>& output_shape,
                               const android::nn::wrapper::Type output_type,
                               void** output_buffer) {
   using namespace android::nn::wrapper;
@@ -239,6 +236,7 @@ static Status GetOutputBuffer(Ort::CustomOpApi& ort,
 
   return Status::OK();
 }
+#endif  // __ANDROID__
 
 common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
@@ -299,7 +297,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       ORT_UNUSED_PARAMETER(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::CustomOpApi ort{*api};
       nnapi::Model* model = reinterpret_cast<nnapi::Model*>(state);
       const size_t num_inputs = ort.KernelContext_GetInputCount(context);
@@ -319,7 +317,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         auto input_idx = model->GetMappedInputIdx(input_name);
         const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_idx);
         auto* tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-        std::vector<uint32_t> dimensions;
+        InlinedVector<uint32_t> dimensions;
         for (const auto& dim : ort.GetTensorShape(tensor_info))
           dimensions.push_back(static_cast<uint32_t>(dim));
 
@@ -355,6 +353,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
       }
 
+#ifdef __ANDROID__
       // From this point we will need to take the exclusive lock on the model until the Predict is
       // performed, to block other threads to perform Predict on the same model
       // TODO, investigate concurrent runs for different executions from the same model
@@ -414,7 +413,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         }
 
         ORT_RETURN_IF_ERROR(execution->SetOutputBuffers(outputs));
-        std::vector<std::vector<uint32_t>> dynamic_output_shapes;
+        std::vector<InlinedVector<uint32_t>> dynamic_output_shapes;
         ORT_RETURN_IF_ERROR(
             execution->Predict(dynamic_shape_output_indices, dynamic_output_shapes));
 
@@ -439,29 +438,17 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
           memcpy(onnx_output_buffer, model_output_buffer, output_buffer_byte_size);
         }
       }
+
       return Status::OK();
+#else
+      // we have a stubbed out NNAPI implementation, so at this point there's nothing else we can do.
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Model execution is not supported in this build.");
+#endif
     };
 
     node_compute_funcs.push_back(compute_info);
   }
   return Status::OK();
 }
-#else
-common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node_and_graph : fused_nodes_and_graphs) {
-    ORT_UNUSED_PARAMETER(fused_node_and_graph);
-    NodeComputeInfo compute_info;
-    compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) { return 0; };
-    compute_info.release_state_func = [](FunctionState /*state*/) {};
-    compute_info.compute_func = [](FunctionState /* state */, const OrtCustomOpApi* /* api */,
-                                   OrtKernelContext* /* context */) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Compute is not supported in this build.");
-    };
-    node_compute_funcs.push_back(compute_info);
-  }
-  return Status::OK();
-}
-#endif  // __ANDROID__
 
 }  // namespace onnxruntime

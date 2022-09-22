@@ -50,6 +50,7 @@
     <Compile Remove="InferenceTest.cs" />
     <Compile Remove="OrtIoBindingAllocationTest.cs" />
     <Compile Remove="Tensors\TensorTests.cs" />
+    <Compile Remove="TrainingTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <Compile Update="Tensors\TensorArithmetic.cs">
@@ -78,6 +79,7 @@
     <None Include="OrtIoBindingAllocationTest.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="Tensors\TensorTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
     <None Include="Tensors\ArrayTensorExtensionTests.cs" Condition=" '$(EnableDefaultCompileItems)' == 'true' " />
+    <None Include="TrainingTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Update="Tensors\TensorArithmetic.tt">

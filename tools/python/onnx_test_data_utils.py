@@ -4,7 +4,6 @@ import os
 import sys
 
 import numpy as np
-
 import onnx
 from onnx import numpy_helper
 
@@ -31,7 +30,7 @@ def dump_pb(dir_or_filename):
     All files must contain a serialized TensorProto."""
 
     if os.path.isdir(dir_or_filename):
-        for f in glob.glob(os.path.join(dir_or_filename, '*.pb')):
+        for f in glob.glob(os.path.join(dir_or_filename, "*.pb")):
             print(f)
             dump_tensorproto_pb_file(f)
     else:
@@ -115,77 +114,93 @@ def get_arg_parser():
         update_name_in_pb: Update the TensorProto.name value in a pb file.
                            Updates the input file unless --output <filename> is specified.
         """,
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument('--action', help='Action to perform',
-                        choices=['dump_pb', 'numpy_to_pb', 'image_to_pb', 'random_to_pb', 'update_name_in_pb'],
-                        required=True)
+    parser.add_argument(
+        "--action",
+        help="Action to perform",
+        choices=["dump_pb", "numpy_to_pb", "image_to_pb", "random_to_pb", "update_name_in_pb"],
+        required=True,
+    )
 
-    parser.add_argument('--input', help='The input filename or directory name')
-    parser.add_argument('--name', help='The value to set TensorProto.name to if creating/updating one.')
-    parser.add_argument('--output', help='Filename to serialize the TensorProto to.')
+    parser.add_argument("--input", help="The input filename or directory name")
+    parser.add_argument("--name", help="The value to set TensorProto.name to if creating/updating one.")
+    parser.add_argument("--output", help="Filename to serialize the TensorProto to.")
 
-    image_to_pb_group = parser.add_argument_group('image_to_pb',
-                                                  'image_to_pb specific options')
-    image_to_pb_group.add_argument('--resize', default=None, type=lambda s: [int(item) for item in s.split(',')],
-                                   help='Provide the height and width to resize to as comma separated values.'
-                                        ' e.g. --shape 200,300 will resize to height 200 and width 300.')
-    image_to_pb_group.add_argument('--channels_last', action='store_true',
-                                   help='Transpose image from channels first to channels last.')
-    image_to_pb_group.add_argument('--add_batch_dim', action='store_true',
-                                   help='Prepend a batch dimension with value of 1 to the shape. '
-                                        'i.e. convert from CHW to NCHW')
+    image_to_pb_group = parser.add_argument_group("image_to_pb", "image_to_pb specific options")
+    image_to_pb_group.add_argument(
+        "--resize",
+        default=None,
+        type=lambda s: [int(item) for item in s.split(",")],
+        help="Provide the height and width to resize to as comma separated values."
+        " e.g. --shape 200,300 will resize to height 200 and width 300.",
+    )
+    image_to_pb_group.add_argument(
+        "--channels_last", action="store_true", help="Transpose image from channels first to channels last."
+    )
+    image_to_pb_group.add_argument(
+        "--add_batch_dim",
+        action="store_true",
+        help="Prepend a batch dimension with value of 1 to the shape. " "i.e. convert from CHW to NCHW",
+    )
 
-    random_to_pb_group = parser.add_argument_group('random_to_pb',
-                                                   'random_to_pb specific options')
-    random_to_pb_group.add_argument('--shape', type=lambda s: [int(item) for item in s.split(',')],
-                                    help='Provide the shape as comma separated values e.g. --shape 200,200')
-    random_to_pb_group.add_argument('--datatype',
-                                    help="numpy dtype value for the data type. e.g. f4=float32, i8=int64. "
-                                         "See: https://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html")
-    random_to_pb_group.add_argument('--min_value', default=0, type=int,
-                                    help="Limit the generated values to this minimum.")
-    random_to_pb_group.add_argument('--max_value', default=1, type=int,
-                                    help="Limit the generated values to this maximum.")
-    random_to_pb_group.add_argument('--seed', default=None, type=int,
-                                    help="seed to use for the random values so they're deterministic.")
+    random_to_pb_group = parser.add_argument_group("random_to_pb", "random_to_pb specific options")
+    random_to_pb_group.add_argument(
+        "--shape",
+        type=lambda s: [int(item) for item in s.split(",")],
+        help="Provide the shape as comma separated values e.g. --shape 200,200",
+    )
+    random_to_pb_group.add_argument(
+        "--datatype",
+        help="numpy dtype value for the data type. e.g. f4=float32, i8=int64. "
+        "See: https://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html",
+    )
+    random_to_pb_group.add_argument(
+        "--min_value", default=0, type=int, help="Limit the generated values to this minimum."
+    )
+    random_to_pb_group.add_argument(
+        "--max_value", default=1, type=int, help="Limit the generated values to this maximum."
+    )
+    random_to_pb_group.add_argument(
+        "--seed", default=None, type=int, help="seed to use for the random values so they're deterministic."
+    )
 
     return parser
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     arg_parser = get_arg_parser()
     args = arg_parser.parse_args()
 
-    if args.action == 'dump_pb':
+    if args.action == "dump_pb":
         if not args.input:
             print("Missing argument. Need input to be specified.", file=sys.stderr)
             sys.exit(-1)
         np.set_printoptions(precision=10)
         dump_pb(args.input)
-    elif args.action == 'numpy_to_pb':
+    elif args.action == "numpy_to_pb":
         if not args.input or not args.output or not args.name:
             print("Missing argument. Need input, output and name to be specified.", file=sys.stderr)
             sys.exit(-1)
         # read data saved with numpy
         data = np.load(args.input)
         numpy_to_pb(args.name, data, args.output)
-    elif args.action == 'image_to_pb':
+    elif args.action == "image_to_pb":
         if not args.input or not args.output or not args.name:
             print("Missing argument. Need input, output, name to be specified.", file=sys.stderr)
             sys.exit(-1)
 
         img_np = image_to_numpy(args.input, args.resize, args.channels_last, args.add_batch_dim)
         numpy_to_pb(args.name, img_np, args.output)
-    elif args.action == 'random_to_pb':
+    elif args.action == "random_to_pb":
         if not args.output or not args.shape or not args.datatype or not args.name:
             print("Missing argument. Need output, shape, datatype and name to be specified.", file=sys.stderr)
             sys.exit(-1)
 
         data = create_random_data(args.shape, args.datatype, args.min_value, args.max_value, args.seed)
         numpy_to_pb(args.name, data, args.output)
-    elif args.action == 'update_name_in_pb':
+    elif args.action == "update_name_in_pb":
         if not args.input or not args.name:
             print("Missing argument. Need input and name to be specified.", file=sys.stderr)
             sys.exit(-1)

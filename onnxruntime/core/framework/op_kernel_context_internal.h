@@ -45,7 +45,7 @@ class OpKernelContextInternal : public OpKernelContext {
     return session_state_.GetSubgraphSessionState(GetNodeIndex(), attribute_name);
   }
 
-  const OrtValue* GetInputMLValue(int index) const {
+  const OrtValue* GetInputMLValue(int index) const override {
     return OpKernelContext::GetInputMLValue(index);
   }
 
@@ -53,13 +53,13 @@ class OpKernelContextInternal : public OpKernelContext {
     return OpKernelContext::GetOutputMLValue(index);
   }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_ATEN
   Status SetOutputMLValue(int index, const OrtValue& ort_value) {
     return OpKernelContext::SetOutputMLValue(index, ort_value);
   }
 #endif
 
-  OrtValue* OutputMLValue(int index, const TensorShape& shape) {
+  OrtValue* OutputMLValue(int index, const TensorShape& shape) override {
     return OpKernelContext::OutputMLValue(index, shape);
   }
 

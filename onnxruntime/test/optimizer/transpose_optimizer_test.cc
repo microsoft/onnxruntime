@@ -5,9 +5,12 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
+
 #include "graph_transform_test_builder.h"
 
 #include "core/graph/graph.h"
+#include "qdq_test_utils.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 
@@ -291,213 +294,222 @@ TEST(TransposeOptimizerTests, TestPadNonconst) {
                     /*opset_version*/ 11);
 }
 
-// Todo: renable tests on resize transformer after adding NHWC support in upsample op on cpu
-// https://github.com/microsoft/onnxruntime/issues/9857
+// The CUDA Resize kernel assumes that the input is NCHW and
+// Resize can't be supported in ORT builds with CUDA enabled.
+// TODO: Enable this once the CUDA Resize kernel is implemented
+// "generically" (i.e.) aligning with the generic nature of the
+// ONNX spec.
+// See https://github.com/microsoft/onnxruntime/pull/10824 for
+// a similar fix applied to the CPU Resize kernel.
+// Per tests included in #10824, the ROCM EP also generates
+// incorrect results when this handler is used, so the Resize
+// handler is not enabled even for those builds.
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
+TEST(TransposeOptimizerTests, TestResize) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
+    auto* const_1 = builder.MakeInitializer<float>({4}, {0.3f, 2.5f, 1.0f, 0.7f});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* resize_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
 
-// TEST(TransposeOptimizerTests, TestResize) {
-//   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-//     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
-//     auto* const_1 = builder.MakeInitializer<float>({4}, {0.3f, 2.5f, 1.0f, 0.7f});
-//     auto* transpose_1_out_0 = builder.MakeIntermediate();
-//     auto* resize_1_out_0 = builder.MakeIntermediate();
-//     auto* transpose_2_out_0 = builder.MakeOutput();
-//
-//     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-//     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-//     builder.AddNode("Resize", {transpose_1_out_0, const_1}, {resize_1_out_0});
-//     auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
-//     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-//   };
-//
-//   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-//     int transpose_cost = EstimateTransposeCost(session.GetGraph());
-//     EXPECT_EQ(transpose_cost, 0);
-//   };
-//
-//   TransformerTester(build_test_case_1,
-//                     check_optimized_graph_1,
-//                     TransformerLevel::Default,
-//                     TransformerLevel::Level1,
-//                     /*opset_version*/ 10);
-// }
-//
-// TEST(TransposeOptimizerTests, TestResizeOpset11) {
-//   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-//     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
-//     auto* const_1 = builder.MakeInitializer<float>({8}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-//     auto* const_2 = builder.MakeInitializer<float>({4}, {0.3f, 2.5f, 1.0f, 0.7f});
-//     auto* transpose_1_out_0 = builder.MakeIntermediate();
-//     auto* resize_1_out_0 = builder.MakeIntermediate();
-//     auto* transpose_2_out_0 = builder.MakeOutput();
-//
-//     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-//     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-//     builder.AddNode("Resize", {transpose_1_out_0, const_1, const_2}, {resize_1_out_0});
-//     auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
-//     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-//   };
-//
-//   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-//     int transpose_cost = EstimateTransposeCost(session.GetGraph());
-//     EXPECT_EQ(transpose_cost, 0);
-//   };
-//
-//   TransformerTester(build_test_case_1,
-//                     check_optimized_graph_1,
-//                     TransformerLevel::Default,
-//                     TransformerLevel::Level1,
-//                     /*opset_version*/ 11);
-// }
-//
-// TEST(TransposeOptimizerTests, TestResizeOpset15) {
-//   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-//     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
-//     auto* const_1 = builder.MakeInitializer<float>({4}, {0.3f, 2.5f, 1.0f, 0.7f});
-//     auto* transpose_1_out_0 = builder.MakeIntermediate();
-//     auto* resize_1_out_0 = builder.MakeIntermediate();
-//     auto* transpose_2_out_0 = builder.MakeOutput();
-//     auto empty_arg = NodeArg("", nullptr);
-//
-//     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-//     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-//     builder.AddNode("Resize", {transpose_1_out_0, &empty_arg, const_1}, {resize_1_out_0});
-//     auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
-//     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-//   };
-//
-//   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-//     int transpose_cost = EstimateTransposeCost(session.GetGraph());
-//     EXPECT_EQ(transpose_cost, 0);
-//   };
-//
-//   TransformerTester(build_test_case_1,
-//                     check_optimized_graph_1,
-//                     TransformerLevel::Default,
-//                     TransformerLevel::Level1,
-//                     /*opset_version*/ 15);
-// }
-//
-// TEST(TransposeOptimizerTests, TestResizeSizeRoi) {
-//   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-//     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
-//     auto* const_1 = builder.MakeInitializer<float>({8}, {0.1f, 0.2f, 0.3f, 0.4f, 0.9f, 0.8f, 0.7f, 0.6f});
-//     auto* const_2 = builder.MakeInitializer<int64_t>({4}, {10, 9, 8, 7});
-//     auto* transpose_1_out_0 = builder.MakeIntermediate();
-//     auto* resize_1_out_0 = builder.MakeIntermediate();
-//     auto* transpose_2_out_0 = builder.MakeOutput();
-//     auto empty_arg = NodeArg("", nullptr);
-//
-//     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-//     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-//     auto& resize_1 = builder.AddNode("Resize", {transpose_1_out_0, const_1, &empty_arg, const_2}, {resize_1_out_0});
-//     resize_1.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
-//     auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
-//     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-//   };
-//
-//   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-//     int transpose_cost = EstimateTransposeCost(session.GetGraph());
-//     EXPECT_EQ(transpose_cost, 0);
-//   };
-//
-//   TransformerTester(build_test_case_1,
-//                     check_optimized_graph_1,
-//                     TransformerLevel::Default,
-//                     TransformerLevel::Level1,
-//                     /*opset_version*/ 15);
-// }
-//
-// TEST(TransposeOptimizerTests, TestResizeRoiScalesZeroRank0) {
-//   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-//     auto* input = builder.MakeInput<uint8_t>({1, 512, 512, 3},
-//                                              std::numeric_limits<uint8_t>::min(),
-//                                              std::numeric_limits<uint8_t>::max());
-//     auto* resize_in_roi = builder.MakeInitializer<float>({0}, {});
-//     auto* resize_in_scales = builder.MakeInitializer<float>({0}, {});
-//     auto* resize_in_sizes = builder.MakeInitializer<int64_t>({4}, {1, 256, 32, 32});
-//
-//     auto* transpose1_out_transposed = builder.MakeIntermediate();
-//     auto* resize_out_Y = builder.MakeIntermediate();
-//     auto* output = builder.MakeOutput();
-//
-//     auto& transpose_1 = builder.AddNode("Transpose", {input}, {transpose1_out_transposed});
-//     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-//     builder.AddNode("Resize",
-//                     {transpose1_out_transposed, resize_in_roi, resize_in_scales, resize_in_sizes},
-//                     {resize_out_Y});
-//     auto& transpose_2 = builder.AddNode("Transpose", {resize_out_Y}, {output});
-//     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-//   };
-//
-//   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-//     int transpose_cost = EstimateTransposeCost(session.GetGraph());
-//     EXPECT_EQ(transpose_cost, 0);
-//   };
-//
-//   TransformerTester(build_test_case_1,
-//                     check_optimized_graph_1,
-//                     TransformerLevel::Default,
-//                     TransformerLevel::Level1);
-// }
-//
-// TEST(TransposeOptimizerTests, TestResizeNonconst) {
-//   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-//     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
-//     auto* input1_arg = MakeInput<float>(builder, {{8}}, {8}, {0.1f, 0.2f, 0.3f, 0.4f, 0.9f, 0.8f, 0.7f, 0.6f});
-//     auto* input2_arg = MakeInput<float>(builder, {{4}}, {4}, {0.3f, 2.5f, 1.0f, 0.7f});
-//     auto* transpose_1_out_0 = builder.MakeIntermediate();
-//     auto* resize_1_out_0 = builder.MakeIntermediate();
-//     auto* transpose_2_out_0 = builder.MakeOutput();
-//
-//     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-//     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-//     auto& resize_1 = builder.AddNode("Resize", {transpose_1_out_0, input1_arg, input2_arg}, {resize_1_out_0});
-//     resize_1.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
-//     auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
-//     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-//   };
-//
-//   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-//     int transpose_cost = EstimateTransposeCost(session.GetGraph());
-//     EXPECT_EQ(transpose_cost, 0);
-//   };
-//
-//   TransformerTester(build_test_case_1,
-//                     check_optimized_graph_1,
-//                     TransformerLevel::Default,
-//                     TransformerLevel::Level1,
-//                     /*opset_version*/ 11);
-// }
-//
-// TEST(TransposeOptimizerTests, TestResizeNonconstOpset13) {
-//   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
-//     auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
-//     auto* input1_arg = MakeInput<float>(builder, {{8}}, {8}, {0.1f, 0.2f, 0.3f, 0.4f, 0.9f, 0.8f, 0.7f, 0.6f});
-//     auto* input2_arg = MakeInput<float>(builder, {{4}}, {4}, {0.3f, 2.5f, 1.0f, 0.7f});
-//     auto* transpose_1_out_0 = builder.MakeIntermediate();
-//     auto* resize_1_out_0 = builder.MakeIntermediate();
-//     auto* transpose_2_out_0 = builder.MakeOutput();
-//
-//     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
-//     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-//     auto& resize_1 = builder.AddNode("Resize", {transpose_1_out_0, input1_arg, input2_arg}, {resize_1_out_0});
-//     resize_1.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
-//     auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
-//     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
-//   };
-//
-//   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-//     int transpose_cost = EstimateTransposeCost(session.GetGraph());
-//     EXPECT_EQ(transpose_cost, 0);
-//   };
-//
-//   TransformerTester(build_test_case_1,
-//                     check_optimized_graph_1,
-//                     TransformerLevel::Default,
-//                     TransformerLevel::Level1,
-//                     /*opset_version*/ 13);
-// }
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Resize", {transpose_1_out_0, const_1}, {resize_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
 
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 10);
+}
+
+TEST(TransposeOptimizerTests, TestResizeOpset11) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
+    auto* const_1 = builder.MakeInitializer<float>({8}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+    auto* const_2 = builder.MakeInitializer<float>({4}, {0.3f, 2.5f, 1.0f, 0.7f});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* resize_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Resize", {transpose_1_out_0, const_1, const_2}, {resize_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 11);
+}
+
+TEST(TransposeOptimizerTests, TestResizeOpset15) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
+    auto* const_1 = builder.MakeInitializer<float>({4}, {0.3f, 2.5f, 1.0f, 0.7f});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* resize_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+    auto empty_arg = NodeArg("", nullptr);
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Resize", {transpose_1_out_0, &empty_arg, const_1}, {resize_1_out_0});
+    auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestResizeSizeRoi) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
+    auto* const_1 = builder.MakeInitializer<float>({8}, {0.1f, 0.2f, 0.3f, 0.4f, 0.9f, 0.8f, 0.7f, 0.6f});
+    auto* const_2 = builder.MakeInitializer<int64_t>({4}, {10, 9, 8, 7});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* resize_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+    auto empty_arg = NodeArg("", nullptr);
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& resize_1 = builder.AddNode("Resize", {transpose_1_out_0, const_1, &empty_arg, const_2}, {resize_1_out_0});
+    resize_1.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+    auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestResizeRoiScalesZeroRank0) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<uint8_t>({1, 512, 512, 3},
+                                             std::numeric_limits<uint8_t>::min(),
+                                             std::numeric_limits<uint8_t>::max());
+    auto* resize_in_roi = builder.MakeInitializer<float>({0}, {});
+    auto* resize_in_scales = builder.MakeInitializer<float>({0}, {});
+    auto* resize_in_sizes = builder.MakeInitializer<int64_t>({4}, {1, 256, 32, 32});
+
+    auto* transpose1_out_transposed = builder.MakeIntermediate();
+    auto* resize_out_Y = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input}, {transpose1_out_transposed});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Resize",
+                    {transpose1_out_transposed, resize_in_roi, resize_in_scales, resize_in_sizes},
+                    {resize_out_Y});
+    auto& transpose_2 = builder.AddNode("Transpose", {resize_out_Y}, {output});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1);
+}
+
+TEST(TransposeOptimizerTests, TestResizeNonconst) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
+    auto* input1_arg = MakeInput<float>(builder, {{8}}, {8}, {0.1f, 0.2f, 0.3f, 0.4f, 0.9f, 0.8f, 0.7f, 0.6f});
+    auto* input2_arg = MakeInput<float>(builder, {{4}}, {4}, {0.3f, 2.5f, 1.0f, 0.7f});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* resize_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& resize_1 = builder.AddNode("Resize", {transpose_1_out_0, input1_arg, input2_arg}, {resize_1_out_0});
+    resize_1.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+    auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 11);
+}
+
+TEST(TransposeOptimizerTests, TestResizeNonconstOpset13) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<float>(builder, {{4, -1, 2, -1}}, {4, 6, 2, 10}, 0.0, 1.0);
+    auto* input1_arg = MakeInput<float>(builder, {{8}}, {8}, {0.1f, 0.2f, 0.3f, 0.4f, 0.9f, 0.8f, 0.7f, 0.6f});
+    auto* input2_arg = MakeInput<float>(builder, {{4}}, {4}, {0.3f, 2.5f, 1.0f, 0.7f});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* resize_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& resize_1 = builder.AddNode("Resize", {transpose_1_out_0, input1_arg, input2_arg}, {resize_1_out_0});
+    resize_1.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+    auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 13);
+}
+
+#endif
 TEST(TransposeOptimizerTests, TestAdd) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
@@ -3594,6 +3606,41 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
                     /*opset_version*/ 10);
 }
 
+TEST(TransposeOptimizerTests, TestDequantizeLinearTransposePropagation) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
+    auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
+    auto* input2_arg = MakeInput<uint8_t>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {10});
+    auto* dequantizelinear_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_1_out_0 = builder.MakeOutput();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    builder.AddNode("DequantizeLinear", {input0_arg, input1_arg, input2_arg}, {dequantizelinear_1_out_0});
+
+    auto& transpose_1 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+
+    auto& transpose_2 = builder.AddNode("Transpose", {dequantizelinear_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_graph = [&](InferenceSessionWrapper& session) {
+    std::vector<std::string> expected_op_types_in_order{
+        "DequantizeLinear",
+        "Transpose",
+        "Transpose"};
+
+    const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+    EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 10);
+}
+
 TEST(TransposeOptimizerTests, TestCast) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<int32_t>(builder, {{-1, 4, -1, 5}}, {2, 4, 6, 5}, -1, 5);
@@ -4014,5 +4061,40 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue10305) {
   ASSERT_STATUS_OK(session_object.Initialize());  // optimizers run during initialization
 }
 
+// regression test for a model with DQ node with per-axis dequantization followed by a Transpose.
+// the second phase can swap those around, but needs to use the correct perms for updating the 'axis'
+// attribute in the DQ node.
+// see https://github.com/microsoft/onnxruntime/issues/12151 for more details.
+TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/ort_github_issue_12151.onnx");
+
+  NameMLValMap feeds;  // no inputs for this model
+  std::vector<std::string> output_names{"Z"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  so.session_logid = "TransposeOptimizerTests.RegressionTest_GitHubIssue12151";
+
+  {
+    so.graph_optimization_level = TransformerLevel::Default;  // off
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(model_uri));
+    ASSERT_STATUS_OK(session_object.Initialize());
+    ASSERT_STATUS_OK(session_object.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    so.graph_optimization_level = TransformerLevel::Level1;  // enable transpose optimizer
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.Load(model_uri));
+    ASSERT_STATUS_OK(session_object.Initialize());
+    ASSERT_STATUS_OK(session_object.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
 }  // namespace test
 }  // namespace onnxruntime

@@ -9,9 +9,7 @@ from _test_commons import run_subprocess
 
 import logging
 
-logging.basicConfig(
-    format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
-    level=logging.DEBUG)
+logging.basicConfig(format="%(asctime)s %(name)s [%(levelname)s] - %(message)s", level=logging.DEBUG)
 log = logging.getLogger("ORTModuleDistributedTests")
 
 
@@ -23,39 +21,55 @@ def parse_arguments():
 
 
 def run_ortmodule_deepspeed_zero_stage_1_tests(cwd, log, data_dir):
-    log.debug('Running: ORTModule deepspeed zero stage 1 tests')
+    log.debug("Running: ORTModule deepspeed zero stage 1 tests")
 
-    command = ['deepspeed', 'orttraining_test_ortmodule_deepspeed_zero_stage_1.py',
-        '--deepspeed_config', 'orttraining_test_ortmodule_deepspeed_zero_stage_1_config.json']
+    command = [
+        "deepspeed",
+        "orttraining_test_ortmodule_deepspeed_zero_stage_1.py",
+        "--deepspeed_config",
+        "orttraining_test_ortmodule_deepspeed_zero_stage_1_config.json",
+    ]
 
     if data_dir:
-        command.extend(['--data-dir', data_dir])
+        command.extend(["--data-dir", data_dir])
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 
 def run_pytorch_ddp_tests(cwd, log):
-    log.debug('Running: ORTModule Pytorch DDP tests')
+    log.debug("Running: ORTModule Pytorch DDP tests")
 
-    command = [sys.executable, 'orttraining_test_ortmodule_pytorch_ddp.py', '--use_ort_module']
+    command = [sys.executable, "orttraining_test_ortmodule_pytorch_ddp.py", "--use_ort_module"]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 
 def run_ortmodule_deepspeed_pipeline_parallel_tests(cwd, log):
-    log.debug('Running: ORTModule deepspeed pipeline parallel tests')
+    log.debug("Running: ORTModule deepspeed pipeline parallel tests")
 
-    command = ['deepspeed', 'orttraining_test_ortmodule_deepspeed_pipeline_parallel.py',
-        '--deepspeed_config', 'orttraining_test_ortmodule_deepspeed_pipeline_parallel_config.json']
+    command = [
+        "deepspeed",
+        "orttraining_test_ortmodule_deepspeed_pipeline_parallel.py",
+        "--deepspeed_config",
+        "orttraining_test_ortmodule_deepspeed_pipeline_parallel_config.json",
+    ]
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 
 def run_ortmodule_fairscale_sharded_optimizer_tests(cwd, log, data_dir):
-    log.debug('Running: ORTModule fairscale sharded optimizer tests')
-    command = ['python3', 'orttraining_test_ortmodule_fairscale_sharded_optimizer.py',
-               '--use_sharded_optimizer', '--use_ortmodule']
+    log.debug("Running: ORTModule fairscale sharded optimizer tests")
+    command = [
+        "python3",
+        "orttraining_test_ortmodule_fairscale_sharded_optimizer.py",
+        "--use_sharded_optimizer",
+        "--use_ortmodule",
+    ]
     if data_dir:
-        command.extend(['--data-dir', data_dir])
+        command.extend(["--data-dir", data_dir])
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 
 def main():
     args = parse_arguments()

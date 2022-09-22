@@ -87,7 +87,7 @@ async function loadTensors(
 
       const uriOrData = fileCache && fileCache[dataFile] ? fileCache[dataFile] : dataFile;
       const t = ext.toLowerCase() === '.pb' ? await loadTensorProto(uriOrData) :  // onnx.TensorProto
-          await loadMlProto(uriOrData);                                           // (TBD)
+                                              await loadMlProto(uriOrData);
 
       const dataFileBasename = dataFile.split(/[/\\]/).pop()!;
 

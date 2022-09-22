@@ -14,7 +14,7 @@ jobs:
       --enable_training
       --enable_training_torch_interop
       --config $(buildConfig)
-      --use_cuda --cuda_version=11.3 --cuda_home=/usr/local/cuda-11.3 --cudnn_home=/usr/local/cuda-11.3
+      --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6
       --build_wheel
       --enable_nvtx_profile
       --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70
@@ -29,9 +29,8 @@ jobs:
     # Enable unreleased onnx opsets in CI builds
     # This facilitates testing the implementation for the new opsets
     AllowReleasedOpsetOnly: '0'
-    Strategy: 
+    Strategy:
       maxParallel: 2
       matrix:
         Release:
           buildConfig: Release
-

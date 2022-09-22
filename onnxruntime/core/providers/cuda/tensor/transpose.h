@@ -22,11 +22,14 @@ class Transpose final : public CudaKernel, public TransposeBase {
                             const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output);
 
   //  `input_shape_override` (if provided) overrides the shape of `input` for compute purposes
+  //  `output_shape_override` (if provided) overrides the shape of `output` for compute purposes
   static Status DoTranspose(const cudaDeviceProp& prop,
                             cudaStream_t stream,
                             const cublasHandle_t cublas_handle,
                             const gsl::span<const size_t>& permutations,
-                            const Tensor& input, Tensor& output, const TensorShape* input_shape_override = nullptr);
+                            const Tensor& input, Tensor& output,
+                            const TensorShape* input_shape_override = nullptr,
+                            const TensorShape* output_shape_override = nullptr);
 };
 
 }  // namespace cuda

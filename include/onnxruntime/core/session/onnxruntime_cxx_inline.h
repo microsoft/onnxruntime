@@ -200,7 +200,7 @@ inline void IoBinding::BindOutput(const char* name, const MemoryInfo& mem_info) 
 
 inline std::vector<std::string> IoBinding::GetOutputNamesHelper(OrtAllocator* allocator) const {
   std::vector<std::string> result;
-  auto free_fn = [allocator](void* p) { if (p) allocator->Free(allocator, p); };
+  auto free_fn = detail::AllocatedFree(allocator);
   using Ptr = std::unique_ptr<void, decltype(free_fn)>;
 
   char* buffer = nullptr;
@@ -526,6 +526,11 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_CUDA(const OrtCUD
   return *this;
 }
 
+inline SessionOptions& SessionOptions::AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CUDA_V2(p_, &provider_options));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_ROCM(p_, &provider_options));
   return *this;
@@ -543,6 +548,27 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT_V2(const
 
 inline SessionOptions& SessionOptions::AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_MIGraphX(p_, &provider_options));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::AppendExecutionProvider(
+    const std::string& provider_name,
+    const std::unordered_map<std::string, std::string>& provider_options) {
+  auto num_entries = provider_options.size();
+  std::vector<const char*> keys, values;
+  if (num_entries > 0) {
+    keys.reserve(num_entries);
+    values.reserve(num_entries);
+
+    for (const auto& entry : provider_options) {
+      keys.push_back(entry.first.c_str());
+      values.push_back(entry.second.c_str());
+    }
+  }
+
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider(p_, provider_name.c_str(),
+                                                              keys.data(), values.data(), num_entries));
+
   return *this;
 }
 
@@ -577,6 +603,12 @@ inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOpti
 
 inline Session::Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &p_));
+}
+
+inline Session::Session(Env& env, const void* model_data, size_t model_data_length,
+                        const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container) {
+  ThrowOnError(GetApi().CreateSessionFromArrayWithPrepackedWeightsContainer(env, model_data, model_data_length, options,
+                                                                            prepacked_weights_container, &p_));
 }
 
 inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
@@ -618,28 +650,28 @@ inline size_t Session::GetOverridableInitializerCount() const {
   return out;
 }
 
-inline char* Session::GetInputName(size_t index, OrtAllocator* allocator) const {
+inline AllocatedStringPtr Session::GetInputNameAllocated(size_t index, OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().SessionGetInputName(p_, index, allocator, &out));
-  return out;
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char* Session::GetOutputName(size_t index, OrtAllocator* allocator) const {
+inline AllocatedStringPtr Session::GetOutputNameAllocated(size_t index, OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().SessionGetOutputName(p_, index, allocator, &out));
-  return out;
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char* Session::GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const {
+inline AllocatedStringPtr Session::GetOverridableInitializerNameAllocated(size_t index, OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().SessionGetOverridableInitializerName(p_, index, allocator, &out));
-  return out;
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char* Session::EndProfiling(OrtAllocator* allocator) const {
+inline AllocatedStringPtr Session::EndProfilingAllocated(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().SessionEndProfiling(p_, allocator, &out));
-  return out;
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
 inline uint64_t Session::GetProfilingStartTimeNs() const {
@@ -654,46 +686,65 @@ inline ModelMetadata Session::GetModelMetadata() const {
   return ModelMetadata{out};
 }
 
-inline char* ModelMetadata::GetProducerName(OrtAllocator* allocator) const {
+inline AllocatedStringPtr ModelMetadata::GetProducerNameAllocated(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetProducerName(p_, allocator, &out));
-  return out;
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char* ModelMetadata::GetGraphName(OrtAllocator* allocator) const {
+inline AllocatedStringPtr ModelMetadata::GetGraphNameAllocated(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetGraphName(p_, allocator, &out));
-  return out;
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char* ModelMetadata::GetDomain(OrtAllocator* allocator) const {
+inline AllocatedStringPtr ModelMetadata::GetDomainAllocated(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetDomain(p_, allocator, &out));
-  return out;
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char* ModelMetadata::GetDescription(OrtAllocator* allocator) const {
+inline AllocatedStringPtr Ort::ModelMetadata::GetDescriptionAllocated(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetDescription(p_, allocator, &out));
-  return out;
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char* ModelMetadata::GetGraphDescription(OrtAllocator* allocator) const {
+inline AllocatedStringPtr ModelMetadata::GetGraphDescriptionAllocated(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetGraphDescription(p_, allocator, &out));
-  return out;
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char* ModelMetadata::LookupCustomMetadataMap(const char* key, OrtAllocator* allocator) const {
+inline AllocatedStringPtr ModelMetadata::LookupCustomMetadataMapAllocated(const char* key, OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataLookupCustomMetadataMap(p_, allocator, key, &out));
-  return out;
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char** ModelMetadata::GetCustomMetadataMapKeys(OrtAllocator* allocator, _Out_ int64_t& num_keys) const {
-  char** out;
+inline std::vector<AllocatedStringPtr> ModelMetadata::GetCustomMetadataMapKeysAllocated(OrtAllocator* allocator) const {
+  auto deletor = detail::AllocatedFree(allocator);
+  std::vector<AllocatedStringPtr> result;
+
+  char** out = nullptr;
+  int64_t num_keys = 0;
   ThrowOnError(GetApi().ModelMetadataGetCustomMetadataMapKeys(p_, allocator, &out, &num_keys));
-  return out;
+  if (num_keys <= 0) {
+    return result;
+  }
+
+  // array of pointers will be freed
+  std::unique_ptr<void, decltype(deletor)> array_guard(out, deletor);
+  // reserve may throw
+  auto strings_deletor = [&deletor, num_keys](char** out) { for(int64_t i = 0; i < num_keys; ++i) deletor(out[i]); };
+  std::unique_ptr<char*, decltype(strings_deletor)> strings_guard(out, strings_deletor);
+  result.reserve(static_cast<size_t>(num_keys));
+  strings_guard.release();
+  for (int64_t i = 0; i < num_keys; ++i) {
+    result.push_back(AllocatedStringPtr(out[i], deletor));
+  }
+
+  return result;
 }
 
 inline int64_t ModelMetadata::GetVersion() const {
@@ -1199,6 +1250,59 @@ inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelConte
   void* out;
   ThrowOnError(api_.KernelContext_GetGPUComputeStream(context, &out));
   return out;
+}
+
+inline OrtOpAttr* CustomOpApi::CreateOpAttr(_In_ const char* name,
+                                            _In_ const void* data,
+                                            _In_ int len,
+                                            _In_ OrtOpAttrType type) {
+  OrtOpAttr* op_attr{};
+  ThrowOnError(api_.CreateOpAttr(name, data, len, type, &op_attr));
+  return op_attr;
+}
+
+inline void CustomOpApi::ReleaseOpAttr(_Frees_ptr_opt_ OrtOpAttr* op_attr) {
+  api_.ReleaseOpAttr(op_attr);
+}
+
+inline OrtOp* CustomOpApi::CreateOp(_In_ const OrtKernelInfo* info,
+                                    _In_ const char* op_name,
+                                    _In_ const char* domain,
+                                    _In_ int version,
+                                    _In_opt_ const char** type_constraint_names,
+                                    _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
+                                    _In_opt_ int type_constraint_count,
+                                    _In_opt_ const OrtOpAttr* const* attr_values,
+                                    _In_opt_ int attr_count,
+                                    _In_ int input_count,
+                                    _In_ int output_count) {
+  OrtOp* ort_op{};
+  ThrowOnError(api_.CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values,
+                             type_constraint_count, attr_values, attr_count, input_count, output_count, &ort_op));
+  return ort_op;
+}
+
+inline void CustomOpApi::InvokeOp(_In_ const OrtKernelContext* context,
+                                  _In_ const OrtOp* ort_op,
+                                  _In_ const OrtValue* const* input_values,
+                                  _In_ int input_count,
+                                  _Inout_ OrtValue* const* output_values,
+                                  _In_ int output_count) {
+  ThrowOnError(api_.InvokeOp(context, ort_op, input_values, input_count, output_values, output_count));
+}
+
+inline void CustomOpApi::ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op) {
+  api_.ReleaseOp(ort_op);
+}
+
+inline OrtKernelInfo* CustomOpApi::CopyKernelInfo(_In_ const OrtKernelInfo* info) {
+  OrtKernelInfo* info_copy{};
+  ThrowOnError(api_.CopyKernelInfo(info, &info_copy));
+  return info_copy;
+}
+
+inline void CustomOpApi::ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_copy) {
+  api_.ReleaseKernelInfo(info_copy);
 }
 
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {

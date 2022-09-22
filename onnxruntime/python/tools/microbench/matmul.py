@@ -1,10 +1,11 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 import argparse
 from dataclasses import dataclass
+
 import numpy as np
 from benchmark import BenchmarkOp, add_arguments
 
@@ -43,10 +44,36 @@ class BenchmarkMatMul(BenchmarkOp):
         return inputs, outputs
 
     def add_model_cases(self, mp, model):
-        self.add_case(OpParam(1, mp.batch_size, mp.seq_len, mp.hidden_size, mp.hidden_size, mp.data_type), model)
-        self.add_case(OpParam(1, mp.batch_size, mp.seq_len, mp.inter_dim, mp.hidden_size, mp.data_type), model)
-        self.add_case(OpParam(1, mp.batch_size, mp.seq_len, mp.hidden_size, mp.inter_dim, mp.data_type), model)
-        self.add_case(OpParam(mp.batch_size, mp.num_heads, mp.seq_len, mp.seq_len, int(mp.hidden_size / mp.num_heads), mp.data_type), model)
+        self.add_case(
+            OpParam(
+                1,
+                mp.batch_size,
+                mp.seq_len,
+                mp.hidden_size,
+                mp.hidden_size,
+                mp.data_type,
+            ),
+            model,
+        )
+        self.add_case(
+            OpParam(1, mp.batch_size, mp.seq_len, mp.inter_dim, mp.hidden_size, mp.data_type),
+            model,
+        )
+        self.add_case(
+            OpParam(1, mp.batch_size, mp.seq_len, mp.hidden_size, mp.inter_dim, mp.data_type),
+            model,
+        )
+        self.add_case(
+            OpParam(
+                mp.batch_size,
+                mp.num_heads,
+                mp.seq_len,
+                mp.seq_len,
+                int(mp.hidden_size / mp.num_heads),
+                mp.data_type,
+            ),
+            model,
+        )
 
     def create_cases(self):
         model = "models/matmul_fp16.onnx" if self.args.precision == "fp16" else "models/matmul_fp32.onnx"

@@ -34,6 +34,13 @@
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
+// cmake/external/eigen\Eigen/CXX11/src/Tensor/TensorTrace.h:130:9:
+// error: variable 'num_distinct_reduce_dims' set but not used [-Werror,-Wunused-but-set-variable]
+//   int num_distinct_reduce_dims = 0;
+#ifdef HAS_UNUSED_BUT_SET_VARIABLE
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#endif
+
 #elif defined(_MSC_VER)
 // build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
 // warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence

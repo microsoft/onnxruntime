@@ -19,15 +19,15 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
   const auto& x_shape = x.Shape();
 
-  const CudaU* input = reinterpret_cast<const CudaU*>(x.template Data<U>());
-  T* output = y.template MutableData<T>();
+  const CudaU* input = reinterpret_cast<const CudaU*>(x.Data<U>());
+  T* output = y.MutableData<T>();
 
   // TO DO: support per-channel
   ORT_ENFORCE(IsScalarOr1ElementVector(&y_scale), "y_scale must be a scalar or 1D tensor of size 1.");
   ORT_ENFORCE(y_zero_point == nullptr || IsScalarOr1ElementVector(y_zero_point), "y_zero_point must be a scalar or 1D tensor of size 1.");
 
-  const T* zero_point = y_zero_point != nullptr ? y_zero_point->template Data<T>() : nullptr;
-  const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.template Data<U>());
+  const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
+  const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
   const auto num_of_elements = x_shape.Size();
 
   ORT_RETURN_IF_ERROR(CudaQuantizeLinear(Stream(), input, output, scale, zero_point, num_of_elements));
@@ -47,14 +47,14 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
   auto& y = *ctx->Output(0, x_shape);
 
-  const T* input = x.template Data<T>();
-  CudaU* output = reinterpret_cast<CudaU*>(y.template MutableData<U>());
+  const T* input = x.Data<T>();
+  CudaU* output = reinterpret_cast<CudaU*>(y.MutableData<U>());
 
   ORT_ENFORCE(IsScalarOr1ElementVector(&y_scale), "y_scale must be a scalar or 1D tensor of size 1.");
   ORT_ENFORCE(y_zero_point == nullptr || IsScalarOr1ElementVector(y_zero_point), "y_zero_point must be a scalar or 1D tensor of size 1.");
 
-  const T* zero_point = y_zero_point != nullptr ? y_zero_point->template Data<T>() : nullptr;
-  const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.template Data<U>());
+  const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
+  const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.Data<U>());
   const auto num_of_elements = x_shape.Size();
 
   ORT_RETURN_IF_ERROR(CudaDequantizeLinear(Stream(), input, output, scale, zero_point, num_of_elements));

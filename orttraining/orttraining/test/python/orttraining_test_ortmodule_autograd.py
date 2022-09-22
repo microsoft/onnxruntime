@@ -1,16 +1,21 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# Import external libraries.
-import onnxruntime
+# pylint: disable=missing-docstring
+# pylint: disable=C0103
+
+from distutils.version import LooseVersion
+
 import pytest
 import torch
-from torch.nn.parameter import Parameter
-from distutils.version import LooseVersion
 
 # Import ORT modules.
 from _test_helpers import *
-from onnxruntime.training.ortmodule import ORTModule
+from torch.nn.parameter import Parameter
+
+# Import external libraries.
+import onnxruntime
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
@@ -20,7 +25,19 @@ def torch_version_lower_than(v):
     return LooseVersion(torch.__version__) < LooseVersion(v)
 
 
-def test_GeLU():
+@pytest.fixture(scope="session", autouse=True)
+def run_before_test_session(request):
+    def insert_disable_fallback_in_env():
+        os.environ["ORTMODULE_FALLBACK_POLICY"] = "FALLBACK_DISABLE"
+
+    def remove_disable_fallback_from_env():
+        del os.environ["ORTMODULE_FALLBACK_POLICY"]
+
+    insert_disable_fallback_in_env()
+    request.addfinalizer(remove_disable_fallback_from_env)
+
+
+def test_gelu():
     @torch.jit.script
     def bias_gelu(bias, y):
         x = bias + y
@@ -30,9 +47,8 @@ def test_GeLU():
     def bias_gelu_backward(g, bias, y):
         x = bias + y
         tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
-        ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 +
-                        0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
-        return ff*g
+        ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+        return ff * g
 
     class GeLUFunction1(torch.autograd.Function):
         @staticmethod
@@ -50,10 +66,7 @@ def test_GeLU():
         def __init__(self, output_size):
             super(GeLUModel, self).__init__()
             self.relu = GeLUFunction1.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -86,9 +99,8 @@ def test_GeLU_custom_func_rets_not_as_module_output():
     def bias_gelu_backward(g, bias, y):
         x = bias + y
         tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
-        ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 +
-                        0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
-        return ff*g
+        ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+        return ff * g
 
     class GeLUFunction2(torch.autograd.Function):
         @staticmethod
@@ -106,10 +118,7 @@ def test_GeLU_custom_func_rets_not_as_module_output():
         def __init__(self, output_size):
             super(GeLUModel, self).__init__()
             self.relu = GeLUFunction2.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -120,7 +129,7 @@ def test_GeLU_custom_func_rets_not_as_module_output():
             # NOT as module outputs (which are consumed by subsquent computations).
             # This aims to trigger a GC for "out", saying, out is released,
             # the underlying std::shared<PyNode> still have other references.
-            # Otherwise, a segementfault will be triggered.
+            # Otherwise, a segment fault will be triggered.
             out = out * 9
             return out
 
@@ -148,9 +157,8 @@ def test_GeLU_multiple_forward_runs():
     def bias_gelu_backward(g, bias, y):
         x = bias + y
         tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
-        ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 +
-                        0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
-        return ff*g
+        ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+        return ff * g
 
     class GeLUFunction3(torch.autograd.Function):
         @staticmethod
@@ -168,10 +176,7 @@ def test_GeLU_multiple_forward_runs():
         def __init__(self, output_size):
             super(GeLUModel, self).__init__()
             self.relu = GeLUFunction3.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -193,6 +198,7 @@ def test_GeLU_multiple_forward_runs():
 
     run_training_test_and_compare(model_builder, input_generator, label_input, run_forward_twice=True)
 
+
 def test_MegatronF():
     # MegatronGFunction is tested in distributed test files.
     class MegatronFFunction(torch.autograd.Function):
@@ -209,10 +215,7 @@ def test_MegatronF():
         def __init__(self, output_size):
             super(MegatronFModel, self).__init__()
             self.copy_ = MegatronFFunction.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -248,7 +251,7 @@ def test_ScalarAndTuple():
 
         @staticmethod
         def backward(ctx, grad_output):
-            input, = ctx.saved_tensors
+            (input,) = ctx.saved_tensors
             alpha = ctx.alpha
             beta = ctx.beta
             gamma = ctx.gamma
@@ -295,7 +298,7 @@ def test_ScalarAndTupleReordered():
 
         @staticmethod
         def backward(ctx, grad_output):
-            input, = ctx.saved_tensors
+            (input,) = ctx.saved_tensors
             alpha = ctx.alpha
             beta = ctx.beta
             gamma = ctx.gamma
@@ -330,7 +333,9 @@ def test_ScalarAndTupleReordered():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
-@pytest.mark.skip(reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...).")
+@pytest.mark.skip(
+    reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...)."
+)
 def test_InplaceUpdateInputAsOutputNotRequireGrad():
     class InplaceUpdateInputAsOutputNotRequireGradFunction(torch.autograd.Function):
         @staticmethod
@@ -351,10 +356,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGrad():
         def __init__(self, output_size):
             super(InplaceUpdateInputAsOutputNotRequireGradModel, self).__init__()
             self.inplace_op = InplaceUpdateInputAsOutputNotRequireGradFunction.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -378,11 +380,12 @@ def test_InplaceUpdateInputAsOutputNotRequireGrad():
     label_input = torch.ones([output_size])
 
     # Test when input is in-place updated, but does not require gradient.
-    run_training_test_and_compare(
-        model_builder, input_generator, label_input, ignore_grad_compare=True)
+    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 
-@pytest.mark.skip(reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...).")
+@pytest.mark.skip(
+    reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...)."
+)
 def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
     class InplaceUpdateInputNotAsOutputNotRequireGradFunction(torch.autograd.Function):
         @staticmethod
@@ -399,10 +402,7 @@ def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
         def __init__(self, output_size):
             super(InplaceUpdateInputNotAsOutputNotRequireGradModel, self).__init__()
             self.inplace_op = InplaceUpdateInputNotAsOutputNotRequireGradFunction.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -425,13 +425,14 @@ def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    # Without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
-    # So for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad, this is the reason we
-    # ignore the gradient compare here.
-    run_training_test_and_compare(
-        model_builder, input_generator, label_input, ignore_grad_compare=True)
+    # Without mark_ditry, the inner computation graph is extracted into another subgraph,
+    # which is a duplicated computation with the PythonOp.
+    # So for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad,
+    # this is the reason we ignore the gradient compare here.
+    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 
+@pytest.mark.skip(reason="disable due to exporter bug https://github.com/microsoft/onnx-converters-private/issues/37.")
 def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     class InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction(torch.autograd.Function):
         @staticmethod
@@ -450,13 +451,9 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
 
     class InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyModel,
-                  self).__init__()
+            super(InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyModel, self).__init__()
             self.inplace_op = InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -482,7 +479,9 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
-@pytest.mark.skip(reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...).")
+@pytest.mark.skip(
+    reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...)."
+)
 def test_InplaceUpdateInputAsOutputRequireGrad():
     class InplaceUpdateInputAsOutputRequireGradFunction(torch.autograd.Function):
         @staticmethod
@@ -500,10 +499,7 @@ def test_InplaceUpdateInputAsOutputRequireGrad():
         def __init__(self, output_size):
             super(InplaceUpdateInputAsOutputRequireGradModel, self).__init__()
             self.inplace_op = InplaceUpdateInputAsOutputRequireGradFunction.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -532,11 +528,12 @@ def test_InplaceUpdateInputAsOutputRequireGrad():
     # duplicated computation with the PythonOp.  Thus, for the weights that are used twice BUT SHOULD
     # only used once, the gradients are almost 2x than PyTorch's grad, this is the reason we
     # ignore the gradient compare here.
-    run_training_test_and_compare(
-        model_builder, input_generator, label_input, ignore_grad_compare=True)
+    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
 
 
-@pytest.mark.skip(reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...).")
+@pytest.mark.skip(
+    reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...)."
+)
 def test_InplaceUpdateInputNotAsOutputRequireGrad():
     class InplaceUpdateInputNotAsOutputRequireGradFunction(torch.autograd.Function):
         # without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
@@ -556,10 +553,7 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
         def __init__(self, output_size):
             super(InplaceUpdateInputNotAsOutputRequireGradModel, self).__init__()
             self.inplace_op = InplaceUpdateInputNotAsOutputRequireGradFunction.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -586,12 +580,13 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
     # should reuse the input torch tensor @140214095996104, 140212816617984 but actually not." It seems
     # if we don't have mark_dirty() in auto grad forward, the result is not using the input_,
     # (maybe a view of it, because data address is same)
-    run_training_test_and_compare(
-        model_builder, input_generator, label_input, ignore_grad_compare=True)
+    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+
 
 ##########################################################################################
 
 
+@pytest.mark.skip(reason="disable due to exporter bug https://github.com/microsoft/onnx-converters-private/issues/37.")
 def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction(torch.autograd.Function):
         @staticmethod
@@ -610,13 +605,9 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
 
     class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(InplaceUpdateInputAsOutputRequireGradWithMarkDirtyModel,
-                  self).__init__()
+            super(InplaceUpdateInputAsOutputRequireGradWithMarkDirtyModel, self).__init__()
             self.inplace_op = InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -659,10 +650,7 @@ def test_EvalTest():
         def __init__(self, output_size):
             super(EvalTestModel, self).__init__()
             self.custom_fn = EvalTestFunction.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -687,8 +675,10 @@ def test_EvalTest():
     run_evaluate_test_and_compare(model_builder, input_generator, label_input)
 
 
-@pytest.mark.skipif(torch_version_lower_than("1.10.0"),
-                    reason='PyTorch older than 1.10.0 has bugs for exporting multiple output custom function')
+@pytest.mark.skipif(
+    torch_version_lower_than("1.10.0"),
+    reason="PyTorch older than 1.10.0 has bugs for exporting multiple output custom function",
+)
 def test_TwoOutputFunction():
     class TwoOutputFunction1(torch.autograd.Function):
         @staticmethod
@@ -725,10 +715,7 @@ def test_TwoOutputFunction():
         def __init__(self, output_size):
             super(TwoOutputModel, self).__init__()
             self.fun = TwoOutputFunction1.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -769,14 +756,13 @@ def test_InnerModuleCall():
             ctx.device = device
             ctx.inner = InnerModel(dim, device).to(device)
             if use_ort:
-                enable_custom_autograd_function(ctx.inner)
                 ctx.inner = ORTModule(ctx.inner)
             z = ctx.inner(x)
             return z
 
         @staticmethod
         def backward(ctx, dv):
-            x, = ctx.saved_tensors
+            (x,) = ctx.saved_tensors
             y = x.detach().to(ctx.device)
             y.requires_grad = True
             g = None
@@ -814,18 +800,20 @@ def test_InnerModuleCall():
     x = torch.FloatTensor([1.0, -1.0])
 
     # Test indirect ORTModule call from custom function
-    result_pth = get_inner_module_call_result(x.detach(), 'cuda:0', False)
-    result_ort = get_inner_module_call_result(x.detach(), 'cuda:0', True)
+    result_pth = get_inner_module_call_result(x.detach(), "cuda:0", False)
+    result_ort = get_inner_module_call_result(x.detach(), "cuda:0", True)
     compare_tensor_list(result_ort, result_pth)
 
     # Test indirect ORTModule call from custom function
-    result_ort = get_inner_module_call_result(x.detach(), 'cpu', True)
-    result_pth = get_inner_module_call_result(x.detach(), 'cpu', False)
+    result_ort = get_inner_module_call_result(x.detach(), "cpu", True)
+    result_pth = get_inner_module_call_result(x.detach(), "cpu", False)
     compare_tensor_list(result_ort, result_pth)
 
 
-@pytest.mark.skipif(torch_version_lower_than("1.10.0"),
-                    reason='PyTorch older than 1.10.0 has bugs for exporting multiple output custom function')
+@pytest.mark.skipif(
+    torch_version_lower_than("1.10.0"),
+    reason="PyTorch older than 1.10.0 has bugs for exporting multiple output custom function",
+)
 def test_Share_Input():
     class TwoOutputFunction2(torch.autograd.Function):
         @staticmethod
@@ -847,10 +835,7 @@ def test_Share_Input():
         def __init__(self, output_size):
             super(TwoOutputModel, self).__init__()
             self.fun = TwoOutputFunction2.apply
-            self.bias = Parameter(torch.empty(
-                output_size,
-                device=torch.cuda.current_device(),
-                dtype=torch.float))
+            self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
             with torch.no_grad():
                 self.bias.uniform_()
@@ -877,8 +862,7 @@ def test_Share_Input():
     # Test multi-input and multi-output custom function.
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
-    run_training_test_and_compare(
-        model_builder, input_generator_with_requires_grad, label_input)
+    run_training_test_and_compare(model_builder, input_generator_with_requires_grad, label_input)
 
 
 def test_MultipleStream_InForwardFunction():
@@ -899,7 +883,7 @@ def test_MultipleStream_InForwardFunction():
 
         @staticmethod
         def backward(ctx, grad_output):
-            input, = ctx.saved_tensors
+            (input,) = ctx.saved_tensors
             return grad_output
 
     class MultipleStreamModel(torch.nn.Module):
@@ -924,8 +908,9 @@ def test_MultipleStream_InForwardFunction():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(model_builder, input_generator, label_input,
-                                  expected_outputs=[torch.tensor([0.224, 0.272])])
+    run_training_test_and_compare(
+        model_builder, input_generator, label_input, expected_outputs=[torch.tensor([0.224, 0.272])]
+    )
 
 
 def test_NonDefaultStream_InForwardFunction1():
@@ -945,7 +930,7 @@ def test_NonDefaultStream_InForwardFunction1():
 
         @staticmethod
         def backward(ctx, grad_output):
-            input, = ctx.saved_tensors
+            (input,) = ctx.saved_tensors
             return grad_output
 
     class MultipleStreamModel(torch.nn.Module):
@@ -971,8 +956,9 @@ def test_NonDefaultStream_InForwardFunction1():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(model_builder, input_generator, label_input,
-                                  expected_outputs=[torch.tensor([0.224, 0.272])])
+    run_training_test_and_compare(
+        model_builder, input_generator, label_input, expected_outputs=[torch.tensor([0.224, 0.272])]
+    )
 
 
 def test_NonDefaultStream_InForwardFunction2():
@@ -986,7 +972,7 @@ def test_NonDefaultStream_InForwardFunction2():
 
         @staticmethod
         def backward(ctx, grad_output):
-            input, = ctx.saved_tensors
+            (input,) = ctx.saved_tensors
             return grad_output
 
     class MultipleStreamModel(torch.nn.Module):
@@ -1017,8 +1003,9 @@ def test_NonDefaultStream_InForwardFunction2():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(model_builder, input_generator, label_input,
-                                  expected_outputs=[torch.tensor([0.224, 0.272])])
+    run_training_test_and_compare(
+        model_builder, input_generator, label_input, expected_outputs=[torch.tensor([0.224, 0.272])]
+    )
 
 
 def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
@@ -1039,7 +1026,7 @@ def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
 
         @staticmethod
         def backward(ctx, grad_output):
-            input, = ctx.saved_tensors
+            (input,) = ctx.saved_tensors
             return grad_output
 
     class MultipleStreamModel(torch.nn.Module):
@@ -1065,13 +1052,14 @@ def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(model_builder, input_generator, label_input,
-                                  expected_outputs=[torch.tensor([0.224, 0.272])])
+    run_training_test_and_compare(
+        model_builder, input_generator, label_input, expected_outputs=[torch.tensor([0.224, 0.272])]
+    )
 
 
 def test_non_differentiable_autograd_function():
     class Bar(torch.autograd.Function):
-        # A non-differentiable autograd Function whose forard output
+        # A non-differentiable autograd Function whose forward output
         # doesn't have grad_fn attribute.
         @staticmethod
         def forward(ctx, x):
@@ -1094,12 +1082,12 @@ def test_non_differentiable_autograd_function():
             return z
 
     def run():
-        m = Foo().to('cuda')
-        x = torch.rand((2, 2), dtype=torch.float).to('cuda')
+        m = Foo().to("cuda")
+        x = torch.rand((2, 2), dtype=torch.float).to("cuda")
 
         # Baseline.
         y_ref = m(x)
-        print('Ref:')
+        print("Ref:")
         print(y_ref)
 
         m = ORTModule(m)
@@ -1112,7 +1100,7 @@ def test_non_differentiable_autograd_function():
         # Training mode.
         m.train()
         y_train = m(x)
-        print('Train:')
+        print("Train:")
         assert torch.allclose(y_ref, y_train)
 
     run()

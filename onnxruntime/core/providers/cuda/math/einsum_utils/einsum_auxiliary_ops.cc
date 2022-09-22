@@ -24,8 +24,6 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
   ORT_ENFORCE(output.SizeInBytes() == input.SizeInBytes(),
               "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors in Einsum's case - so safely use memcpy
-  // TODO: Currently, triggers copy on stream 0, investigate if we can still do that
-  // *if* the kernel is launched in a different stream
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
                                        cudaMemcpyDeviceToDevice,
                                        static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream())));
@@ -119,8 +117,8 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   TensorPitches input_strides(input.Shape().GetDims());
   cuda::TArray<int64_t> gpu_input_strides(input_strides);
 
-  auto output_rank = output_dims.size();
-  cuda::TArray<cuda::fast_divmod> gpu_output_strides(static_cast<int32_t>(output_rank));
+  auto output_rank = static_cast<int32_t>(output_dims.size());
+  cuda::TArray<cuda::fast_divmod> gpu_output_strides(output_rank);
   TensorPitches output_strides(output_dims);
   for (auto i = 0; i < output_rank; i++) {
     gpu_output_strides[i] = cuda::fast_divmod(static_cast<int>(output_strides[i]));

@@ -55,7 +55,7 @@ TEST(TensorOpTest, Unsqueeze_scalar) {
     test.Run();
   }
   {
-    OpTester test("Unsqueeze");
+    OpTester test("Unsqueeze", 11);  // Negative axes added in version 11
 
     test.AddAttribute("axes", std::vector<int64_t>{-1});
     test.AddInput<float>("input", {}, std::vector<float>{1.0f});
@@ -83,7 +83,7 @@ TEST(TensorOpTest, Unsqueeze_scalar) {
   run_test(true);
 }
 
-  TEST(TensorOpTest, Unsqueeze_scalar_2) {
+TEST(TensorOpTest, Unsqueeze_scalar_2) {
   {
     OpTester test("Unsqueeze");
 
@@ -101,34 +101,34 @@ TEST(TensorOpTest, Unsqueeze_scalar) {
   };
   run_test(false);
   run_test(true);
-  }
+}
 
 TEST(TensorOpTest, Unsqueeze_Duplicate) {
   {
-    OpTester test("Unsqueeze", 12); // opset 1-12 has axes attribute
+    OpTester test("Unsqueeze", 12);  // opset 1-12 has axes attribute
 
     test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0, 2});
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.Run(OpTester::ExpectResult::kExpectFailure,
              "[ShapeInferenceError] 'axes' attribute must not contain any duplicates",
-             {kTensorrtExecutionProvider});  //TensorRT failed
+             {kTensorrtExecutionProvider});  // TensorRT failed
   }
   {
-    OpTester test("Unsqueeze", -1); // use latest opset with axis input
+    OpTester test("Unsqueeze", -1);  // use latest opset with axis input
 
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-    test.AddInput<int64_t>("axes", {4}, std::vector<int64_t>{2, 1, 0, 2}, true); //set as initializer to enable shape inference
+    test.AddInput<int64_t>("axes", {4}, std::vector<int64_t>{2, 1, 0, 2}, true);  // set as initializer to enable shape inference
     test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.Run(OpTester::ExpectResult::kExpectFailure,
              "[ShapeInferenceError] 'axes' attribute must not contain any duplicates",
-             {kTensorrtExecutionProvider});  //TensorRT failed
+             {kTensorrtExecutionProvider});  // TensorRT failed
   }
 }
 
 TEST(TensorOpTest, Unsqueeze_OutOfRange) {
   {
-    OpTester test("Unsqueeze", 12); // opset 1-12 has axes attribute
+    OpTester test("Unsqueeze", 12);  // opset 1-12 has axes attribute
     test.AddAttribute("axes", std::vector<int64_t>{4});
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     test.AddOutput<float>("output", {2, 1, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
@@ -138,12 +138,12 @@ TEST(TensorOpTest, Unsqueeze_OutOfRange) {
   {
     OpTester test("Unsqueeze", -1);  // use latest opset with axis input
     test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
-    test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{4}, true); //set as initializer to enable shape inference
+    test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{4}, true);  // set as initializer to enable shape inference
     test.AddOutput<float>("output", {2, 1, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
     // TensorRT does not support negative axis.
     test.Run(OpTester::ExpectResult::kExpectFailure,
              "[ShapeInferenceError] values in 'axes' are beyond the bounds of the computed output shape",
-             {kTensorrtExecutionProvider}); //TensorRT expects 'axes' attribute
+             {kTensorrtExecutionProvider});  // TensorRT expects 'axes' attribute
   }
 }
 

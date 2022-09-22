@@ -48,11 +48,12 @@
 #include "core/session/inference_session.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
+#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
+#include "orttraining/core/optimizer/graph_transformer_registry.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
-#include "orttraining/core/optimizer/graph_transformer_registry.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 
 namespace onnxruntime {
@@ -95,7 +96,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 
       transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
-      transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps, config.allow_layer_norm_mod_precision));
+      transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(compatible_eps));
 
@@ -198,6 +199,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cuda_rocm_execution_providers));
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_execution_providers));
+      transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_execution_providers));
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
       InlinedHashSet<std::string> excluded_initializers(weights_to_train.begin(), weights_to_train.end());
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(l1_execution_providers, excluded_initializers));

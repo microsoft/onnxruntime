@@ -1,8 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import torch
 import unittest
+
+import torch
 
 from ..pytorch_export_helpers import infer_input_info
 
@@ -32,10 +33,10 @@ class TestInferInputs(unittest.TestCase):
     def test_positional(self):
         # test we can infer the input names from the forward method when positional args are used
         input_names, inputs_as_tuple = infer_input_info(self._model, self._input, 0, 1)
-        self.assertEqual(input_names, ['x', 'min', 'max'])
+        self.assertEqual(input_names, ["x", "min", "max"])
 
     def test_keywords(self):
         # test that we sort keyword args and the inputs to match the module
         input_names, inputs_as_tuple = infer_input_info(self._model, self._input, max=1, min=0)
-        self.assertEqual(input_names, ['x', 'min', 'max'])
+        self.assertEqual(input_names, ["x", "min", "max"])
         self.assertEqual(inputs_as_tuple, (self._input, 0, 1))

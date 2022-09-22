@@ -74,7 +74,7 @@ winrt::com_ptr<ID3D12CommandQueue> CreateD3DQueue(ID3D12Device* device) {
 
 UniqueOrtSession CreateUniqueOrtSession(const UniqueOrtSessionOptions& session_options) {
   OrtSession* session;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->CreateSessionWithoutModel(ort_env, session_options.get(), &session), ort_api);
+  THROW_IF_NOT_OK_MSG(winml_adapter_api->CreateSessionWithoutModel(ort_env, session_options.get(), nullptr, nullptr, &session), ort_api);
   return UniqueOrtSession(session, ort_api->ReleaseSession);
 }
 

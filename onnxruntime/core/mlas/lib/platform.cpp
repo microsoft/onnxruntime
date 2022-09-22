@@ -26,11 +26,21 @@ Abstract:
 
 #if defined(MLAS_TARGET_ARM64)
 #if defined(_WIN32)
+
 // N.B. Support building with downlevel versions of the Windows SDK.
 #ifndef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
 #define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
 #endif
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+MLASCPUIDInfo::MLASCPUIDInfo()
+{
+    has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
+}
+#endif
+
 #elif defined(__linux__)
+
 #include <sys/auxv.h>
 #include <asm/hwcap.h>
 // N.B. Support building with older versions of asm/hwcap.h that do not define
@@ -43,7 +53,19 @@ Abstract:
 MLASCPUIDInfo::MLASCPUIDInfo() { has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0); }
 #endif
 
+#else
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+MLASCPUIDInfo::MLASCPUIDInfo() {}
 #endif
+
+#endif // Windows vs Linux vs Unknown
+#else // not MLAS_TARGET_ARM64 
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+MLASCPUIDInfo::MLASCPUIDInfo() {}
+#endif
+
 #endif // MLAS_TARGET_ARM64
 
 #ifdef MLAS_TARGET_AMD64_IX86
@@ -224,6 +246,7 @@ Return Value:
             this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelAvx;
             this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx;
             this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32KernelAvx;
+            this->GemmU8U8Kernel = nullptr;
 
             //
             // Check if the processor supports AVX2/FMA3 features.
@@ -411,14 +434,6 @@ Return Value:
 #endif // __linux__
 #endif // MLAS_TARGET_POWER
 
-    // Init the table describing the type (big or litte) of each core
-#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
-    // TODO!! implemente core uarch detection in Windows
-    auto tbl_size = std::thread::hardware_concurrency();
-    if (tbl_size > 0) {
-        mlas_coretype_tbl.resize(tbl_size, mlas_core_unknown);    
-    }
-#endif
 }
 
 size_t
@@ -450,3 +465,17 @@ Return Value:
     return MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 #endif
 }
+
+#ifdef MLAS_TARGET_AMD64_IX86
+
+bool
+MLASCALL
+MlasPlatformU8S8Overflow(
+    void
+    )
+{
+    const auto& p = GetMlasPlatform();
+    return p.GemmU8U8Dispatch != p.GemmU8S8Dispatch;
+}
+
+#endif

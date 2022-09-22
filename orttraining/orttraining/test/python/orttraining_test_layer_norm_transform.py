@@ -1,15 +1,17 @@
 import onnx
 
+
 def find_node(graph_proto, op_type):
     nodes = []
     map_input_node = {}
     for node in graph_proto.node:
         if node.op_type == op_type:
             map_input_node[node.input[0]] = node
-            if op_type == 'Div' or op_type == 'Mul':
+            if op_type == "Div" or op_type == "Mul":
                 map_input_node[node.input[1]] = node
             nodes.append(node)
     return nodes, map_input_node
+
 
 def gen_attribute(key, value):
     attr = AttributeProto()
@@ -17,6 +19,7 @@ def gen_attribute(key, value):
     attr.ints.extend(int(v) for v in value)
     attr.type = AttributeProto.INTS
     return attr
+
 
 def layer_norm_transform(model_proto):
     # a layer norm subgraph
@@ -45,23 +48,23 @@ def layer_norm_transform(model_proto):
 
     graph_proto = model_proto.graph
 
-    _,  map_input_Div = find_node(graph_proto, 'Div')
+    _, map_input_Div = find_node(graph_proto, "Div")
 
-    _,  map_input_Sqrt = find_node(graph_proto, 'Sqrt')
+    _, map_input_Sqrt = find_node(graph_proto, "Sqrt")
 
-    _,  map_input_Add = find_node(graph_proto, 'Add')
+    _, map_input_Add = find_node(graph_proto, "Add")
 
-    nodes_ReduceMean,  map_input_ReduceMean = find_node(graph_proto, 'ReduceMean')
+    nodes_ReduceMean, map_input_ReduceMean = find_node(graph_proto, "ReduceMean")
 
-    _,  map_input_Pow = find_node(graph_proto, 'Pow')
+    _, map_input_Pow = find_node(graph_proto, "Pow")
 
-    _,  map_input_Mul = find_node(graph_proto, 'Mul')
+    _, map_input_Mul = find_node(graph_proto, "Mul")
 
     # find right side Sub (see the layer norm subgrapg)
     nodes_Sub = []
     map_input_Sub = {}
     for node in graph_proto.node:
-        if node.op_type == 'Sub':
+        if node.op_type == "Sub":
             if node.output[0] in map_input_Pow:
                 nodes_Sub.append(node)
                 map_input_Sub[node.input[1]] = node
@@ -78,7 +81,7 @@ def layer_norm_transform(model_proto):
     nodes_Constant = []
     map_output_Constant = {}
     for node in graph_proto.node:
-        if node.op_type == 'Constant':
+        if node.op_type == "Constant":
             nodes_Constant.append(node)
             map_output_Constant[node.output[0]] = node
 
@@ -115,7 +118,7 @@ def layer_norm_transform(model_proto):
         node_Sqrt = map_input_Sqrt[node_Add.output[0]]
         if node_Sqrt.output[0] not in map_input_Div:
             continue
- 
+
         node_Div = map_input_Div[node_Sqrt.output[0]]
         if node_Div.output[0] not in map_input_Mul:
             continue
@@ -147,21 +150,23 @@ def layer_norm_transform(model_proto):
         removed_nodes.append(map_output_Constant[node_Add.input[1]])
         layer_norm_output.append(node_Add1.output[0])
         id = id + 1
-        layer_norm_output.append('saved_mean_' + str(id))
+        layer_norm_output.append("saved_mean_" + str(id))
         id = id + 1
-        layer_norm_output.append('saved_inv_std_var_' + str(id))
-        layer_norm = onnx.helper.make_node("LayerNormalization",
-                                        layer_norm_input,
-                                        layer_norm_output,
-                                        "LayerNormalization_" + str(id),
-                                        None,
-                                        axis = node_reduce.attribute[0].ints[0],
-                                        epsilon = 9.999999960041972e-13)
+        layer_norm_output.append("saved_inv_std_var_" + str(id))
+        layer_norm = onnx.helper.make_node(
+            "LayerNormalization",
+            layer_norm_input,
+            layer_norm_output,
+            "LayerNormalization_" + str(id),
+            None,
+            axis=node_reduce.attribute[0].ints[0],
+            epsilon=9.999999960041972e-13,
+        )
         layer_norm_nodes.append(layer_norm)
 
     # remove left side Subs
     for node in graph_proto.node:
-        if node.op_type == 'Sub':
+        if node.op_type == "Sub":
             if node.input[1] in first_ReduceMean_outputs:
                 removed_nodes.append(node)
 

@@ -6,6 +6,7 @@ from onnxruntime.capi.ort_trainer import generate_sample
 
 global_rng = random.Random()
 
+
 def ids_tensor(shape, vocab_size, rng=None, name=None):
     """Creates a random int32 tensor of the shape within the vocab size."""
     if rng is None:
@@ -41,13 +42,16 @@ def floats_tensor(shape, scale=1.0, rng=None, name=None):
 class OrtTestDataset(Dataset):
     def __init__(self, input_desc, seq_len, dataset_len, device):
         import copy
+
         self.input_desc_ = copy.deepcopy(input_desc)
         for input_desc in self.input_desc_:
             shape_ = []
             for i, axis in enumerate(input_desc.shape_):
-                if axis == 'max_seq_len_in_batch':
-                    shape_ = shape_ + [seq_len, ]
-                elif axis != 'batch':
+                if axis == "max_seq_len_in_batch":
+                    shape_ = shape_ + [
+                        seq_len,
+                    ]
+                elif axis != "batch":
                     shape_ = input_desc.shape_[i]
             input_desc.shape_ = shape_
         self.dataset_len_ = dataset_len
@@ -63,20 +67,23 @@ class OrtTestDataset(Dataset):
             input_batch.append(input_sample)
         return input_batch
 
+
 def create_ort_test_dataloader(input_desc, batch_size, seq_len, dataset_len, device):
     dataset = OrtTestDataset(input_desc, seq_len, dataset_len, device)
     return DataLoader(dataset, batch_size=batch_size)
+
 
 class BatchArgsOption(Enum):
     List = 1
     Dict = 2
     ListAndDict = 3
 
+
 def split_batch(batch, input_desc, args_count):
     total_argument_count = len(input_desc)
-                # batch=[input_ids[batch, seglen], attention_mask[batch, seglen], token_type_ids[batch,seglen], token_type_ids[batch, seglen]]
-    args = []   # (input_ids[batch, seglen], attention_mask[batch, seglen])
-    kwargs = {} # {'token_type_ids': token_type_ids[batch,seglen], 'position_ids': token_type_ids[batch, seglen]}
+    # batch=[input_ids[batch, seglen], attention_mask[batch, seglen], token_type_ids[batch,seglen], token_type_ids[batch, seglen]]
+    args = []  # (input_ids[batch, seglen], attention_mask[batch, seglen])
+    kwargs = {}  # {'token_type_ids': token_type_ids[batch,seglen], 'position_ids': token_type_ids[batch, seglen]}
     for i in range(args_count):
         args = args + [batch[i]]
 

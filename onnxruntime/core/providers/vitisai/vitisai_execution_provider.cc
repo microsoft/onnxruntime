@@ -215,9 +215,7 @@ static void AppendClusterToSubGraph(const std::vector<NodeIndex>& nodes,
 
 std::vector<std::unique_ptr<ComputeCapability>>
 VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                        const std::vector<const KernelRegistry*>& kernel_registries) const {
-  ORT_UNUSED_PARAMETER(kernel_registries);
-
+                                        const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // Dump model Proto to file to pass it to pyxir
@@ -273,12 +271,14 @@ VitisAIExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   return result;
 }
 
-common::Status VitisAIExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                  std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node : fused_nodes) {
+  for (const auto& fused_node_graph : fused_nodes_and_graphs) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [this, fused_node, logger = GetLogger()](ComputeContext* context, FunctionState* state) {
-      auto* p = new vitisai_ep::VitisAICustomOp(context, fused_node, backend_type_, export_runtime_module_,
+      auto* p = new vitisai_ep::VitisAICustomOp(context, fused_node, graph_body_viewer, backend_type_, export_runtime_module_,
                                                 load_runtime_module_, logger);
       *state = p;
       return 0;

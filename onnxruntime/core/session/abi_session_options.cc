@@ -188,8 +188,8 @@ ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* options,
-                    _In_reads_(input_len) const char* const* initializer_names,
-                    _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num) {
+                    _In_reads_(initializers_num) const char* const* initializer_names,
+                    _In_reads_(initializers_num) const OrtValue* const* initializers, size_t initializers_num) {
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   API_IMPL_BEGIN

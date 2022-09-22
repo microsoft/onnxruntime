@@ -56,6 +56,11 @@ const std::string& GetNodeInputName(const Node& node, int index);
 /** Gets the name of the outgoing NodeArg with the specified index for the given node. */
 const std::string& GetNodeOutputName(const Node& node, int index);
 
+/** Find the input edge of a node for a specified input index.
+@returns nullptr when not found.
+*/
+const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index);
+
 /** Removes all output edges from the given Node of the Graph.
     This should probably be elevated to the Graph API eventually. */
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
@@ -297,11 +302,6 @@ inline void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrap
 inline void FinalizeNodeFusion(Graph& graph, std::initializer_list<std::reference_wrapper<Node>> nodes, Node& replacement_node) {
   FinalizeNodeFusion(graph, gsl::make_span(nodes.begin(), nodes.end()), replacement_node, replacement_node);
 }
-
-/** Find the input edge of a node for a specified input index.
-@returns nullptr when not found.
-*/
-const Node::EdgeEnd* GetInputEdge(const Node& node, int arg_index);
 
 /** Find the source node of an input edge for a specified input index.
 @returns nullptr when not found.

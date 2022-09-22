@@ -1,10 +1,11 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 import argparse
 from dataclasses import dataclass
+
 import numpy as np
 from benchmark import BenchmarkOp, add_arguments
 
@@ -43,7 +44,12 @@ class BenchmarkFastGelu(BenchmarkOp):
         data_type = np.float16 if self.args.precision == "fp16" else np.float32
         # bert-large
         model_param = ModelParam(1, 384, 1024 * 4, data_type)
-        op_param = OpParam(model_param.batch_size, model_param.seq_len, model_param.inter_dim, model_param.data_type)
+        op_param = OpParam(
+            model_param.batch_size,
+            model_param.seq_len,
+            model_param.inter_dim,
+            model_param.data_type,
+        )
         self.add_case(op_param, model)
 
     def case_profile(cls, op_param, time):

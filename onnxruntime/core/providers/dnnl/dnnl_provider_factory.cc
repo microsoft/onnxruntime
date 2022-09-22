@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cassert>
 #include "dnnl_execution_provider.h"
+#include "dnnl_provider_factory_creator.h"
 
 using namespace onnxruntime;
 
@@ -47,8 +48,10 @@ struct Dnnl_Provider : Provider {
     return std::make_shared<DnnlProviderFactory>(use_arena != 0);
   }
 
+  void Initialize() override {
+  }
+
   void Shutdown() override {
-    return;
   }
 
 } g_provider;

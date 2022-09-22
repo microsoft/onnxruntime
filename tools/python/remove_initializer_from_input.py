@@ -1,5 +1,6 @@
-import onnx
 import argparse
+
+import onnx
 
 
 def get_args():
@@ -15,9 +16,7 @@ def remove_initializer_from_input():
 
     model = onnx.load(args.input)
     if model.ir_version < 4:
-        print(
-            'Model with ir_version below 4 requires to include initilizer in graph input'
-        )
+        print("Model with ir_version below 4 requires to include initilizer in graph input")
         return
 
     inputs = model.graph.input
@@ -32,5 +31,5 @@ def remove_initializer_from_input():
     onnx.save(model, args.output)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     remove_initializer_from_input()

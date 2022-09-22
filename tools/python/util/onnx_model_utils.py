@@ -2,63 +2,65 @@
 # Licensed under the MIT License.
 
 import logging
-import onnx
-import onnxruntime as ort
 import pathlib
 
+import onnx
 from onnx import version_converter
+
+import onnxruntime as ort
 
 
 def iterate_graph_per_node_func(graph, per_node_func, **func_args):
-    '''
+    """
     Iterate the graph including subgraphs calling the per_node_func for each node.
     :param graph: Graph to iterate
     :param per_node_func: Function to call for each node. Signature is fn(node: onnx:NodeProto, **kwargs)
     :param func_args: The keyword args to pass through.
-    '''
+    """
 
     for node in graph.node:
         per_node_func(node, **func_args)
         # recurse into subgraph for control flow nodes (Scan/Loop/If)
         for attr in node.attribute:
-            if attr.HasField('g'):
+            if attr.HasField("g"):
                 iterate_graph_per_node_func(attr.g, per_node_func, **func_args)
 
 
 def iterate_graph_per_graph_func(graph, per_graph_func, **func_args):
-    '''
+    """
     Iterate the graph including subgraphs calling the per_graph_func for each Graph.
     :param graph: Graph to iterate
     :param per_graph_func: Function to call for each graph. Signature is fn(graph: onnx:GraphProto, **kwargs)
     :param func_args: The keyword args to pass through.
-    '''
+    """
 
     per_graph_func(graph, **func_args)
 
     for node in graph.node:
         # recurse into subgraph for control flow nodes (Scan/Loop/If)
         for attr in node.attribute:
-            if attr.HasField('g'):
+            if attr.HasField("g"):
                 iterate_graph_per_graph_func(attr.g, per_graph_func, **func_args)
 
 
 def get_opsets_imported(model: onnx.ModelProto):
-    '''
+    """
     Get the opsets imported by the model
     :param model: Model to check.
     :return: Map of domain to opset.
-    '''
+    """
     opsets = {}
     for entry in model.opset_import:
         # if empty it's ai.onnx
-        domain = entry.domain or 'ai.onnx'
+        domain = entry.domain or "ai.onnx"
         opsets[domain] = entry.version
 
     return opsets
 
 
-def update_onnx_opset(model_path: pathlib.Path, opset: int, out_path: pathlib.Path = None,
-                      logger: logging.Logger = None):
+def update_onnx_opset(
+    model_path: pathlib.Path, opset: int, out_path: pathlib.Path = None, logger: logging.Logger = None
+):
     """
     Helper to update the opset of a model using onnx version_converter. Target opset must be greater than current opset.
     :param model_path: Path to model to update
@@ -84,30 +86,32 @@ def update_onnx_opset(model_path: pathlib.Path, opset: int, out_path: pathlib.Pa
     return new_model
 
 
-def optimize_model(model_path: pathlib.Path,
-                   output_path: pathlib.Path,
-                   level: ort.GraphOptimizationLevel = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC,
-                   log_level: int = 3):
-    '''
+def optimize_model(
+    model_path: pathlib.Path,
+    output_path: pathlib.Path,
+    level: ort.GraphOptimizationLevel = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC,
+    log_level: int = 3,
+):
+    """
     Optimize an ONNX model using ONNX Runtime to the specified level
     :param model_path: Path to ONNX model
     :param output_path: Path to save optimized model to.
     :param level: onnxruntime.GraphOptimizationLevel to use. Default is ORT_ENABLE_BASIC.
     :param log_level: Log level. Defaults to Error (3) so we don't get output about unused initializers being removed.
                       Warning (2) or Info (1) may be desirable in some scenarios.
-    '''
+    """
     so = ort.SessionOptions()
     so.optimized_model_filepath = str(output_path.resolve())
     so.graph_optimization_level = level
     so.log_severity_level = log_level
 
     # create session to optimize. this will write the updated model to output_path
-    _ = ort.InferenceSession(str(model_path.resolve(strict=True)), so, providers=['CPUExecutionProvider'])
+    _ = ort.InferenceSession(str(model_path.resolve(strict=True)), so, providers=["CPUExecutionProvider"])
 
 
 def _replace_symbolic_dim_value(graph: onnx.GraphProto, **kwargs):
-    param_to_replace = kwargs['dim_param']
-    value = kwargs['value']
+    param_to_replace = kwargs["dim_param"]
+    value = kwargs["value"]
 
     def update_dim_values(value_infos):
         for vi in value_infos:
@@ -115,7 +119,7 @@ def _replace_symbolic_dim_value(graph: onnx.GraphProto, **kwargs):
                 shape = vi.type.tensor_type.shape
                 if shape:
                     for dim in shape.dim:
-                        if dim.HasField('dim_param') and dim.dim_param == param_to_replace:
+                        if dim.HasField("dim_param") and dim.dim_param == param_to_replace:
                             dim.Clear()
                             dim.dim_value = value
 
@@ -130,7 +134,7 @@ def _remove_invalid_dim_values_impl(graph: onnx.GraphProto):
             shape = value.type.tensor_type.shape
             if shape:
                 for dim in shape.dim:
-                    if dim.HasField('dim_value') and dim.dim_value < 1:
+                    if dim.HasField("dim_value") and dim.dim_value < 1:
                         dim.Clear()
 
     for i in graph.input:
@@ -144,33 +148,33 @@ def _remove_invalid_dim_values_impl(graph: onnx.GraphProto):
 
 
 def remove_invalid_dim_values(graph: onnx.GraphProto):
-    '''
+    """
     Iterate the graph and subgraphs, unsetting any dim_value entries that have a value of less than 1.
     These are typically erroneously inserted by a converter to represent a dynamic dimension.
     :param graph: GraphProto to update
-    '''
+    """
     iterate_graph_per_graph_func(graph, _remove_invalid_dim_values_impl)
 
 
 def make_dim_param_fixed(graph: onnx.GraphProto, param_name: str, value: int):
-    '''
+    """
     Iterate all values in the graph, replacing dim_param in a tensor shape with the provided value.
     :param graph: GraphProto to update
     :param param_name: dim_param to set
     :param value: value to use
-    '''
+    """
     iterate_graph_per_graph_func(graph, _replace_symbolic_dim_value, dim_param=param_name, value=value)
 
 
 def make_input_shape_fixed(graph: onnx.GraphProto, input_name: str, fixed_shape: [int]):
-    '''
+    """
     Update the named graph input to set shape to the provided value. This can be used to set unknown dims as well
     as to replace dim values.
     If setting the input shape replaces a dim_param, update any other values in the graph that use the dim_param.
     :param graph: Graph to update
     :param input_name: Name of graph input to update.
     :param fixed_shape: Shape to use.
-    '''
+    """
 
     # remove any invalid dim values first. typically this is a dim_value of -1.
     remove_invalid_dim_values(graph)
@@ -178,22 +182,22 @@ def make_input_shape_fixed(graph: onnx.GraphProto, input_name: str, fixed_shape:
     for i in graph.input:
         if i.name == input_name:
             if not i.type.HasField("tensor_type"):
-                raise ValueError(f'Input {input_name} is not a tensor')
+                raise ValueError(f"Input {input_name} is not a tensor")
 
             # graph inputs are required to have a shape to provide the rank
             shape = i.type.tensor_type.shape
             if len(shape.dim) != len(fixed_shape):
-                raise ValueError(
-                    f'Rank mismatch. Existing:{len(shape.dim)} Replacement:{len(fixed_shape)}')
+                raise ValueError(f"Rank mismatch. Existing:{len(shape.dim)} Replacement:{len(fixed_shape)}")
 
             for idx, dim in enumerate(shape.dim):
                 # check any existing fixed dims match
-                if dim.HasField('dim_value'):
+                if dim.HasField("dim_value"):
                     if dim.dim_value != fixed_shape[idx]:
                         raise ValueError(
                             f"Can't replace existing fixed size of {dim.dim_value} with {fixed_shape[idx]} "
-                            f"for dimension {idx + 1}")
-                elif dim.HasField('dim_param'):
+                            f"for dimension {idx + 1}"
+                        )
+                elif dim.HasField("dim_param"):
                     # replacing a dim_param so have to do that through the entire graph
                     make_dim_param_fixed(graph, dim.dim_param, fixed_shape[idx])
                 else:
@@ -203,16 +207,18 @@ def make_input_shape_fixed(graph: onnx.GraphProto, input_name: str, fixed_shape:
 
             return
 
-    raise ValueError(f'Input {input_name} was not found in graph inputs. '
-                     f'Valid input names are: {",".join([i.name for i in graph.input])}')
+    raise ValueError(
+        f"Input {input_name} was not found in graph inputs. "
+        f'Valid input names are: {",".join([i.name for i in graph.input])}'
+    )
 
 
 def fix_output_shapes(model: onnx.ModelProto):
-    '''
+    """
     Update the output shapesof a model where the input shape/s were made fixed, if possible.
     This is mainly to make the model usage clearer if the output shapes can be inferred from the new input shapes.
     :param model: Model that had input shapes fixed.
-    '''
+    """
 
     # get a version of the model with shape inferencing info in it. this will provide fixed output shapes if possible.
     m2 = onnx.shape_inference.infer_shapes(model)
@@ -225,15 +231,16 @@ def fix_output_shapes(model: onnx.ModelProto):
                 o.type.tensor_type.shape.CopyFrom(new_o.type.tensor_type.shape)
 
 
-def _create_producer_consumer_link(node_to_producers: dict, node_to_consumers: dict,
-                                   producer: onnx.NodeProto, consumer: onnx.NodeProto):
-    '''
+def _create_producer_consumer_link(
+    node_to_producers: dict, node_to_consumers: dict, producer: onnx.NodeProto, consumer: onnx.NodeProto
+):
+    """
     Create links between two nodes for a value produced by one and consumed by the other.
     :param node_to_producers: Map of NodeProto to set of nodes that produce values the node consumes as inputs.
     :param node_to_consumers: Map of NodeProto to set of nodes that consume values the node produces as outputs.
     :param producer: Producer node
     :param consumer: Consumer node
-    '''
+    """
 
     if consumer not in node_to_producers:
         node_to_producers[consumer] = set()
@@ -262,7 +269,7 @@ def _map_node_dependencies(graph: onnx.GraphProto, node_to_producers: dict, node
         inputs = [i for i in node.input]
 
         for attr in node.attribute:
-            if attr.HasField('g'):
+            if attr.HasField("g"):
                 subgraph_implicit_inputs = _map_node_dependencies(attr.g, node_to_producers, node_to_consumers)
                 inputs += subgraph_implicit_inputs
 
@@ -285,7 +292,7 @@ def _map_node_dependencies(graph: onnx.GraphProto, node_to_producers: dict, node
 
 
 def get_producer_consumer_maps(graph: onnx.GraphProto):
-    '''
+    """
     Get maps for connections between the node that produces each value and the nodes that consume the value.
     Processing includes subgraphs. As the map key is a Node instance from the Graph there should be no ambiguity.
     :param graph: Graph to process.
@@ -298,7 +305,7 @@ def get_producer_consumer_maps(graph: onnx.GraphProto):
              node_to_producers[NodeC] = set([NodeA, NodeB])
              node_to_consumers[NodeC] = set([NodeD])
              node_to_producers[NodeD] = set([NodeC])
-    '''
+    """
 
     # use a hash of the object id for NodeProto.
     # we need this for the partitioning checker where we keep maps with nodes as the key.
@@ -311,18 +318,19 @@ def get_producer_consumer_maps(graph: onnx.GraphProto):
 
     # top level graph should have no implicit inputs
     if implicit_inputs:
-        raise ValueError('This appears to be an invalid model with missing inputs of '
-                         f'{",".join(sorted(implicit_inputs))}')
+        raise ValueError(
+            "This appears to be an invalid model with missing inputs of " f'{",".join(sorted(implicit_inputs))}'
+        )
 
     return node_to_producers, node_to_consumers
 
 
 def is_fixed_size_tensor(value: onnx.ValueInfoProto):
-    '''
+    """
     Check if value is a tensor with a fixed shape.
     :param value: onnx.ValueInfoProto to check
     :return: True if value is a tensor, with a shape, where all dimensions have fixed values.
-    '''
+    """
 
     is_fixed = False
     if value.type.HasField("tensor_type"):
@@ -330,7 +338,7 @@ def is_fixed_size_tensor(value: onnx.ValueInfoProto):
         if shape:
             is_fixed = True  # scalar has no dims so set to True and unset if we hit a dim without a valid value
             for dim in shape.dim:
-                if dim.HasField('dim_value') and dim.dim_value > 0:
+                if dim.HasField("dim_value") and dim.dim_value > 0:
                     continue
 
                 # anything else means it's a dynamic value
@@ -341,16 +349,16 @@ def is_fixed_size_tensor(value: onnx.ValueInfoProto):
 
 
 def get_optimization_level(level):
-    '''Convert string to GraphOptimizationLevel.'''
-    if level == 'disable':
+    """Convert string to GraphOptimizationLevel."""
+    if level == "disable":
         return ort.GraphOptimizationLevel.ORT_DISABLE_ALL
-    if level == 'basic':
+    if level == "basic":
         # Constant folding and other optimizations that only use ONNX operators
         return ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
-    if level == 'extended':
+    if level == "extended":
         # Optimizations using custom operators, excluding NCHWc and NHWC layout optimizers
         return ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-    if level == 'all':
+    if level == "all":
         return ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
-    raise ValueError('Invalid optimization level of ' + level)
+    raise ValueError("Invalid optimization level of " + level)

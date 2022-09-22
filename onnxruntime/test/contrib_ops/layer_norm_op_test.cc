@@ -66,5 +66,39 @@ TEST(LayerNormTest, BERTLayerNorm_NoBias) {
   tester.Run();
 }
 
+TEST(LayerNormTest, LayerNorm) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{1, 2, 3};
+  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<float>("gamma", {3}, {1.0f, 1.0f, 1.0f});
+  test.AddOutput<float>("output", dims, {-1.2247f, 0.0f, 1.2247f, -1.2247f, 0.0f, 1.2247f});
+  test.Run();
+}
+
+TEST(LayerNormTest, LayerNorm_Scale) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{2, 2, 2};
+  test.AddInput<float>("x", dims, {-10.264f, 8.6453f, 43.1561f, -0.641239f, -8.2164f, 0.11412f, 41.3156f, 3.0458f});
+  test.AddInput<float>("gamma", {2}, {-0.6953f, 5.1824f});
+  test.AddOutput<float>("output", dims, {0.6953f, 5.1824f, -0.6953f, -5.1824f, 0.6953f, 5.1824f, -0.6953f, -5.1824f});
+  test.Run();
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{1, 3, 2};
+  test.AddInput<float>("x", dims, {1.2416f, 0.946123f, 13.1685f, 0.36423f, 21.145f, 0.03941f});
+  test.AddInput<float>("gamma", {2}, {-0.6953f, 5.1824f});
+  test.AddInput<float>("bias", {2}, {0.6435f, -0.3964f});
+  test.AddOutput<float>("output", dims, {-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

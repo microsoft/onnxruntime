@@ -7,8 +7,11 @@ import onnxruntime_pybind11_state as torch_ort
 import os
 import sys
 
+
 def is_windows():
     return sys.platform.startswith("win")
+
+
 from io import StringIO
 import sys
 import threading
@@ -19,6 +22,7 @@ class OutputGrabber(object):
     """
     Class used to grab standard output or another stream.
     """
+
     escape_char = "\b"
 
     def __init__(self, stream=None, threaded=False):
@@ -53,7 +57,7 @@ class OutputGrabber(object):
             self.workerThread.start()
             # Make sure that the thread is running and os.read() has executed:
             time.sleep(0.01)
-            
+
     def stop(self):
         """
         Stop capturing the stream data and save the text in `capturedtext`.
@@ -83,49 +87,51 @@ class OutputGrabber(object):
         and save the text in `capturedtext`.
         """
         while True:
-            char = os.read(self.pipe_out,1).decode(self.origstream.encoding)
+            char = os.read(self.pipe_out, 1).decode(self.origstream.encoding)
             if not char or self.escape_char in char:
                 break
             self.capturedtext += char
 
+
 class OrtEPTests(unittest.TestCase):
-  def get_test_execution_provider_path(self):
-      if is_windows():
-        return os.path.join('.', 'test_execution_provider.dll')
-      else:
-        return os.path.join('.', 'libtest_execution_provider.so')
+    def get_test_execution_provider_path(self):
+        if is_windows():
+            return os.path.join(".", "test_execution_provider.dll")
+        else:
+            return os.path.join(".", "libtest_execution_provider.so")
 
-  def test_import_custom_eps(self):
-    torch_ort.set_device(0, 'CPUExecutionProvider', {})
+    def test_import_custom_eps(self):
+        torch_ort.set_device(0, "CPUExecutionProvider", {})
 
-    torch_ort._register_provider_lib('TestExecutionProvider', self.get_test_execution_provider_path(), {})
-    # capture std out
-    with OutputGrabber() as out:
-        torch_ort.set_device(1, 'TestExecutionProvider', {'device_id':'0', 'some_config':'val'})
-        ort_device = torch_ort.device(1)
-    assert 'My EP provider created, with device id: 0, some_option: val' in out.capturedtext
-    with OutputGrabber() as out:
-        torch_ort.set_device(2, 'TestExecutionProvider', {'device_id':'1', 'some_config':'val'})
-        ort_device = torch_ort.device(1)
-    assert 'My EP provider created, with device id: 1, some_option: val' in out.capturedtext
-    # test the reusing EP instance
-    with OutputGrabber() as out:
-        torch_ort.set_device(3, 'TestExecutionProvider', {'device_id':'0', 'some_config':'val'})
-        ort_device = torch_ort.device(1)
-    assert 'My EP provider created, with device id: 0, some_option: val' not in out.capturedtext
-    # test clear training ep instance pool
-    torch_ort.clear_training_ep_instances()
-    with OutputGrabber() as out:
-        torch_ort.set_device(3, 'TestExecutionProvider', {'device_id':'0', 'some_config':'val'})
-        ort_device = torch_ort.device(1)
-    assert 'My EP provider created, with device id: 0, some_option: val' in out.capturedtext
+        torch_ort._register_provider_lib("TestExecutionProvider", self.get_test_execution_provider_path(), {})
+        # capture std out
+        with OutputGrabber() as out:
+            torch_ort.set_device(1, "TestExecutionProvider", {"device_id": "0", "some_config": "val"})
+            ort_device = torch_ort.device(1)
+        assert "My EP provider created, with device id: 0, some_option: val" in out.capturedtext
+        with OutputGrabber() as out:
+            torch_ort.set_device(2, "TestExecutionProvider", {"device_id": "1", "some_config": "val"})
+            ort_device = torch_ort.device(1)
+        assert "My EP provider created, with device id: 1, some_option: val" in out.capturedtext
+        # test the reusing EP instance
+        with OutputGrabber() as out:
+            torch_ort.set_device(3, "TestExecutionProvider", {"device_id": "0", "some_config": "val"})
+            ort_device = torch_ort.device(1)
+        assert "My EP provider created, with device id: 0, some_option: val" not in out.capturedtext
+        # test clear training ep instance pool
+        torch_ort.clear_training_ep_instances()
+        with OutputGrabber() as out:
+            torch_ort.set_device(3, "TestExecutionProvider", {"device_id": "0", "some_config": "val"})
+            ort_device = torch_ort.device(1)
+        assert "My EP provider created, with device id: 0, some_option: val" in out.capturedtext
 
-  def test_print(self):
-    x = torch.ones(1, 2)
-    ort_x = x.to('ort')
-    with OutputGrabber() as out:
-        print(ort_x)
-    assert "tensor([[1., 1.]], device='ort:0')" in out.capturedtext
+    def test_print(self):
+        x = torch.ones(1, 2)
+        ort_x = x.to("ort")
+        with OutputGrabber() as out:
+            print(ort_x)
+        assert "tensor([[1., 1.]], device='ort:0')" in out.capturedtext
 
-if __name__ == '__main__':
-  unittest.main()
+
+if __name__ == "__main__":
+    unittest.main()

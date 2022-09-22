@@ -149,7 +149,7 @@ class ConcatFromSequence final : public CudaKernel, public ConcatBase {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
             output + (initial_output_offset + cur_out_offset) * element_bytes,
             input + cur_in_offset * element_bytes, input_axis_pitch * element_bytes,
-            cudaMemcpyHostToDevice, Stream()));
+            cudaMemcpyDeviceToDevice, Stream()));
         cur_out_offset += p.output_axis_pitch;
         cur_in_offset += input_axis_pitch;
       }

@@ -1462,3 +1462,59 @@ HRESULT OnnxruntimeEngineFactory::CreateMapDescriptorInfo(IDescriptorInfo** desc
   RETURN_IF_FAILED(descriptor_info.CopyTo(desc_info));
   return S_OK;
 }
+
+HRESULT OnnxruntimeEngineFactory::CreateThreadPool(bool allow_spinning, uint32_t num_intra_op_threads, IThreading** thread_pool) {
+  Microsoft::WRL::ComPtr<OnnxruntimeThreading> threading;
+  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeThreading>(&threading, this));
+
+  OrtThreadPoolOptions intra_op_params = {};
+  intra_op_params.name = L"WinML Worker Thread";
+  intra_op_params.thread_pool_size = num_intra_op_threads;
+  intra_op_params.set_denormal_as_zero = false;
+  intra_op_params.allow_spinning = allow_spinning;
+
+  OrtThreadPool* ort_intra_op_thread_pool = nullptr;
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api_->CreateThreadPool(ThreadPoolType::INTRA_OP, &intra_op_params, &ort_intra_op_thread_pool),
+                          ort_api_);
+  UniqueOrtThreadPool intra_op_pool(ort_intra_op_thread_pool, winml_adapter_api_->ReleaseThreadPool);
+  threading->SetIntraOpThreadPool(std::move(intra_op_pool));
+
+  // There is no need to set the inter_op thread pool, as WinML does not use parallel execution...
+
+  RETURN_IF_FAILED(threading.CopyTo(thread_pool));
+  return S_OK;
+}
+
+OnnxruntimeThreading::OnnxruntimeThreading() :
+  inter_op_ort_pool_(nullptr, nullptr),
+  intra_op_ort_pool_(nullptr, nullptr)
+{}
+OnnxruntimeThreading::~OnnxruntimeThreading() = default;
+
+HRESULT OnnxruntimeThreading::RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory) {
+  RETURN_HR_IF_NULL(E_INVALIDARG, engine_factory);
+  engine_factory_ = engine_factory;
+  return S_OK;
+}
+
+HRESULT OnnxruntimeThreading::SetIntraOpThreadPool(UniqueOrtThreadPool&& intra_op_ort_pool) {
+  RETURN_HR_IF_NULL(E_INVALIDARG, intra_op_ort_pool);
+  intra_op_ort_pool_ = std::move(intra_op_ort_pool);
+  return S_OK;
+}
+
+HRESULT OnnxruntimeThreading::SetInterOpThreadPool(UniqueOrtThreadPool&& inter_op_ort_pool) {
+  RETURN_HR_IF_NULL(E_INVALIDARG, inter_op_ort_pool);
+  inter_op_ort_pool_ = std::move(inter_op_ort_pool);
+  return S_OK;
+}
+
+OrtThreadPool* OnnxruntimeThreading::UseIntraOpThreadPool()
+{
+  return intra_op_ort_pool_.get();  
+}
+
+OrtThreadPool* OnnxruntimeThreading::UseInterOpThreadPool()
+{
+  return inter_op_ort_pool_.get();  
+}

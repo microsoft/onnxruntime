@@ -21,10 +21,7 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_view,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
-
-  // we implement the Compile that takes FusedNodeAndGraph instances
-  FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
+                const IKernelLookup& /*kernel_lookup*/) const override;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
@@ -42,8 +39,6 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   const std::unordered_set<std::string> partitioning_stop_ops_;
 
-#ifdef __ANDROID__
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
-#endif
 };
 }  // namespace onnxruntime

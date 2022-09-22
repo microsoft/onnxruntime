@@ -6,10 +6,9 @@ import Long from 'long';
 import {onnx} from 'onnx-proto';
 
 import {onnxruntime} from './ort-schema/ort-generated';
+import {decodeUtf8String, ProtoUtil, ShapeUtil} from './util';
 
 import ortFbs = onnxruntime.experimental.fbs;
-
-import {decodeUtf8String, ProtoUtil, ShapeUtil} from './util';
 
 export declare namespace Tensor {
   export interface DataTypeMap {

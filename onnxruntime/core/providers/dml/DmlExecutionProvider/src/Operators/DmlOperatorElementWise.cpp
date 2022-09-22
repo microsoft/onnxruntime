@@ -508,17 +508,18 @@ public:
         Initialize(kernelInfo, std::nullopt, std::nullopt);
 
         uint32_t axis = 0;
-        uint32_t broadcastAxisLength = 0;
 
         // If an axis was given explicitly passed (or the default value 1 is set from the schema),
         // then other inputs are broadcasting to the shape of the input data tensor.
         if (kernelInfo.HasAttribute(AttrName::Axis, MLOperatorAttributeType::Int))
         {
+            // Avoid validating the axis until later because the axis parameter is ignorable unless
+            // broadcasting is actually needed. ONNX opset 13 returns a default value of 1 for the
+            // "axis" attribute even when the attribute doesn't actually exist in the model, which
+            // would cause a validation failure here.
             const int32_t signedAxis = gsl::narrow_cast<int32_t>(kernelInfo.GetAttribute<int64_t>(AttrName::Axis));
-            axis = Dml::HandleNegativeAxis(signedAxis, outputShapeDimCount);
-            broadcastAxisLength = outputShape[axis];
+            axis = Dml::HandleNegativeAxis(signedAxis, outputShapeDimCount, /*validateAxis*/ false);
         }
-
 
         // Explicitly reshape each of the inputs after the first input (scale and zero point tensors).
         for (uint32_t index = 1, inputCount = gsl::narrow_cast<uint32_t>(m_inputTensorDescs.size()); index < inputCount; ++index)
@@ -535,6 +536,8 @@ public:
             // The 1D vector should have a length equal to the output tensor's dimension on that axis.
             if (inputTensorShape.size() == 1 && inputTensorShape != outputShape)
             {
+                ML_CHECK_VALID_ARGUMENT(axis < outputShapeDimCount);
+                uint32_t broadcastAxisLength = outputShape[axis];
                 ML_CHECK_VALID_ARGUMENT(inputTensorShape[0] == broadcastAxisLength);
                 inputTensorShape.insert(inputTensorShape.begin(), axis, 1);
                 inputTensorShape.insert(inputTensorShape.end(), outputShapeDimCount - 1 - axis, 1);
@@ -753,7 +756,7 @@ DML_OP_DEFINE_CREATION_FUNCTION(IsInf,            DmlOperatorElementwiseIsInf);
 DML_OP_DEFINE_CREATION_FUNCTION(Round,            DmlOperatorElementwiseRound);
 
 // Fused operators:
-DML_OP_DEFINE_CREATION_FUNCTION(FusedAdd,         DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_ADD1_OPERATOR_DESC>);
-DML_OP_DEFINE_CREATION_FUNCTION(FusedSum,         DmlOperatorElementwiseBinaryLoop<DML_ELEMENT_WISE_ADD1_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedAdd,         DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_ADD1_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedSum,         DmlOperatorElementwiseBinaryLoop<DML_ELEMENT_WISE_ADD1_OPERATOR_DESC>);
 
 } // namespace Dml

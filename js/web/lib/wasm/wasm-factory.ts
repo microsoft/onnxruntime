@@ -7,6 +7,7 @@ import * as path from 'path';
 import {OrtWasmModule} from './binding/ort-wasm';
 import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
 import ortWasmFactory from './binding/ort-wasm.js';
+
 const ortWasmFactoryThreaded: EmscriptenModuleFactory<OrtWasmModule> =
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     !BUILD_DEFS.DISABLE_WASM_THREAD ? require('./binding/ort-wasm-threaded.js') : ortWasmFactory;

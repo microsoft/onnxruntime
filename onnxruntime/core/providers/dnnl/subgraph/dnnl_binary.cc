@@ -1,6 +1,7 @@
 #include "dnnl_binary.h"
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
+#include "dnnl_util.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -10,22 +11,13 @@ DnnlBinary::DnnlBinary() {}
 void DnnlBinary::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto eng = sp.GetEngine();
 
-  dnnl::algorithm algo;
-  if (node.OpType() == "Add") {
-    algo = dnnl::algorithm::binary_add;
-  } else if (node.OpType() == "Mul") {
-    algo = dnnl::algorithm::binary_mul;
-  } else if (node.OpType() == "Sub") {
-    algo = dnnl::algorithm::binary_sub;
-  } else if (node.OpType() == "Div") {
-    algo = dnnl::algorithm::binary_div;
-  } else {
-    ORT_THROW("op type not supported");
-  }
+  dnnl::algorithm algo = dnnl_util::OrtOperatorToDnnlAlgorithm(node.OpType());
 
   // GetMemory in OrtFormat. Broadcasting and mix format binary ops can result in computation failure
-  auto src_0_ori_md = sp.GetMemoryInOrtFormat(node.Input(IN_A), eng).get_desc();
-  auto src_1_ori_md = sp.GetMemoryInOrtFormat(node.Input(IN_B), eng).get_desc();
+  auto binary_src0_mem = sp.GetMemoryInOrtFormat(node.Input(IN_A), eng);
+  auto binary_src1_mem = sp.GetMemoryInOrtFormat(node.Input(IN_B), eng);
+  auto src_0_ori_md = binary_src0_mem.get_desc();
+  auto src_1_ori_md = binary_src1_mem.get_desc();
 
   auto src_0_dims = src_0_ori_md.dims();
   auto src_1_dims = src_1_ori_md.dims();
@@ -52,11 +44,6 @@ void DnnlBinary::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto binary_d = dnnl::binary::desc(algo, src_0_md, src_1_md, dst_md);
   auto binary_pd = dnnl::binary::primitive_desc(binary_d, eng);
-
-  auto binary_src0_mem = sp.GetMemoryAndReshape(node.Input(IN_A), binary_pd.src0_desc(), eng);
-  auto binary_src1_mem = sp.GetMemoryAndReshape(node.Input(IN_B), binary_pd.src1_desc(), eng);
-
-
 
   auto binary_dst_mem = dnnl::memory(binary_pd.dst_desc(), eng);
   auto binary_prim = dnnl::binary(binary_pd);

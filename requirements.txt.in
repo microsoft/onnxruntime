@@ -1,3 +1,6 @@
-numpy >= @Python_NumPy_VERSION@
-protobuf
+coloredlogs
 flatbuffers
+numpy >= @Python_NumPy_VERSION@
+packaging
+protobuf
+sympy

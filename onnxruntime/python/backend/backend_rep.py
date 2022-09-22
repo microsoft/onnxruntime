@@ -5,9 +5,11 @@
 """
 Implements ONNX's backend API.
 """
-from onnxruntime import RunOptions
-from onnx.backend.base import BackendRep
 from typing import Any, Tuple
+
+from onnx.backend.base import BackendRep
+
+from onnxruntime import RunOptions
 
 
 class OnnxRuntimeBackendRep(BackendRep):

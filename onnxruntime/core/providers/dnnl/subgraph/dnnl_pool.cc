@@ -12,8 +12,15 @@ DnnlPool::DnnlPool() {}
 
 void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
-
+#ifdef ENABLE_TRAINING
+  // When using training the memory needs to be in a format known to pool_forward and the
+  // pool_backward primitives. Since we don't currently have a way to pass the memory format
+ // from pool_forward to pool_backward; we are choosing to use Onnxruntime's memory format
+ // as the common memory format to be used by both forward and the backward primitives.
+ auto pool_src_mem = sp.GetMemoryInOrtFormat(node.Input(IN_X), dnnl_engine);
+#else
   auto pool_src_mem = sp.GetMemory(node.Input(IN_X));
+#endif  // ENABLE_TRAINING
   auto src_md = pool_src_mem.get_desc();
   auto src_dims = pool_src_mem.get_desc().dims();
 
@@ -51,8 +58,10 @@ void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   auto pool_pd = dnnl::pooling_forward::primitive_desc(pool_desc, dnnl_engine);
 
+#ifndef ENABLE_TRAINING
   // If using GPU this will move the memory from the CPU to the GPU.
   pool_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), pool_pd.src_desc(), dnnl_engine);
+#endif
   dnnl::memory pool_dst_mem = dnnl::memory(pool_pd.dst_desc(), dnnl_engine);
 
   auto pool_op = dnnl::pooling_forward(pool_pd);
