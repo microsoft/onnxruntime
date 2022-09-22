@@ -829,7 +829,7 @@ def generate_build_tree(
     cmake_extra_args,
 ):
     log.info("Generating CMake build tree")
-    cmake_dir = os.path.join(source_dir, "cmake")
+    cmake_dir = os.path.normpath(source_dir)
     cmake_args = [
         cmake_path,
         cmake_dir,
