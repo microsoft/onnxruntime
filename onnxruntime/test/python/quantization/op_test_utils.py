@@ -68,21 +68,6 @@ def check_op_type_count(testcase, model_path, **kwargs):
         )
 
 
-def check_conv_per_channel_counts(testcase, model_path, node_name: str = "conv_node_quant"):
-    model = onnx.load(Path(model_path))
-    axis = 0
-    # minimum number of element in dims is -1
-    count = -2
-    for initializer in model.graph.initializer:
-        dims = initializer.dims
-        # skip if initializer is not a weight
-        if len(dims) > 0:
-            testcase.assertGreater(len(dims), axis)
-            if count > -2:
-                testcase.assertEqual(count, dims[axis])
-            count = dims[axis]
-
-
 def check_model_correctness(testcase, model_path_origin, model_path_to_check, inputs, rtol=1e-2, atol=0.05):
     sess_options = onnxruntime.SessionOptions()
     sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL

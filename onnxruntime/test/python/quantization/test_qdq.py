@@ -15,7 +15,6 @@ import onnx
 from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import (
     TestDataFeeds,
-    check_conv_per_channel_counts,
     check_model_correctness,
     check_op_type_count,
     check_op_type_order,
@@ -237,6 +236,15 @@ class TestQDQExtraOptions(unittest.TestCase):
 
 
 class TestQDQFormatConv(TestQDQFormat):
+    def check_per_channel_counts(self, model_path, channel_count: int, axis: int = 0):
+        model = onnx.load(Path(model_path))
+        for initializer in model.graph.initializer:
+            dims = initializer.dims
+            # skip if initializer is not a weight
+            if len(dims) > 0:
+                self.assertGreater(len(dims), axis)
+                self.assertEqual(channel_count, dims[axis])
+
     def construct_model_conv(self, output_model_path, input_shape, weight_shape, output_shape, has_bias):
         #    (input)
         #      |
@@ -282,8 +290,9 @@ class TestQDQFormatConv(TestQDQFormat):
         model_fp32_path = "conv_fp32.{}.{}.onnx".format(has_bias, per_channel)
         model_int8_qdq_path = "conv_quant_qdq.{}.{}.onnx".format(has_bias, per_channel)
         model_int8_qop_path = "conv_quant_qop.{}.{}.onnx".format(has_bias, per_channel)
+        channel_count = 16
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
-        self.construct_model_conv(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31], has_bias)
+        self.construct_model_conv(model_fp32_path, [1, 8, 33, 33], [channel_count, 8, 3, 3], [1, 16, 31, 31], has_bias)
         quantize_static(
             model_fp32_path,
             model_int8_qdq_path,
@@ -303,7 +312,7 @@ class TestQDQFormatConv(TestQDQFormat):
         }
         check_op_type_count(self, model_int8_qdq_path, **qdq_nodes)
         if per_channel:
-            check_conv_per_channel_counts(self, model_int8_qdq_path)
+            self.check_per_channel_counts(model_int8_qdq_path, channel_count)
         check_model_correctness(self, model_fp32_path, model_int8_qdq_path, data_reader.get_next())
 
         data_reader.rewind()
