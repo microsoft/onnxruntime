@@ -1608,7 +1608,7 @@ static bool HandleMaxPool(HandlerArgs& args) {
     return false;
   }
 
-  auto new_node = SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, "NhwcMaxPool", "com.microsoft");
+  auto new_node = SwapNodeOpTypeDomainAndSinceVersion(args.ctx.graph, args.node, "NhwcMaxPool", "com.microsoft", 1);
   new_node->ClearAttribute("storage_order");  // Only relevant for indices output. Prohibited for NhwcMaxPool.
   TransposeFirstInput(args.ctx, *new_node, args.perm_inv);
   TransposeOutputs(args.ctx, *new_node, args.perm);
@@ -2075,10 +2075,11 @@ void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
   }
 }
 
-std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
-                                                      std::string_view op_type, std::string_view domain) {
+static std::unique_ptr<api::NodeRef> SwapNodeImpl(api::GraphRef& graph, api::NodeRef& node,
+                                                  std::string_view op_type, std::string_view domain,
+                                                  std::optional<int> since_version) {
   auto outputs = node.Outputs();
-  auto new_node = graph.CopyNode(node, op_type, domain);
+  auto new_node = graph.CopyNode(node, op_type, domain, since_version);
 
   for (size_t j = 0; j < outputs.size(); ++j) {
     if (outputs[j] != "") {
@@ -2087,6 +2088,17 @@ std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api:
   }
   graph.RemoveNode(node);
   return new_node;
+}
+
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
+                                                      std::string_view op_type, std::string_view domain) {
+  return SwapNodeImpl(graph, node, op_type, domain, std::nullopt);
+}
+
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeDomainAndSinceVersion(api::GraphRef& graph, api::NodeRef& node,
+                                                                  std::string_view op_type, std::string_view domain,
+                                                                  int since_version) {
+  return SwapNodeImpl(graph, node, op_type, domain, since_version);
 }
 
 }  // namespace onnx_layout_transformation

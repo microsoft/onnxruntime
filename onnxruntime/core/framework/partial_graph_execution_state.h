@@ -17,7 +17,7 @@ class DeviceStreamCollection;
 
 struct PartialGraphExecutionState {
  public:
-  PartialGraphExecutionState() : execution_context_(nullptr), device_stream_collection_(nullptr), device_stream_deleter_(nullptr) {
+  PartialGraphExecutionState() : execution_context_(nullptr), device_stream_collection_(nullptr) {
   }
 
   ~PartialGraphExecutionState();
@@ -45,7 +45,6 @@ struct PartialGraphExecutionState {
 
   std::vector<ProgramRegion> program_regions_;
   std::unique_ptr<DeviceStreamCollection> device_stream_collection_;
-  std::function<void(std::unique_ptr<DeviceStreamCollection>)> device_stream_deleter_;
 };
 }  // namespace onnxruntime
 #endif

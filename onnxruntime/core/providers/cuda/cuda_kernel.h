@@ -41,14 +41,6 @@ class CudaKernel : public OpKernel {
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
-    AllocatorPtr allocator = provider_->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-    if (!allocator)
-      return nullptr;
-    return IAllocator::MakeUniquePtr<T>(allocator, count_or_bytes);
-  }
-
-  template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, onnxruntime::Stream* stream) const {
     return provider_->GetScratchBuffer<T>(count_or_bytes, stream, WaitCudaNotificationOnDevice);
   }
@@ -66,6 +58,11 @@ class CudaKernel : public OpKernel {
     ORT_ENFORCE(ort_stream->device.Type() == OrtDevice::GPU);
     auto* cuda_ep_stream = static_cast<CudaStream*>(ort_stream);
     cuda_ep_stream->EnqueDeferredCPUBuffer(p);
+  }
+
+  template <typename T>
+  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
+    return provider_->AllocateBufferOnCPUPinned<T>(count_or_bytes);
   }
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
