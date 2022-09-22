@@ -1,4 +1,4 @@
-#/bin/bash
+#!/bin/bash
 set -e -x
 mkdir /build/dist
 CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -O3 -pipe -Wl,--strip-all"
