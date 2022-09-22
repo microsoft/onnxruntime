@@ -467,7 +467,7 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
       return;
     } else {
       size_t batch_slice = 0;
-      FillOutputBlob(graph_output_blob, *output_tensor, batch_slice);
+      FillOutputBlob(graph_output_blob, output_tensor, batch_slice);
     }
   }
   #else
@@ -486,7 +486,7 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
     } else {
       auto precision = output_info_iter->second->getPrecision();
       size_t batch_slice = 0;
-      FillOutputBlob(graph_output_blob, *output_tensor, precision, batch_slice);
+      FillOutputBlob(graph_output_blob, output_tensor, precision, batch_slice);
     }
   }
   #endif

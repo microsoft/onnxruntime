@@ -54,7 +54,7 @@ void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::Value&
 template <typename T>
 void FillOutputHelper(Ort::Value& out_tensor, std::shared_ptr<ngraph::Node> node);
 
-Ort::Unowned<Ort::Value>
+Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names,
@@ -63,7 +63,7 @@ GetOutputTensor(Ort::KernelContext& context,
 InferenceEngine::Precision
 ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device);
 
-Ort::Unowned<Ort::Value>
+Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
                 OVInferRequestPtr infer_request,
                 std::string output_name,
@@ -74,7 +74,7 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::KernelContext& context,
                    const SubGraphContext& subgraph_context);
 
-void FillOutputBlob(OVTensorPtr outputBlob, Ort::Value& output_tensor,
+void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
                     size_t batch_slice_idx);
 
 std::shared_ptr<OVNetwork>
@@ -94,7 +94,7 @@ void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t batch_slice_idx
                    std::string input_name, Ort::KernelContext& context,
                    InferenceEngine::Precision precision, const SubGraphContext& subgraph_context);
 
-void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, Ort::Value& output_tensor,
+void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, Ort::UnownedValue& output_tensor,
                     InferenceEngine::Precision precision, size_t batch_slice_idx);
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName);

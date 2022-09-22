@@ -1933,7 +1933,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       // Set output shapes and assign output buffers
       std::vector<int> output_dim_sizes(num_outputs, 1);
-      using OutputOrtValue = Ort::Unowned<Ort::Value>;
+      using OutputOrtValue = Ort::UnownedValue;
       std::vector<OutputOrtValue> output_tensors;
       output_tensors.reserve(num_outputs);
       for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {

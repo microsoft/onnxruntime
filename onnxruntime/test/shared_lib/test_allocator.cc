@@ -21,7 +21,7 @@ TEST(CApiTest, allocation_info) {
 
 TEST(CApiTest, DefaultAllocator) {
   Ort::AllocatorWithDefaultOptions default_allocator;
-  Ort::Unowned<const Ort::MemoryInfo> cpu_info(default_allocator.GetInfo());
+  auto cpu_info = default_allocator.GetInfo();
   
   ASSERT_EQ("Cpu", cpu_info.GetAllocatorName());
   ASSERT_EQ(OrtMemoryInfoDeviceType::CPU, cpu_info.GetDeviceType());
@@ -32,4 +32,13 @@ TEST(CApiTest, DefaultAllocator) {
   ASSERT_EQ(allocation.size(), 100U);
   ASSERT_NE(allocation.get(), nullptr);
   memset(allocation.get(), 0, 100U);
+
+  // Testing const wrapper around const pointer
+  // one can call methods where C API allows const OrtAllocator
+  // but not those where non-const is required
+  const OrtAllocator* const_allocator_ptr = default_allocator;
+  Ort::ConstAllocator const_allocator(const_allocator_ptr);
+  auto const_mem_info = const_allocator.GetInfo();
+  ASSERT_EQ(const_mem_info.GetAllocatorName(), "Cpu");
 }
+

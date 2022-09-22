@@ -112,8 +112,9 @@ static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
   ort_custom_op_domain_container.push_back(std::move(domain));
 }
 
-OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* /* api */) {
-
+OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api) {
+  Ort::Global<void>::api_ = api->GetApi(ORT_API_VERSION);
+  
   static const CustomOpOne c_CustomOpOne;
   static const CustomOpTwo c_CustomOpTwo;
   
@@ -124,7 +125,7 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     domain.Add(&c_CustomOpOne);
     domain.Add(&c_CustomOpTwo);
 
-    Ort::Unowned<Ort::SessionOptions> session_options(options);
+    Ort::UnownedSessionOptions session_options(options);
     session_options.Add(domain);
     AddOrtCustomOpDomainToContainer(std::move(domain));
   } ORT_CATCH (const std::exception& e) {

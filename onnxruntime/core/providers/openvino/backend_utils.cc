@@ -287,7 +287,7 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   }
 }
 
-Ort::Unowned<Ort::Value>
+Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
                 OVInferRequestPtr infer_request,
                 std::string output_name,
@@ -318,7 +318,7 @@ GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
   return context.GetOutput(index, output_shape.get(), num_dims);
 }
 
-Ort::Unowned<Ort::Value>
+Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names,
@@ -436,7 +436,7 @@ void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t batch_slice_idx
   }
 }
 
-void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, Ort::Value& output_tensor,
+void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, Ort::UnownedValue& output_tensor,
                     InferenceEngine::Precision precision, size_t batch_slice_idx) {
   auto moutput = InferenceEngine::as<InferenceEngine::MemoryBlob>(outputBlob);
 
@@ -496,7 +496,7 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
     std::memcpy(input_data, batch_memory_offset, input_data_size);
 }
 
-void FillOutputBlob(OVTensorPtr outputBlob, Ort::Value& output_tensor,
+void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
                     size_t batch_slice_idx) {
   auto output_data = outputBlob->data();
   size_t output_data_size = outputBlob->get_byte_size();

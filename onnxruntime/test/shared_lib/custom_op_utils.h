@@ -116,7 +116,7 @@ struct MyCustomOpWithOptionalInput : Ort::CustomOpBase<MyCustomOpWithOptionalInp
 
 struct MyCustomKernelWithAttributes {
   MyCustomKernelWithAttributes(const OrtKernelInfo* kernel_info) {
-    Ort::Unowned<const Ort::KernelInfo> info{kernel_info};
+    Ort::ConstKernelInfo info{kernel_info};
     int_attr_ = info.GetAttribute<int64_t>("int_attr");
     float_attr_ = info.GetAttribute<float>("float_attr");
 

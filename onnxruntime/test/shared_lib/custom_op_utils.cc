@@ -210,7 +210,7 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
 }
 
 StandaloneCustomKernel::StandaloneCustomKernel(const OrtKernelInfo* k_info, void*) {
-  Ort::Unowned<const Ort::KernelInfo> info{k_info};
+  Ort::ConstKernelInfo info{k_info};
   info_copy_ = info.Copy();
 
   const char* add_type_constraint_names[1] = {"T"};
@@ -460,8 +460,8 @@ void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
   auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
   auto output = ctx.GetOutput(0, dimensions);
 
-  const Ort::Value inputs[2] = {std::move(input_X), std::move(input_Y)};
-  Ort::Value outputs[1] = {std::move(output)};
+  const OrtValue* inputs[2] = {input_X, input_Y};
+  OrtValue* outputs[1] = {output};
   
   op_add_.Invoke(context, inputs, 2, outputs, 1);
 #ifndef USE_CUDA

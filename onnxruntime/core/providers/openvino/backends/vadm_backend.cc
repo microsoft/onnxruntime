@@ -173,7 +173,7 @@ void VADMBackend::CompleteAsyncInference(Ort::KernelContext& context,
     }
     graph_output_blob = infer_request->GetTensor(output_name);
     auto output_tensor = GetOutputTensor(context, batch_size, infer_request, output_name, subgraph_context_.output_names);
-    FillOutputBlob(graph_output_blob, *output_tensor, batch_slice_idx);
+    FillOutputBlob(graph_output_blob, output_tensor, batch_slice_idx);
   }
   #else
   auto graph_output_info = ie_cnn_network_->getOutputsInfo();
@@ -185,7 +185,7 @@ void VADMBackend::CompleteAsyncInference(Ort::KernelContext& context,
     graph_output_blob = infer_request->GetTensor(output_name);
     auto output_tensor = GetOutputTensor(context, batch_size, infer_request, output_name, subgraph_context_.output_names);
     auto precision = output_info_iter->second->getPrecision();
-    FillOutputBlob(graph_output_blob, *output_tensor, precision, batch_slice_idx);
+    FillOutputBlob(graph_output_blob, output_tensor, precision, batch_slice_idx);
   }
   #endif 
   if (!const_outputs_map_.empty()) {
