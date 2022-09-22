@@ -5,6 +5,7 @@
 #include <string>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cann/cann_execution_provider_info.h"
+#include "core/providers/cann/cann_provider_options.h"
 
 #include "core/common/make_string.h"
 #include "core/common/parse_string.h"

@@ -267,6 +267,7 @@ ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
+ORT_RUNTIME_CLASS(CANNProviderOptions);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 
@@ -412,53 +413,6 @@ typedef struct OrtCUDAProviderOptions {
   OrtArenaCfg* default_memory_arena_cfg;
 
 } OrtCUDAProviderOptions;
-
-/** \brief CANN Provider Options
-*
-* \see OrtApi::SessionOptionsAppendExecutionProvider_CANN
-*/
-typedef struct OrtCANNProviderOptions {
-#ifdef __cplusplus
-  OrtCANNProviderOptions() : device_id{}, npu_mem_limit{SIZE_MAX}, arena_extend_strategy{},
-                             do_copy_in_default_stream{1}, max_opqueue_num{10000},
-                             default_memory_arena_cfg{} {}
-#endif
-
-  /** \brief CANN device Id
-  *   Defaults to 0.
-  */
-  int device_id;
-
-  /** \brief CANN memory limit (To use all possible memory pass in maximum size_t)
-  *   Defaults to SIZE_MAX.
-  *   \note If a ::OrtArenaCfg has been applied, it will override this field
-  */
-  size_t npu_mem_limit;
-
-  /** \brief Strategy used to grow the memory arena
-  *   0 = kNextPowerOfTwo<br>
-  *   1 = kSameAsRequested<br>
-  *   Defaults to 0.
-  *   \note If a ::OrtArenaCfg has been applied, it will override this field
-  */
-  int arena_extend_strategy;
-
-  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the CANN EP
-  *   0 = Use separate streams for copying and compute.
-  *   1 = Use the same stream for copying and compute.
-  *   Defaults to 1.
-  */
-  int do_copy_in_default_stream;
-
-  /** \brief CANN operator cache information aging configuration
-  *   Defaults to 10000
-  */
-  int max_opqueue_num;
-
-  /** \brief CANN memory arena configuration parameters
-  */
-  OrtArenaCfg* default_memory_arena_cfg;
-} OrtCANNProviderOptions;
 
 /** \brief ROCM Provider Options
 *
@@ -3551,9 +3505,61 @@ struct OrtApi {
   * \param[in] cann_options
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
   */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CANN,
                   _In_ OrtSessionOptions* options, _In_ const OrtCANNProviderOptions* cann_options);
+
+  /** \brief Create an OrtCANNProviderOptions
+  *
+  * \param[out] out created ::OrtCANNProviderOptions. Must be released with OrtApi::ReleaseCANNProviderOptions
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(CreateCANNProviderOptions, _Outptr_ OrtCANNProviderOptions** out);
+
+  /** \brief Set options in a CANN Execution Provider.
+  *
+  * \param[in] cann_options
+  * \param[in] provider_options_keys Array of UTF-8 null-terminated string for provider options keys
+  * \param[in] provider_options_values Array of UTF-8 null-terminated string for provider options values
+  * \param[in] num_keys Number of elements in the `provider_option_keys` and `provider_options_values` arrays
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(UpdateCANNProviderOptions, _Inout_ OrtCANNProviderOptions* cann_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /** \brief Get serialized CANN provider options string.
+  *
+  * \param[in] cann_options OrtCANNProviderOptions instance
+  * \param[in] allocator a ptr to an instance of OrtAllocator obtained with CreateAllocator()
+  *                      or GetAllocatorWithDefaultOptions(), the specified allocator will be used to allocate
+  *                      continuous buffers for output strings and lengths.
+  * \param[out] ptr is a UTF-8 null terminated string allocated using 'allocator'.
+  *                 The caller is responsible for using the same allocator to free it.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(GetCANNProviderOptionsAsString, _In_ const OrtCANNProviderOptions* cann_options,
+                  _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+
+  /** \brief Release an OrtCANNProviderOptions
+  *
+  * \param[in] the pointer of OrtCANNProviderOptions which will been deleted
+  *
+  * \since Version 1.13.
+  */
+  void(ORT_API_CALL* ReleaseCANNProviderOptions)(_Frees_ptr_opt_ OrtCANNProviderOptions* input);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer

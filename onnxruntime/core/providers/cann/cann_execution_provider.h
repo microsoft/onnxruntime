@@ -42,12 +42,13 @@ class CANNExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph,
-      const std::vector<const KernelRegistry*>& kernel_registries) const override;
+      const IKernelLookup& kernel_lookup) const override;
 
   ProviderOptions GetProviderOptions() const override {
     return CANNExecutionProviderInfo::ToProviderOptions(info_);
   }
 
+  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
  private:

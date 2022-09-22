@@ -4,6 +4,8 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cann/cann_provider_factory.h"
+#include "core/providers/cann/cann_provider_factory_creator.h"
+#include "core/providers/cann/cann_provider_options.h"
 #include "core/providers/cann/cann_execution_provider_info.h"
 #include "core/providers/cann/cann_execution_provider.h"
 #include "core/providers/cann/cann_allocator.h"
@@ -51,7 +53,7 @@ struct CANN_Provider : Provider {
     info.device_id = static_cast<OrtDevice::DeviceId>(params->device_id);
     info.max_opqueue_num = params->max_opqueue_num;
     info.npu_mem_limit = params->npu_mem_limit;
-    info.arena_extend_strategy = ArenaExtendStrategy(params->arena_extend_strategy);
+    info.arena_extend_strategy = params->arena_extend_strategy;
     info.do_copy_in_default_stream = params->do_copy_in_default_stream != 0;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
 
@@ -65,7 +67,7 @@ struct CANN_Provider : Provider {
     cann_options.device_id = internal_options.device_id;
     cann_options.max_opqueue_num = internal_options.max_opqueue_num;
     cann_options.npu_mem_limit = internal_options.npu_mem_limit;
-    cann_options.arena_extend_strategy = static_cast<int>(internal_options.arena_extend_strategy);
+    cann_options.arena_extend_strategy = internal_options.arena_extend_strategy;
     cann_options.do_copy_in_default_stream = internal_options.do_copy_in_default_stream;
     cann_options.default_memory_arena_cfg = internal_options.default_memory_arena_cfg;
   }

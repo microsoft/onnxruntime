@@ -636,7 +636,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> CANNExecutionProvider::GetDataTransf
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                     const std::vector<const KernelRegistry*>& kernel_registries) const {
+                                     const IKernelLookup& kernel_lookup) const {
   InlinedVector<NodeIndex> candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
@@ -644,18 +644,11 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       continue;
 
     const auto& node = *p_node;
-    const KernelCreateInfo* cann_kernel_def = nullptr;
     if (!node.GetExecutionProviderType().empty()) {
       continue;
     }
 
-    for (auto registry : kernel_registries) {
-      auto st = registry->TryFindKernel(node, Type(), &cann_kernel_def);
-
-      if (st.IsOK())
-        break;
-    }
-
+    const KernelCreateInfo* cann_kernel_def = kernel_lookup.LookUpKernel(node);
     if (cann_kernel_def == nullptr) {
       LOGS_DEFAULT(INFO) << "CANN kernel not found in registries for Op type: " << node.OpType()
                          << " node name: " << node.Name();
@@ -665,7 +658,7 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     candidates.push_back(node.Index());
   }
 
-  auto cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
+  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, candidates);
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)
@@ -677,6 +670,14 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   }
 
   return result;
+}
+
+AllocatorPtr CANNExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+  if (mem_type == OrtMemTypeDefault) {
+    return IExecutionProvider::GetAllocator(info_.device_id, mem_type);
+  } else {
+    return IExecutionProvider::GetAllocator(id, mem_type);
+  }
 }
 
 void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
