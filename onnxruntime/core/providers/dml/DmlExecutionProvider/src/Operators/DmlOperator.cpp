@@ -48,7 +48,7 @@ namespace Dml
         if (contextPrivate->IsDmlGraphNode())
         {
             // Create an edge list using sentinels for unused edges, as required by the SetDmlOperator ABI
-            auto ReplaceUnusedEdgeIndicesWithSentinel = [](gsl::span<const std::optional<uint32_t>> indices)
+            /*auto ReplaceUnusedEdgeIndicesWithSentinel = [](gsl::span<const std::optional<uint32_t>> indices)
             {
                 std::vector<uint32_t> ret;
                 ret.reserve(indices.size());
@@ -70,7 +70,7 @@ namespace Dml
             properties.kernelOutputIndices = kernelOutputIndices.data();
             properties.allowHalfPrecisionComputation = AllowHalfPrecisionComputation();
 
-            ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(dmlOperator.Get(), &operatorDesc, &properties));
+            ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(dmlOperator.Get(), &operatorDesc, &properties));*/
 
 
             MLOperatorGraphDesc operatorGraphDesc = {};

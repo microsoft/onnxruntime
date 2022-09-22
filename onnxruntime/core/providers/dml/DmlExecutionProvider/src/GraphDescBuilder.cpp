@@ -156,12 +156,14 @@ namespace Dml::GraphDescBuilder
             for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphNodeCount; nodeIndex++) 
             {
                 ORT_THROW_HR_IF(E_UNEXPECTED, !graphNodeCreateInfo.nodes[nodeIndex]);
-                operatorGraphNodeIndexToMainGraphNodeIndexMap.emplace(lastestNodeIndex++, nodeIndex);
+                operatorGraphNodeIndexToMainGraphNodeIndexMap.emplace(nodeIndex, lastestNodeIndex++);
             }
 
+            uint32_t edgeCount = -1;
             // map operatorGraphInputEdge as either mainGraphInputEdge or mainGraphIntermediateEdge
             for (auto& operatorGraphInputEdge : graphNodeCreateInfo.inputEdges)
             {
+                edgeCount++;
                 uint32_t kernelInputIndex = operatorGraphInputEdge.GraphInputIndex;
 
                 // operatorGraphInputEdge.GraphInputIndex will be the operator input kernel index.
@@ -180,7 +182,7 @@ namespace Dml::GraphDescBuilder
                         DML_INPUT_GRAPH_EDGE_DESC edge = {};
                         edge.GraphInputIndex = dmlFusedNodeInputIndex;
                         edge.ToNodeIndex = operatorGraphNodeIndexToMainGraphNodeIndexMap[operatorGraphInputEdge.ToNodeIndex];
-                        edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;
+                        edge.ToNodeInputIndex = edgeCount;
                         graphInputEdges.push_back(edge);
 
                         // If this is a constant input, set the appropriate flags on the desc
@@ -199,7 +201,7 @@ namespace Dml::GraphDescBuilder
                         edge.FromNodeIndex = inputNodeAndIndex.nodeIndex;
                         edge.FromNodeOutputIndex = inputNodeAndIndex.targetIndex;
                         edge.ToNodeIndex = operatorGraphNodeIndexToMainGraphNodeIndexMap[operatorGraphInputEdge.ToNodeIndex];
-                        edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;
+                        edge.ToNodeInputIndex = edgeCount;
                         graphIntermediateEdges.push_back(edge);
                     }
                 }
