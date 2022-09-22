@@ -75,8 +75,11 @@ bool Gemm::IsOnnxNodeSupported(const onnxruntime::Node& node, const GraphViewer&
         break;
       }
     }
-    
-    supported = true;
+
+    ProtoHelperNodeContext nc(node_unit.GetNode());
+    OpNodeProtoHelper info(&nc);
+
+    supported = false;
 
   } while (false);
 
