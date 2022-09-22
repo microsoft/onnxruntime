@@ -91,7 +91,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     q_hidden_size = static_cast<int>(bias_shape[0]) / 3;
     k_hidden_size = static_cast<int>(bias_shape[0]) / 3;
     v_hidden_size = static_cast<int>(bias_shape[0]) / 3;
-  } else {  
+  } else {
     q_hidden_size = static_cast<int>(qkv_hidden_sizes_[0]);
     k_hidden_size = static_cast<int>(qkv_hidden_sizes_[1]);
     v_hidden_size = static_cast<int>(qkv_hidden_sizes_[2]);

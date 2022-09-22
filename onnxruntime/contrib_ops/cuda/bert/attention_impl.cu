@@ -133,7 +133,7 @@ Status QkvToContext(
   if (qkv_sizes.size() == 0) {
     scratch1 = qkv + 3 * total_size;
   } else {
-    scratch1 = qkv + (batches * sequence_length * (qkv_sizes[0] + qkv_sizes[1] + qkv_sizes[2])); 
+    scratch1 = qkv + (batches * sequence_length * (qkv_sizes[0] + qkv_sizes[1] + qkv_sizes[2]));
   }
 
   T* temp_output = scratch1;

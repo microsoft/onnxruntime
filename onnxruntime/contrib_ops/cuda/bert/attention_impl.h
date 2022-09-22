@@ -44,10 +44,10 @@ Status LaunchAttentionKernel(
     const void* past,                          // Past state input
     const void* extra_add_qk,                  // Additional Add
     void* workspace,                           // Temporary buffer
-    void* output,                              // Output tensor                                  // Fused multi-head attention
-    void* present,                              // Present state output
-    void* fused_runner,  
-    const std::vector<int64_t> qkv_sizes = {}); // Hidden sizes of qkv
+    void* output,                              // Output tensor
+    void* present,                             // Present state output
+    void* fused_runner,                        // Fused multi-head attention
+    const std::vector<int64_t> qkv_sizes = {});  // Hidden sizes of qkv
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties
