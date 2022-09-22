@@ -98,7 +98,7 @@ class TestOpMaxPool(TestCaseTempDir):
         model_q8_path = "maxpool_{}{}.onnx".format(activation_type_str, weight_type_str)
         model_q8_path = Path(self._tmp_model_dir.name).joinpath(model_q8_path).as_posix()
         model_q8_qdq_path = "maxpool_dqd_{}{}.onnx".format(activation_type_str, weight_type_str)
-        model_q8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_q8_path).as_posix()
+        model_q8_qdq_path = Path(self._tmp_model_dir.name).joinpath(model_q8_qdq_path).as_posix()
         model_q8_qdq_dyn_path = "maxpool_dqd_dyn_{}{}.onnx".format(activation_type_str, weight_type_str)
         model_q8_qdq_dyn_path = Path(self._tmp_model_dir.name).joinpath(model_q8_qdq_dyn_path).as_posix()
 
