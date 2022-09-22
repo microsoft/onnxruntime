@@ -147,4 +147,23 @@ void AddInputToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_def);
 
 Status IsOpInRequiredLayout(bool use_nchw, const NodeUnit& node_unit);
 
+Status AddBinaryOperator(int32_t op_type,
+                         ModelBuilder& model_builder,
+                         const std::string& input1,
+                         const std::string& input2,
+                         bool add_activation,
+                         int32_t fuse_code,
+                         const std::string& output,
+                         float output_scale = 0.0f,
+                         int32_t output_zero_point = 0);
+
+Status AddSqueezeOp(ModelBuilder& model_builder,
+                    const std::string& node_name,
+                    const std::string& input,
+                    const std::string& output,
+                    std::vector<int32_t> axes);
+
+Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                                     std::vector<int32_t>& axes);
+
 }  // namespace onnxruntime::nnapi::op_builder_helpers

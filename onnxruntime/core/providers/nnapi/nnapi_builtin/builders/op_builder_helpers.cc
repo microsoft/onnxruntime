@@ -8,11 +8,15 @@
 
 #include "gsl/gsl"
 
+#include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+#include "core/providers/shared/utils/utils.h"
+#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 
 namespace onnxruntime::nnapi::op_builder_helpers {
@@ -684,6 +688,111 @@ Status IsOpInRequiredLayout(bool use_nchw, const NodeUnit& node_unit) {
   if (is_op_nhwc && use_nchw) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Expected layout and operator layout do not match. Possible bug in layout optimizer.");
+  }
+
+  return Status::OK();
+}
+
+Status AddBinaryOperator(int32_t op_type,
+                         ModelBuilder& model_builder,
+                         const std::string& input1,
+                         const std::string& input2,
+                         bool add_activation,
+                         int32_t fuse_code,
+                         const std::string& output,
+                         float output_scale,
+                         int32_t output_zero_point) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input1));  // input 1
+  input_indices.push_back(operand_indices.at(input2));  // input 2
+
+  if (add_activation) {
+    ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
+  }
+
+  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output],
+                                        output_scale, output_zero_point);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_type, input_indices,
+                                                 {output}, {output_operand_type}));
+  return Status::OK();
+}
+
+Status AddSqueezeOp(ModelBuilder& model_builder,
+                    const std::string& node_name,
+                    const std::string& input, const std::string& output,
+                    std::vector<int32_t> axes) {
+  if (model_builder.GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_2) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetNNAPIFeatureLevel());
+  }
+
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  const auto& input_shape(shaper[input]);
+  auto input_dims = input_shape.size();
+  for (auto& axis : axes) {
+    axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_dims));
+  }
+
+  // Despite the spec of ANEURALNETWORKS_SQUEEZE at
+  // https://developer.android.com/ndk/reference/group/neural-networks
+  // states, that the axes (input 1 of ANEURALNETWORKS_SQUEEZE) is optional.
+  //
+  // The actual code of NNAPI requires the axes to be provided
+  // https://android.googlesource.com/platform/frameworks/ml/+/master/nn/common/operations/Squeeze.cpp#31
+  if (axes.empty()) {  // Squeeze all
+    for (size_t i = 0; i < input_dims; i++) {
+      if (input_shape[i] == 1)
+        axes.push_back(static_cast<int32_t>(i));
+    }
+  }
+
+  const auto axes_name = model_builder.GetUniqueName(node_name + input + "_axes");
+  Shape axes_dimen = {static_cast<uint32_t>(axes.size())};
+  const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));      // input
+  input_indices.push_back(operand_indices.at(axes_name));  // axes
+
+  ORT_RETURN_IF_ERROR(shaper.Squeeze(input, axes, output));
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices,
+                                                 {output}, {output_operand_type}));
+  return Status::OK();
+}
+
+Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                                     std::vector<int32_t>& axes) {
+  // Squeeze/Unsqueeze opset 13 uses input1 as axes
+  if (node_unit.SinceVersion() > 12) {
+    // For squeeze, axes is an optional input.If it is not supplied, return an empty axes as default to squeeze all
+    // For unsqueeze, axes is a required input. This check has no effect for it
+    // TODO: Add helper function to handle the following conversion from int64 initializer to int32
+    if (node_unit.Inputs().size() > 1) {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
+      std::vector<uint8_t> unpacked_tensor;
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axes_tensor, unpacked_tensor));
+      const int64_t* raw_axes = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
+      axes.resize(size);
+      for (uint32_t i = 0; i < size; i++) {
+        // it is unlikely we have an axis value overflow for int32
+        axes[i] = static_cast<int32_t>(raw_axes[i]);
+      }
+    }
+  } else {
+    NodeAttrHelper helper(node_unit);
+    axes = helper.Get("axes", std::vector<int32_t>());
   }
 
   return Status::OK();
