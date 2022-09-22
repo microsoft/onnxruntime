@@ -45,9 +45,8 @@ class FusionQOrderedAttention(Fusion):
 
             # Check if the second input to Reshape flows through a Constant node
             # TODO: Investigate why FusionAttention doesn't have such logic
-            constant_node = self.model.match_parent_path(
-                reshape_q, ["Constant"], [1])
-            
+            constant_node = self.model.match_parent_path(reshape_q, ["Constant"], [1])
+      
             if constant_node is None:
                 return self.num_heads, self.hidden_size  # Fall back to user specified value
             else:
