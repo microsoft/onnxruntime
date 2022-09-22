@@ -110,30 +110,6 @@ class FusionUtils:
         return tensor
 
     @staticmethod
-    def normalize_1d_float32_tensor(tensor: onnx_proto.TensorProto, normalization_factor: float):
-        """Scale a 1-D Float TensorProto
-        Args:
-            tensor (TensorProto): tensor to be normalized
-        Returns:
-            tensor (TensorProto): normalized tensor
-        """
-        if not isinstance(tensor, onnx_proto.TensorProto):
-            raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
-
-        if len(tensor.dims) != 1 or tensor.data_type != onnx_proto.TensorProto.FLOAT:
-            raise ValueError("Only FLOAT32 1-D tensors can be normalized")
-
-        if tensor.raw_data:
-            float32_data = numpy.frombuffer(tensor.raw_data, dtype="float32")
-            float32_scaled_data = float32_data / normalization_factor
-            tensor.raw_data = float32_scaled_data.tobytes()
-
-        else:
-            raise ValueError("Only raw buffer supported")
-
-        return tensor
-
-    @staticmethod
     def check_qdq_node_for_fusion(node: NodeProto, model: OnnxModel, allow_per_tensor_quantization_only=True):
         """Verify if a provided QuantizeLinear (Q) / DequantizeLinear (DQ) node is a good candidate for fusion.
            It is a good candidate for fusion if:

@@ -46,7 +46,7 @@ class FusionQOrderedAttention(Fusion):
             # Check if the second input to Reshape flows through a Constant node
             # TODO: Investigate why FusionAttention doesn't have such logic
             constant_node = self.model.match_parent_path(reshape_q, ["Constant"], [1])
-      
+
             if constant_node is None:
                 return self.num_heads, self.hidden_size  # Fall back to user specified value
             else:
@@ -372,18 +372,6 @@ class FusionQOrderedAttention(Fusion):
 
             v_weight_tensor = self.model.get_initializer(dequantize_v_matmul_weight.input[0])
             FusionUtils.transpose_2d_int8_tensor(v_weight_tensor)
-
-            # q_bias_tensor = self.model.get_initializer(add_q.input[1])
-            # q_gemm_scale = self.model.get_constant_value(dequantize_q.input[1])
-            # self.model.scale_1d_tensor(q_bias_tensor, q_gemm_scale)
-
-            # k_bias_tensor = self.model.get_initializer(add_k.input[1])
-            # k_gemm_scale = self.model.get_constant_value(dequantize_k.input[1])
-            # self.model.scale_1d_tensor(k_bias_tensor, k_gemm_scale)
-
-            # v_bias_tensor = self.model.get_initializer(add_v.input[1])
-            # v_gemm_scale = self.model.get_constant_value(dequantize_v.input[1])
-            # self.model.scale_1d_tensor(v_bias_tensor, v_gemm_scale)
 
             # Name and create Attention node
             attention_node_name = self.model.create_node_name("QOrderedAttention")

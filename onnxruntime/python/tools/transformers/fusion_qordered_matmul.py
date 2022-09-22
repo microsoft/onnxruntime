@@ -199,10 +199,6 @@ class FusionQOrderedMatMul(Fusion):
             weight_tensor = self.model.get_initializer(dequantize_node_1.input[0])
             FusionUtils.transpose_2d_int8_tensor(weight_tensor)
 
-        bias_tensor = self.model.get_initializer(bias_add_node.input[bias_add_node_index])
-        output_scale = self.model.get_constant_value(downstream_quantize_node.input[1])
-        FusionUtils.normalize_1d_float32_tensor(bias_tensor, output_scale)
-
         fused_node = helper.make_node(
             "QOrderedMatMul",
             inputs=fused_node_inputs,
