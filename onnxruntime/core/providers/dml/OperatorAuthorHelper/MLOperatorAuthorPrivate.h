@@ -10,17 +10,6 @@ struct DML_INPUT_GRAPH_EDGE_DESC;
 struct DML_OUTPUT_GRAPH_EDGE_DESC;
 struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
 
-struct MLOperatorKernelDmlProperties
-{
-    uint32_t dmlInputCount;
-    _Field_size_opt_(dmlInputCount) const uint32_t* kernelInputIndices;
-
-    uint32_t dmlOutputCount;
-    _Field_size_opt_(dmlOutputCount) const uint32_t* kernelOutputIndices;
-
-    bool allowHalfPrecisionComputation = false;
-};
-
 struct MLOperatorGraphDesc
 {
     uint32_t nodeCount;
@@ -55,12 +44,6 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
         ) const noexcept PURE;
     
     STDMETHOD_(bool, IsDmlGraphNode)() const noexcept PURE;
-
-    STDMETHOD(SetDmlOperator)(
-        IDMLOperator* op,
-        _In_ const DML_OPERATOR_DESC* desc,
-        _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties
-    ) const noexcept PURE;
 
     STDMETHOD(SetDmlOperator)(
         _In_ const MLOperatorGraphDesc* operatorGraphDesc

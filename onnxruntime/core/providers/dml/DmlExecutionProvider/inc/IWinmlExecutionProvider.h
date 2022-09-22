@@ -76,17 +76,13 @@ namespace Windows::AI::MachineLearning::Adapter
         std::unique_ptr<AbstractOperatorDesc> desc;
     };
 
-    // This is the counterpart to the MLOperatorKernelDmlProperties ABI struct which owns its memory and uses containers.
+    // This is the counterpart to the MLOperatorGraphDesc ABI struct which owns its memory and uses containers.
     struct DmlGraphNodeCreateInfo
     {
-        bool initialized = false;
-
         std::vector<std::unique_ptr<AbstractOperatorDesc>> nodes;
         std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
         std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
-
-        bool allowHalfPrecisionComputation = false;
     };
 
     using GraphNodeFactory = std::function<void(

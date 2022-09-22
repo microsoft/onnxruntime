@@ -366,15 +366,6 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     }
 
     HRESULT STDMETHODCALLTYPE SetDmlOperator(
-        IDMLOperator* op,
-        _In_ const DML_OPERATOR_DESC* desc,
-        _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties
-        ) const noexcept override
-    {
-        return E_NOTIMPL;
-    }
-
-    HRESULT STDMETHODCALLTYPE SetDmlOperator(
         _In_ const MLOperatorGraphDesc* operatorGraphDesc
         ) const noexcept override
     {
@@ -431,15 +422,6 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
     HRESULT STDMETHODCALLTYPE GetOutputTensorShape(uint32_t inputIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept override;
 
     bool STDMETHODCALLTYPE IsDmlGraphNode() const noexcept override;
-
-    HRESULT STDMETHODCALLTYPE SetDmlOperator(
-        IDMLOperator* op,
-        _In_ const DML_OPERATOR_DESC* desc,
-        _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties
-    ) const noexcept override
-    {
-        return E_NOTIMPL;
-    }
 
     HRESULT STDMETHODCALLTYPE SetDmlOperator(
         _In_ const MLOperatorGraphDesc* operatorGraphDesc
