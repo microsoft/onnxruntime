@@ -3,40 +3,37 @@
 
 #include "core/providers/rocm/tunable/util.h"
 
+#include "core/providers/rocm/shared_inc/rocm_call.h"
+
 namespace onnxruntime {
 namespace rocm {
 namespace tunable {
 
-int CeilingDivision(int n, int m) {
-  int r = (n - 1) / m + 1;
-  return r;
-}
-
 Timer::Timer(hipStream_t stream) : stream_(stream) {
-  HIP_CHECK(hipEventCreate(&start_));
-  HIP_CHECK(hipEventCreate(&end_));
+  HIP_CALL_THROW(hipEventCreate(&start_));
+  HIP_CALL_THROW(hipEventCreate(&end_));
 }
 
 void Timer::Start() {
-  HIP_CHECK(hipDeviceSynchronize());
-  HIP_CHECK(hipEventRecord(start_, stream_));
+  HIP_CALL_THROW(hipDeviceSynchronize());
+  HIP_CALL_THROW(hipEventRecord(start_, stream_));
 }
 
 void Timer::End() {
-  HIP_CHECK(hipEventRecord(end_, stream_));
-  HIP_CHECK(hipEventSynchronize(end_));
+  HIP_CALL_THROW(hipEventRecord(end_, stream_));
+  HIP_CALL_THROW(hipEventSynchronize(end_));
 }
 
 float Timer::Duration() {
   float time;
   // time is in ms with a resolution of 1 us
-  HIP_CHECK(hipEventElapsedTime(&time, start_, end_));
+  HIP_CALL_THROW(hipEventElapsedTime(&time, start_, end_));
   return time;
 }
 
 Timer::~Timer() {
-  HIP_CHECK(hipEventDestroy(start_));
-  HIP_CHECK(hipEventDestroy(end_));
+  HIP_CALL_THROW(hipEventDestroy(start_));
+  HIP_CALL_THROW(hipEventDestroy(end_));
 }
 
 }  // namespace tunable

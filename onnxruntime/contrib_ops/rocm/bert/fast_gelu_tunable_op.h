@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include "core/providers/rocm/tunable/tunable.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
 #include "contrib_ops/rocm/bert/fast_gelu_impl_kernel.h"
 
 namespace onnxruntime {
@@ -39,7 +40,7 @@ Status FastGeluOp(const FastGeluParams<T>* params) {
         (params->bias_length == 0 && params->input_length % VecSize == 0)));
 
   hipLaunchKernelGGL((FastGeluKernelVec<T, ThreadsPerBlock, VecSize>),
-                     dim3(onnxruntime::rocm::tunable::CeilingDivision(params->input_length, ThreadsPerBlock * VecSize)),
+                     dim3(onnxruntime::rocm::CeilDiv(params->input_length, ThreadsPerBlock * VecSize)),
                      dim3(ThreadsPerBlock),
                      0, params->stream,
                      params->input_length, params->bias_length, params->input, params->bias, params->output);

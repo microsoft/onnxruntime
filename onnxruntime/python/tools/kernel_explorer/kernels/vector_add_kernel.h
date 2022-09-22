@@ -5,12 +5,13 @@
 
 #include <hip/hip_runtime.h>
 
+#include "core/providers/rocm/cu_inc/common.cuh"
 #include "core/providers/rocm/tunable/util.h"
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 
-using onnxruntime::rocm::tunable::CeilingDivision;
-using onnxruntime::rocm::tunable::AlignedVector;
+using onnxruntime::rocm::CeilDiv;
+using onnxruntime::rocm::aligned_vector;
 
 namespace onnxruntime {
 
@@ -19,7 +20,7 @@ __global__ void VectorAddKernel(const T* __restrict__ x,
                                 const T* __restrict__ y,
                                 T* __restrict__ z, int n) {
   int i = hipBlockDim_x * hipBlockIdx_x + hipThreadIdx_x;
-  using LoadT = AlignedVector<T, VecSize>;
+  using LoadT = aligned_vector<T, VecSize>;
 
   if (VecSize * i + VecSize - 1 < n) {
     T x_vec[VecSize];
@@ -51,7 +52,7 @@ __global__ void VectorAddKernel(const T* __restrict__ x,
 template <typename T, int ThreadsPerBlock, int VecSize>
 Status LaunchVectorAdd(hipStream_t stream, const T* x, const T* y, T* z, int n) {
   hipLaunchKernelGGL((VectorAddKernel<T, VecSize>),
-                     dim3(CeilingDivision(n, ThreadsPerBlock*VecSize)),
+                     dim3(CeilDiv(n, ThreadsPerBlock*VecSize)),
                      dim3(ThreadsPerBlock),
                      0, stream,
                      x, y, z, n);
