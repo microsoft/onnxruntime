@@ -203,8 +203,8 @@ jobs:
     inputs:
       sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
       contents: onnxruntime-mobile-*.aar
-      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/node_modules/onnxruntime-react-native/android/libs
-    displayName: Copy Android package to React Native e2e directory
+      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
+    displayName: Copy Android package to Android e2e test directory
 
   - task: Gradle@3
     inputs:

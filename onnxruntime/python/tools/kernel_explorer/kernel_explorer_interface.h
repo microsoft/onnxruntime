@@ -22,7 +22,7 @@ class IKernelExplorer {
     for (int i = 0; i < 5; i++) {
       Run();
     }
-    Timer timer;
+    Timer timer{Stream()};
     timer.Start();
     for (int i = 0; i < repeats_; i++) {
       Run();

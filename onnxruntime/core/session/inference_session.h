@@ -122,6 +122,8 @@ class InferenceSession {
     OnlyApplyMinimalBuildOptimizations,
   };
 
+  using RecordRuntimeOptimizationProducedNodeOpSchemaFn = std::function<Status(const ONNX_NAMESPACE::OpSchema&)>;
+
 #endif
 
   /**
@@ -632,7 +634,8 @@ class InferenceSession {
   virtual common::Status AddPredefinedTransformers(
       GraphTransformerManager& transformer_manager,
       TransformerLevel graph_optimization_level,
-      MinimalBuildOptimizationHandling minimal_build_optimization_handling) const;
+      MinimalBuildOptimizationHandling minimal_build_optimization_handling,
+      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const;
 
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
@@ -645,6 +648,8 @@ class InferenceSession {
 
   InsertCastTransformer insert_cast_transformer_;
 
+  // assuming that OpSchema* elements are not null. our version of gsl::not_null doesn't specialize std::hash.
+  InlinedHashSet<const ONNX_NAMESPACE::OpSchema*> saved_runtime_optimization_produced_node_op_schemas_;
 #endif
   // Any GraphTransformer/RewriteRule name in this set will not be enabled.
   InlinedHashSet<std::string> optimizers_to_disable_;

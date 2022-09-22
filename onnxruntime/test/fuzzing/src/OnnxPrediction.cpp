@@ -145,7 +145,8 @@ void OnnxPrediction::init() {
   //
   for (int i = 0; i < ptr_session->GetInputCount(); i++) {
     // TODO Use push_back on input_names instead of assignment
-    input_names[i] = ptr_session->GetInputName(i, alloc);
+    input_names_ptrs.push_back(ptr_session->GetInputNameAllocated(i, alloc));
+    input_names[i] = input_names_ptrs.back().get();
     input_values.emplace_back(nullptr);
   }
 
@@ -153,7 +154,8 @@ void OnnxPrediction::init() {
   //
   for (int i = 0; i < ptr_session->GetOutputCount(); i++) {
     // TODO Use push_back on output_names instead of assignment
-    output_names[i] = ptr_session->GetOutputName(i, alloc);
+    output_names_ptrs.push_back(ptr_session->GetOutputNameAllocated(i, alloc));
+    output_names[i] = output_names_ptrs.back().get();
     output_values.emplace_back(nullptr);
   }
 }
