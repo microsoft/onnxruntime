@@ -980,8 +980,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
       1,
       OpSchema()
           .SetDoc(R"DOC(Quantize input matrix to specific layout used in cublaslt.)DOC")
-          .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
-          .Attr("order_output", "cublasLt order of output matrix", AttributeProto::INT)
+          .Attr("order_input",
+                "cublasLt order of input matrix. ORDER_COL = 0, ORDER_ROW = 1, ORDER_COL32 = 2, ORDER_COL4_4R2_8C = 3, ORDER_COL32_2R_4R4 = 4. "
+                "Please refer https://docs.nvidia.com/cuda/cublas/index.html#cublasLtOrder_t for their meaning.",
+                AttributeProto::INT)
+          .Attr("order_output", "cublasLt order of output matrix.", AttributeProto::INT)
           .Input(0, "input", "TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)", "F")
           .Input(1, "scale_input", "scale of the input", "S")
           .Output(0, "output", "output tensor", "Q")
@@ -1000,7 +1003,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
       1,
       OpSchema()
           .SetDoc(R"DOC(Dequantize input matrix to specific layout used in cublaslt. attr to specify output type, float16 or float32)DOC")
-          .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
+          .Attr("order_input", "cublasLt order of input matrix. See the schema of QuantizeWithOrder for order definition.", AttributeProto::INT)
           .Attr("order_output", "cublasLt order of output matrix", AttributeProto::INT)
           .Attr("to", "The output data type, only support TensorProto_DataType_FLOAT (1) and TensorProto_DataType_FLOAT16 (10)", AttributeProto::INT)
           .Input(0, "input", "TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)", "Q")
@@ -1019,8 +1022,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
   constexpr const char* QOrderedMatMul_ver1_doc = R"DOC(
 Quantize (Int8) MatMul with order. Implement Y = alpha * A * B + bias + beta * C. Matrix A, B, C, Y are all int8 matrix.
 Two type of order combination supported:
-  *) When order_B is ORDER_COL, order_A must bu ORDER_ROW, MatMul will be implemented using B' * A' + bias + C' => Y'.
-         bias is vector of {#cols of Y} of float32, C' should be batch 1/batch_A. B' could be of batch 1 or batch_A.
+  *) When order_B is ORDER_COL, order_A must be ORDER_ROW.
+         bias is vector of {#cols of Y} of float32, C should be batch 1/batch_A. B could be of batch 1 or batch_A.
          Note B is reorder to ORDER_COL, or Transposed. Not Transposed first and then Reordered here.
   *) When order_B is specify ORDER_COL4_4R2_8C or ORDER_COL32_2R_4R4, orderA must be ORDER_COL32.
          MatMul will be implemented using alpha(A * B) + beta * C => Y.
@@ -1034,7 +1037,7 @@ Support per column quantized weight, ie, scale_B is 1-D vector of size [#cols of
       1,
       OpSchema()
           .SetDoc(QOrderedMatMul_ver1_doc)
-          .Attr("order_A", "cublasLt order of matrix A", AttributeProto::INT)
+          .Attr("order_A", "cublasLt order of matrix A. See the schema of QuantizeWithOrder for order definition.", AttributeProto::INT)
           .Attr("order_B", "cublasLt order of matrix B", AttributeProto::INT)
           .Attr("order_Y", "cublasLt order of matrix Y and optional matrix C", AttributeProto::INT)
           .Input(0, "A", "3-dimensional matrix A", "Q")
@@ -1075,7 +1078,7 @@ TODO: Support them if needed in the future.
           .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
           .Attr("unidirectional", "Whether every token can only attend to previous tokens. Default value is 0.", AttributeProto::INT, static_cast<int64_t>(0))
           .Attr("qkv_hidden_sizes", "Hidden layer sizes of Q, K, V paths in Attention", AttributeProto::INTS, OPTIONAL_VALUE)
-          .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
+          .Attr("order_input", "cublasLt order of input matrix. See the schema of QuantizeWithOrder for order definition.", AttributeProto::INT)
           .Attr("order_weight", "cublasLt order of weight matrix", AttributeProto::INT)
           .Attr("order_output", "cublasLt order of global bias", AttributeProto::INT)
           .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "Q")
@@ -1120,11 +1123,9 @@ TODO: Support them if needed in the future.
                 static_cast<int64_t>(-1))
           .Attr("epsilon", "The epsilon value to use to avoid division by zero.",
                 AttributeProto::FLOAT, 1e-5f)
-          .Attr("order_X", "cublasLt order of input X. Default is ROW MAJOR.",
+          .Attr("order_X", "cublasLt order of input X. Default is ROW MAJOR. See the schema of QuantizeWithOrder for order definition.",
                 AttributeProto::INT, static_cast<int64_t>(1))
-          .Attr("order_Y",
-                "cublasLt order of matrix Y, must be same as order_X. "
-                "Default is ROW MAJOR.",
+          .Attr("order_Y", "cublasLt order of matrix Y, must be same as order_X. Default is ROW MAJOR.",
                 AttributeProto::INT, static_cast<int64_t>(1))
           .AllowUncheckedAttributes()
           .Input(0, "X", "Input data tensor from the previous layer.", "Q")
@@ -1148,18 +1149,15 @@ TODO: Support them if needed in the future.
       1,
       OpSchema()
           .SetDoc(R"DOC(Ordered Quantize Gelu.)DOC")
-          .Attr("order_X", "cublasLt order of input X. Default is ROW MAJOR.",
-                AttributeProto::INT, static_cast<int64_t>(1))
-          .Attr("order_Y",
-                "cublasLt order of matrix Y, must be same as order_X. "
-                "Default is ROW MAJOR.",
-                AttributeProto::INT, static_cast<int64_t>(1))
+          .Attr("order_X", "cublasLt order of input X. Optional. See the schema of QuantizeWithOrder for order definition.",
+                AttributeProto::INT, OPTIONAL_VALUE)
+          .Attr("order_Y", "cublasLt order of matrix Y, must be same as order_X if specified together. Optional."
+                AttributeProto::INT, OPTIONAL_VALUE)
           .Input(0, "X", "N-dimensional input A", "Q")
           .Input(1, "scale_X", "scale of the input A", "S")
           .Input(2, "scale_Y", "scale of the output Y", "S")
           .Output(0, "Y", "Output of the Gelu", "Q")
-          .TypeConstraint("Q", {"tensor(int8)"},
-                          "Constrain input and output types to int8 tensors.")
+          .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
           .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32")
           .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
@@ -1170,7 +1168,7 @@ TODO: Support them if needed in the future.
           .SetDoc(R"DOC(Quantized version of Longformer Self Attention (using int8 with specific matrix Layout).)DOC")
           .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
           .Attr("window", "One sided attention windows length W, or half of total window length", AttributeProto::INT)
-          .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
+          .Attr("order_input", "cublasLt order of input matrix. See the schema of QuantizeWithOrder for order definition.", AttributeProto::INT)
           .Attr("order_weight", "cublasLt order of weight matrix", AttributeProto::INT)
           .Attr("order_global_weight", "cublasLt order of weight matrix", AttributeProto::INT)
           .Attr("order_output", "cublasLt order of global bias", AttributeProto::INT)
