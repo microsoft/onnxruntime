@@ -12,7 +12,9 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_builder.h"
 
 #include "base_op_builder.h"
 
@@ -26,7 +28,6 @@ using namespace op_builder_helpers;
 class ConvOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
@@ -37,9 +38,7 @@ bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedConv(GetQuantizedOpType(node_unit));
 }
 
-/* static */ void
-ConvOpBuilder::CreateSharedOpBuilder(
-    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   CreateSharedOpBuilderImpl<ConvOpBuilder>(
       op_type, op_registrations,
       {

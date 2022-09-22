@@ -8,6 +8,7 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 
 namespace onnxruntime {
@@ -19,11 +20,6 @@ class Status;
 namespace nnapi {
 
 class ModelBuilder;
-
-struct OpBuilderRegistrations {
-  std::vector<std::unique_ptr<IOpBuilder>> builders;
-  std::unordered_map<std::string, const IOpBuilder*> op_builder_map;
-};
 
 template <class T>
 void CreateSharedOpBuilderImpl(const std::string& op_type,

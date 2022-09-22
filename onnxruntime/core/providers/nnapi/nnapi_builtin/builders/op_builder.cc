@@ -18,12 +18,14 @@
 #include "model_builder.h"
 #include "op_support_checker.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_builder.h"
-#include "core/providers/nnapi/nnapi_builtin/builders/impl/conv_op_builder.cc"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
 
 using namespace android::nn::wrapper;
 
 namespace onnxruntime {
 namespace nnapi {
+
+using namespace op_builder_helpers;
 
 #pragma region helpers
 
@@ -146,6 +148,11 @@ class BinaryOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
+void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<BinaryOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
 bool BinaryOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   const auto quant_type = GetQuantizedOpType(node_unit);
   return quant_type == QuantizedOpType::QLinearAdd ||
@@ -249,6 +256,11 @@ class ReluOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
+void CreateReluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<ReluOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
 Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
@@ -285,6 +297,11 @@ class TransposeOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<TransposeOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
 
 void TransposeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   if (!IsQuantizedOp(node_unit))
@@ -346,6 +363,11 @@ class ReshapeOpBuilder : public BaseOpBuilder {
                              size_t input_rank, size_t output_rank);
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<ReshapeOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   if (IsQuantizedOp(node_unit)) {
@@ -505,6 +527,11 @@ class UnsqueezeOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
+void CreateUnsqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<UnsqueezeOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
 void UnsqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   // Unsqueeze opset 13 uses input 1 as axes, add it to initializer skip list
   if (node_unit.SinceVersion() > 12 && node_unit.Inputs().size() > 1) {
@@ -550,6 +577,11 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
+
+void CreateBatchNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<BatchNormalizationOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
 
 void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   // skip everything except input0 for BatchNormalization
@@ -656,15 +688,22 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 class PoolOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
-bool PoolOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
-  return IsQuantizedPool(GetQuantizedOpType(node_unit));
+void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<PoolOpBuilder>(
+      op_type, op_registrations,
+      {
+          "GlobalAveragePool",
+          "GlobalMaxPool",
+          "AveragePool",
+          "MaxPool",
+          "QLinearAveragePool",
+      });
 }
 
 void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -676,17 +715,8 @@ void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
   AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
 }
 
-/* static */ void PoolOpBuilder::CreateSharedOpBuilder(
-    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  CreateSharedOpBuilderImpl<PoolOpBuilder>(
-      op_type, op_registrations,
-      {
-          "GlobalAveragePool",
-          "GlobalMaxPool",
-          "AveragePool",
-          "MaxPool",
-          "QLinearAveragePool",
-      });
+bool PoolOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
+  return IsQuantizedPool(GetQuantizedOpType(node_unit));
 }
 
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -802,6 +832,11 @@ class CastOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
+void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<CastOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
 Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
@@ -839,6 +874,11 @@ class DepthToSpaceOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
+
+void CreateDepthToSpaceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<DepthToSpaceOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
 
 Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
@@ -883,6 +923,11 @@ class SoftMaxOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+void CreateSoftMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<SoftMaxOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
 
 bool SoftMaxOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQSoftmax;
@@ -954,6 +999,11 @@ class IdentityOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
+void CreateIdentityOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<IdentityOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
 Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   // Identity is not really going to do anything
   // Just register the dimension and type, with same index and new name
@@ -980,7 +1030,6 @@ Status IdentityOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
 class GemmOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
@@ -991,8 +1040,7 @@ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedGemm(GetQuantizedOpType(node_unit));
 }
 
-/* static */ void GemmOpBuilder::CreateSharedOpBuilder(
-    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   CreateSharedOpBuilderImpl<GemmOpBuilder>(
       op_type, op_registrations,
       {
@@ -1185,7 +1233,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 class UnaryOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
@@ -1205,8 +1252,7 @@ void UnaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const No
   AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
 }
 
-/* static */ void UnaryOpBuilder::CreateSharedOpBuilder(
-    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   CreateSharedOpBuilderImpl<UnaryOpBuilder>(
       op_type, op_registrations,
       {
@@ -1295,8 +1341,13 @@ class ConcatOpBuilder : public BaseOpBuilder {
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
+void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<ConcatOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
 bool ConcatOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
-  // TODO add support of QLinearConcat
+  // TODO: add support of QLinearConcat
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQConcat;
 }
 
@@ -1412,6 +1463,11 @@ class SqueezeOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
+void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<SqueezeOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
 void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   if (node_unit.SinceVersion() > 12 && node_unit.Inputs().size() > 1) {
     model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());
@@ -1437,6 +1493,11 @@ class QuantizeLinearOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
+
+void CreateQuantizeLinearOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<QuantizeLinearOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
 
 void QuantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
@@ -1476,6 +1537,11 @@ class DequantizeLinearOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
+void CreateDequantizeLinearOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<DequantizeLinearOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
 void DequantizeLinearOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Inputs()[0].quant_param);  // x_scale, x_zp
 }
@@ -1513,6 +1579,11 @@ class LRNOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
+
+void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<LRNOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
 
 Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
@@ -1576,6 +1647,11 @@ class ClipOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
+void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<ClipOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
 void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
   if (inputs.size() > 1)
@@ -1634,6 +1710,11 @@ class ResizeOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<ResizeOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
 
 bool ResizeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
@@ -1753,6 +1834,11 @@ class FlattenOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
+void CreateFlattenOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<FlattenOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
 Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto input = node_unit.Inputs()[0].node_arg.Name();
 
@@ -1782,6 +1868,11 @@ class GatherOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
+
+void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<GatherOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
 
 void GatherOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
@@ -1863,17 +1954,13 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 #pragma region op_minmax
 
 class MinMaxOpBuilder : public BaseOpBuilder {
- public:
-  static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
                                   const std::string& input1, const std::string& input2);
 };
 
-/* static */ void MinMaxOpBuilder::CreateSharedOpBuilder(
-    const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+void CreateMinMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   CreateSharedOpBuilderImpl<MinMaxOpBuilder>(
       op_type, op_registrations,
       {
@@ -1928,6 +2015,11 @@ class EluOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
+void CreateEluOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<EluOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
 Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
@@ -1956,6 +2048,11 @@ class SliceOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
+
+void CreateSliceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<SliceOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
 
 void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   // Skip everything except input0 for Slice
@@ -2128,6 +2225,11 @@ class PadOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
+void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<PadOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
 void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
   model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // pads
@@ -2221,7 +2323,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
 
 #pragma endregion op_pad
 
-#pragma region CreateGetOpBuilders
+/* #pragma region CreateGetOpBuilders
 
 // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
 // such that we can reduce binary size.
@@ -2319,7 +2421,7 @@ const std::unordered_map<std::string, const IOpBuilder*>& GetOpBuilders() {
   return op_registrations.op_builder_map;
 }
 
-#pragma endregion
+#pragma endregion */
 
 }  // namespace nnapi
 }  // namespace onnxruntime
