@@ -721,27 +721,27 @@ Once you have all the necessary components setup, follow the instructions to [cr
 * Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the CoreML EP.
 * Add `--use_coreml` to include the CoreML EP in the build
 
-## Xnnpack
+## XNNPACK
 
-Usage of Xnnpack on Android/Web/Windows/Linux platforms is via the Xnnpack EP.
+Usage of XNNPACK on Android/Web/Windows/Linux platforms is via the XNNPACK EP.
 
-See the [Xnnpack Execution Provider](../execution-providers/Xnnpack-ExecutionProvider.md) documentation for more details.
+See the [XNNPACK Execution Provider](../execution-providers/Xnnpack-ExecutionProvider.md) documentation for more details.
 
-The pre-built ONNX Runtime Mobile package for Android doesn't include the Xnnpack EP.
+The pre-built ONNX Runtime Mobile package for Android doesn't include the XNNPACK EP.
 
-If performing a custom build of ONNX Runtime, support for the Xnnpack EP must be enabled when building.
+If performing a custom build of ONNX Runtime, support for the XNNPACK EP must be enabled when building.
 
-### build for Android
-#### Create a minimal build with Xnnpack EP support
+### Build for Android
+#### Create a minimal build with XNNPACK EP support
 
 Please see [the instructions](./android.md) for setting up the Android environment required to build. The Android build can be cross-compiled on Windows or Linux.
 
 Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom.md), with the following changes:
 
-* Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the Xnnpack EP.
-* Add `--use_xnnpack` to include the Xnnpack EP in the build
+* Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the XNNPACK EP.
+* Add `--use_xnnpack` to include the XNNPACK EP in the build
 
-##### Example build commands with the Xnnpack EP enabled
+##### Example build commands with the XNNPACK EP enabled
 
 Windows example:
 
@@ -759,11 +759,11 @@ Linux example:
 ```bash
 ./build.sh --cmake_generator "Ninja" --android  --android_sdk_path /Android --android_ndk_path /Android/ndk/21.1.6352462/ --android_abi arm64-v8a --android_api 29 --use_xnnpack
 ```
-### build for Windows
+### Build for Windows
 ```dos
 <ONNX Runtime repository root>.\build.bat --config <Release|Debug|RelWithDebInfo> --use_xnnpack
 ```
-### build for Linux
+### Build for Linux
 ```bash
 <ONNX Runtime repository root>./build.sh --config <Release|Debug|RelWithDebInfo> --use_xnnpack
 ```
