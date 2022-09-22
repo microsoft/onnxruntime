@@ -320,7 +320,7 @@ stages:
               --volume /data/models:/build/models:ro \
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e BUILD_BUILDNUMBER \
-              onnxruntimecuda1146trt84build \
+              onnxruntimecuda116xtrt84build \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release --update --build \
