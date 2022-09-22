@@ -909,28 +909,37 @@ jobject createJavaTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocato
 }
 
 jobject createJavaSparseTensorFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* tensor) {
-    // Extract the type information
-    OrtTensorTypeAndShapeInfo* info;
-    checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor, &info));
+  // Extract the type information
+  OrtTensorTypeAndShapeInfo* info;
+  OrtErrorCode code = checkOrtStatus(jniEnv,api,api->GetTensorTypeAndShape(tensor, &info));
+  if (code != ORT_OK) {
+    return NULL;
+  }
 
-    // Construct the TensorInfo object
-    jobject tensorInfo = convertToTensorInfo(jniEnv, api, info);
+  // Construct the TensorInfo object
+  jobject tensorInfo = convertToTensorInfo(jniEnv, api, info);
 
-    // Release the info object
-    api->ReleaseTensorTypeAndShapeInfo(info);
+  // Release the info object
+  api->ReleaseTensorTypeAndShapeInfo(info);
+  if (tensorInfo == NULL) {
+    return NULL;
+  }
 
-    // Lookup the sparse tensor type enum
-    OrtSparseFormat format;
-    checkOrtStatus(jniEnv,api,api->GetSparseTensorFormat(tensor, &format));
-    jint sparseTensorInt = convertFromOrtSparseFormat(format);
+  // Lookup the sparse tensor type enum
+  OrtSparseFormat format;
+  code = checkOrtStatus(jniEnv,api,api->GetSparseTensorFormat(tensor, &format));
+  if (code != ORT_OK) {
+    return NULL;
+  }
+  jint sparseTensorInt = convertFromOrtSparseFormat(format);
 
-    // Construct the ONNXTensor object
-    char *tensorClassName = "ai/onnxruntime/OnnxSparseTensor";
-    jclass clazz = (*jniEnv)->FindClass(jniEnv, tensorClassName);
-    jmethodID tensorConstructor = (*jniEnv)->GetMethodID(jniEnv, clazz, "<init>", "(JJILai/onnxruntime/TensorInfo;)V");
-    jobject javaSparseTensor = (*jniEnv)->NewObject(jniEnv, clazz, tensorConstructor, (jlong) tensor, (jlong) allocator, sparseTensorInt, tensorInfo);
+  // Construct the ONNXTensor object
+  char *tensorClassName = "ai/onnxruntime/OnnxSparseTensor";
+  jclass clazz = (*jniEnv)->FindClass(jniEnv, tensorClassName);
+  jmethodID tensorConstructor = (*jniEnv)->GetMethodID(jniEnv, clazz, "<init>", "(JJILai/onnxruntime/TensorInfo;)V");
+  jobject javaSparseTensor = (*jniEnv)->NewObject(jniEnv, clazz, tensorConstructor, (jlong) tensor, (jlong) allocator, sparseTensorInt, tensorInfo);
 
-    return javaSparseTensor;
+  return javaSparseTensor;
 }
 
 jobject createJavaSequenceFromONNX(JNIEnv *jniEnv, const OrtApi * api, OrtAllocator* allocator, OrtValue* sequence) {
