@@ -234,7 +234,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Upload wheel'
-        condition: and(succeeded(), eq(variables['UploadWheel'], 'yes'))
+        condition: and(succeeded(), and(eq(variables['UploadWheel'], 'yes'), ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true')))
         inputs:
           script: |
             set -e -x
