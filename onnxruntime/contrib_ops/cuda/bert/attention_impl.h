@@ -33,7 +33,7 @@ Status LaunchAttentionKernel(
     int batch_size,                            // Batch size (B)
     int sequence_length,                       // Sequence length (S)
     int num_heads,                             // Number of attention heads (N)
-    int head_size,                             // Hidden layer size per head (H)
+    const int* qkv_head_size,                    // Hidden layer size per head (H)
     int past_sequence_length,                  // Sequence length in past state
     bool is_unidirectional,                    // Whether there is unidirecitonal mask.
     const void* input,                         // Input tensor
@@ -44,8 +44,8 @@ Status LaunchAttentionKernel(
     const void* extra_add_qk,                  // Additional Add
     void* workspace,                           // Temporary buffer
     void* output,                              // Output tensor
-    void* present                              // Present state output
-);
+    void* present,                              // Present state output
+    const std::vector<int64_t> qkv_sizes = {}); // Hidden sizes of qkv
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties

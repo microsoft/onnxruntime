@@ -168,6 +168,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
+  const int qkv_heads[3] = {head_size, head_size, head_size};
   return LaunchAttentionKernel(
           GetDeviceProp(),
           Stream(),
@@ -176,7 +177,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
           batch_size,
           sequence_length,
           num_heads_,
-          head_size,
+          qkv_heads,
           past_sequence_length,
           is_unidirectional_,
           reinterpret_cast<const void*>(gemm_buffer.get()),
