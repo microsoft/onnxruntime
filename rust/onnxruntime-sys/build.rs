@@ -28,7 +28,7 @@ const ORT_RUST_ENV_STRATEGY: &str = "ORT_RUST_STRATEGY";
 /// Name of environment variable that, if present, contains the location of a pre-built library.
 /// Only used if `ORT_STRATEGY=system`.
 const ORT_RUST_ENV_SYSTEM_LIB_LOCATION: &str = "ORT_RUST_LIB_LOCATION";
-/// Name of environment variable that, if present, controls wether to use CUDA or not.
+/// Name of environment variable that, if present, controls whether to use CUDA or not.
 const ORT_RUST_ENV_GPU: &str = "ORT_RUST_USE_CUDA";
 
 /// Subdirectory (of the 'target' directory) into which to extract the prebuilt library.
@@ -249,8 +249,8 @@ impl OnnxPrebuiltArchive for Os {
 
 #[derive(Debug, PartialEq, Eq)]
 enum Accelerator {
-    None,
-    Gpu,
+    Cpu,
+    Cuda,
 }
 
 impl FromStr for Accelerator {
@@ -258,8 +258,8 @@ impl FromStr for Accelerator {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "1" | "yes" | "true" | "on" => Ok(Accelerator::Gpu),
-            _ => Ok(Accelerator::None),
+            "1" | "yes" | "true" | "on" => Ok(Accelerator::Cuda),
+            _ => Ok(Accelerator::Cpu),
         }
     }
 }
@@ -267,8 +267,8 @@ impl FromStr for Accelerator {
 impl OnnxPrebuiltArchive for Accelerator {
     fn as_onnx_str(&self) -> Cow<str> {
         match self {
-            Accelerator::None => Cow::from(""),
-            Accelerator::Gpu => Cow::from("gpu"),
+            Accelerator::Cpu => Cow::from(""),
+            Accelerator::Cuda => Cow::from("gpu"),
         }
     }
 }
@@ -293,22 +293,22 @@ impl OnnxPrebuiltArchive for Triplet {
             (
                 Os::Windows,
                 Architecture::X86 | Architecture::X86_64 | Architecture::Arm | Architecture::Arm64,
-                Accelerator::None,
+                Accelerator::Cpu,
             )
-            | (Os::MacOs, Architecture::Arm64, Accelerator::None)
-            | (Os::Linux, Architecture::X86_64, Accelerator::None) => Cow::from(format!(
+            | (Os::MacOs, Architecture::Arm64, Accelerator::Cpu)
+            | (Os::Linux, Architecture::X86_64, Accelerator::Cpu) => Cow::from(format!(
                 "{}-{}",
                 self.os.as_onnx_str(),
                 self.arch.as_onnx_str()
             )),
-            (Os::MacOs, Architecture::X86_64, Accelerator::None) => Cow::from(format!(
+            (Os::MacOs, Architecture::X86_64, Accelerator::Cpu) => Cow::from(format!(
                 "{}-x86_{}",
                 self.os.as_onnx_str(),
                 self.arch.as_onnx_str().trim_start_matches('x')
             )),
             // onnxruntime-win-x64-gpu-1.11.1.zip
             // onnxruntime-linux-x64-gpu-1.11.1.tgz
-            (Os::Linux | Os::Windows, Architecture::X86_64, Accelerator::Gpu) => {
+            (Os::Linux | Os::Windows, Architecture::X86_64, Accelerator::Cuda) => {
                 Cow::from(format!(
                     "{}-{}-{}",
                     self.os.as_onnx_str(),
@@ -412,7 +412,7 @@ fn prepare_libort_dir_compiled() -> PathBuf {
 
     config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
 
-    if env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::Gpu) {
+    if env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::Cuda) {
         config.define("onnxruntime_USE_CUDA", "ON");
     }
 
