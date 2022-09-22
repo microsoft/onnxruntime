@@ -4,12 +4,13 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
+
+#include "core/providers/rocm/tunable/util.h"
 #include "python/tools/kernel_explorer/device_array.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
-#include "contrib_ops/rocm/bert/util.h"
 
-using onnxruntime::contrib::rocm::CeilingDivision;
-using onnxruntime::contrib::rocm::AlignedVector;
+using onnxruntime::rocm::tunable::CeilingDivision;
+using onnxruntime::rocm::tunable::AlignedVector;
 
 namespace onnxruntime {
 

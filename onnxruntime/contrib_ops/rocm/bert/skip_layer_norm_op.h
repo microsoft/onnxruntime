@@ -42,6 +42,7 @@ struct SkipLayerNormParams : onnxruntime::rocm::tunable::OpParams {
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 Status SkipLayerNormSmallOp(const SkipLayerNormParams<T>* params) {
+  using onnxruntime::rocm::tunable::CeilingDivision;
   TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(
       !((params->ld <= 1024 && params->ld % VecSize == 0 && params->ld == ThreadsPerBlock * VecSize)));
   SkipLayerNormKernelSmall<T, ThreadsPerBlock, VecSize><<<dim3(CeilingDivision(params->element_count, params->ld)),

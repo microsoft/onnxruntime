@@ -18,25 +18,11 @@
 
 #include "core/common/common.h"
 #include "core/providers/rocm/rocm_common.h"
-#include "contrib_ops/rocm/bert/util.h"
+#include "core/providers/rocm/tunable/util.h"
 
 namespace onnxruntime {
 namespace rocm {
 namespace tunable {
-
-class Timer {
- public:
-  explicit Timer(hipStream_t stream);
-  void Start();
-  void End();
-  float Duration();
-  ~Timer();
-
- private:
-  hipStream_t stream_;
-  hipEvent_t start_;
-  hipEvent_t end_;
-};
 
 struct OpParams {
   OpParams() : stream{} {}
