@@ -9,7 +9,7 @@
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
 #include "murmurhash3.h"
-#include <NvInfer.h>
+#include <NvInferVersion.h>
 #include "core/providers/cuda/cuda_pch.h"
 
 namespace fs = std::experimental::filesystem;
