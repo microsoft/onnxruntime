@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include <array>
 
 namespace onnxruntime {
 namespace test {
@@ -14,32 +15,27 @@ enum QLinearWhereFailCause {
 
 template <typename T>
 void RunQLinearWhere(
-    bool* condition,
-    const std::vector<T> x,
+    OpTester &test,
+    const std::vector<T> &x,
+    const std::vector<T> &y,
+    const std::vector<T> &z,
     float x_scale,
     T x_zero_point,
-    const std::vector<T> y,
     float y_scale,
     T y_zero_point,
     float z_scale,
     T z_zero_point,
-    const std::vector<T> z,
-    bool is_condition_const_input,
-    bool is_x_const_input,
-    bool is_y_const_input,
-    const std::vector<int64_t> condition_shape,
-    const std::vector<int64_t> x_shape,
-    const std::vector<int64_t> y_shape,
-    const std::vector<int64_t> z_shape,
+    const std::vector<int64_t> &x_shape,
+    const std::vector<int64_t> &y_shape,
+    const std::vector<int64_t> &z_shape,
     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess) {
-  OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
-  test.AddInput<bool>("condition", condition_shape, condition, is_condition_const_input);
+
   test.AddInput<T>("X", x_shape, x);
-  test.AddInput<float>("x_scale", {}, {x_scale}, is_x_const_input);
-  test.AddInput<T>("x_zero_point", {}, {x_zero_point}, is_x_const_input);
+  test.AddInput<float>("x_scale", {}, {x_scale}, true);
+  test.AddInput<T>("x_zero_point", {}, {x_zero_point}, true);
   test.AddInput<T>("Y", y_shape, y);
-  test.AddInput<float>("y_scale", {}, {y_scale}, is_y_const_input);
-  test.AddInput<T>("y_zero_point", {}, {y_zero_point}, is_y_const_input);
+  test.AddInput<float>("y_scale", {}, {y_scale}, true);
+  test.AddInput<T>("y_zero_point", {}, {y_zero_point}, true);
   test.AddInput<float>("z_scale", {}, {z_scale});
   test.AddInput<T>("z_zero_point", {}, {z_zero_point});
   test.AddOutput<T>("Z", z_shape, z);
@@ -47,29 +43,24 @@ void RunQLinearWhere(
 }
 template <typename T>
 void QLinearWhereScalarCondition() {
-  bool c[] = {false};
+  OpTester test("QLinearWhere", 1, onnxruntime::kMSDomain);
+  test.AddInput<bool>("condition", {2,1}, {true,false}, true  );
   RunQLinearWhere<T>(
-      c,
-      {1},
-      1.0f,
-      0,
-      {2},
-      1.0f,
-      0,
-      1.0f,
-      0,
-      {2},
-      true,
-      true,
-      true,
-      {1},
-      {1},
-      {1},
-      {1}, OpTester::ExpectResult::kExpectSuccess);
+      test,
+      {1}, {2}, {2, 1},// x ,y ,z
+      1.0f, 0, 1.0f, 0, 1.0f, 0, // x_scale, x_zp, y_scale, y_zp, z_scale, z_zp
+      {1}, {1}, {1,2},
+      OpTester::ExpectResult::kExpectSuccess);
+}
+template <typename T>
+void populate_Z(const std::vector<T> &x, const std::vector<T> &y, std::vector<T> &z, float x_scale, T x_zero_point, float y_scale, T y_zero_point, float z_scale, T z_zero_point) {
+  for (size_t i = 0; i < x.size(); i++) {
+    z[i] = (x[i] - x_zero_point) * x_scale < (y[i] - y_zero_point) * y_scale ? x[i] : y[i];
+  }
 }
 TEST(QLinearWhereTest, QLinearWhereScalarCondition) {
-  QLinearWhereScalarCondition<int8_t >();
-  QLinearWhereScalarCondition<uint8_t >();
+  QLinearWhereScalarCondition<int8_t>();
+  QLinearWhereScalarCondition<uint8_t>();
 }
 }  // namespace test
 }  // namespace onnxruntime
