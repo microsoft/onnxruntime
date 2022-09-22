@@ -8,7 +8,6 @@
 #include <fstream>
 
 #include "ov_interface.h"
-#include <ngraph/frontend/onnx_import/onnx.hpp>
 #include <ngraph/pass/convert_fp32_to_fp16.hpp>
 #include <ngraph/pass/constant_folding.hpp>
 #include "core/providers/shared_library/provider_api.h"
@@ -75,7 +74,7 @@ bool IsDirExists(const std::string& pathname) {
 void CreateDirectory(const std::string& ov_compiled_blobs_dir) {
   LOGS_DEFAULT(INFO) << log_tag << "'ov_compiled_blobs' directory doesn't exist at the executable path, so creating one";
 #if defined(_WIN32)
-  if (_mkdir(ov_compiled_blobs_dir.c_str()) == 0) { // Creating a directory 
+  if (_mkdir(ov_compiled_blobs_dir.c_str()) == 0) {  // Creating a directory
 	  LOGS_DEFAULT(INFO) << log_tag << "created a directory named 'ov_compiled_blobs' at the executable path";
   } else {
     LOGS_DEFAULT(INFO) << log_tag << "Error creating a directory named 'ov_compiled_blobs' at the executable path";
@@ -98,7 +97,6 @@ struct static_cast_int64 {
 
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
- 
   if(IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
   }
@@ -110,24 +108,13 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
 #endif
 
   std::shared_ptr<ngraph::Function> ng_function;
-  #if (defined OPENVINO_2021_2) || (defined OPENVINO_2021_3)
-    ORT_UNUSED_PARAMETER(const_outputs_map);
-    std::istringstream model_stream{model_proto.SerializeAsString()};
-    try {
-    ng_function = ngraph::onnx_import::import_onnx_model(model_stream);
-    LOGS_DEFAULT(INFO) << "ONNX Import Done";
-    } catch (const std::exception& exp) {
-      ORT_THROW(log_tag + "[OpenVINO-EP] Exception while importing model to nGraph Func: " + std::string(exp.what()));
-    } catch (...) {
-      ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while importing model to nGraph Func");
-    }
-  #elif defined (OPENVINO_2021_4)
+  #if defined (OPENVINO_2021_4)
     const std::string model = model_proto.SerializeAsString();
     auto cnn_network = global_context.ie_core.ReadModel(model);
     ng_function = cnn_network->getFunction();
   #else
      ORT_UNUSED_PARAMETER(model_proto);
-  #endif 
+  #endif
 
   if (global_context.device_type.find("GPU") != std::string::npos &&
       subgraph_context.precision == InferenceEngine::Precision::FP16) {
@@ -169,7 +156,6 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
 #if defined (OV_API_20)
 std::shared_ptr<OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
- 
   if(IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
   }
@@ -183,8 +169,8 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
   const std::string model = model_proto.SerializeAsString();
   auto cnn_network = global_context.ie_core.ReadModel(model);
 
-  if (global_context.device_type.find("GPU") != std::string::npos &&
-      subgraph_context.precision == InferenceEngine::Precision::FP16) {
+  if ((subgraph_context.precision == InferenceEngine::Precision::FP16) &&
+      (global_context.device_type.find("MYRIAD") == std::string::npos)) {
     //FP16 transformations
     ov::pass::ConvertFP32ToFP16 pass_obj;
     pass_obj.run_on_model(cnn_network);
@@ -212,7 +198,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
     pass_const_obj.run_on_model(cnn_network);
     auto& results = const_cast<ov::ResultVector&>(cnn_network.get()->get_results());
     size_t index = results.size() - 1;
- 
+
     for (auto it = results.rbegin(); it != results.rend(); ++it) {
       if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
         const_outputs_map[(*it)->get_friendly_name()] = const_node;
@@ -223,7 +209,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
   }
   return cnn_network;
 }
-#endif 
+#endif
 
 InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device) {
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
@@ -294,10 +280,10 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
                 std::unordered_map<std::string, int> output_names) {
   OrtValue* output_tensor;
   auto graph_output_blob = infer_request->GetTensor(output_name);
-  
+
   #if defined (OV_API_20)
   auto graph_output_dims = graph_output_blob->get_shape();
-  #else 
+  #else
   auto graph_output_dims = graph_output_blob->getTensorDesc().getDims();
   #endif
 
@@ -487,7 +473,7 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
                    const SubGraphContext& subgraph_context) {
 
-    size_t input_data_size = inputBlob->get_byte_size();    
+    size_t input_data_size = inputBlob->get_byte_size();
     auto input_data = inputBlob->data();
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context.input_names.at(input_name));
     auto mem_info = ort.GetTensorMemoryInfo(tensor);
@@ -561,7 +547,7 @@ void printPerformanceCounts(const std::map<std::string, InferenceEngine::Inferen
          << std::endl;
 
   auto performanceMapSorted = perfCountersSorted(performanceMap);
-  
+
   for (const auto& it : performanceMapSorted) {
     std::string toPrint(it.first);
     const int maxLayerName = 30;
@@ -603,7 +589,7 @@ void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std
   #else
     auto performanceMap = request->GetObj().GetPerformanceCounts();
     printPerformanceCounts(performanceMap, stream, deviceName);
-  #endif 
+  #endif
 }
 
 }  // namespace backend_utils

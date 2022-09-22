@@ -128,7 +128,7 @@ namespace onnxruntime {
         }
     }
    
-    OVTensorPtr OVInferRequest::GetTensor(std::string& input_name) {
+    OVTensorPtr OVInferRequest::GetTensor(const std::string& input_name) {
         try {
           #if defined (OV_API_20)
           auto tobj = ovInfReq.get_tensor(input_name);
@@ -145,7 +145,7 @@ namespace onnxruntime {
         }
     }
 
-    void OVInferRequest::SetTensor(std::string& name, OVTensorPtr& blob) {
+    void OVInferRequest::SetTensor(const std::string& name, OVTensorPtr& blob) {
         try {
           #if defined(OV_API_20)
           ovInfReq.set_tensor(name, *(blob.get()));
