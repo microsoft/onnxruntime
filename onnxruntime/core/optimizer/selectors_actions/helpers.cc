@@ -3,6 +3,7 @@
 
 #include "core/optimizer/selectors_actions/helpers.h"
 
+#include "core/common/span_utils.h"
 #include "core/optimizer/selectors_actions/actions.h"
 
 using namespace ONNX_NAMESPACE;
@@ -261,7 +262,7 @@ InlinedVector<Node*> NodesToOptimize::Inputs(gsl::span<const int> indices, bool 
   return results;
 }
 
-InlinedVector<Node*> NodesToOptimize::Outputs(const std::vector<int>& indices, bool required) const {
+InlinedVector<Node*> NodesToOptimize::Outputs(gsl::span<const int> indices, bool required) const {
   InlinedVector<Node*> results;
   results.reserve(NumOutputEntries());
 
@@ -283,9 +284,9 @@ InlinedVector<Node*> NodesToOptimize::Outputs(const std::vector<int>& indices, b
 
 InlinedVector<Node*> NodesToOptimize::GetNodesAtLocation(const NodeLocation& location, bool required) const {
   if (location.type == NodeType::kInput) {
-    return Inputs({location.index}, required);
+    return Inputs(AsSpan({location.index}), required);
   } else if (location.type == NodeType::kOutput) {
-    return Outputs({location.index}, required);
+    return Outputs(AsSpan({location.index}), required);
   } else {
     return {&Target()};
   }
