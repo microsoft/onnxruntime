@@ -249,7 +249,7 @@ stages:
             **/*.dll
 
       - powershell: |
-         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu protobuf==3.18.1 -qq
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --force-reinstall --upgrade $_.fullname tabulate}
          Remove-Item -Recurse -Force onnxruntime
          python onnx_backend_test_series.py
@@ -511,7 +511,7 @@ stages:
             **/*.dll
 
       - powershell: |
-         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu protobuf==3.18.1 -qq
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
          Remove-Item -Recurse -Force onnxruntime
          python onnx_backend_test_series.py
