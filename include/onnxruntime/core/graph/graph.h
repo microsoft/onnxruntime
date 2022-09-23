@@ -1146,6 +1146,8 @@ class Graph {
     ORT_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
   }
 
+  void SetInput(const NodeArg* const input);
+
   /** Explicitly set graph inputs.
   @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
   @remarks Note that the input order matters for subgraphs.
@@ -1155,6 +1157,8 @@ class Graph {
   void SetInputs(std::initializer_list<const NodeArg*> inputs) {
     SetInputs(gsl::make_span(inputs));
   }
+
+  bool IsGraphInputsManullySet() const { return graph_inputs_manually_set_; }
 
   const Model& GetModel() const {
     return owning_model_;

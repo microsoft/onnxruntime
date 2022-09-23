@@ -746,6 +746,9 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<GraphViewer> Graph__CreateGraphViewer(const Graph* p) override { return std::make_unique<GraphViewer>(*p); }
   std::unique_ptr<ONNX_NAMESPACE::GraphProto> Graph__ToGraphProto(const Graph* p) override { return std::make_unique<ONNX_NAMESPACE::GraphProto>(p->ToGraphProto()); }
   void Graph__SetInputs(Graph* p, gsl::span<const NodeArg* const> inputs) override { p->SetInputs(inputs); }
+  void Graph__SetInput(Graph* p, const NodeArg* const input) override { p->SetInput(input); }
+  bool Graph__IsGraphInputsManullySet(const Graph* p) const override { return p->IsGraphInputsManullySet(); }
+  const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override{ return p->GetInputsIncludingInitializers();}
 
   NodeArg& Graph__GetOrCreateNodeArg(Graph* p, const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) override { return p->GetOrCreateNodeArg(name, p_arg_type); }
   void Graph__AddOuterScopeNodeArg(Graph* p, const std::string& name) override { p->AddOuterScopeNodeArg(name); }
@@ -769,6 +772,7 @@ struct ProviderHostImpl : ProviderHost {
   Node* Graph__GetNode(Graph* p, NodeIndex node_index) noexcept { return p->GetNode(node_index); }
   const Node* Graph__GetNode(const Graph* p, NodeIndex node_index) const override { return p->GetNode(node_index); }
   const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const override { return p->GetNodeArg(name); }
+  const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
 
   bool Graph__IsLocalValue(const Graph* p, const std::string& name) const override { return p->IsLocalValue(name); }
 

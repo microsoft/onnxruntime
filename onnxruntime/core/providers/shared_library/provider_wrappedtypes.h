@@ -688,6 +688,9 @@ struct Graph final {
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) { return g_host->Graph__GetOrCreateNodeArg(this, name, p_arg_type); }
   void AddOuterScopeNodeArg(const std::string& name) { g_host->Graph__AddOuterScopeNodeArg(this, name); }
   void SetInputs(gsl::span<const NodeArg* const> inputs) { g_host->Graph__SetInputs(this, inputs); }
+  void SetInput(const NodeArg* const input) { g_host->Graph__SetInput(this, input); }
+  bool IsGraphInputsManullySet() const { return g_host->Graph__IsGraphInputsManullySet(this); }
+  const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->Graph__GetInputsIncludingInitializers(this); }
 
   Status Resolve() { return g_host->Graph__Resolve(this); }
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor) { return g_host->Graph__AddInitializedTensor(this, tensor); }
@@ -697,7 +700,6 @@ struct Graph final {
   void SetOutputs(gsl::span<const NodeArg* const> outputs) { return g_host->Graph__SetOutputs(this, outputs); }
 
   const std::vector<const NodeArg*>& GetInputs() const noexcept { return g_host->Graph__GetInputs(this); }
-
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const { return g_host->Graph__GetInitializedTensor(this, tensor_name, value); }
 
   const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
@@ -707,6 +709,7 @@ struct Graph final {
   const Node* GetNode(NodeIndex node_index) const noexcept { return g_host->Graph__GetNode(this, node_index); }
   Node* GetNode(NodeIndex node_index) noexcept { return g_host->Graph__GetNode(this, node_index); }
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->Graph__GetNodeArg(this, name); }
+  const std::string& Name() const noexcept { return g_host->Graph__Name(this); }
 
   bool IsLocalValue(const std::string& name) const { return g_host->Graph__IsLocalValue(this, name); }
 

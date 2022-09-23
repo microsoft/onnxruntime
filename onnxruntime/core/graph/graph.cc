@@ -4071,6 +4071,18 @@ Status Graph::InlineFunction(Node& callnode) {
   return Status::OK();
 }
 
+void Graph::SetInput(const NodeArg* const input) {
+  ORT_ENFORCE(input->Exists(), "Input to set must exist.");
+  if (name_to_initial_tensor_.find(input->Name()) == name_to_initial_tensor_.end()) {
+    graph_inputs_including_initializers_.emplace_back(input);
+    graph_inputs_excluding_initializers_.emplace_back(input);
+  }
+  ComputeOverridableInitializers();
+  graph_inputs_manually_set_ = true;
+  GraphProtoSyncNeeded(true);
+  GraphResolveNeeded(true);
+}
+
 void Graph::SetInputs(gsl::span<const NodeArg* const> inputs) {
   // creating graph from scratch
   // rely on SetGraphInputsOutputs() to fix up graph_inputs_excluding_initializers_

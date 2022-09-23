@@ -113,6 +113,11 @@ struct TensorrtFuncState {
   int (*engine_encryption)(const char*, char*, size_t);
 };
 
+struct subgraph_context {
+  std::unordered_set<std::string> output_args;
+  std::unordered_map<std::string, const NodeArg*> inputs_and_initializers;
+};
+
 // Logical device representation.
 class TensorrtExecutionProvider : public IExecutionProvider {
  public:
@@ -217,7 +222,25 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
 
-  void SetGraphOuterScopeValues(Graph* build_graph, const Graph* graph) const;
+  void SetGraphOuterScopeValues(Graph* build_graph, const Graph* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
+
+  void GetAllNodesOutputName(Graph* build_graph, std::unordered_set<std::string>& all_node_output_names_for_all_scope) const;
+
+  void SetGraphInputs(Graph* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
+
+  // The newly built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsInputInitializerOrOutput() API.
+  // We have to do it by ourselves.
+  bool IsInputInitializerOrOutput(Graph* graph, const std::string& name, bool check_ancestors, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
+
+  // The newly built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsOuterScopeValues() API.
+  // We have to do it by ourselves.
+  bool IsOuterScopeValue(Graph* graph, const std::string& name, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
+
+  // The newly built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsLocalValue() API.
+  // We have to do it by ourselves.
+  bool IsLocalValue(Graph* graph, const std::string& name, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
+
+  void SetSubGraphContext(Graph* build_graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
 
 };
 }  // namespace onnxruntime
