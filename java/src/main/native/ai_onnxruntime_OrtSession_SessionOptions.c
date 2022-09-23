@@ -18,7 +18,6 @@
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
 #include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
-#include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
 #include "onnxruntime/core/providers/tvm/tvm_provider_factory.h"
 #include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
 #include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
