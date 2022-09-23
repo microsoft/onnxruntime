@@ -12,10 +12,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
-from op_test_utils import (
-    TestCaseTempDir,
-    check_op_type_order,
-)
+from op_test_utils import TestCaseTempDir, check_op_type_order
 
 import onnxruntime
 from onnxruntime.quantization.onnx_model import ONNXModel
