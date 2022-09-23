@@ -122,7 +122,7 @@ class ORTTrainer(object):
     def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None):
         warnings.warn(
             "ORTTrainer is deprecated and will be removed in ort release 1.14. Please use ORTModule instead.",
-            DeprecationWarning,
+            FutureWarning,
         )
 
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
@@ -297,8 +297,6 @@ class ORTTrainer(object):
             f.write(self._onnx_model.SerializeToString())
 
     def _check_model_export(self, input):
-        import _test_helpers
-        import numpy as np
         from numpy.testing import assert_allclose
         from onnx import TensorProto, helper, numpy_helper
 
