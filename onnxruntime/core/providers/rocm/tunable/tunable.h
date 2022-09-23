@@ -6,6 +6,7 @@
 #include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
 
+#include <chrono>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -16,11 +17,12 @@
 #include <vector>
 
 #include "core/common/common.h"
-#include "contrib_ops/rocm/bert/util.h"
+#include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/tunable/util.h"
 
 namespace onnxruntime {
-namespace contrib {
 namespace rocm {
+namespace tunable {
 
 struct OpParams {
   OpParams() : stream{} {}
@@ -150,6 +152,7 @@ class TunableOp {
       }
     }
     ORT_ENFORCE(id >= 0, "Cannot found viable op");
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return id;
   }
 
@@ -166,6 +169,6 @@ class TunableOp {
   bool tuning_{false};
 };
 
+}  // namespace tunable
 }  // namespace rocm
-}  // namespace contrib
 }  // namespace onnxruntime
