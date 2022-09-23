@@ -92,7 +92,7 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
 
 #if !defined(DISABLE_CONTRIB_OPS)
 #define LAYERNORM_IMPL(T, U, V, simplified) \
-  template LayerNorm<T, U, V, simplified>;
+  template class LayerNorm<T, U, V, simplified>;
 
 // contrib op usage
 LAYERNORM_IMPL(double, double, double, false)
