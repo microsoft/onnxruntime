@@ -902,15 +902,23 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* graph_build, con
         graph_build->AddOuterScopeNodeArg(input->Name());
         std::cout << input->Name() << std::endl;
 
-        // Handle the case where this outer scope value is not existed in any outer scope level of the newly built graph (the newly built graph is the subgraph of the original graph)
+        // Handle the case where this outer scope value is not existed in any outer scope levels of the newly built graph (the newly built graph is the subgraph of the original graph)
         // need to add the outer scope value from origianl graph as an explict input to the top-level of newly built graph
         if (!IsOuterScopeValue(graph_build, input->Name(), subgraph_context_map)) {
           auto top_level_graph = graph_build;
           while (top_level_graph->ParentGraph()) {
             top_level_graph = top_level_graph->MutableParentGraph();
           }
+
           auto graph_inputs_including_initializers = top_level_graph->GetInputsIncludingInitializers();
-          bool in_inputs = std::find(graph_inputs_including_initializers.begin(), graph_inputs_including_initializers.end(), input) != graph_inputs_including_initializers.end();
+          bool in_inputs = false;
+          for (const auto& input_or_initializer : graph_inputs_including_initializers) {
+            if (input_or_initializer->Name() == input->Name()) {
+              in_inputs = true;
+              break;
+            }
+          }
+
           if (!in_inputs) {
             auto& n_input = top_level_graph->GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             top_level_graph->SetInput(&n_input);
@@ -1070,6 +1078,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           // Dump TensorRT subgraph for debugging
           std::fstream dump("TensorrtExecutionProvider_TRT_Subgraph.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
           model_proto->SerializeToOstream(dump);
+          dump.flush();
         //}
 
         // Get supported node list recursively
