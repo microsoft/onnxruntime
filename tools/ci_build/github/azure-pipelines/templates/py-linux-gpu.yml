@@ -4,21 +4,9 @@ parameters:
 
 - name: machine_pool
   type: string
-  
-- name: base_image
-  type: string
-
-- name: devtoolset_rootpath
-  type: string
-
-- name: ld_library_path_arg
-  type: string
-
-- name: prepend_path
-  type: string
 
 jobs:
-- job: Linux_py_Wheels_${{ parameters.arch }}
+- job: Linux_py_GPU_Wheels_${{ parameters.arch }}
   timeoutInMinutes: 240
   workspace:
     clean: all
@@ -35,10 +23,10 @@ jobs:
 
     - template: get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x64/python/cpu/Dockerfile.manylinux2014_cpu
-        Context: tools/ci_build/github/linux/docker/inference/x64/python/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{ parameters.base_image }} --build-arg PLATFORM=${{ parameters.arch }} --build-arg PREPEND_PATH=${{ parameters.prepend_path }} --build-arg LD_LIBRARY_PATH_ARG=${{ parameters.ld_library_path_arg }} --build-arg DEVTOOLSET_ROOTPATH=${{ parameters.devtoolset_rootpath }}"
-        Repository: onnxruntimecpubuilpython${{ parameters.arch }}
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_4
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u ) --build-arg PLATFORM=${{ parameters.arch }}"
+        Repository: onnxruntimecuda116xtrt84build${{ parameters.arch }}
 
     - task: CmdLine@2
       displayName: 'Build Python Wheel'
@@ -55,8 +43,8 @@ jobs:
               -w /onnxruntime_src \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              onnxruntimecpubuilpython${{ parameters.arch }} tools/ci_build/github/linux/build_linux_arm64_python_package.sh
-            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/models$(Build.BinariesDirectory)/Release/_deps $(Build.BinariesDirectory)/Release/CMakeFiles
+              onnxruntimecuda116xtrt84build${{ parameters.arch }} /bin/bash tools/ci_build/github/linux/build_linux_arm64_python_package.sh -d GPU
+            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/models $(Build.BinariesDirectory)/Release/_deps $(Build.BinariesDirectory)/Release/CMakeFiles
             cd $(Build.BinariesDirectory)/Release
             find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 
@@ -64,12 +52,12 @@ jobs:
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
         PathtoPublish: '$(Build.BinariesDirectory)/dist'
-        ArtifactName: onnxruntime
+        ArtifactName: onnxruntime_gpu
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Test Binaries'
       inputs:
-        artifactName: 'drop-linux-cpu-${{ parameters.arch }}'
+        artifactName: 'drop-linux-gpu-${{ parameters.arch }}'
         targetPath: '$(Build.BinariesDirectory)/Release'
 
 
