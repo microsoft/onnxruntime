@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "base_op_support_checker.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_support_checker.h"
 
 #include "core/common/logging/logging.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 
 namespace onnxruntime {
 

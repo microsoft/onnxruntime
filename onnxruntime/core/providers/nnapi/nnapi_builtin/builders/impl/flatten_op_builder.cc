@@ -9,7 +9,6 @@
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"

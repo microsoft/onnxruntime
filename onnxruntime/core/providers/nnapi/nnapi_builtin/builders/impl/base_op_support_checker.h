@@ -5,6 +5,7 @@
 
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker_factory.h"
+#include "core/providers/shared/node_unit/node_unit.h"
 
 namespace onnxruntime {
 
