@@ -1175,6 +1175,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 ML_CHECK_BOOL_MSG(outputEdge != nullptr, "OutputEdge of operatorGraph can't be null while creating operator kernel for DML Graph");
                 m_graphNodeCreateInfo->outputEdges.push_back(*outputEdge);
             }
+
+            m_graphNodeCreateInfo->nodeCount = operatorGraphDesc->nodeCount;
             return S_OK;
         }
         ORT_CATCH_RETURN

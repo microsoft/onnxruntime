@@ -52,42 +52,35 @@ namespace Dml
             std::vector<const DML_OPERATOR_DESC*> opDescs({&operatorDesc});
             operatorGraphDesc.nodesAsOpDesc = opDescs.data();
 
-            uint32_t inputEdgeCount = 0;
             std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
-            std::for_each(
-                m_kernelInputIndices.begin(),
-                m_kernelInputIndices.end(),
-                [&](std::optional<uint32_t>& inputIndex) {
-                    if (inputIndex.has_value()) 
-                    {
-                        DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
-                        inputEdge.GraphInputIndex = inputIndex.value();
-                        inputEdge.ToNodeIndex = 0;
-                        inputEdge.ToNodeInputIndex = inputEdgeCount++;
-                        inputEdges.push_back(inputEdge);
-                    }
+            for (int inputIndex = 0; inputIndex < m_kernelInputIndices.size(); inputIndex++)
+            {
+                if (m_kernelInputIndices[inputIndex].has_value()) 
+                {
+                    DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
+                    inputEdge.GraphInputIndex = (*m_kernelInputIndices[inputIndex]);
+                    inputEdge.ToNodeIndex = 0;
+                    inputEdge.ToNodeInputIndex = inputIndex;
+                    inputEdges.push_back(inputEdge);
                 }
-            );
-            operatorGraphDesc.inputEdgeCount = inputEdgeCount;
+            }
+            operatorGraphDesc.inputEdgeCount = inputEdges.size();
             operatorGraphDesc.inputEdges = inputEdges.data();
 
-            uint32_t outputEdgeCount = 0;
+            
             std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
-            std::for_each(
-                m_kernelOutputIndices.begin(),
-                m_kernelOutputIndices.end(),
-                [&](std::optional<uint32_t>& outputIndex) {
-                    if (outputIndex.has_value()) 
-                    {
-                        DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
-                        outputEdge.FromNodeIndex = 0;
-                        outputEdge.FromNodeOutputIndex = outputEdgeCount++;
-                        outputEdge.GraphOutputIndex = outputIndex.value();
-                        outputEdges.push_back(outputEdge);
-                    }
+            for (int outputIndex = 0; outputIndex < m_kernelOutputIndices.size(); outputIndex++)
+            {
+                if (m_kernelOutputIndices[outputIndex].has_value()) 
+                {
+                    DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
+                    outputEdge.FromNodeIndex = 0;
+                    outputEdge.FromNodeOutputIndex = outputIndex;
+                    outputEdge.GraphOutputIndex = (*m_kernelOutputIndices[outputIndex]);
+                    outputEdges.push_back(outputEdge);
                 }
-            );
-            operatorGraphDesc.outputEdgeCount = outputEdgeCount;
+            }
+            operatorGraphDesc.outputEdgeCount = outputEdges.size();
             operatorGraphDesc.outputEdges = outputEdges.data();
 
             ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(&operatorGraphDesc));
