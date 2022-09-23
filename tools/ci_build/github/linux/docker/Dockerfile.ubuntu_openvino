@@ -4,12 +4,14 @@ FROM ubuntu:${UBUNTU_VERSION}
 ARG OPENVINO_VERSION=2022.1.0
 ARG PYTHON_VERSION=3.8
 
+RUN apt update && apt install -y python3-distutils
+
 ADD scripts /tmp/scripts
 RUN /tmp/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} -d EdgeDevice && \
     /tmp/scripts/install_os_deps.sh -d EdgeDevice && \
     /tmp/scripts/install_python_deps.sh -p ${PYTHON_VERSION} -d EdgeDevice
 
-RUN apt update && apt install -y libnuma1 ocl-icd-libopencl1 python3-distutils && \
+RUN apt update && apt install -y libnuma1 ocl-icd-libopencl1 && \
     rm -rf /var/lib/apt/lists/* /tmp/scripts
 
 WORKDIR /root
