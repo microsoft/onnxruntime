@@ -62,7 +62,7 @@ Status SkipLayerNormSmallOp(const SkipLayerNormParams<T>* params) {
   this->ops_.emplace_back(SkipLayerNormSmallOp<T, threads_per_block, 16>);
 
 template <typename T>
-class SkipLayerNormTunableOp : public TunableOp<SkipLayerNormParams<T>> {
+class SkipLayerNormTunableOp : public onnxruntime::rocm::tunable::TunableOp<SkipLayerNormParams<T>> {
  public:
   SkipLayerNormTunableOp() {
     ADD_OP(64)
