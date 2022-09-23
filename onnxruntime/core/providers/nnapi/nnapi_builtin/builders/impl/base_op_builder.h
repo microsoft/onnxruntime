@@ -45,11 +45,10 @@ class BaseOpBuilder : public IOpBuilder {
                                      const NodeUnit& /* node_unit */) const override {}
 
   Status AddToModelBuilder(ModelBuilder& model_builder, const NodeUnit& node_unit) const override final;
+  static bool IsOpSupported(const ModelBuilder& model_builder, const NodeUnit& node_unit);
 
  protected:
   virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const = 0;
-
-  static bool IsOpSupported(const ModelBuilder& model_builder, const NodeUnit& node_unit);
 
   virtual bool IsQuantizedOp(const NodeUnit& /* node_unit */) const { return false; }
 };

@@ -166,4 +166,10 @@ Status AddSqueezeOp(ModelBuilder& model_builder,
 Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
                                      std::vector<int32_t>& axes);
 
+bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
+                    size_t input_rank, size_t output_rank);
+
+Status AddReshapeOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                          const std::string& input, const std::vector<int32_t>& shape);
+
 }  // namespace onnxruntime::nnapi::op_builder_helpers
