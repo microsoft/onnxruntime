@@ -19,7 +19,8 @@ namespace onnxruntime {
 // Version 2 - add serialization/deserialization of sparse_initializer
 // Version 3 - add `graph_doc_string` to Model
 // Version 4 - update kernel def hashing to not depend on ordering of type constraint types (NOT BACKWARDS COMPATIBLE)
-constexpr const char* kOrtModelVersion = "4";
+// Version 5 - deprecate kernel def hashes and add KernelTypeStrResolver info to replace them (NOT BACKWARDS COMPATIBLE)
+constexpr const char* kOrtModelVersion = "5";
 
 // Check if the given ort model version is supported in this build
 inline bool IsOrtModelVersionSupported(std::string_view ort_model_version) {

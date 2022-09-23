@@ -11,6 +11,15 @@
 #include <utility>
 #include <vector>
 
+#include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/tunable/gemm_common.h"
+#include "core/providers/rocm/tunable/gemm_ck.cuh"
+#include "python/tools/kernel_explorer/device_array.h"
+#include "python/tools/kernel_explorer/kernel_explorer_interface.h"
+
+using namespace onnxruntime::rocm::tunable::blas;
+using namespace onnxruntime::rocm::tunable::blas::internal;
+
 namespace py = pybind11;
 
 namespace onnxruntime {
@@ -76,7 +85,7 @@ class CKGemm : public IKernelExplorer {
 
  private:
   using ParamsT = GemmParams<T>;
-  using OpT = contrib::rocm::Op<ParamsT>;
+  using OpT = rocm::tunable::Op<ParamsT>;
   ParamsT params_;
   std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;

@@ -102,7 +102,7 @@ bool MaxPool::IsMaxPoolOnnxNodeSupported(const NodeUnit& node_unit,
 }
 
 MaxPool::MaxPool(const OpKernelInfo& info)
-    : OpKernel(info),
+    : XnnpackKernel(info),
       pool_attrs_{info, "MaxPool", info.node().SinceVersion()} {
   uint32_t input_padding_top = gsl::narrow<uint32_t>(pool_attrs_.pads[0]);
   uint32_t input_padding_left = gsl::narrow<uint32_t>(pool_attrs_.pads[1]);
@@ -219,19 +219,20 @@ Status MaxPool::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
+  pthreadpool_t t_pool = GetThreadPool();
   xnn_status status = xnn_status_invalid_state;
   if (maxpool_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_max_pooling2d_nhwc_f32(op0_.get(), N, H, W,
                                               X.Data<float>(), Y->MutableData<float>(),
-                                              nullptr /*threadpool */);  // TBD: how to handle threading
+                                              t_pool /*threadpool */);
   } else if (maxpool_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_max_pooling2d_nhwc_u8(op0_.get(), N, H, W,
                                              X.Data<uint8_t>(), Y->MutableData<uint8_t>(),
-                                             nullptr /*threadpool */);  // TBD: how to handle threading
+                                             t_pool /*threadpool */);
   } else {
     status = xnn_setup_max_pooling2d_nhwc_s8(op0_.get(), N, H, W,
                                              X.Data<int8_t>(), Y->MutableData<int8_t>(),
-                                             nullptr /*threadpool */);  // TBD: how to handle threading
+                                             t_pool /*threadpool */);
   }
 
   if (status != xnn_status_success) {
@@ -239,7 +240,7 @@ Status MaxPool::Compute(OpKernelContext* context) const {
                            OpTypeToString(maxpool_type_), " returned ", status);
   }
 
-  status = xnn_run_operator(op0_.get(), nullptr);
+  status = xnn_run_operator(op0_.get(), t_pool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }

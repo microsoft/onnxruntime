@@ -64,7 +64,7 @@ DNNLExecutionProvider::~DNNLExecutionProvider() {
 std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer) const {
   std::vector<std::vector<size_t>> supported_node_vecs;
   std::vector<size_t> supported_node_vec;
-  
+
   std::unordered_map<std::string,int> all_nodes_count;
   std::unordered_map<std::string,int> supported_nodes_count;
 
@@ -119,17 +119,15 @@ std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(con
     LOGS_DEFAULT(ERROR) << "Total coverge: " << support_counts << ":" << all_counts
                           << " percentage: " << (float)support_counts / (float)all_counts;
   }
-  
+
 
   return supported_node_vecs;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapability(
     const GraphViewer& graph_viewer,
-    const std::vector<const KernelRegistry*>& kernel_registries) const {
+    const IKernelLookup& /*kernel_lookup*/) const {
   //follow from coreml ep's Getcapability
-
-  ORT_UNUSED_PARAMETER(kernel_registries);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
