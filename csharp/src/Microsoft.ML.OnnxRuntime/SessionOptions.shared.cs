@@ -341,23 +341,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
-        /// <param name="settings">string with Nuphar specific settings</param>
-        public void AppendExecutionProvider_Nuphar(string settings = "")
-        {
-#if __MOBILE__
-            throw new NotSupportedException("The Nuphar Execution Provider is not supported in this build");
-#else
-            var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
-            using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(handle, 1, pinnedSettingsName.Pointer));
-            }
-#endif
-        }
-
-        /// <summary>
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
         /// <param name="settings">string with TVM specific settings</param>
         public void AppendExecutionProvider_Tvm(string settings = "")
         {
