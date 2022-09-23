@@ -418,4 +418,4 @@ class FusionQOrderedAttention(Fusion):
 
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
             # self.nodes_to_remove.extend(mask_nodes)
-            #self.prune_graph = True
+            self.prune_graph = True
