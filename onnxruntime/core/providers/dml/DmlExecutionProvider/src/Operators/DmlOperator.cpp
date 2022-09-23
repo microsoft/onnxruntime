@@ -64,7 +64,7 @@ namespace Dml
                     inputEdges.push_back(inputEdge);
                 }
             }
-            operatorGraphDesc.inputEdgeCount = inputEdges.size();
+            operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
             operatorGraphDesc.inputEdges = inputEdges.data();
 
             
@@ -80,7 +80,7 @@ namespace Dml
                     outputEdges.push_back(outputEdge);
                 }
             }
-            operatorGraphDesc.outputEdgeCount = outputEdges.size();
+            operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
             operatorGraphDesc.outputEdges = outputEdges.data();
 
             ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(&operatorGraphDesc));
