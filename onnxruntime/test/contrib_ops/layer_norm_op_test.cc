@@ -120,7 +120,8 @@ TEST(LayerNormTest, LayerNorm17_double) {
   test.AddInput<double>("x", dims, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
   test.AddInput<double>("gamma", {3}, {1.0, 1.0, 1.0});
   test.AddOutput<double>("output", dims, {-1.2247, 0.0, 1.2247, -1.2247, 0.0, 1.2247});
-  test.Run();
+  // DNNL does not support double
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider});
 }
 
 }  // namespace test
