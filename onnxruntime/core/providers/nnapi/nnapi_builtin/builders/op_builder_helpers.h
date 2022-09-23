@@ -172,4 +172,7 @@ bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit
 Status AddReshapeOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
                           const std::string& input, const std::vector<int32_t>& shape);
 
+Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                         const std::string& input1, const std::string& input2);
+
 }  // namespace onnxruntime::nnapi::op_builder_helpers

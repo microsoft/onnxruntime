@@ -901,4 +901,33 @@ Status AddReshapeOperator(ModelBuilder& model_builder,
   return Status::OK();
 }
 
+Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                         const std::string& input1, const std::string& input2) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
+
+  const auto& op_type(node_unit.OpType());
+  int32_t op_code;
+  if (op_type == "Min")
+    op_code = ANEURALNETWORKS_MINIMUM;
+  else if (op_type == "Max")
+    op_code = ANEURALNETWORKS_MAXIMUM;
+  else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MinMaxOpBuilder, unknown op: ", op_type);
+  }
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input1));  // input 1
+  input_indices.push_back(operand_indices.at(input2));  // input 2
+  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
+                                                 {output}, {output_operand_type}));
+
+  return Status::OK();
+}
+
 }  // namespace onnxruntime::nnapi::op_builder_helpers
