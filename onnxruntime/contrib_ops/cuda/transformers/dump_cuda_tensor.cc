@@ -11,7 +11,7 @@ namespace contrib {
 namespace cuda {
 namespace transformers {
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
 template <typename T>
 class PinnedHostBuffer {
  public:

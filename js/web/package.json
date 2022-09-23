@@ -9,7 +9,7 @@
   },
   "author": "fs-eire",
   "module": "./lib/index.js",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
     "onnx-proto": "^4.0.4",
@@ -25,7 +25,7 @@
     "pull:wasm": "node ./script/pull-prebuilt-wasm-artifacts",
     "test:e2e": "node ./test/e2e/run",
     "build": "node ./script/build",
-    "test": "node ./script/prepare-test-data && node ./script/test-runner-cli",
+    "test": "tsc --build ../scripts && node ../scripts/prepare-onnx-node-tests && node ./script/test-runner-cli",
     "prepack": "node ./script/build && node ./script/prepack"
   },
   "keywords": [

@@ -58,7 +58,8 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true    
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-    DocUpdateNeeded: ${{ parameters.DocUpdateNeeded }}    
+    DocUpdateNeeded: ${{ parameters.DocUpdateNeeded }}
+    skipComponentGovernanceDetection: true
   workspace:
     clean: all
   pool: ${{ parameters.MachinePool }}
@@ -275,7 +276,3 @@ jobs:
     inputs:
       pathtoPublish: '$(Build.SourcesDirectory)/docs/ContribOperators.md'
       artifactName: 'ContribOperators.md'
-
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'

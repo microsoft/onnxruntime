@@ -13,6 +13,7 @@
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "helper.h"
 #include "model_builder.h"
 #include "op_support_checker.h"
@@ -29,37 +30,9 @@ struct OpBuilderRegistrations {
   std::unordered_map<std::string, const IOpBuilder*> op_builder_map;
 };
 
-#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)             \
-  do {                                                                             \
-    uint32_t _index = 0;                                                           \
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromScalar(scalar_value, _index)); \
-    input_indices.push_back(_index);                                               \
-  } while (0)
-
-Status AddTransposeOperator(ModelBuilder& model_builder,
-                            const std::string& input,
-                            const std::string& perm_name,
-                            std::vector<int32_t> perm,
-                            const std::string& output) {
-  auto& shaper(model_builder.GetShaper());
-  const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto& operand_types(model_builder.GetOperandTypes());
-
-  std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input));  // input
-
-  Shape perm_dimen = {SafeInt<uint32_t>(perm.size())};
-  OperandType perm_operand_type(Type::TENSOR_INT32, perm_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(perm_name, perm.data(), perm_operand_type));
-  uint32_t perm_idx = operand_indices.at(perm_name);
-
-  input_indices.push_back(perm_idx);  // permutation
-  ORT_RETURN_IF_ERROR(shaper.Transpose(input, perm, output));
-  OperandType output_operand_type = operand_types.at(input);
-  output_operand_type.SetDimensions(shaper[output]);
-  return model_builder.AddOperation(ANEURALNETWORKS_TRANSPOSE, input_indices, {output},
-                                    {output_operand_type});
-}
+#define ADD_SCALAR_OPERAND(model_builder, input_indices, scalar_value)          \
+  ORT_RETURN_IF_ERROR(onnxruntime::nnapi::op_builder_helpers::AddScalarOperand( \
+      model_builder, input_indices, scalar_value))
 
 static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
@@ -776,7 +749,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
   std::string perm_name = model_builder.GetUniqueName(node_unit.Name() + input + "perm");
 
-  ORT_RETURN_IF_ERROR(AddTransposeOperator(model_builder, input, perm_name, perm, output));
+  ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiTranspose(model_builder, input, perm_name, perm, output));
 
   return Status::OK();
 }
@@ -854,7 +827,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     }
 
     // Now the dest node is Gemm/Matmul, we want to make sure it is supported
-    if (!BaseOpBuilder::IsOpSupported(model_builder, node_unit)) {
+    if (!BaseOpBuilder::IsOpSupported(model_builder, dest_node_unit)) {
       return false;
     }
 
@@ -905,16 +878,9 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   } else {
     // We still need to perform a reshape here
-    // Add input
-    std::vector<uint32_t> input_indices;
-    input_indices.push_back(operand_indices.at(input));
-    // Add new shape
-    Shape shape_dimen = {static_cast<uint32_t>(shape.size())};
     std::string shape_name = model_builder.GetUniqueName(node_unit.Name() + input + "newshape");
-    OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
-    input_indices.push_back(operand_indices.at(shape_name));
-    ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices, {output}, {output_operand_type}));
+    ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape_name, shape, output,
+                                                            &shaper[output]));
   }
 
   return Status::OK();
@@ -1722,6 +1688,11 @@ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 }
 
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetNNAPIFeatureLevel())) {
+    // no initializers to skip for batch matmul
+    return;
+  }
+
   const auto& inputs = node_unit.Inputs();
   if (IsQuantizedOp(node_unit)) {
     if (node_unit.OpType() == "QLinearMatMul" || node_unit.OpType() == "MatMul") {                 // QLinearMatMul/QDQMatMul
@@ -1758,6 +1729,10 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 }
 
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (op_builder_helpers::IsSupportedBatchMatMul(node_unit, model_builder.GetNNAPIFeatureLevel())) {
+    return op_builder_helpers::BuildBatchMatMul(model_builder, node_unit);
+  }
+
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2494,9 +2469,15 @@ class GatherOpBuilder : public BaseOpBuilder {
 };
 
 void GatherOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  // Skip the second input `indices` for Gather
   const auto& inputs = node_unit.Inputs();
-  model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // indices
+  const auto& indices_name = inputs[1].node_arg.Name();
+  int32_t indices_data_type;
+  GetType(node_unit.Inputs()[1].node_arg, indices_data_type);
+  if (Contains(model_builder.GetInitializerTensors(), indices_name) &&
+      indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    // Skip the second input `indices` for Gather if it is an initializer
+    model_builder.AddInitializerToSkip(indices_name);
+  }
 }
 
 Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -2516,39 +2497,44 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   input_indices.push_back(operand_indices.at(input1));
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
-  // Add indices operand into nnapi
-  const auto& indices_tensor = *initializers.at(input2);
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(indices_tensor, unpacked_tensor));
+  int32_t indices_data_type;
+  GetType(node_unit.Inputs()[1].node_arg, indices_data_type);
+  if (Contains(model_builder.GetInitializerTensors(), input2) &&
+      indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    // Add indices operand into nnapi
+    const auto& indices_tensor = *initializers.at(input2);
+    std::vector<uint8_t> unpacked_tensor;
+    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(indices_tensor, unpacked_tensor));
 
-  const auto data_type = indices_tensor.data_type();
-  const auto indices_shape = indices_tensor.dims();
-  uint32_t size = 1;
-  Shape indices_dimen;
-  indices_dimen.reserve(indices_tensor.dims_size());
-  for (auto i = 0; i < indices_tensor.dims_size(); i++) {
-    size *= indices_shape[i];
-    indices_dimen.push_back(static_cast<uint32_t>(indices_shape[i]));
-  }
-
-  std::vector<int32_t> indices(size);
-  // see https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#type-punning-arrays for the usage of memcpy here
-  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    for (uint32_t i = 0; i < size; i++) {
-      int64_t index_i64;
-      memcpy(&index_i64, unpacked_tensor.data() + i * sizeof(int64_t), sizeof(int64_t));
-      indices[i] = SafeInt<int32_t>(index_i64);
+    const auto data_type = indices_tensor.data_type();
+    const auto indices_shape = indices_tensor.dims();
+    uint32_t size = 1;
+    Shape indices_dimen;
+    indices_dimen.reserve(indices_tensor.dims_size());
+    for (auto i = 0; i < indices_tensor.dims_size(); i++) {
+      size *= SafeInt<uint32_t>(indices_shape[i]);
+      indices_dimen.push_back(static_cast<uint32_t>(indices_shape[i]));
     }
-  } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    for (uint32_t i = 0; i < size; i++) {
-      int32_t index;
-      memcpy(&index, unpacked_tensor.data() + i * sizeof(int32_t), sizeof(int32_t));
-      indices[i] = SafeInt<int32_t>(index);
-    }
-  }
 
-  OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type));
+    std::vector<int32_t> indices(size);
+    // see https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#type-punning-arrays for the usage of memcpy here
+    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+      for (uint32_t i = 0; i < size; i++) {
+        int64_t index_i64;
+        memcpy(&index_i64, unpacked_tensor.data() + i * sizeof(int64_t), sizeof(int64_t));
+        indices[i] = SafeInt<int32_t>(index_i64);
+      }
+    } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+      for (uint32_t i = 0; i < size; i++) {
+        int32_t index;
+        memcpy(&index, unpacked_tensor.data() + i * sizeof(int32_t), sizeof(int32_t));
+        indices[i] = SafeInt<int32_t>(index);
+      }
+    }
+
+    OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
+    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type));
+  }
   input_indices.push_back(operand_indices.at(input2));
   ORT_RETURN_IF_ERROR(shaper.Gather(input1, input2, axis, output));
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);

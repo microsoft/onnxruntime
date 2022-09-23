@@ -25,7 +25,7 @@ void NextTokenScores<T>::SetScore(int token_id, T score) {
   }
 }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
 template <typename T>
 void DumpScores(const char* name, const NextTokenScores<T>& next_token_scores) {
   std::cout << name << std::endl;
@@ -45,7 +45,7 @@ void MinLengthLogitsProcessor<T>::Process(const ISequences* sequences,
     next_token_scores.SetScore(eos_token_id_, std::numeric_limits<T>::lowest());
   }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   DumpScores("MinLengthLogitsProcessor", next_token_scores);
 #endif
 }
@@ -77,7 +77,7 @@ void RepetitionPenaltyLogitsProcessor<T>::Process(const ISequences* sequences,
     }
   }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   DumpScores("RepetitionPenaltyLogitsProcessor", next_token_scores);
 #endif
 }
@@ -118,7 +118,7 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
     }
   }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   DumpScores("NoRepeatNGramLogitsProcessor", next_token_scores);
 #endif
 }
@@ -145,7 +145,7 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
     }
   }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   DumpScores("VocabMaskLogitsProcessor", next_token_scores);
 #endif
 }
@@ -180,44 +180,17 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
     }
   }
 
-#ifdef DEBUG_BEAM_SEARCH
+#ifdef DEBUG_GENERATION
   DumpScores("PrefixVocabMaskLogitsProcessor", next_token_scores);
 #endif
 }
 
 void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
-  processor_list_.clear();
+  LogitsProcessorInitImpl<BeamSearchParameters>(parameters);
+}
 
-  if (parameters.repetition_penalty != 1.0f) {  // 1.0 means no penalty
-    repetition_penalty_processor_ = std::make_unique<RepetitionPenaltyLogitsProcessor<float>>(
-        parameters.repetition_penalty);
-    processor_list_.push_back(repetition_penalty_processor_.get());
-  }
-
-  if (parameters.no_repeat_ngram_size > 0) {
-    no_repeat_ngram_processor_ = std::make_unique<NoRepeatNGramLogitsProcessor<float>>(parameters.no_repeat_ngram_size);
-    processor_list_.push_back(no_repeat_ngram_processor_.get());
-  }
-
-  if (!parameters.vocab_mask.empty()) {
-    vocab_mask_processor_ = std::make_unique<VocabMaskLogitsProcessor<float>>(parameters.vocab_mask);
-    processor_list_.push_back(vocab_mask_processor_.get());
-  }
-
-  if (!parameters.prefix_vocab_mask.empty()) {
-    prefix_vocab_mask_processor_ = std::make_unique<PrefixVocabMaskLogitsProcessor<float>>(parameters.prefix_vocab_mask,
-                                                                                           parameters.batch_size);
-    processor_list_.push_back(prefix_vocab_mask_processor_.get());
-  }
-
-  if (parameters.min_length > 0) {
-    min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<float>>(parameters.min_length,
-                                                                              parameters.eos_token_id);
-    processor_list_.push_back(min_length_processor_.get());
-  }
-
-  batch_beam_size_ = parameters.BatchBeamSize();
-  vocab_size_ = parameters.vocab_size;
+void LogitsProcessorList::Init(const GreedySearchParameters& parameters) {
+  LogitsProcessorInitImpl<GreedySearchParameters>(parameters);
 }
 
 void LogitsProcessorList::Process(const ISequences* sequences,

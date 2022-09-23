@@ -55,8 +55,8 @@ class IExecutionFrame {
   // Override the index-th output with ort_value
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
 #endif
-  
-#ifdef ENABLE_TRAINING  
+
+#ifdef ENABLE_TRAINING
   void UpdateFeeds(gsl::span<const int> feed_mlvalue_idxs, gsl::span<const OrtValue> feeds);
   void UpdateFetches(gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
 
@@ -149,7 +149,7 @@ class ExecutionFrame final : public IExecutionFrame {
 
   Status AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_value, int ort_value_index_reuse, MLDataType element_type,
                                                 const OrtMemoryInfo& location, const TensorShape& shape,
-                                                bool create_fence = false);
+                                                bool create_fence = false, bool is_strided_tensor = false);
 
   // thread-safe
   Status GeneratePatterns(MemoryPatternGroup& out);

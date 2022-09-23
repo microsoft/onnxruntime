@@ -447,6 +447,7 @@ requirements_file = "requirements.txt"
 
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, "--enable_training")
+enable_training_on_device = parse_arg_remove_boolean(sys.argv, "--enable_training_on_device")
 disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, "--disable_auditwheel_repair")
 default_training_package_device = parse_arg_remove_boolean(sys.argv, "--default_training_package_device")
 
@@ -463,10 +464,10 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
 ]
 
 if not enable_training:
@@ -492,6 +493,10 @@ if enable_training:
             "onnxruntime.training.utils.data",
         ]
     )
+    if enable_training_on_device:
+        packages.append("onnxruntime.training.onnxblock")
+        packages.append("onnxruntime.training.onnxblock.loss")
+        packages.append("onnxruntime.training.onnxblock.optim")
     package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor"] = ["*.cc"]
     package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc"]
     package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator"] = ["*.cc"]

@@ -882,10 +882,11 @@ class SessionState {
 };
 
 struct Tensor final {
+  static std::unique_ptr<Tensor> CreateDefault() { return g_host->Tensor__construct_default(); }
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) { return g_host->Tensor__construct(p_type, shape, std::move(allocator)); }
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset = 0) { return g_host->Tensor__construct(p_type, shape, p_data, alloc, offset); }
 
-  static void operator delete(void* p) { g_host->Tensor__operator_delete(reinterpret_cast<Tensor*>(p)); }
+  static void operator delete(void* p) noexcept { g_host->Tensor__operator_delete(reinterpret_cast<Tensor*>(p)); }
 
   static void InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) {
     g_host->Tensor__InitOrtValue(elt_type, shape, std::move(allocator), ort_value);
@@ -935,6 +936,10 @@ struct Tensor final {
   Tensor() = delete;
   Tensor(const Tensor&) = delete;
   void operator=(const Tensor&) = delete;
+  Tensor& operator=(Tensor&& o) noexcept {
+    g_host->Tensor__move_assign(*this, std::move(o));
+    return *this;
+  }
 };
 
 template <>

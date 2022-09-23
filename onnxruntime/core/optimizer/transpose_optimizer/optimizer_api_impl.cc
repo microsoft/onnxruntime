@@ -262,11 +262,11 @@ std::vector<uint8_t> ApiTensor::Data() const {
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto_.data_type())->GetElementType();
   auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(tensor_proto_);
   TensorShape tensor_shape{std::move(tensor_shape_dims)};
-  auto tensor = onnxruntime::Tensor::Create(tensor_dtype, tensor_shape, cpu_allocator_);
+  onnxruntime::Tensor tensor(tensor_dtype, tensor_shape, cpu_allocator_);
   ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path_.ToPathString().c_str(),
-                                                tensor_proto_, *tensor));
-  size_t num_bytes = gsl::narrow_cast<size_t>(tensor->SizeInBytes());
-  const uint8_t* data = static_cast<const uint8_t*>(tensor->DataRaw());
+                                                tensor_proto_, tensor));
+  size_t num_bytes = gsl::narrow_cast<size_t>(tensor.SizeInBytes());
+  const uint8_t* data = static_cast<const uint8_t*>(tensor.DataRaw());
   return std::vector<uint8_t>(data, data + num_bytes);
 }
 // </ApiTensor>
@@ -515,7 +515,7 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto->data_type())->GetElementType();
   auto tensor_shape_dims = utils::GetTensorShapeFromTensorProto(*tensor_proto);
   TensorShape tensor_shape{tensor_shape_dims};
-  std::unique_ptr<Tensor> in_tensor = Tensor::Create(tensor_dtype, tensor_shape, cpu_allocator_);
+  Tensor in_tensor(tensor_dtype, tensor_shape, cpu_allocator_);
 
   std::vector<int64_t> new_tensor_shape_dims;
   std::vector<size_t> permutations;
@@ -528,13 +528,12 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   }
 
   TensorShape new_tensor_shape(new_tensor_shape_dims);
-
-  std::unique_ptr<Tensor> out_tensor = Tensor::Create(tensor_dtype, new_tensor_shape, cpu_allocator_);
+  Tensor out_tensor(tensor_dtype, new_tensor_shape, cpu_allocator_);
 
   ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), graph_.ModelPath().ToPathString().c_str(),
-                                                *tensor_proto, *in_tensor));
+                                                *tensor_proto, in_tensor));
 
-  ORT_THROW_IF_ERROR(Transpose::DoTranspose(permutations, *in_tensor, *out_tensor));
+  ORT_THROW_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
 
   auto& node_arg = *graph_.GetNodeArg(name_str);
   TensorShapeProto new_shape;
@@ -544,7 +543,7 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
 
   node_arg.SetShape(new_shape);
 
-  ONNX_NAMESPACE::TensorProto new_tensor_proto = utils::TensorToTensorProto(*out_tensor, name_str);
+  ONNX_NAMESPACE::TensorProto new_tensor_proto = utils::TensorToTensorProto(out_tensor, name_str);
   graph_.RemoveInitializedTensor(name_str);
   graph_.AddInitializedTensor(new_tensor_proto);
 }
