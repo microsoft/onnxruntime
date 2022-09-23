@@ -157,6 +157,7 @@ stages:
               -e NIGHTLY_BUILD \
               -e DEFAULT_TRAINING_PACKAGE_DEVICE \
               -e BUILD_BUILDNUMBER \
+              -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
               onnxruntimetraininggpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
@@ -205,7 +206,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Upload wheel'
-        condition: and(succeeded(), eq(variables['UploadWheel'], 'yes'))
+        condition: and(succeeded(), and(eq(variables['UploadWheel'], 'yes'), ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true')))
         inputs:
           script: |
             set -e -x
