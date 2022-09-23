@@ -551,6 +551,11 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_MIGraphX(const Or
   return *this;
 }
 
+inline SessionOptions& SessionOptions::AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CANN(p_, &provider_options));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::AppendExecutionProvider(
     const std::string& provider_name,
     const std::unordered_map<std::string, std::string>& provider_options) {

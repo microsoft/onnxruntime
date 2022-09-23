@@ -29,7 +29,7 @@ if [ $BUILD_DEVICE == "GPU" ]; then
     BUILD_ARGS="$BUILD_ARGS --use_cuda --use_tensorrt --cuda_version=11.6 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6"
 fi
 # We assume the machine doesn't have gcc and python development header files, so we don't build onnxruntime from source
-sudo rm -f /build /onnxruntime_src
+sudo rm -rf /build /onnxruntime_src
 sudo ln -s $BUILD_SOURCESDIRECTORY /onnxruntime_src
 python3 -m pip uninstall -y $PYTHON_PACKAGE_NAME ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
 cp $BUILD_SOURCESDIRECTORY/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $BUILD_BINARIESDIRECTORY/requirements.txt

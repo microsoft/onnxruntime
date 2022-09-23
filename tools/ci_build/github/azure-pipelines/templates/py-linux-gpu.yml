@@ -32,6 +32,7 @@ jobs:
       displayName: 'Build Python Wheel'
       inputs:
         script: |
+            set -e -x
             mkdir -p $HOME/.onnx
             docker run --rm \
               --volume /data/onnx:/data/onnx:ro \
@@ -43,9 +44,7 @@ jobs:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimecuda116xtrt84build${{ parameters.arch }} /bin/bash tools/ci_build/github/linux/build_linux_arm64_python_package.sh -d GPU
-            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-            rm -f $(Build.BinariesDirectory)/Release/models
-            rm -rf $(Build.BinariesDirectory)/Release/_deps $(Build.BinariesDirectory)/Release/CMakeFiles
+            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/models $(Build.BinariesDirectory)/Release/_deps $(Build.BinariesDirectory)/Release/CMakeFiles
             cd $(Build.BinariesDirectory)/Release
             find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 

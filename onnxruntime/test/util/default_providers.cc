@@ -204,5 +204,14 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
+#ifdef USE_CANN
+  OrtCANNProviderOptions provider_options{};
+  if (auto factory = CannProviderFactoryCreator::Create(&provider_options))
+    return factory->CreateProvider();
+#endif
+  return nullptr;
+}
+
 }  // namespace test
 }  // namespace onnxruntime
