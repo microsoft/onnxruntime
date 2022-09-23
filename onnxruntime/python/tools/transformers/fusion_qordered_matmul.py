@@ -173,7 +173,7 @@ class FusionQOrderedMatMul(Fusion):
             logger.debug(f"It is not safe to fuse QOrderedMatMul node. Skip")
             return
 
-        # TODO: Adjust after QOrderedAttention
+        # Deal with the case where-in the Attention subgraph is not fused
         if transpose_node_0 is not None:
             self.model.replace_node_input(transpose_node_0, transpose_node_0.input[0], dequantize_node_0.input[0])
 
@@ -192,7 +192,7 @@ class FusionQOrderedMatMul(Fusion):
             fused_node_inputs.append(residual_add_dequantize_node.input[1])
 
         # The MatMul weight 'B' and 'bias' need some post-processing
-        # Transpose weight 'B' from ROW to COL
+        # Transpose weight 'B' from order ROW to order COL
         # This offline transpose is needed only while using the CUDA EP
         # TODO: Make this fusion logic EP-agnostic ?
         if is_weight_transpose_required:

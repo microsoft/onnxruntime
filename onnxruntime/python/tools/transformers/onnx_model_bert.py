@@ -385,8 +385,8 @@ class BertOnnxModel(OnnxModel):
                 self.attention_mask.set_mask_format(options.attention_mask_format)
             self.fuse_attention()
 
-        # Perform the MatMul fusion after the Attention fusion
-        # as we don't want to fuse the MatMuls inside the Attention
+        # Perform the MatMul fusion after the Attention fusion as we do not
+        # want to fuse the MatMuls inside the Attention subgraphs
         if (options is None) or options.enable_qordered_matmul:
             self.fuse_qordered_mamtul()
 

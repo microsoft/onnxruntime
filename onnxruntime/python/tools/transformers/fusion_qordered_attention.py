@@ -369,7 +369,7 @@ class FusionQOrderedAttention(Fusion):
                 attention_inputs.append("")
 
             # The MatMul weight 'B' and 'bias' need some post-processing
-            # Transpose weight 'B' from ROW to COL
+            # Transpose weight 'B' from order ROW to order COL
             # This offline transpose is needed only while using the CUDA EP
             # TODO: Make this fusion logic EP-agnostic ?
             q_weight_tensor = self.model.get_initializer(dequantize_q_matmul_weight.input[0])
