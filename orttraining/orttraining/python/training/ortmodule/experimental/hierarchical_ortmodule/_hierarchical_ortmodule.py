@@ -3,9 +3,10 @@
 # debug_options.py
 import tempfile
 import torch
-from ... import ORTModule
+import warnings
+from ... import ORTModule, _utils
 from .... import ortmodule
-from ...debug_options import DebugOptions
+from ...debug_options import DebugOptions, LogLevel
 
 # nn.Module's in this set are considered exportable to ONNX.
 # For other nn.Module's, torch.onnx.export is called to check if
@@ -112,6 +113,8 @@ class HierarchicalORTModule(torch.nn.Module):
                                 training=torch.onnx.TrainingMode.TRAINING,
                             )
                     except Exception as e:
+                        if self._debug_options.logging.log_level <= LogLevel.INFO:
+                            warnings.warn(f"Module {module} is not exportable due to {_utils.get_exception_as_string(e)}")
                         exportable = False
 
                 exportable_list[module] = exportable
@@ -154,8 +157,10 @@ class HierarchicalORTModule(torch.nn.Module):
                             # If this module is not exportable for one arg
                             # group, we say this module is not exportable.
                             module_exportable = False
+                            if self._debug_options.logging.log_level <= LogLevel.INFO:
+                                warnings.warn(f"\nModule {module} is not exportable due to Exception \n {_utils.get_exception_as_string(e)}")
                             # Already found a broken case.
-                            # No need to check next case.
+                            # No need to check next case. Uncomment to see all export errors in log
                             break
 
                     exportable_list[module] = module_exportable
@@ -176,6 +181,18 @@ class HierarchicalORTModule(torch.nn.Module):
         # Try exporter on all module-input pairs. If a module can be exported with
         # all its recorded inputs, then it's exporable.
         check_exportable(self._original_module)
+        if self._debug_options.logging.log_level <= LogLevel.INFO:
+            exportable_modules = []
+            unexportable_modules = []
+            for module in exportable_list:
+                if exportable_list[module]:
+                    exportable_modules.append(module)
+                else:
+                    unexportable_modules.append(module)
+            warnings.warn(
+                f"There're {len(exportable_modules)} exportable_modules and {len(unexportable_modules)} \
+                unexportable_modules. unexportable_modules: {unexportable_modules}"
+            )
 
         # A naive way of determining if ORT can run nn.Module
         def is_supported(module):
