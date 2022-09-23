@@ -9,14 +9,15 @@
 #include <vector>
 
 #include "contrib_ops/rocm/bert/skip_layer_norm_impl_kernel.h"
-#include "contrib_ops/rocm/bert/tunable_op.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/tunable/tunable.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
 
 template <typename T>
-struct SkipLayerNormParams : OpParams {
+struct SkipLayerNormParams : onnxruntime::rocm::tunable::OpParams {
   SkipLayerNormParams(hipStream_t stream, T* output, const T* input,
                       const T* skip, const T* gamma, const T* beta,
                       const T* bias, float epsilon, const int ld,
@@ -42,9 +43,10 @@ struct SkipLayerNormParams : OpParams {
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 Status SkipLayerNormSmallOp(const SkipLayerNormParams<T>* params) {
+  using onnxruntime::rocm::CeilDiv;
   TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(
       !((params->ld <= 1024 && params->ld % VecSize == 0 && params->ld == ThreadsPerBlock * VecSize)));
-  SkipLayerNormKernelSmall<T, ThreadsPerBlock, VecSize><<<dim3(CeilingDivision(params->element_count, params->ld)),
+  SkipLayerNormKernelSmall<T, ThreadsPerBlock, VecSize><<<dim3(CeilDiv(params->element_count, params->ld)),
                                                           dim3(ThreadsPerBlock),
                                                           0, params->stream>>>(
       params->ld, params->input, params->skip,
