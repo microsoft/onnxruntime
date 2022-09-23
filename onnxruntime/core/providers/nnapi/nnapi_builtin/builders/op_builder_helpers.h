@@ -138,14 +138,14 @@ Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
                                       int32_t zero_point,
                                       const std::optional<std::vector<float>>& scales);
 
+Status IsOpInRequiredLayout(bool use_nchw, const NodeUnit& node_unit);
+
 void AddQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder,
                                             const NodeUnitIODef::QuantParam& quant_param);
 
 // Ignore the input (with quantization scale and ZP if available)
 // The input (usually weight) is already embedded in the NNAPI model
 void AddInputToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_def);
-
-Status IsOpInRequiredLayout(bool use_nchw, const NodeUnit& node_unit);
 
 Status AddBinaryOperator(int32_t op_type,
                          ModelBuilder& model_builder,
@@ -163,16 +163,16 @@ Status AddSqueezeOp(ModelBuilder& model_builder,
                     const std::string& output,
                     std::vector<int32_t> axes);
 
-Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                                     std::vector<int32_t>& axes);
-
-bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
-                    size_t input_rank, size_t output_rank);
+Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                         const std::string& input1, const std::string& input2);
 
 Status AddReshapeOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
                           const std::string& input, const std::vector<int32_t>& shape);
 
-Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                         const std::string& input1, const std::string& input2);
+bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
+                    size_t input_rank, size_t output_rank);
+
+Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                                     std::vector<int32_t>& axes);
 
 }  // namespace onnxruntime::nnapi::op_builder_helpers

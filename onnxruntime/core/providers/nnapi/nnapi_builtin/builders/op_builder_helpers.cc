@@ -667,6 +667,15 @@ Status IsValidConvWeightQuantizedType(const ModelBuilder& model_builder,
   return Status::OK();
 }
 
+Status IsOpInRequiredLayout(bool use_nchw, const NodeUnit& node_unit) {
+  bool is_op_nhwc = node_unit.Domain() == kMSInternalNHWCDomain;
+  if (is_op_nhwc && use_nchw) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Expected layout and operator layout do not match. Possible bug in layout optimizer.");
+  }
+
+  return Status::OK();
+}
 void AddQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_builder,
                                             const NodeUnitIODef::QuantParam& quant_param) {
   // If we reach here, we assume the io_def has quant_param
@@ -682,16 +691,6 @@ void AddInputToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_def) {
   model_builder.AddInitializerToSkip(io_def.node_arg.Name());  // main input
   if (io_def.quant_param)
     AddQuantizationScaleAndZeroPointToSkip(model_builder, *io_def.quant_param);
-}
-
-Status IsOpInRequiredLayout(bool use_nchw, const NodeUnit& node_unit) {
-  bool is_op_nhwc = node_unit.Domain() == kMSInternalNHWCDomain;
-  if (is_op_nhwc && use_nchw) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Expected layout and operator layout do not match. Possible bug in layout optimizer.");
-  }
-
-  return Status::OK();
 }
 
 Status AddBinaryOperator(int32_t op_type,
@@ -799,6 +798,35 @@ Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit
   return Status::OK();
 }
 
+Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
+                         const std::string& input1, const std::string& input2) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
+
+  const auto& op_type(node_unit.OpType());
+  int32_t op_code;
+  if (op_type == "Min")
+    op_code = ANEURALNETWORKS_MINIMUM;
+  else if (op_type == "Max")
+    op_code = ANEURALNETWORKS_MAXIMUM;
+  else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MinMaxOpBuilder, unknown op: ", op_type);
+  }
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input1));  // input 1
+  input_indices.push_back(operand_indices.at(input2));  // input 2
+  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
+                                                 {output}, {output_operand_type}));
+
+  return Status::OK();
+}
+
 // We can skip the Reshape if all the output edges satisfies both the following conditions
 // 1. The output of the reshape/flatten is not an output of the graph
 // 2. The output of the reshape/flatten is the input 0 of one or more GEMM/Matmul operators,
@@ -897,35 +925,6 @@ Status AddReshapeOperator(ModelBuilder& model_builder,
     ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape_name, shape, output,
                                                             &shaper[output]));
   }
-
-  return Status::OK();
-}
-
-Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                         const std::string& input1, const std::string& input2) {
-  auto& shaper(model_builder.GetShaper());
-  const auto& operand_indices(model_builder.GetOperandIndices());
-  const auto& operand_types(model_builder.GetOperandTypes());
-
-  const auto& output = node_unit.Outputs()[0].node_arg.Name();
-
-  const auto& op_type(node_unit.OpType());
-  int32_t op_code;
-  if (op_type == "Min")
-    op_code = ANEURALNETWORKS_MINIMUM;
-  else if (op_type == "Max")
-    op_code = ANEURALNETWORKS_MAXIMUM;
-  else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MinMaxOpBuilder, unknown op: ", op_type);
-  }
-
-  std::vector<uint32_t> input_indices;
-  input_indices.push_back(operand_indices.at(input1));  // input 1
-  input_indices.push_back(operand_indices.at(input2));  // input 2
-  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
-  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
-  ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
-                                                 {output}, {output_operand_type}));
 
   return Status::OK();
 }

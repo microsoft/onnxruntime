@@ -29,15 +29,6 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-void CreateConvOpSupportChecker(const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
-  CreateSharedOpSupportCheckerImpl<ConvOpSupportChecker>(
-      op_type, op_registrations,
-      {
-          "Conv",
-          "QLinearConv",
-      });
-}
-
 bool ConvOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedConv(GetQuantizedOpType(node_unit));
 }
@@ -109,6 +100,15 @@ bool ConvOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   }
 
   return true;
+}
+
+void CreateConvOpSupportChecker(const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  CreateSharedOpSupportCheckerImpl<ConvOpSupportChecker>(
+      op_type, op_registrations,
+      {
+          "Conv",
+          "QLinearConv",
+      });
 }
 
 }  // namespace nnapi

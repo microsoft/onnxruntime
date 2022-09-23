@@ -49,21 +49,6 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
   AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
 }
 
-void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  CreateSharedOpBuilderImpl<BinaryOpBuilder>(
-      op_type, op_registrations,
-      {
-          "Add",
-          "Sub",
-          "Mul",
-          "Div",
-          "QLinearAdd",
-          "QLinearMul",
-          "Pow",
-          "PRelu",
-      });
-}
-
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& op_type(node_unit.OpType());
   const auto& inputs = node_unit.Inputs();
@@ -122,6 +107,21 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
                            input1, input2,
                            add_activation, fuse_code,
                            output, y_scale, y_zero_point);
+}
+
+void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<BinaryOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Add",
+          "Sub",
+          "Mul",
+          "Div",
+          "QLinearAdd",
+          "QLinearMul",
+          "Pow",
+          "PRelu",
+      });
 }
 
 }  // namespace nnapi

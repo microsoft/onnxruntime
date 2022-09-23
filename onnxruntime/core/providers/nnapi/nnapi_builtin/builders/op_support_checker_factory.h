@@ -8,19 +8,6 @@
 namespace onnxruntime {
 namespace nnapi {
 
-/* // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
-// such that we can reduce binary size.
-// This is for multiple ops share the same OpSupportChecker, we only need create one for all of them
-#define NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER(OP_TYPE, SUPPORT_CHECKER_NAME) \
-  SUPPORT_CHECKER_NAME::CreateSharedOpSupportChecker(OP_TYPE, op_registrations);
-
-// This is for ops with dedicated OpSupportChecker
-#define NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER(OP_TYPE, SUPPORT_CHECKER_NAME)                                 \
-  do {                                                                                                        \
-    op_registrations.support_checkers.push_back(std::make_unique<SUPPORT_CHECKER_NAME>());                    \
-    op_registrations.op_support_checker_map.emplace(OP_TYPE, op_registrations.support_checkers.back().get()); \
-  } while (0) */
-
 struct OpSupportCheckerRegistrations {
   std::vector<std::unique_ptr<IOpSupportChecker>> support_checkers;
   std::unordered_map<std::string, const IOpSupportChecker*> op_support_checker_map;

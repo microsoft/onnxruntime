@@ -35,15 +35,6 @@ bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedConv(GetQuantizedOpType(node_unit));
 }
 
-void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  CreateSharedOpBuilderImpl<ConvOpBuilder>(
-      op_type, op_registrations,
-      {
-          "Conv",
-          "QLinearConv",
-      });
-}
-
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
   // skip the weight for conv as we need to transpose
@@ -273,6 +264,15 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(operationCode, input_indices,
                                                  {output}, {output_operand_type}));
   return Status::OK();
+}
+
+void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  CreateSharedOpBuilderImpl<ConvOpBuilder>(
+      op_type, op_registrations,
+      {
+          "Conv",
+          "QLinearConv",
+      });
 }
 
 }  // namespace nnapi

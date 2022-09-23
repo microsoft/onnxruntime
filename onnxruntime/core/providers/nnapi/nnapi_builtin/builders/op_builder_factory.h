@@ -8,19 +8,6 @@
 namespace onnxruntime {
 namespace nnapi {
 
-/* // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
-// such that we can reduce binary size.
-// This is for multiple ops share the same OpBuilder, we only need create one for all of them
-#define NNAPI_EP_ADD_SHARED_OP_BUILDER(OP_TYPE, BUILDER_NAME) \
-  BUILDER_NAME::CreateSharedOpBuilder(OP_TYPE, OpBuilderRegistrations& op_registrations);
-
-// This is for ops with dedicated OpBuilder
-#define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME)                                 \
-  do {                                                                                        \
-    OpBuilderRegistrations& op_registrations.builders.push_back(std::make_unique<BUILDER_NAME>());                    \
-    OpBuilderRegistrations& op_registrations.op_builder_map.emplace(OP_TYPE, OpBuilderRegistrations& op_registrations.builders.back().get()); \
-  } while (0) */
-
 struct OpBuilderRegistrations {
   std::vector<std::unique_ptr<IOpBuilder>> builders;
   std::unordered_map<std::string, const IOpBuilder*> op_builder_map;

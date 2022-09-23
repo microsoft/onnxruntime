@@ -18,12 +18,6 @@ class ClipOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 };
 
-void CreateClipOpSupportChecker(
-    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
-  op_registrations.support_checkers.push_back(std::make_unique<ClipOpSupportChecker>());
-  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
-}
-
 bool ClipOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                              const OpSupportCheckParams& /* params */) const {
   float min, max;
@@ -39,6 +33,12 @@ bool ClipOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   LOGS_DEFAULT(VERBOSE) << "Clip only supports [min, max] = [0, 6] or [-1, 1], the input is ["
                         << min << ", " << max << "]";
   return false;
+}
+
+void CreateClipOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<ClipOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
 }
 
 }  // namespace nnapi

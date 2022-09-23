@@ -21,13 +21,6 @@ class BatchNormalizationOpSupportChecker : public BaseOpSupportChecker {
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 7; }
 };
 
-void CreateBatchNormalizationOpSupportChecker(
-    const std::string& op_type,
-    OpSupportCheckerRegistrations& op_registrations) {
-  op_registrations.support_checkers.push_back(std::make_unique<BatchNormalizationOpSupportChecker>());
-  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
-}
-
 bool BatchNormalizationOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                            const OpSupportCheckParams& /* params */) const {
   if (node_unit.Outputs().size() != 1) {
@@ -77,6 +70,13 @@ bool BatchNormalizationOpSupportChecker::IsOpSupportedImpl(const InitializedTens
   }
 
   return true;
+}
+
+void CreateBatchNormalizationOpSupportChecker(
+    const std::string& op_type,
+    OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<BatchNormalizationOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
 }
 
 }  // namespace nnapi

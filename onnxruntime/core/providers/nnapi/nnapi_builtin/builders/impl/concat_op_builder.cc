@@ -31,11 +31,6 @@ class ConcatOpBuilder : public BaseOpBuilder {
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.builders.push_back(std::make_unique<ConcatOpBuilder>());
-  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
-}
-
 bool ConcatOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   // TODO: add support of QLinearConcat
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQConcat;
@@ -139,6 +134,11 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION, input_indices,
                                                  {output}, {output_operand_type}));
   return Status::OK();
+}
+
+void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<ConcatOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 
 }  // namespace nnapi

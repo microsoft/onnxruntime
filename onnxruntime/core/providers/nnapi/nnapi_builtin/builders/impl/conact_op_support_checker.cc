@@ -25,12 +25,6 @@ class ConcatOpSupportChecker : public BaseOpSupportChecker {
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-void CreateConcatOpSupportChecker(
-    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
-  op_registrations.support_checkers.push_back(std::make_unique<ConcatOpSupportChecker>());
-  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
-}
-
 bool ConcatOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   // TODO add support of QLinearConcat
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQConcat;
@@ -121,6 +115,12 @@ bool ConcatOpSupportChecker::HasSupportedInputOutputsImpl(
   }
 
   return true;
+}
+
+void CreateConcatOpSupportChecker(
+    const std::string& op_type, OpSupportCheckerRegistrations& op_registrations) {
+  op_registrations.support_checkers.push_back(std::make_unique<ConcatOpSupportChecker>());
+  op_registrations.op_support_checker_map.emplace(op_type, op_registrations.support_checkers.back().get());
 }
 
 }  // namespace nnapi
