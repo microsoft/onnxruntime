@@ -144,10 +144,10 @@ class BeamSearchBase : public GenerateBase  {
   ~BeamSearchBase() override = default;
 
   // Initialize by validating all the inputs, and allocating the output tensors.
-  Status Initialize();
+  Status Initialize() override;
 
   // Validate inputs.
-  Status CheckInputs(const OpKernelContextInternal& context);
+  Status CheckInputs(const OpKernelContextInternal& context) override;
 
  protected:
   // Process logits and append next tokens to sequences.
