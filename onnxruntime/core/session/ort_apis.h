@@ -399,8 +399,9 @@ ORT_API_STATUS_IMPL(KernelInfo_GetOutputNodeArg, _In_ const OrtKernelInfo* info,
 ORT_API_STATUS_IMPL(KernelInfo_GetProviderOptions, _In_ const OrtKernelInfo* info,
                     _Outptr_ OrtProviderOptions** provider_options);
 
-ORT_API_STATUS_IMPL(ProviderOptions_GetKeys, _In_ const OrtProviderOptions* provider_options, _Out_ char* out,
-                    _Inout_ size_t* size, _Out_opt_ size_t* num_keys);
+ORT_API_STATUS_IMPL(ProviderOptions_Serialize, _In_ const OrtProviderOptions* provider_options,
+                    _Out_ char* keys, _Inout_ size_t* keys_size,
+                    _Out_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options);
 ORT_API(void, ReleaseProviderOptions, _Frees_ptr_opt_ OrtProviderOptions* provider_options);
 
 ORT_API_STATUS_IMPL(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_ char* out, _Inout_ size_t* size);

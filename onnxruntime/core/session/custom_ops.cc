@@ -218,27 +218,71 @@ OrtStatusPtr SerializeProviderOptionsKeysOrVals(_In_ const std::vector<std::stri
   return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ProviderOptions_GetKeys, _In_ const OrtProviderOptions* provider_options, _Out_ char* out,
-                    _Inout_ size_t* size, _Out_opt_ size_t* num_keys) {
+ORT_API_STATUS_IMPL(OrtApis::ProviderOptions_Serialize, _In_ const OrtProviderOptions* provider_options,
+                    _Out_ char* keys, _Inout_ size_t* keys_size,
+                    _Out_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options) {
   API_IMPL_BEGIN
   const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
-  const size_t num_options = options->size();
 
-  // Gather all keys and determine total serialized size.
-  std::vector<std::string> keys;
-  size_t total_size = 0;
+  size_t k_size = 0;
+  size_t v_size = 0;
 
-  keys.reserve(num_options);
+  // Calculate total serialized sizes.
   for (const auto& it : *options) {
-    keys.push_back(it.first);
-    total_size += it.first.length() + 1;  // Include separating null-terminators
+    k_size += it.first.length() + 1;  // Include separating null-terminators
+    v_size += it.second.length() + 1;
   }
 
-  if (num_keys) {
-    *num_keys = num_options;
+  if (num_options) {  // Always set num_options if user pass a valid pointer.
+    *num_options = options->size();
   }
 
-  return SerializeProviderOptionsKeysOrVals(keys, total_size, out, size);
+  if (keys == nullptr || values == nullptr) {  // User is querying buffer sizes.
+    *keys_size = k_size;
+    *values_size = v_size;
+    return nullptr;
+  }
+
+  const bool keys_fit = *keys_size >= k_size;
+  const bool vals_fit = *values_size >= v_size;
+
+  if (keys_fit && vals_fit) {  // User provided buffers that are large enough.
+    auto push_str = [](char* out, const std::string& str) {
+      const size_t len = str.length();
+
+      std::memcpy(out, str.data(), len);
+      out[len] = '\0';
+      out += len + 1;
+
+      return out;
+    };
+
+    // Copy all items to output buffers. Items are separated by null-terminators.
+    for (const auto& it : *options) {
+      keys = push_str(keys, it.first);
+      values = push_str(values, it.second);
+    }
+
+    *keys_size = k_size;
+    *values_size = v_size;
+    return nullptr;
+  }
+
+  // User has provided at least one buffer that is not large enough
+  *keys_size = k_size;
+  *values_size = v_size;
+
+  const char* err_msg = nullptr;
+
+  if (keys_fit && !vals_fit) {
+    err_msg = "Values buffer is not large enough";
+  } else if (!keys_fit && vals_fit) {
+    err_msg = "Keys buffer is not large enough";
+  } else {
+    err_msg = "Values and keys buffers are not large enough";
+  }
+
+  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg);
   API_IMPL_END
 }
 

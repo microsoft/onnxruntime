@@ -3547,53 +3547,33 @@ struct OrtApi {
   /// \name OrtProviderOptions
   /// @{
 
-  /** \brief Get serialized provider options keys.
+  /** \brief Get serialized provider options keys and values.
   *
-  * If `out` is nullptr, the value of `size` is set to the minimum buffer size necessary to
-  * serialize all keys, and a success status is returned.
+  * If either `keys` or `values` are nullptr, the values of `keys_size` and `values_size`
+  * are set to the minimum buffer sizes necessary to store all serialized keys and values respectively,
+  * and a success status is returned.
   *
-  * If the `size` parameter is greater than or equal to the required serialization size,
-  * the value of `size` is set to the actual serialized size, the provided memory
-  * is filled with the keys (separated by '\0'), and a success status is returned.
+  * If the `keys_size` and `values_size` parameters are both large enough,
+  * the values of `keys_size` and `values_size` are set to the actual serialized sizes, the provided buffers
+  * are filled with the corresponding keys or values (separated by '\0'), and a success status is returned.
   *
-  * If the `size` parameter is less than the required size to serialize all keys and `out`
-  * is not nullptr, the value of `size` is set to the size of all serialized keys
-  * and a failure status is returned.
+  * If either of the `keys_size` or `values_size` parameters is less than the required size and
+  * both `keys` and `values` are not nullptr, the values `keys_size` and `values_size` are set to the required
+  * sizes and a failure status is returned.
   *
   * \param[in] provider_options
-  * \param[out] out The array into which to serialize keys (separated by '\0').
-  * \param[out] size See above comments for details.
-  * \param[out] num_keys Set to the number of keys if not a nullptr.
+  * \param[out] keys The buffer into which to serialize keys (separated by '\0').
+  * \param[out] keys_size See above comments for details.
+  * \param[out] values The buffer into which to serialize values (separated by '\0').
+  * \param[out] values_size See above comments for details.
+  * \param[out] num_options Set to the number of provider options if not a nullptr.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.13
   */
-  ORT_API2_STATUS(ProviderOptions_GetKeys, _In_ const OrtProviderOptions* provider_options, _Out_ char* out,
-                  _Inout_ size_t* size, _Out_opt_ size_t* num_keys);
-
-  /** \brief Get serialized provider options values.
-  *
-  * If `out` is nullptr, the value of `size` is set to the minimum buffer size necessary to
-  * serialize all values, and a success status is returned.
-  *
-  * If the `size` parameter is greater than or equal to the required serialization size,
-  * the value of `size` is set to the actual serialized size, the provided memory
-  * is filled with the values (separated by '\0'), and a success status is returned.
-  *
-  * If the `size` parameter is less than the required size to serialize all values and `out`
-  * is not nullptr, the value of `size` is set to the size of all serialized values
-  * and a failure status is returned.
-  *
-  * \param[in] provider_options
-  * \param[out] out The array into which to serialize values (separated by '\0').
-  * \param[out] size See above comments for details.
-  * \param[out] num_vals Set to the number of values if not a nullptr.
-  *
-  * \snippet{doc} snippets.dox OrtStatus Return Value
-  * \since Version 1.13
-  */
-  //ORT_API2_STATUS(ProviderOptions_GetValues, _In_ const OrtProviderOptions* provider_options, _Out_ char* out,
-                  //_Inout_ size_t* size, _Out_opt_ size_t* num_vals);
+  ORT_API2_STATUS(ProviderOptions_Serialize, _In_ const OrtProviderOptions* provider_options,
+                  _Out_ char* keys, _Inout_ size_t* keys_size,
+                  _Out_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options);
 
   /* \brief: Release provider options
   *
