@@ -512,7 +512,7 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
       } else {
         // reverse iteration as the scores are packed together and each score needs to be expanded to two
         const float* cur_in = s_end;
-        float* cur_out = &*scores.end();
+        float* cur_out = scores.data() + scores.size();
         while (cur_in > s) {
           --cur_in;
           cur_out -= 2;
