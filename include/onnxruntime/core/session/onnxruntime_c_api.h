@@ -1681,7 +1681,7 @@ struct OrtApi {
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out,
+  ORT_API2_STATUS(KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_opt_ char* out,
                   _Inout_ size_t* size);
 
   /// @}
@@ -3580,8 +3580,8 @@ struct OrtApi {
   * \since Version 1.13
   */
   ORT_API2_STATUS(ProviderOptions_Serialize, _In_ const OrtProviderOptions* provider_options,
-                  _Out_ char* keys, _Inout_ size_t* keys_size,
-                  _Out_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options);
+                  _Out_opt_ char* keys, _Inout_ size_t* keys_size,
+                  _Out_opt_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options);
 
   /** \brief Check if a provider option exists and get its size.
   *
@@ -3620,7 +3620,7 @@ struct OrtApi {
   * \since Version 1.13
   */
   ORT_API2_STATUS(ProviderOptions_GetOption, _In_ const OrtProviderOptions* provider_options,
-                  _In_ const char* key, _Out_ char* value, _Inout_ size_t* value_size);
+                  _In_ const char* key, _Out_opt_ char* value, _Inout_ size_t* value_size);
 
   /* \brief: Release provider options
   *
@@ -3655,7 +3655,7 @@ struct OrtApi {
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.13
   */
-  ORT_API2_STATUS(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_ char* out, _Inout_ size_t* size);
+  ORT_API2_STATUS(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_opt_ char* out, _Inout_ size_t* size);
 
   /** \brief Get a node argument definition's type information.
   *

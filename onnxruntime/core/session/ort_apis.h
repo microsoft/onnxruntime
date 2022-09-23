@@ -177,7 +177,7 @@ ORT_API_STATUS_IMPL(GetOpaqueValue, _In_ const char* domain_name, _In_ const cha
 
 ORT_API_STATUS_IMPL(KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
 ORT_API_STATUS_IMPL(KernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
-ORT_API_STATUS_IMPL(KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_opt_ char* out, _Inout_ size_t* size);
 
 ORT_API_STATUS_IMPL(KernelContext_GetInputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelContext_GetOutputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out);
@@ -400,15 +400,15 @@ ORT_API_STATUS_IMPL(KernelInfo_GetProviderOptions, _In_ const OrtKernelInfo* inf
                     _Outptr_ OrtProviderOptions** provider_options);
 
 ORT_API_STATUS_IMPL(ProviderOptions_Serialize, _In_ const OrtProviderOptions* provider_options,
-                    _Out_ char* keys, _Inout_ size_t* keys_size,
-                    _Out_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options);
+                    _Out_opt_ char* keys, _Inout_ size_t* keys_size,
+                    _Out_opt_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options);
 ORT_API_STATUS_IMPL(ProviderOptions_HasOption, _In_ const OrtProviderOptions* provider_options,
                     _In_ const char* key, _Inout_ size_t* value_size);
 ORT_API_STATUS_IMPL(ProviderOptions_GetOption, _In_ const OrtProviderOptions* provider_options,
-                    _In_ const char* key, _Out_ char* value, _Inout_ size_t* value_size);
+                    _In_ const char* key, _Out_opt_ char* value, _Inout_ size_t* value_size);
 ORT_API(void, ReleaseProviderOptions, _Frees_ptr_opt_ OrtProviderOptions* provider_options);
 
-ORT_API_STATUS_IMPL(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_ char* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_opt_ char* out, _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(NodeArg_GetTypeInfo, _In_ const OrtNodeArg* info, _Outptr_ OrtTypeInfo** type_info);
 
 }  // namespace OrtApis

@@ -64,7 +64,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* 
 };
 
 static OrtStatusPtr CopyStringToMemory(_In_ const std::string& str, _In_ const char* error_msg,
-                                       _Out_ char* out, _Inout_ size_t* size) {
+                                       _Out_opt_ char* out, _Inout_ size_t* size) {
   const size_t str_len = str.length();
   const size_t req_size = str_len + 1;
 
@@ -85,7 +85,7 @@ static OrtStatusPtr CopyStringToMemory(_In_ const std::string& str, _In_ const c
   return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, error_msg);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out, _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_opt_ char* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   std::string value;
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<std::string>(name, &value);
@@ -201,7 +201,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetProviderOptions, _In_ const OrtKernel
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(ProviderOptions_HasOption, _In_ const OrtProviderOptions* provider_options,
+ORT_API_STATUS_IMPL(OrtApis::ProviderOptions_HasOption, _In_ const OrtProviderOptions* provider_options,
                     _In_ const char* key, _Inout_ size_t* value_size) {
   API_IMPL_BEGIN
   const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
@@ -218,7 +218,7 @@ ORT_API_STATUS_IMPL(ProviderOptions_HasOption, _In_ const OrtProviderOptions* pr
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ProviderOptions_GetOption, _In_ const OrtProviderOptions* provider_options,
-                    _In_ const char* key, _Out_ char* value, _Inout_ size_t* value_size) {
+                    _In_ const char* key, _Out_opt_ char* value, _Inout_ size_t* value_size) {
   API_IMPL_BEGIN
   const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
   auto it = options->find(key);
@@ -236,8 +236,8 @@ ORT_API_STATUS_IMPL(OrtApis::ProviderOptions_GetOption, _In_ const OrtProviderOp
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ProviderOptions_Serialize, _In_ const OrtProviderOptions* provider_options,
-                    _Out_ char* keys, _Inout_ size_t* keys_size,
-                    _Out_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options) {
+                    _Out_opt_ char* keys, _Inout_ size_t* keys_size,
+                    _Out_opt_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options) {
   API_IMPL_BEGIN
   const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
 
@@ -309,7 +309,7 @@ ORT_API(void, OrtApis::ReleaseProviderOptions, _Frees_ptr_opt_ OrtProviderOption
   }
 }
 
-ORT_API_STATUS_IMPL(OrtApis::NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_ char* out, _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_opt_ char* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   const std::string& name = reinterpret_cast<const onnxruntime::NodeArg*>(node_arg)->Name();
   return CopyStringToMemory(name, "NodeArg's name buffer is too small", out, size);
