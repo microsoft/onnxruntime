@@ -262,6 +262,14 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
 
 void BackendManager::Compute(OrtKernelContext* context) {
   Ort::KernelContext ctx(context);
+  std::chrono::high_resolution_clock::time_point start_compute, end_compute;
+  #ifdef OPENVINO_FIL_ENABLED
+    static bool fil_enabled = true;
+    if (fil_enabled) {
+      start_compute = std::chrono::high_resolution_clock::now();
+      LOGS_DEFAULT(INFO) << "Start Compute";
+    }
+  #endif
   bool use_dynamic_backend = true;
   if (GetGlobalContext().enable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape &&
       GetGlobalContext().device_type.find("CPU") != std::string::npos) {
@@ -300,6 +308,15 @@ void BackendManager::Compute(OrtKernelContext* context) {
   } else {
     concrete_backend_->Infer(context);
   }
+  #ifdef OPENVINO_FIL_ENABLED
+    if (fil_enabled) {
+      end_compute = std::chrono::high_resolution_clock::now();
+      LOGS_DEFAULT(INFO) << "End Compute";
+      std::chrono::duration<double> compute_time = end_compute - start_compute;
+      std::cout << "Compute Time: " << compute_time.count() << " s" << std::endl;
+      fil_enabled = false;  // calculating compute time for first run only
+    }
+  #endif
 }
 
 void BackendManager::ShutdownBackendManager() {

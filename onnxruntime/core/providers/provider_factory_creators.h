@@ -81,3 +81,7 @@
 #if defined(USE_XNNPACK)
 #include "core/providers/xnnpack/xnnpack_provider_factory_creator.h"
 #endif
+
+#if defined(USE_CANN)
+#include "core/providers/cann/cann_provider_factory_creator.h"
+#endif

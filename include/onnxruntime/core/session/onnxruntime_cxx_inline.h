@@ -630,8 +630,15 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_MIG
   return *this;
 }
 
+template<typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CANN(this->p_, &provider_options));
+  return *this;
+}
+
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider(
+
     const std::string& provider_name,
     const std::unordered_map<std::string, std::string>& provider_options) {
   auto num_entries = provider_options.size();
