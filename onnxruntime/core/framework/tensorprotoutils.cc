@@ -1001,7 +1001,7 @@ static Status CopySparseData(size_t n_sparse_elements,
       cur_index += rank;
     }
 
-    ORT_ENFORCE(cur_index == &*indices_data.cend());
+    ORT_ENFORCE(cur_index == indices_data.data() + indices_data.size());
   } else {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Invalid SparseTensor indices. Should be rank 0 or 1. Got:",
                              indices_shape);
