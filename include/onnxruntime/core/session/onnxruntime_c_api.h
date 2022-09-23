@@ -3540,6 +3540,14 @@ struct OrtApi {
   ORT_API2_STATUS(KernelInfo_GetOutputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
                   _Outptr_ const OrtNodeArg** node_arg);
 
+  /** \brief Get execution provider options from an instance of OrtKernelInfo.
+  *
+  * \param[in] info An instance of OrtKernelInfo.
+  * \param[out] provider_options A copy of the provider options. Must free with OrtApi::ReleaseProviderOptions.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.13
+  */
   ORT_API2_STATUS(KernelInfo_GetProviderOptions, _In_ const OrtKernelInfo* info,
                   _Outptr_ OrtProviderOptions** provider_options);
 
