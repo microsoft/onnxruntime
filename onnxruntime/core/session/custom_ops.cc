@@ -149,7 +149,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputCount, _In_ const OrtKernelInfo
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
                     _Outptr_ const OrtNodeArg** node_arg) {
   API_IMPL_BEGIN
-  const onnxruntime::OpKernelInfo* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const auto input_defs = op_info->node().InputDefs();
 
   if (index >= input_defs.size()) {
@@ -163,9 +163,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetInputNodeArg, _In_ const OrtKernelInf
 }
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
-                    _Outptr_ const OrtNodeArg** node_arg){
+                    _Outptr_ const OrtNodeArg** node_arg) {
   API_IMPL_BEGIN
-  const onnxruntime::OpKernelInfo* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const auto output_defs = op_info->node().OutputDefs();
 
   if (index >= output_defs.size()) {
@@ -176,6 +176,76 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputNodeArg, _In_ const OrtKernelIn
 
   return nullptr;
   API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetProviderOptions, _In_ const OrtKernelInfo* info,
+    _Outptr_ OrtProviderOptions** provider_options) {
+  API_IMPL_BEGIN
+  const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  auto* ep_options = new onnxruntime::ProviderOptions(op_info->GetExecutionProvider()->GetProviderOptions());
+
+  *provider_options = reinterpret_cast<OrtProviderOptions*>(ep_options);
+
+  return nullptr;
+  API_IMPL_END
+}
+
+OrtStatusPtr SerializeProviderOptionsKeysOrVals(_In_ const std::vector<std::string>& items, _In_ size_t total_size,
+                                                _Out_ char* out, _Inout_ size_t* size) {
+
+  if (out == nullptr) {  // User is querying the total byte size of all items
+    *size = total_size;
+    return nullptr;
+  }
+
+  if (*size >= total_size) {  // User provided a buffer of sufficient size
+
+    // Copy all items to `out`, separated by null-terminators.
+    for (const auto& item : items) {
+      const size_t item_len = item.length();
+
+      std::memcpy(out, item.data(), item_len);
+      out[item_len] = '\0';
+      out += item_len + 1;
+    }
+
+    *size = total_size;
+    return nullptr;
+  }
+
+  // User has provided a buffer that is not large enough
+  *size = total_size;
+  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ProviderOptions_GetKeys, _In_ const OrtProviderOptions* provider_options, _Out_ char* out,
+                    _Inout_ size_t* size, _Out_opt_ size_t* num_keys) {
+  API_IMPL_BEGIN
+  const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
+  const size_t num_options = options->size();
+
+  // Gather all keys and determine total serialized size.
+  std::vector<std::string> keys;
+  size_t total_size = 0;
+
+  keys.reserve(num_options);
+  for (const auto& it : *options) {
+    keys.push_back(it.first);
+    total_size += it.first.length() + 1;  // Include separating null-terminators
+  }
+
+  if (num_keys) {
+    *num_keys = num_options;
+  }
+
+  return SerializeProviderOptionsKeysOrVals(keys, total_size, out, size);
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseProviderOptions, _Frees_ptr_opt_ OrtProviderOptions* provider_options) {
+  if (provider_options) {
+    delete reinterpret_cast<onnxruntime::ProviderOptions*>(provider_options);
+  }
 }
 
 ORT_API_STATUS_IMPL(OrtApis::NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_ char* out, _Inout_ size_t* size) {

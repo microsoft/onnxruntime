@@ -2574,6 +2574,9 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::KernelInfo_GetOutputCount,
     &OrtApis::KernelInfo_GetInputNodeArg,
     &OrtApis::KernelInfo_GetOutputNodeArg,
+    &OrtApis::KernelInfo_GetProviderOptions,
+    &OrtApis::ProviderOptions_GetKeys,
+    &OrtApis::ReleaseProviderOptions,
     &OrtApis::NodeArg_GetName,
     &OrtApis::NodeArg_GetTypeInfo,
 };

@@ -270,6 +270,7 @@ ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(NodeArg);
+ORT_RUNTIME_CLASS(ProviderOptions)
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -3503,12 +3504,14 @@ struct OrtApi {
 
   /** \brief Used for custom operators, get the input count from kernel info
   *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.13
   */
   ORT_API2_STATUS(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 
   /** \brief Used for custom operators, get the output count from kernel info
   *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.13
   */
   ORT_API2_STATUS(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
@@ -3520,6 +3523,7 @@ struct OrtApi {
   * \param[out] node_arg Do not free this value. It is owned by OrtKernelInfo.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.13
   */
   ORT_API2_STATUS(KernelInfo_GetInputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
                   _Outptr_ const OrtNodeArg** node_arg);
@@ -3531,9 +3535,77 @@ struct OrtApi {
   * \param[out] node_arg Do not free this value. It is owned by OrtKernelInfo.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.13
   */
   ORT_API2_STATUS(KernelInfo_GetOutputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
                   _Outptr_ const OrtNodeArg** node_arg);
+
+  ORT_API2_STATUS(KernelInfo_GetProviderOptions, _In_ const OrtKernelInfo* info,
+                  _Outptr_ OrtProviderOptions** provider_options);
+
+  /// @}
+  /// \name OrtProviderOptions
+  /// @{
+
+  /** \brief Get serialized provider options keys.
+  *
+  * If `out` is nullptr, the value of `size` is set to the minimum buffer size necessary to
+  * serialize all keys, and a success status is returned.
+  *
+  * If the `size` parameter is greater than or equal to the required serialization size,
+  * the value of `size` is set to the actual serialized size, the provided memory
+  * is filled with the keys (separated by '\0'), and a success status is returned.
+  *
+  * If the `size` parameter is less than the required size to serialize all keys and `out`
+  * is not nullptr, the value of `size` is set to the size of all serialized keys
+  * and a failure status is returned.
+  *
+  * \param[in] provider_options
+  * \param[out] out The array into which to serialize keys (separated by '\0').
+  * \param[out] size See above comments for details.
+  * \param[out] num_keys Set to the number of keys if not a nullptr.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.13
+  */
+  ORT_API2_STATUS(ProviderOptions_GetKeys, _In_ const OrtProviderOptions* provider_options, _Out_ char* out,
+                  _Inout_ size_t* size, _Out_opt_ size_t* num_keys);
+
+  /** \brief Get serialized provider options values.
+  *
+  * If `out` is nullptr, the value of `size` is set to the minimum buffer size necessary to
+  * serialize all values, and a success status is returned.
+  *
+  * If the `size` parameter is greater than or equal to the required serialization size,
+  * the value of `size` is set to the actual serialized size, the provided memory
+  * is filled with the values (separated by '\0'), and a success status is returned.
+  *
+  * If the `size` parameter is less than the required size to serialize all values and `out`
+  * is not nullptr, the value of `size` is set to the size of all serialized values
+  * and a failure status is returned.
+  *
+  * \param[in] provider_options
+  * \param[out] out The array into which to serialize values (separated by '\0').
+  * \param[out] size See above comments for details.
+  * \param[out] num_vals Set to the number of values if not a nullptr.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.13
+  */
+  //ORT_API2_STATUS(ProviderOptions_GetValues, _In_ const OrtProviderOptions* provider_options, _Out_ char* out,
+                  //_Inout_ size_t* size, _Out_opt_ size_t* num_vals);
+
+  /* \brief: Release provider options
+  *
+  * \param[in] OrtProviderOptions Provider options returned by KernelInfo_GetProviderOptions
+  *
+  * \since Version 1.13.
+  */
+  ORT_CLASS_RELEASE(ProviderOptions);
+
+  /// @}
+  /// \name OrtNodeArg
+  /// @{
 
   /** \brief Get a node argument's name.
   *
@@ -3554,6 +3626,7 @@ struct OrtApi {
   * \param[in,out] size See above comments for details
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.13
   */
   ORT_API2_STATUS(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_ char* out, _Inout_ size_t* size);
 
@@ -3563,6 +3636,7 @@ struct OrtApi {
   * \param[out] type_info Must be freed with OrtApi::ReleaseTypeInfo.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.13
   */
   ORT_API2_STATUS(NodeArg_GetTypeInfo, _In_ const OrtNodeArg* info, _Outptr_ OrtTypeInfo** type_info);
 
