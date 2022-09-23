@@ -50,7 +50,7 @@ class PadBase {
       gsl::span<const int64_t> pads_span;
       if (!info.GetAttrsAsSpan("pads", pads_span).IsOK())
         ORT_THROW("Invalid 'pads' attribute value");
-      pads_.assign(pads_span.cbegin(), pads_span.cend());
+      pads_.assign(pads_span.begin(), pads_span.end());
       // Separate out any negative pads_ into the slices_ array
       slices_.resize(pads_.size(), 0);
       for (size_t index = 0; index < pads_.size(); index++) {

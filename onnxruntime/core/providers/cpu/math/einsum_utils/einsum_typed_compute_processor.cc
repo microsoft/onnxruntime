@@ -85,7 +85,7 @@ static bool IsTransposeReshapeForEinsum(const gsl::span<const size_t>& perm,
       return false;
     last_permuted_axis = perm[i];
   }
-  new_shape.assign(input_dims.cbegin(), input_dims.cend());
+  new_shape.assign(input_dims.begin(), input_dims.end());
   for (size_t i = 0; i < perm.size(); ++i) {
     new_shape[i] = input_dims[perm[i]];
   }

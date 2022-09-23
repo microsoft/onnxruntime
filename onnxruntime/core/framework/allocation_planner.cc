@@ -605,10 +605,10 @@ class PlannerImpl {
         UseCount(name)++;
 
         bool is_graph_input = (graph_inputs.find(name) != graph_inputs.cend());
-        bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.cbegin(), outer_scope_node_args_.cend(),
+        bool is_outer_scope_arg = std::find_if(outer_scope_node_args_.begin(), outer_scope_node_args_.end(),
                                                [&name](const NodeArg* value) {
                                                  return value && value->Name() == name;
-                                               }) != outer_scope_node_args_.cend();
+                                               }) != outer_scope_node_args_.end();
         bool is_subgraph = (parent_node_ != nullptr);
 
         // If it's a graph input or outer scope node arg, set its plan.

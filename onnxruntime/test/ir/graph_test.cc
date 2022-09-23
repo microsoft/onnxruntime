@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include "core/common/inlined_containers.h"
+#include "core/common/span_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -258,8 +259,8 @@ static void ValidateSparseTensorProto(const SparseTensorProto& proto) {
   // Can't use ContainerEq on float
   EXPECT_EQ(actual_values.size(), sparse_details::values.size());
   // std::equal() with a predicate is only in C++20
-  auto actual_begin = actual_values.cbegin();
-  const auto actual_end = actual_values.cend();
+  auto actual_begin = actual_values.begin();
+  const auto actual_end = actual_values.end();
   auto expected_begin = sparse_details::values.cbegin();
   while (actual_begin != actual_end) {
     auto diff = *actual_begin - *expected_begin;
@@ -1542,7 +1543,7 @@ void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, int64
   p_node.AddAttribute(attr_name, attr_value);
 }
 
-void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, std::initializer_list<int64_t> attr_value) {
+void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, gsl::span<const int64_t> attr_value) {
   p_node.AddAttribute(attr_name, attr_value);
 }
 
@@ -1556,7 +1557,7 @@ TEST_F(GraphTest, TypeAttribute) {
   outputs.push_back(&output_arg);
   auto& node_1 = graph.AddNode("node_1", "RandomNormal", "node 1.", inputs, outputs);
   AddAttribute(node_1, "dtype", TensorProto_DataType_FLOAT);
-  AddAttribute(node_1, "shape", {2, 3});
+  AddAttribute(node_1, "shape", AsSpan<int64_t>({2, 3}));
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 }

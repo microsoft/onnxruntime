@@ -6,7 +6,8 @@
 #include "core/common/gsl.h"
 
 namespace onnxruntime {
-// Inspired by Fekir's Blog https://fekir.info/post/span-the-missing-constructor/
+
+// AsSpan inspired by Fekir's Blog https://fekir.info/post/span-the-missing-constructor/
 // Used under MIT license
 
 // Use AsSpan for less typing on any container including initializer list to create a span
@@ -64,7 +65,24 @@ constexpr auto AsSpan(const T (&arr)[N]) {
   return details::AsSpanImpl(arr, N);
 }
 
-template<class T>
+template <class T>
 inline gsl::span<const T> EmptySpan() { return gsl::span<const T>(); }
 
+template <class U, class T>
+inline [[nodiscard]] gsl::span<U> ReinterpretAsSpan(gsl::span<T> src) {
+  // adapted from gsl-lite span::as_span():
+  // https://github.com/gsl-lite/gsl-lite/blob/4720a2980a30da085b4ddb4a0ea2a71af7351a48/include/gsl/gsl-lite.hpp#L4102-L4108
+  Expects(src.size_bytes() % sizeof(U) == 0);
+  return gsl::span<U>(reinterpret_cast<U*>(src.data()), src.size_bytes() / sizeof(U));
 }
+
+template <class T>
+inline constexpr auto ToConstSpan(gsl::span<T> s) {
+  if constexpr (std::is_const_v<T>) {
+    return s;
+  } else {
+    return gsl::span<const T>(s.data(), s.size());
+  }
+}
+
+}  // namespace onnxruntime

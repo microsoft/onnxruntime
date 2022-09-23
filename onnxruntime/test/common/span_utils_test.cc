@@ -22,7 +22,7 @@ TEST(Common, SpanUtilsTests) {
     // list by var
     auto list = {1, 2, 3};
     auto span = AsSpan(list);
-    ASSERT_EQ(gsl::make_span(list), span);
+    ASSERT_EQ(gsl::make_span(list.begin(), list.size()), span);
     // no type conversion int -> int64_t
     // use std::array
   }

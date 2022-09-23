@@ -93,7 +93,7 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
     return;
   }
 
-  const gsl::index prefix_length = static_cast<gsl::index>(ngram_size_) - 1;
+  const auto prefix_length = static_cast<gsl::span<const int32_t>::size_type>(ngram_size_) - 1;
   int batch_beam_size = next_token_scores.batch_beam_size;
 
   for (int i = 0; i < batch_beam_size; i++) {

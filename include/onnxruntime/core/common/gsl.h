@@ -4,3 +4,4 @@
 #pragma once
 
 #include "gsl/gsl"
+#include "gsl/span_ext"

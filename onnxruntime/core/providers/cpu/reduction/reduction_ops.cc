@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/inlined_containers.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
+
+#include "core/common/inlined_containers.h"
+#include "core/common/span_utils.h"
 #include "core/providers/common.h"
 //TODO: fix the warnings
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -231,9 +233,9 @@ bool operator!=(FastReduceKind a, FastReduceKind b) {
 
 bool ResultsNoTransposePrepareForReduce::equal(gsl::span<const int64_t> local_input_shape,
                                                gsl::span<const int64_t> local_reduced_axes) {
-  if (gsl::make_span(input_shape) != local_input_shape)
+  if (ToConstSpan(gsl::make_span(input_shape)) != local_input_shape)
     return false;
-  if (gsl::make_span(reduced_axes) != local_reduced_axes)
+  if (ToConstSpan(gsl::make_span(reduced_axes)) != local_reduced_axes)
     return false;
   return true;
 }
@@ -594,7 +596,7 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
     }
     if (noop_with_empty_axes) {
       fast_axes.clear();
-      fast_output_shape.assign(input_shape.cbegin(), input_shape.cend());
+      fast_output_shape.assign(input_shape.begin(), input_shape.end());
       return FastReduceKind::kK;
     } else {
       if (keep_dims) {

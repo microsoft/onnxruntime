@@ -3,6 +3,7 @@
 
 #include "core/optimizer/selectors_actions/helpers.h"
 
+#include "core/common/span_utils.h"
 #include "core/optimizer/selectors_actions/actions.h"
 
 using namespace ONNX_NAMESPACE;
@@ -132,7 +133,7 @@ bool GetNodesByNodeIndex(Graph& graph, gsl::span<const NodeIndex> indices, Inlin
   nodes.reserve(indices.size());
   bool missing = false;
 
-  for (auto iter = indices.cbegin(), end = indices.cend(); iter != end; ++iter) {
+  for (auto iter = indices.begin(), end = indices.end(); iter != end; ++iter) {
     nodes.push_back(GetNodeByNodeIndex(graph, *iter, missing));
 
     // bail if we're missing a node
@@ -283,9 +284,9 @@ InlinedVector<Node*> NodesToOptimize::Outputs(gsl::span<const int> indices, bool
 
 InlinedVector<Node*> NodesToOptimize::GetNodesAtLocation(const NodeLocation& location, bool required) const {
   if (location.type == NodeType::kInput) {
-    return Inputs({location.index}, required);
+    return Inputs(AsSpan({location.index}), required);
   } else if (location.type == NodeType::kOutput) {
-    return Outputs({location.index}, required);
+    return Outputs(AsSpan({location.index}), required);
   } else {
     return {&Target()};
   }

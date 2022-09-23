@@ -346,11 +346,11 @@ common::Status SaveInitializedTensors(
 template <typename T>  // T is container of const NodeArg* or NodeArg*
 static bool IsArgNameInInputsOutputs(const std::string& name,
                                      const T& graph_args) {
-  auto it = std::find_if(graph_args.cbegin(), graph_args.cend(),
+  auto it = std::find_if(graph_args.begin(), graph_args.end(),
                          [&name](const onnxruntime::NodeArg* arg) {
                            return arg->Name() == name;
                          });
-  return it != graph_args.cend();
+  return it != graph_args.end();
 }
 
 common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer& graph,

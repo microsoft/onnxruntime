@@ -18,6 +18,7 @@
 
 #include "gtest/gtest.h"
 
+#include "core/common/span_utils.h"
 #include "test/util/include/file_util.h"
 
 namespace onnxruntime {
@@ -102,7 +103,7 @@ TEST(FileIoTest, ReadFileIntoBuffer) {
 
     auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
 
-    ASSERT_EQ(buffer_span, expected_data_span);
+    ASSERT_EQ(ToConstSpan(buffer_span), expected_data_span);
   }
 
   // invalid - negative offset
@@ -185,7 +186,7 @@ TEST(FileIoTest, MapFileIntoMemory) {
 
     auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
 
-    ASSERT_EQ(mapped_span, expected_data_span);
+    ASSERT_EQ(ToConstSpan(mapped_span), expected_data_span);
   }
 
   {

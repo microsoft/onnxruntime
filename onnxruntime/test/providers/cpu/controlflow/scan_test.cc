@@ -399,7 +399,7 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
     }
 
     const auto output_dims = output_shape.GetDims();
-    return std::vector<int64_t>(output_dims.cbegin(), output_dims.cend());
+    return std::vector<int64_t>(output_dims.begin(), output_dims.end());
   };
 
   test.AddOutput<float>("scan_output_0", calculate_output_shape(0), output_0);

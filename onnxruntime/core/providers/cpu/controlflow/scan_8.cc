@@ -293,7 +293,7 @@ Status Scan8Impl::ValidateInput() {
     }
 
     auto d = sequence_lens_tensor_->DataAsSpan<int64_t>();
-    sequence_lens_.assign(d.cbegin(), d.cend());
+    sequence_lens_.assign(d.begin(), d.end());
 
     if (!std::all_of(sequence_lens_.cbegin(), sequence_lens_.cend(),
                      [this](int64_t value) { return value > 0 && value <= max_sequence_len_; })) {

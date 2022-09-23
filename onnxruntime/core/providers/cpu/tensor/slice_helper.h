@@ -27,7 +27,7 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
     }
   } else {
     axes.reserve(raw_axes.size());
-    axes.assign(raw_axes.cbegin(), raw_axes.cend());
+    axes.assign(raw_axes.begin(), raw_axes.end());
   }
 
   // Iterate through the provided axes and override the start/end ranges
@@ -86,7 +86,7 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
       axes.push_back(i);
     }
   } else {
-    axes.assign(raw_axes.cbegin(), raw_axes.cend());
+    axes.assign(raw_axes.begin(), raw_axes.end());
   }
 
   // Iterate through the provided axes and override the start/end/steps ranges

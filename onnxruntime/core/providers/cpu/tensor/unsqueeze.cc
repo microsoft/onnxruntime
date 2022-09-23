@@ -50,7 +50,7 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
                     axes_tensor->Shape().NumDimensions() == 1,
                 "An axes tensor must be a scalar or a 1-D tensor.");
     auto data_span = axes_tensor->template DataAsSpan<int64_t>();
-    axes.assign(data_span.cbegin(), data_span.cend());
+    axes.assign(data_span.begin(), data_span.end());
   } else {
     axes.assign(axes_.begin(), axes_.end());
   }
@@ -72,12 +72,12 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
 
   // Now fill in the zero entries with the existing shape
   {
-    auto begin = input_tensor.Shape().GetDims().cbegin();
+    auto begin = input_tensor.Shape().GetDims().begin();
     for (auto& axisSize : output_dims) {
       if (axisSize == 0)
         axisSize = *begin++;
     }
-    assert(begin == input_tensor.Shape().GetDims().cend());
+    assert(begin == input_tensor.Shape().GetDims().end());
   }
 
   TensorShape output_shape(output_dims);

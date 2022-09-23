@@ -185,7 +185,7 @@ ORT_STATUS_PTR CreateTensorImplForSeq(MLDataType elem_type, const int64_t* shape
 ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t shape_len, const OrtMemoryInfo* info,
                                 void* p_data, size_t p_data_len, OrtValue& ort_value) {
   TensorShape tensor_shape(shape, shape_len);
-  if (std::any_of(tensor_shape.GetDims().cbegin(), tensor_shape.GetDims().cend(), [](int64_t v) { return v < 0; })) {
+  if (std::any_of(tensor_shape.GetDims().begin(), tensor_shape.GetDims().end(), [](int64_t v) { return v < 0; })) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tried creating tensor with negative value in shape");
   }
 
@@ -235,7 +235,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorAsOrtValue, _Inout_ OrtAllocator*
   auto element_type = sparse_tensor_type->GetElementType();
   assert(element_type->AsPrimitiveDataType() != nullptr);
   TensorShape shape(dense_shape, dense_shape_len);
-  if (std::any_of(shape.GetDims().cbegin(), shape.GetDims().cend(),
+  if (std::any_of(shape.GetDims().begin(), shape.GetDims().end(),
                   [](int64_t v) { return v < 0; })) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tried creating tensor with negative value in shape");
   }
@@ -280,7 +280,7 @@ SparseTensor& ValidateFillInputArgs(OrtValue* v, const TensorShape& values_shape
       ORT_THROW("Strings can only reside in CPU memory");
     }
   }
-  if (std::any_of(values_shape.GetDims().cbegin(), values_shape.GetDims().cend(),
+  if (std::any_of(values_shape.GetDims().begin(), values_shape.GetDims().end(),
                   [](int64_t v) { return v < 0; })) {
     ORT_THROW("tried Filling sparse tensor with negative value in values shape");
   }
@@ -377,7 +377,7 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorBlockSparse, _Inout_ OrtValue* ort_
   auto& sparse_tensor = ValidateFillInputArgs(ort_value, values_t_shape, data_mem_info);
 
   TensorShape indices_t_shape(indices_shape_data, indices_shape_len);
-  if (std::any_of(indices_t_shape.GetDims().cbegin(), indices_t_shape.GetDims().cend(),
+  if (std::any_of(indices_t_shape.GetDims().begin(), indices_t_shape.GetDims().end(),
                   [](int64_t v) { return v < 0; })) {
     ORT_THROW("tried Filling sparse tensor with negative value in block sparse indices shape");
   }
@@ -422,7 +422,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorWithValuesAsOrtValue, _In_ const 
   }
   TensorShape tensor_dense_shape(dense_shape, dense_shape_len);
   TensorShape tensor_values_shape(values_shape, values_shape_len);
-  if (std::any_of(tensor_values_shape.GetDims().cbegin(), tensor_values_shape.GetDims().cend(),
+  if (std::any_of(tensor_values_shape.GetDims().begin(), tensor_values_shape.GetDims().end(),
                   [](int64_t v) { return v < 0; })) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tried creating tensor with negative value in shape");
   }
@@ -1559,7 +1559,7 @@ ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, bool is_string, _In_ const
     const std::string* strings = reinterpret_cast<const std::string*>(data_elem);
     auto str_span = gsl::make_span(strings, num_elems);
     auto* dst = tensor.MutableData<std::string>();
-    std::copy(str_span.cbegin(), str_span.cend(), dst);
+    std::copy(str_span.begin(), str_span.end(), dst);
   }
   return nullptr;
 }

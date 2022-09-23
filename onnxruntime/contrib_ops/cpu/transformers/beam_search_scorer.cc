@@ -5,6 +5,7 @@
 #include <math.h>
 #include "core/common/common.h"
 #include "core/common/safeint.h"
+#include "core/common/span_utils.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
@@ -188,7 +189,7 @@ void BeamSearchScorer::Process(ISequences* sequences,
         auto clone = hypothesis_buffer_.subspan(hypothesis_buffer_offset_, sequence_length);
         gsl::copy(src, clone);
         hypothesis_buffer_offset_ += static_cast<size_t>(sequence_length);
-        auto sequence = clone.template as_span<const int32_t>();
+        auto sequence = ReinterpretAsSpan<const int32_t>(clone);
         beam_hyp.Add(sequence, next_score);
       } else {
         // Add next predicted token since it is not eos_token.
@@ -209,7 +210,7 @@ void BeamSearchScorer::Process(ISequences* sequences,
     //  Check if we are done so that we can save a pad step if all(done)
     if (!done_[batch]) {
       gsl::span<const float> topk_scores = next_scores.subspan(batch * num_beams_, top_k);
-      const float* best_sum_logprobs = std::max_element(topk_scores.begin(), topk_scores.end());
+      const auto best_sum_logprobs = std::max_element(topk_scores.begin(), topk_scores.end());
       if (beam_hyp.IsDone(*best_sum_logprobs, sequence_length)) {
         done_[batch] = true;
       }

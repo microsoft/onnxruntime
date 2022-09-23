@@ -886,7 +886,7 @@ inline Status OpKernelInfo::GetAttrs(const std::string& name, TensorShapeVector&
   Status status = this->GetAttrsAsSpan<int64_t>(name, span);
   if (status.IsOK()) {
     out.reserve(span.size());
-    out.assign(span.cbegin(), span.cend());
+    out.assign(span.begin(), span.end());
   }
   return status;
 }

@@ -264,7 +264,7 @@ static inline void ComputeSoftmax(gsl::span<T>& values) {
 
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
-  for (auto it = values.cbegin(); it != values.cend(); ++it) {
+  for (auto it = values.begin(); it != values.end(); ++it) {
     if (static_cast<float>(*it) > v_max)
       v_max = static_cast<float>(*it);
   }
@@ -282,7 +282,7 @@ template <typename T>
 static inline void ComputeSoftmaxZero(gsl::span<T>& values) {
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
-  for (auto it = values.cbegin(); it != values.cend(); ++it) {
+  for (auto it = values.begin(); it != values.end(); ++it) {
     if (static_cast<float>(*it) > v_max)
       v_max = static_cast<float>(*it);
   }
@@ -512,7 +512,7 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
       } else {
         // reverse iteration as the scores are packed together and each score needs to be expanded to two
         const float* cur_in = s_end;
-        float* cur_out = &*scores.end();
+        float* cur_out = scores.data() + scores.size();
         while (cur_in > s) {
           --cur_in;
           cur_out -= 2;

@@ -34,7 +34,7 @@ bool CanSafelyRemoveNode(const Node& node_to_remove, const InlinedHashSet<const 
 void SafelyRemoveNodes(Graph& graph, gsl::span<Node* const> nodes_to_remove, const Node* ignore_target) {
   InlinedHashSet<const Node*> removal_set;
   removal_set.reserve(nodes_to_remove.size());
-  removal_set.insert(nodes_to_remove.cbegin(), nodes_to_remove.cend());
+  removal_set.insert(nodes_to_remove.begin(), nodes_to_remove.end());
 
   for (Node* node : nodes_to_remove) {
     if (node && node != ignore_target && CanSafelyRemoveNode(*node, removal_set)) {
