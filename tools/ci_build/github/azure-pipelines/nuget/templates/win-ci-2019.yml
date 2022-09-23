@@ -71,9 +71,9 @@ jobs:
         versionSpec: '16.x'
 
     - task: UsePythonVersion@0
-      inputs: 
-        versionSpec: '3.7' 
-        addToPath: true 
+      inputs:
+        versionSpec: '3.7'
+        addToPath: true
         architecture: ${{ parameters.BuildArch }}
 
     - task: BatchScript@1
@@ -94,10 +94,10 @@ jobs:
        $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.BuildArch }}-windows-static"
        python setup.py bdist_wheel
        python -m pip uninstall -y onnx -qq
-       Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}   
+       Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
       workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
       displayName: 'Install ONNX'
-    
+
     - task: PythonScript@0
       displayName: 'Generate cmake config'
       inputs:
@@ -160,7 +160,7 @@ jobs:
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Create models link'
 
-    - ${{ if in(parameters['sln_platform'], 'Win32', 'x64') }}:      
+    - ${{ if in(parameters['sln_platform'], 'Win32', 'x64') }}:
       - ${{ if eq(parameters.BuildCSharp, true) }}:
         - task: DotNetCoreCLI@2
           displayName: 'Test C#'
