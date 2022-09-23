@@ -1148,6 +1148,8 @@ struct ProviderOptions : Base<OrtProviderOptions> {
   explicit ProviderOptions(std::nullptr_t) {}
   explicit ProviderOptions(OrtProviderOptions* options);
 
+  size_t HasOption(const char* key) const;
+  std::string GetOption(const char* key, size_t value_size = 0) const;
   std::unordered_map<std::string, std::string> ToMap() const;
 };
 

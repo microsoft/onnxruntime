@@ -3575,6 +3575,45 @@ struct OrtApi {
                   _Out_ char* keys, _Inout_ size_t* keys_size,
                   _Out_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options);
 
+  /** \brief Check if a provider option exists and get its size.
+  *
+  * If the option exists, the option value's size (string length + 1) is returned
+  * in the `value_size` parameter.
+  *
+  * If the option does not exist, the `value_size` parameter is set to 0.
+  *
+  * \param[in] provider_options
+  * \param[in] key The option to check.
+  * \param[out] value_size The option value's size if it exists. See above comments for details.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.13
+  */
+  ORT_API2_STATUS(ProviderOptions_HasOption, _In_ const OrtProviderOptions* provider_options,
+                  _In_ const char* key, _Inout_ size_t* value_size);
+
+  /** \brief Get a the value of a provider option.
+  *
+  * If `value` is a nullptr, `value_size` is set to the length of the option value (plus 1),
+  * and a success status is returned.
+  *
+  * If the `value_size` parameter is large enough, `value_size` is set to the length of the option value (plus 1),
+  * the provided buffer is filled with the null-terminated option value, and a success status is returned.
+  *
+  * If `value_size` is less than the required size and `value` is not a nullptr,
+  * `value_size` is set to the required size, and a failure status is returned.
+  *
+  * \param[in] provider_options
+  * \param[in] key The option to get.
+  * \param[out] value The buffer into which to store the null-terminated option value.
+  * \param[out] value_size The value buffer's size. See above comments for details.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.13
+  */
+  ORT_API2_STATUS(ProviderOptions_GetOption, _In_ const OrtProviderOptions* provider_options,
+                  _In_ const char* key, _Out_ char* value, _Inout_ size_t* value_size);
+
   /* \brief: Release provider options
   *
   * \param[in] OrtProviderOptions Provider options returned by KernelInfo_GetProviderOptions

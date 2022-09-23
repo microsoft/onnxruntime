@@ -1189,6 +1189,25 @@ inline TypeInfo Ort::NodeArg::GetTypeInfo() const {
 inline Ort::ProviderOptions::ProviderOptions(OrtProviderOptions* options) : Base<OrtProviderOptions>{options} {
 }
 
+inline size_t Ort::ProviderOptions::HasOption(const char* key) const {
+  size_t size = 0;
+  Ort::ThrowOnError(GetApi().ProviderOptions_HasOption(p_, key, &size));
+  return size;
+}
+
+inline std::string Ort::ProviderOptions::GetOption(const char* key, size_t value_size) const {
+  std::string value;
+
+  if (value_size == 0) {
+    Ort::ThrowOnError(GetApi().ProviderOptions_GetOption(p_, key, nullptr, &value_size));
+  }
+
+  value.resize(value_size);
+  Ort::ThrowOnError(GetApi().ProviderOptions_GetOption(p_, key, value.data(), &value_size));
+
+  return value;
+}
+
 inline std::unordered_map<std::string, std::string> Ort::ProviderOptions::ToMap() const {
   std::vector<char> all_keys;
   std::vector<char> all_vals;
