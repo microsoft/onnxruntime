@@ -1126,13 +1126,30 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_TRY
         {
             ML_CHECK_BOOL_MSG(operatorGraphDesc != nullptr, "OperatorGraphDesc can't be null while creating operator kernel for DML Graph");
+            // Either nodesAsOpDesc or nodesIDMLOperator can be present.
+            assert(!(operatorGraphDesc->nodesAsOpDesc != nullptr && operatorGraphDesc->nodesAsIDMLOperator != nullptr));
+            assert(operatorGraphDesc->nodesAsOpDesc != nullptr || operatorGraphDesc->nodesAsIDMLOperator != nullptr);
 
-            for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++) 
+            if (operatorGraphDesc->nodesAsOpDesc)
             {
-                auto node = operatorGraphDesc->nodes + nodeIndex;
-                ML_CHECK_BOOL_MSG(node != nullptr, "Node of operatorGraph can't be null while creating operator kernel for DML Graph");
-                AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*node);
-                m_graphNodeCreateInfo->nodes.push_back(std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc)));
+                m_graphNodeCreateInfo->nodesAsOperatorDesc = std::make_optional<std::vector<std::unique_ptr<AbstractOperatorDesc>>>();
+                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++) 
+                {
+                    auto node = operatorGraphDesc->nodesAsOpDesc + nodeIndex;
+                    ML_CHECK_BOOL_MSG(node != nullptr && *node != nullptr, "Node of operatorGraph can't be null while creating operator kernel for DML Graph");
+                    AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(**node);
+                    (*m_graphNodeCreateInfo->nodesAsOperatorDesc).push_back(std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc)));
+                }
+            }
+            else
+            {
+                m_graphNodeCreateInfo->nodesAsIDMLOperator = std::make_optional<std::vector<Microsoft::WRL::ComPtr<IDMLOperator>>>();
+                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++) 
+                {
+                    auto node = operatorGraphDesc->nodesAsIDMLOperator + nodeIndex;
+                    ML_CHECK_BOOL_MSG(node != nullptr && *node != nullptr, "Node of operatorGraph can't be null while creating operator kernel for DML Graph");
+                    (*m_graphNodeCreateInfo->nodesAsIDMLOperator).push_back(*node);
+                }
             }
 
             // Need to iterate on each edges to check for nullptr

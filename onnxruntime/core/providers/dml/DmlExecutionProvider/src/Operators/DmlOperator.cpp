@@ -49,7 +49,8 @@ namespace Dml
         {
             MLOperatorGraphDesc operatorGraphDesc = {};
             operatorGraphDesc.nodeCount = 1;
-            operatorGraphDesc.nodes = &operatorDesc;
+            std::vector<const DML_OPERATOR_DESC*> opDescs({&operatorDesc});
+            operatorGraphDesc.nodesAsOpDesc = opDescs.data();
 
             uint32_t inputEdgeCount = 0;
             std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
@@ -59,11 +60,10 @@ namespace Dml
                 [&](std::optional<uint32_t>& inputIndex) {
                     if (inputIndex.has_value()) 
                     {
-                        inputEdgeCount++;
                         DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
                         inputEdge.GraphInputIndex = inputIndex.value();
                         inputEdge.ToNodeIndex = 0;
-                        inputEdge.ToNodeInputIndex = inputIndex.value();
+                        inputEdge.ToNodeInputIndex = inputEdgeCount++;
                         inputEdges.push_back(inputEdge);
                     }
                 }
@@ -79,10 +79,9 @@ namespace Dml
                 [&](std::optional<uint32_t>& outputIndex) {
                     if (outputIndex.has_value()) 
                     {
-                        outputEdgeCount++;
                         DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
                         outputEdge.FromNodeIndex = 0;
-                        outputEdge.FromNodeOutputIndex = outputIndex.value();
+                        outputEdge.FromNodeOutputIndex = outputEdgeCount++;
                         outputEdge.GraphOutputIndex = outputIndex.value();
                         outputEdges.push_back(outputEdge);
                     }

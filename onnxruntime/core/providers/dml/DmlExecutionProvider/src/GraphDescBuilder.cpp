@@ -148,27 +148,49 @@ namespace Dml::GraphDescBuilder
             );
 
             // Create a map between operatorGraphNodeIndex to mainGraphNodeIndex.
-            // Can't populate graphNodes vector at this point, because operatorDesc may get modified later.
             std::unordered_map<uint32_t, uint32_t> operatorGraphNodeIndexToMainGraphNodeIndexMap;
-            uint32_t lastestNodeIndex = gsl::narrow_cast<uint32_t>(graphNodes.size());
-            uint32_t operatorGraphNodeCount = gsl::narrow_cast<uint32_t>(graphNodeCreateInfo.nodes.size());
-            for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphNodeCount; nodeIndex++) 
+            uint32_t latestNodeIndex = gsl::narrow_cast<uint32_t>(graphNodes.size());
+            const bool isNodeAsOpDesc = graphNodeCreateInfo.nodesAsOperatorDesc.has_value();
+            
+            if (isNodeAsOpDesc)
             {
-                ORT_THROW_HR_IF(E_UNEXPECTED, !graphNodeCreateInfo.nodes[nodeIndex]);
-                operatorGraphNodeIndexToMainGraphNodeIndexMap.emplace(nodeIndex, lastestNodeIndex++);
+                // Can't populate graphNodes vector at this point, because operatorDesc may get modified later.
+                for (uint32_t nodeIndex = 0; nodeIndex < graphNodeCreateInfo.nodeCount; nodeIndex++) 
+                {
+                    ORT_THROW_HR_IF(E_UNEXPECTED, !(*graphNodeCreateInfo.nodesAsOperatorDesc)[nodeIndex]);
+                    operatorGraphNodeIndexToMainGraphNodeIndexMap.emplace(nodeIndex, latestNodeIndex++);
+                }
+            }
+            else
+            {
+                for (uint32_t nodeIndex = 0; nodeIndex < graphNodeCreateInfo.nodeCount; nodeIndex++) 
+                {
+                    ORT_THROW_HR_IF(E_UNEXPECTED, !(*graphNodeCreateInfo.nodesAsIDMLOperator)[nodeIndex].Get());
+                    operatorGraphNodeIndexToMainGraphNodeIndexMap.emplace(nodeIndex, latestNodeIndex++);
+                    NodeInfo nodeInfo = {};
+                    nodeInfo.op = std::move((*graphNodeCreateInfo.nodesAsIDMLOperator)[nodeIndex]);
+                    graphNodes.push_back(std::move(nodeInfo));
+                }
             }
 
             // map operatorGraphInputEdge as either mainGraphInputEdge or mainGraphIntermediateEdge
-            for (uint32_t inputIndex = 0; inputIndex < graphNodeCreateInfo.inputEdges.size(); inputIndex++)
+            //for (uint32_t inputIndex = 0; inputIndex < graphNodeCreateInfo.inputEdges.size(); inputIndex++)
+            for (auto& operatorGraphInputEdge : graphNodeCreateInfo.inputEdges)
             {
-                auto& operatorGraphInputEdge = graphNodeCreateInfo.inputEdges[inputIndex];
-                
-                // operatorGraphInputEdge.GraphInputIndex will be the operator input kernel index.
+                //auto& operatorGraphInputEdge = graphNodeCreateInfo.inputEdges[inputIndex];
+                // skip the optional input of a DML operator API.
+                /*if (operatorGraphInputEdge.GraphInputIndex == std::numeric_limits<uint32_t>::max())
+                {
+                    continue;
+                }*/
+
+                // operatorGraphInputEdge.GraphInputIndex will be the ONNX input index.
                 const onnxruntime::NodeArg* arg = node.InputDefs()[operatorGraphInputEdge.GraphInputIndex];
 
                 if (arg->Exists())
                 {
                     auto iter = nameToDmlFusedNodeInputIndex.find(arg->Name());
+                    uint32_t mainGraphNodeIndex = operatorGraphNodeIndexToMainGraphNodeIndexMap[operatorGraphInputEdge.ToNodeIndex];
 
                     if (iter != nameToDmlFusedNodeInputIndex.end())
                     {
@@ -178,15 +200,18 @@ namespace Dml::GraphDescBuilder
 
                         DML_INPUT_GRAPH_EDGE_DESC edge = {};
                         edge.GraphInputIndex = dmlFusedNodeInputIndex;
-                        edge.ToNodeIndex = operatorGraphNodeIndexToMainGraphNodeIndexMap[operatorGraphInputEdge.ToNodeIndex];
-                        edge.ToNodeInputIndex = inputIndex;
+                        edge.ToNodeIndex = mainGraphNodeIndex;
+                        edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;  // ?? might need to point inputIndex
                         graphInputEdges.push_back(edge);
 
                         // If this is a constant input, set the appropriate flags on the desc
-                        if (dmlFusedNodeInputIndex < isConstGpuGraphInputCount && isConstGpuGraphInput[dmlFusedNodeInputIndex])
+                        if (isNodeAsOpDesc && 
+                            dmlFusedNodeInputIndex < isConstGpuGraphInputCount && 
+                            isConstGpuGraphInput[dmlFusedNodeInputIndex])
                         {
-                            std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = graphNodeCreateInfo.nodes[operatorGraphInputEdge.ToNodeIndex]->GetInputTensors();
-                            DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorGraphInputEdge.ToNodeInputIndex];
+                            std::vector<DmlBufferTensorDesc*> toNodeInputTensorDescs = 
+                                (*graphNodeCreateInfo.nodesAsOperatorDesc)[operatorGraphInputEdge.ToNodeIndex]->GetInputTensors();
+                            DmlBufferTensorDesc* tensorDesc = toNodeInputTensorDescs[operatorGraphInputEdge.ToNodeInputIndex];  // ?? might need to point inputIndex
                             tensorDesc->flags |= DML_TENSOR_FLAG_OWNED_BY_DML;
                         }
                     }
@@ -197,8 +222,8 @@ namespace Dml::GraphDescBuilder
                         DML_INTERMEDIATE_GRAPH_EDGE_DESC edge = {};
                         edge.FromNodeIndex = inputNodeAndIndex.nodeIndex;
                         edge.FromNodeOutputIndex = inputNodeAndIndex.targetIndex;
-                        edge.ToNodeIndex = operatorGraphNodeIndexToMainGraphNodeIndexMap[operatorGraphInputEdge.ToNodeIndex];
-                        edge.ToNodeInputIndex = inputIndex;
+                        edge.ToNodeIndex = mainGraphNodeIndex;
+                        edge.ToNodeInputIndex = operatorGraphInputEdge.ToNodeInputIndex;  // ?? might need to point inputIndex
                         graphIntermediateEdges.push_back(edge);
                     }
                 }
@@ -227,17 +252,19 @@ namespace Dml::GraphDescBuilder
                 }
             }
 
-            // iterate on operatorGraphNodes to populate graphNodes with IDMLOperators
-            for (auto& opDesc : graphNodeCreateInfo.nodes)
+            if (isNodeAsOpDesc)
             {
-                DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc(*opDesc, &allocator);
-                ComPtr<IDMLOperator> op;
-                ORT_THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
-                allocator.Reset();
+                for (auto& opDesc : (*graphNodeCreateInfo.nodesAsOperatorDesc))
+                {
+                    DML_OPERATOR_DESC dmlDesc = SchemaHelpers::ConvertOperatorDesc(*opDesc, &allocator);
+                    ComPtr<IDMLOperator> op;
+                    ORT_THROW_IF_FAILED(device->CreateOperator(&dmlDesc, IID_PPV_ARGS(&op)));
+                    allocator.Reset();
 
-                NodeInfo nodeInfo = {};
-                nodeInfo.op = std::move(op);
-                graphNodes.push_back(std::move(nodeInfo));
+                    NodeInfo nodeInfo = {};
+                    nodeInfo.op = std::move(op);
+                    graphNodes.push_back(std::move(nodeInfo));
+                }
             }
         }
 

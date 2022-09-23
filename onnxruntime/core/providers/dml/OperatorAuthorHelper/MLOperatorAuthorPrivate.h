@@ -10,19 +10,26 @@ struct DML_INPUT_GRAPH_EDGE_DESC;
 struct DML_OUTPUT_GRAPH_EDGE_DESC;
 struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
 
+// Either nodesAsOpDesc or nodesAsIDMLOperator be present
+//  1) Operator kernels which implements operator using only DML Operator, they will pass DML_OPERATOR_DESC. 
+//     It passes DML_OPERATOR_DESC, because while building Dml graph (inside FusedGraphKernel.cpp) we can change the 
+//     the flag of constant inputs to DML_TENSOR_FLAG_OWNED_BY_DML.
+//  2) Operator kernels which implements operator using DMLX graph, they will pass IDMLOperator and won't able
+//     to use DML_TENSOR_FLAG_OWNED_BY_DML.
 struct MLOperatorGraphDesc
 {
     uint32_t nodeCount;
-    _Field_size_opt_(nodeCount) const DML_OPERATOR_DESC* nodes;
+    _Field_size_opt_(nodeCount) const DML_OPERATOR_DESC** nodesAsOpDesc;
+    _Field_size_opt_(nodeCount) IDMLOperator** nodesAsIDMLOperator;
 
     uint32_t inputEdgeCount;
-    _Field_size_opt_(inputEdgeCount) const DML_INPUT_GRAPH_EDGE_DESC* inputEdges;
+    _Field_size_(inputEdgeCount) const DML_INPUT_GRAPH_EDGE_DESC* inputEdges;
 
     uint32_t intermediateEdgeCount;
-    _Field_size_opt_(intermediateEdgeCount) const DML_INTERMEDIATE_GRAPH_EDGE_DESC* intermediateEdges;
+    _Field_size_(intermediateEdgeCount) const DML_INTERMEDIATE_GRAPH_EDGE_DESC* intermediateEdges;
 
     uint32_t outputEdgeCount;
-    _Field_size_opt_(outputEdgeCount) const DML_OUTPUT_GRAPH_EDGE_DESC* outputEdges;
+    _Field_size_(outputEdgeCount) const DML_OUTPUT_GRAPH_EDGE_DESC* outputEdges;
 };
 
 
