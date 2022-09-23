@@ -131,7 +131,7 @@ class FusionUtils:
             return False
 
         # Not per-tensor quantization
-        scale_has_single_element = (scale.ndim == 0 or (scale.ndim == 1 and scale.shape[0] == 1))
+        scale_has_single_element = scale.ndim == 0 or (scale.ndim == 1 and scale.shape[0] == 1)
         if allow_per_tensor_quantization_only and not scale_has_single_element:
             return False
 
