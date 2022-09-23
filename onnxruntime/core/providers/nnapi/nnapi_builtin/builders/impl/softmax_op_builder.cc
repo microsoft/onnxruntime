@@ -1,0 +1,102 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <onnx/onnx_pb.h>
+
+#include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_viewer.h"
+#include "core/providers/common.h"
+#include "core/providers/shared/utils/utils.h"
+#include "core/providers/shared/node_unit/node_unit.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_builder.h"
+
+using namespace android::nn::wrapper;
+
+namespace onnxruntime {
+namespace nnapi {
+
+using namespace op_builder_helpers;
+
+class SoftMaxOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
+};
+
+void CreateSoftMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<SoftMaxOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
+bool SoftMaxOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQSoftmax;
+}
+
+void SoftMaxOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (IsQuantizedOp(node_unit)) {
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Inputs()[0].quant_param);   // x_scale, x_zp
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
+  }
+}
+
+Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
+  NodeAttrHelper helper(node_unit);
+
+  auto input = node_unit.Inputs()[0].node_arg.Name();
+
+  // TODO: Needs fix.
+  if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+    ORT_ENFORCE(model_builder.UseNCHW(),
+                "For Android API Level < 29 input for softmax needs to be NCHW.");
+  }
+
+  int32_t axis = helper.Get("axis", 1);
+
+  // Check if the quantization scale and ZP are correct
+  float x_scale = 0.0f;
+  int32_t x_zero_point = 0;
+  float y_scale = 0.0f;
+  int32_t y_zero_point = 0;
+  if (IsQuantizedOp(node_unit)) {
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        model_builder.GetInitializerTensors(), node_unit.Inputs()[0], node_unit.ModelPath(),
+        x_scale, x_zero_point));
+
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
+
+    y_scale = 1.f / 256;
+  }
+
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
+  float beta = 1.f;
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
+
+  if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
+    // you can only specify axis for android api level 29+
+    ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
+  }
+
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices,
+                                                 {output}, {output_operand_type}));
+  return Status::OK();
+}
+
+}  // namespace nnapi
+}  // namespace onnxruntime

@@ -16,8 +16,6 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_builder.h"
 
-#include "base_op_builder.h"
-
 using namespace android::nn::wrapper;
 
 namespace onnxruntime {
