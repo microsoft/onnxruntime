@@ -10,7 +10,7 @@ namespace contrib {
 namespace cuda {
 
 #define QORDERED_UNARY_OP_SHARED_MEMORY_DECLARATION(name) \
-  void QOrderedUnarySharedMemory_##name(                  \
+  Status QOrderedUnarySharedMemory_##name(                \
       cudaStream_t stream,                                \
       const int8_t* input_data,                           \
       const float* input_scale,                           \
