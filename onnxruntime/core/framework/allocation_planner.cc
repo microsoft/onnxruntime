@@ -1677,7 +1677,7 @@ class PlannerImpl {
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  void CalculateLifetime(gsl::span<const int> ort_value_usecount) {
+  void CalculateLifetime(gsl::span<int> ort_value_usecount) {
     auto& execution_plan = graph_viewer_.GetNodesInTopologicalOrder();
     for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
       auto node_index = execution_plan[program_counter];
