@@ -105,7 +105,7 @@ jobs:
         with:
           token: ${{ secrets.github_token }}
           base_dir: ${{ env.base_dir }}
-          build_dir: "build/Debug/compile_commands.json"
+          build_dir: "build/Debug"
           config_file: ".clang-tidy"
           lgtm_comment_body: ""
 
