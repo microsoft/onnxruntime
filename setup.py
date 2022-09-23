@@ -78,6 +78,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_acl"):
     package_name = "onnxruntime-acl"
 elif parse_arg_remove_boolean(sys.argv, "--use_armnn"):
     package_name = "onnxruntime-armnn"
+elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
+    package_name = "onnxruntime-cann"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -102,6 +104,7 @@ manylinux_tags = [
     "manylinux2014_ppc64le",
     "manylinux2014_s390x",
     "manylinux_2_27_x86_64",
+    "manylinux_2_27_aarch64",
 ]
 is_manylinux = environ.get("AUDITWHEEL_PLAT", None) in manylinux_tags
 
