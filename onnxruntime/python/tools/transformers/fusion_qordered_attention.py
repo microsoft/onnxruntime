@@ -303,11 +303,8 @@ class FusionQOrderedAttention(Fusion):
         )
 
         if mask_nodes is None:
-            mask_nodes = self.model.match_parent_path(add_qk, ["Cast", "Mul", "Sub"], [None, None, None])
-
-            if mask_nodes is None:
-                logger.debug("fuse_qordered_attention: failed to match mask_nodes path")
-                return
+            logger.debug("fuse_qordered_attention: failed to match mask_nodes path")
+            return
 
         # Ascertain `qkv_hidden_sizes` attribute value
         q_weight = self.model.get_initializer(dequantize_q_matmul_weight.input[0])
