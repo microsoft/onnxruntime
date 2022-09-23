@@ -115,8 +115,6 @@ public:
         dml::TensorDesc inputTensorDesc = inputDescs[OnnxInputIndex::X];
         dml::TensorDesc scaleTensorDesc = inputDescs[OnnxInputIndex::Scale];
         dml::TensorDesc biasTensorDesc = inputDescs[OnnxInputIndex::Bias];
-        dml::TensorDesc meanTensorDesc = inputDescs[OnnxInputIndex::Mean];
-        dml::TensorDesc varianceTensorDesc = inputDescs[OnnxInputIndex::Variance];
         dml::Expression input = dml::InputTensor(graph, OnnxInputIndex::X, inputTensorDesc);
         dml::Expression scale = dml::InputTensor(graph, OnnxInputIndex::Scale, scaleTensorDesc);
         dml::Expression bias = dml::InputTensor(graph, OnnxInputIndex::Bias, biasTensorDesc);
@@ -132,14 +130,6 @@ public:
         {
             bias = dml::Cast(bias, inputTensorDesc.dataType);
         }
-        if (meanTensorDesc.dataType != inputTensorDesc.dataType)
-        {
-            mean = dml::Cast(mean, inputTensorDesc.dataType);
-        }
-        if (biasTensorDesc.dataType != inputTensorDesc.dataType)
-        {
-            variance = dml::Cast(variance, inputTensorDesc.dataType);
-        }
 
         dml::Expression batchNormalization = dml::BatchNormalization(
             input,
@@ -151,7 +141,6 @@ public:
             epsilon,
             fusedActivation ? &fusedActivationDmlDesc : nullptr
         );
-        
         DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
         m_compiledOperator.Attach(graph.Compile(executionFlags, { batchNormalization }).Detach());
     }
@@ -199,14 +188,14 @@ void CALLBACK QueryBatchNormalization(IMLOperatorSupportQueryContextPrivate* con
     }
 
     // Fall back if the data types of the mean/variance or scale/bias differ from the input.
-    /*MLOperatorTensorDataType inputTensorDataType = operatorEdgeDescription[0].tensorDataType;
+    MLOperatorTensorDataType inputTensorDataType = operatorEdgeDescription[0].tensorDataType;
     for (uint32_t i = 1; i < 5; ++i)
     {
         if (operatorEdgeDescription[i].tensorDataType != inputTensorDataType)
         {
             return;
         }
-    }*/
+    }
 
     *isSupported = true;
 }
