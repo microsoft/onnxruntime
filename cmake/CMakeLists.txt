@@ -105,6 +105,7 @@ option(onnxruntime_ARMNN_BN_USE_CPU "Use the CPU implementation for the Batch No
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF)
+option(onnxruntime_USE_CANN "Build with CANN support" OFF)
 #The onnxruntime_PREFER_SYSTEM_LIB is mainly designed for package managers like apt/yum/vcpkg.
 #Please note, by default Protobuf_USE_STATIC_LIBS is OFF but it's recommended to turn it ON on Windows. You should set it properly when onnxruntime_PREFER_SYSTEM_LIB is ON otherwise you'll hit linkage errors.
 #If you have already installed protobuf(or the others) in your system at the default system paths(like /usr/include), then it's better to set onnxruntime_PREFER_SYSTEM_LIB ON. Otherwise onnxruntime may see two different protobuf versions and we won't know which one will be used, the worst case could be onnxruntime picked up header files from one of them but the binaries from the other one.
@@ -1262,6 +1263,11 @@ if (onnxruntime_USE_XNNPACK)
   list(APPEND ORT_PROVIDER_FLAGS -DUSE_XNNPACK=1)
   list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_XNNPACK=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES xnnpack)
+endif()
+if (onnxruntime_USE_CANN)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_CANN=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CANN=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES cann)
 endif()
 
 function(onnxruntime_set_compile_flags target_name)
