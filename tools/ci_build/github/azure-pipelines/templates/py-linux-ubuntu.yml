@@ -47,9 +47,7 @@ jobs:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimecpubuildubuntu20python${{ parameters.arch }} tools/ci_build/github/linux/build_linux_arm64_python_package.sh
-            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-            rm -f $(Build.BinariesDirectory)/Release/models
-            rm -rf $(Build.BinariesDirectory)/Release/_deps $(Build.BinariesDirectory)/Release/CMakeFiles
+            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/models $(Build.BinariesDirectory)/Release/_deps $(Build.BinariesDirectory)/Release/CMakeFiles
             cd $(Build.BinariesDirectory)/Release
             find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 
