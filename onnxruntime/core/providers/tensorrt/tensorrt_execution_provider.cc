@@ -1818,7 +1818,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           }
         }
 
-        const auto input_type = tensor_info.GetTensorElementType();
+        const auto input_type = tensor_info.GetElementType();
         switch (input_type) {
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto input_tensor_ptr = input_tensor.GetTensorData<float>();

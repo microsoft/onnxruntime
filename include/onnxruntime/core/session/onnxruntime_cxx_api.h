@@ -822,8 +822,8 @@ struct ValueImpl : Base<T> {
   /// <summary>
   /// Obtains a pointer to a user defined data for experimental purposes
   /// </summary>
-  template <typename T>
-  void GetOpaqueData(const char* domain, const char* type_name, T&) const;  ///< Wraps OrtApi::GetOpaqueValue
+  template <typename R>
+  void GetOpaqueData(const char* domain, const char* type_name, R&) const;  ///< Wraps OrtApi::GetOpaqueValue
 
   bool IsTensor() const;  ///< Returns true if Value is a tensor, false for other types like map/sequence/etc
   bool HasValue() const;  /// < Return true if OrtValue contains data and returns false if the OrtValue is a None
@@ -979,8 +979,8 @@ struct ValueImpl : Base<T> {
   /// <param name="indices_format">requested indices kind</param>
   /// <param name="num_indices">number of indices entries</param>
   /// <returns>Pinter to the internal sparse tensor buffer containing indices. Do not free this pointer.</returns>
-  template <typename T>
-  const T* GetSparseTensorIndicesData(OrtSparseIndicesFormat indices_format, size_t& num_indices) const;
+  template <typename R>
+  const R* GetSparseTensorIndicesData(OrtSparseIndicesFormat indices_format, size_t& num_indices) const;
 
   /// <summary>
   /// Returns true if the OrtValue contains a sparse tensor
@@ -996,8 +996,8 @@ struct ValueImpl : Base<T> {
   /// </summary>
   /// <typeparam name="T">numeric data types only. Use GetStringTensor*() to retrieve strings.</typeparam>
   /// <returns>a pointer to the internal values buffer. Do not free this pointer.</returns>
-  template <typename T>
-  const T* GetSparseTensorValues() const;
+  template <typename R>
+  const R* GetSparseTensorValues() const;
 
   /// <summary>
   /// Supplies COO format specific indices and marks the contained sparse tensor as being a COO format tensor.
@@ -1354,14 +1354,14 @@ struct KernelInfoImpl : Base<T> {
   template <typename R>  // R is only implemented for float, int64_t, and string
   R GetAttribute(const char* name) const {
     R val;
-    attr_utils::GetAttr(p_, name, val);
+    attr_utils::GetAttr(this->p_, name, val);
     return val;
   }
 
   template <typename R>  // R is only implemented for std::vector<float>, std::vector<int64_t>
   std::vector<R> GetAttributes(const char* name) const {
     std::vector<R> result;
-    attr_utils::GetAttrs(p_, name, result);
+    attr_utils::GetAttrs(this->p_, name, result);
     return result;
   }
 };

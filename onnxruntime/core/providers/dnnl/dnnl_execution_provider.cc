@@ -325,7 +325,7 @@ Status DNNLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
         auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         auto shape = tensor_info.GetShape();
         // dnnl expectes non-const data
-        void* inputBuffer = input_tensor.GetTensorMutableRawData();
+        void* inputBuffer = const_cast<void*>(input_tensor.GetTensorRawData());
         inputs.emplace(
             input_name,
             ort_dnnl::OnnxTensorData{
