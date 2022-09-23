@@ -468,6 +468,8 @@ def parse_arguments():
     parser.add_argument(
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
     )
+    parser.add_argument("--use_qnn", action='store_true', help="Build with QNN support.")
+    parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
     parser.add_argument("--use_preinstalled_eigen", action="store_true", help="Use pre-installed Eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed Eigen.")
@@ -821,6 +823,7 @@ def generate_build_tree(
     acl_libs,
     armnn_home,
     armnn_libs,
+    qnn_home,
     snpe_root,
     path_to_protoc_exe,
     configs,
@@ -1000,6 +1003,9 @@ def generate_build_tree(
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
 
+    if qnn_home and os.path.exists(qnn_home):
+        cmake_args += ["-Donnxruntime_QNN_HOME=" + qnn_home]
+
     if snpe_root and os.path.exists(snpe_root):
         cmake_args += ["-DSNPE_ROOT=" + snpe_root]
 
@@ -1111,6 +1117,14 @@ def generate_build_tree(
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=" + args.xcode_code_signing_identity]
         if args.xcode_code_signing_team_id:
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
+
+    if args.use_qnn:
+        if args.qnn_home is None or os.path.exists(args.qnn_home) is False:
+            raise BuildError(
+                "qnn_home paths must be specified and valid.",
+                "qnn_home='{}' valid={}.".format(qnn_home, False),
+            )
+        cmake_args += ["-Donnxruntime_USE_QNN=ON"]
 
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
@@ -2465,6 +2479,8 @@ def main():
     armnn_home = args.armnn_home
     armnn_libs = args.armnn_libs
 
+    qnn_home = args.qnn_home
+
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = setup_tensorrt_vars(args)
 
@@ -2671,6 +2687,7 @@ def main():
             acl_libs,
             armnn_home,
             armnn_libs,
+            qnn_home,
             snpe_root,
             path_to_protoc_exe,
             configs,

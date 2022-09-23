@@ -34,7 +34,7 @@ namespace perftest {
       "\t-I: Generate tensor input binding (Free dimensions are treated as 1.)\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
       "\t-e [cpu|cuda|dnnl|tensorrt|openvino|nuphar|dml|acl|nnapi|coreml|snpe|rocm|migraphx|xnnpack]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'snpe', 'rocm', 'migraphx' or 'xnnpack'. "
+      "'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx' or 'xnnpack'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -64,8 +64,13 @@ namespace perftest {
       "\t    [OpenVINO only] [use_compiled_network]: Can be enabled to directly import pre-compiled blobs(VPU) or cl_cache files(iGPU) if exists else dump one. This feature is supported on MyriadX(VPU) hardware device target. Starting from OpenVINO 2021.4 version, this feature also works with iGPU with cl_cache.\n"
       "\t    [OpenVINO only] [blob_dump_path]: Explicitly specify the path where you would like to dump and load the blobs or cl_cache files for the use_compiled_network(Model caching) feature. This overrides the default path.\n"
       "\t    [OpenVINO only] [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU device(Reduces the CPU Utilization while using GPU) \n"
+      "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
+      "\t    [QNN only] [runtime]: QNN runtime engine, options: 'CPU', 'GPU', 'DSP', 'HTP'.\n"
+      "\t    [QNN only] [profiling_level]: QNN profiling level, options: 'basic', 'detailed', default 'off'.\n"
+      "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
       "\t [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5 enable_opencl_throttling|true use_compiled_network|true blob_dump_path|\"<path>\"\"\n"
+      "\t [Example] [For QNN EP] -e qnn -i \"runtime|CPU backend_path|/folderpath/libQnnCpu.so\" \n\n"
       "\t    [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
       "\t    [TensorRT only] [trt_min_subgraph_size]: Minimum size of TensorRT subgraphs.\n"
       "\t    [TensorRT only] [trt_max_workspace_size]: Set TensorRT maximum workspace size in byte.\n"
@@ -175,6 +180,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
           test_config.run_config.optimization_level = ORT_DISABLE_ALL;
         } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kQnnExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("snpe"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kSnpeExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {

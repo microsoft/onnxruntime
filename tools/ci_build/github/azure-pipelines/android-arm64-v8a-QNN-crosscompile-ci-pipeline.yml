@@ -1,0 +1,94 @@
+jobs:
+- job: Build_QNN_EP
+  pool: Onnxruntime-QNNEP-Ubuntu-2004-CPU
+  timeoutInMinutes: 30
+  workspace:
+    clean: all
+  condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  steps:
+  - task: UsePythonVersion@0
+    displayName: Use Python $(pythonVersion)
+    inputs:
+      versionSpec: $(pythonVersion)
+
+  - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
+    displayName: Install coreutils and ninja
+
+  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+    displayName: Setup gradle wrapper to use gradle 6.8.3
+
+  - script: sudo chmod go+rw /dev/kvm
+    displayName: Update permissions to KVM
+
+  - script: |
+      export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+      export ANDROID_HOME=/usr/local/lib/android/sdk
+      export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
+      export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
+    displayName: set Android ENVs
+
+  - script: |
+      echo "##vso[task.setvariable variable=QNN_SDK_ROOT]/data/qnnsdk/qnn-v1.15.0.220706112757_38277"
+    displayName: set QNN_SDK_ROOT
+
+  - script: |
+      env | egrep -e ANDROID -e QNN
+      python3 tools/ci_build/build.py \
+        --config Release \
+        --android \
+        --build_dir build_qnn \
+        --android_sdk_path $ANDROID_HOME \
+        --android_ndk_path $ANDROID_NDK_HOME \
+        --android_abi=arm64-v8a \
+        --android_api=30 \
+        --parallel \
+        --use_qnn \
+        --qnn_home $QNN_SDK_ROOT \
+        --cmake_generator=Ninja \
+        --skip_tests
+      mkdir -p build_qnn/Release/testdata/QNN/node_tests
+      cp -r cmake/external/onnx//onnx/backend/test/data/node/test_basic_conv_with_padding build_qnn/Release/testdata/QNN/node_tests
+    displayName: QNN EP, Build
+
+  - task: JavaToolInstaller@0
+    displayName: Use jdk 8
+    inputs:
+      versionSpec: '8'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
+  - script: |
+      python3 tools/python/run_android_emulator.py \
+      --android-sdk-root ${ANDROID_SDK_ROOT} \
+      --create-avd --system-image "system-images;android-30;google_apis;arm64-v8a" \
+      --start --emulator-extra-args="-partition-size 4096" \
+      --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Start Android emulator
+    enabled: false
+    continueOnError: true
+
+  - script: |
+      $ANDROID_SDK_ROOT/emulator/emulator -list-avds
+    displayName: List emulators
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        ${ANDROID_SDK_ROOT}/platform-tools/adb shell "mkdir /data/local/tmp/qnn"
+        ${ANDROID_SDK_ROOT}/platform-tools/adb push onnx_test_runner /data/local/tmp/qnn
+        ${ANDROID_SDK_ROOT}/platform-tools/adb push testdata/QNN/node_tests/test_basic_conv_with_padding /data/local/tmp/qnn
+        ${ANDROID_SDK_ROOT}/platform-tools/adb shell "/data/local/tmp/qnn/onnx_test_runner -e qnn /data/local/tmp/qnn/test_basic_conv_with_padding"
+      workingDirectory: build_qnn/Release
+    displayName: Run tests
+    enabled: false
+    continueOnError: true
+
+  - script: |
+        python3 tools/python/run_android_emulator.py \
+          --android-sdk-root ${ANDROID_SDK_ROOT} \
+          --stop \
+          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Stop Android emulator
+    condition: always()
+    enabled: false
+    continueOnError: true

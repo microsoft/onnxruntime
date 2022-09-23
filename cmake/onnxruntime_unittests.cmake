@@ -502,6 +502,7 @@ set(ONNXRUNTIME_TEST_LIBS
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
@@ -564,6 +565,13 @@ if(onnxruntime_USE_RKNPU)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_rknpu)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rknpu)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_rknpu)
+endif()
+
+if(onnxruntime_USE_QNN)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/qnn/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_qnn)
 endif()
 
 if(onnxruntime_USE_COREML)
@@ -822,6 +830,38 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       TARGET ${test_data_target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy ${SNPE_SO_FILES} $<TARGET_FILE_DIR:${test_data_target}>
       )
+  endif()
+  if (onnxruntime_USE_QNN)
+    if (NOT QNN_ARCH_ABI)
+      string(TOLOWER ${onnxruntime_target_platform} GEN_PLATFORM)
+      if(MSVC)
+          message(STATUS "Building MSVC for architecture ${CMAKE_SYSTEM_PROCESSOR} with CMAKE_GENERATOR_PLATFORM as ${GEN_PLATFORM}")
+          if (${GEN_PLATFORM} STREQUAL "arm64")
+            set(QNN_ARCH_ABI aarch64-windows-msvc)
+          else()
+            set(QNN_ARCH_ABI x86_64-windows-msvc)
+          endif()
+      else()
+          if (${CMAKE_SYSTEM_NAME} STREQUAL "Android")
+            set(QNN_ARCH_ABI aarch64-android-clang6.0)
+          elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+            if (${GEN_PLATFORM} STREQUAL "x86_64")
+              set(QNN_ARCH_ABI x86_64-linux-clang)
+            else()
+              set(QNN_ARCH_ABI aarch64-android)
+            endif()
+          endif()
+      endif()
+    endif()
+
+    if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+        file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.so" "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.dll")
+        message(STATUS "QNN lib files: " ${QNN_LIB_FILES})
+        add_custom_command(
+          TARGET ${test_data_target} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${test_data_target}>
+          )
+    endif()
   endif()
   if (onnxruntime_USE_DNNL)
     list(APPEND onnx_test_libs dnnl)

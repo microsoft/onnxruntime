@@ -607,7 +607,7 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
 
   output_args.reserve(num_outputs);
   for (size_t i = 0; i < num_outputs; ++i) {
-    std::string output = graph.GenerateNodeArgName(name + "_out" + std::to_string(i));
+    std::string output = graph.GenerateNodeArgName(inputs.empty() ? "" : std::string(inputs.front()) + name + "_out" + std::to_string(i));
     NodeArg* arg = &graph.GetOrCreateNodeArg(output, nullptr);
     output_args.push_back(arg);
   }
@@ -752,7 +752,7 @@ void ApiGraph::MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& 
 
   graph_utils::GraphEdge::RemoveGraphEdges(graph_, output_edges);
 
-  std::string new_name = graph_.GenerateNodeArgName(src_ort_node.Name());
+  std::string new_name = graph_.GenerateNodeArgName(node_arg->Name());
   src_output_defs[src_idx] = &graph_.GetOrCreateNodeArg(new_name, nullptr);
   graph_.UpdateProducerNode(new_name, src_node_idx);
 }

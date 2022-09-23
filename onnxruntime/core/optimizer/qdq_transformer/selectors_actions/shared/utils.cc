@@ -30,20 +30,30 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
 static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
   return {{"Gather", {}},
           {"Reshape", {}},
+          {"Flatten", {}},
           {"Transpose", {}},
           {"MaxPool", {12}},
           {"Resize", {}},
           {"Squeeze", {}},
-          {"Unsqueeze", {}}};
+          {"Unsqueeze", {}},
+          {"Split", {}},
+          {"Where", {}}};
 }
 
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
   return {{"AveragePool", {}},
+          {"GlobalAveragePool", {}},
           {"Softmax", {}},
-          {"LeakyRelu", {}}};
+          {"Sqrt", {}},
+          {"ReduceMean", {}},
+          {"LeakyRelu", {}},
+          {"Sigmoid", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
+          {"Div", {}},
+          {"Sub", {}},
+          {"Pow", {}},
           {"Mul", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {

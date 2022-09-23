@@ -1,0 +1,54 @@
+jobs:
+  - job: Build_QNN_EP
+    pool: Onnxruntime-QNNEP-Ubuntu-2004-CPU
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+    steps:
+      - task: UsePythonVersion@0
+        displayName: Use Python $(pythonVersion)
+        inputs:
+          versionSpec: $(pythonVersion)
+
+      - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
+        displayName: Install coreutils and ninja
+
+      - script: |
+          echo "##vso[task.setvariable variable=QNN_SDK_ROOT]/data/qnnsdk/qnn-v1.15.0.220706112757_38277"
+        displayName: set QNN_SDK_ROOT
+
+      - script: |
+          env | egrep -e QNN
+          ls /data
+          python3 tools/ci_build/build.py \
+            --build_dir build \
+            --config Release \
+            --parallel \
+            --use_qnn \
+            --qnn_home $QNN_SDK_ROOT \
+            --cmake_generator=Ninja \
+            --skip_tests \
+            --cmake_extra_defines "CMAKE_CXX_FLAGS=-Wno-unused-variable -Wno-unused-parameter -Wno-type-limits -Wno-ignored-qualifiers -fpermissive"
+          mkdir -p build/Release/testdata/QNN/node_tests
+        displayName: QNN EP, Build
+
+
+      - script: |
+          python3 tools/ci_build/build.py \
+            --build_dir build \
+            --config Release \
+            --test \
+            --qnn_home $QNN_SDK_ROOT \
+            --cmake_generator=Ninja \
+            --skip_submodule_sync \
+            --ctest_path ""
+        displayName: Run unit tests
+
+      - task: CmdLine@2
+        displayName: Run tests
+        inputs:
+          script: |
+            ./build/Release/onnx_test_runner -e qnn \
+              -v -j 1 -c 1 -i "runtime|CPU backend_path|$QNN_SDK_ROOT/target/x86_64-linux-clang/lib/libQnnCpu.so" \
+              cmake/external/onnx/onnx/backend/test/data/node

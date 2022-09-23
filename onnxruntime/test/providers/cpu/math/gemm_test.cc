@@ -485,7 +485,9 @@ void TestGemmEmptyTensor() {
   test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
   test.AddOutput<T>("Y", {0, 3},
                     {});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});  //TensorRT: doesn't support dynamic shape yet
+  //TensorRT, QNN: doesn't support dynamic shape yet
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(GemmOpTest, GemmEmptyTensor) {
@@ -510,7 +512,12 @@ static void TestGemmNoBiasOpset11() {
                     {10.0f, 10.0f, 10.0f,
                      -10.0f, -10.0f, -10.0f});
   // tensorRT don't seem to support missing bias
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
+  // QNN Linux result diff 0.011714935302734375 exceed the threshold
+#ifndef _WIN32
+  excluded_provider_types.insert(kQnnExecutionProvider);
+#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
 }
 
 TEST(GemmOpTest, GemmNoBiasOpset11) {

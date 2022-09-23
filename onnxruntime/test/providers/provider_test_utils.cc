@@ -1033,6 +1033,7 @@ void OpTester::Run(
         kAclExecutionProvider,
         kArmNNExecutionProvider,
         kNnapiExecutionProvider,
+        kQnnExecutionProvider,
         kRocmExecutionProvider,
         kCoreMLExecutionProvider,
         kSnpeExecutionProvider,
@@ -1134,6 +1135,8 @@ void OpTester::Run(
           execution_provider = DefaultCoreMLExecutionProvider();
         else if (provider_type == onnxruntime::kSnpeExecutionProvider)
           execution_provider = DefaultSnpeExecutionProvider();
+        else if (provider_type == onnxruntime::kQnnExecutionProvider)
+          execution_provider = DefaultQnnExecutionProvider();
         else if (provider_type == onnxruntime::kXnnpackExecutionProvider)
           execution_provider = DefaultXnnpackExecutionProvider();
 
@@ -1156,6 +1159,7 @@ void OpTester::Run(
               provider_type == onnxruntime::kNnapiExecutionProvider ||
               provider_type == onnxruntime::kCoreMLExecutionProvider ||
               provider_type == onnxruntime::kDnnlExecutionProvider ||
+              provider_type == onnxruntime::kQnnExecutionProvider ||
               provider_type == onnxruntime::kSnpeExecutionProvider)
             continue;
           auto reg = execution_provider->GetKernelRegistry();

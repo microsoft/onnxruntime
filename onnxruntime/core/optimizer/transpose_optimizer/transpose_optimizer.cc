@@ -630,7 +630,7 @@ static std::string_view TransposeOutput(api::GraphRef& graph, api::NodeRef& node
   // Make transpose without input initially, then add it to avoid cyclic reference.
 
   // X -> Node -> Y,   Transpose
-  auto transpose = MakeTranspose(graph, "", perm);
+  auto transpose = MakeTranspose(graph, node.Outputs()[i], perm);
 
   // X -> Node -> *Y',   Transpose -> Y      *shape/dtype not set
   graph.MoveOutput(node, i, *transpose, 0);
@@ -2032,7 +2032,7 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
 
 const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
   // List of all layout sensitive ops defined in ONNX standard.
-  static std::unordered_set<std::string_view> layout_sensitive_ops = {"Conv", "QLinearConv", "BatchNormalization",
+  static std::unordered_set<std::string_view> layout_sensitive_ops = {"Conv", "ConvTranspose", "QLinearConv", "BatchNormalization",
                                                                       "AveragePool", "GlobalAveragePool", "MaxPool",
                                                                       "GlobalMaxPool", "LRN", "GridSample",
                                                                       "DepthToSpace", "SpaceToDepth"};
