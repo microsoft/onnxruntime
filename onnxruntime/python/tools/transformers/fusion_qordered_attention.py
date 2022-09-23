@@ -343,9 +343,20 @@ class FusionQOrderedAttention(Fusion):
             attention_inputs.append(dequantize_k_matmul_weight.input[1])
             attention_inputs.append(dequantize_v_matmul_weight.input[1])
 
-            attention_inputs.append(add_q.input[1])
-            attention_inputs.append(add_k.input[1])
-            attention_inputs.append(add_v.input[1])
+            if self.model.get_initializer(add_q.input[0]):
+                attention_inputs.append(add_q.input[0])
+            else:  # second input is the constant bias
+                attention_inputs.append(add_q.input[1])
+
+            if self.model.get_initializer(add_k.input[0]):
+                attention_inputs.append(add_k.input[0])
+            else:  # second input is the constant bias
+                attention_inputs.append(add_k.input[1])
+
+            if self.model.get_initializer(add_v.input[0]):
+                attention_inputs.append(add_v.input[0])
+            else:  # second input is the constant bias
+                attention_inputs.append(add_v.input[1])
 
             attention_inputs.append(quantize_qk.input[1])
             attention_inputs.append(quantize_qk_softmax.input[1])
@@ -407,4 +418,4 @@ class FusionQOrderedAttention(Fusion):
 
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
             # self.nodes_to_remove.extend(mask_nodes)
-            self.prune_graph = True
+            #self.prune_graph = True

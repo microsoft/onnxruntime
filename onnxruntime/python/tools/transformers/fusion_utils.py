@@ -131,7 +131,8 @@ class FusionUtils:
             return False
 
         # Not per-tensor quantization
-        if allow_per_tensor_quantization_only and scale.ndim != 0:
+        scale_has_single_element = (scale.ndim == 0 or (scale.ndim == 1 and scale.shape[0] == 1))
+        if allow_per_tensor_quantization_only and not scale_has_single_element:
             return False
 
         # If the Q/DQ node has no zero point input, it is assumed to be 0 (per ONNX spec)
