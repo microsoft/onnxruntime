@@ -1455,6 +1455,7 @@ class PlannerImpl {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // copy the use counts to a vector, before computing reuse
     InlinedVector<int> ort_value_usecount;
+    ort_value_usecount.reserve(ort_value_info_.size());
 #endif
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       // compute use count first
@@ -1676,7 +1677,7 @@ class PlannerImpl {
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  void CalculateLifetime(const InlinedVector<int>& ort_value_usecount) {
+  void CalculateLifetime(gsl::span<const int> ort_value_usecount) {
     auto& execution_plan = graph_viewer_.GetNodesInTopologicalOrder();
     for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
       auto node_index = execution_plan[program_counter];
@@ -2201,6 +2202,7 @@ class PlannerImpl {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void AdjustInplaceLifeIntervals() {
     InlinedHashMap<OrtValueIndex, InlinedVector<OrtValueIndex>> inplace_reuse_buffer;
+    inplace_reuse_buffer.reserve(ort_value_info_.size());
     for (size_t i = 0; i < ort_value_info_.size(); ++i) {
       if (AllocPlan(OrtValueIndex(i)).inplace_reuse != OrtValueIndex(i)) {
         inplace_reuse_buffer[ort_value_info_[i].inplace_reused_buffer_index].push_back(OrtValueIndex(i));
@@ -2476,6 +2478,7 @@ void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_view
     }
   }
   InlinedHashMap<std::string, size_t> node_stream_map;
+  node_stream_map.reserve(p_graph_nodes.size());
   for (size_t i = 0; i < node_names_by_stream_.size(); ++i) {
     for (const auto& node_name : node_names_by_stream_[i]) {
       node_stream_map[node_name] = i;
