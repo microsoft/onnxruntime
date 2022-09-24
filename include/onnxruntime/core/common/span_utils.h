@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <algorithm>
+
 #include "core/common/gsl.h"
 
 namespace onnxruntime {
@@ -76,13 +78,11 @@ inline [[nodiscard]] gsl::span<U> ReinterpretAsSpan(gsl::span<T> src) {
   return gsl::span<U>(reinterpret_cast<U*>(src.data()), src.size_bytes() / sizeof(U));
 }
 
-template <class T>
-inline constexpr auto ToConstSpan(gsl::span<T> s) {
-  if constexpr (std::is_const_v<T>) {
-    return s;
-  } else {
-    return gsl::span<const T>(s.data(), s.size());
-  }
+template <class T1, size_t Extent1, class T2, size_t Extent2>
+inline [[nodiscard]] bool SpanEq(gsl::span<T1, Extent1> a, gsl::span<T2, Extent2> b) {
+  static_assert(std::is_same_v<std::remove_const_t<T1>, std::remove_const_t<T2>>,
+                "T1 and T2 should be the same type except for const qualification");
+  return std::equal(a.begin(), a.end(), b.begin(), b.end());
 }
 
 }  // namespace onnxruntime

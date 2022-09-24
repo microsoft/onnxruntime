@@ -233,9 +233,9 @@ bool operator!=(FastReduceKind a, FastReduceKind b) {
 
 bool ResultsNoTransposePrepareForReduce::equal(gsl::span<const int64_t> local_input_shape,
                                                gsl::span<const int64_t> local_reduced_axes) {
-  if (ToConstSpan(gsl::make_span(input_shape)) != local_input_shape)
+  if (!SpanEq(gsl::make_span(input_shape), local_input_shape))
     return false;
-  if (ToConstSpan(gsl::make_span(reduced_axes)) != local_reduced_axes)
+  if (!SpanEq(gsl::make_span(reduced_axes), local_reduced_axes))
     return false;
   return true;
 }

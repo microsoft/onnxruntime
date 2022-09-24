@@ -4,6 +4,7 @@
 #include <memory>
 #include <assert.h>
 #include "core/common/safeint.h"
+#include "core/common/span_utils.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/dump_tensor.h"
 
@@ -108,7 +109,7 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
       // Here we use naive algorithm for matching. The complexity is O(batch_beam_size * ngram_size * sequence_length)
       // TODO(tianleiwu): build N-Gram index (hash table with prefix of length NGram - 1 as key,
       //                  and list of last word of NGram as value) for fast matching.
-      if (ngram_size_ == 1 || prefix == sequence.subspan(j, prefix_length)) {
+      if (ngram_size_ == 1 || SpanEq(prefix, sequence.subspan(j, prefix_length))) {
         blocked_word_ids.insert(sequence[static_cast<gsl::index>(j) + prefix_length]);
       }
     }

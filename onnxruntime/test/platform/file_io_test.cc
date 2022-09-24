@@ -103,7 +103,7 @@ TEST(FileIoTest, ReadFileIntoBuffer) {
 
     auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
 
-    ASSERT_EQ(ToConstSpan(buffer_span), expected_data_span);
+    ASSERT_TRUE(SpanEq(buffer_span, expected_data_span));
   }
 
   // invalid - negative offset
@@ -186,7 +186,7 @@ TEST(FileIoTest, MapFileIntoMemory) {
 
     auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
 
-    ASSERT_EQ(ToConstSpan(mapped_span), expected_data_span);
+    ASSERT_TRUE(SpanEq(mapped_span, expected_data_span));
   }
 
   {

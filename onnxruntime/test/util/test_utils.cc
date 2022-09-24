@@ -26,19 +26,19 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
   for (size_t i = 0, end = expected_fetches.size(); i < end; ++i) {
     auto& ltensor = expected_fetches[i].Get<Tensor>();
     auto& rtensor = fetches[i].Get<Tensor>();
-    ASSERT_EQ(ltensor.Shape().GetDims(), rtensor.Shape().GetDims());
+    ASSERT_TRUE(SpanEq(ltensor.Shape().GetDims(), rtensor.Shape().GetDims()));
     auto element_type = ltensor.GetElementType();
     switch (element_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-        EXPECT_THAT(ltensor.DataAsSpan<int32_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<int32_t>()))
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int32_t>(), rtensor.DataAsSpan<int32_t>()))
             << " mismatch for " << output_names[i];
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-        EXPECT_THAT(ltensor.DataAsSpan<int64_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<int64_t>()))
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<int64_t>(), rtensor.DataAsSpan<int64_t>()))
             << " mismatch for " << output_names[i];
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-        EXPECT_THAT(ltensor.DataAsSpan<uint8_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<uint8_t>()))
+        EXPECT_TRUE(SpanEq(ltensor.DataAsSpan<uint8_t>(), rtensor.DataAsSpan<uint8_t>()))
             << " mismatch for " << output_names[i];
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
@@ -202,7 +202,7 @@ void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl:
     default:
       ASSERT_TRUE(false);
   }
-  ASSERT_THAT(ind_span, testing::ContainerEq(expected_indicies));
+  ASSERT_TRUE(SpanEq(ind_span, expected_indicies));
 }
 
 #endif  // DISABLE_SPARSE_TENSORS
