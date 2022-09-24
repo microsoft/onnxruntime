@@ -100,5 +100,29 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias) {
   test.Run();
 }
 
+// LayerNormalization became an ONNX operator in opset 17. It uses the same implementation so this is a sanity check.
+TEST(LayerNormTest, LayerNorm17_float) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{1, 2, 3};
+  test.AddInput<float>("x", dims, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<float>("gamma", {3}, {1.0f, 1.0f, 1.0f});
+  test.AddOutput<float>("output", dims, {-1.2247f, 0.0f, 1.2247f, -1.2247f, 0.0f, 1.2247f});
+  test.Run();
+}
+
+TEST(LayerNormTest, LayerNorm17_double) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{1, 2, 3};
+  test.AddInput<double>("x", dims, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0});
+  test.AddInput<double>("gamma", {3}, {1.0, 1.0, 1.0});
+  test.AddOutput<double>("output", dims, {-1.2247, 0.0, 1.2247, -1.2247, 0.0, 1.2247});
+  // DNNL does not support double
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime
