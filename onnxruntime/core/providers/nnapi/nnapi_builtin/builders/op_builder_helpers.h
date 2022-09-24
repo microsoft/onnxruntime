@@ -10,6 +10,7 @@
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 
@@ -21,6 +22,8 @@ enum DataLayout {
   L_0231 = 0,
   L_1230 = 1,
 };
+
+// Add operator related helpers
 
 // adds a scalar operand to the NNAPI model and appends its index to `input_indices`
 template <typename T>
@@ -174,5 +177,38 @@ bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit
 
 Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit& node_unit,
                                      std::vector<int32_t>& axes);
+
+// Operator support related helpers
+
+inline bool IsNodeLayoutNHWC(const NodeUnit& node_unit) {
+  return node_unit.Domain() == kMSInternalNHWCDomain;
+}
+
+bool IsQuantizationScaleSupported(const InitializedTensorSet& initializers,
+                                  const NodeUnitIODef& io_def,
+                                  const OpSupportCheckParams& params,
+                                  const std::string& op_type,
+                                  bool is_quant_matmul,
+                                  bool is_conv_matmul_u8s8_weight);
+
+bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initializers,
+                                      const NodeUnitIODef& io_def,
+                                      const std::string& op_type,
+                                      const Path& model_path,
+                                      bool is_quant_matmul,
+                                      bool is_conv_matmul_u8s8_weight);
+
+// Check if the given quantized input(s) or output(s) is supported
+bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                            const std::vector<size_t>& indices, const OpSupportCheckParams& params, ArgType arg_type);
+
+// Some Quantized NNAPI operations have required output scale and zero point
+// e.g. Softmax (uint8) requires output scale be 1.f/256 and zp be 0
+// This helper function checks if the given io_def has required scale and zp
+bool HasRequiredScaleAndZeroPoint(const InitializedTensorSet& initializers,
+                                  const std::string& op_desc,
+                                  const NodeUnitIODef& io_def,
+                                  const Path& path,
+                                  float required_scale, int32_t required_zp);
 
 }  // namespace onnxruntime::nnapi::op_builder_helpers

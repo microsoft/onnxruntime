@@ -23,17 +23,30 @@ namespace nnapi {
 using namespace op_builder_helpers;
 
 class PadOpBuilder : public BaseOpBuilder {
+  // Add operator related
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-};
 
-void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.builders.push_back(std::make_unique<PadOpBuilder>());
-  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
-}
+  // Operator support related
+ private:
+  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
+                                           const OpSupportCheckParams& /* params */) const override {
+    return ANEURALNETWORKS_FEATURE_LEVEL_3;  // for ANEURALNETWORKS_PAD_V2
+  }
+
+  int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override {
+    // before Pad-11, inputs `pads` and `constant_value` were attributes
+    // only support inputs now
+    // Note: Could add support for attributes later.
+    return 11;
+  }
+
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
+};
 
 void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
@@ -124,6 +137,86 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto op_code = ANEURALNETWORKS_PAD_V2;
 
   return model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});
+}
+
+bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                     const OpSupportCheckParams& /* params */) const {
+  const auto& inputs = node_unit.Inputs();
+
+  // only support 1-4d input shape
+  // only support input with more than 0 elements
+  {
+    Shape input_shape;
+    if (!GetShape(inputs[0].node_arg, input_shape)) {
+      return false;
+    }
+
+    if (input_shape.size() > 4 || input_shape.empty()) {
+      LOGS_DEFAULT(VERBOSE) << "Pad only supports up to 1-4d shape, input is "
+                            << input_shape.size() << "d shape";
+      return false;
+    }
+
+    if (std::find(input_shape.begin(), input_shape.end(), uint32_t{0}) != input_shape.end()) {
+      LOGS_DEFAULT(VERBOSE) << "Pad input with zero elements is not supported";
+      return false;
+    }
+  }
+
+  // only support "constant" mode
+  // Note: Could possibly add support for "reflect" later using ANEURALNETWORKS_MIRROR_PAD.
+  {
+    NodeAttrHelper helper{node_unit};
+    const auto mode = helper.Get("mode", "constant");
+    if (mode != "constant") {
+      LOGS_DEFAULT(VERBOSE) << "Mode is not supported: " << mode;
+      return false;
+    }
+  }
+
+  // only support if `pads` input is known and does not contain negative values
+  {
+    const auto pads_initializer_it = initializers.find(inputs[1].node_arg.Name());
+    if (pads_initializer_it == initializers.end()) {
+      LOGS_DEFAULT(VERBOSE) << "pads must be known";
+      return false;
+    }
+
+    const ONNX_NAMESPACE::TensorProto& pads_initializer = *pads_initializer_it->second;
+    std::vector<uint8_t> unpacked_tensor;
+    auto status = onnxruntime::utils::UnpackInitializerData(pads_initializer, unpacked_tensor);
+    if (!status.IsOK()) {
+      LOGS_DEFAULT(ERROR) << "Error while unpacking pads initializer: " << status.ErrorMessage();
+      return false;
+    }
+
+    int64_t pad_value;
+    ORT_ENFORCE(unpacked_tensor.size() % sizeof(pad_value) == 0);
+    for (size_t i = 0; i < unpacked_tensor.size(); i += sizeof(pad_value)) {
+      memcpy(&pad_value, &unpacked_tensor[i], sizeof(pad_value));
+      if (pad_value < 0) {
+        LOGS_DEFAULT(VERBOSE) << "Negative pad value is not supported: pads["
+                              << i / sizeof(pad_value) << "] = " << pad_value;
+        return false;
+      }
+    }
+  }
+
+  // only support if `constant_value` input is known
+  // Note: Could add support for non-constant initializer later. Then we need to ensure it is a scalar (with shape []).
+  if (inputs.size() > 2) {
+    if (!Contains(initializers, inputs[2].node_arg.Name())) {
+      LOGS_DEFAULT(VERBOSE) << "constant_value must be known";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<PadOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 
 }  // namespace nnapi

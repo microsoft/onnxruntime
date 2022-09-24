@@ -22,17 +22,28 @@ namespace onnxruntime {
 namespace nnapi {
 
 class SliceOpBuilder : public BaseOpBuilder {
+  // Add operator related
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+  // Operator support related
+ private:
+  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
+                                           const OpSupportCheckParams& /* params */) const override {
+    return ANEURALNETWORKS_FEATURE_LEVEL_2;
+  }
+
+  // We only support slice from opset 10
+  int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 10; }
+
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
 };
 
-void CreateSliceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.builders.push_back(std::make_unique<SliceOpBuilder>());
-  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
-}
+// Add operator related
 
 void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   // Skip everything except input0 for Slice
@@ -191,6 +202,52 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // shrink_axis_mask
   }
   return model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type});
+}
+
+// Operator support related
+
+bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                       const OpSupportCheckParams& /* params */) const {
+  Shape input_shape;
+  if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
+    return false;
+
+  if (input_shape.size() > 4) {
+    LOGS_DEFAULT(VERBOSE) << "Slice only supports 1-4d shape, input is "
+                          << input_shape.size() << "d shape";
+    return false;
+  }
+
+  // TODO, replace with std::find when we switch to c++17
+  if (std::any_of(input_shape.cbegin(), input_shape.cend(), [](int32_t i) { return i == 0; })) {
+    LOGS_DEFAULT(VERBOSE) << "Slice doesn't support dynamic input shape";
+    return false;
+  }
+
+  if (!CheckIsInitializer(initializers, node_unit, node_unit.Inputs()[1].node_arg.Name(), "starts")) {
+    return false;
+  }
+  if (!CheckIsInitializer(initializers, node_unit, node_unit.Inputs()[2].node_arg.Name(), "ends")) {
+    return false;
+  }
+  const auto& inputs = node_unit.Inputs();
+  if (inputs.size() > 3) {
+    if (!CheckIsInitializer(initializers, node_unit, node_unit.Inputs()[3].node_arg.Name(), "axes")) {
+      return false;
+    }
+    if (inputs.size() > 4) {
+      if (!CheckIsInitializer(initializers, node_unit, node_unit.Inputs()[4].node_arg.Name(), "steps")) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+void CreateSliceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<SliceOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 
 }  // namespace nnapi

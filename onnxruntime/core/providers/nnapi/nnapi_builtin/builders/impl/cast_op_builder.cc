@@ -23,8 +23,22 @@ namespace nnapi {
 using namespace op_builder_helpers;
 
 class CastOpBuilder : public BaseOpBuilder {
+  // Add operator related
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+  // Operator support related
+ private:
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
+
+  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
+                                           const OpSupportCheckParams& /* params */) const override {
+    return ANEURALNETWORKS_FEATURE_LEVEL_3;
+  }
+
+  // Cast opset 5- uses string attribute for to type, is not supported for now
+  int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 6; }
 };
 
 Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -55,6 +69,19 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CAST, input_indices, {output},
                                                  {output_operand_type}));
   return Status::OK();
+}
+
+bool CastOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+                                      const OpSupportCheckParams& /* params */) const {
+  NodeAttrHelper helper(node_unit);
+  const auto to = helper.Get("to", 0);
+  if (to != ONNX_NAMESPACE::TensorProto::FLOAT &&
+      to != ONNX_NAMESPACE::TensorProto::INT32) {
+    LOGS_DEFAULT(VERBOSE) << "[Cast] Only support cast to int32 or float, actual to type, " << to;
+    return false;
+  }
+
+  return true;
 }
 
 void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

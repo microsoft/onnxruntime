@@ -25,19 +25,28 @@ namespace nnapi {
 using namespace op_builder_helpers;
 
 class ReshapeOpBuilder : public BaseOpBuilder {
+  // Add operator related
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
+  // Operator support related
+ private:
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
+
+  // Reshape opset 4- uses attributes for new shape which we do not support for now
+  int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 5; }
+  bool HasSupportedInputOutputsImpl(
+      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+      const OpSupportCheckParams& /* params */) const override;
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.builders.push_back(std::make_unique<ReshapeOpBuilder>());
-  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
-}
+// Add operator related
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   if (IsQuantizedOp(node_unit)) {
@@ -45,10 +54,6 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
   }
   model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());
-}
-
-bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
-  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQReshape;
 }
 
 Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -81,6 +86,84 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   }
 
   return AddReshapeOperator(model_builder, node_unit, input, shape);
+}
+
+// Operator support related
+
+bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQReshape;
+}
+
+bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                         const OpSupportCheckParams& /* params */) const {
+  const auto& inputs = node_unit.Inputs();
+  const auto& perm_name = inputs[1].node_arg.Name();
+  if (!Contains(initializers, perm_name)) {
+    LOGS_DEFAULT(VERBOSE) << "New shape of reshape must be known";
+    return false;
+  }
+
+  Shape input_shape;
+  if (!GetShape(inputs[0].node_arg, input_shape))
+    return false;
+
+  if (input_shape.size() > 4 || input_shape.empty()) {
+    LOGS_DEFAULT(VERBOSE) << "Reshape only supports up to 1-4d shape, input is "
+                          << input_shape.size() << "d shape";
+    return false;
+  }
+
+  const auto& perm_tensor = *initializers.at(perm_name);
+  std::vector<uint8_t> unpacked_tensor;
+  auto status = onnxruntime::utils::UnpackInitializerData(perm_tensor, unpacked_tensor);
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(ERROR) << "Error while unpacking perm_tensor: " << status.ErrorMessage();
+    return false;
+  }
+  const int64_t* raw_perm = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+  const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
+
+  NodeAttrHelper helper(node_unit);
+  const bool allow_zero = helper.Get("allowzero", 0) == 1;
+  for (uint32_t i = 0; i < perm_size; i++) {
+    // NNAPI reshape does not support 0 as dimension
+    if (raw_perm[i] == 0) {
+      if (i < input_shape.size() && input_shape[i] == 0) {
+        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't support 0 reshape dimension on a dynamic dimension";
+        return false;
+      }
+
+      if (allow_zero) {
+        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't support 0 reshape dimension when allowzero is enabled";
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool ReshapeOpBuilder::HasSupportedInputOutputsImpl(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const OpSupportCheckParams& params) const {
+  if (!IsQuantizedOp(node_unit)) {
+    return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+  }
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kInput)) {
+    return false;
+  }
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput)) {
+    return false;
+  }
+
+  return true;
+}
+
+void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<ReshapeOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 
 }  // namespace nnapi

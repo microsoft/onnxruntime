@@ -23,17 +23,31 @@ namespace nnapi {
 using namespace op_builder_helpers;
 
 class ConvOpBuilder : public BaseOpBuilder {
+  // Add operator related
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
-  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+  // Operator support related
+ private:
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
+
+  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
+                                           const OpSupportCheckParams& params) const override {
+    return params.use_nchw ? ANEURALNETWORKS_FEATURE_LEVEL_3 : ANEURALNETWORKS_FEATURE_LEVEL_2;
+  }
+
+  bool HasSupportedInputOutputsImpl(
+      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+      const OpSupportCheckParams& /* params */) const override;
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
-  return IsQuantizedConv(GetQuantizedOpType(node_unit));
-}
+// Add operator related
 
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
@@ -264,6 +278,81 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(operationCode, input_indices,
                                                  {output}, {output_operand_type}));
   return Status::OK();
+}
+
+bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
+  return IsQuantizedConv(GetQuantizedOpType(node_unit));
+}
+
+bool ConvOpBuilder::HasSupportedInputOutputsImpl(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const OpSupportCheckParams& params) const {
+  if (!IsQuantizedOp(node_unit))
+    return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+
+  // QLinearConv only supports input of uint8 for now
+  if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
+    return false;
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, ArgType::kInput))
+    return false;
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput))
+    return false;
+
+  return true;
+}
+
+// Operator support related
+
+bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                      const OpSupportCheckParams& params) const {
+  const auto& op_type = node_unit.OpType();
+  bool is_quant_conv = IsQuantizedOp(node_unit);
+
+  // We don't support nhwc com.microsoft.QLinearConv for now
+  if (is_quant_conv && node_unit.Domain() == kMSDomain) {
+    LOGS_DEFAULT(VERBOSE) << "com.microsoft.QLinearConv is not supported";
+    return false;
+  }
+
+  const auto& inputs = node_unit.Inputs();
+  NodeAttrHelper helper(node_unit);
+  const auto group = helper.Get("group", 1);
+  const auto weight_name = inputs[1].node_arg.Name();
+  if (Contains(initializers, weight_name)) {
+    const auto& tensor = *initializers.at(weight_name);
+    if (tensor.dims().size() != 4) {
+      LOGS_DEFAULT(VERBOSE) << "Only conv 2d is supported.";
+      return false;
+    }
+
+    const auto onnx_dilations = helper.Get("dilations", std::vector<int>{1, 1});
+    if (onnx_dilations != std::vector<int>{1, 1}) {
+      if (group != 1 && tensor.dims()[1] != 1) {
+        LOGS_DEFAULT(VERBOSE) << "dilation is not supported on grouped conv";
+        return false;
+      }
+
+      if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+        LOGS_DEFAULT(VERBOSE) << op_type << " dilations is only supported on Android API level 29+, "
+                              << "actual API level: " << params.android_feature_level;
+        return false;
+      }
+    }
+  } else {
+    LOGS_DEFAULT(VERBOSE) << "The weight of convolution must be known";
+    return false;
+  }
+
+  if (is_quant_conv) {
+    if (inputs.size() > 2 && !Contains(initializers, inputs[2].node_arg.Name())) {
+      LOGS_DEFAULT(VERBOSE) << "Bias of QLinearConv must be known";
+      return false;
+    }
+  }
+
+  return true;
 }
 
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

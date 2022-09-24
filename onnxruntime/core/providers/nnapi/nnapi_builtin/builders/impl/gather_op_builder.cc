@@ -21,17 +21,25 @@ namespace onnxruntime {
 namespace nnapi {
 
 class GatherOpBuilder : public BaseOpBuilder {
+  // Add operator related
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+  // Operator support related
+ private:
+  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
+                                           const OpSupportCheckParams& /* params */) const override {
+    return ANEURALNETWORKS_FEATURE_LEVEL_3;
+  }
+
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
 };
 
-void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.builders.push_back(std::make_unique<GatherOpBuilder>());
-  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
-}
+// Add operator related
 
 void GatherOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
@@ -106,6 +114,54 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   return model_builder.AddOperation(ANEURALNETWORKS_GATHER, input_indices,
                                     {output}, {output_operand_type});
+}
+
+// Operator support related
+
+bool GatherOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                        const OpSupportCheckParams& /* params */) const {
+  const auto& inputs = node_unit.Inputs();
+  Shape input_shape;
+
+  if (!GetShape(inputs[0].node_arg, input_shape)) {
+    return false;
+  }
+
+  if (input_shape.size() > 4 || input_shape.empty()) {
+    LOGS_DEFAULT(VERBOSE) << "Gather only supports up to 1-4d shape, input is "
+                          << input_shape.size() << "d shape";
+    return false;
+  }
+
+  if (std::any_of(input_shape.cbegin(), input_shape.cend(), [](int32_t i) { return i == 0; })) {
+    LOGS_DEFAULT(VERBOSE) << "Gather doesn't support dynamic input shape";
+    return false;
+  }
+
+  // Here in GatherOpSupportChecker::IsOpSupportedImpl, we removed the restriction that 2nd input "indices" must be an initializer
+  // to accommodate the support for some models such as mobileBERT. It doesn't need to be an initializer for int32 as NNAPI Gather
+  // uses int32 for indices so the type matches.
+  // However, we still require indices of other types to be an initializer as we convert the data to int32 during model building.
+  // TODO: We could potentially support non-initializer inputs for the other types if we inserted a cast.
+  const auto& indices_name = inputs[1].node_arg.Name();
+
+  int32_t indices_type;
+  if (!GetType(node_unit.Inputs()[1].node_arg, indices_type))
+    return false;
+
+  if (indices_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    if (!Contains(initializers, indices_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Indices of Gather must be known.";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void CreateGatherOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<GatherOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 
 }  // namespace nnapi

@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+/* // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include <unordered_map>
@@ -99,4 +99,4 @@ const std::unordered_map<std::string, const IOpSupportChecker*>& GetOpSupportChe
 }
 
 }  // namespace nnapi
-}  // namespace onnxruntime
+}  // namespace onnxruntime */

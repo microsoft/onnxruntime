@@ -23,12 +23,20 @@ namespace nnapi {
 using namespace op_builder_helpers;
 
 class ClipOpBuilder : public BaseOpBuilder {
+  // Add operator related
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+  // Operator support related
+ private:
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
 };
+
+// Add operator related
 
 void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
@@ -74,6 +82,25 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}));
   return Status::OK();
+}
+
+// Operator support related
+
+bool ClipOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                      const OpSupportCheckParams& /* params */) const {
+  float min, max;
+  if (!GetClipMinMax(initializers, node_unit.GetNode(), min, max, logging::LoggingManager::DefaultLogger()))
+    return false;
+
+  // We only supoort relu6 or relu1
+  // TODO, support clip between 2 arbitrary numbers
+  if ((min == 0.0f && max == 6.0f) || (min == -1.0f && max == 1.0f)) {
+    return true;
+  }
+
+  LOGS_DEFAULT(VERBOSE) << "Clip only supports [min, max] = [0, 6] or [-1, 1], the input is ["
+                        << min << ", " << max << "]";
+  return false;
 }
 
 void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

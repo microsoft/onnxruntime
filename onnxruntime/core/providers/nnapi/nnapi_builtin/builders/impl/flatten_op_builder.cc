@@ -23,14 +23,15 @@ namespace nnapi {
 using namespace op_builder_helpers;
 
 class FlattenOpBuilder : public BaseOpBuilder {
+  // Add operator relate
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-};
 
-void CreateFlattenOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.builders.push_back(std::make_unique<FlattenOpBuilder>());
-  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
-}
+  // Operator support related
+ private:
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
+};
 
 Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto input = node_unit.Inputs()[0].node_arg.Name();
@@ -48,6 +49,38 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   dim_2 = dim_2 == 0 ? -1 : dim_2;
   std::vector<int32_t> shape{dim_1, dim_2};
   return AddReshapeOperator(model_builder, node_unit, input, shape);
+}
+
+// Operator support related
+
+bool FlattenOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+                                         const OpSupportCheckParams& /* params */) const {
+  Shape input_shape;
+  if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
+    return false;
+
+  if (input_shape.size() > 4 || input_shape.empty()) {
+    LOGS_DEFAULT(VERBOSE) << "Flatten only supports up to 1-4d shape, input is "
+                          << input_shape.size() << "d shape";
+    return false;
+  }
+
+  int32_t dim_1 = 1;
+  int32_t dim_2 = 1;
+  GetFlattenOutputShape(node_unit, input_shape, dim_1, dim_2);
+
+  if (dim_1 == 0 && dim_2 == 0) {
+    LOGS_DEFAULT(VERBOSE) << "The dynamic input shape " << Shape2String(input_shape)
+                          << " is not supported";
+    return false;
+  }
+
+  return true;
+}
+
+void CreateFlattenOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<FlattenOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 
 }  // namespace nnapi

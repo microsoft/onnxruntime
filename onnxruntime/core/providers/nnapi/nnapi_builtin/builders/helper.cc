@@ -15,7 +15,8 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph.h"
 #include "core/providers/common.h"
-#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 
@@ -379,14 +380,14 @@ bool IsInternalQuantizationSupported(const Node& node, const std::unordered_set<
 }
 
 bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
-  const auto& op_support_checkers = GetOpSupportCheckers();
-  const auto op_support_checker_it = op_support_checkers.find(node_unit.OpType());
-  if (op_support_checker_it == op_support_checkers.end()) {
+  const auto& op_builders = GetOpBuilders();
+  const auto op_builder_it = op_builders.find(node_unit.OpType());
+  if (op_builder_it == op_builders.end()) {
     return false;
   }
 
-  const auto* op_support_checker = op_support_checker_it->second;
-  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
+  const auto* op_builder = op_builder_it->second;
+  return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
 }
 
 bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,

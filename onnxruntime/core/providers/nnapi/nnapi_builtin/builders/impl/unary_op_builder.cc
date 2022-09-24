@@ -29,7 +29,26 @@ class UnaryOpBuilder : public BaseOpBuilder {
  private:
   bool IsQuantizedOp(const NodeUnit& node_unit) const override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+  // Operator support related
+ private:
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                         const OpSupportCheckParams& params) const override;
+
+  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
+                                           const OpSupportCheckParams& params) const override;
+
+  bool HasSupportedInputOutputsImpl(
+      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+      const OpSupportCheckParams& /* params */) const override;
+
+  int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
+
+  static bool IsQuantizedOpSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                     const OpSupportCheckParams& params);
 };
+
+// Add operator related
 
 bool UnaryOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   // TODO, add support for QDQ NodeUnit
@@ -107,7 +126,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     // Verify if the scale and zero point values from onnx input and nnapi input match
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
 
-    // We already verified this in  UnaryOpSupportChecker::IsOpSupportedImpl
+    // We already verified this in  UnaryOpBuilder::IsOpSupportedImpl
     y_scale = 1.f / 256;
     y_zero_point = 0;
   }
@@ -118,6 +137,74 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}));
   return Status::OK();
+}
+
+// Operator support related
+
+bool UnaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                                       const OpSupportCheckParams& params) const {
+  if (node_unit.OpType() == "QLinearSigmoid")
+    return IsQuantizedOpSupported(initializers, node_unit, params);
+  else  // Everything except "QLinearSigmoid" are by default supported
+    return true;
+}
+
+int32_t UnaryOpBuilder::GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_unit,
+                                                         const OpSupportCheckParams& /* params */) const {
+  const auto& op(node_unit.OpType());
+  if (op == "Abs" ||
+      op == "Exp" ||
+      op == "Neg" ||
+      op == "Sin" ||
+      op == "Sqrt" ||
+      op == "Log") {
+    return ANEURALNETWORKS_FEATURE_LEVEL_3;
+  }
+
+  return ANEURALNETWORKS_FEATURE_LEVEL_1;
+}
+
+bool UnaryOpBuilder::HasSupportedInputOutputsImpl(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const OpSupportCheckParams& params) const {
+  // We only need to override input check for QLinearSigmoid
+  if (node_unit.OpType() != "QLinearSigmoid")
+    return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kInput))
+    return false;
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput))
+    return false;
+
+  return true;
+}
+
+// All ops except "Sin" opset 5- uses consumed_inputs attribute which is not supported for now
+// "Sin" op has support from opset 7, return 6 here for all ops
+// "QLinearSigmoid" is a contrib op, OpSet will always be 1
+int UnaryOpBuilder::GetMinSupportedOpSet(const NodeUnit& node_unit) const {
+  if (node_unit.OpType() == "QLinearSigmoid")
+    return 1;
+
+  return 6;
+}
+
+/* static */ bool UnaryOpBuilder::IsQuantizedOpSupported(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) {
+  const auto& op_type = node_unit.OpType();
+  ORT_ENFORCE(op_type == "QLinearSigmoid");
+
+  // NNAPI requires the scale be 1.f/256 and zero point to be 0
+  // See https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/android10-c2f2-release/nn/common/operations/Activation.cpp#180
+  if (!HasRequiredScaleAndZeroPoint(initializers,
+                                    MakeString("Op [", op_type, "] name [", node_unit.Name(), "]'s output 0 "),
+                                    node_unit.Outputs()[0], node_unit.ModelPath(),
+                                    1.f / 256 /* required_scale */, 0 /* required_zp */)) {
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace nnapi

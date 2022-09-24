@@ -135,20 +135,6 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
 #endif
 }
 
-#if defined(__ANDROID__)
-// This is to verify the op_builders and op_support_checkers are consistent
-TEST(NnapiExecutionProviderTest, CreateOpBuilderAndOpSupportCheckerTest) {
-  const auto& op_builders = nnapi::GetOpBuilders();
-  const auto& op_support_checkers = nnapi::GetOpSupportCheckers();
-  for (auto entry : op_builders) {
-    ASSERT_TRUE(op_support_checkers.find(entry.first) != op_support_checkers.cend());
-  }
-  for (auto entry : op_support_checkers) {
-    ASSERT_TRUE(op_builders.find(entry.first) != op_builders.cend());
-  }
-}
-#endif  // #if defined(__ANDROID__)
-
 TEST(NnapiExecutionProviderTest, FunctionTest) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("nnapi_execution_provider_test_graph.onnx");
 

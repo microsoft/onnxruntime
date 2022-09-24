@@ -23,8 +23,19 @@ namespace nnapi {
 using namespace op_builder_helpers;
 
 class EluOpBuilder : public BaseOpBuilder {
+  // Add operator related
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
+  // Operator support related
+ private:
+  int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
+                                           const OpSupportCheckParams& /* params */) const override {
+    return ANEURALNETWORKS_FEATURE_LEVEL_4;
+  }
+
+  // Elu opset 5- uses consumed_inputs attribute which is not supported for now
+  int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 6; }
 };
 
 Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {

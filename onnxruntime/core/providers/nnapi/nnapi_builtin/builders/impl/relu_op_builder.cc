@@ -15,8 +15,6 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/impl/base_op_builder.h"
 
-#include "base_op_builder.h"
-
 using namespace android::nn::wrapper;
 
 namespace onnxruntime {
@@ -24,12 +22,13 @@ namespace nnapi {
 
 using namespace op_builder_helpers;
 
-#pragma region op_relu
-
 class ReluOpBuilder : public BaseOpBuilder {
+  // Add operator related
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
+
+// Add operator related
 
 Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
