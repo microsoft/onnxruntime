@@ -36,8 +36,10 @@ if [ $ARCH == "x86_64" ]; then
     #ARM build machines do not have the test data yet.
     BUILD_ARGS="$BUILD_ARGS --enable_onnx_tests"
 fi
+
 if [ $BUILD_DEVICE == "GPU" ]; then
-    BUILD_ARGS="$BUILD_ARGS --use_cuda --use_tensorrt --cuda_version=11.6 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6"
+    #Enable CUDA and TRT EPs.
+    BUILD_ARGS="$BUILD_ARGS --use_cuda --use_tensorrt --cuda_version=11.6 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'"
 fi
 export CFLAGS
 export CXXFLAGS
