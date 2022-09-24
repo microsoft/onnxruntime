@@ -79,7 +79,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // TODO(tianleiwu): only calculate global index once per model instead of once per LongformerAttention node.
   // Build Global Index
-  auto global_index_buffer = GetScratchBuffer<int>(batch_size * sequence_length);
+  auto global_index_buffer = GetScratchBuffer<int>(static_cast<size_t>(batch_size) * sequence_length);
   auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size);
 
   size_t global_scratch_bytes = GetGlobalScratchSize(sequence_length);

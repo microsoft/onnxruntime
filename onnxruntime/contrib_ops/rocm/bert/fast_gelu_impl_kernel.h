@@ -3,7 +3,8 @@
 
 #pragma once
 
-#include "contrib_ops/rocm/bert/util.h"
+#include "core/providers/rocm/tunable/util.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace contrib {
@@ -34,7 +35,7 @@ __global__ void FastGeluKernel(int input_length, int bias_length, const T* input
 template <typename T, unsigned TPB, int ILP>
 __global__ void FastGeluKernelVec(int input_length, int bias_length, const T* input, const T* bias,
                                   T* output) {
-  using VecT = AlignedVector<T, ILP>;
+  using VecT = onnxruntime::rocm::aligned_vector<T, ILP>;
   const T a = T(0.5f);
   const T b = T(0.7978845608028654f);
   const T c = T(0.035677408136300125f);

@@ -27,7 +27,6 @@
 #include "layer_norm_impl.h"
 
 namespace onnxruntime {
-namespace contrib {
 namespace cuda {
 
 using namespace onnxruntime::cuda;
@@ -394,10 +393,10 @@ LAYERNORM_LINEAR_IMPL(float, float, half, true)
 LAYERNORM_LINEAR_IMPL(float, float, float, false)
 LAYERNORM_LINEAR_IMPL(half, float, half, false)
 LAYERNORM_LINEAR_IMPL(double, double, double, false)
+LAYERNORM_LINEAR_IMPL(double, float, double, false)
 LAYERNORM_LINEAR_IMPL(float, float, half, false)
 LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, true)
 LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, false)
 
 }  // namespace cuda
-}  // namespace contrib
 }  // namespace onnxruntime
