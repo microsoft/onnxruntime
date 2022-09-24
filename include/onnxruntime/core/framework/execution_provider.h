@@ -99,6 +99,9 @@ class IExecutionProvider {
      * The return value is non-null if and only if a matching kernel was found.
      */
     virtual const KernelCreateInfo* LookUpKernel(const Node& node) const = 0;
+
+   protected:
+    ~IKernelLookup() = default;
   };
 
   /**
