@@ -1,8 +1,8 @@
 import onnx
-from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg
 from .base_operator import QuantOperatorBase
+from .qdq_base_operator import QDQOperatorBase
 
 
 class QSplit(QuantOperatorBase):
@@ -16,7 +16,7 @@ class QSplit(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [0])
+        ) = self.quantizer.quantize_activation(node, [0])
         if quantized_input_names is None:
             return super().quantize()
 
@@ -42,10 +42,22 @@ class QSplit(QuantOperatorBase):
             self.quantizer.quantized_value_map[output_name] = q_output
 
         if len(node.input) > 1:
-            quantized_input_names = quantized_input_names.extend(node.input[1:])
+            quantized_input_names.extend(node.input[1:])
         quantized_node = onnx.helper.make_node(
             node.op_type, quantized_input_names, quantized_output_names, quantized_node_name, **kwargs
         )
 
         nodes.append(quantized_node)
         self.quantizer.new_nodes += nodes
+
+
+class QDQSplit(QDQOperatorBase):
+    def quantize(self):
+        node = self.node
+        assert node.op_type == "Split"
+
+        if not self.quantizer.is_tensor_quantized(node.input[0]):
+            self.quantizer.quantize_activation_tensor(node.input[0])
+        if not self.disable_qdq_for_node_output:
+            for output in node.output:
+                self.quantizer.quantize_activation_tensor(output, node.input[0])

@@ -12,7 +12,7 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_helpers.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
-
+#include "core/optimizer/initializer.h"
 namespace onnxruntime {
 namespace nnapi {
 
@@ -184,18 +184,10 @@ static bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initial
                             << " zero point dimension " << zero_dim;
       return false;
     }
-
-    std::vector<uint8_t> unpacked_tensor;
-    auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, model_path, unpacked_tensor);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Qlinear[Conv/MatMul] error when unpack zero tensor: " << zero_point_name
-                          << ", error msg: " << status.ErrorMessage();
-      return false;
-    }
-
+    Initializer unpacked_tensor(zero_tensor, model_path);
     // Verify all onnx weight zero point(s) are 0(s)
-    const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.data());
-    for (size_t i = 0; i < unpacked_tensor.size(); i++) {
+    auto zero_points = unpacked_tensor.DataAsSpan<int8_t>();
+    for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
       if (zero_points[i] != 0) {
         LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul]  only support 0 as zero point, "
                               << "zero_points[" << i << "] has value: " << zero_points[i];
@@ -346,7 +338,7 @@ class BaseOpSupportChecker : public IOpSupportChecker {
       const OpSupportCheckParams& params) const;
 
   virtual int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 15; }
+  virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 17; }
 
   // Check if this node_unit's type is supported
   // SingleNode type NodeUnit is supported
@@ -731,13 +723,8 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
   }
 
   const auto& perm_tensor = *initializers.at(perm_name);
-  std::vector<uint8_t> unpacked_tensor;
-  auto status = onnxruntime::utils::UnpackInitializerData(perm_tensor, unpacked_tensor);
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Error while unpacking perm_tensor: " << status.ErrorMessage();
-    return false;
-  }
-  const int64_t* raw_perm = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+  Initializer unpacked_tensor(perm_tensor);
+  auto raw_perm = unpacked_tensor.DataAsSpan<int64_t>();
   const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
 
   NodeAttrHelper helper(node_unit);
@@ -1579,10 +1566,23 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
 
 bool UnaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                               const OpSupportCheckParams& params) const {
-  if (node_unit.OpType() == "QLinearSigmoid")
+  if (node_unit.OpType() == "QLinearSigmoid") {
     return IsQuantizedOpSupported(initializers, node_unit, params);
-  else  // Everything except "QLinearSigmoid" are by default supported
+  } else if (node_unit.OpType() == "Sigmoid") {
+    Shape input_shape;
+    if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
+      return false;
+
+    const auto input_size = input_shape.size();
+    if (input_size > 4 || input_size == 0) {
+      LOGS_DEFAULT(VERBOSE) << "ANEURALNETWORKS_LOGISTIC only supports 1-4d shape, input is "
+                            << input_size << "d shape";
+      return false;
+    }
     return true;
+  }
+  // Everything else are by default supported
+  return true;
 }
 
 int32_t UnaryOpSupportChecker::GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_unit,
@@ -1996,13 +1996,8 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
     // We want to check if the scales or sizes are not trying to resize on N/C channels here
     if (inputs.size() == 3) {  // we are using scales
       const auto& scales_tensor = *initializers.at(inputs[2].node_arg.Name());
-      std::vector<uint8_t> unpacked_tensor;
-      auto status = onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor);
-      if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "Error while unpacking scales_tensor: " << status.ErrorMessage();
-        return false;
-      }
-      const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
+      Initializer unpacked_tensor(scales_tensor);
+      auto scales_data = unpacked_tensor.DataAsSpan<float>();
       float scale_n = scales_data[0];
       float scale_c = IsNodeLayoutNHWC(node_unit) ? scales_data[3] : scales_data[1];
       if (scale_n != 1.0f || scale_c != 1.0f) {
@@ -2015,15 +2010,9 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       // we are using sizes
       const auto& sizes_name = inputs[3].node_arg.Name();
       const auto& sizes_tensor = *initializers.at(sizes_name);
-      std::vector<uint8_t> unpacked_tensor;
-      auto status = onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor);
-      if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "Error while unpacking sizes_tensor: " << status.ErrorMessage();
-        return false;
-      }
-
+      Initializer unpacked_tensor(sizes_tensor);
       int channel_idx = IsNodeLayoutNHWC(node_unit) ? 3 : 1;
-      const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+      auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
       uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
       uint32_t size_c = SafeInt<uint32_t>(sizes_data[channel_idx]);
       if (size_n != input_shape[0] || size_c != input_shape[channel_idx]) {
@@ -2352,20 +2341,12 @@ bool PadOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initiali
     }
 
     const ONNX_NAMESPACE::TensorProto& pads_initializer = *pads_initializer_it->second;
-    std::vector<uint8_t> unpacked_tensor;
-    auto status = onnxruntime::utils::UnpackInitializerData(pads_initializer, unpacked_tensor);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Error while unpacking pads initializer: " << status.ErrorMessage();
-      return false;
-    }
-
-    int64_t pad_value;
-    ORT_ENFORCE(unpacked_tensor.size() % sizeof(pad_value) == 0);
-    for (size_t i = 0; i < unpacked_tensor.size(); i += sizeof(pad_value)) {
-      memcpy(&pad_value, &unpacked_tensor[i], sizeof(pad_value));
-      if (pad_value < 0) {
+    Initializer unpacked_tensor(pads_initializer);
+    auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
+    for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
+      if (tensor_data[i] < 0) {
         LOGS_DEFAULT(VERBOSE) << "Negative pad value is not supported: pads["
-                              << i / sizeof(pad_value) << "] = " << pad_value;
+                              << i << "] = " << tensor_data[i];
         return false;
       }
     }

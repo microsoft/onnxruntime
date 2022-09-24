@@ -34,9 +34,10 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 namespace test {
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 namespace {
+[[maybe_unused]]
 void TestModelLoad(const ORTCHAR_T* model_file_name, const std::function<void(const Graph&)>& check_graph) {
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
@@ -46,6 +47,10 @@ void TestModelLoad(const ORTCHAR_T* model_file_name, const std::function<void(co
   check_graph(session_object.GetGraph());
 }
 }  // namespace
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 // Since NNAPI EP handles Reshape and Flatten differently,
 // Please see ReshapeOpBuilder::CanSkipReshape in
@@ -77,6 +82,30 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   TestModelLoad(model_file_name,
                 [](const Graph& graph) { ASSERT_GT(CountAssignedNodes(graph, kNnapiExecutionProvider), 0)
                                              << "Some nodes should have been taken by the NNAPI EP"; });
+#endif
+}
+
+TEST(NnapiExecutionProviderTest, SigmoidSupportedInputRankTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/nnapi_sigmoid_input_rank_test.onnx");
+
+#if defined(__ANDROID__)
+  std::vector<int64_t> dims_mul_x = {2, 1, 2, 1, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
+
+  OrtValue ml_value_x;
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                       &ml_value_x);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.SigmoidSupportedInputRankTest",
+                            std::make_unique<NnapiExecutionProvider>(0),
+                            feeds, {ExpectedEPNodeAssignment::None} /* params */);
+#else
+  // test load only
+  TestModelLoad(model_file_name,
+                [](const Graph& graph) { ASSERT_EQ(CountAssignedNodes(graph, kNnapiExecutionProvider), 0)
+                                             << "No nodes should have been taken by the NNAPI EP"; });
 #endif
 }
 
@@ -314,7 +343,7 @@ TEST(NnapiExecutionProviderTest, TestQDQResize) {
   // Setting verify_entire_graph_use_ep for this test as false. This is because layout transformation adds
   // Transpose (NCHW -> NHWC) nodes. Post tranformation graph looks like this Transpose -> DQ -> Resize -> Q -> Transpose
   // NNAPI does not pick the first Transpose as its input is graph/partition input
-  // See https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/helper.cc#L305
+  // See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/helper.cc#L305
   // onnxruntime::nnapi::IsInternalQuantizationSupported
   RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
                                          {1, 3, 32, 32} /* sizes_data */,
@@ -484,7 +513,7 @@ TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
 
 TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   // mnist model that has only had basic optimizations applied. nnapi should be able to take at least some of the nodes
-  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.basic.ort");
 
 // The execution can only be performed on Android
 #if defined(__ANDROID__)
@@ -514,7 +543,7 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
 // test that NNAPI EP can process an activation node that is outside of its partition
 TEST(NnapiExecutionProviderTest, ActivationOutsideOfPartition) {
   // model starts with Conv -> Relu
-  constexpr auto* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
+  constexpr auto* model_file_name = ORT_TSTR("testdata/mnist.basic.ort");
   // stop NNAPI partitioning at Relu so NNAPI EP only takes first Conv
   const auto nnapi_partitioning_stop_ops = "Relu";
   SessionOptions so;

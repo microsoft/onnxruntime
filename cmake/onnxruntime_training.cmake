@@ -120,6 +120,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       onnxruntime_session
       ${onnxruntime_libs}
       ${PROVIDERS_MKLDNN}
+      ${PROVIDERS_DML}
       onnxruntime_optimizer
       onnxruntime_providers
       onnxruntime_util

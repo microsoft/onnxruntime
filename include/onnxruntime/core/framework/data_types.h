@@ -458,6 +458,7 @@ class TensorType : public TensorTypeBase {
 
 #if defined(DISABLE_OPTIONAL_TYPE)
 
+// TODO is this still needed after removing kernel def hashes?
 /// Common base-class for all disabled types. We need DataTypeImpl::ToString to work in a minimal build
 /// with disabled types to keep the ORT format model kernel hashes stable.
 class DisabledTypeBase : public DataTypeImpl {

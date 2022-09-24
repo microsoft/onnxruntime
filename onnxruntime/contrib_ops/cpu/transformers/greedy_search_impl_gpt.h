@@ -16,19 +16,19 @@ template <typename T>
 class GreedySearchGpt : public GreedySearchBase<T> {
  public:
   GreedySearchGpt(OpKernelContextInternal& context,
-                const SessionState& decoder_session_state,
-                GptSubgraph& gpt_subgraph,
-                concurrency::ThreadPool* thread_pool,
-                void* cuda_stream,
-                IConsoleDumper* cuda_dumper,
-                GreedySearchParameters& params,
-                const GenerationDeviceHelper::CreateGptInputsFunc& create_inputs_func,
-                const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-                const GenerationDeviceHelper::TopkFunc& topk_func,
-                const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<T>& process_logits_func,
-                const GenerationDeviceHelper::InitGreedyStateFunc<T>& init_greedy_state_func,
-                const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
-                const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func)
+                  const SessionState& decoder_session_state,
+                  GptSubgraph& gpt_subgraph,
+                  concurrency::ThreadPool* thread_pool,
+                  void* cuda_stream,
+                  IConsoleDumper* cuda_dumper,
+                  GreedySearchParameters& params,
+                  const GenerationDeviceHelper::CreateGptInputsFunc& create_inputs_func,
+                  const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+                  const GenerationDeviceHelper::TopkFunc& topk_func,
+                  const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<T>& process_logits_func,
+                  const GenerationDeviceHelper::InitGreedyStateFunc<T>& init_greedy_state_func,
+                  const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
+                  const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func)
       : GreedySearchBase<T>(context,
                             decoder_session_state,
                             thread_pool,
@@ -225,7 +225,9 @@ Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_mana
   // Copy the sequences to output
   gsl::span<int32_t> output = output_sequences->MutableDataAsSpan<int32_t>();
   for (int batch_id = 0; batch_id < parameters->batch_size; ++batch_id) {
-    auto batch_output = output.subspan(batch_id * parameters->max_length,  parameters->max_length);
+    auto batch_output = output.subspan(
+      static_cast<size_t>(batch_id) * parameters->max_length,
+      parameters->max_length);
     gsl::span<const int32_t> sequence_source = greedy_state.sequences.GetSequence(batch_id);
     gsl::copy(sequence_source, batch_output);
   }

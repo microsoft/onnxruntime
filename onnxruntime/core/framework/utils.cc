@@ -27,50 +27,6 @@
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
-namespace ONNX_NAMESPACE {
-std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {
-  std::string result;
-  result.reserve(128);
-
-  result.append("{");
-  bool first = true;
-  for (auto& dim : shape_proto.dim()) {
-    if (!first) {
-      result.append(",");
-    }
-
-    if (onnxruntime::utils::HasDimValue(dim))
-      result.append(std::to_string(dim.dim_value()));
-    else if (onnxruntime::utils::HasDimParam(dim))
-      result.append(dim.dim_param());
-
-    first = false;
-  }
-  result.append("}");
-
-  return (out << result);
-}
-
-std::ostream& operator<<(std::ostream& out, const TensorProto& tensor_proto) {
-  std::string result;
-  result.reserve(128);
-
-  result.append("{");
-  bool first = true;
-  for (auto& dim : tensor_proto.dims()) {
-    if (!first) {
-      result.append(",");
-    }
-
-    result.append(std::to_string(dim));
-    first = false;
-  }
-  result.append("}");
-
-  return (out << result);
-}
-}  // namespace ONNX_NAMESPACE
-
 namespace onnxruntime {
 namespace utils {
 void* DefaultAlloc(size_t size) {
@@ -98,7 +54,6 @@ void DestroyStrings(void* p_data, int64_t elements) {
 bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
          provider_type == onnxruntime::kDnnlExecutionProvider ||
-         provider_type == onnxruntime::kNupharExecutionProvider ||
          provider_type == onnxruntime::kTvmExecutionProvider ||
          provider_type == onnxruntime::kVitisAIExecutionProvider ||
          provider_type == onnxruntime::kOpenVINOExecutionProvider ||
@@ -453,6 +408,11 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
     if (fetch.IsAllocated()) {
       if (fetch.IsTensor()) {
         fetch_alloc_info[i] = &fetch.Get<Tensor>().Location();
+      } else if (fetch.IsTensorSequence()) {
+        const auto& tensor_seq = fetch.Get<TensorSeq>();
+        if (tensor_seq.Size() != std::size_t{0}) {
+          fetch_alloc_info[i] = &tensor_seq.Get(0).Location();
+        }
       } else if (fetch.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
         fetch_alloc_info[i] = &fetch.Get<SparseTensor>().Location();

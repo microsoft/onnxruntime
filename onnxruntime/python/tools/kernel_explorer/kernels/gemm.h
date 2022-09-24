@@ -11,4 +11,4 @@ namespace onnxruntime {
 
 void InitGemm(py::module mod);
 
-}
+}  // namespace onnxruntime

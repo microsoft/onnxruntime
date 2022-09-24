@@ -1,0 +1,67 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "files": [
+            "src/Microsoft.ML.OnnxRuntime/**.cs"
+          ],
+          "src": "../"
+        }
+      ],
+      "dest": "api",
+      "disableGitFeatures": false,
+      "disableDefaultFilter": false
+    }
+  ],
+  "build": {
+    "content": [
+      {
+        "files": [
+          "api/**.yml",
+          "api/**.html",
+          "api/index.md",
+          "api/**/index.md"
+        ]
+      },
+      {
+        "files": [
+          "toc.yml\",",
+          "toc.yml",
+          "*.md",
+          "api/toc.yml"
+        ]
+      }
+    ],
+    "resource": [
+      {
+        "files": [
+          //"images/**"
+        ]
+      }
+    ],
+    "overwrite": [
+      {
+        "files": [
+          "api/**.md"
+        ],
+        "exclude": [
+          "obj/**",
+          "csharp/**"
+        ]
+      }
+    ],
+    "dest": "csharp",
+    "globalMetadataFiles": [],
+    "fileMetadataFiles": [],
+    "template": [
+      "_exported_templates/default"
+    ],
+    "postProcessors": [],
+    "markdownEngineName": "markdig",
+    "noLangKeyword": false,
+    "keepFileLink": false,
+    "cleanupCacheHistory": false,
+    "disableGitFeatures": false
+  }
+}

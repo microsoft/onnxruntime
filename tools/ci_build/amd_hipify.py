@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import concurrent.futures
+import fnmatch
 import functools
 import os
 import shutil
@@ -11,16 +12,26 @@ from logger import get_logger
 
 log = get_logger("amd_hipify")
 
-contrib_ops_path = "onnxruntime/contrib_ops"
-providers_path = "onnxruntime/core/providers"
-training_ops_path = "orttraining/orttraining/training_ops"
+
+def path_in_repo(path):
+    repo_root = os.path.relpath(os.path.join(os.path.dirname(__file__), "../.."))
+    return os.path.join(repo_root, path)
+
+
+contrib_ops_path = path_in_repo("onnxruntime/contrib_ops")
+providers_path = path_in_repo("onnxruntime/core/providers")
+training_ops_path = path_in_repo("orttraining/orttraining/training_ops")
+
+
+def is_excluded(f, excluded_patterns):
+    return any([fnmatch.fnmatch(f, pat) for pat in excluded_patterns])
+
 
 contrib_ops_excluded_files = [
     "bert/attention.cc",
+    "bert/attention.h",
     "bert/attention_impl.cu",
     "bert/attention_softmax.h",
-    "bert/decoder_attention.h",
-    "bert/decoder_attention.cc",
     "bert/embed_layer_norm.cc",
     "bert/embed_layer_norm.h",
     "bert/embed_layer_norm_impl.cu",
@@ -29,25 +40,13 @@ contrib_ops_excluded_files = [
     "bert/fast_gelu_impl.h",
     "bert/fast_gelu.cc",
     "bert/fast_gelu.h",
-    "bert/layer_norm.cuh",
     "bert/skip_layer_norm.cc",
     "bert/skip_layer_norm.h",
     "bert/skip_layer_norm_impl.cu",
     "bert/skip_layer_norm_impl.h",
-    "bert/longformer_attention.cc",
-    "bert/longformer_attention.h",
-    "bert/longformer_attention_softmax.cu",
-    "bert/longformer_attention_softmax.h",
-    "bert/longformer_attention_impl.cu",
-    "bert/longformer_attention_impl.h",
-    "bert/longformer_global_impl.cu",
-    "bert/longformer_global_impl.h",
-    "bert/transformer_cuda_common.h",
+    "bert/tensorrt_fused_multihead_attention/*",
     "bert/transformer_common.h",
     "bert/transformer_common.cc",
-    "math/bias_softmax.cc",
-    "math/bias_softmax.h",
-    "math/bias_softmax_impl.cu",
     "math/complex_mul.cc",
     "math/complex_mul.h",
     "math/complex_mul_impl.cu",
@@ -62,6 +61,19 @@ contrib_ops_excluded_files = [
     "quantization/attention_quantization_impl.cu",
     "quantization/attention_quantization_impl.cuh",
     "quantization/quantize_dequantize_linear.cc",
+    "quantization/qordered_ops/qordered_common.cuh",
+    "quantization/qordered_ops/qordered_layer_norm.h",
+    "quantization/qordered_ops/qordered_layer_norm.cc",
+    "quantization/qordered_ops/qordered_layer_norm_impl.h",
+    "quantization/qordered_ops/qordered_layer_norm_impl.cu",
+    "quantization/qordered_ops/qordered_matmul.h",
+    "quantization/qordered_ops/qordered_matmul.cc",
+    "quantization/qordered_ops/qordered_matmul_utils.h",
+    "quantization/qordered_ops/qordered_matmul_utils.cc",
+    "quantization/qordered_ops/qordered_unary_ops.h",
+    "quantization/qordered_ops/qordered_unary_ops.cc",
+    "quantization/qordered_ops/qordered_unary_ops_impl.h",
+    "quantization/qordered_ops/qordered_unary_ops_impl.cu",
     "tensor/crop.cc",
     "tensor/crop.h",
     "tensor/crop_impl.cu",
@@ -108,15 +120,12 @@ provider_excluded_files = [
     "math/matmul.cc",
     "math/softmax_impl.cu",
     "math/softmax_warpwise_impl.cuh",
+    "math/softmax_common.cc",
     "math/softmax.cc",
     "nn/conv.cc",
     "nn/conv.h",
     "nn/conv_transpose.cc",
     "nn/conv_transpose.h",
-    "nn/max_pool_with_index.cu",
-    "nn/max_pool_with_index.h",
-    "nn/pool.cc",
-    "nn/pool.h",
     "reduction/reduction_ops.cc",
     "rnn/cudnn_rnn_base.cc",
     "rnn/cudnn_rnn_base.h",
@@ -147,6 +156,8 @@ provider_excluded_files = [
     "cuda_kernel.h",
     "cuda_pch.cc",
     "cuda_pch.h",
+    "cuda_profiler.cc",
+    "cuda_profiler.h",
     "cuda_provider_factory.cc",
     "cuda_provider_factory.h",
     "cuda_utils.cu",
@@ -164,8 +175,6 @@ training_ops_excluded_files = [
     "collective/adasum_kernels.cc",
     "collective/adasum_kernels.h",
     "math/div_grad.cc",  # miopen API differs from cudnn, no double type support
-    "math/softmax_grad_impl.cu",  # warp size differences
-    "math/softmax_grad.cc",  # miopen API differs from cudnn, no double type support
     "nn/batch_norm_grad.cc",  # no double type support
     "nn/batch_norm_grad.h",  # miopen API differs from cudnn
     "nn/batch_norm_internal.cc",  # miopen API differs from cudnn, no double type support
@@ -205,7 +214,9 @@ def hipify(src_file_path, dst_file_path):
     if not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
     # Run hipify-perl first, capture output
-    s = subprocess.run([get_hipify_path(), src_file_path], stdout=subprocess.PIPE, universal_newlines=True).stdout
+    s = subprocess.run(
+        [get_hipify_path(), "-roc", src_file_path], stdout=subprocess.PIPE, universal_newlines=True, check=False
+    ).stdout
 
     # Additional exact-match replacements.
     # Order matters for all of the following replacements, reglardless of appearing in logical sections.
@@ -278,6 +289,9 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('#include "cub/util_allocator.cuh"', "#include <hipcub/util_allocator.hpp>")
     s = s.replace("#include <cub/util_type.cuh>", "#include <hipcub/backend/rocprim/util_type.hpp>")
     s = s.replace('#include "cub/util_type.cuh"', "#include <hipcub/backend/rocprim/util_type.hpp>")
+    s = s.replace("#include <cub/device/device_partition.cuh>", "#include <hipcub/device/device_partition.hpp>")
+    s = s.replace("#include <math_constants.h>", "#include <limits>")
+    s = s.replace("#include <library_types.h>", "")  # Doesn't exist
     s = s.replace("typedef half MappedType", "typedef __half MappedType")
 
     # CUBLAS -> HIPBLAS
@@ -290,6 +304,19 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("CUBLAS", "ROCBLAS")
     s = s.replace("Cublas", "Rocblas")
     s = s.replace("cublas", "rocblas")
+
+    # Undefined ROCMRT constants -> std::numeric_limits
+    s = s.replace("ROCMRT_INF_F", "std::numeric_limits<float>::infinity()")
+
+    # HIPBLAS -> rocblas
+    s = s.replace("HIPBLAS_R_16F", "rocblas_datatype_f16_r")
+    s = s.replace("HIPBLAS_R_32F", "rocblas_datatype_f32_r")
+    s = s.replace("ROCBLAS_GEMM_DEFAULT_TENSOR_OP", "rocblas_gemm_algo_standard")
+    s = s.replace("ROCBLAS_TENSOR_OP_MATH", "0 /* CUBLAS_TENSOR_OP_MATH is deprecated */")
+
+    # compatible layer
+    s = s.replace("rocblas_gemm_strided_batched_ex", "_compat_rocblas_gemm_strided_batched_ex")
+    s = s.replace("RocblasMathModeSetter", "CompatRocblasMathModeSetter")
 
     # CURAND -> HIPRAND
     s = s.replace("CURAND", "HIPRAND")
@@ -312,6 +339,9 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace("MIOPEN_BATCHNORM_SPATIAL", "miopenBNSpatial")
     s = s.replace("MIOPEN_BATCHNORM_PER_ACTIVATION", "miopenBNPerActivation")
     s = s.replace("MIOPEN_LRN_CROSS_CHANNEL", "miopenLRNCrossChannel")
+    s = s.replace("MIOPEN_POOLING_MAX", "miopenPoolingMax")
+    s = s.replace("MIOPEN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING", "miopenPoolingAverageInclusive")
+    s = s.replace("MIOPEN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING", "miopenPoolingAverage")
 
     # CUSPARSE -> HIPSPARSE
     s = s.replace("CUSPARSE", "HIPSPARSE")
@@ -365,7 +395,7 @@ def amd_hipify(config_build_dir):
         contrib_results = [
             executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
             for f in contrib_files
-            if f not in contrib_ops_excluded_files
+            if not is_excluded(f, contrib_ops_excluded_files)
         ]
 
         cuda_path = os.path.join(providers_path, "cuda")
@@ -374,7 +404,7 @@ def amd_hipify(config_build_dir):
         provider_results = [
             executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
             for f in provider_files
-            if f not in provider_excluded_files
+            if not is_excluded(f, provider_excluded_files)
         ]
 
         cuda_path = os.path.join(training_ops_path, "cuda")
@@ -383,7 +413,7 @@ def amd_hipify(config_build_dir):
         training_results = [
             executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
             for f in training_files
-            if f not in training_ops_excluded_files
+            if not is_excluded(f, training_ops_excluded_files)
         ]
         # explicitly wait so that hipify warnings finish printing before logging the hipify statements
         concurrent.futures.wait(contrib_results)

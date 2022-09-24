@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm5.2_ubuntu20.04_py3.7_pytorch_1.11.0
+FROM rocm/pytorch:rocm5.2.3_ubuntu20.04_py3.7_pytorch_1.12.1
 
 WORKDIR /stage
 
@@ -41,4 +41,4 @@ RUN pip install \
       pytorch_lightning==1.6.0
 
 RUN pip install torch-ort --no-dependencies
-ENV ORTMODULE_ONNX_OPSET_VERSION=14
+ENV ORTMODULE_ONNX_OPSET_VERSION=15

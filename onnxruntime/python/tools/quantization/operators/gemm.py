@@ -4,7 +4,15 @@ import numpy as np
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, find_by_name, get_mul_node, ms_domain
+from ..quant_utils import (
+    TENSOR_NAME_QUANT_SUFFIX,
+    QuantizedValue,
+    QuantizedValueType,
+    attribute_to_kwarg,
+    find_by_name,
+    get_mul_node,
+    ms_domain,
+)
 from .base_operator import QuantOperatorBase
 from .matmul import QOpMatMul
 from .qdq_base_operator import QDQOperatorBase
@@ -50,13 +58,13 @@ class QLinearGemm(QOpMatMul):
             _,
         ) = self.quantizer._get_quantization_params(node.output[0])
 
-        if self.quantizer.is_input_a_weight(node.input[1]) and self.quantizer.is_per_channel():
+        if self.quantizer.is_input_a_initializer(node.input[1]) and self.quantizer.is_per_channel():
             (
                 quantized_input_names,
                 zero_point_names,
                 scale_names,
                 nodes,
-            ) = self.quantizer.quantize_inputs(node, [0], reduce_range=self.quantizer.reduce_range)
+            ) = self.quantizer.quantize_activation(node, [0])
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(
                 node.input[1],
                 onnx_proto.TensorProto.INT8,
@@ -66,26 +74,38 @@ class QLinearGemm(QOpMatMul):
             zero_point_names.append(quant_weight_tuple[1])
             scale_names.append(quant_weight_tuple[2])
         else:
+            #  Get Quantized from both activation(input[0]) and weight(input[1])
             (
                 quantized_input_names,
                 zero_point_names,
                 scale_names,
                 nodes,
-            ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
+            ) = self.quantizer.quantize_activation(node, [0])
+
+            (
+                quantized_input_names_weight,
+                zero_point_names_weight,
+                scale_names_weight,
+                nodes_weight,
+            ) = self.quantizer.quantize_weight(node, [1], reduce_range=self.quantizer.reduce_range)
+            quantized_input_names.extend(quantized_input_names_weight)
+            zero_point_names.extend(zero_point_names_weight)
+            scale_names.extend(scale_names_weight)
+            nodes.extend(nodes_weight)
 
         if not data_found or quantized_input_names is None:
             return super().quantize()
 
         quantized_bias_name = ""
         if len(node.input) == 3:
-            if not self.quantizer.is_input_a_weight(node.input[2]):
+            if not self.quantizer.is_input_a_initializer(node.input[2]):
                 return super().quantize()
 
             quantized_bias_name = self.quantizer.quantize_bias_static(
                 node.input[2], node.input[0], node.input[1], get_beta(self.node)
             )
 
-        qgemm_output = node.output[0] + "_quantized"
+        qgemm_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         qgemm_name = qgemm_name = node.name + "_quant" if node.name != "" else ""
 
         kwargs = {}
@@ -125,17 +145,17 @@ class QDQGemm(QDQOperatorBase):
         node = self.node
         assert node.op_type == "Gemm"
 
-        self.quantizer.quantize_tensor(node.input[0])
+        self.quantizer.quantize_activation_tensor(node.input[0])
         if not self.disable_qdq_for_node_output:
-            self.quantizer.quantize_tensor(node.output[0])
+            self.quantizer.quantize_activation_tensor(node.output[0])
 
         if self.quantizer.is_per_channel():
-            self.quantizer.quantize_tensor_per_channel(node.input[1], 0 if is_B_transposed(node) else 1)
+            self.quantizer.quantize_weight_tensor_per_channel(node.input[1], 0 if is_B_transposed(node) else 1)
         else:
-            self.quantizer.quantize_tensor(node.input[1])
+            self.quantizer.quantize_weight_tensor(node.input[1])
 
         if len(node.input) == 3:
-            if self.quantizer.is_input_a_weight(node.input[2]):
+            if self.quantizer.is_input_a_initializer(node.input[2]):
                 self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1], get_beta(self.node))
                 set_default_beta(self.node)
             else:

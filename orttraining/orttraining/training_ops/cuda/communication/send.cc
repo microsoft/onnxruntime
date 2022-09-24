@@ -66,10 +66,10 @@ void Send::SendData(
 #endif
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-    CUDA_CALL(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
+    CUDA_CALL_THROW(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
                               tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice, Stream()));
 #else
-    CUDA_CALL(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
+    CUDA_CALL_THROW(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
                               tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost, Stream()));
 #endif
   }

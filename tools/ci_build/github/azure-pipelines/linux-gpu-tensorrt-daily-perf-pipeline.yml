@@ -110,7 +110,7 @@ jobs:
         value: --cuda_ep_options ${{ join(',',parameters.CUDAEPOptions) }}
 
     - name: optional_arguments
-      value: -a "-a -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
+      value: -a "-a -z -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
 
   steps:
     - ${{ if and( eq(parameters.BuildORT, false), eq(parameters.TrtVersion, '8.2.1.8')) }}:
@@ -120,7 +120,7 @@ jobs:
           project: 'Lotus'
           preferTriggeringPipeline: true 
           pipeline: '841'
-          runBranch: 'ref/heads/master'
+          runBranch: 'ref/heads/main'
           buildVersionToDownload: 'latest'
           allowPartiallySucceededBuilds: false
           artifact: 'onnxruntime_gpu'

@@ -7,9 +7,6 @@
 #ifdef USE_DNNL
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #endif
-#ifdef USE_NUPHAR
-#include "core/providers/nuphar/nuphar_provider_factory.h"
-#endif
 #ifdef USE_TVM
 #include "core/providers/tvm/tvm_provider_factory.h"
 #endif
@@ -36,4 +33,10 @@
 #endif
 #ifdef USE_MIGRAPHX
 #include "core/providers/migraphx/migraphx_provider_factory.h"
+#endif
+#ifdef USE_XNNPACK
+#include "core/providers/xnnpack/xnnpack_provider_factory_creator.h"
+#endif
+#ifdef USE_CANN
+#include "core/providers/cann/cann_provider_factory.h"
 #endif

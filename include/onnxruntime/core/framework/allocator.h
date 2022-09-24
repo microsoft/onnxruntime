@@ -37,6 +37,8 @@ namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
 constexpr const char* CUDA = "Cuda";
 constexpr const char* CUDA_PINNED = "CudaPinned";
+constexpr const char* CANN = "Cann";
+constexpr const char* CANN_PINNED = "CannPinned";
 constexpr const char* DML = "DML";
 constexpr const char* OpenVINO_CPU = "OpenVINO_CPU";
 constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
@@ -146,7 +148,7 @@ class IAllocator {
     size_t alloc_size = count_or_bytes;
 
     // if T is not void, 'count_or_bytes' == number of items so allow for that
-    ORT_IF_CONSTEXPR(!std::is_void<T>::value) {
+    if constexpr(!std::is_void<T>::value) {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
       if (!CalcMemSizeForArray(
