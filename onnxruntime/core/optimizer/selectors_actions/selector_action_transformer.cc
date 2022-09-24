@@ -231,7 +231,14 @@ static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_num_nodes,
 
 Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
     Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  for (auto& node : graph.Nodes()) {
+  GraphViewer graph_viewer(graph);
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+  for (auto node_index : node_topology_list) {
+    Node* p_node = graph.GetNode(node_index);
+    if (p_node == nullptr)
+      continue;  // node was removed.
+
+    Node& node = *p_node;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
   }
 

@@ -5429,6 +5429,96 @@ TEST_F(GraphTransformationTests, ConstantSharing_DivMul) {
   }
 }
 
+TEST_F(GraphTransformationTests, ConstantSharing_INTMAX_AND_Infinity) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_pre = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count_pre.size(), 4U);
+    ASSERT_EQ(op_count_pre["Div"], 1);
+    ASSERT_EQ(op_count_pre["Mul"], 12);
+    ASSERT_EQ(op_count_pre["Sub"], 12);
+    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 24U);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    ASSERT_EQ(initialized_tensor_set.size(), 2U);
+    const NodeArg* mul_initializer = nullptr;
+    const NodeArg* sub_initializer = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Mul") == 0) {
+        if (!mul_initializer) {
+          mul_initializer = node.InputDefs()[1];
+          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
+        } else {
+          ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+        }
+      } else if (node.OpType().compare("Sub") == 0) {
+        if (!sub_initializer) {
+          sub_initializer = node.InputDefs()[1];
+          ASSERT_EQ(sub_initializer->Shape()->dim_size(), 0);
+        } else {
+          ASSERT_EQ(sub_initializer, node.InputDefs()[1]);
+        }
+      }
+    }
+
+    for (const auto& entry : initialized_tensor_set) {
+      if (entry.first.compare(mul_initializer->Name()) == 0) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+        onnxruntime::Initializer int64_const{*tensor_proto, graph.ModelPath()};
+        ASSERT_EQ(int64_const.size(), 1);
+        int64_t int64_const_value = *(int64_const.data<int64_t>());
+        ASSERT_EQ(int64_const_value, std::numeric_limits<int64_t>::max());
+      } else if (entry.first.compare(sub_initializer->Name()) == 0) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+        onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
+        ASSERT_EQ(float_const.size(), 1);
+        float float_const_value = *(float_const.data<float>());
+        ASSERT_EQ(float_const_value, std::numeric_limits<float>::infinity());
+      }
+    }
+
+    auto op_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count.size(), 4U);
+    ASSERT_EQ(op_count["Div"], 1);
+    ASSERT_EQ(op_count["Mul"], 12);
+    ASSERT_EQ(op_count["Sub"], 12);
+  };
+
+  const std::vector<int> opsets{12, 13, 14};
+
+  // Float data type tests.
+  auto build_test_case_float = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+    auto* input1_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+    auto* div_out = builder.MakeIntermediate();
+    builder.AddNode("Div", {input0_arg, input1_arg}, {div_out});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {div_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT64));
+    for (size_t i = 0; i < 12; ++i) {
+      NodeArg* mul_initializer = nullptr;
+      mul_initializer = builder.MakeScalarInitializer<int64_t>(std::numeric_limits<int64_t>::max());
+      auto* mul_out = builder.MakeOutput();
+      builder.AddNode("Mul", {cast_out, mul_initializer}, {mul_out});
+    }
+
+    for (size_t i = 0; i < 12; ++i) {
+      NodeArg* sub_initializer = nullptr;
+      sub_initializer = builder.MakeScalarInitializer<float>(std::numeric_limits<float>::infinity());
+      auto* sub_out = builder.MakeOutput();
+      builder.AddNode("Sub", {div_out, sub_initializer}, {sub_out});
+    }
+  };
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+    TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
+                         TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
 #endif
 
 }  // namespace test

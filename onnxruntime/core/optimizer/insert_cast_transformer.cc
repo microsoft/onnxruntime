@@ -200,14 +200,20 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override {
-
     auto output_args = graph.GetOutputs();
     InlinedHashSet<const onnxruntime::NodeArg*> graph_outputs;
     graph_outputs.reserve(output_args.size());
     graph_outputs.insert(output_args.begin(), output_args.end());
     const auto graph_outputs_end = graph_outputs.end();
 
-    for (auto& node : graph.Nodes()) {
+    GraphViewer graph_viewer(graph);
+    const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+    for (auto node_index : node_topology_list) {
+      Node* p_node = graph.GetNode(node_index);
+      if (p_node == nullptr)
+        continue;  // node was removed.
+
+      Node& node = *p_node;
       bool removed = false;
       if (node.OpType() == "Cast") {
         InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
@@ -278,8 +284,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
             // replacing with initializer or graph input so we just need the NodeArg for the input
             auto& input = *node.MutableInputDefs()[0];
 
-            for (auto& n : nodes_to_remove) {
-              Node& node_to_remove = n;
+            for (Node& node_to_remove : nodes_to_remove) {
               NodeIndex node_idx = node_to_remove.Index();
 
               // copy the edges so we can remove as we iterate them
@@ -370,7 +375,7 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
                                      &float_tensor_proto,
                                      false,
                                      static_cast<int64_t>(TensorProto_DataType_FLOAT),
-                                     //right now we only cast for cpu cases.
+                                     // right now we only cast for cpu cases.
                                      onnxruntime::kCpuExecutionProvider);
           replacement_defs[src_arg] = dst_arg;
           input_def_updates[src_arg] = dst_arg;
