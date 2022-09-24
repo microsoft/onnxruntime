@@ -81,13 +81,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
-      - uses: reviewdog/action-cpplint@master
-        with:
-          github_token: ${{ secrets.github_token }}
-          reporter: github-pr-check
-          level: warning
-          flags: --linelength=120 --exclude=java/src/main/native/*.c
-          filter: "-runtime/references"
       - name: Install ninja
         run: python -m pip install --upgrade ninja
       - name: Generate compile_commands.json
@@ -104,6 +97,13 @@ jobs:
           build_dir: "build/Debug"
           config_file: ".clang-tidy"
           lgtm_comment_body: ""
+      - uses: reviewdog/action-cpplint@master
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: warning
+          flags: --linelength=120 --exclude=java/src/main/native/*.c
+          filter: "-runtime/references"
 
   lint-js:
     name: Lint JavaScript
