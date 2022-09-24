@@ -14,9 +14,9 @@ from os import environ, getcwd, path, popen, remove
 from pathlib import Path
 from shutil import copyfile
 
+from packaging.tags import sys_tags
 from setuptools import Extension, setup
 from setuptools.command.install import install as InstallCommandBase
-from wheel.vendored.packaging.tags import sys_tags
 
 nightly_build = False
 package_name = "onnxruntime"
