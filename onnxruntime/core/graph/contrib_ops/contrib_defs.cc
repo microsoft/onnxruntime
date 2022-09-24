@@ -1377,8 +1377,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(RemoteCall, 1,
                                 .SetDoc(R"DOC(Call remote endpoint.)DOC")
                                 .Input(0, "inputs", "variadic inputs", "T", OpSchema::Variadic, false, 1)
                                 .Output(0, "outputs", "variadic outputs", "T", OpSchema::Variadic, false, 1)
-                                .Attr("uri", "endpoint uri", AttributeProto::STRING)
-                                .Attr("key", "credential key", AttributeProto::STRING)
+                                .Attr("uri", "endpoint uri", AttributeProto::STRING, OPTIONAL_VALUE)
+                                .Attr("key", "credential key", AttributeProto::STRING, OPTIONAL_VALUE)
                                 .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
                                                 "Allow inputs and outputs to be any kind of tensor."));
 

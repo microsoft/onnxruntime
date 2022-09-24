@@ -62,6 +62,9 @@ endfunction()
 file(GLOB_RECURSE onnxruntime_providers_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/cpu/*.cc"
+  #todo - separate azure ep to a different location
+  "${ONNXRUNTIME_ROOT}/core/providers/azure/*.h"
+  "${ONNXRUNTIME_ROOT}/core/providers/azure/*.cc"
 )
 
 if(onnxruntime_DISABLE_ML_OPS)

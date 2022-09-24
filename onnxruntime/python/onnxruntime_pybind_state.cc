@@ -29,6 +29,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
+#include "core/providers/azure/azure_execution_provider.h"
 
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
@@ -767,6 +768,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #if defined(USE_XNNPACK)
     return onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{})->CreateProvider();
 #endif
+  } else if (type == kAzureExecutionProvider) {
+    const auto& azure_provider_options = provider_options_map.find(type)->second;
+    ORT_ENFORCE(azure_provider_options.count("end_point"), "must specify end point for AzureEP");
+    ORT_ENFORCE(azure_provider_options.count("access_token"), "must specify access_token for AzureEP");
+    std::string end_point = azure_provider_options.find("end_point")->second;
+    std::string access_token = azure_provider_options.find("access_token")->second;
+    //todo - define a creator to do the job
+    return std::make_unique<AzureExecutionProvider>(AzureExecutionProviderInfo{end_point, access_token});
   } else {
     // check whether it is a dynamic load EP:
     const auto it = provider_options_map.find(type);

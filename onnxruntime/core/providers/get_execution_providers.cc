@@ -145,6 +145,7 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
             false,
 #endif
         },
+        {kAzureExecutionProvider, true},
         {kCpuExecutionProvider, true},  // kCpuExecutionProvider is always last
 };
 }  // namespace
