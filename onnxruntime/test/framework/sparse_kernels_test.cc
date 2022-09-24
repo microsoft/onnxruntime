@@ -15,6 +15,7 @@
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
+#include "asserts.h"
 #include "test_utils.h"
 #include "file_util.h"
 #include "default_providers.h"
@@ -147,13 +148,10 @@ This operator constructs a sparse tensor from three tensors that provide a COO
   static KernelDefBuilder KernelDef() {
     KernelDefBuilder def;
     def.SetName(SparseFromCOO::OpName())
-        .TypeConstraint("values", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("indices", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>())
 #if !defined(DISABLE_SPARSE_TENSORS)
-        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("sparse_rep", DataTypeImpl::GetSparseTensorType<int64_t>());
-#else
-        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>());
+        .TypeConstraint("T", DataTypeImpl::GetSparseTensorType<int64_t>());
 #endif
     return def;
   }
@@ -294,8 +292,8 @@ struct SparseToValues {
     KernelDefBuilder def;
 #if !defined(DISABLE_SPARSE_TENSORS)
     def.SetName(OpName())
-        .TypeConstraint("sparse_rep", DataTypeImpl::GetSparseTensorType<int64_t>())
-        .TypeConstraint("values", DataTypeImpl::GetTensorType<int64_t>());
+        .TypeConstraint("T1", DataTypeImpl::GetSparseTensorType<int64_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>());
 #endif
     return def;
   }
@@ -313,10 +311,12 @@ class SparseTensorTests : public testing::Test {
   std::vector<Action> register_actions;
   std::vector<TypeProto> types;
 
- public:
   SparseTensorTests() : session_object(SessionOptions(), GetEnvironment()),
                         registry(std::make_shared<CustomRegistry>()) {
-    EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
+  }
+
+  void SetUp() override {
+    ASSERT_STATUS_OK(session_object.RegisterCustomRegistry(registry));
   }
 
   template <typename Op>
@@ -334,13 +334,13 @@ class SparseTensorTests : public testing::Test {
           .SinceVersion(10)
           .Provider(onnxruntime::kCpuExecutionProvider);
       KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<typename Op::OpKernelImpl>(info); return Status::OK(); };
-      EXPECT_TRUE(registry2->RegisterCustomKernel(kernel_def_builder, kernel_create_fn).IsOK());
+      ASSERT_STATUS_OK(registry2->RegisterCustomKernel(kernel_def_builder, kernel_create_fn));
     };
     register_actions.push_back(register_kernel);
   }
 
   void RegisterOps() {
-    EXPECT_TRUE(registry->RegisterOpSet(schemas, onnxruntime::kMLDomain, 10, 11).IsOK());
+    ASSERT_STATUS_OK(registry->RegisterOpSet(schemas, onnxruntime::kMLDomain, 10, 11));
     for (auto& registerop : register_actions)
       registerop(registry.get());
   }
@@ -357,8 +357,8 @@ class SparseTensorTests : public testing::Test {
     auto model_proto = model->ToProto();
     EXPECT_TRUE(model_proto.SerializeToString(&serialized_model));
     std::stringstream sstr(serialized_model);
-    EXPECT_TRUE(session_object.Load(sstr).IsOK());
-    EXPECT_TRUE(session_object.Initialize().IsOK());
+    ASSERT_STATUS_OK(session_object.Load(sstr));
+    ASSERT_STATUS_OK(session_object.Initialize());
   }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -438,7 +438,7 @@ class SparseTensorTests : public testing::Test {
     RunOptions run_options;
     std::vector<OrtValue> fetches;
 
-    EXPECT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
+    ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
 
     ASSERT_EQ(expected_output.size(), fetches.size());
     for (size_t i = 0; i < fetches.size(); ++i) {
@@ -481,7 +481,7 @@ TEST_F(SparseTensorTests, Test1) {
 
   // Check graph, serialize it and deserialize it back
   Graph& graph = model->MainGraph();
-  EXPECT_TRUE(graph.Resolve().IsOK());
+  ASSERT_STATUS_OK(graph.Resolve());
   SerializeAndLoad();
 
   // Run the model
@@ -525,7 +525,7 @@ TEST_F(SparseTensorTests, Test2) {
 
   // Check graph, serialize it and deserialize it back
   Graph& graph = model->MainGraph();
-  EXPECT_TRUE(graph.Resolve().IsOK());
+  ASSERT_STATUS_OK(graph.Resolve());
   SerializeAndLoad();
 
   // Run the model
@@ -537,16 +537,16 @@ TEST_F(SparseTensorTests, Test2) {
 }
 
 TEST(SparseCrcsFormatTests, Test1) {
-  //const std::vector<float> input_data = {
-  //    0, 1, 2, 0, 0, 0, 3, 4, 5,
-  //    6, 7, 8, 0, 0, 0, 9, 10, 11,
-  //    12, 13, 14, 0, 0, 0, 15, 16, 17,
-  //    0, 0, 0, 18, 19, 20, 21, 22, 23,
-  //    0, 0, 0, 24, 25, 26, 27, 28, 29,
-  //    0, 0, 0, 30, 31, 32, 33, 34, 35,
-  //    36, 37, 38, 39, 40, 41, 0, 0, 0,
-  //    42, 43, 44, 45, 46, 47, 0, 0, 0,
-  //    48, 49, 50, 51, 52, 53, 0, 0, 0};
+  // const std::vector<float> input_data = {
+  //     0, 1, 2, 0, 0, 0, 3, 4, 5,
+  //     6, 7, 8, 0, 0, 0, 9, 10, 11,
+  //     12, 13, 14, 0, 0, 0, 15, 16, 17,
+  //     0, 0, 0, 18, 19, 20, 21, 22, 23,
+  //     0, 0, 0, 24, 25, 26, 27, 28, 29,
+  //     0, 0, 0, 30, 31, 32, 33, 34, 35,
+  //     36, 37, 38, 39, 40, 41, 0, 0, 0,
+  //     42, 43, 44, 45, 46, 47, 0, 0, 0,
+  //     48, 49, 50, 51, 52, 53, 0, 0, 0};
   auto* cpu_provider = TestCPUExecutionProvider();
   auto cpu_transfer = cpu_provider->GetDataTransfer();
 
@@ -698,10 +698,9 @@ struct InsertIndices {
     std::vector<int8_t> indices_data;
     insert_indices_data(indices_1D, values_size, shape_size, indices_data, indices_tp);
     indices_tp.set_data_type(utils::ToTensorProtoElementType<T>());
-    if constexpr(sizeof(T) == sizeof(int8_t)) {
+    if constexpr (sizeof(T) == sizeof(int8_t)) {
       indices_tp.mutable_raw_data()->assign(reinterpret_cast<const char*>(indices_data.data()), indices_data.size());
-    }
-    else {
+    } else {
       // Conversion on the fly to the target data type
       std::vector<T> indices(indices_data.cbegin(), indices_data.cend());
       indices_tp.mutable_raw_data()->assign(reinterpret_cast<const char*>(indices.data()), indices.size() * sizeof(T));

@@ -27,18 +27,13 @@ using SplitDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
 using EnabledSplitDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
 
-using OldSplitDataTypes = onnxruntime::TypeList<float, int32_t, int64_t, uint8_t, std::string>;
-
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Split,
     2,
     10,
     KernelDefBuilder().TypeConstraint("T",
                                       BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
-                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>())
-        .FixedTypeConstraintForHash(
-            "T",
-            BuildKernelDefConstraintsFromTypeList<OldSplitDataTypes>()),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
 // Opset 11 starts to support Neg Axis.
@@ -48,10 +43,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder().TypeConstraint("T",
                                       BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
-                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>())
-        .FixedTypeConstraintForHash(
-            "T",
-            BuildKernelDefConstraintsFromTypeList<OldSplitDataTypes>()),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
 // Opset 13 starts to supports 'split' as optional input.
@@ -60,10 +52,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder().TypeConstraint("T",
                                       BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
-                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>())
-        .FixedTypeConstraintForHash(
-            "T",
-            BuildKernelDefConstraintsFromTypeList<OldSplitDataTypes>()),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
 Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
