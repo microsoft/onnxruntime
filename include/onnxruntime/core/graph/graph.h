@@ -1432,7 +1432,7 @@ class Graph {
       //   std::unordered_set<std::string_view> causes a memory access violation in
       //   "inputs_and_initializers.insert(initializer_pair.first);" in Graph::VerifyInputAndInitializerNames().
 
-      // A possible explaination is there are some invalidated states even after calling .clear() on the
+      // A possible explanation is there are some invalidated states even after calling .clear() on the
       // unordered_set, so afterwards when we insert new values into it, it finds a hash that is equal to the hash
       // of the new value, which is not expected. What's more, the found entry is an invalid one, which causes
       // the memory access violation. Reproducible on both VS2019 and VS2022.

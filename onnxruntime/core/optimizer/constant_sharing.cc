@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING
-
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -100,9 +98,8 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
       [](const auto& v) { return v.first; });
 
   // We avoid using the scalar value directly in pattern_key because the value for example INT_MAX can be super big
-  // and it is found it's long string representative introduced some buffer overflow issues, resulting in
-  // memory access violation errors.
-  // So, we use define a layer of scalar value to valueid map.
+  // and it will be hard to read. Instead, we use a unique id for each scalar value, and a map from the value to
+  // unique id.
   InlinedHashMap<int32_t, int32_t> int32_value_to_value_id_map;
   InlinedHashMap<int64_t, int32_t> int64_value_to_value_id_map;
   InlinedHashMap<float, int32_t> float_value_to_value_id_map;
@@ -230,5 +227,3 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
 }
 
 }  // namespace onnxruntime
-
-#endif

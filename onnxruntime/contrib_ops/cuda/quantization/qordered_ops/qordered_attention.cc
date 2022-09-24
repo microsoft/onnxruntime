@@ -156,7 +156,7 @@ inline void debug_print([[maybe_unused]] const T* arr,
 
 #endif
 
-QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info), input_hidden_size_(0) {
+QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
   int cuda_runtime_version = 0;
