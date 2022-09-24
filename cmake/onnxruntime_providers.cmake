@@ -108,10 +108,6 @@ file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
   "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides.inc"
 )
-
-if(onnxruntime_USE_NUPHAR)
-  set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
-endif()
 if(onnxruntime_USE_VITISAI)
   set(PROVIDERS_VITISAI onnxruntime_providers_vitisai)
 endif()
@@ -157,6 +153,9 @@ if (onnxruntime_USE_XNNPACK)
 endif()
 if(onnxruntime_USE_SNPE)
     include(onnxruntime_snpe_provider.cmake)
+endif()
+if (onnxruntime_USE_CANN)
+  set(PROVIDERS_CANN onnxruntime_providers_cann)
 endif()
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
@@ -464,7 +463,7 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_link_libraries(onnxruntime_providers_cuda PRIVATE cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED})
+  target_link_libraries(onnxruntime_providers_cuda PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED})
   if(onnxruntime_CUDNN_HOME)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/include)
   endif()
@@ -512,9 +511,6 @@ if (onnxruntime_USE_CUDA)
 
     # disable a warning from the CUDA headers about unreferenced local functions
     #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
-    if (onnxruntime_USE_NUPHAR_TVM)
-      target_compile_options(onnxruntime_providers_cuda PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
-    endif()
     set(onnxruntime_providers_cuda_static_library_flags
         -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
     )
@@ -722,56 +718,6 @@ if (onnxruntime_USE_TENSORRT)
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-if (onnxruntime_USE_NUPHAR)
-  add_definitions(-DUSE_NUPHAR=1)
-
-  if (NOT onnxruntime_USE_NUPHAR_TVM)
-    message(FATAL_ERROR "onnxruntime_USE_NUPHAR_TVM required for onnxruntime_USE_NUPHAR")
-  endif()
-
-  if (NOT onnxruntime_USE_LLVM)
-    message(FATAL_ERROR "onnxruntime_USE_LLVM required for onnxruntime_USE_NUPHAR")
-  endif()
-
-  include(onnxruntime_nuphar_extern.cmake)
-
-  file(GLOB_RECURSE onnxruntime_providers_nuphar_cc_srcs
-    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.cc"
-  )
-
-  # following files required different build flag for AVX2 in separate onnxruntime_nuphar_extern.cmake file
-  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/extern/igemv_avx2.cc")
-  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/extern/igemv_avx2.h")
-
-  if (onnxruntime_USE_MKLML)
-    add_definitions(-DNUPHAR_USE_MKL)
-  endif()
-
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nuphar_cc_srcs})
-  onnxruntime_add_static_library(onnxruntime_providers_nuphar ${onnxruntime_providers_nuphar_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_nuphar
-    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers
-  )
-  set_target_properties(onnxruntime_providers_nuphar PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_nuphar PRIVATE ${ONNXRUNTIME_ROOT} ${TVM_INCLUDES} ${eigen_INCLUDE_DIRS})
-  set_target_properties(onnxruntime_providers_nuphar PROPERTIES LINKER_LANGUAGE CXX)
-  target_compile_options(onnxruntime_providers_nuphar PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
-  add_dependencies(onnxruntime_providers_nuphar ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar
-    DESTINATION
-    ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
-  )
-
-  if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_providers_nuphar
-            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
-            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-  endif()
-endif()
-
 if (onnxruntime_USE_VITISAI)
   file(GLOB_RECURSE onnxruntime_providers_vitisai_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/vitisai/*.h"
@@ -820,7 +766,7 @@ if (onnxruntime_USE_OPENVINO)
   find_package(InferenceEngine REQUIRED)
   find_package(ngraph REQUIRED)
 
-  if (OPENVINO_2022_1)
+  if (OPENVINO_2022_1 OR OPENVINO_2022_2)
   find_package(OpenVINO REQUIRED COMPONENTS Runtime ONNX)
   list (OV_20_LIBS openvino::frontend::onnx openvino::runtime)
   endif()
@@ -1590,6 +1536,38 @@ if (onnxruntime_USE_XNNPACK)
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
+endif()
+
+if (onnxruntime_USE_CANN)
+  add_definitions(-DUSE_CANN=1)
+  file(GLOB_RECURSE onnxruntime_providers_cann_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/cann/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cann/*.cc"
+  )
+
+  # The shared_library files are in a separate list since they use precompiled headers, and the above files have them disabled.
+  file(GLOB_RECURSE onnxruntime_providers_cann_shared_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cann_cc_srcs} ${onnxruntime_providers_cann_shared_srcs})
+  set(onnxruntime_providers_cann_src ${onnxruntime_providers_cann_cc_srcs} ${onnxruntime_providers_cann_shared_srcs})
+
+  onnxruntime_add_shared_library_module(onnxruntime_providers_cann ${onnxruntime_providers_cann_src})
+  onnxruntime_add_include_to_target(onnxruntime_providers_cann onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+
+  add_dependencies(onnxruntime_providers_cann onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_link_libraries(onnxruntime_providers_cann PRIVATE ascendcl acl_op_compiler nsync_cpp ${ABSEIL_LIBS} onnxruntime_providers_shared)
+  target_link_directories(onnxruntime_providers_cann PRIVATE ${onnxruntime_CANN_HOME}/lib64)
+  target_include_directories(onnxruntime_providers_cann PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${onnxruntime_CANN_HOME} ${onnxruntime_CANN_HOME}/include)
+  set_target_properties(onnxruntime_providers_cann PROPERTIES LINKER_LANGUAGE CXX)
+  set_target_properties(onnxruntime_providers_cann PROPERTIES FOLDER "ONNXRuntime")
+
+  install(TARGETS onnxruntime_providers_cann
+          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

@@ -82,7 +82,7 @@ DataLayout InternalTestingExecutionProvider::GetPreferredLayout() const {
 
 std::vector<std::unique_ptr<ComputeCapability>>
 InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                const std::vector<const KernelRegistry*>& /*registries*/) const {
+                                                const IKernelLookup& /*kernel_lookup*/) const {
   // find nodes that have ops in our supported list
   std::unordered_set<const Node*> supported_static_nodes;
   std::unordered_set<const Node*> supported_compiled_nodes;

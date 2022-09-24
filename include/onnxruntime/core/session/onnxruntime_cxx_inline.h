@@ -551,6 +551,11 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_MIGraphX(const Or
   return *this;
 }
 
+inline SessionOptions& SessionOptions::AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CANN(p_, &provider_options));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::AppendExecutionProvider(
     const std::string& provider_name,
     const std::unordered_map<std::string, std::string>& provider_options) {
@@ -650,18 +655,6 @@ inline size_t Session::GetOverridableInitializerCount() const {
   return out;
 }
 
-inline char* Session::GetInputName(size_t index, OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().SessionGetInputName(p_, index, allocator, &out));
-  return out;
-}
-
-inline char* Session::GetOutputName(size_t index, OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().SessionGetOutputName(p_, index, allocator, &out));
-  return out;
-}
-
 inline AllocatedStringPtr Session::GetInputNameAllocated(size_t index, OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().SessionGetInputName(p_, index, allocator, &out));
@@ -674,22 +667,10 @@ inline AllocatedStringPtr Session::GetOutputNameAllocated(size_t index, OrtAlloc
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char* Session::GetOverridableInitializerName(size_t index, OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().SessionGetOverridableInitializerName(p_, index, allocator, &out));
-  return out;
-}
-
 inline AllocatedStringPtr Session::GetOverridableInitializerNameAllocated(size_t index, OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().SessionGetOverridableInitializerName(p_, index, allocator, &out));
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
-}
-
-inline char* Session::EndProfiling(OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().SessionEndProfiling(p_, allocator, &out));
-  return out;
 }
 
 inline AllocatedStringPtr Session::EndProfilingAllocated(OrtAllocator* allocator) const {
@@ -710,22 +691,10 @@ inline ModelMetadata Session::GetModelMetadata() const {
   return ModelMetadata{out};
 }
 
-inline char* ModelMetadata::GetProducerName(OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().ModelMetadataGetProducerName(p_, allocator, &out));
-  return out;
-}
-
 inline AllocatedStringPtr ModelMetadata::GetProducerNameAllocated(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetProducerName(p_, allocator, &out));
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
-}
-
-inline char* ModelMetadata::GetGraphName(OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().ModelMetadataGetGraphName(p_, allocator, &out));
-  return out;
 }
 
 inline AllocatedStringPtr ModelMetadata::GetGraphNameAllocated(OrtAllocator* allocator) const {
@@ -734,22 +703,10 @@ inline AllocatedStringPtr ModelMetadata::GetGraphNameAllocated(OrtAllocator* all
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char* ModelMetadata::GetDomain(OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().ModelMetadataGetDomain(p_, allocator, &out));
-  return out;
-}
-
 inline AllocatedStringPtr ModelMetadata::GetDomainAllocated(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetDomain(p_, allocator, &out));
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
-}
-
-inline char* ModelMetadata::GetDescription(OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().ModelMetadataGetDescription(p_, allocator, &out));
-  return out;
 }
 
 inline AllocatedStringPtr Ort::ModelMetadata::GetDescriptionAllocated(OrtAllocator* allocator) const {
@@ -758,34 +715,16 @@ inline AllocatedStringPtr Ort::ModelMetadata::GetDescriptionAllocated(OrtAllocat
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char* ModelMetadata::GetGraphDescription(OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().ModelMetadataGetGraphDescription(p_, allocator, &out));
-  return out;
-}
-
 inline AllocatedStringPtr ModelMetadata::GetGraphDescriptionAllocated(OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataGetGraphDescription(p_, allocator, &out));
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
-inline char* ModelMetadata::LookupCustomMetadataMap(const char* key, OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().ModelMetadataLookupCustomMetadataMap(p_, allocator, key, &out));
-  return out;
-}
-
 inline AllocatedStringPtr ModelMetadata::LookupCustomMetadataMapAllocated(const char* key, OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().ModelMetadataLookupCustomMetadataMap(p_, allocator, key, &out));
   return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
-}
-
-inline char** ModelMetadata::GetCustomMetadataMapKeys(OrtAllocator* allocator, _Out_ int64_t& num_keys) const {
-  char** out;
-  ThrowOnError(GetApi().ModelMetadataGetCustomMetadataMapKeys(p_, allocator, &out, &num_keys));
-  return out;
 }
 
 inline std::vector<AllocatedStringPtr> ModelMetadata::GetCustomMetadataMapKeysAllocated(OrtAllocator* allocator) const {

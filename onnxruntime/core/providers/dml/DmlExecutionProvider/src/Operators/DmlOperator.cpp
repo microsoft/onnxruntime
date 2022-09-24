@@ -216,6 +216,112 @@ namespace Dml
         }
     }
 
+    void DmlOperator::InitializeWithShapes(
+        const MLOperatorKernelCreationContext& kernelInfo,
+        const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices,
+        const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices,
+        const std::optional<gsl::span<gsl::span<const uint32_t>>> inputShapes,
+        const std::optional<gsl::span<gsl::span<const uint32_t>>> outputShapes,
+        uint32_t minDimensionCount
+        )
+    {
+        if (kernelInputIndices)
+        {
+            m_kernelInputIndices = *kernelInputIndices;
+        }
+        else
+        {
+            m_kernelInputIndices.resize(kernelInfo.GetInputCount());
+            std::iota(m_kernelInputIndices.begin(), m_kernelInputIndices.end(), 0);
+        }
+
+        if (kernelOutputIndices)
+        {
+            m_kernelOutputIndices = *kernelOutputIndices;
+        }
+        else
+        {
+            m_kernelOutputIndices.resize(kernelInfo.GetOutputCount());
+            std::iota(m_kernelOutputIndices.begin(), m_kernelOutputIndices.end(), 0);
+        }
+
+        for (uint32_t i = 0; i < m_kernelInputIndices.size(); i++)
+        {
+            // Update m_kernelInputIndices to reflect optional tensors.
+            if (m_kernelInputIndices[i] == std::nullopt ||
+                !kernelInfo.IsInputValid(*m_kernelInputIndices[i]))
+            {
+                m_kernelInputIndices[i] = std::nullopt;
+                m_inputTensorDescs.push_back(TensorDesc());
+            }
+            else
+            {
+                auto edgeDesc = kernelInfo.GetInputEdgeDescription(*m_kernelInputIndices[i]);
+                assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
+
+                // prioritize the given input shapes
+                TensorDesc tensorDesc;
+                if (inputShapes.has_value() && i < (*inputShapes).size())
+                {
+                    tensorDesc = TensorDesc(
+                        edgeDesc.tensorDataType,
+                        (*inputShapes)[i], // desired
+                        (*inputShapes)[i], // original
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        minDimensionCount,
+                        0
+                    );
+                }
+                else if (kernelInfo.HasTensorShapeDescription())
+                {
+                    std::vector<uint32_t> actualTensorShape = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(*m_kernelInputIndices[i]);
+                    tensorDesc = TensorDesc(
+                        edgeDesc.tensorDataType,
+                        actualTensorShape, // desired
+                        actualTensorShape, // original
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        minDimensionCount,
+                        0
+                    );
+                }
+                m_inputTensorDescs.push_back(tensorDesc);
+            }
+        }
+
+        for (uint32_t i = 0; i < m_kernelOutputIndices.size(); i++)
+        {
+            // Update m_kernelOutputIndices to reflect optional tensors.
+            if (m_kernelOutputIndices[i] == std::nullopt ||
+                !kernelInfo.IsOutputValid(*m_kernelOutputIndices[i]))
+            {
+                m_kernelOutputIndices[i] = std::nullopt;
+                m_outputTensorDescs.push_back(TensorDesc());
+            }
+            else
+            {
+                std::optional<gsl::span<const uint32_t>> outputShape;
+                if (outputShapes.has_value() && i < (*outputShapes).size())
+                {
+                    outputShape = (*outputShapes)[i];
+                }
+
+                m_outputTensorDescs.push_back(CreateTensorDescFromOutput(
+                    kernelInfo,
+                    *m_kernelOutputIndices[i],
+                    TensorAxis::DoNotCoerce,
+                    TensorAxis::W,
+                    TensorAxis::RightAligned,
+                    outputShape,
+                    minDimensionCount
+                ));
+            }
+        }
+    }
+
     void DmlOperator::Compute(const MLOperatorKernelContext& kernelContext)
     {
         std::vector<IMLOperatorTensor*> inputTensors = GetInputTensorsForExecute(kernelContext);

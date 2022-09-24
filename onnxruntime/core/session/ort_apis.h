@@ -390,6 +390,17 @@ ORT_API(void, ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy);
 
 ORT_API(const OrtTrainingApi*, GetTrainingApi, uint32_t version);
 
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_CANN,
+                    _In_ OrtSessionOptions* options, _In_ const OrtCANNProviderOptions* cann_options);
+ORT_API_STATUS_IMPL(CreateCANNProviderOptions, _Outptr_ OrtCANNProviderOptions** out);
+ORT_API_STATUS_IMPL(UpdateCANNProviderOptions, _Inout_ OrtCANNProviderOptions* cann_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys);
+ORT_API_STATUS_IMPL(GetCANNProviderOptionsAsString, _In_ const OrtCANNProviderOptions* cann_options,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+ORT_API(void, ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProviderOptions*);
+
 ORT_API_STATUS_IMPL(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelInfo_GetInputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
@@ -410,5 +421,4 @@ ORT_API(void, ReleaseProviderOptions, _Frees_ptr_opt_ OrtProviderOptions* provid
 
 ORT_API_STATUS_IMPL(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_opt_ char* out, _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(NodeArg_GetTypeInfo, _In_ const OrtNodeArg* info, _Outptr_ OrtTypeInfo** type_info);
-
 }  // namespace OrtApis

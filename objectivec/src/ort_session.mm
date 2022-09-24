@@ -168,25 +168,21 @@ NS_ASSUME_NONNULL_BEGIN
 
     auto getName = [&session = *_session, namedValueType](size_t i, OrtAllocator* allocator) {
       if (namedValueType == NamedValueType::Input) {
-        return session.GetInputName(i, allocator);
+        return session.GetInputNameAllocated(i, allocator);
       } else if (namedValueType == NamedValueType::OverridableInitializer) {
-        return session.GetOverridableInitializerName(i, allocator);
+        return session.GetOverridableInitializerNameAllocated(i, allocator);
       } else {
-        return session.GetOutputName(i, allocator);
+        return session.GetOutputNameAllocated(i, allocator);
       }
     };
 
     const size_t nameCount = getCount();
 
     Ort::AllocatorWithDefaultOptions allocator;
-    auto deleter = [ortAllocator = static_cast<OrtAllocator*>(allocator)](void* p) {
-      ortAllocator->Free(ortAllocator, p);
-    };
-
     NSMutableArray<NSString*>* result = [NSMutableArray arrayWithCapacity:nameCount];
 
     for (size_t i = 0; i < nameCount; ++i) {
-      auto name = std::unique_ptr<char[], decltype(deleter)>{getName(i, allocator), deleter};
+      auto name = getName(i, allocator);
       NSString* nameNsstr = [NSString stringWithUTF8String:name.get()];
       NSAssert(nameNsstr != nil, @"nameNsstr must not be nil");
       [result addObject:nameNsstr];

@@ -12,6 +12,7 @@ cbuffer Constants
     uint4 OutputSizes;
     uint4 OutputStrides;
     float Scale;
+    uint DFTLength;
 };
 
 // Returns the indices for the real and complex output uav
@@ -60,8 +61,7 @@ void DFT(uint3 dtid : SV_DispatchThreadId)
     uint index = StartIndex + dtid.x;
     if (index < ElementCount)
     {
-        uint inputLength = InputSizes[1];
-        uint halfInputLength = inputLength / 2;
+        uint halfTotalDFTLength = DFTLength / 2;
         uint N = 1 << DFTIteration;
         uint halfN = 1 << (DFTIteration - 1);
 
@@ -70,7 +70,7 @@ void DFT(uint3 dtid : SV_DispatchThreadId)
         uint2 inputEvenOddIndexPair = uint2(0, 0);
         uint3 idx = DecomposeIndex(index);
         inputEvenOddIndexPair.x = (idx.y >> DFTIteration) * halfN + (idx.y % halfN);
-        inputEvenOddIndexPair.y = inputEvenOddIndexPair.x + halfInputLength;
+        inputEvenOddIndexPair.y = inputEvenOddIndexPair.x + halfTotalDFTLength;
 
         // Create full index for even and odd values
         uint3 inputEvenIdx = uint3(idx.x, inputEvenOddIndexPair.x, idx.z);

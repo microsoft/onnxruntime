@@ -249,7 +249,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     const CudaT* current_logits = logits_data + (input_length - 1) * vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
-      gsl::span<T> target = next_token_logits.subspan(i * vocab_size, vocab_size);
+      gsl::span<T> target = next_token_logits.subspan(static_cast<size_t>(i) * vocab_size, vocab_size);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size,
                                            cudaMemcpyDeviceToDevice, cuda_stream));
       if (logits_batch_size == batch_beam_size) {
