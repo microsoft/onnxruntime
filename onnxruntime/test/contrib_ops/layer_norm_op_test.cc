@@ -136,8 +136,7 @@ TEST(LayerNormTest, LayerNorm_InvalidScaleBias) {
   test.AddAttribute<int64_t>("axis", 1);
   test.AddOutput<float>("output", dims, {-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f});
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Size of scale and bias (if provided) must match the size of X.shape()[axis:], which is 6. "
-           "Got scale size of 2 and bias_size of 2");
+           "Size of X.shape()[axis:] == 6. Size of scale and bias (if provided) must match this");
 }
 
 }  // namespace test
