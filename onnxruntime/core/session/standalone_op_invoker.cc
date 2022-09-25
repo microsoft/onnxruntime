@@ -7,6 +7,10 @@
 #include "core/session/ort_apis.h"
 #include <unordered_map>
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26400)
+#endif
+
 #ifdef ORT_MINIMAL_BUILD
 
 ORT_API_STATUS_IMPL(OrtApis::CreateOpAttr,
@@ -73,10 +77,12 @@ namespace onnxruntime {
 namespace standalone {
 
 using NodePtr = std::unique_ptr<onnxruntime::Node>;
-using StandAloneNodesMap = InlinedHashMap<const onnxruntime::OpKernel*, NodePtr>;
+
 using ArgPtr = std::unique_ptr<onnxruntime::NodeArg>;
-using ArgPtrs = absl::InlinedVector<ArgPtr, 10>;
-using StandAloneArgsMap = InlinedHashMap<const onnxruntime::OpKernel*, ArgPtrs>;
+using ArgPtrs = onnxruntime::InlinedVector<ArgPtr>;
+
+using NodeResource = std::pair<NodePtr, ArgPtrs>;
+using NodeResoruceMap = InlinedHashMap<const onnxruntime::OpKernel*,NodeResource>;
 
 class NodeRepo {
  public:
@@ -85,18 +91,13 @@ class NodeRepo {
     return node_repo;
   }
 
-  onnxruntime::Status AddNode(const onnxruntime::OpKernel* kernel, NodePtr node_ptr, ArgPtrs& args) {
+  onnxruntime::Status AddNode(const onnxruntime::OpKernel* kernel, NodePtr&& node_ptr, ArgPtrs&& args) {
     std::lock_guard<std::mutex> guard(mutex_);
-    auto node_iter = node_map_.find(kernel);
-    if (node_iter != node_map_.end()) {
+    auto iter = resource_map_.find(kernel);
+    if (iter != resource_map_.end()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing node");
     }
-    node_map_.insert({kernel, std::move(node_ptr)});
-    auto arg_iter = arg_map_.find(kernel);
-    if (arg_iter != arg_map_.end()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing arg");
-    }
-    arg_map_.insert({kernel, std::move(args)});
+    resource_map_[kernel] = {std::forward<NodePtr>(node_ptr), std::forward<ArgPtrs>(args)};
     return Status::OK();
   }
 
@@ -107,11 +108,11 @@ class NodeRepo {
     size_t expect_output_count{};
     {
       std::lock_guard<std::mutex> guard(mutex_);
-      auto iter = node_map_.find(kernel);
-      if (iter == node_map_.end()) {
+      auto iter = resource_map_.find(kernel);
+      if (iter == resource_map_.end()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "matching node is missing");
       }
-      auto* node = iter->second.get();
+      auto* node = iter->second.first.get();
       expect_input_count = node->InputDefs().size();
       expect_output_count = node->OutputDefs().size();
     }
@@ -130,8 +131,7 @@ class NodeRepo {
 
   void RemoveNode(const onnxruntime::OpKernel* kernel) {
     std::lock_guard<std::mutex> guard(mutex_);
-    node_map_.erase(kernel);
-    arg_map_.erase(kernel);
+    resource_map_.erase(kernel);
   }
 
  private:
@@ -139,8 +139,7 @@ class NodeRepo {
   ~NodeRepo() = default;
 
   std::mutex mutex_;
-  StandAloneNodesMap node_map_;
-  StandAloneArgsMap arg_map_;
+  NodeResoruceMap resource_map_;
 };
 
 // For invoking kernels without a graph
@@ -410,7 +409,7 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   static FuncManager kFuncMgr;
   status = kernel_create_info->kernel_create_func(kFuncMgr, tmp_kernel_info, op_kernel);
   ORT_RETURN_IF_ERROR(status);
-  status = NodeRepo::GetInstance().AddNode(op_kernel.get(), std::move(node_ptr), arg_ptrs);
+  status = NodeRepo::GetInstance().AddNode(op_kernel.get(), std::move(node_ptr), std::move(arg_ptrs));
   ORT_RETURN_IF_ERROR(status);
   *op = reinterpret_cast<OrtOp*>(op_kernel.release());
   return status;
@@ -458,7 +457,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOpAttr,
 
 ORT_API(void, OrtApis::ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr* op_attr) {
   if (op_attr) {
-    std::unique_ptr<ONNX_NAMESPACE::AttributeProto>{reinterpret_cast<ONNX_NAMESPACE::AttributeProto*>(op_attr)};
+    delete reinterpret_cast<ONNX_NAMESPACE::AttributeProto*>(op_attr);
   }
 }
 
@@ -515,8 +514,9 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeOp,
 
 ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp* op) {
   if (op) {
-    std::unique_ptr<onnxruntime::OpKernel> op_ptr{reinterpret_cast<onnxruntime::OpKernel*>(op)};
-    onnxruntime::standalone::NodeRepo::GetInstance().RemoveNode(op_ptr.get());
+    auto kernel = reinterpret_cast<onnxruntime::OpKernel*>(op);
+    onnxruntime::standalone::NodeRepo::GetInstance().RemoveNode(kernel);
+    delete kernel;
   }
 }
 
@@ -531,7 +531,8 @@ ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo, _In_ const OrtKernelInfo* info, _Ou
 
 ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy) {
   if (info_copy) {
-    std::unique_ptr<onnxruntime::OpKernelInfo> info_copy_ptr{reinterpret_cast<onnxruntime::OpKernelInfo*>(info_copy)};
+    auto kernel_info = reinterpret_cast<onnxruntime::OpKernelInfo*>(info_copy);
+    delete kernel_info;
   }
 }
 
