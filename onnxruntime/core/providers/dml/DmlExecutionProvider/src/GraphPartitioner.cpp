@@ -774,6 +774,47 @@ namespace Dml
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
+        LightWeightPartitionGraph(
+            const onnxruntime::GraphViewer& graph,
+            const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap& internalRegInfoMap,
+            const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+            uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
+        )
+    {
+        std::vector<std::unique_ptr<onnxruntime::ComputeCapability>> result;
+        
+        // Get the list of node indices in toplogical order, so nodes are visited before.
+        // downstream nodes consuming them.
+        const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
+
+        for (size_t nodeIndex : toplogicalOrder) 
+        {
+            const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
+
+            // Whether the node is implemented through DML.
+            bool isDmlNode = false;
+
+            // Find the highest priority DML registry supporting this node, and get its highest-priority
+            // registration.
+            if (IsNodeSupportedByDml(node, kernel_lookup, supportedDeviceDataTypeMask, internalRegInfoMap))
+            {
+                isDmlNode = true;
+                break;
+            }
+
+            if (isDmlNode)
+            {
+                std::unique_ptr<onnxruntime::IndexedSubGraph> subGraph = std::make_unique<onnxruntime::IndexedSubGraph>();
+                subGraph->nodes = {nodeIndex};
+                result.push_back(std::make_unique<onnxruntime::ComputeCapability>(std::move(subGraph)));
+            }
+            
+        }
+
+        return result;
+    }
+
+    std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     PartitionGraph(
         const onnxruntime::GraphViewer& graph,
         const InternalRegistrationInfoMap& internalRegInfoMap,

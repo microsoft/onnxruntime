@@ -17,15 +17,6 @@
 
 namespace Dml
 {
-    GraphTransformer::GraphTransformer(
-        const std::string& name,
-        const onnxruntime::IExecutionProvider* provider
-    )
-        : onnxruntime::GraphTransformer(name),
-          m_providerImpl(static_cast<const ExecutionProvider* >(provider)->GetImpl())
-    {
-    }
-
     onnxruntime::common::Status GraphTransformer::ApplyImpl(
         onnxruntime::Graph& graph,
         bool& modified,
@@ -84,24 +75,10 @@ namespace Dml
         // graph while iterating over it
         std::vector<NodeToAdd> nodesToAdd;
 
-        onnxruntime::ProviderType provider_type = onnxruntime::kDmlExecutionProvider;
-        const gsl::not_null<const onnxruntime::KernelRegistry*> registry = m_providerImpl->GetKernelRegistry().get();
-        const auto kernel_type_str_resolver = onnxruntime::OpSchemaKernelTypeStrResolver{};
-        const auto kernel_lookup = onnxruntime::KernelLookup{provider_type,
-                                                             gsl::make_span(&registry, 1),
-                                                             kernel_type_str_resolver};
-
         for (auto& node : graph->Nodes())
         {
-            // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
-            // which occurs in IExecutionProvider::GetCapability.
-
-            if (!IsNodeSupportedByDml(
-                node,
-                kernel_lookup,
-                m_providerImpl->GetSupportedDeviceDataTypeMask(),
-                *m_providerImpl->GetInternalRegistrationInfoMap().get()
-                ))
+            // Ignore the nodes which were not assigned to the DML by ORT during IExecutionProvider::GetCapability()
+            if (onnxruntime::graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;
@@ -121,7 +98,7 @@ namespace Dml
 
             // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
             // which occurs in IExecutionProvider::GetCapability.
-            if (!kernel_lookup.LookUpKernel(outputNode))
+            if (!onnxruntime::graph_utils::IsSupportedProvider(outputNode, GetCompatibleExecutionProviders()))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;
@@ -207,7 +184,8 @@ namespace Dml
                 nodeToAdd.outputs,
                 &nodeToAdd.attributes,
                 nodeToAdd.domain);
-
+            
+            node.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);
             // Add a dynamic attribute to the fuseable operator to specify activation
             node.AddAttribute(AttrName::FusedActivation, nodeToAdd.activationOpType);
             node.AddAttribute(AttrName::FusedActivationDomain, nodeToAdd.activationOpDomain);
@@ -305,7 +283,7 @@ namespace Dml
 
         for (auto& nodeToAdd : nodesToAdd)
         {
-            graph->AddNode(
+            auto& node = graph->AddNode(
                 nodeToAdd.name,
                 nodeToAdd.opType,
                 nodeToAdd.description,
@@ -313,6 +291,7 @@ namespace Dml
                 nodeToAdd.outputs,
                 &nodeToAdd.attributes,
                 nodeToAdd.domain);
+            node.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);
         }
 
         for (const auto& nodeIndex : nodesToRemove)

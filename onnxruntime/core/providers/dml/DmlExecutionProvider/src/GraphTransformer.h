@@ -11,7 +11,6 @@
 
 namespace Dml
 {
-    class ExecutionProviderImpl;
 
     // Applies transforms to a Lotus graph. The graph transformer is responsible for setting the execution provider
     // on the graph nodes which DML supports.
@@ -20,8 +19,11 @@ namespace Dml
     public:
         GraphTransformer(
             const std::string& name, 
-            const onnxruntime::IExecutionProvider* provider
-        );
+            const onnxruntime::InlinedHashSet<std::string_view>& compatible_execution_providers = {}
+        ) : onnxruntime::GraphTransformer(name, compatible_execution_providers)
+        {
+
+        }
 
     private:
      onnxruntime::common::Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const onnxruntime::logging::Logger& logger) const final;
@@ -29,9 +31,6 @@ namespace Dml
     private:
         void PerformOperatorFusion(onnxruntime::Graph* graph, bool* modified) const;
         void PerformQuantizedOperatorDecomposition(onnxruntime::Graph* graph, bool* modified) const;
-
-        std::shared_ptr<onnxruntime::KernelRegistry> m_registry;
-        const ExecutionProviderImpl* m_providerImpl = nullptr;
     };
 
 } // namespace Dml
