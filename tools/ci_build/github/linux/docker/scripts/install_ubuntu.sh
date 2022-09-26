@@ -71,6 +71,7 @@ if [ "$OS_VERSION" = "20.04" ]; then
 	    add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
         apt-get install -y --no-install-recommends \
+		        python${PYTHON_VER}-distutils \
                 python${PYTHON_VER} \
                 python${PYTHON_VER}-dev
         update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
@@ -81,9 +82,7 @@ if [ "$OS_VERSION" = "20.04" ]; then
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
 else
-    exit 1   
+    exit 1
 fi
 
 rm -rf /var/lib/apt/lists/*
-
-
