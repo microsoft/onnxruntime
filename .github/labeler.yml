@@ -1,39 +1,39 @@
-# Add/remove 'ep:ACL' label if issue contains the word 'ACL'
+# Add/remove 'ep:ACL' label if issue contains the word 'ACL' or 'acl'
 ep:ACL:
-  - '(ACL)'
-# Add/remove 'ep:ArmNN' label if issue contains the word 'ArmNN'
+  - '(ACL|acl)'
+# Add/remove 'ep:ArmNN' label if issue contains the word 'ArmNN' or 'armnn
 ep:ArmNN:
-  - '(ArmNN)'
-# Add/remove 'ep:CUDA' label if issue contains the word 'CUDA'
+  - '(ArmNN|armnn)'
+# Add/remove 'ep:CUDA' label if issue contains the word 'CUDA' or 'cuda'
 ep:CUDA:
-  - '(CUDA)'
-# Add/remove 'ep:DML' label if issue contains the word 'DirectML'
+  - '(CUDA|cuda)'
+# Add/remove 'ep:DML' label if issue contains the word 'DirectML', 'directml', or 'DML'
 ep:DML:
-  - '(DirectML)'
+  - '(DirectML|directml|DML)'
 # Add/remove 'ep:MIGraphX' label if issue contains the word 'MIGraphX'
 ep:MIGraphX:
   - '(MIGraphX)'
 # Add/remove 'ep:oneDNN' label if issue contains the word 'oneDNN'
 ep:oneDNN:
   - '(oneDNN)'
-# Add/remove 'ep:OpenVINO' label if issue contains the word 'OpenVINO'
+# Add/remove 'ep:OpenVINO' label if issue contains the word 'OpenVINO', 'openvino', 'OpenVino' or 'Openvino'
 ep:OpenVINO:
-  - '(OpenVINO)'
-# Add/remove 'ep:RockchipNPU' label if issue contains the word 'Rockchip NPU'
+  - '(OpenVINO|openvino|OpenVino|Openvino)'
+# Add/remove 'ep:RockchipNPU' label if issue contains the word 'Rockchip' or 'rockchip'
 ep:RockchipNPU:
-  - '(Rockchip NPU)'
-# Add/remove 'ep:TensorRT' label if issue contains the word 'TensorRT'
+  - '(Rockchip|rockchip)'
+# Add/remove 'ep:TensorRT' label if issue contains the word 'TensorRT', 'tensorrt', 'TRT', or 'Tensorrt'
 ep:TensorRT:
-  - '(TensorRT)'
-# Add/remove 'ep:tvm' label if issue contains the word 'TVM'
+  - '(TensorRT|tensorrt|TRT|Tensorrt)'
+# Add/remove 'ep:tvm' label if issue contains the word 'TVM' or 'tvm'
 ep:tvm:
-  - '(TVM)'
-# Add/remove 'ep:VitisAI' label if issue contains the word 'Vitis AI'
+  - '(TVM|tvm)'
+# Add/remove 'ep:VitisAI' label if issue contains the word 'Vitis', 'vitis', or 'VitisAI'
 ep:VitisAI:
-  - '(Vitis AI)'
-# Add/remove 'api:JavaScript' label if issue contains the word 'JavaScript'
+  - '(Vitis|vitis|VitisAI)'
+# Add/remove 'api:JavaScript' label if issue contains the word 'JavaScript', 'javascript', 'nodejs', 'Nodejs', or 'NodeJS'
 api:JavaScript:
-  - '(JavaScript)'
+  - '(JavaScript|javascript|nodejs|Nodejs|NodeJS)'
 # Add/remove 'api:Java' label if issue contains the word 'Java' not followed by 'Script'
 api:Java:
   - '(Java(?!Script))'
@@ -46,15 +46,13 @@ api:
 # Add/remove 'platform:jetson' label if issue contains the word 'Jetson' or 'jetson'
 platform:jetson:
   - '(Jetson|jetson)'
-# Add/remove 'platform:windows' label if issue contains the word 'Windows'
+# Add/remove 'platform:windows' label if issue contains the word 'Windows' or 'windows'
 platform:windows:
-  - '(Windows)'
+  - '(Windows|windows)'
 # Add/remove 'model:transformer' label if issue contains the word 'BERT', 'Bert\b', 'bert\b', 'GPT2', 'gpt2', 'Hugging Face', 'HuggingFace', 'Hugging face', 'Huggingface', 'hugging face', 'huggingface', 'Longformer', 'Long former', 'longformer', 'long former', 'T5', or 't5'
 model:transformer:
   - '(BERT|Bert\b|bert\b|GPT2|gpt2|Hugging Face|HuggingFace|Hugging face|Huggingface|hugging face|huggingface|Longformer|Long former|longformer|long former|T5|t5)'
 # Add/remove 'quantization' label contains the words 'Is this a quantized model\?\n\nYes', 'Quantization', 'quantization', 'Quantized', or 'quantized' not preceded by 'Is this a '
 quantization:
   - '(Is this a quantized model\?\n\nYes|Quantization|quantization|Quantized|(?<!(Is this a ))quantized)'
-# Add/remove 'build' label if issue contains the word 'ACL', 'ArmNN', 'CUDA', 'DirectML', 'MIGraphX', 'oneDNN', 'OpenVINO', 'Rockchip NPU', 'TensorRT', 'TVM', 'Vitis AI', 'Java', 'Python', 'C++', 'C#', 'C\b', or 'Obj-C'
-build:
-  - '(ACL|ArmNN|CUDA|DirectML|MIGraphX|oneDNN|OpenVINO|Rockchip NPU|TensorRT|TVM|Vitis AI|Java|Python|C\+\+|C#|C\b|Obj-C)'
+
