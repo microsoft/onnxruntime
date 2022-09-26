@@ -148,6 +148,7 @@ class SymbolicShapeInference:
             "Max": self._infer_symbolic_compute_ops,
             "Min": self._infer_symbolic_compute_ops,
             "Mul": self._infer_symbolic_compute_ops,
+            "MoEBlock" : self._pass_on_shape_and_type,
             "NonMaxSuppression": self._infer_NonMaxSuppression,
             "NonZero": self._infer_NonZero,
             "OneHot": self._infer_OneHot,
@@ -418,6 +419,7 @@ class SymbolicShapeInference:
             "LongformerAttention",
             "SkipLayerNormalization",
             "PythonOp",
+            "MoEBlock",
         ]
 
         if not skip_infer:
