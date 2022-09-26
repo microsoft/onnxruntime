@@ -8,6 +8,7 @@
 #include <unordered_map>
 
 #if defined(_MSC_VER) && !defined(__clang__)
+//disabling warning on calling of raw "delete" operator
 #pragma warning(disable : 26400)
 #endif
 
@@ -82,7 +83,7 @@ using ArgPtr = std::unique_ptr<onnxruntime::NodeArg>;
 using ArgPtrs = onnxruntime::InlinedVector<ArgPtr>;
 
 using NodeResource = std::pair<NodePtr, ArgPtrs>;
-using NodeResoruceMap = InlinedHashMap<const onnxruntime::OpKernel*,NodeResource>;
+using NodeResourceMap = InlinedHashMap<const onnxruntime::OpKernel*,NodeResource>;
 
 class NodeRepo {
  public:
@@ -93,11 +94,10 @@ class NodeRepo {
 
   onnxruntime::Status AddNode(const onnxruntime::OpKernel* kernel, NodePtr&& node_ptr, ArgPtrs&& args) {
     std::lock_guard<std::mutex> guard(mutex_);
-    auto iter = resource_map_.find(kernel);
-    if (iter != resource_map_.end()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing node");
+    auto ret = resource_map_.try_emplace(kernel, NodeResource{std::move(node_ptr), std::move(args)});
+    if (!ret.second) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing node"); 
     }
-    resource_map_[kernel] = {std::forward<NodePtr>(node_ptr), std::forward<ArgPtrs>(args)};
     return Status::OK();
   }
 
@@ -139,7 +139,7 @@ class NodeRepo {
   ~NodeRepo() = default;
 
   std::mutex mutex_;
-  NodeResoruceMap resource_map_;
+  NodeResourceMap resource_map_;
 };
 
 // For invoking kernels without a graph
