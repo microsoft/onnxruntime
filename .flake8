@@ -15,8 +15,6 @@ exclude =
     # ignore generated flatbuffers code
     ./onnxruntime/core/flatbuffers/ort_flatbuffers_py,
     # TODO enable
-    ./onnxruntime/core/providers/nuphar,
-    # TODO enable
     ./onnxruntime/python/tools,
     # ignore test code for now
     ./onnxruntime/test,

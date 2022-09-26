@@ -5,6 +5,7 @@
 #include <onnx/onnx_pb.h>
 #include <unordered_set>
 
+#include "core/common/inlined_containers.h"
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
@@ -46,7 +47,7 @@ class ModelBuilder {
   int32_t GetNNAPIFeatureLevel() const;
 
   // Add an NNAPI operation (operator)
-  common::Status AddOperation(int op, const std::vector<uint32_t>& input_indices,
+  common::Status AddOperation(int op, const InlinedVector<uint32_t>& input_indices,
                               const std::vector<std::string>& output_names,
                               const std::vector<android::nn::wrapper::OperandType>& output_types);
 
@@ -117,7 +118,7 @@ class ModelBuilder {
  private:
   const NnApi* nnapi_{nullptr};
   const GraphViewer& graph_viewer_;
-  std::unique_ptr<Model> nnapi_model_;
+  std::unique_ptr<Model> nnapi_model_{std::make_unique<Model>()};
 
   uint32_t name_token_{0};
 
@@ -141,9 +142,8 @@ class ModelBuilder {
 
   std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> op_support_checkers_;
 
-
-  std::vector<uint32_t> input_index_vec_;
-  std::vector<uint32_t> output_index_vec_;
+  InlinedVector<uint32_t> input_index_vec_;
+  InlinedVector<uint32_t> output_index_vec_;
 
   // Contains all quantized operators' input and the NodeUnit(s) using the input
   // In the form of {input_name, [NodeUnit(s) using the input]}
@@ -178,8 +178,6 @@ class ModelBuilder {
   common::Status RegisterModelInputs();
   common::Status AddOperations();
   common::Status RegisterModelOutputs();
-  // After constructing the NNAPI model, will set the shape inferencing record to the Model
-  void RegisterModelShaper();
 
   // Get all quantized inputs in the underlying graph_viewer
   void GetAllQuantizedOpInputs();

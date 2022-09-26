@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <type_traits>
+#include <memory>
 #include <stdint.h>
 #include <vector>
 #include <mutex>
