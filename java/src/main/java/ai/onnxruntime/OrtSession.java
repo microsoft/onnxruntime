@@ -912,18 +912,6 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds Nuphar as an execution backend.
-     *
-     * @param allowUnalignedBuffers Allow unaligned memory buffers.
-     * @param settings See the documentation for valid settings strings.
-     * @throws OrtException If there was an error in native code.
-     */
-    public void addNuphar(boolean allowUnalignedBuffers, String settings) throws OrtException {
-      checkClosed();
-      addNuphar(OnnxRuntime.ortApiHandle, nativeHandle, allowUnalignedBuffers ? 1 : 0, settings);
-    }
-
-    /**
      * Adds TVM as an execution backend.
      *
      * @param settings See the documentation for valid settings strings.
