@@ -76,8 +76,8 @@ jobs:
     - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
           --skip_submodule_sync \
-          --build_dir $(Build.BinariesDirectory)/iOS_coreml \
-          --use_coreml \
+          --build_dir $(Build.BinariesDirectory)/iOS_xnnpack \
+          --use_xnnpack \
           --ios \
           --ios_sysroot iphonesimulator  \
           --osx_arch x86_64 \
@@ -87,4 +87,4 @@ jobs:
           --build_apple_framework \
           --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
           --parallel
-      displayName: (CoreML EP) Build onnxruntime for iOS x86_64 and run tests using simulator
+      displayName: (XNNPACK EP) Build onnxruntime for iOS x86_64 and run tests using simulator
