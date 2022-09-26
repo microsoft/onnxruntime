@@ -101,7 +101,7 @@ class TestQDQExtraOptions(unittest.TestCase):
             {
                 "ActivationSymmetric": True,
                 "AddQDQPairToWeight": True,
-                "OpTypesToExcludeOutputQuantizatioin": [],
+                "OpTypesToExcludeOutputQuantization": [],
             },
         )  # extra_options
         quantizer.quantize_model()
@@ -202,7 +202,7 @@ class TestQDQExtraOptions(unittest.TestCase):
             {
                 "ActivationSymmetric": True,
                 "AddQDQPairToWeight": True,
-                "OpTypesToExcludeOutputQuantizatioin": op_types_to_quantize,
+                "OpTypesToExcludeOutputQuantization": op_types_to_quantize,
                 "DedicatedQDQPair": True,
             },
         )  # extra_options
