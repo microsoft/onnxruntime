@@ -92,7 +92,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
   float beta = 1.f;
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
@@ -101,7 +101,6 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
   }
 
-  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SOFTMAX, input_indices,
                                                  {output}, {output_operand_type}));

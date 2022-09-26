@@ -81,7 +81,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   std::vector<int32_t> onnx_pads, onnx_strides, kernel_shape;
   bool use_auto_pad = false;
   int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_VALID;
-  const auto& input_shape = shaper[input];
+  const auto input_shape = shaper[input];
   if (is_average_pool || op_type == "MaxPool") {
     const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
     kernel_shape = helper.Get("kernel_shape", std::vector<int32_t>{0, 0});
@@ -128,7 +128,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         initializers, node_unit.Outputs()[0], node_unit.ModelPath(), y_scale, y_zero_point));
   }
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
 
   if (use_auto_pad) {
@@ -150,10 +150,6 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
-  ORT_RETURN_IF_ERROR(shaper.Pool(input,
-                                  onnx_pads, onnx_strides, kernel_shape,
-                                  use_nchw,
-                                  output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}));

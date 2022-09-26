@@ -7,6 +7,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
@@ -119,7 +120,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   bool is_per_tensor_u8s8 = false;
   if (is_quant_matmul || is_quant_gemm) {
-    std::optional<std::vector<float>> w_scales;
+    optional<std::vector<float>> w_scales;
     ORT_RETURN_IF_ERROR(
         GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node_unit,
                                                      a_scale, b_scale, y_scale,
@@ -156,13 +157,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   if (has_bias) {
     const auto& bias = inputs[2].node_arg.Name();
     if (!is_quant_gemm) {
-      // We need squeeze the input tensor to 1d if necessary
+      // We need to squeeze the input tensor to 1d if necessary
       if (shaper[bias].size() > 1) {
         std::string bias_squeezed = model_builder.GetUniqueName(node_unit.Name() + op + "_bias_squeezed");
         // We will use squeeze all here
         ORT_RETURN_IF_ERROR(AddSqueezeOp(model_builder, node_unit.Name(),
-                                         bias, bias_squeezed,
-                                         {} /* axes */));
+                                         bias, bias_squeezed, {} /* axes */));
         bias_idx = operand_indices.at(bias_squeezed);
         LOGS_DEFAULT(VERBOSE) << "GemmOpBuilder - Operand [" << bias << "] squeezed from "
                               << Shape2String(shaper[bias])
@@ -179,11 +179,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       Shape bias_dimen;
       for (auto dim : bias_tensor.dims())
         bias_dimen.push_back(SafeInt<uint32_t>(dim));
-      std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
+      Initializer unpacked_tensor(bias_tensor);
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale);
       ORT_RETURN_IF_ERROR(
-          model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
+          model_builder.AddOperandFromPersistMemoryBuffer(
+              bias,
+              unpacked_tensor.data<int32_t>(), bias_operand_type));
 
       bias_idx = operand_indices.at(bias);
     }
@@ -208,14 +209,13 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     bias_idx = operand_indices.at(bias);
   }
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));  // A
   input_indices.push_back(input_2_idx);                 // B
   input_indices.push_back(bias_idx);                    // C
   int32_t fuse_code = model_builder.FindActivation(node_unit);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
-  ORT_RETURN_IF_ERROR(shaper.FC(input1, input2, output));
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_FULLY_CONNECTED, input_indices,
                                                  {output}, {output_operand_type}));

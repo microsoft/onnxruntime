@@ -7,6 +7,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
 #include "core/providers/shared/utils/utils.h"
@@ -63,7 +64,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& inputs = node_unit.Inputs();
-  const auto& input_shape = shaper[inputs[0].node_arg.Name()];
+  const auto input_shape = shaper[inputs[0].node_arg.Name()];
   TensorShapeVector input_shape_64(input_shape.cbegin(), input_shape.cend());
   SliceOp::PrepareForComputeMetadata compute_metadata(input_shape_64);
 
@@ -88,20 +89,14 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       const auto& initializers(model_builder.GetInitializerTensors());
 
       const auto& tensor = *initializers.at(input_name);
-      std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor));
-      size_t tensor_byte_size = unpacked_tensor.size();
+      Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
       const auto data_type = tensor.data_type();
       if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-        const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
-        size_t size = tensor_byte_size / sizeof(int64_t);
-        data.insert(data.end(), tensor_data, tensor_data + size);
+        auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
+        data.insert(data.end(), tensor_data.begin(), tensor_data.end());
       } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-        const int32_t* tensor_data = reinterpret_cast<const int32_t*>(unpacked_tensor.data());
-        size_t size = tensor_byte_size / sizeof(int32_t);
-        data.insert(data.end(), tensor_data, tensor_data + size);
+        auto tensor_data = unpacked_tensor.DataAsSpan<int32_t>();
+        data.insert(data.end(), tensor_data.begin(), tensor_data.end());
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                "Data type for starts and ends inputs' is not supported in this build. Got ",
@@ -134,7 +129,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   shaper.AddShape(output, nnapi_output_shape);
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
 
   // begin/end/strides of ANEURALNETWORKS_STRIDED_SLICE have the same shape

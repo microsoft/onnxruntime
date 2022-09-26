@@ -8,7 +8,6 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
-#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker_factory.h"
 
 namespace onnxruntime {
 

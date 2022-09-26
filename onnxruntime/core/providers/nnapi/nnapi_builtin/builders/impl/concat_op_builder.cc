@@ -62,7 +62,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   NodeAttrHelper helper(node_unit);
   const auto& inputs = node_unit.Inputs();
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   const auto& input0 = inputs[0].node_arg.Name();
   const auto node_input_size = inputs.size();
 
@@ -138,7 +138,6 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  ORT_RETURN_IF_ERROR(shaper.Concat(input_names, axis, output));
   OperandType output_operand_type(operand_types.at(input0).type, shaper[output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION, input_indices,
                                                  {output}, {output_operand_type}));

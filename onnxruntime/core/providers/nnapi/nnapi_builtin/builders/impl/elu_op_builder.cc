@@ -44,11 +44,11 @@ Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
+
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
   NodeAttrHelper helper(node_unit);
   const auto alpha = helper.Get("alpha", 1.0f);
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, alpha);
   return model_builder.AddOperation(ANEURALNETWORKS_ELU, input_indices,

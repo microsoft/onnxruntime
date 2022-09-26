@@ -7,6 +7,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
@@ -57,13 +58,13 @@ void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node
 }
 
 Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  auto& shaper = model_builder.GetShaper();
+  auto& shaper(model_builder.GetShaper());
   const auto& operand_indices = model_builder.GetOperandIndices();
   const auto& operand_types = model_builder.GetOperandTypes();
   const auto& inputs = node_unit.Inputs();
   const auto& outputs = node_unit.Outputs();
 
-  std::vector<uint32_t> input_indices{};
+  InlinedVector<uint32_t> input_indices{};
 
   // `data` input
   const auto& data = inputs[0].node_arg.Name();
@@ -72,36 +73,21 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   // `pads` input
   // convert from [begin_1, begin_2, ..., end_1, end_2, ...] to [begin_1, end_1, begin_2, end_2, ...]
   // convert from int64_t to int32_t
-  const auto& data_shape = shaper[data];
+  const auto data_shape = shaper[data];
   const uint32_t data_rank = SafeInt<uint32_t>(data_shape.size());
 
   const auto& pads = inputs[1].node_arg.Name();
   const auto* pads_initializer = model_builder.GetConstantInitializer(pads);
   ORT_RETURN_IF_NOT(pads_initializer, "pads must be a constant");
 
-  std::vector<uint8_t> pads_initializer_raw_data{};
-  ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*pads_initializer, pads_initializer_raw_data));
+  Initializer pads_initializer_raw_data(*pads_initializer);
   // assume pads_initializer has int64 data, per ONNX spec
-  ORT_RETURN_IF_NOT(pads_initializer_raw_data.size() == 2 * data_rank * sizeof(int64_t),
-                    "Expected pads initializer size in bytes: ", 2 * data_rank * sizeof(int64_t),
-                    ", actual: ", pads_initializer_raw_data.size());
-
   std::vector<int32_t> converted_pads_data{};
   converted_pads_data.reserve(2 * data_rank);
-
-  auto copy_and_convert = [](const void* raw_i64_src,
-                             std::back_insert_iterator<decltype(converted_pads_data)> i32_dst) {
-    int64_t i64;
-    memcpy(&i64, raw_i64_src, sizeof(i64));
-    *i32_dst = SafeInt<int32_t>(i64);
-  };
-
+  auto pads_span = pads_initializer_raw_data.DataAsSpan<int64_t>();
   for (size_t i = 0; i < data_rank; ++i) {
-    copy_and_convert(&pads_initializer_raw_data[i * sizeof(int64_t)],
-                     std::back_inserter(converted_pads_data));
-
-    copy_and_convert(&pads_initializer_raw_data[(i + data_rank) * sizeof(int64_t)],
-                     std::back_inserter(converted_pads_data));
+    converted_pads_data.push_back(SafeInt<int32_t>(pads_span[i]));
+    converted_pads_data.push_back(SafeInt<int32_t>(pads_span[i + data_rank]));
   }
 
   const Shape converted_pads_shape{data_rank, 2};
@@ -116,23 +102,13 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
     const auto& constant_value = inputs[2].node_arg.Name();
     const auto* constant_value_initializer = model_builder.GetConstantInitializer(constant_value);
     ORT_RETURN_IF_NOT(constant_value_initializer, "constant_value must be a constant");
-
-    std::vector<uint8_t> pad_value_raw_data{};
-    ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*constant_value_initializer, pad_value_raw_data));
-    // assume constant_value_initializer has float data
-    // ONNX spec says it matches `data` input type, and op support checker limits that to float
-    ORT_RETURN_IF_NOT(pad_value_raw_data.size() == sizeof(float),
-                      "Expected constant_value initializer size in bytes: ", sizeof(float),
-                      ", actual size: ", pad_value_raw_data.size());
-    memcpy(&pad_value, pad_value_raw_data.data(), sizeof(float));
+    Initializer pad_value_raw_data_init(*constant_value_initializer);
+    pad_value = pad_value_raw_data_init.DataAsSpan<float>()[0];
   }
 
   ADD_SCALAR_OPERAND(model_builder, input_indices, pad_value);
 
   const auto& output = outputs[0].node_arg.Name();
-
-  ORT_RETURN_IF_ERROR(shaper.Pad(data, converted_pads_data, output));
-
   const OperandType output_operand_type{operand_types.at(data).type, shaper[output]};
   const auto op_code = ANEURALNETWORKS_PAD_V2;
 
@@ -183,20 +159,12 @@ bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, c
     }
 
     const ONNX_NAMESPACE::TensorProto& pads_initializer = *pads_initializer_it->second;
-    std::vector<uint8_t> unpacked_tensor;
-    auto status = onnxruntime::utils::UnpackInitializerData(pads_initializer, unpacked_tensor);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Error while unpacking pads initializer: " << status.ErrorMessage();
-      return false;
-    }
-
-    int64_t pad_value;
-    ORT_ENFORCE(unpacked_tensor.size() % sizeof(pad_value) == 0);
-    for (size_t i = 0; i < unpacked_tensor.size(); i += sizeof(pad_value)) {
-      memcpy(&pad_value, &unpacked_tensor[i], sizeof(pad_value));
-      if (pad_value < 0) {
+    Initializer unpacked_tensor(pads_initializer);
+    auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
+    for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
+      if (tensor_data[i] < 0) {
         LOGS_DEFAULT(VERBOSE) << "Negative pad value is not supported: pads["
-                              << i / sizeof(pad_value) << "] = " << pad_value;
+                              << i << "] = " << tensor_data[i];
         return false;
       }
     }

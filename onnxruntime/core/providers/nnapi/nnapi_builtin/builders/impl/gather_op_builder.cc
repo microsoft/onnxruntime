@@ -7,6 +7,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
@@ -66,7 +67,7 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   int32_t rank = static_cast<int32_t>(shaper[input1].size());
   int32_t axis = static_cast<int32_t>(HandleNegativeAxis(helper.Get("axis", 0), rank));
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));
   ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
 
@@ -76,42 +77,33 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       indices_data_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     // Add indices operand into nnapi
     const auto& indices_tensor = *initializers.at(input2);
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(indices_tensor, unpacked_tensor));
+    Initializer unpacked_tensor(indices_tensor);
 
     const auto data_type = indices_tensor.data_type();
     const auto indices_shape = indices_tensor.dims();
-    uint32_t size = 1;
     Shape indices_dimen;
     indices_dimen.reserve(indices_tensor.dims_size());
     for (auto i = 0; i < indices_tensor.dims_size(); i++) {
-      size *= SafeInt<uint32_t>(indices_shape[i]);
       indices_dimen.push_back(static_cast<uint32_t>(indices_shape[i]));
     }
 
-    std::vector<int32_t> indices(size);
-    // see https://gist.github.com/shafik/848ae25ee209f698763cffee272a58f8#type-punning-arrays for the usage of memcpy here
+    std::vector<int32_t> indices(unpacked_tensor.size());
+
     if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-      for (uint32_t i = 0; i < size; i++) {
-        int64_t index_i64;
-        memcpy(&index_i64, unpacked_tensor.data() + i * sizeof(int64_t), sizeof(int64_t));
-        indices[i] = SafeInt<int32_t>(index_i64);
-      }
+      auto indice_span = unpacked_tensor.DataAsSpan<int64_t>();
+      std::transform(indice_span.begin(), indice_span.end(), indices.begin(),
+                     [](int64_t indice_n) -> int32_t { return SafeInt<int32_t>(indice_n); });
     } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-      for (uint32_t i = 0; i < size; i++) {
-        int32_t index;
-        memcpy(&index, unpacked_tensor.data() + i * sizeof(int32_t), sizeof(int32_t));
-        indices[i] = SafeInt<int32_t>(index);
-      }
+      auto indice_span = unpacked_tensor.DataAsSpan<int32_t>();
+      indices.assign(indice_span.begin(), indice_span.end());
     }
 
     OperandType indices_operand_type(Type::TENSOR_INT32, indices_dimen);
     ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(input2, indices.data(), indices_operand_type));
   }
   input_indices.push_back(operand_indices.at(input2));
-  ORT_RETURN_IF_ERROR(shaper.Gather(input1, input2, axis, output));
-  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
 
+  const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
   return model_builder.AddOperation(ANEURALNETWORKS_GATHER, input_indices,
                                     {output}, {output_operand_type});
 }

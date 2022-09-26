@@ -7,6 +7,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
@@ -193,18 +194,16 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     Shape bias_dimen;
     for (auto dim : bias_tensor.dims())
       bias_dimen.push_back(SafeInt<uint32_t>(dim));
-
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
+    Initializer unpacked_tensor(bias_tensor);
     OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, x_scale * w_scale);
     ORT_RETURN_IF_ERROR(
-        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
+        model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data<int32_t>(), bias_operand_type));
   }
 
   const auto auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
   bool use_auto_pad = false;
   int32_t nnapi_padding_code = ANEURALNETWORKS_PADDING_SAME;
-  const auto& input_shape = shaper[input];
+  const auto input_shape = shaper[input];
   const auto& kernel_shape = shaper[weight];
   const auto weight_size_y = kernel_shape[1];
   const auto weight_size_x = kernel_shape[2];
@@ -214,7 +213,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                     auto_pad_type, use_nchw,
                     onnx_pads, nnapi_padding_code, use_auto_pad));
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   input_indices.push_back(operand_indices.at(weight));
   input_indices.push_back(operand_indices.at(bias));
@@ -262,16 +261,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   if (conv_2d || grouped_conv_2d) {
     operationCode = conv_2d ? ANEURALNETWORKS_CONV_2D
                             : ANEURALNETWORKS_GROUPED_CONV_2D;
-    ORT_RETURN_IF_ERROR(shaper.Conv(input, weight,
-                                    onnx_pads, onnx_strides, onnx_dilations,
-                                    use_nchw,
-                                    output));
   } else {  // depthwise_conv_2d
     operationCode = ANEURALNETWORKS_DEPTHWISE_CONV_2D;
-    ORT_RETURN_IF_ERROR(shaper.DepthwiseConv(input, weight,
-                                             onnx_pads, onnx_strides, onnx_dilations,
-                                             use_nchw,
-                                             output));
   }
 
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);

@@ -88,7 +88,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
+
   bool is_qlinear_sigmoid = op_type == "QLinearSigmoid";
 
   int32_t op_code;
@@ -131,7 +131,7 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     y_zero_point = 0;
   }
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
@@ -143,10 +143,23 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
 bool UnaryOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                        const OpSupportCheckParams& params) const {
-  if (node_unit.OpType() == "QLinearSigmoid")
+  if (node_unit.OpType() == "QLinearSigmoid") {
     return IsQuantizedOpSupported(initializers, node_unit, params);
-  else  // Everything except "QLinearSigmoid" are by default supported
+  } else if (node_unit.OpType() == "Sigmoid") {
+    Shape input_shape;
+    if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
+      return false;
+
+    const auto input_size = input_shape.size();
+    if (input_size > 4 || input_size == 0) {
+      LOGS_DEFAULT(VERBOSE) << "ANEURALNETWORKS_LOGISTIC only supports 1-4d shape, input is "
+                            << input_size << "d shape";
+      return false;
+    }
     return true;
+  }
+  // Everything else are by default supported
+  return true;
 }
 
 int32_t UnaryOpBuilder::GetMinSupportedNNAPIFeatureLevel(const NodeUnit& node_unit,

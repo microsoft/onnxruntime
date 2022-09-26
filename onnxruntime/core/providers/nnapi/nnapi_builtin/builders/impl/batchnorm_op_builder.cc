@@ -7,6 +7,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
@@ -60,6 +61,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   // register a new operand with new shape
   const auto& input = inputs[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
+  const auto input_shape = shaper[input];
 
   const auto& scale_tensor = *initializers.at(inputs[1].node_arg.Name());
   const auto& bias_tensor = *initializers.at(inputs[2].node_arg.Name());
@@ -72,21 +74,15 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   a.reserve(size);
   b.reserve(size);
 
-  std::vector<uint8_t> unpacked_scale_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scale_tensor, unpacked_scale_tensor));
-  const float* scale_data = reinterpret_cast<const float*>(unpacked_scale_tensor.data());
+  Initializer unpacked_scale_tensor(scale_tensor);
+  Initializer unpacked_bias_tensor(bias_tensor);
+  Initializer unpacked_mean_tensor(mean_tensor);
+  Initializer unpacked_var_tensor(var_tensor);
 
-  std::vector<uint8_t> unpacked_bias_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_bias_tensor));
-  const float* bias_data = reinterpret_cast<const float*>(unpacked_bias_tensor.data());
-
-  std::vector<uint8_t> unpacked_mean_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(mean_tensor, unpacked_mean_tensor));
-  const float* mean_data = reinterpret_cast<const float*>(unpacked_mean_tensor.data());
-
-  std::vector<uint8_t> unpacked_var_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(var_tensor, unpacked_var_tensor));
-  const float* var_data = reinterpret_cast<const float*>(unpacked_var_tensor.data());
+  auto scale_data = unpacked_scale_tensor.DataAsSpan<float>();
+  auto bias_data = unpacked_bias_tensor.DataAsSpan<float>();
+  auto mean_data = unpacked_mean_tensor.DataAsSpan<float>();
+  auto var_data = unpacked_var_tensor.DataAsSpan<float>();
 
   for (int64_t i = 0; i < size; i++) {
     a.push_back(scale_data[i] / sqrt(var_data[i] + eps));
@@ -109,11 +105,12 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     // input shape {N, C}       ==> tensor_a/b's shape {size}
     // input shape {N, C, H}    ==> tensor_a/b's shape {size, 1}
     // input shape {N, C, H, W} ==> tensor_a/b's shape {size, 1, 1}
-    const auto input_rank = shaper[input].size();
+    const auto input_rank = input_shape.size();
     for (size_t i = 2; i < input_rank; i++)
       tensor_a_dimen.push_back(1);
   }
 
+  shaper.AddShape(input, input_shape);
   shaper.AddShape(tensor_a_name, tensor_a_dimen);
   shaper.AddShape(tensor_b_name, tensor_a_dimen);
   const OperandType a_operand_type(operand_types.at(input).type, tensor_a_dimen);
@@ -121,21 +118,9 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   const OperandType b_operand_type(operand_types.at(input).type, tensor_a_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(tensor_b_name, b.data(), b_operand_type));
 
-  // Mul
-  ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_MUL,
-                                        model_builder,
-                                        input, tensor_a_name,
-                                        true /* add_activation */, ANEURALNETWORKS_FUSED_NONE,
-                                        tensor_imm_product_name));
-
-  // Add
   int32_t fuse_code = model_builder.FindActivation(node_unit);
-  ORT_RETURN_IF_ERROR(AddBinaryOperator(ANEURALNETWORKS_ADD,
-                                        model_builder,
-                                        tensor_imm_product_name, tensor_b_name,
-                                        true /* add_activation */, fuse_code,
-                                        output));
-
+  ORT_RETURN_IF_ERROR(AddNnapiBatchNormalization(model_builder, input, tensor_a_name, tensor_b_name,
+                                                 tensor_imm_product_name, output, fuse_code));
   return Status::OK();
 }
 

@@ -7,6 +7,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
@@ -106,29 +107,11 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   int h_idx = use_nchw ? 2 : 1;
   int w_idx = use_nchw ? 3 : 2;
 
-  if (inputs.size() == 3) {  // we are using scales
-    const auto& scales_name = inputs[2].node_arg.Name();
-    const auto& scales_tensor = *initializers.at(scales_name);
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor));
-    const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
-    ORT_RETURN_IF_ERROR(
-        shaper.ResizeUsingScales(input, scales_data[h_idx], scales_data[w_idx], use_nchw, output));
-  } else {  // we are using sizes
-    const auto& sizes_name = inputs[3].node_arg.Name();
-    const auto& sizes_tensor = *initializers.at(sizes_name);
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor));
-    const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
-    ORT_RETURN_IF_ERROR(
-        shaper.ResizeUsingOutputSizes(input, SafeInt<uint32_t>(sizes_data[h_idx]), SafeInt<uint32_t>(sizes_data[w_idx]), use_nchw, output));
-  }
-
   const auto& output_shape = shaper[output];
   int32_t output_h = output_shape[h_idx];
   int32_t output_w = output_shape[w_idx];
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, output_w);
   ADD_SCALAR_OPERAND(model_builder, input_indices, output_h);
@@ -244,13 +227,8 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     // We want to check if the scales or sizes are not trying to resize on N/C channels here
     if (inputs.size() == 3) {  // we are using scales
       const auto& scales_tensor = *initializers.at(inputs[2].node_arg.Name());
-      std::vector<uint8_t> unpacked_tensor;
-      auto status = onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor);
-      if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "Error while unpacking scales_tensor: " << status.ErrorMessage();
-        return false;
-      }
-      const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
+      Initializer unpacked_tensor(scales_tensor);
+      auto scales_data = unpacked_tensor.DataAsSpan<float>();
       float scale_n = scales_data[0];
       float scale_c = IsNodeLayoutNHWC(node_unit) ? scales_data[3] : scales_data[1];
       if (scale_n != 1.0f || scale_c != 1.0f) {
@@ -263,15 +241,9 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
       // we are using sizes
       const auto& sizes_name = inputs[3].node_arg.Name();
       const auto& sizes_tensor = *initializers.at(sizes_name);
-      std::vector<uint8_t> unpacked_tensor;
-      auto status = onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor);
-      if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "Error while unpacking sizes_tensor: " << status.ErrorMessage();
-        return false;
-      }
-
+      Initializer unpacked_tensor(sizes_tensor);
       int channel_idx = IsNodeLayoutNHWC(node_unit) ? 3 : 1;
-      const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+      auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
       uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
       uint32_t size_c = SafeInt<uint32_t>(sizes_data[channel_idx]);
       if (size_n != input_shape[0] || size_c != input_shape[channel_idx]) {
