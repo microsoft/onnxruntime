@@ -71,7 +71,7 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
 
 #else
 
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
 
 #endif
 }
@@ -267,7 +267,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 #else
 
   ORT_UNUSED_PARAMETER(context);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
 
 #endif
 
