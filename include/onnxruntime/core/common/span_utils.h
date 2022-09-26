@@ -71,7 +71,7 @@ template <class T>
 inline gsl::span<const T> EmptySpan() { return gsl::span<const T>(); }
 
 template <class U, class T>
-inline [[nodiscard]] gsl::span<U> ReinterpretAsSpan(gsl::span<T> src) {
+[[nodiscard]] inline gsl::span<U> ReinterpretAsSpan(gsl::span<T> src) {
   // adapted from gsl-lite span::as_span():
   // https://github.com/gsl-lite/gsl-lite/blob/4720a2980a30da085b4ddb4a0ea2a71af7351a48/include/gsl/gsl-lite.hpp#L4102-L4108
   Expects(src.size_bytes() % sizeof(U) == 0);
@@ -79,7 +79,7 @@ inline [[nodiscard]] gsl::span<U> ReinterpretAsSpan(gsl::span<T> src) {
 }
 
 template <class T1, size_t Extent1, class T2, size_t Extent2>
-inline [[nodiscard]] bool SpanEq(gsl::span<T1, Extent1> a, gsl::span<T2, Extent2> b) {
+[[nodiscard]] inline bool SpanEq(gsl::span<T1, Extent1> a, gsl::span<T2, Extent2> b) {
   static_assert(std::is_same_v<std::remove_const_t<T1>, std::remove_const_t<T2>>,
                 "T1 and T2 should be the same type except for const qualification");
   return std::equal(a.begin(), a.end(), b.begin(), b.end());
