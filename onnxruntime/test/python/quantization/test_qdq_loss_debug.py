@@ -323,7 +323,7 @@ class TestSaveActivations(unittest.TestCase):
         a = np.array([2, 3, 4])
         b = np.array([7, 8, 9])
         c = np.array([1, 2, 3])
-        create_activation_matching({"test"+QUANT_INPUT_SUFFIX:a, "test":c}, {"test":b})
+        create_activation_matching({"test" + QUANT_INPUT_SUFFIX: a, "test": c}, {"test": b})
 
 if __name__ == "__main__":
     unittest.main()
