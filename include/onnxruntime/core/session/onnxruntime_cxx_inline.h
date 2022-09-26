@@ -1142,7 +1142,8 @@ inline std::string Ort::ProviderOptions::GetOption(const char* key, size_t value
   }
 
   value.resize(value_size);
-  Ort::ThrowOnError(GetApi().ProviderOptions_GetOption(p_, key, value.data(), &value_size));
+  Ort::ThrowOnError(GetApi().ProviderOptions_GetOption(p_, key, &value[0], &value_size));
+  value.resize(value_size - 1);  // remove the terminating character '\0'
 
   return value;
 }
