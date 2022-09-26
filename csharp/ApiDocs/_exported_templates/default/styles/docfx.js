@@ -549,7 +549,7 @@ $(function () {
     })
 
     var html = util.formList(breadcrumb, 'breadcrumb');
-    $('#breadcrumb').innerHTML(html);
+    document.getElementById('#breadcrumb').innerHTML(html);
   }
 
   //Setup Affix
