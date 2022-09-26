@@ -58,7 +58,7 @@ Status SkipLayerNormSmallOp(const SkipLayerNormParams<T>* params) {
 template <typename T, int ThreadsPerBlock, int VecSize>
 Status SkipLayerNormRegularOp(const SkipLayerNormParams<T>* params) {
   TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(
-      !((params->ld > 0 && params->ld % VecSize == 0 && params->ld >= ThreadsPerBlock * VecSize)));
+      !((params->ld > 0 && params->ld % VecSize == 0 && (params->ld >= ThreadsPerBlock * VecSize || params->ld < 64))));
   SkipLayerNormKernelVec<T, ThreadsPerBlock, VecSize><<<dim3(CeilDiv(params->element_count, params->ld)),
                                                         dim3(ThreadsPerBlock),
                                                         0, params->stream>>>(

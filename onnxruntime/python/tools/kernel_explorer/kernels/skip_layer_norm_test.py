@@ -14,7 +14,7 @@ import pytest
 def get_bert_sizes():
     batch_sizes = [1, 8, 64, 128]
     seq_lens = [64, 128, 256, 384, 512]
-    hidden_sizes = [768, 1024, 2048]
+    hidden_sizes = [2, 3, 7, 9, 13, 63, 65, 127, 129, 177, 768, 1024, 2048, 2049]
     return product(batch_sizes, seq_lens, hidden_sizes)
 
 
@@ -72,7 +72,6 @@ dtypes = ["float32", "float16"]
 @pytest.mark.parametrize("dtype", dtypes)
 def test_skip_layer_norm(bert_sizes, dtype):
     for func in dtype_to_funcs(dtype):
-        print(func)
         run_skip_layer_norm(*bert_sizes, dtype, func)
 
 
