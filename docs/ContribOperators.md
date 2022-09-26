@@ -18,6 +18,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
   * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
+  * <a href="#com.microsoft.DequantizeBFP">com.microsoft.DequantizeBFP</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
   * <a href="#com.microsoft.DynamicQuantizeLSTM">com.microsoft.DynamicQuantizeLSTM</a>
   * <a href="#com.microsoft.DynamicQuantizeMatMul">com.microsoft.DynamicQuantizeMatMul</a>
@@ -56,6 +57,10 @@ Do not modify directly.*
   * <a href="#com.microsoft.QLinearReduceMean">com.microsoft.QLinearReduceMean</a>
   * <a href="#com.microsoft.QLinearSigmoid">com.microsoft.QLinearSigmoid</a>
   * <a href="#com.microsoft.QLinearSoftmax">com.microsoft.QLinearSoftmax</a>
+  * <a href="#com.microsoft.QOrderedGelu">com.microsoft.QOrderedGelu</a>
+  * <a href="#com.microsoft.QOrderedLayerNormalization">com.microsoft.QOrderedLayerNormalization</a>
+  * <a href="#com.microsoft.QOrderedMatMul">com.microsoft.QOrderedMatMul</a>
+  * <a href="#com.microsoft.QuantizeBFP">com.microsoft.QuantizeBFP</a>
   * <a href="#com.microsoft.QuantizeLinear">com.microsoft.QuantizeLinear</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
@@ -979,6 +984,55 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float and float16 tensors.</dd>
 <dt><tt>B</tt> : tensor(bool)</dt>
 <dd>Constrain key_padding_mask to bool tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.DequantizeBFP"></a><a name="com.microsoft.dequantizebfp">**com.microsoft.DequantizeBFP**</a>
+
+  The BFP dequantization operator. It consumes the raw BFP data and some metadata such as the shape and strides of the original tensor and computes the dequantized tensor.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>bfp_type</tt> : int (required)</dt>
+<dd>The type of BFP - must match with the BFPType enum</dd>
+<dt><tt>block_dims</tt> : list of ints</dt>
+<dd>Numbers within a bounding box will span across these dimensions.Any dimension not in this list is the same for all numbers within a bounding box.As an example, consider a 2D tensor with shape [d0, d1] and block_dims equal to [1].Within a bounding box, all elements will be within the same row but will be from different columnns.The default is the last dimension.</dd>
+<dt><tt>dtype</tt> : int</dt>
+<dd>The datatype to dequantize to.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>x</tt> : T1</dt>
+<dd>1-D, contiguous, raw, BFP data to be de-quantized.</dd>
+<dt><tt>shape</tt> : T2</dt>
+<dd>shape of the original tensor.</dd>
+<dt><tt>strides</tt> : T2</dt>
+<dd>strides of the original tensor.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>y</tt> : T3</dt>
+<dd>de-quantized tensor.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(uint8)</dt>
+<dd>Constrain the input to uint8.</dd>
+<dt><tt>T2</tt> : tensor(int64)</dt>
+<dd>Constrain shape and strides to uint64.</dd>
+<dt><tt>T3</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain y to float and bfloat16.</dd>
 </dl>
 
 
@@ -2859,6 +2913,210 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
 <dd>Constrain input and output types to singed/unsigned int8 tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QOrderedGelu"></a><a name="com.microsoft.qorderedgelu">**com.microsoft.QOrderedGelu**</a>
+
+  Ordered Quantize Gelu.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>order_X</tt> : int</dt>
+<dd>cublasLt order of input X. Default is ROW MAJOR.</dd>
+<dt><tt>order_Y</tt> : int</dt>
+<dd>cublasLt order of matrix Y, must be same as order_X. Default is ROW MAJOR.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : Q</dt>
+<dd>N-dimensional input A</dd>
+<dt><tt>scale_X</tt> : S</dt>
+<dd>scale of the input A</dd>
+<dt><tt>scale_Y</tt> : S</dt>
+<dd>scale of the output Y</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : Q</dt>
+<dd>Output of the Gelu</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>Q</tt> : tensor(int8)</dt>
+<dd>Constrain input and output types to int8 tensors.</dd>
+<dt><tt>S</tt> : tensor(float)</dt>
+<dd>Constrain scales to float32</dd>
+</dl>
+
+
+### <a name="com.microsoft.QOrderedLayerNormalization"></a><a name="com.microsoft.qorderedlayernormalization">**com.microsoft.QOrderedLayerNormalization**</a>
+
+  QOrderedLayerNormalization
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>axis</tt> : int</dt>
+<dd>The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>The epsilon value to use to avoid division by zero.</dd>
+<dt><tt>order_X</tt> : int</dt>
+<dd>cublasLt order of input X. Default is ROW MAJOR.</dd>
+<dt><tt>order_Y</tt> : int</dt>
+<dd>cublasLt order of matrix Y, must be same as order_X. Default is ROW MAJOR.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : Q</dt>
+<dd>Input data tensor from the previous layer.</dd>
+<dt><tt>scale_X</tt> : S</dt>
+<dd>scale of the quantized X</dd>
+<dt><tt>scale</tt> : F</dt>
+<dd>Scale tensor, i.e., gamma vector.</dd>
+<dt><tt>B</tt> (optional) : F</dt>
+<dd>Bias tensor.</dd>
+<dt><tt>scale_Y</tt> : S</dt>
+<dd>scale of the quantized X</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : Q</dt>
+<dd>Output data tensor.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>F</tt> : tensor(float16), tensor(float)</dt>
+<dd>Constrain input gamma and bias could be float16/float tensors. float may get better precision, float16 runs faster.</dd>
+<dt><tt>S</tt> : tensor(float)</dt>
+<dd>quantization scale must be float tensors.</dd>
+<dt><tt>Q</tt> : tensor(int8)</dt>
+<dd>quantization tensor must be int8 tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QOrderedMatMul"></a><a name="com.microsoft.qorderedmatmul">**com.microsoft.QOrderedMatMul**</a>
+
+  TODO
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>order_A</tt> : int</dt>
+<dd>cublasLt order of matrix A. Default is ROW MAJOR.</dd>
+<dt><tt>order_B</tt> : int</dt>
+<dd>cublasLt order of matrix B. Default is ROW MAJOR.</dd>
+<dt><tt>order_Y</tt> : int</dt>
+<dd>cublasLt order of matrix Y and optional matrix C. Default is ROW MAJOR.</dd>
+</dl>
+
+#### Inputs (5 - 8)
+
+<dl>
+<dt><tt>A</tt> : Q</dt>
+<dd>3-dimensional matrix A</dd>
+<dt><tt>scale_A</tt> : S</dt>
+<dd>scale of the input A</dd>
+<dt><tt>B</tt> : Q</dt>
+<dd>2-dimensional matrix B</dd>
+<dt><tt>scale_B</tt> : S</dt>
+<dd>scale of the input B</dd>
+<dt><tt>scale_Y</tt> : S</dt>
+<dd>scale of the output Y</dd>
+<dt><tt>bias</tt> (optional) : S</dt>
+<dd>1d bias</dd>
+<dt><tt>C</tt> (optional) : Q</dt>
+<dd>3d or 2d matrix C. if 2d expand to 3d first. Shape[0] should be 1 or same as A.shape[0] </dd>
+<dt><tt>scale_C</tt> (optional) : S</dt>
+<dd>scale of the input A</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : Q</dt>
+<dd>Matrix multiply results from A * B</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>Q</tt> : tensor(int8)</dt>
+<dd>Constrain input and output types to int8 tensors.</dd>
+<dt><tt>S</tt> : tensor(float)</dt>
+<dd>Constrain bias and scales to float32</dd>
+</dl>
+
+
+### <a name="com.microsoft.QuantizeBFP"></a><a name="com.microsoft.quantizebfp">**com.microsoft.QuantizeBFP**</a>
+
+  The BFP quantization operator. It consumes a full precision tensor and computes an BFP tensor.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>bfp_type</tt> : int (required)</dt>
+<dd>The type of BFP - must match with the BFPType enum</dd>
+<dt><tt>block_dims</tt> : list of ints</dt>
+<dd>Numbers within a bounding box will span across these dimensions.Any dimension not in this list is the same for all numbers within a bounding box.As an example, consider a 2D tensor with shape [d0, d1] and block_dims equal to [1].Within a bounding box, all elements will be within the same row but will be from different columnns.The default is the last dimension.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>x</tt> : T1</dt>
+<dd>N-D full precision input tensor to be quantized.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>y</tt> : T2</dt>
+<dd>1-D, contiguous BFP data</dd>
+<dt><tt>shape</tt> : T3</dt>
+<dd>Shape of x</dd>
+<dt><tt>strides</tt> : T3</dt>
+<dd>Strides of x</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain the input to float and bfloat.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Constrain y to uint8.</dd>
+<dt><tt>T3</tt> : tensor(int64)</dt>
+<dd>Constrain shape and strides to uint64.</dd>
 </dl>
 
 

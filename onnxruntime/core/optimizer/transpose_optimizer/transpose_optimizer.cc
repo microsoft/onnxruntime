@@ -966,7 +966,7 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   gather.SetAttributeInt("axis", 0);
   node.SetInput(i, gather_output);
 }
-
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
 static bool HandleResize(HandlerArgs& args) {
   auto inputs = args.node.Inputs();
   int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
@@ -996,6 +996,7 @@ static bool HandleResize(HandlerArgs& args) {
 }
 
 constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
+#endif
 
 static bool HandlePad(HandlerArgs& args) {
   size_t rank = args.perm.size();
@@ -1607,7 +1608,7 @@ static bool HandleMaxPool(HandlerArgs& args) {
     return false;
   }
 
-  auto new_node = SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, "NhwcMaxPool", "com.microsoft");
+  auto new_node = SwapNodeOpTypeDomainAndSinceVersion(args.ctx.graph, args.node, "NhwcMaxPool", "com.microsoft", 1);
   new_node->ClearAttribute("storage_order");  // Only relevant for indices output. Prohibited for NhwcMaxPool.
   TransposeFirstInput(args.ctx, *new_node, args.perm_inv);
   TransposeOutputs(args.ctx, *new_node, args.perm);
@@ -1691,7 +1692,19 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Split", split_handler},
     {"Shape", shape_handler},
     {"Pad", pad_handler},
+// The CUDA Resize kernel assumes that the input is NCHW and
+// Resize can't be supported in ORT builds with CUDA enabled.
+// TODO: Enable this once the CUDA Resize kernel is implemented
+// "generically" (i.e.) aligning with the generic nature of the
+// ONNX spec.
+// See https://github.com/microsoft/onnxruntime/pull/10824 for
+// a similar fix applied to the CPU Resize kernel.
+// Per tests included in #10824, the ROCM EP also generates
+// incorrect results when this handler is used, so the Resize 
+// handler is not enabled even for those builds.
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
     {"Resize", resize_handler},
+#endif
     {"ReduceSum", reduce_sum_handler},
 
     {"ReduceLogSum", reduce_op_handler},
@@ -2062,10 +2075,11 @@ void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
   }
 }
 
-std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
-                                                      std::string_view op_type, std::string_view domain) {
+static std::unique_ptr<api::NodeRef> SwapNodeImpl(api::GraphRef& graph, api::NodeRef& node,
+                                                  std::string_view op_type, std::string_view domain,
+                                                  std::optional<int> since_version) {
   auto outputs = node.Outputs();
-  auto new_node = graph.CopyNode(node, op_type, domain);
+  auto new_node = graph.CopyNode(node, op_type, domain, since_version);
 
   for (size_t j = 0; j < outputs.size(); ++j) {
     if (outputs[j] != "") {
@@ -2074,6 +2088,17 @@ std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api:
   }
   graph.RemoveNode(node);
   return new_node;
+}
+
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
+                                                      std::string_view op_type, std::string_view domain) {
+  return SwapNodeImpl(graph, node, op_type, domain, std::nullopt);
+}
+
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeDomainAndSinceVersion(api::GraphRef& graph, api::NodeRef& node,
+                                                                  std::string_view op_type, std::string_view domain,
+                                                                  int since_version) {
+  return SwapNodeImpl(graph, node, op_type, domain, since_version);
 }
 
 }  // namespace onnx_layout_transformation

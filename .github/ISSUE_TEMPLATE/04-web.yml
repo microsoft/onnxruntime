@@ -1,0 +1,63 @@
+name: Web
+description: issues related to ONNX Runtime web
+title: "[Web] "
+labels: ["platform:web"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime GitHub Discussions](https://github.com/microsoft/onnxruntime/discussions).
+        Before submitting your request, please review past submissions to ensure that it is not a duplicate of a known issue.
+  - type: textarea
+    id: issue-descript
+    attributes:
+      label: Describe the issue
+      placeholder: Include your issue description, expected behavior, and any additional context necessary for your issue to be addressed (e.g., screenshots, GPU model & memory, etc.).
+    validations:
+      required: true
+  - type: textarea
+    id: reproducibility
+    attributes:
+      label: To reproduce
+      placeholder: Steps to reproduce the issue. As applicable, please provide code and model(s) if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: urgency
+    attributes:
+      label: Urgency
+      placeholder: Is your issue urgent? If important use cases are blocked, there is a regression in ONNX Runtime functionality, or you have a strict project deadline, please elaborate here.
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        # System information
+        For each of the following items, provide the information listed to ensure that your request is addressed in a timely manner.
+  - type: dropdown
+    id: ort-installation
+    attributes:
+      label: ONNX Runtime Installation
+      options:
+        - Built from Source
+        - Released Package
+        - Other / Unknown
+    validations:
+      required: true
+  - type: input
+    id: ort-version
+    attributes:
+      label: ONNX Runtime Version or Commit ID
+    validations:
+      required: true
+  - type: dropdown
+    id: ep
+    attributes:
+      label: Execution Provider
+      options:
+        - WebGL
+        - WASM
+        - Other / Unknown
+      multiple: yes
+    validations:
+      required: true

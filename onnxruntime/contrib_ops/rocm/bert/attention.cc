@@ -97,7 +97,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    sequence_length, past_sequence_length);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
-  if (!LaunchAttentionKernel(
+  return LaunchAttentionKernel(
           device_prop,
           Stream(),
           rocblas,
@@ -115,13 +115,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
           nullptr == extra_add_qk ? nullptr : extra_add_qk->Data<T>(),
           work_space.get(),
           output->MutableData<T>(),
-          nullptr == present ? nullptr : present->MutableData<T>())) {
-    // Get last error to reset it to hipSuccess.
-    HIP_CALL(hipGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+          nullptr == present ? nullptr : present->MutableData<T>());
 }
 
 }  // namespace rocm

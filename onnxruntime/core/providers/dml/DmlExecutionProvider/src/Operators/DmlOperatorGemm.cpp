@@ -56,6 +56,6 @@ public:
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(Gemm, DmlOperatorGemm);
-DML_OP_DEFINE_CREATION_FUNCTION(FusedGemm, DmlOperatorGemm);
+DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedGemm, DmlOperatorGemm);
 
 } // namespace Dml

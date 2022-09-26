@@ -110,8 +110,11 @@ endif()
 
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module Python::NumPy)
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
-if(onnxruntime_USE_CUDA)
+if(onnxruntime_USE_CUDA AND onnxruntime_CUDNN_HOME)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+endif()
+if(onnxruntime_USE_CANN)
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
 endif()
 if(onnxruntime_USE_ROCM)
   target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_HCC__=1)
@@ -154,9 +157,19 @@ if (onnxruntime_ENABLE_EAGER_MODE OR onnxruntime_ENABLE_LAZY_TENSOR)
     "${REPO_ROOT}/cmake/external/protobuf/src"
     ${TORCH_INCLUDE_DIRS})
 
+  if (onnxruntime_ENABLE_EAGER_MODE)
+    # For eager mode, torch build has a mkl dependency from torch's cmake config,
+    # Linking to torch libraries to avoid this unnecessary mkl dependency.
+    target_include_directories(onnxruntime_pybind11_state PRIVATE "${TORCH_INSTALL_PREFIX}/include" "${TORCH_INSTALL_PREFIX}/include/torch/csrc/api/include")
+    find_library(LIBTORCH_LIBRARY torch PATHS "${TORCH_INSTALL_PREFIX}/lib")
+    find_library(LIBTORCH_CPU_LIBRARY torch_cpu PATHS "${TORCH_INSTALL_PREFIX}/lib")
+    find_library(LIBC10_LIBRARY c10 PATHS "${TORCH_INSTALL_PREFIX}/lib")
+    target_link_libraries(onnxruntime_pybind11_state PRIVATE ${LIBTORCH_LIBRARY} ${LIBTORCH_CPU_LIBRARY} ${LIBC10_LIBRARY})
+  endif()
+
   # Explicitly link torch_python to workaround https://github.com/pytorch/pytorch/issues/38122#issuecomment-694203281
   find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${TORCH_PYTHON_LIBRARY} ${TORCH_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${TORCH_PYTHON_LIBRARY})
   if (onnxruntime_ENABLE_EAGER_MODE)
     target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager)
   endif()
@@ -272,10 +285,16 @@ if (WIN32)
 
   if (onnxruntime_USE_CUDA)
     file(WRITE "${VERSION_INFO_FILE}" "use_cuda = True\n")
-
-    file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll")
-    if (NOT CUDNN_DLL_PATH)
-      message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDNN_HOME}")
+    if(onnxruntime_CUDNN_HOME)
+      file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll")
+      if (NOT CUDNN_DLL_PATH)
+        message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDNN_HOME}")
+      endif()
+    else()
+      file(GLOB CUDNN_DLL_PATH "${onnxruntime_CUDA_HOME}/bin/cudnn64_*.dll")
+      if (NOT CUDNN_DLL_PATH)
+        message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDA_HOME}")
+      endif()
     endif()
     get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
     string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
@@ -385,6 +404,9 @@ if (onnxruntime_ENABLE_TRAINING)
     file(GLOB onnxruntime_python_onnxblock_loss_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/loss/*"
     )
+    file(GLOB onnxruntime_python_api_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/api/*"
+    )
     file(GLOB onnxruntime_python_onnxblock_optim_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/optim/*"
     )
@@ -403,12 +425,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   )
   file(GLOB onnxruntime_python_quantization_test_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/quantization/*.py"
-  )
-  file(GLOB onnxruntime_python_checkpoint_test_srcs CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/test/python/checkpoint/*.py"
-  )
-  file(GLOB onnxruntime_python_dhp_parallel_test_srcs CONFIGURE_DEPENDS
-      "${ORTTRAINING_SOURCE_DIR}/test/python/dhp_parallel/*.py"
   )
   file(GLOB onnxruntime_python_transformers_test_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/*.py"
@@ -498,8 +514,6 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/CalTableFlatBuffers
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/checkpoint
-  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
@@ -627,12 +641,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
         ${onnxruntime_python_quantization_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/quantization/
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_checkpoint_test_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/checkpoint/
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_dhp_parallel_test_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel/
-    COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -726,6 +734,7 @@ if (onnxruntime_ENABLE_TRAINING)
       COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock
       COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/loss
       COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/optim
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/api
       COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_onnxblock_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/
@@ -735,6 +744,10 @@ if (onnxruntime_ENABLE_TRAINING)
       COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_onnxblock_optim_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/optim/
+      COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_api_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/api/
+
     )
   endif()
 endif()
@@ -797,6 +810,16 @@ if (onnxruntime_USE_CUDA)
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
           $<TARGET_FILE:onnxruntime_providers_cuda>
+          $<TARGET_FILE:onnxruntime_providers_shared>
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+endif()
+
+if (onnxruntime_USE_CANN)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          $<TARGET_FILE:onnxruntime_providers_cann>
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )

@@ -104,11 +104,11 @@ static void CustomOperatorFusion() {
 
       REGISTER_KERNEL(Conv, onnxruntime::kOnnxDomain, OnnxOperatorSet7, ConvHelper, &m_callCounts.conv);
       REGISTER_KERNEL(Relu, onnxruntime::kOnnxDomain, OnnxOperatorSet7, GetOutputShapeAsInputShapeHelper, &m_callCounts.relu);
-      REGISTER_KERNEL(FusedConv, onnxruntime::kMSDmlDomain, MsftOperatorSet1, ConvHelper, &m_callCounts.fusedConv);
+      REGISTER_KERNEL(DmlFusedConv, onnxruntime::kMSDmlDomain, MsftOperatorSet1, ConvHelper, &m_callCounts.fusedConv);
 
       REGISTER_KERNEL(Gemm, onnxruntime::kOnnxDomain, OnnxOperatorSet7, GemmHelper, &m_callCounts.gemm);
       REGISTER_KERNEL(Sigmoid, onnxruntime::kOnnxDomain, OnnxOperatorSet7, GetOutputShapeAsInputShapeHelper, &m_callCounts.sigmoid);
-      REGISTER_KERNEL(FusedGemm, onnxruntime::kMSDmlDomain, MsftOperatorSet1, GemmHelper, &m_callCounts.fusedGemm);
+      REGISTER_KERNEL(DmlFusedGemm, onnxruntime::kMSDmlDomain, MsftOperatorSet1, GemmHelper, &m_callCounts.fusedGemm);
 
       REGISTER_KERNEL(BatchNormalization, onnxruntime::kOnnxDomain, OnnxOperatorSet7, GetOutputShapeAsInputShapeHelper, &m_callCounts.batchNorm);
       REGISTER_KERNEL(MaxPool, onnxruntime::kOnnxDomain, OnnxOperatorSet7, PoolingHelper, &m_callCounts.maxPool);
@@ -593,7 +593,7 @@ static void CustomKernelWithCustomSchema() {
     floatTensorEdgeDesc.edgeType = MLOperatorEdgeType::Tensor;
     floatTensorEdgeDesc.tensorDataType = MLOperatorTensorDataType::Float;
 
-    MLOperatorEdgeTypeConstrant kernelConstraint = {"T", &floatTensorEdgeDesc, 1};
+    MLOperatorEdgeTypeConstrant kernelConstraint = {"T1", &floatTensorEdgeDesc, 1};
 
     MLOperatorKernelDescription kernelDesc =
         {
@@ -602,7 +602,7 @@ static void CustomKernelWithCustomSchema() {
             7,
             MLOperatorExecutionType::Cpu,
             &kernelConstraint,
-            1};
+            testCases[caseIndex].useTypeLabel ? 1u : 0u};
 
     if (!testCases[caseIndex].attributeDefaultsInSchema) {
       kernelDesc.defaultAttributes = defaultAttributes;

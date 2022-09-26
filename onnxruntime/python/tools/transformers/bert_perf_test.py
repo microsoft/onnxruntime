@@ -18,7 +18,6 @@ import multiprocessing
 import os
 import random
 import statistics
-import sys
 import timeit
 from dataclasses import dataclass
 from datetime import datetime
@@ -42,6 +41,7 @@ class TestSetting:
     intra_op_num_threads: int
     seed: int
     verbose: bool
+    log_severity: int
 
 
 @dataclass
@@ -53,61 +53,61 @@ class ModelSetting:
     opt_level: int
 
 
-def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_optimization_level=None):
+def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_optimization_level=None, log_severity=2):
     import onnxruntime
+
+    onnxruntime.set_default_logger_severity(log_severity)
 
     if use_gpu and ("CUDAExecutionProvider" not in onnxruntime.get_available_providers()):
         print(
             "Warning: Please install onnxruntime-gpu package instead of onnxruntime, and use a machine with GPU for testing gpu performance."
         )
 
-    if intra_op_num_threads is None and graph_optimization_level is None:
-        session = onnxruntime.InferenceSession(model_path)
+    if use_gpu:
+        if provider == "dml":
+            execution_providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+        elif provider == "rocm":
+            execution_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
+        elif provider == "migraphx":
+            execution_providers = [
+                "MIGraphXExecutionProvider",
+                "ROCMExecutionProvider",
+                "CPUExecutionProvider",
+            ]
+        elif provider == "cuda":
+            execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        elif provider == "tensorrt":
+            execution_providers = [
+                "TensorrtExecutionProvider",
+                "CUDAExecutionProvider",
+                "CPUExecutionProvider",
+            ]
+        else:
+            execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
     else:
-        if use_gpu:
-            if provider == "dml":
-                execution_providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "rocm":
-                execution_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "migraphx":
-                execution_providers = [
-                    "MIGraphXExecutionProvider",
-                    "ROCMExecutionProvider",
-                    "CPUExecutionProvider",
-                ]
-            elif provider == "cuda":
-                execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            elif provider == "tensorrt":
-                execution_providers = [
-                    "TensorrtExecutionProvider",
-                    "CUDAExecutionProvider",
-                    "CPUExecutionProvider",
-                ]
-            else:
-                execution_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        else:
-            execution_providers = ["CPUExecutionProvider"]
+        execution_providers = ["CPUExecutionProvider"]
 
-        sess_options = onnxruntime.SessionOptions()
-        sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
+    sess_options = onnxruntime.SessionOptions()
+    sess_options.log_severity_level = log_severity
+    sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
 
-        if graph_optimization_level is None:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        elif graph_optimization_level == 0:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
-        elif graph_optimization_level == 1:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
-        elif graph_optimization_level == 2:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-        elif graph_optimization_level == 99:
-            sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        else:
-            sess_options.graph_optimization_level = graph_optimization_level
+    if graph_optimization_level is None:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    elif graph_optimization_level == 0:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+    elif graph_optimization_level == 1:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+    elif graph_optimization_level == 2:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+    elif graph_optimization_level == 99:
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    else:
+        sess_options.graph_optimization_level = graph_optimization_level
 
-        if intra_op_num_threads is not None:
-            sess_options.intra_op_num_threads = intra_op_num_threads
+    if intra_op_num_threads is not None:
+        sess_options.intra_op_num_threads = intra_op_num_threads
 
-        session = onnxruntime.InferenceSession(model_path, sess_options, providers=execution_providers)
+    session = onnxruntime.InferenceSession(model_path, sess_options, providers=execution_providers)
 
     if use_gpu:
         if provider == "dml":
@@ -227,6 +227,7 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
         test_setting.provider,
         intra_op_num_threads,
         model_setting.opt_level,
+        log_severity=test_setting.log_severity,
     )
     output_names = [output.name for output in session.get_outputs()]
 
@@ -404,6 +405,15 @@ def parse_arguments():
     )
     parser.set_defaults(verbose=False)
 
+    parser.add_argument(
+        "--log_severity",
+        required=False,
+        type=int,
+        default=2,
+        choices=[0, 1, 2, 3, 4],
+        help="0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal",
+    )
+
     parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU")
     parser.set_defaults(use_gpu=False)
 
@@ -486,6 +496,7 @@ def main():
             args.intra_op_num_threads,
             args.seed,
             args.verbose,
+            args.log_severity,
         )
 
         print("test setting", test_setting)
