@@ -141,7 +141,7 @@ TEST(FileIoTest, MapFileIntoMemory) {
 
     auto expected_data_span = gsl::make_span(expected_data.data() + offset, length);
 
-    ASSERT_EQ(mapped_span, expected_data_span);
+    ASSERT_TRUE(SpanEq(mapped_span, expected_data_span));
   }
 
   {
