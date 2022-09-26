@@ -139,7 +139,7 @@ struct SetOptionalZeroPoint {
 };
 
 void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& selected_nodes) {
-  std::vector<Node*> nodes = selected_nodes.AllNodes();
+  const auto nodes = selected_nodes.AllNodes();
   for (Node* node_ptr : nodes) {
     if (node_ptr == nullptr) {
       continue;

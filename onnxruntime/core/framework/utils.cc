@@ -450,7 +450,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
                                               gsl::span<const OrtValue> orig_feeds,
                                               std::vector<OrtValue>& new_feeds,
                                               gsl::span<const MLValueCopyInfo> copy_info,
-                                              std::vector<Stream*>& feed_streams) {
+                                              gsl::span<Stream* const> feed_streams) {
   size_t num_feeds = orig_feeds.size();
   ORT_ENFORCE(copy_info.size() == num_feeds);
   ORT_ENFORCE(feed_streams.size() == num_feeds);
@@ -518,10 +518,10 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
 }
 
 static common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
-                                               const std::vector<OrtValue>& fetches,
+                                               gsl::span<const OrtValue> fetches,
                                                std::vector<OrtValue>& user_fetches,
-                                               const std::vector<MLValueCopyInfo>& copy_info,
-                                               const std::vector<Stream*>& fetch_streams) {
+                                               gsl::span<const MLValueCopyInfo> copy_info,
+                                               gsl::span<Stream* const> fetch_streams) {
   auto num_outputs = fetches.size();
   user_fetches.resize(num_outputs);
 
@@ -553,18 +553,58 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   return Status::OK();
 }
 
-static common::Status ExecuteGraphImpl(const SessionState& session_state,
-                                       const FeedsFetchesManager& feeds_fetches_manager,
-                                       gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                                       const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                       ExecutionMode execution_mode, const bool* terminate_flag,
-                                       const logging::Logger& logger, const bool only_execute_path_to_fetches = false,
-                                       Stream* parent_stream = nullptr) {
+struct DeviceStreamCollectionHolder {
+  DeviceStreamCollectionHolder(const SessionState& session_state) : session_state_(session_state),
+                                                                    p_(session_state.AcquireDeviceStreamCollection()) {
+  }
+
+  ~DeviceStreamCollectionHolder() {
+    session_state_.RecycleDeviceStreamCollection(std::move(p_));
+  }
+
+  const SessionState& session_state_;
+  std::unique_ptr<DeviceStreamCollection> p_;
+};
+
+static void UpdateWithParentStream(DeviceStreamCollection& device_stream_collection,
+                                   Stream* parent_stream) {
+  if (parent_stream) {
+    // TODO: in theory, we should make current subgraph's stream depends on parent stream.
+    // but in current code structure, it causing issues with the resource sharing and stream
+    // lifetime. it also may cause additional cost of stream sync for single stream case.
+    // In first phase, let's just put all the subgraph execution on the parent stream.
+    for (size_t i = 0; i < device_stream_collection.NumStreams(); ++i) {
+      auto* stream = device_stream_collection.GetStreams()[i];
+      if (stream) {
+        // if current logic stream is not on the same EP instance as parent stream
+        // and the EP instance does have async streams (not EP like CPU)
+        // throw error as we don't have the code to setup the dependency at this moment.
+        if (stream->device != parent_stream->device) {
+          ORT_THROW("Subgraph has nodes running on device: ", stream->device.Type(),
+                    " while parent graph node running on device: ", parent_stream->device.Type(),
+                    ", this is not supported yet.");
+        }
+        device_stream_collection.SetDeviceStream(i, parent_stream);
+      }
+    }
+  }
+}
+
+static common::Status
+ExecuteGraphImpl(const SessionState& session_state,
+                 const FeedsFetchesManager& feeds_fetches_manager,
+                 gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
+                 const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                 ExecutionMode execution_mode, const bool* terminate_flag,
+                 const logging::Logger& logger, const bool only_execute_path_to_fetches = false,
+                 Stream* parent_stream = nullptr) {
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
   const auto& device_copy_checks = feeds_fetches_manager.GetDeviceCopyChecks();
   auto* execution_plan = session_state.GetExecutionPlan();
 
-  DeviceStreamCollection device_stream_collection(execution_plan->execution_plan.size(), session_state);
+  DeviceStreamCollectionHolder device_stream_collection_holder(session_state);
+  DeviceStreamCollection& device_stream_collection = *device_stream_collection_holder.p_;
+  UpdateWithParentStream(device_stream_collection, parent_stream);
 
   bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;
   // in following two cases, we execute the workload in main thread:
@@ -577,7 +617,6 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
   single_thread_mode = true;
 #endif
 
-  ORT_ENFORCE(BindToDeviceStream(parent_stream, *execution_plan, device_stream_collection, session_state.GetStreamHandleRegistryInstance()).IsOK());
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
@@ -599,7 +638,8 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
-      std::vector<Stream*> feed_streams;
+      InlinedVector<Stream*> feed_streams;
+      feed_streams.reserve(feed_copy_info.size());
       // TODO: we can pre-calculate the stream index for graph inputs in execution plan
       for (auto& copy_info : feed_copy_info) {
         auto& device = copy_info.target_device;
@@ -639,7 +679,6 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
     }
 
     // no device copies are needed so simple execute
-    std::vector<Stream*> fetches_streams;
     auto ret = ExecuteThePlan(session_state,
                               feeds_fetches_info.feeds_mlvalue_idxs, feeds_to_use,
                               feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, fetch_allocators,
@@ -649,6 +688,8 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                               only_execute_path_to_fetches,
                               single_thread_mode);
     ORT_RETURN_IF_ERROR(ret);
+    InlinedVector<Stream*> fetches_streams;
+    fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
     auto& device_streams = device_stream_collection.GetStreams();
     for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
@@ -666,8 +707,8 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
       ORT_RETURN_IF_ERROR(CopyOutputsAcrossDevices(session_state, *p_fetches, fetches, fetch_copy_info, fetches_streams));
     }
   }
-
-  return Status::OK();
+  // clean up stream on run end
+  return device_stream_collection.CleanUp();
 }
 
 common::Status ExecuteGraph(const SessionState& session_state,
@@ -703,9 +744,9 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
   bool single_thread_mode = true;
 
   auto* execution_plan = session_state.GetExecutionPlan();
-  DeviceStreamCollection& device_stream_collection = state.GetDeviceStreamCollection(execution_plan->execution_plan.size(), session_state);
+  DeviceStreamCollection& device_stream_collection = state.GetDeviceStreamCollection(session_state);
+  UpdateWithParentStream(device_stream_collection, parent_stream);
 
-  ORT_ENFORCE(BindToDeviceStream(parent_stream, *execution_plan, device_stream_collection, session_state.GetStreamHandleRegistryInstance()).IsOK());
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
     // no device copies are needed so simple execute
@@ -727,7 +768,8 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 
     if (device_copy_checks.input_copy_needed == DeviceCopyCheck::Copy) {
       const auto& feed_copy_info = feeds_fetches_manager.GetFeedsDeviceCopyInfo();
-      std::vector<Stream*> feed_streams;
+      InlinedVector<Stream*> feed_streams;
+      feed_streams.reserve(feed_copy_info.size());
       // TODO: we can pre-calculate the stream index for graph inputs in execution plan
       for (auto& copy_info : feed_copy_info) {
         auto& device = copy_info.target_device;
@@ -777,7 +819,8 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                               state,
                                               cache));
 
-    std::vector<Stream*> fetches_streams;
+    InlinedVector<Stream*> fetches_streams;
+    fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
     auto& device_streams = device_stream_collection.GetStreams();
     for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
@@ -797,7 +840,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
     // training don't want to flush the stream
   }
 
-  return Status::OK();
+  return device_stream_collection.CleanUp();
 }
 #endif
 

@@ -18,6 +18,7 @@
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_providers.h"
+#include "core/framework/execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/prepacked_weights_container.h"
@@ -60,6 +61,7 @@ class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
+class DeviceStreamCollection;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 class MemoryInfo;
 #endif
@@ -296,22 +298,10 @@ class SessionState {
   void UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs);
   const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
 #endif
-#if !defined(ORT_MINIMAL_BUILD)
-  Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                         flatbuffers::Offset<onnxruntime::fbs::SessionState>& fbs_session_state) const;
-#endif
-
-  void SetCompiledKernelHashes(std::unordered_map<std::string, HashValue>&& compiled_kernel_hashes) {
-    compiled_kernel_hashes_ = std::move(compiled_kernel_hashes);
-  }
-
-  Status LoadFromOrtFormat(const onnxruntime::fbs::SessionState& fbs_session_state,
-                           const KernelRegistryManager& kernel_registry_manager);
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
                               const SessionOptions& session_options = {},
-                              const onnxruntime::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true,
                               bool saving_ort_format = false);
 
@@ -335,8 +325,12 @@ class SessionState {
     return subgraph_session_states_;
   }
 
+  std::unique_ptr<DeviceStreamCollection> AcquireDeviceStreamCollection() const;
+
+  void RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const;
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  void IncrementGraphExecutionCounter() {
+  void
+  IncrementGraphExecutionCounter() {
     ++graph_executions_counter_;
   }
 
@@ -378,9 +372,8 @@ class SessionState {
   void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
                                std::unique_ptr<SessionState> session_state);
 
-#if !defined(ORT_MINIMAL_BUILD)
-  Status PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager, bool saving_ort_format);
-#endif
+  Status PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager,
+                                  bool saving_ort_format);
 
   Status FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                                   const KernelRegistryManager& kernel_registry_manager,
@@ -399,20 +392,11 @@ class SessionState {
       InlinedHashMap<int, TensorShape>& inferred_shapes) const;
 #endif
 
-  // the SessionState for the main Graph contains the compiled kernel hashes for the entire model
-  const std::unordered_map<std::string, HashValue>& GetCompiledKernelHashes() const {
-    return parent_ ? parent_->GetCompiledKernelHashes() : compiled_kernel_hashes_;
-  }
-
   // KernelCreateInfo for each node so we do kernel lookup once
   KernelCreateInfoMap kernel_create_info_map_;
 
   // fused_funcs_mgr_ must live longer than the session_kernels_, becaues a kernel could be created from this manager
   FuncManager fused_funcs_mgr_;
-
-  // If we compile kernels in a minimal build we need a way to find the kernel using the hash.
-  // We populate this map when doing the kernel compilation in GraphPartitioner, and use it in LoadFromOrtFormat.
-  std::unordered_map<std::string, HashValue> compiled_kernel_hashes_;
 
   // cache of the constructed kernels to avoid spending construction time per executor
   std::vector<std::unique_ptr<OpKernel>> session_kernels_;
@@ -563,6 +547,10 @@ class SessionState {
   size_t graph_executions_counter_ = 0;
 #endif
   std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
+
+  // lock for the device stream pool
+  mutable OrtMutex device_stream_pool_mutex_;
+  mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
 };
 
 }  // namespace onnxruntime

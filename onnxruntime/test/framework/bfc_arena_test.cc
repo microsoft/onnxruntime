@@ -301,18 +301,19 @@ TEST(BFCArenaTest, TestBackoffDoesntHang) {
 }
 
 struct NotificationMock : public synchronize::Notification {
-public:
+ public:
   NotificationMock(Stream* s) : Notification(s) {}
   void Activate() override {}
 };
 
 struct StreamMock : public Stream {
-public:
+ public:
   StreamMock(const OrtDevice& device) : Stream(nullptr, device) {}
   std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) override {
     return std::make_unique<NotificationMock>(this);
   }
   void Flush() override {}
+  Status CleanUpOnRunEnd() override { return Status::OK(); }
 };
 
 TEST(StreamAwareArenaTest, TwoStreamAllocation) {
@@ -355,7 +356,7 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   auto* stream2_chunk_d = a.AllocOnStream(4096, &stream2, nullptr);
   // it should pick the third slot
   EXPECT_EQ(stream2_chunk_d, stream1_chunk_d);
-  //continue allocate on stream1
+  // continue allocate on stream1
   auto* stream1_chunk_f = a.AllocOnStream(4096, &stream1, nullptr);
   a.Free(stream1_chunk_f);
   auto* stream2_chunk_e = a.AllocOnStream(4096, &stream2, nullptr);
@@ -367,7 +368,7 @@ TEST(StreamAwareArenaTest, TwoStreamAllocation) {
   // now it should pick stream1_chunk_e
   EXPECT_EQ(stream2_chunk_f, stream1_chunk_e);
 
-  //cleanup
+  // cleanup
   a.Free(stream2_chunk_d);
   a.Free(stream2_chunk_e);
   a.Free(stream2_chunk_f);

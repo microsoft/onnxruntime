@@ -18,9 +18,15 @@ class DeviceStreamCollectionImpl {
   }
 
   virtual ~DeviceStreamCollectionImpl() {
+  }
+
+  Status CleanUp() {
     for (auto& device_stream : device_streams_) {
       if (device_stream) {
+        ORT_RETURN_IF_ERROR(device_stream->CleanUpOnRunEnd());
+#ifndef ENABLE_TRAINING
         device_stream->Flush();
+#endif
       }
     }
     // only clean the streams that is owned by current context
@@ -41,6 +47,7 @@ class DeviceStreamCollectionImpl {
         }
       }
     }
+    return Status::OK();
   }
 
   void SetDeviceStream(size_t idx, std::unique_ptr<Stream> stream) {
@@ -87,6 +94,10 @@ const std::vector<Stream*>& DeviceStreamCollection::GetStreams() const {
 
 size_t DeviceStreamCollection::NumStreams() const {
   return impl_->NumStreams();
+}
+
+Status DeviceStreamCollection::CleanUp() {
+  return impl_->CleanUp();
 }
 
 ExecutionContext::ExecutionContext(const SessionState& sess_state,
@@ -233,7 +244,7 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
     bool continue_flag = true;
     Status status;
     ORT_TRY {
-      status = logic_stream->steps_[since]->GetStepFun()(&ctx, stream_idx, continue_flag);
+      status = logic_stream->steps_[since]->Execute(&ctx, stream_idx, continue_flag);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -270,7 +281,7 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since) {
     bool continue_flag = true;
     Status status;
     ORT_TRY {
-      status = logic_stream->steps_[since]->GetStepFun()(&ctx, stream_idx, continue_flag);
+      status = logic_stream->steps_[since]->Execute(&ctx, stream_idx, continue_flag);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {

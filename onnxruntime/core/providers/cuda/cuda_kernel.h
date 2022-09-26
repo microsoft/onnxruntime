@@ -41,14 +41,6 @@ class CudaKernel : public OpKernel {
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
-    AllocatorPtr allocator = provider_->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-    if (!allocator)
-      return nullptr;
-    return IAllocator::MakeUniquePtr<T>(allocator, count_or_bytes);
-  }
-
-  template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, onnxruntime::Stream* stream) const {
     return provider_->GetScratchBuffer<T>(count_or_bytes, stream, WaitCudaNotificationOnDevice);
   }
@@ -62,8 +54,15 @@ class CudaKernel : public OpKernel {
     return provider_->GetTransientScratchBuffer<T>(count_or_bytes);
   }
 
-  inline void AddDeferredReleaseCPUPtr(void* p, cudaStream_t stream) const {
-    provider_->AddDeferredReleaseCPUPtr(p, stream);
+  inline void AddDeferredReleaseCPUPtr(void* p, onnxruntime::Stream* ort_stream) const {
+    ORT_ENFORCE(ort_stream->device.Type() == OrtDevice::GPU);
+    auto* cuda_ep_stream = static_cast<CudaStream*>(ort_stream);
+    cuda_ep_stream->EnqueDeferredCPUBuffer(p);
+  }
+
+  template <typename T>
+  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
+    return provider_->AllocateBufferOnCPUPinned<T>(count_or_bytes);
   }
 
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
@@ -129,7 +128,7 @@ class CudaKernel : public OpKernel {
         cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->handle) : nullptr;
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice,
                                              cuda_stream));
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), cuda_stream);
+        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), stream);
       }
       return Status::OK();
     }

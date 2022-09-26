@@ -17,9 +17,10 @@
 
 #pragma once
 
-#include <algorithm>
-#include <cstring>
 #include <climits>
+#include <cstring>
+#include <algorithm>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -28,8 +29,8 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
-#include <chrono>
 
 #include "core/common/code_location.h"
 #include "core/common/exceptions.h"
@@ -279,9 +280,10 @@ constexpr size_t kMaxStrLen = 2048;
 // Returns whether `key` is in `container`.
 // Like C++20's map/set contains() member function.
 template <typename Key, typename... OtherContainerArgs,
-          template <typename...> typename AssociativeContainer>
-inline bool Contains(const AssociativeContainer<Key, OtherContainerArgs...>& container, const Key& key) {
-  return container.find(key) != container.end();
+          template <typename...> typename AssociativeContainer,
+          typename LookupKey>
+inline bool Contains(const AssociativeContainer<Key, OtherContainerArgs...>& container, LookupKey&& key) {
+  return container.find(std::forward<LookupKey>(key)) != container.end();
 }
 
 }  // namespace onnxruntime

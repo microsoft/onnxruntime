@@ -38,9 +38,20 @@ ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState&
   return program_regions_.back();
 }
 
-DeviceStreamCollection& PartialGraphExecutionState::GetDeviceStreamCollection(size_t num_streams, const SessionState& session_state) {
+PartialGraphExecutionState::~PartialGraphExecutionState() {
+}
+
+DeviceStreamCollection& PartialGraphExecutionState::GetDeviceStreamCollection(const SessionState& session_state) {
   if (device_stream_collection_ == nullptr) {
-    device_stream_collection_ = std::make_unique<DeviceStreamCollection>(num_streams, session_state);
+    device_stream_collection_ = session_state.AcquireDeviceStreamCollection();
+    // the life-time of partial graph execution state is in-consistant with session,
+    // so we can't make sure it is safe to return the device stream collection to
+    // session when deconstruct partial graph execution state.
+    // so let's always delete the stream collections.
+    // luckly, for ort module, we always running with default stream, so no impact to perf.
+    /*device_stream_deleter_ = [&](std::unique_ptr<DeviceStreamCollection> ptr) {
+      session_state.RecycleDeviceStreamCollection(std::move(ptr));
+    };*/
   }
   return *device_stream_collection_;
 }

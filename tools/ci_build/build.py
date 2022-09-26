@@ -69,10 +69,11 @@ _check_python_version()
 
 
 def _openvino_verify_device_type(device_read):
-    choices = ["CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
+    choices = ["CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"]
 
     choices1 = [
         "CPU_FP32_NO_PARTITION",
+        "CPU_FP16_NO_PARTITION",
         "GPU_FP32_NO_PARTITION",
         "GPU_FP16_NO_PARTITION",
         "VAD-M_FP16_NO_PARTITION",
@@ -652,6 +653,8 @@ def parse_arguments():
         help="enable cuda kernel profiling, \
         cupti library must be added to PATH beforehand.",
     )
+    parser.add_argument("--use_cann", action="store_true", help="Build with CANN")
+    parser.add_argument("--cann_home", help="Path to CANN installation dir")
 
     parser.add_argument(
         "--enable_rocm_profiling",
@@ -822,6 +825,7 @@ def generate_build_tree(
     armnn_home,
     armnn_libs,
     snpe_root,
+    cann_home,
     path_to_protoc_exe,
     configs,
     cmake_extra_defines,
@@ -928,6 +932,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
         "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
+        "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
@@ -1003,6 +1008,9 @@ def generate_build_tree(
     if snpe_root and os.path.exists(snpe_root):
         cmake_args += ["-DSNPE_ROOT=" + snpe_root]
 
+    if cann_home and os.path.exists(cann_home):
+        cmake_args += ["-Donnxruntime_CANN_HOME=" + cann_home]
+
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override]
     if args.use_openvino:
@@ -1012,6 +1020,7 @@ def generate_build_tree(
             "-Donnxruntime_USE_OPENVINO_GPU_FP32=" + ("ON" if args.use_openvino == "GPU_FP32" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_GPU_FP16=" + ("ON" if args.use_openvino == "GPU_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP32=" + ("ON" if args.use_openvino == "CPU_FP32" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_CPU_FP16=" + ("ON" if args.use_openvino == "CPU_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VAD_M=" + ("ON" if args.use_openvino == "VAD-M_FP16" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VAD_F=" + ("ON" if args.use_openvino == "VAD-F_FP32" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_MYRIAD_NP="
@@ -1022,6 +1031,8 @@ def generate_build_tree(
             + ("ON" if args.use_openvino == "GPU_FP16_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_CPU_FP32_NP="
             + ("ON" if args.use_openvino == "CPU_FP32_NO_PARTITION" else "OFF"),
+            "-Donnxruntime_USE_OPENVINO_CPU_FP16_NP="
+            + ("ON" if args.use_openvino == "CPU_FP16_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VAD_M_NP="
             + ("ON" if args.use_openvino == "VAD-M_FP16_NO_PARTITION" else "OFF"),
             "-Donnxruntime_USE_OPENVINO_VAD_F_NP="
@@ -1363,6 +1374,23 @@ def setup_cuda_vars(args):
             )
 
     return cuda_home, cudnn_home
+
+
+def setup_cann_vars(args):
+    cann_home = ""
+
+    if args.use_cann:
+        cann_home = args.cann_home if args.cann_home else os.getenv("ASCEND_HOME_PATH")
+
+        cann_home_valid = cann_home is not None and os.path.exists(cann_home)
+
+        if not cann_home_valid:
+            raise BuildError(
+                "cann_home paths must be specified and valid.",
+                "cann_home='{}' valid={}.".format(cann_home, cann_home_valid),
+            )
+
+    return cann_home
 
 
 def setup_tensorrt_vars(args):
@@ -2017,6 +2045,7 @@ def build_python_wheel(
     use_acl,
     use_armnn,
     use_dml,
+    use_cann,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -2070,6 +2099,8 @@ def build_python_wheel(
             args.append("--use_armnn")
         elif use_dml:
             args.append("--wheel_name_suffix=directml")
+        elif use_cann:
+            args.append("--use_cann")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2116,6 +2147,7 @@ def build_nuget_package(
     elif use_cuda:
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"'
     elif use_tvm:
+        execution_provider = '/p:ExecutionProvider="tvm"'
         package_name = '/p:OrtPackageId="Microsoft.ML.OnnxRuntime.Tvm"'
     else:
         # use the solution file that includes Xamarin mobile targets
@@ -2157,7 +2189,7 @@ def build_nuget_package(
             run_subprocess(cmd_args, cwd=csharp_build_dir)
 
         if is_windows():
-            if use_openvino:
+            if use_openvino or use_tvm:
                 # user needs to make sure nuget is installed and added to the path variable
                 nuget_exe = "nuget.exe"
             else:
@@ -2473,6 +2505,9 @@ def main():
     # if using rocm, setup rocm paths
     rocm_home = setup_rocm_build(args, configs)
 
+    # if using cann, setup cann paths
+    cann_home = setup_cann_vars(args)
+
     if args.update or args.build:
         for config in configs:
             os.makedirs(get_config_build_dir(build_dir, config), exist_ok=True)
@@ -2671,6 +2706,7 @@ def main():
             armnn_home,
             armnn_libs,
             snpe_root,
+            cann_home,
             path_to_protoc_exe,
             configs,
             cmake_extra_defines,
@@ -2693,8 +2729,7 @@ def main():
     if args.test:
         if args.enable_onnx_tests:
             source_onnx_model_dir = "C:\\local\\models" if is_windows() else "/data/models"
-            dest_model_dir_name = "models"
-            setup_test_data(source_onnx_model_dir, dest_model_dir_name, build_dir, configs)
+            setup_test_data(source_onnx_model_dir, "models", build_dir, configs)
 
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
 
@@ -2733,6 +2768,7 @@ def main():
                 args.use_acl,
                 args.use_armnn,
                 args.use_dml,
+                args.use_cann,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,

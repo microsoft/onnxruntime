@@ -47,6 +47,7 @@ struct Stream {
     return {};
   };
   virtual void Flush(){};
+  virtual Status CleanUpOnRunEnd() = 0;
 };
 
 namespace synchronize {
@@ -91,4 +92,4 @@ class IStreamCommandHandleRegistry {
   virtual void RegisterCreateStreamFn(const OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
 };
 
-}
+}  // namespace onnxruntime

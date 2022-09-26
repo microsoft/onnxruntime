@@ -29,6 +29,7 @@ class DeviceStreamCollection {
   void SetDeviceStream(size_t, Stream* stream);
   const std::vector<Stream*>& GetStreams() const;
   size_t NumStreams() const;
+  Status CleanUp();
 
  private:
   std::unique_ptr<DeviceStreamCollectionImpl> impl_;
