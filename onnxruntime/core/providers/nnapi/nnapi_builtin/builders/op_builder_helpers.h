@@ -56,6 +56,16 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
                      int32_t axis,
                      const std::vector<std::string>& outputs);
 
+Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
+                                  const std::string& input1,
+                                  const std::string& input2,
+                                  const std::string& input3,
+                                  const std::string& output1,
+                                  const std::string& output2,
+                                  int32_t fuse_code,
+                                  float output_scale = 0.0f,
+                                  int32_t output_zero_point = 0);
+
 // checks whether batch MatMul in the given NodeUnit is supported by NNAPI EP
 bool IsSupportedBatchMatMul(const NodeUnit& node_unit, int32_t nnapi_feature_level);
 

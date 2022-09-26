@@ -17,6 +17,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/graph_viewer.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/shared/node_unit/node_unit.h"
@@ -167,6 +168,53 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SPLIT,
                                                  input_indices, outputs, output_operand_types));
 
+  return Status::OK();
+}
+
+Status AddNnapiBatchNormalization(ModelBuilder& model_builder,
+                                  const std::string& input1,
+                                  const std::string& input2,
+                                  const std::string& input3,
+                                  const std::string& output1,
+                                  const std::string& output2,
+                                  int32_t fuse_code,
+                                  float output_scale,
+                                  int32_t output_zero_point) {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+
+  // Add Nnapi Mul
+  InlinedVector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input1));
+  input_indices.push_back(operand_indices.at(input2));
+
+  ADD_SCALAR_OPERAND(model_builder, input_indices, ANEURALNETWORKS_FUSED_NONE);
+
+  const Shape& shape1 = shaper[input1];
+  const Shape& shape2 = shaper[input2];
+  Shape output1_shape;
+  // broadcasting support for eltwise shape operation
+  ORT_RETURN_IF_ERROR(op_builder_helpers::PerformBroadcasting(shape1, shape2, output1_shape));
+  const OperandType output_operand_type(operand_types.at(input1).type, output1_shape,
+                                        output_scale, output_zero_point);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_MUL, input_indices,
+                                                 {output1}, {output_operand_type}));
+
+  // Add Nnapi Add
+  input_indices.clear();
+  input_indices.push_back(operand_indices.at(output1));
+  input_indices.push_back(operand_indices.at(input3));
+
+  ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
+
+  const Shape& shape3 = shaper[input3];
+  Shape output2_shape;
+  ORT_RETURN_IF_ERROR(op_builder_helpers::PerformBroadcasting(output1_shape, shape3, output2_shape));
+  const OperandType output_operand_type2(operand_types.at(input3).type, output2_shape,
+                                         output_scale, output_zero_point);
+  ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_ADD, input_indices,
+                                                 {output2}, {output_operand_type2}));
   return Status::OK();
 }
 
@@ -452,16 +500,11 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 
   // TODO support other data types
   const uint8_t* src = nullptr;
-  std::vector<uint8_t> unpacked_tensor;
 
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor));
-      src = unpacked_tensor.data();
       break;
     }
     default:
@@ -469,7 +512,8 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                              "The initializer of graph ", name,
                              " doesn't have valid type: ", tensor.data_type());
   }
-
+  Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
+  src = unpacked_tensor.DataAsByteSpan().data();
   const auto out_t = shape[0], in_t = shape[1],
              h_t = shape[2], w_t = shape[3];
   Shape dest_shape;
@@ -530,15 +574,10 @@ Status AddInitializerTransposed(ModelBuilder& model_builder,
 
   // TODO support other data types
   const uint8_t* src = nullptr;
-  std::vector<uint8_t> unpacked_tensor;
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      ORT_RETURN_IF_ERROR(
-          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
-                                                    unpacked_tensor));
-      src = unpacked_tensor.data();
       break;
     }
     default:
@@ -546,7 +585,9 @@ Status AddInitializerTransposed(ModelBuilder& model_builder,
                              "The initializer of graph ", name,
                              " doesn't have valid type: ", tensor.data_type());
   }
-
+  Initializer unpacked_tensor(tensor, model_builder.GetGraphViewer().ModelPath());
+  // could be float/u8/s8, so we have to use raw data here.
+  src = unpacked_tensor.DataAsByteSpan().data();
   const auto x_t = shape[0], y_t = shape[1];
   Shape dest_shape = {y_t, x_t};
   OperandType operand_type = source_operand_type;
@@ -692,12 +733,12 @@ Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
   w_zero_point = 0;
 
   // We need to copy the 1d scales array for per-channel quantization
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scale_tensor, unpacked_tensor));
-  const float* scales = reinterpret_cast<const float*>(unpacked_tensor.data());
+  Initializer unpacked_tensor(scale_tensor);
+  auto scales = unpacked_tensor.DataAsSpan<float>();
   const size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
-  std::vector<float> scales_vec(scales, scales + scales_size);
-  w_scales = std::make_optional(std::move(scales_vec));
+  std::vector<float> scales_vec(scales.begin(), scales.begin() + scales_size);
+  w_scales = onnxruntime::make_optional(std::move(scales_vec));
+
   return Status::OK();
 }
 
@@ -786,7 +827,7 @@ Status AddBinaryOperator(int32_t op_type,
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));  // input 1
   input_indices.push_back(operand_indices.at(input2));  // input 2
 
@@ -794,7 +835,6 @@ Status AddBinaryOperator(int32_t op_type,
     ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
   }
 
-  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output],
                                         output_scale, output_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_type, input_indices,
@@ -815,7 +855,7 @@ Status AddSqueezeOp(ModelBuilder& model_builder,
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
-  const auto& input_shape(shaper[input]);
+  const auto input_shape = shaper[input];
   auto input_dims = input_shape.size();
   for (auto& axis : axes) {
     axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_dims));
@@ -839,12 +879,34 @@ Status AddSqueezeOp(ModelBuilder& model_builder,
   const OperandType axes_operand_type(Type::TENSOR_INT32, axes_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(axes_name, axes.data(), axes_operand_type));
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));      // input
   input_indices.push_back(operand_indices.at(axes_name));  // axes
 
-  ORT_RETURN_IF_ERROR(shaper.Squeeze(input, axes, output));
-  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  // Shape inference calculation for squeeze
+  int32_t input_size = static_cast<int32_t>(input_shape.size());
+  std::unordered_set<int32_t> axes_to_be_squeezed;
+
+  // If the Op is squeezing all by not specifying axes, the axes is pre-populate
+  // with axes of all single dimensions by the caller
+  for (const auto& axis : axes)
+    axes_to_be_squeezed.insert(axis);
+
+  // Make output dimensions
+  InlinedVector<uint32_t> output_dimen;
+  output_dimen.reserve(input_size - axes_to_be_squeezed.size());
+  for (int32_t i = 0; i < input_size; i++) {
+    if (!Contains(axes_to_be_squeezed, i))
+      output_dimen.push_back(input_shape[i]);
+  }
+
+  // In case of a tensor has all 1's in dimension such as {1,1,1,1} and gets squeezed all
+  // the output shape will be {1}
+  if (output_dimen.empty())
+    output_dimen.push_back(1);
+
+  shaper.AddShape(output, output_dimen);
+  const OperandType output_operand_type(operand_types.at(input).type, output_dimen);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_SQUEEZE, input_indices,
                                                  {output}, {output_operand_type}));
   return Status::OK();
@@ -860,9 +922,8 @@ Status GetAxesForSqueezeAndUnSqueeze(ModelBuilder& model_builder, const NodeUnit
     if (node_unit.Inputs().size() > 1) {
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
-      std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axes_tensor, unpacked_tensor));
-      const int64_t* raw_axes = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+      Initializer unpacked_tensor(axes_tensor);
+      auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
       const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
       axes.resize(size);
       for (uint32_t i = 0; i < size; i++) {
@@ -896,13 +957,15 @@ Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "MinMaxOpBuilder, unknown op: ", op_type);
   }
 
-  std::vector<uint32_t> input_indices;
+  InlinedVector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input1));  // input 1
   input_indices.push_back(operand_indices.at(input2));  // input 2
-  ORT_RETURN_IF_ERROR(shaper.Eltwise(input1, input2, output));
+
   const OperandType output_operand_type(operand_types.at(input1).type, shaper[output]);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}));
+
+  return Status::OK();
 
   return Status::OK();
 }
@@ -990,13 +1053,15 @@ Status AddReshapeOperator(ModelBuilder& model_builder,
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  ORT_RETURN_IF_ERROR(shaper.Reshape(input, shape, output));
-  auto input_rank = shaper[input].size();
-  auto output_rank = shaper[output].size();
+
+  const auto input_shape = shaper[input];
+  const auto output_shape = shaper[output];
+  const auto input_rank = input_shape.size();
+  const auto output_rank = output_shape.size();
 
   // For reshape, the output type should be the same as the input type except the shape is different
   auto output_operand_type = operand_types.at(input);
-  output_operand_type.SetDimensions(shaper[output]);
+  output_operand_type.SetDimensions(output_shape);
 
   // Since Reshape is not running using hardware in NNAPI for some CPU (e.g. Qualcomm SD for now)
   // We will try to see if we the skip the Reshape to prevent context switching between
@@ -1007,8 +1072,7 @@ Status AddReshapeOperator(ModelBuilder& model_builder,
   } else {
     // We still need to perform a reshape here
     std::string shape_name = model_builder.GetUniqueName(node_unit.Name() + input + "newshape");
-    ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape_name, shape, output,
-                                                            &shaper[output]));
+    ORT_RETURN_IF_ERROR(op_builder_helpers::AddNnapiReshape(model_builder, input, shape_name, shape, output));
   }
 
   return Status::OK();
@@ -1121,18 +1185,10 @@ bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initializers,
                             << " zero point dimension " << zero_dim;
       return false;
     }
-
-    std::vector<uint8_t> unpacked_tensor;
-    auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, model_path, unpacked_tensor);
-    if (!status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Qlinear[Conv/MatMul] error when unpack zero tensor: " << zero_point_name
-                          << ", error msg: " << status.ErrorMessage();
-      return false;
-    }
-
+    Initializer unpacked_tensor(zero_tensor, model_path);
     // Verify all onnx weight zero point(s) are 0(s)
-    const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.data());
-    for (size_t i = 0; i < unpacked_tensor.size(); i++) {
+    auto zero_points = unpacked_tensor.DataAsSpan<int8_t>();
+    for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
       if (zero_points[i] != 0) {
         LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul]  only support 0 as zero point, "
                               << "zero_points[" << i << "] has value: " << zero_points[i];
@@ -1244,8 +1300,7 @@ bool HasRequiredScaleAndZeroPoint(const InitializedTensorSet& initializers,
   return true;
 }
 
-== == == =
-             Status PerformBroadcasting(const Shape& shape1, const Shape& shape2, Shape& output_shape) {
+Status PerformBroadcasting(const Shape& shape1, const Shape& shape2, Shape& output_shape) {
   bool shape1_is_bigger = shape1.size() >= shape2.size();
   auto max_shape = shape1_is_bigger ? shape1 : shape2;
   const auto& min_shape = shape1_is_bigger ? shape2 : shape1;
