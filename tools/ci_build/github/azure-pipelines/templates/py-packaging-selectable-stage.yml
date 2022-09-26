@@ -286,7 +286,7 @@ stages:
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
     - job: Linux_py_GPU_Wheels
-      timeoutInMinutes: 180
+      timeoutInMinutes: 300
       workspace:
         clean: all
       pool: Onnxruntime-Linux-GPU
