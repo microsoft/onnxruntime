@@ -21,7 +21,9 @@ Accelerate ONNX models on Android devices and WebAssembly with ONNX Runtime and 
 
 
 ## Install
-No Pre-built packages of ONNX Runtime with XNNPACK EP for Android are available.
+Pre-built packages of ONNX Runtime(full package) with XNNPACK EP for Android are published on Maven.
+**Only full package are including XNNAPCK EP inside**
+See [here](../install/index.md#install-on-android) for installation instructions.
 
 
 ## Build
@@ -47,26 +49,29 @@ Ort::Session session(env, model_path, so);
 
 ## Configuration Options
 
-To achieve the best performance, the XNNPACK EP requires the following configuration options:
-1. Disable thread-pool Spinning by adding the following to the session options:
+### Recommended configuration
+XNNPACK has a separate internal threadpool which can lead to contention with the ORT intra-op threadpool.
+To minimize this, we recommend setting the following options:
+1. Disable the ORT intra-op thread-pool spinning by adding the following to the session options:
 ```C++
     so.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
 ```
-2. XNNPACK EP takes the intra-threadpool size from provider-options. The default value is 1. For example:
+2. Set the XNNPACK intra-op thread-pool size when registering the XNNPACK EP. The suggested value would be the number of physical cores on the device.
 ```C++
     so.AppendExecutionProvider("XNNPACK", {{"intra_op_num_threads", std::to_string(intra_op_num_threads)}});
 ```
-3. Try to set ORT thread-pool intra_op_num_threads as 1 or equal to XNNPACK thread-pool size, and pick the best value for your model. Generally, 1 would be the best fit if your model run most of computation heavy ops on XNNPACK EP or same as XNNPACK thread-pool size in contrast.:
+3. Set the ORT intra-op thread-pool size to 1:
 ```C++
-    so.SetIntraOpNumThreads(intra_op_num_threads/*1 or same size as XNNPACK thread-pool*/);
+    so.SetIntraOpNumThreads(1);
 ```
 
+This configuration will work well if your model is using XNNPACK for the nodes performing the compute-intensive work, as these operators are likely to use the intra-op threadpool. e.g. Conv, Gemm, MatMul operators.
+
+If your model contains compute-intensive nodes using operators that are not currently supported by the XNNPACK EP these will be handled by the CPU EP. In that case better performance may be achieved by increasing the size of the ORT intra-op threadpool and potentially re-enabling spinning. Performance testing is the best way to determine the optimal configuration for your model.
 ### Available Options
 ##### intra_op_num_threads
 
-The thread-pool size (default 1) for XNNPACK EP. XNNPACK Ep use [pthreadpool](https://github.com/Maratyszcza/pthreadpool) for parallelization implementation. Thus, there would be two threadpools inside. However, ORT thread-pool will spinning threads by default as which can improve the performance. But in that case, threads will not release CPU resources when ops finished, switched to XNNPACK EP and it will lead to serious contention between the two thread-pools, which will hurt performance dramatically and even produce more power consumption. So, it is recommended to disable thread-pool Spinning.
-
-To alleviate the contention further, it is recommended to set ort thread-pool intra_op_num_threads as 1 so ORT thread-pool wouldn't be created. The trade-off is that all ops are assigned to CPU EP will be running on single thread.
+The number of threads to use for the XNNPACK EP's internal intra-op thread-pool. This is the number of threads used to parallelize the execution within a node. The default value is 1. The value should be >= 1.
 
 
 ## Supported ops
