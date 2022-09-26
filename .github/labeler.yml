@@ -4,27 +4,27 @@ ep:ACL:
 # Add/remove 'ep:ArmNN' label if issue contains the word 'ArmNN' or 'armnn
 ep:ArmNN:
   - '(ArmNN|armnn)'
-# Add/remove 'ep:CUDA' label if issue contains the word 'CUDA' or 'cuda'
+# Add/remove 'ep:CUDA' label if issue contains the word 'CUDA', 'cuda', or 'Cuda'
 ep:CUDA:
-  - '(CUDA|cuda)'
+  - '(CUDA|cuda|Cuda)'
 # Add/remove 'ep:DML' label if issue contains the word 'DirectML', 'directml', or 'DML'
 ep:DML:
   - '(DirectML|directml|DML)'
-# Add/remove 'ep:MIGraphX' label if issue contains the word 'MIGraphX'
+# Add/remove 'ep:MIGraphX' label if issue contains the word 'MIGraphX' or 'migraphx'
 ep:MIGraphX:
-  - '(MIGraphX)'
-# Add/remove 'ep:oneDNN' label if issue contains the word 'oneDNN'
+  - '(MIGraphX|migraphx)'
+# Add/remove 'ep:oneDNN' label if issue contains the word 'oneDNN' or 'onednn'
 ep:oneDNN:
-  - '(oneDNN)'
-# Add/remove 'ep:OpenVINO' label if issue contains the word 'OpenVINO', 'openvino', 'OpenVino' or 'Openvino'
+  - '(oneDNN|onednn)'
+# Add/remove 'ep:OpenVINO' label if issue contains the word 'OpenVINO', 'openvino', 'OpenVino', 'Openvino', or 'openVINO'
 ep:OpenVINO:
-  - '(OpenVINO|openvino|OpenVino|Openvino)'
+  - '(OpenVINO|openvino|OpenVino|Openvino|openVINO)'
 # Add/remove 'ep:RockchipNPU' label if issue contains the word 'Rockchip' or 'rockchip'
 ep:RockchipNPU:
   - '(Rockchip|rockchip)'
-# Add/remove 'ep:TensorRT' label if issue contains the word 'TensorRT', 'tensorrt', 'TRT', or 'Tensorrt'
+# Add/remove 'ep:TensorRT' label if issue contains the word 'TensorRT', 'tensorrt', 'TRT', 'Tensorrt', or 'trt'
 ep:TensorRT:
-  - '(TensorRT|tensorrt|TRT|Tensorrt)'
+  - '(TensorRT|tensorrt|TRT|Tensorrt|trt)'
 # Add/remove 'ep:tvm' label if issue contains the word 'TVM' or 'tvm'
 ep:tvm:
   - '(TVM|tvm)'
@@ -36,7 +36,7 @@ api:JavaScript:
   - '(JavaScript|javascript|nodejs|Nodejs|NodeJS)'
 # Add/remove 'api:Java' label if issue contains the word 'Java' not followed by 'Script'
 api:Java:
-  - '(Java(?!Script))'
+  - '(Java(?!Script)|java(?!Script))'
 # Add/remove 'api' label if issue contains the word 'C#'
 api:CSharp:
   - '(C#)'
