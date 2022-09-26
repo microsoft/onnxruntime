@@ -1,3 +1,9 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
+
 import copy
 import os
 import time
@@ -11,7 +17,7 @@ from onnxruntime import InferenceSession, SessionOptions
 
 def decoder_config_update(config: BartConfig):
     """
-    Add parameters into decoder config to help expoerting. These parameter
+    Add parameters into decoder config to help exporting. These parameters
     are later consumed with control flow and assertion
 
     Args:
@@ -32,8 +38,8 @@ def decoder_config_update(config: BartConfig):
 class DecoderWrapper(torch.nn.Module):
     """main part of BART Decoder wrapper.
 
-    We split BART into three parts: Encoder plus initial part of Decodoer, main part of Decoder, and Beam Search.
-    This module is the main part of Decodoer.
+    We split BART into three parts: Encoder plus initial part of decodoer, main part of decodoer, and Beam Search.
+    This module is the main part of decodoer.
 
     Attributes:
         model: the BART model.
