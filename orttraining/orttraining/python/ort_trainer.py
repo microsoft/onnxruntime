@@ -732,6 +732,10 @@ class ORTTrainer:
                Defaults to "" (no output).
         """
         warnings.warn(
+            "ORTTrainer is deprecated and will be removed in ort release 1.14. Please use ORTModule instead.",
+            FutureWarning,
+        )
+        warnings.warn(
             "DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it"
         )
         self.is_train = True

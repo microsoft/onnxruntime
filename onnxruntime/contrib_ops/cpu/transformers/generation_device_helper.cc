@@ -449,7 +449,7 @@ Status GreedySearchProcessLogits(
   const Tensor& input = next_token_scores_value.Get<Tensor>();
 
   constexpr int axis = 1;
-  const unsigned top_k = static_cast<unsigned>(1);
+  constexpr unsigned top_k = 1;
   constexpr bool largest = true;
   constexpr bool sorted = false;
 
@@ -771,7 +771,7 @@ Status UpdateDecoderFeeds(
 #endif
 
   // Update past state
-  ORT_ENFORCE(last_outputs.size() >= static_cast<size_t>(1 + num_present_tensors));
+  ORT_ENFORCE(last_outputs.size() >= static_cast<size_t>(1) + num_present_tensors);
   // TODO(tianleiwu): remove num_beams==1 once GreedySearch operator is available.
   if (num_beams == 1) {
     // feed present_* output to past_* inputs one by one
