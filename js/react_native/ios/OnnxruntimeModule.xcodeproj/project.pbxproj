@@ -475,7 +475,7 @@
 					"$(SRCROOT)/../../../React/**",
 					"$(SRCROOT)/../../react-native/React/**",
 				);
-                                /* Mobile build: "\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\""; */
+				/* Mobile build: "\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\""; */
 				"HEADER_SEARCH_PATHS[arch=*]" = "\"$(PODS_ROOT)/onnxruntime/onnxruntime.framework/Headers\"";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
@@ -500,7 +500,7 @@
 					"$(SRCROOT)/../../../React/**",
 					"$(SRCROOT)/../../react-native/React/**",
 				);
-                                /* Mobile build: "\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\""; */
+				/* Mobile build: "\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\""; */
 				"HEADER_SEARCH_PATHS[arch=*]" = "\"$(PODS_ROOT)/onnxruntime/onnxruntime.framework/Headers\"";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",

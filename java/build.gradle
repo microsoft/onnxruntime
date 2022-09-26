@@ -3,7 +3,7 @@ plugins {
 	id 'maven-publish'
 	id 'signing'
 	id 'jacoco'
-	id 'com.diffplug.spotless' version '5.17.0'
+	id 'com.diffplug.spotless' version '6.11.0'
 }
 
 allprojects {
@@ -61,7 +61,7 @@ task javadocJar(type: Jar, dependsOn: javadoc) {
 }
 
 wrapper {
-	gradleVersion = '6.1.1'
+	gradleVersion = '7.5.1'
 }
 
 spotless {
