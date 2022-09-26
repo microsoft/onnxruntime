@@ -17,14 +17,16 @@ class OnnxruntimeCUDASessionBuilder : public Microsoft::WRL::RuntimeClass<
   HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory, IExecutionProviderOptions* options);
 
   HRESULT STDMETHODCALLTYPE CreateSessionOptions(
-      OrtSessionOptions** options) override;
+      OrtSessionOptions * *options) override;
 
   HRESULT STDMETHODCALLTYPE CreateSession(
-      OrtSessionOptions* options,
-      OrtSession** session) override;
+      OrtSessionOptions * options,
+      OrtThreadPool* inter_op_thread_pool,
+      OrtThreadPool* intra_op_thread_pool,
+      OrtSession * *session) override;
 
   HRESULT STDMETHODCALLTYPE Initialize(
-      OrtSession* session) override;
+      OrtSession * session) override;
 
  private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_;
