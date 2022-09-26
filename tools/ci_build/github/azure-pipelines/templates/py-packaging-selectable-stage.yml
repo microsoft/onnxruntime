@@ -305,7 +305,7 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_4
           Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
+          DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecuda116xtrt84build
 
       - task: CmdLine@2
@@ -313,7 +313,7 @@ stages:
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run --gpus all -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+            docker run --gpus all -e CC=/opt/rh/devtoolset-11/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-11/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -329,7 +329,7 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests --use_tensorrt --cuda_version=11.6 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
                   ${{ parameters.gpu_build_py_parameters }} \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CmdLine@2
@@ -359,7 +359,7 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests --use_tensorrt --cuda_version=11.6 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
                   ${{ parameters.gpu_build_py_parameters }} --ctest_path '' \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
@@ -386,7 +386,7 @@ stages:
       pool: 'onnxruntime-gpu-winbuild'
       timeoutInMinutes:  300
       variables:
-        CUDA_VERSION: '11.4'
+        CUDA_VERSION: '11.6'
         buildArch: x64
         EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
         EnvSetupScript: setup_env_gpu.bat
