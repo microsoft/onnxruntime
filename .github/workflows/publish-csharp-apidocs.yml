@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - csharp-docs-lint-update
 jobs:
   publish:
     runs-on: windows-latest

@@ -28,7 +28,7 @@ $(function () {
     // Update markup result
     if (typeof article == 'undefined' || typeof article.content == 'undefined')
       console.error("Null Argument");
-    $("article.content").html(article.content);
+    $("article.content").innerHTML(article.content);
 
     highlight();
     renderTables();
@@ -260,7 +260,7 @@ $(function () {
       pagination.empty();
       pagination.removeData("twbs-pagination");
       if (hits.length === 0) {
-        $('#search-results>.sr-items').html('<p>No results found</p>');
+        $('#search-results>.sr-items').innerHTML('<p>No results found</p>');
       } else {
         pagination.twbsPagination({
           first: pagination.data('first'),
@@ -549,7 +549,7 @@ $(function () {
     })
 
     var html = util.formList(breadcrumb, 'breadcrumb');
-    $('#breadcrumb').html(html);
+    $('#breadcrumb').innerHTML(html);
   }
 
   //Setup Affix
@@ -1080,8 +1080,8 @@ $(function () {
      * If the jQuery element contains tags, this function will not change the element.
      */
     $.fn.breakWord = function () {
-      if (this.html() == this.text()) {
-        this.html(function (index, text) {
+      if (this.innerHTML() == this.text()) {
+        this.innerHTML(function (index, text) {
           return breakPlainText(text);
         })
       }
