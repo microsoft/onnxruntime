@@ -78,7 +78,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #else
     status = create_not_supported_status();
 #endif
-  } else if (strcmp(provider_name, "OpWrapper")) {
+  } else if (strcmp(provider_name, "OpWrapper") == 0) {
 #if defined(USE_OPWRAPPER)
     options->provider_factories.push_back(OpWrapperProviderFactoryCreator::Create(provider_options));
 #else
