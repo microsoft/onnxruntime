@@ -28,7 +28,7 @@ $(function () {
     // Update markup result
     if (typeof article == 'undefined' || typeof article.content == 'undefined')
       console.error("Null Argument");
-    $("article.content").innerHTML(article.content);
+    $("article.content").innerHTML = article.content;
 
     highlight();
     renderTables();
@@ -260,7 +260,7 @@ $(function () {
       pagination.empty();
       pagination.removeData("twbs-pagination");
       if (hits.length === 0) {
-        $('#search-results>.sr-items').innerHTML('<p>No results found</p>');
+        $('#search-results>.sr-items').innerHTML ='<p>No results found</p>';
       } else {
         pagination.twbsPagination({
           first: pagination.data('first'),
@@ -549,7 +549,7 @@ $(function () {
     })
 
     var html = util.formList(breadcrumb, 'breadcrumb');
-    document.getElementById('#breadcrumb').innerHTML(html);
+    $('#breadcrumb').innerHTML = html;
   }
 
   //Setup Affix
