@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
   unzip
 
 # install Java
-RUN apt-get install --yes --no-install-recommends openjdk-8-jdk-headless
+RUN apt-get install --yes --no-install-recommends openjdk-17-jdk-headless
 
 ENV ANDROID_HOME=/opt/android-sdk
 ENV NDK_VERSION=24.0.8215888
@@ -53,7 +53,7 @@ RUN CMAKE_VERSION=3.21.0 && \
   tar -zxf /tmp/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz --strip=1 -C /usr
 
 # gradle
-RUN GRADLE_VERSION=6.8.3 && \
+RUN GRADLE_VERSION=7.5.1 && \
   aria2c -q -d /tmp -o gradle-${GRADLE_VERSION}-bin.zip \
   --checksum=sha-256=7faa7198769f872826c8ef4f1450f839ec27f0b4d5d1e51bade63667cbccd205 \
   https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip && \

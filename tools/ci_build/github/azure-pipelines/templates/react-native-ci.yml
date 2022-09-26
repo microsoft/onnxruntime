@@ -62,7 +62,7 @@ jobs:
 
   - script:
       /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-    displayName: Setup gradle wrapper to use gradle 6.8.3
+    displayName: Setup gradle wrapper to use gradle 7.5.1
 
   - script: |
       python3 -m pip install -q flatbuffers
@@ -154,7 +154,7 @@ jobs:
       testResultsFiles: '**/TEST-*.xml'
       testRunTitle: 'React Native Android Instrumented Test results'
       javaHomeOption: 'path'
-      jdkDirectory: '$(JAVA_HOME_11_X64)'
+      jdkDirectory: '$(JAVA_HOME_17_X64)'
       sonarQubeRunAnalysis: false
       spotBugsAnalysis: false
     displayName: Run React Native Android Instrumented Tests
@@ -239,7 +239,7 @@ jobs:
       testResultsFiles: '**/TEST-*.xml'
       testRunTitle: 'React Native Android e2e Test results'
       javaHomeOption: 'path'
-      jdkDirectory: '$(JAVA_HOME_11_X64)'
+      jdkDirectory: '$(JAVA_HOME_17_X64)'
       sonarQubeRunAnalysis: false
       spotBugsAnalysis: false
     displayName: Run React Native Android e2e Tests

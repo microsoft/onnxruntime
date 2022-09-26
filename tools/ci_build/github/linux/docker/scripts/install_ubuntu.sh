@@ -51,7 +51,7 @@ PACKAGE_LIST="autotools-dev \
 	zip \
 	rsync libunwind8 libpng-dev libexpat1-dev \
 	python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
-	openjdk-11-jdk \
+	openjdk-17-jdk \
 	graphviz"
 
 
@@ -81,9 +81,7 @@ if [ "$OS_VERSION" = "20.04" ]; then
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
 else
-    exit 1   
+    exit 1
 fi
 
 rm -rf /var/lib/apt/lists/*
-
-

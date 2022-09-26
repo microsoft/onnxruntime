@@ -184,11 +184,6 @@ tasks.whenTaskAdded { task ->
 	}
 }
 
-// tasks.withType( JavaCompile ).configureEach {
-// 	options.forkOptions.jvmArgs.addAll( ['--add-opens', 'jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED'] )
-// 	options.forkOptions.jvmArgs.addAll( ['--add-opens', 'jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED'] )
-// }
-
 def addFolderToAar(taskName, aarPath, folderPath, folderPathInAar) {
 	def tmpDir = file("${buildDir}/${taskName}")
 	tmpDir.mkdir()

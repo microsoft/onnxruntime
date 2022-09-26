@@ -14,4 +14,4 @@ yum install -y which gdb redhat-lsb-core expat-devel tar unzip zlib-devel make l
 
 # Install Java
 # Install automatic documentation generation dependencies
-yum install -y java-11-openjdk-devel graphviz
+yum install -y java-17-openjdk-devel graphviz

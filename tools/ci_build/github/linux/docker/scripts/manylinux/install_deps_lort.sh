@@ -75,9 +75,9 @@ tar --strip 1 -xf /tmp/src/node-v16.14.2-linux-x64.tar.gz -C /usr
 
 echo "Installing gradle"
 cd /tmp/src
-GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
-unzip /tmp/src/gradle-6.3-bin.zip
-mv /tmp/src/gradle-6.3 /usr/local/gradle
+GetFile https://downloads.gradle-dn.com/distributions/gradle-7.5.1-bin.zip /tmp/src/gradle-7.5.1-bin.zip
+unzip /tmp/src/gradle-7.5.1-bin.zip
+mv /tmp/src/gradle-7.5.1 /usr/local/gradle
 
 if ! [ -x "$(command -v protoc)" ]; then
   source ${0/%install_deps_lort\.sh/..\/install_protobuf.sh}
