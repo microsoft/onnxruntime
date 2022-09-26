@@ -795,8 +795,8 @@ bool TensorrtExecutionProvider::IsLocalValue(Graph* graph, const std::string& na
 
 }
 
-// Set outputs, inputs and initializers for all subgraphs and put those information in subgraph context data structure.
-// It's useful for building a valid graph and make Graph::Resovle() happy.
+// Set inputs, initializers and outputs for all subgraphs and put those information in subgraph context data structure.
+// It's useful for building a valid graph and make Graph::Resolve() happy.
 void TensorrtExecutionProvider::SetSubGraphContext(Graph* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const {
   // Iterate all the nodes and recurse into inner most subgraph first
   for (int i = 0; i < graph->MaxNodeIndex(); ++i) {
@@ -888,41 +888,39 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* graph_build, con
 
   if (graph_build->ParentNode()) {
 
-    std::cout << "Parent Node:" << graph->ParentNode()->Name() << std::endl;
-    std::cout << "implicit inputs:" << std::endl;
+    std::cout << "Parent Node: " << graph->ParentNode()->Name() << std::endl;
+    std::cout << "\timplicit inputs:" << std::endl;
 
-    // Iterate all the implict inputs to set proper outer scope value
+    // Iterate all the implict inputs to set outer scope value for the newly built subgraph
     for (const auto& input : graph->ParentNode()->ImplicitInputDefs()) {
       
-      // Set outer scope value for current subgraph.
-      //
-      // The node arg in parent node's implicit inputs could be used for parent node's other subgraph, for example "If" node, since it has two subgraphs.
+      // The node arg in parent node's implicit inputs could be used for parent node's other subgraph, for example "If" op has two subgraphs.
       // So we need to make sure that the node arg is used in current subgraph only. (GetNodeArg searches for specific node arg in all node args in the graph)
       if (graph_build->GetNodeArg(input->Name())) {
         graph_build->AddOuterScopeNodeArg(input->Name());
-        std::cout << input->Name() << std::endl;
+        std::cout << "\t" << input->Name() << std::endl;
 
         // Handle the case where this outer scope value is not existed in any outer scope levels of the newly built graph (the newly built graph is the subgraph of the original graph)
         // need to add the outer scope value from origianl graph as an explict input to the top-level of newly built graph
         if (!IsOuterScopeValue(graph_build, input->Name(), subgraph_context_map)) {
+
           auto top_level_graph = graph_build;
-          while (top_level_graph->ParentGraph()) {
+          while (top_level_graph->MutableParentGraph()) {
             top_level_graph = top_level_graph->MutableParentGraph();
           }
 
+          const auto& name = input->Name();
           auto graph_inputs_including_initializers = top_level_graph->GetInputsIncludingInitializers();
-          bool in_inputs = false;
-          for (const auto& input_or_initializer : graph_inputs_including_initializers) {
-            if (input_or_initializer->Name() == input->Name()) {
-              in_inputs = true;
-              break;
-            }
-          }
+          auto added_graph_input = std::find_if(graph_inputs_including_initializers.begin(), graph_inputs_including_initializers.end(),
+                                                [&name](const NodeArg* entry) { return entry->Name() == name; });
 
-          if (!in_inputs) {
-            auto& n_input = top_level_graph->GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+          if (added_graph_input == graph_inputs_including_initializers.end()) {
+            auto type_proto = ONNX_NAMESPACE::TypeProto::Create();
+            type_proto->copy_from(input->TypeAsProto());
+            auto& n_input = top_level_graph->GetOrCreateNodeArg(input->Name(), type_proto.get());
             top_level_graph->SetInput(&n_input);
-            std::cout << "(explicit input)" << n_input.Name() << std::endl;
+            std::cout << "\t(add explicit input)" << n_input.Name() << std::endl;
+            continue;
           }
         }
       }
