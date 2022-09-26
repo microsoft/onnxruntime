@@ -521,6 +521,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_COREML}
     # ${PROVIDERS_TVM}
     ${PROVIDERS_XNNPACK}
+    ${PROVIDERS_OPWRAPPER}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -602,6 +603,13 @@ if(onnxruntime_USE_ROCM)
   list(APPEND onnxruntime_test_providers_libs ${HIP_LIB})
 endif()
 
+# TODO: Add tests for opwrapper EP
+#if(onnxruntime_USE_OPWRAPPER)
+  #list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/opwrapper/*)
+  #list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_opwrapper)
+  #list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_opwrapper)
+  #list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_opwrapper)
+#endif()
 
 if(WIN32)
   if (onnxruntime_USE_NUPHAR_TVM)

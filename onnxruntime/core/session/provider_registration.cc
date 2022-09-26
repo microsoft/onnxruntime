@@ -78,10 +78,16 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #else
     status = create_not_supported_status();
 #endif
+  } else if (strcmp(provider_name, "OpWrapper")) {
+#if defined(USE_OPWRAPPER)
+    options->provider_factories.push_back(OpWrapperProviderFactoryCreator::Create(provider_options));
+#else
+    status = create_not_supported_status();
+#endif
   } else {
     ORT_UNUSED_PARAMETER(options);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Unknown provider name. Currently supported values are 'SNPE' and 'XNNPACK'");
+                                   "Unknown provider name. Currently supported values are 'SNPE', 'XNNPACK', and 'OpWrapper'.");
   }
 
   return status;

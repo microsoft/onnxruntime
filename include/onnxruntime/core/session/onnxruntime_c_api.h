@@ -3445,6 +3445,7 @@ struct OrtApi {
    * Currently supported providers:
    *   SNPE
    *   XNNPACK
+   *   OpWrapper
    *
    * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
    *       that should be used to add it.

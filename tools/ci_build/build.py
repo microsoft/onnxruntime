@@ -664,6 +664,8 @@ def parse_arguments():
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
 
+    parser.add_argument("--use_opwrapper", action="store_true", help="Enable opwrapper EP.")
+
     args = parser.parse_args()
     if args.android_sdk_path:
         args.android_sdk_path = os.path.normpath(args.android_sdk_path)
@@ -932,6 +934,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
         "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
+        "-Donnxruntime_USE_OPWRAPPER=" + ("ON" if args.use_opwrapper else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
     if args.external_graph_transformer_path:

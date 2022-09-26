@@ -157,6 +157,9 @@ endif()
 if (onnxruntime_USE_CANN)
   set(PROVIDERS_CANN onnxruntime_providers_cann)
 endif()
+if (onnxruntime_USE_OPWRAPPER)
+  set(PROVIDERS_OPWRAPPER onnxruntime_providers_opwrapper)
+endif()
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -1568,6 +1571,33 @@ if (onnxruntime_USE_CANN)
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+if (onnxruntime_USE_OPWRAPPER)
+  add_compile_definitions(USE_OPWRAPPER=1)
+
+  file(GLOB_RECURSE onnxruntime_providers_opwrapper_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/opwrapper/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/opwrapper/*.cc"
+  )
+
+  source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_opwrapper_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_opwrapper ${onnxruntime_providers_opwrapper_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_opwrapper
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers
+  )
+
+  add_dependencies(onnxruntime_providers_opwrapper onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_opwrapper PROPERTIES FOLDER "ONNXRuntime")
+  set_target_properties(onnxruntime_providers_opwrapper PROPERTIES LINKER_LANGUAGE CXX)
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_opwrapper
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

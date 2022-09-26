@@ -85,3 +85,7 @@
 #if defined(USE_CANN)
 #include "core/providers/cann/cann_provider_factory_creator.h"
 #endif
+
+#if defined(USE_OPWRAPPER)
+#include "core/providers/opwrapper/opwrapper_provider_factory_creator.h"
+#endif
