@@ -156,10 +156,11 @@ bool SoftMaxOpBuilder::HasSupportedInputOutputsImpl(
   }
 
   // NNAPI requires the scale be 1.f/256 and zero point to be 0
-  if (!HasRequiredScaleAndZeroPoint(initializers,
-                                    MakeString("Op [", node_unit.OpType(), "] name [", node_unit.Name(), "]'s output 0 "),
-                                    node_unit.Outputs()[0], node_unit.ModelPath(),
-                                    1.f / 256 /* required_scale */, 0 /* required_zp */)) {
+  if (!HasRequiredScaleAndZeroPoint(
+          initializers,
+          MakeString("Op [", node_unit.OpType(), "] name [", node_unit.Name(), "]'s output 0 "),
+          node_unit.Outputs()[0], node_unit.ModelPath(),
+          1.f / 256 /* required_scale */, 0 /* required_zp */)) {
     return false;
   }
 

@@ -139,7 +139,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "The initializer of graph ", weight, " doesn't have valid type: ", weight_tensor.data_type());
+                             "The initializer of graph ", weight, " doesn't have valid type: ",
+                             weight_tensor.data_type());
   }
 
   // Get weight operand type
@@ -153,9 +154,11 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   // Pre-process weights
   if (conv_2d || grouped_conv_2d) {
-    ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_0231, is_per_tensor_u8s8));
+    ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(
+        model_builder, weight, onnx_weight_operand_type, L_0231, is_per_tensor_u8s8));
   } else {  // depthwise_conv_2d
-    ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_1230, is_per_tensor_u8s8));
+    ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(
+        model_builder, weight, onnx_weight_operand_type, L_1230, is_per_tensor_u8s8));
   }
 
   if (is_quant_conv) {

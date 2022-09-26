@@ -255,52 +255,6 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
   return true;
 }
 
-void GetFlattenOutputShape(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
-  int32_t rank = static_cast<int>(input_shape.size());
-  NodeAttrHelper helper(node_unit);
-  int32_t axis = helper.Get("axis", 1);
-  // axis == rank is a valid input, but invalid for HandleNegativeAxis
-  // Skip non-negative axis here
-  if (axis < 0)
-    axis = static_cast<int32_t>(HandleNegativeAxis(axis, rank));
-
-  dim_1 = std::accumulate(input_shape.cbegin(), input_shape.cbegin() + axis, 1, std::multiplies<int32_t>());
-  dim_2 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies<int32_t>());
-}
-
-// Get the bias size (C) of Gemm op
-// ANEURALNETWORKS_FULLY_CONNECTED only supports 1d bias
-// Will test if C of Gemm can be squeezed and return the 1d vector size after squeeze
-bool GetBiasSize(const Shape& c_shape, int32_t android_feature_level, uint32_t& size) {
-  // TODO add support of scalar C for Gemm
-  size_t c_dim = c_shape.size();
-  if (c_dim == 0) {
-    LOGS_DEFAULT(VERBOSE) << "C of Gemm cannot be a scalar";
-    return false;
-  }
-
-  if (c_dim != 1 && android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_2) {
-    LOGS_DEFAULT(VERBOSE) << "C of Gemm can only be 1d tensor for API level " << android_feature_level
-                          << " shape of C, " << Shape2String(c_shape);
-    return false;
-  }
-
-  if (c_dim != 1) {
-    // If C is a (2+)d tensor, it must have the format {1, 1, ..., 1, n}
-    // where every except the last dimension should be 1
-    for (size_t i = 0; i < c_dim - 1; ++i) {
-      if (c_shape[i] != 1) {
-        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector or a tensor with only last dimension != 1"
-                              << " c_shape: " << Shape2String(c_shape);
-        return false;
-      }
-    }
-  }
-
-  size = c_shape[c_dim - 1];
-  return true;
-}
-
 Shape GetShapeInfoFromNodeArg(const GraphViewer& graph_viewer, const std::string& name) {
   // can be applied to both input and output
   Shape shape;

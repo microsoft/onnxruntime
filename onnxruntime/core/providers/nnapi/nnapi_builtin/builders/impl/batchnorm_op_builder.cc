@@ -50,7 +50,8 @@ void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_buil
   model_builder.AddInitializerToSkip(node_unit.Inputs()[4].node_arg.Name());  // var
 }
 
-Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
+                                                          const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());

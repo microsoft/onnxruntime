@@ -36,7 +36,7 @@ class DepthToSpaceOpBuilder : public BaseOpBuilder {
 // Add operator related
 
 Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-   auto& shaper(model_builder.GetShaper());
+  auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
@@ -91,7 +91,8 @@ bool DepthToSpaceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* ini
     // For now, only DCR mode is accepted as NNAPI only supports DCR format data rearrangement
     const auto mode = helper.Get("mode", "DCR");
     if (mode != "DCR") {
-      LOGS_DEFAULT(VERBOSE) << "ANEURALNETWORKS_DEPTH_TO_SPACE only supports DCR rearrangement mode. Current mode:" << mode;
+      LOGS_DEFAULT(VERBOSE) << "ANEURALNETWORKS_DEPTH_TO_SPACE only supports DCR rearrangement mode. Current mode:"
+                            << mode;
       return false;
     }
   }

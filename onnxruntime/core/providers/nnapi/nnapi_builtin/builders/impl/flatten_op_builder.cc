@@ -22,6 +22,21 @@ namespace nnapi {
 
 using namespace op_builder_helpers;
 
+namespace {
+void GetFlattenOutputShape(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
+  int32_t rank = static_cast<int>(input_shape.size());
+  NodeAttrHelper helper(node_unit);
+  int32_t axis = helper.Get("axis", 1);
+  // axis == rank is a valid input, but invalid for HandleNegativeAxis
+  // Skip non-negative axis here
+  if (axis < 0)
+    axis = static_cast<int32_t>(HandleNegativeAxis(axis, rank));
+
+  dim_1 = std::accumulate(input_shape.cbegin(), input_shape.cbegin() + axis, 1, std::multiplies<int32_t>());
+  dim_2 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies<int32_t>());
+}
+}  // namespace
+
 class FlattenOpBuilder : public BaseOpBuilder {
   // Add operator relate
  private:
@@ -32,6 +47,8 @@ class FlattenOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
+
+// Add operator related
 
 Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto input = node_unit.Inputs()[0].node_arg.Name();

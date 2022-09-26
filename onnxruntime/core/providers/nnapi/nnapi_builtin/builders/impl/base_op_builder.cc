@@ -6,6 +6,7 @@
 namespace onnxruntime {
 namespace nnapi {
 
+namespace {
 bool HasExternalInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit) {
   const auto is_ext_initializer =
       [&](const NodeArg& node_arg) {
@@ -41,6 +42,7 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
 
   return false;
 }
+}  // namespace
 
 // Add operator related
 
@@ -49,7 +51,8 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const NodeU
       model_builder.GetNNAPIFeatureLevel(),
       model_builder.UseNCHW(),
   };
-  ORT_RETURN_IF_NOT(IsOpSupported(model_builder.GetInitializerTensors(), node_unit, params), "Unsupported operator ", node_unit.OpType());
+  ORT_RETURN_IF_NOT(IsOpSupported(model_builder.GetInitializerTensors(), node_unit, params),
+                    "Unsupported operator ", node_unit.OpType());
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node_unit));
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node_unit.Name()
                         << "] type: [" << node_unit.OpType() << "] was added";

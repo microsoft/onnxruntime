@@ -23,6 +23,42 @@ namespace nnapi {
 
 using namespace op_builder_helpers;
 
+namespace {
+// Get the bias size (C) of Gemm op
+// ANEURALNETWORKS_FULLY_CONNECTED only supports 1d bias
+// Will test if C of Gemm can be squeezed and return the 1d vector size after squeeze
+bool GetGemmBiasSize(const Shape& c_shape, int32_t android_feature_level, uint32_t& size) {
+  // TODO add support of scalar C for Gemm
+  size_t c_dim = c_shape.size();
+  if (c_dim == 0) {
+    LOGS_DEFAULT(VERBOSE) << "C of Gemm cannot be a scalar";
+    return false;
+  }
+
+  if (c_dim != 1 && android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_2) {
+    LOGS_DEFAULT(VERBOSE) << "C of Gemm can only be 1d tensor for API level " << android_feature_level
+                          << " shape of C, " << Shape2String(c_shape);
+    return false;
+  }
+
+  if (c_dim != 1) {
+    // If C is a (2+)d tensor, it must have the format {1, 1, ..., 1, n}
+    // where every except the last dimension should be 1
+    for (size_t i = 0; i < c_dim - 1; ++i) {
+      if (c_shape[i] != 1) {
+        LOGS_DEFAULT(VERBOSE) << "C of Gemm must be a vector or a tensor with only last dimension != 1"
+                              << " c_shape: " << Shape2String(c_shape);
+        return false;
+      }
+    }
+  }
+
+  size = c_shape[c_dim - 1];
+  return true;
+}
+
+}  // namespace
+
 class GemmOpBuilder : public BaseOpBuilder {
   // Add operator related
  public:
@@ -55,7 +91,7 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 
   const auto& inputs = node_unit.Inputs();
   if (IsQuantizedOp(node_unit)) {
-    if (node_unit.OpType() == "QLinearMatMul" || node_unit.OpType() == "MatMul") {                 // QLinearMatMul/QDQMatMul
+    if (node_unit.OpType() == "QLinearMatMul" || node_unit.OpType() == "MatMul") {                 // QLinear/QDQMatMul
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // a_scale, a_zp
       AddInputToSkip(model_builder, inputs[1]);                                                    // b, b_scale, b_zp
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
@@ -103,7 +139,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   NodeAttrHelper helper(node_unit);
 
   const auto quant_type = GetQuantizedOpType(node_unit);
-  const bool is_quant_matmul = (quant_type == QuantizedOpType::QDQMatMul || quant_type == QuantizedOpType::QLinearMatMul);
+  const bool is_quant_matmul = (quant_type == QuantizedOpType::QDQMatMul ||
+                                quant_type == QuantizedOpType::QLinearMatMul);
   const bool is_quant_gemm = quant_type == QuantizedOpType::QDQGemm;
 
   const auto& input1 = inputs[0].node_arg.Name();
@@ -329,7 +366,7 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
         return false;
 
       uint32_t c_size;
-      if (!GetBiasSize(c_shape, params.android_feature_level, c_size))
+      if (!GetGemmBiasSize(c_shape, params.android_feature_level, c_size))
         return false;
 
       if (c_size != (transB == 0 ? b_shape[1] : b_shape[0])) {

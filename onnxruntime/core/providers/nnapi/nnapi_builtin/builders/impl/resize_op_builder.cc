@@ -185,8 +185,9 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
       }
 
       if (params.android_feature_level < 30 && (using_half_pixel || using_align_corners)) {
-        LOGS_DEFAULT(VERBOSE) << "Resize bilinear only support half_pixel/align_corners on API level 30+, current API level is "
-                              << params.android_feature_level;
+        LOGS_DEFAULT(VERBOSE)
+            << "Resize bilinear only support half_pixel/align_corners on API level 30+, current API level is "
+            << params.android_feature_level;
         return false;
       }
     } else {
