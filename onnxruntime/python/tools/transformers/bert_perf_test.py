@@ -41,6 +41,7 @@ class TestSetting:
     intra_op_num_threads: int
     seed: int
     verbose: bool
+    log_severity: int
 
 
 @dataclass
@@ -52,8 +53,10 @@ class ModelSetting:
     opt_level: int
 
 
-def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_optimization_level=None):
+def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_optimization_level=None, log_severity=2):
     import onnxruntime
+
+    onnxruntime.set_default_logger_severity(log_severity)
 
     if use_gpu and ("CUDAExecutionProvider" not in onnxruntime.get_available_providers()):
         print(
@@ -85,6 +88,8 @@ def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_op
         execution_providers = ["CPUExecutionProvider"]
 
     sess_options = onnxruntime.SessionOptions()
+    sess_options.log_severity_level = log_severity
+    sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
 
     if graph_optimization_level is None:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -222,6 +227,7 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
         test_setting.provider,
         intra_op_num_threads,
         model_setting.opt_level,
+        log_severity=test_setting.log_severity,
     )
     output_names = [output.name for output in session.get_outputs()]
 
@@ -399,6 +405,15 @@ def parse_arguments():
     )
     parser.set_defaults(verbose=False)
 
+    parser.add_argument(
+        "--log_severity",
+        required=False,
+        type=int,
+        default=2,
+        choices=[0, 1, 2, 3, 4],
+        help="0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal",
+    )
+
     parser.add_argument("--use_gpu", required=False, action="store_true", help="use GPU")
     parser.set_defaults(use_gpu=False)
 
@@ -481,6 +496,7 @@ def main():
             args.intra_op_num_threads,
             args.seed,
             args.verbose,
+            args.log_severity,
         )
 
         print("test setting", test_setting)

@@ -65,6 +65,7 @@
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
+#include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -256,6 +257,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #ifdef ENABLE_TRAINING
       transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_rocm_eps));
 #endif
 
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_cuda_rocm_eps));
@@ -291,11 +293,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
       auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
       transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
-      // NCHWCtransformer should have a higher priority versus this. Because NCHWCtransformer also do the similiar things
+      // NCHWCtransformer should have a higher priority versus this. Because NCHWCtransformer also do the similar things
       // of fusion patterns and target on CPU. However, NCHWCtransformer will reorder the layout to nchwc which is only available for
       // x86-64 cpu, not edge cpu like arm. But This tranformer could be used by opencl-ep/cpu-ep. So
       // we will prefer NhwcTransformer once ort runs on x86-64 CPU, otherwise ConvAddActivationFusion is enabled.
-      // this PR #6351 implemented similiar fusion-pattern but only for CUDA, and can only fuse conv-add-relu, while we can fuse more activation.
+      // PR #6351 implemented similar fusion-pattern for CUDA only, and can only fuse conv-add-relu,
+      // while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
 #endif
     } break;
@@ -359,6 +362,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       // currently the only level 3 optimizer is the NhwcTransformer which is fully supported at runtime
       if (!saving) {
 #ifndef DISABLE_CONTRIB_OPS
+        const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
         auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
         transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
 #else

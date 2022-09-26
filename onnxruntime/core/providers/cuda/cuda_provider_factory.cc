@@ -16,6 +16,9 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#ifndef NDEBUG
+#include "core/providers/cuda/test/all_tests.h"
+#endif
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -179,6 +182,27 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) override {
     return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
+
+#ifndef NDEBUG
+  bool TestAll() override {
+    // TestAll is the entry point of CUDA EP's insternal tests.
+    // Those internal tests are not directly callable from onnxruntime_test_all
+    // because CUDA EP is a shared library now.
+
+    // This is just one test. Call other test functions below.
+    if (!onnxruntime::cuda::test::TestDeferredRelease()) {
+      return false;
+    }
+
+    if (!onnxruntime::cuda::test::TestDeferredReleaseWithoutArena()) {
+      return false;
+    }
+
+    // TODO(wechi): brings disabled tests in onnxruntime/test/providers/cuda/*
+    // back alive here.
+    return false;
+  }
+#endif
 } g_info;
 
 struct CUDA_Provider : Provider {

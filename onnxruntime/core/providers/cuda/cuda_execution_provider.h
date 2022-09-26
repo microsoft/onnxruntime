@@ -18,6 +18,8 @@
 
 namespace onnxruntime {
 
+void RunOnUnload(std::function<void()> function);
+
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
@@ -92,12 +94,22 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
   }
 
+  template <typename T>
+  IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
+    // Note that OrtMemTypeCPU and OrtMemTypeCPUOutput are the same. See onnxruntime_c_api.h.
+    // In some CUDA async
+    if (count_or_bytes == 0)
+      return nullptr;
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU),
+                                        count_or_bytes);
+  }
+
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph,
-      const std::vector<const KernelRegistry*>& kernel_registries) const override;
+      const IKernelLookup& kernel_lookup) const override;
 
   int GetDeviceId() const override { return info_.device_id; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
@@ -134,7 +146,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   // stream returned by GetComputeStream when calling AddDeferredReleaseCPUPtr) in OnRunEnd.
   // Those are pointers allocated by AllocateBufferOnCPUPinned and should be released
   // by CPU Allocator's Free function.
-  std::unordered_map<void*, std::vector<void*>> deferred_release_buffer_pool_;
+  std::unordered_map<cudaStream_t, std::vector<void*>> deferred_release_buffer_pool_;
   // To add a pointer to deferred_release_buffer_pool_, we need a mutex because
   // different threads may create CPU buffers at the same time. Releasing
   // buffers also needs this mutex.
