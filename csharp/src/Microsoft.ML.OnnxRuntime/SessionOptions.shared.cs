@@ -137,20 +137,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// A helper method to construct a SessionOptions object for Nuphar execution.
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        /// <param name="settings">settings string, comprises of comma separated key:value pairs. default is empty</param>
-        /// <returns>A SessionsOptions() object configured for execution with Nuphar</returns>
-        public static SessionOptions MakeSessionOptionWithNupharProvider(String settings = "")
-        {
-            SessionOptions options = new SessionOptions();
-            options.AppendExecutionProvider_Nuphar(settings);
-
-            return options;
-        }
-
-        /// <summary>
         /// A helper method to construct a SessionOptions object for TVM execution.
         /// Use only if you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
@@ -348,23 +334,6 @@ namespace Microsoft.ML.OnnxRuntime
 #endif
             {
                 throw new NotSupportedException("The CoreML Execution Provider is not supported in this build");
-            }
-#endif
-        }
-
-        /// <summary>
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        /// <param name="settings">string with Nuphar specific settings</param>
-        public void AppendExecutionProvider_Nuphar(string settings = "")
-        {
-#if __MOBILE__
-            throw new NotSupportedException("The Nuphar Execution Provider is not supported in this build");
-#else
-            var settingsPinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings), GCHandleType.Pinned);
-            using (var pinnedSettingsName = new PinnedGCHandle(settingsPinned))
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Nuphar(handle, 1, pinnedSettingsName.Pointer));
             }
 #endif
         }
