@@ -27,7 +27,7 @@ enum DataLayout {
 
 // adds a scalar operand to the NNAPI model and appends its index to `input_indices`
 template <typename T>
-Status AddScalarOperand(ModelBuilder& model_builder, std::vector<uint32_t>& input_indices, T scalar_value) {
+Status AddScalarOperand(ModelBuilder& model_builder, InlinedVector<uint32_t>& input_indices, T scalar_value) {
   uint32_t index = 0;
   ORT_RETURN_IF_ERROR(model_builder.AddOperandFromScalar(std::move(scalar_value), index));
   input_indices.push_back(index);
@@ -41,15 +41,14 @@ Status AddScalarOperand(ModelBuilder& model_builder, std::vector<uint32_t>& inpu
 // adds ANEURALNETWORKS_TRANSPOSE operation
 Status AddNnapiTranspose(ModelBuilder& model_builder,
                          const std::string& data_input,
-                         const std::string& perm_input,
-                         const std::vector<int32_t>& perm,
+                         const std::string& perm_input, const gsl::span<const int32_t> perm,
                          const std::string& output);
 
 // adds ANEURALNETWORKS_RESHAPE operation
 Status AddNnapiReshape(ModelBuilder& model_builder,
                        const std::string& data_input,
                        const std::string& shape_input, const std::vector<int32_t>& shape_value,
-                       const std::string& output, const Shape* output_shape);
+                       const std::string& output);
 
 // adds ANEURALNETWORKS_SPLIT operation
 Status AddNnapiSplit(ModelBuilder& model_builder,
@@ -210,5 +209,8 @@ bool HasRequiredScaleAndZeroPoint(const InitializedTensorSet& initializers,
                                   const NodeUnitIODef& io_def,
                                   const Path& path,
                                   float required_scale, int32_t required_zp);
+
+// performs broadcasting operation on two shapes to make them compatible
+Status PerformBroadcasting(const Shape& shape1, const Shape& shape2, Shape& output_shape);
 
 }  // namespace onnxruntime::nnapi::op_builder_helpers

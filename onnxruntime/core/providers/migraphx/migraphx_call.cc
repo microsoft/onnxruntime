@@ -28,7 +28,8 @@ const char* RocmErrString<hipError_t>(hipError_t x) {
 }
 
 template <typename ERRTYPE, bool THRW>
-bool RocmCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
+std::conditional_t<THRW, void, Status> RocmCall(
+  ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
   if (retCode != successCode) {
     try {
       char hostname[HOST_NAME_MAX];
@@ -42,25 +43,28 @@ bool RocmCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
                libName, (int)retCode, RocmErrString(retCode), currentHipDevice,
                hostname,
                exprString, msg);
-      if (THRW) {
+      if constexpr (THRW) {
         // throw an exception with the error info
         ORT_THROW(str);
       } else {
         LOGS_DEFAULT(ERROR) << str;
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, str);
       }
     } catch (const std::exception& e) {  // catch, log, and rethrow since HIP code sometimes hangs in destruction, so we'd never get to see the error
-      if (THRW) {
+      if constexpr (THRW) {
         ORT_THROW(e.what());
       } else {
         LOGS_DEFAULT(ERROR) << e.what();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
       }
     }
-    return false;
   }
-  return true;
+  if constexpr (!THRW) {
+    return Status::OK();
+  }
 }
 
-template bool RocmCall<hipError_t, false>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
-template bool RocmCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
+template Status RocmCall<hipError_t, false>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
+template void RocmCall<hipError_t, true>(hipError_t retCode, const char* exprString, const char* libName, hipError_t successCode, const char* msg);
 
 }  // namespace onnxruntime

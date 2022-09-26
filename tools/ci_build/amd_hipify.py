@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import concurrent.futures
+import fnmatch
 import functools
 import os
 import shutil
@@ -11,12 +12,24 @@ from logger import get_logger
 
 log = get_logger("amd_hipify")
 
-contrib_ops_path = "onnxruntime/contrib_ops"
-providers_path = "onnxruntime/core/providers"
-training_ops_path = "orttraining/orttraining/training_ops"
+
+def path_in_repo(path):
+    repo_root = os.path.relpath(os.path.join(os.path.dirname(__file__), "../.."))
+    return os.path.join(repo_root, path)
+
+
+contrib_ops_path = path_in_repo("onnxruntime/contrib_ops")
+providers_path = path_in_repo("onnxruntime/core/providers")
+training_ops_path = path_in_repo("orttraining/orttraining/training_ops")
+
+
+def is_excluded(f, excluded_patterns):
+    return any([fnmatch.fnmatch(f, pat) for pat in excluded_patterns])
+
 
 contrib_ops_excluded_files = [
     "bert/attention.cc",
+    "bert/attention.h",
     "bert/attention_impl.cu",
     "bert/attention_softmax.h",
     "bert/embed_layer_norm.cc",
@@ -31,6 +44,7 @@ contrib_ops_excluded_files = [
     "bert/skip_layer_norm.h",
     "bert/skip_layer_norm_impl.cu",
     "bert/skip_layer_norm_impl.h",
+    "bert/tensorrt_fused_multihead_attention/*",
     "bert/transformer_common.h",
     "bert/transformer_common.cc",
     "math/complex_mul.cc",
@@ -47,6 +61,30 @@ contrib_ops_excluded_files = [
     "quantization/attention_quantization_impl.cu",
     "quantization/attention_quantization_impl.cuh",
     "quantization/quantize_dequantize_linear.cc",
+    "quantization/qordered_ops/qordered_attention_impl.cu",
+    "quantization/qordered_ops/qordered_attention_impl.h",
+    "quantization/qordered_ops/qordered_attention_input_enum.h",
+    "quantization/qordered_ops/qordered_attention.cc",
+    "quantization/qordered_ops/qordered_attention.h",
+    "quantization/qordered_ops/qordered_common.cuh",
+    "quantization/qordered_ops/qordered_layer_norm.h",
+    "quantization/qordered_ops/qordered_layer_norm.cc",
+    "quantization/qordered_ops/qordered_layer_norm_impl.h",
+    "quantization/qordered_ops/qordered_layer_norm_impl.cu",
+    "quantization/qordered_ops/qordered_longformer_attention.cc",
+    "quantization/qordered_ops/qordered_longformer_attention.h",
+    "quantization/qordered_ops/qordered_matmul.h",
+    "quantization/qordered_ops/qordered_matmul.cc",
+    "quantization/qordered_ops/qordered_matmul_utils.h",
+    "quantization/qordered_ops/qordered_matmul_utils.cc",
+    "quantization/qordered_ops/qordered_qdq_impl.cu",
+    "quantization/qordered_ops/qordered_qdq_impl.h",
+    "quantization/qordered_ops/qordered_qdq.cc",
+    "quantization/qordered_ops/qordered_qdq.h",
+    "quantization/qordered_ops/qordered_unary_ops.h",
+    "quantization/qordered_ops/qordered_unary_ops.cc",
+    "quantization/qordered_ops/qordered_unary_ops_impl.h",
+    "quantization/qordered_ops/qordered_unary_ops_impl.cu",
     "tensor/crop.cc",
     "tensor/crop.h",
     "tensor/crop_impl.cu",
@@ -93,6 +131,7 @@ provider_excluded_files = [
     "math/matmul.cc",
     "math/softmax_impl.cu",
     "math/softmax_warpwise_impl.cuh",
+    "math/softmax_common.cc",
     "math/softmax.cc",
     "nn/conv.cc",
     "nn/conv.h",
@@ -111,7 +150,6 @@ provider_excluded_files = [
     "rnn/rnn_impl.h",
     "shared_inc/cuda_call.h",
     "shared_inc/fpgeneric.h",
-    "shared_inc/softmax.h",
     "cuda_allocator.cc",
     "cuda_allocator.h",
     "cuda_call.cc",
@@ -129,6 +167,8 @@ provider_excluded_files = [
     "cuda_kernel.h",
     "cuda_pch.cc",
     "cuda_pch.h",
+    "cuda_profiler.cc",
+    "cuda_profiler.h",
     "cuda_provider_factory.cc",
     "cuda_provider_factory.h",
     "cuda_utils.cu",
@@ -146,8 +186,6 @@ training_ops_excluded_files = [
     "collective/adasum_kernels.cc",
     "collective/adasum_kernels.h",
     "math/div_grad.cc",  # miopen API differs from cudnn, no double type support
-    "math/softmax_grad_impl.cu",  # warp size differences
-    "math/softmax_grad.cc",  # miopen API differs from cudnn, no double type support
     "nn/batch_norm_grad.cc",  # no double type support
     "nn/batch_norm_grad.h",  # miopen API differs from cudnn
     "nn/batch_norm_internal.cc",  # miopen API differs from cudnn, no double type support
@@ -368,7 +406,7 @@ def amd_hipify(config_build_dir):
         contrib_results = [
             executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
             for f in contrib_files
-            if f not in contrib_ops_excluded_files
+            if not is_excluded(f, contrib_ops_excluded_files)
         ]
 
         cuda_path = os.path.join(providers_path, "cuda")
@@ -377,7 +415,7 @@ def amd_hipify(config_build_dir):
         provider_results = [
             executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
             for f in provider_files
-            if f not in provider_excluded_files
+            if not is_excluded(f, provider_excluded_files)
         ]
 
         cuda_path = os.path.join(training_ops_path, "cuda")
@@ -386,7 +424,7 @@ def amd_hipify(config_build_dir):
         training_results = [
             executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
             for f in training_files
-            if f not in training_ops_excluded_files
+            if not is_excluded(f, training_ops_excluded_files)
         ]
         # explicitly wait so that hipify warnings finish printing before logging the hipify statements
         concurrent.futures.wait(contrib_results)

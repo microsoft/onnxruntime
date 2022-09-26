@@ -40,14 +40,6 @@ class CudaKernel : public OpKernel {
   virtual Status ComputeInternal(OpKernelContext* p_op_kernel_context) const = 0;
 
   template <typename T>
-  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
-    AllocatorPtr allocator = provider_->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-    if (!allocator)
-      return nullptr;
-    return IAllocator::MakeUniquePtr<T>(allocator, count_or_bytes);
-  }
-
-  template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes) const {
     return provider_->GetScratchBuffer<T>(count_or_bytes);
   }
@@ -59,6 +51,11 @@ class CudaKernel : public OpKernel {
   template <typename T>
   inline IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
     return provider_->GetTransientScratchBuffer<T>(count_or_bytes);
+  }
+
+  template <typename T>
+  inline IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
+    return provider_->AllocateBufferOnCPUPinned<T>(count_or_bytes);
   }
 
   inline void AddDeferredReleaseCPUPtr(void* p) const {
@@ -133,6 +130,10 @@ class CudaKernel : public OpKernel {
 
   inline cublasHandle_t CublasHandle() const {
     return provider_->PerThreadCublasHandle();
+  }
+
+  inline cublasLtHandle_t CublasLtHandle() const {
+    return provider_->PerThreadCublasLtHandle();
   }
 
   inline cudnnHandle_t CudnnHandle() const {

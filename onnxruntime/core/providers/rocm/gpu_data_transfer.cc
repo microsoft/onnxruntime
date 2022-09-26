@@ -25,10 +25,10 @@ GPUDataTransfer::GPUDataTransfer(hipStream_t stream, bool do_copy_in_default_str
 
 GPUDataTransfer::~GPUDataTransfer() {
   if (!do_copy_in_default_stream_ && streams_[kHipStreamCopyIn] != nullptr) {
-    HIP_CALL(hipStreamDestroy(streams_[kHipStreamCopyIn]));
+    ORT_IGNORE_RETURN_VALUE(HIP_CALL(hipStreamDestroy(streams_[kHipStreamCopyIn])));
   }
   if (!do_copy_in_default_stream_ && streams_[kHipStreamCopyOut] != nullptr) {
-    HIP_CALL(hipStreamDestroy(streams_[kHipStreamCopyOut]));
+    ORT_IGNORE_RETURN_VALUE(HIP_CALL(hipStreamDestroy(streams_[kHipStreamCopyOut])));
   }
 }
 

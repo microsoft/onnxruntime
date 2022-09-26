@@ -5,6 +5,7 @@
 
 #include <string>
 #include <vector>
+#include "core/common/inlined_containers.h"
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 
@@ -24,7 +25,6 @@
 
 namespace onnxruntime {
 
-using Shape = std::vector<uint32_t>;
 using InitializerMap = std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto&>;
 
 class GraphViewer;
@@ -36,6 +36,8 @@ class Path;
 struct NodeUnitIODef;
 
 namespace nnapi {
+
+using Shape = InlinedVector<uint32_t>;
 
 class IOpSupportChecker;
 struct OpSupportCheckParams;
@@ -149,6 +151,9 @@ void GetFlattenOutputShape(const NodeUnit& node_unit, const Shape& input_shape, 
 // Will test if C of Gemm can be squeezed and return the 1d vector size after squeeze
 bool GetBiasSize(const Shape& c_shape, int32_t android_feature_level, uint32_t& size);
 
+// Get the shape information from NodeArg
+Shape GetShapeInfoFromNodeArg(const GraphViewer& graph_viewer, const std::string& name);
+
 // If a node is supported by NNAPI
 bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
 
@@ -162,7 +167,7 @@ bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_
 bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_group);
 
 // Get string representation of a Shape
-std::string Shape2String(const std::vector<uint32_t>& shape);
+std::string Shape2String(const Shape& shape);
 
 uint32_t ShapeSize(const Shape& shape, size_t begin_idx, size_t end_idx);
 inline uint32_t ShapeSize(const Shape& shape) {
