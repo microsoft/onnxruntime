@@ -27,7 +27,6 @@
 #include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
-#include "core/optimizer/constant_sharing.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_act_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
@@ -83,6 +82,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
 #ifdef ENABLE_TRAINING
+#include "core/optimizer/constant_sharing.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
 
@@ -5167,8 +5167,6 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
   }
 }
 
-#endif
-
 void CheckShapeEquality(const ONNX_NAMESPACE::TensorShapeProto* shape1,
                         const ONNX_NAMESPACE::TensorShapeProto* shape2) {
   EXPECT_NE(shape1, nullptr);
@@ -5520,6 +5518,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_INTMAX_AND_Infinity) {
                          pre_graph_checker, post_graph_checker);
   }
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
