@@ -1080,7 +1080,7 @@ $(function () {
      * If the jQuery element contains tags, this function will not change the element.
      */
     $.fn.breakWord = function () {
-      if (this.innerHTML() == this.text()) {
+      if (this.innerHTML == this.text()) {
         this.innerHTML(function (index, text) {
           return breakPlainText(text);
         })
