@@ -320,6 +320,13 @@ if (onnxruntime_USE_CUDA AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_R
   list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cuda_src})
 endif()
 
+if (onnxruntime_USE_CANN)
+  file(GLOB_RECURSE onnxruntime_test_providers_cann_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/providers/cann/*"
+    )
+  list(APPEND onnxruntime_test_providers_src ${onnxruntime_test_providers_cann_src})
+endif()
+
 if (onnxruntime_ENABLE_TRAINING)
   file(GLOB_RECURSE orttraining_test_trainingops_cpu_src CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/test/training_ops/compare_provider_test_utils.cc"
@@ -441,6 +448,10 @@ set (onnxruntime_test_providers_dependencies ${onnxruntime_EXTERNAL_DEPENDENCIES
 
 if(onnxruntime_USE_CUDA)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
+endif()
+
+if(onnxruntime_USE_CANN)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cann)
 endif()
 
 if(onnxruntime_USE_NNAPI_BUILTIN)
