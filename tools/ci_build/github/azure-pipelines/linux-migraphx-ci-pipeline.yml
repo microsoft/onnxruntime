@@ -73,8 +73,8 @@ jobs:
           --group-add $(render) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
-          --workdir /onnxruntime_src/build/RelWithDebInfo \
+          --workdir /build/RelWithDebInfo \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
-            ../../tools/ci_build/github/pai/migraphx_test_launcher.sh
+            /onnxruntime_src/tools/ci_build/github/pai/migraphx_test_launcher.sh
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
