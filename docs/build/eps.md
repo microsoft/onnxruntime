@@ -727,9 +727,9 @@ Usage of XNNPACK on Android/Web/Windows/Linux platforms is via the XNNPACK EP.
 
 See the [XNNPACK Execution Provider](../execution-providers/Xnnpack-ExecutionProvider.md) documentation for more details.
 
-The pre-built ONNX Runtime Mobile package(full package) for Android includes the XNNPACK EP.
+The pre-built ONNX Runtime package([`onnxruntime-android`](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android)) for Android includes the XNNPACK EP.
 
-we don't support XNNPACK on iOS currently.
+We don't support XNNPACK on iOS currently.
 
 If performing a custom build of ONNX Runtime, support for the XNNPACK EP must be enabled when building.
 
