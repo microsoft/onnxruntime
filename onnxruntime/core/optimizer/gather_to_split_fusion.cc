@@ -101,13 +101,13 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
         break;
       }
       if (index < 0) index += static_cast<int64_t>(output_count);
-      if (index < 0 || index >= static_cast<int64_t>(output_count) || gather_outputs[index]) {
+      if (index < 0 || index >= static_cast<int64_t>(output_count) || gather_outputs[static_cast<size_t>(index)]) {
         can_fuse = false;
         break;
       }
       Node& gather_node = *graph.GetNode(it->Index());
       nodes_to_fuse.emplace_back(gather_node);
-      gather_outputs[index] = gather_node.MutableOutputDefs()[0];
+      gather_outputs[static_cast<size_t>(index)] = gather_node.MutableOutputDefs()[0];
     }
 
     if (!can_fuse) continue;
