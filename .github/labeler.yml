@@ -7,7 +7,7 @@ ep:DML:
 ep:MIGraphX: /\bmigraphx\b/i'
 ep:oneDNN: '/\bonednn\b/i'
 ep:OpenVINO: '/\bopen\s*vino\b/i'
-ep:RockchipNPU: '/\brockchip/i'
+ep:RockchipNPU: '/\brockchip\b/i'
 ep:TensorRT:
   - '/\btensor\s*rt\b/i'
   - '/\btrt\b/i'
@@ -20,7 +20,7 @@ platform:mobile:
   - '/\bcore-?ml\b/i'
 platform:windows:
   - '/\bwindows\b/i'
-  - '/\bwinrt\b)/i'
+  - '/\bwinrt\b/i'
 model:transformer:
   - '/\bbert\b/i'
   - '/\bgpt-?2\b/i'
