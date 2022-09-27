@@ -75,7 +75,7 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
 
   auto elem_nums = tensor_X->Shape().AsShapeVector();
   auto dimension = elem_nums[axis];
-  for (auto i = static_cast<int32_t>(elem_nums.size()) - 2; i >= 0; --i) {
+  for (auto i = static_cast<int64_t>(elem_nums.size()) - 2; i >= 0; --i) {
     elem_nums[i] *= elem_nums[i + 1];
   }
 
