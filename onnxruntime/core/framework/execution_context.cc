@@ -15,6 +15,7 @@ class DeviceStreamCollectionImpl {
     for (auto& ep : providers) {
       eps_.push_back(ep);
     }
+    under_subgraph_ = sess_state.GetGraphViewer().ParentNode() != nullptr;
   }
 
   virtual ~DeviceStreamCollectionImpl() {
@@ -25,7 +26,9 @@ class DeviceStreamCollectionImpl {
       if (device_stream) {
         ORT_RETURN_IF_ERROR(device_stream->CleanUpOnRunEnd());
 #ifndef ENABLE_TRAINING
+      if (!under_subgraph_) {
         device_stream->Flush();
+      }
 #endif
       }
     }
@@ -74,6 +77,7 @@ class DeviceStreamCollectionImpl {
   // due to training's partial execution, the device streams collection may need to be hold
   // with a different lifetime of session state, we need to hold the reference of EPs.
   std::vector<std::shared_ptr<IExecutionProvider>> eps_;
+  bool under_subgraph_ = false;
 };
 
 DeviceStreamCollection::DeviceStreamCollection(size_t num_streams, const SessionState& sess_state) : impl_(std::make_unique<DeviceStreamCollectionImpl>(num_streams, sess_state)) {}

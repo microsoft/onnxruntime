@@ -339,6 +339,7 @@ class KernelScope {
 
     if (session_state_.Profiler().IsEnabled()) {
       auto& profiler = session_state_.Profiler();
+      std::string output_type_shape_;
       CalculateTotalOutputSizes(&kernel_context_, total_output_sizes_, node_name_, output_type_shape_);
       profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                      node_name_ + "_kernel_time",
@@ -392,8 +393,7 @@ class KernelScope {
   size_t input_activation_sizes_{};
   size_t input_parameter_sizes_{};
   size_t total_output_sizes_{};
-  std::string input_type_shape_{};
-  std::string output_type_shape_{};
+  std::string input_type_shape_;
 
 #ifdef CONCURRENCY_VISUALIZER
   diagnostic::span span_;
