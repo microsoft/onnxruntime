@@ -6,7 +6,7 @@ INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ORTMODULE_BUILD=false
 TARGET_ROCM=false
 CU_VER="11.1"
-TORCH_VERSION='1.11.0'
+TORCH_VERSION='1.12.1'
 USE_CONDA=false
 
 while getopts p:h:d:v:tmurc parameter_Option
