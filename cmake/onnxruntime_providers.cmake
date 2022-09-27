@@ -1416,7 +1416,6 @@ if (onnxruntime_USE_ROCM)
     #endif()
   endif()
 
-  # FIXME: if enable tunable
   include(composable_kernel)
   target_link_libraries(onnxruntime_providers_rocm PRIVATE onnxruntime_composable_kernel_includes device_gemm_instance)
 
