@@ -85,7 +85,8 @@ static OrtStatusPtr CopyStringToMemory(_In_ const std::string& str, _In_ const c
   return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, error_msg);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_opt_ char* out, _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                    _Out_opt_ char* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   std::string value;
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<std::string>(name, &value);
@@ -309,7 +310,8 @@ ORT_API(void, OrtApis::ReleaseProviderOptions, _Frees_ptr_opt_ OrtProviderOption
   }
 }
 
-ORT_API_STATUS_IMPL(OrtApis::NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_opt_ char* out, _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_opt_ char* out,
+                    _Inout_ size_t* size) {
   API_IMPL_BEGIN
   const std::string& name = reinterpret_cast<const onnxruntime::NodeArg*>(node_arg)->Name();
   return CopyStringToMemory(name, "NodeArg's name buffer is too small", out, size);
@@ -396,7 +398,8 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
 
           if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
             option = onnx::OpSchema::FormalParameterOption::Optional;
-          } else if (/*op->version >= 13 &&*/ characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC) {
+          } else if ((op->version >= 13) &&
+                     (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
             option = onnx::OpSchema::FormalParameterOption::Variadic;
           }
         }
@@ -423,7 +426,8 @@ common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_do
 
           if (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL) {
             option = onnx::OpSchema::FormalParameterOption::Optional;
-          } else if (/*op->version >= 13 &&*/ characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC) {
+          } else if ((op->version >= 13) &&
+                     (characteristic == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC)) {
             option = onnx::OpSchema::FormalParameterOption::Variadic;
           }
         }

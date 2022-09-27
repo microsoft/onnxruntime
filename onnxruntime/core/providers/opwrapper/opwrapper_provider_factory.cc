@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 struct OpWrapperProviderFactory : IExecutionProviderFactory {
-  OpWrapperProviderFactory(const ProviderOptions& provider_options)
+  explicit OpWrapperProviderFactory(const ProviderOptions& provider_options)
     : provider_options_(provider_options) {
   }
 

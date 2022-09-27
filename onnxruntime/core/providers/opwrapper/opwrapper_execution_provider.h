@@ -9,7 +9,7 @@ namespace onnxruntime {
 
 class OpWrapperExecutionProvider : public IExecutionProvider {
  public:
-  OpWrapperExecutionProvider(const ProviderOptions& provider_options);
+  explicit OpWrapperExecutionProvider(const ProviderOptions& provider_options);
   virtual ~OpWrapperExecutionProvider();
 
   ProviderOptions GetProviderOptions() const override { return provider_options_; }

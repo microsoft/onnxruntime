@@ -1160,7 +1160,8 @@ inline std::unordered_map<std::string, std::string> Ort::ProviderOptions::ToMap(
   all_keys.resize(keys_size);
   all_vals.resize(vals_size);
 
-  ThrowOnError(GetApi().ProviderOptions_Serialize(p_, all_keys.data(), &keys_size, all_vals.data(), &vals_size, nullptr));
+  ThrowOnError(GetApi().ProviderOptions_Serialize(p_, all_keys.data(), &keys_size, all_vals.data(), &vals_size,
+                                                  nullptr));
 
   std::unordered_map<std::string, std::string> map;
   size_t k_i = 0;
