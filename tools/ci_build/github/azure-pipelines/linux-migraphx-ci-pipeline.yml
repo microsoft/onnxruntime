@@ -19,7 +19,7 @@ jobs:
   - checkout: self
     clean: true
 
-  - template: get-docker-image-steps.yml
+  - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/pai/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/pai
