@@ -89,7 +89,7 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       }
       if (axis < 0) axis += rank;
       if (first_edge) {
-        auto dim = shape->dim(axis);
+        auto dim = shape->dim(static_cast<int>(axis));
         if (!utils::HasDimValue(dim) || dim.dim_value() != static_cast<int64_t>(output_count)) {
           can_fuse = false;
           break;
@@ -120,7 +120,7 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       if (i == split_axis) {
         split_output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1LL);
       } else {
-        *(split_output_type.mutable_tensor_type()->mutable_shape()->add_dim()) = shape->dim(i);
+        *(split_output_type.mutable_tensor_type()->mutable_shape()->add_dim()) = shape->dim(static_cast<int>(i));
       }
     }
 
