@@ -27,34 +27,35 @@ jobs:
 
   - task: CmdLine@2
     inputs:
-      script: |-
-      docker run --rm \
-        -e HIP_VISIBLE_DEVICES \
-        --privileged \
-        --security-opt seccomp=unconfined \
-        --shm-size=1024m \
-        --device=/dev/kfd \
-        --device=/dev/dri \
-        --group-add $(video) \
-        --group-add $(render) \
-        --volume $(Build.SourcesDirectory):/onnxruntime_src \
-        --volume $(Build.BinariesDirectory):/build \
-        --workdir /onnxruntime_src \
-        --user onnxruntimedev \
-        onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
-          python tools/ci_build/build.py \
-            --config RelWithDebInfo \
-            --mpi_home /opt/ompi \
-            --use_migraphx \
-            --rocm_version=5.2.3 \
-            --rocm_home /opt/rocm \
-            --nccl_home /opt/rocm \
-            --update \
-            --build_dir ./build \
-            --build \
-            --parallel 8 \
-            --build_wheel \
-            --skip_tests
+      script: |
+        docker run --rm \
+          -e HIP_VISIBLE_DEVICES \
+          --privileged \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri \
+          --group-add $(video) \
+          --group-add $(render) \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /onnxruntime_src \
+          --user onnxruntimedev \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+            python tools/ci_build/build.py \
+              --config RelWithDebInfo \
+              --mpi_home /opt/ompi \
+              --use_migraphx \
+              --rocm_version=5.2.3 \
+              --rocm_home /opt/rocm \
+              --nccl_home /opt/rocm \
+              --update \
+              --build_dir ./build \
+              --build \
+              --parallel 8 \
+              --build_wheel \
+              --skip_tests
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime'
 
   - task: CmdLine@2
