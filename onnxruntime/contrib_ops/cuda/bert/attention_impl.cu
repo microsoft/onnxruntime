@@ -33,6 +33,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/transformer_common.h"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
+#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -109,6 +110,8 @@ Status QkvToContext(
 
   // input should be BxSx3xNxH => qkv: 3xBxNxSxH
   T* qkv = workspace;
+  onnxruntime::contrib::cuda::transformers::CudaTensorConsoleDumper dump;
+  dump.Print("GPUComputed Input", input, batch_size, sequence_length, (qkv_sizes[0] + qkv_sizes[1] + qkv_sizes[2]));
   if (bias == nullptr) {
     ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, qkv_head_size[0], num_heads,
                                        max_threads_per_block, false, input, qkv));
@@ -124,9 +127,12 @@ Status QkvToContext(
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
 
+  dump.Print("GPUComputed AddBiasTransposeOutput", qkv, batch_size, sequence_length, (qkv_sizes[0] + qkv_sizes[1] + qkv_sizes[2]));
+
   // Q, K, V has size BxNxSxH
   const int batches = batch_size * num_heads;
   const int size_per_batch = sequence_length * qkv_head_size[0];
+  const int size_per_batch_v = sequence_length * qkv_head_size[2];
   const int total_size = batches * size_per_batch;
 
   T* scratch1;
@@ -162,9 +168,13 @@ Status QkvToContext(
     k = q + total_size;
     v = k + total_size;
   } else {
-    k = q + (batches * sequence_length * qkv_sizes[0]);
-    v = k + (batches * sequence_length * qkv_sizes[1]);
+    k = q + (batches * sequence_length * qkv_head_size[0]);
+    v = k + (batches * sequence_length * qkv_head_size[1]);
   }
+
+  dump.Print("GPUComputed Q", q, batch_size, sequence_length, qkv_sizes[0]);
+  dump.Print("GPUComputed K", k, batch_size, sequence_length, qkv_sizes[1]);
+  dump.Print("GPUComputed V", v, batch_size, sequence_length, qkv_sizes[2]);
 
   cublasSetStream(cublas, stream);
 
@@ -172,6 +182,7 @@ Status QkvToContext(
   // past_k (BxNxS'xH) + k (BxNxSxH) => present_k (BxNxS*xH)
   // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxS*xH)
   const int present_size_per_batch = all_sequence_length * qkv_head_size[0];
+  const int present_size_per_batch_v = all_sequence_length * qkv_head_size[2];
   if (nullptr != present) {
     ORT_RETURN_IF_ERROR(
         LaunchConcatPastToPresent(stream, all_sequence_length, sequence_length, batch_size, qkv_head_size[0], num_heads,
@@ -231,9 +242,9 @@ Status QkvToContext(
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N,
       qkv_head_size[2], sequence_length, all_sequence_length,
-      &one, v, qkv_head_size[2], present_size_per_batch,
+      &one, v, qkv_head_size[2], present_size_per_batch_v,
       scratch2, all_sequence_length, temp_matrix_size,
-      &zero, temp_output, qkv_head_size[2], size_per_batch, batches, prop));
+      &zero, temp_output, qkv_head_size[2], size_per_batch_v, batches, prop));
 
   // temp_output is BxNxSxH, transpose to output BxSxNxH
 return LaunchTransCtx(stream, sequence_length, batch_size, qkv_head_size[2], num_heads,

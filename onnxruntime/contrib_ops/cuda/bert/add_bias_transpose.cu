@@ -98,23 +98,51 @@ __global__ void AddBiasTransposeQKV(const T* input, const T* biases, T* output) 
   int s = blockIdx.x;
   int b = blockIdx.y;
   int m = blockIdx.z;  // matrix id
+  const int h = threadIdx.x;
 
-  const int head_size = blockDim.x;
   const int num_heads = blockDim.y;
 
   const int sequence_length = gridDim.x;
   const int batch_size = gridDim.y;
   const int M = gridDim.z;
+  int H_tmp;
+  const int head_size_qk = 3;
+  const int head_size_v = 2;
+
+  const int head_size = head_size_qk;
+
   const int H = head_size;
+
   const int NH = num_heads * head_size;
   const int NHS = NH * sequence_length;
 
-  int in_offset = n * head_size + (m + s * M) * NH + b * NHS * M;
-  const int out_offset = s * head_size + n * sequence_length * H + b * NHS + m * NHS * batch_size;
+  const int total_size = num_heads * (head_size_qk + head_size_qk + head_size_v);
 
-  const int h = threadIdx.x;
-  if (h < head_size) {
-    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+  // int in_offset = n * head_size + (m + s * M) * NH + b * NHS * M;
+  // const int out_offset = s * head_size + n * sequence_length * H + b * NHS + m * NHS * batch_size;
+  int in_offset;
+  int out_offset;
+  int bias_offset;
+  if (m != 2) {
+    in_offset = n * head_size_qk + (m * head_size_qk * num_heads) + s * (head_size_qk + head_size_qk + head_size_v) * num_heads + b * num_heads * (head_size_qk + head_size_qk + head_size_v) * sequence_length;
+    out_offset = m * (num_heads * head_size_qk * sequence_length * batch_size) + b * (num_heads * head_size_qk *sequence_length) + n * (sequence_length * head_size_qk) + s * head_size_qk;
+    bias_offset = m * NH + n * H + h;
+    if (h < head_size_qk) {
+      printf("Adding input (%f) to bias (%f), matrix_id (%i), n (%i), s (%i), b (%i), m (%i), head_size (%i), num_heads (%i), seq_len (%i), batch_size (%i), M (%i), h (%i)\n", input[in_offset + h], biases[m * NH + n * H + h], m, n, s, b, m, head_size, num_heads, sequence_length, batch_size, M, h);
+      printf("Input: (%f) - Input offset = %i, Output offset= %i, bias offset=%i\n", input[in_offset + h], in_offset + h, out_offset + h, bias_offset);
+      // output[out_offset + h] = input[in_offset + h] + biases[bias_offset];
+      output[out_offset + h] = input[in_offset + h] + biases[bias_offset];
+    }
+  } else {
+    in_offset = n * head_size_v + (m * head_size_qk * num_heads) + s * (head_size_qk + head_size_qk + head_size_v) * num_heads + b * total_size * sequence_length;
+    out_offset = m * (num_heads * head_size_qk * sequence_length * batch_size) + b * (num_heads * head_size_v *sequence_length) + n * (sequence_length * head_size_v) + s * head_size_v;
+    bias_offset = m * NH + n * head_size_v + h;
+    if (h < head_size_v) {
+      printf("Adding input (%f) to bias (%f), matrix_id (%i), n (%i), s (%i), b (%i), m (%i), head_size (%i), num_heads (%i), seq_len (%i), batch_size (%i), M (%i), h (%i)\n", input[in_offset + h], biases[m * NH + n * H + h], m, n, s, b, m, head_size, num_heads, sequence_length, batch_size, M, h);
+      printf("Input: (%f) - Input offset = %i, Output offset= %i, bias offset=%i\n", input[in_offset + h], in_offset + h, out_offset + h, bias_offset);
+      // output[out_offset + h] = input[in_offset + h] + biases[bias_offset];
+      output[out_offset + h] = input[in_offset + h] + biases[bias_offset];
+    }
   }
 }
 
