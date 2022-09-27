@@ -37,6 +37,8 @@ namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
 constexpr const char* CUDA = "Cuda";
 constexpr const char* CUDA_PINNED = "CudaPinned";
+constexpr const char* CANN = "Cann";
+constexpr const char* CANN_PINNED = "CannPinned";
 constexpr const char* DML = "DML";
 constexpr const char* OpenVINO_CPU = "OpenVINO_CPU";
 constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
