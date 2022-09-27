@@ -1090,10 +1090,6 @@ public class OrtSession implements AutoCloseable {
     private native void addNnapi(long apiHandle, long nativeHandle, int nnapiFlags)
         throws OrtException;
 
-    private native void addNuphar(
-        long apiHandle, long nativeHandle, int allowUnalignedBuffers, String settings)
-        throws OrtException;
-
     private native void addTvm(long apiHandle, long nativeHandle, String settings)
         throws OrtException;
 
