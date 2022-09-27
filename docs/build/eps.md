@@ -723,7 +723,7 @@ Once you have all the necessary components setup, follow the instructions to [cr
 
 ## XNNPACK
 
-Usage of XNNPACK on Android/Web/Windows/Linux platforms is via the XNNPACK EP.
+Usage of XNNPACK on Android/Windows/Linux platforms is via the XNNPACK EP.
 
 See the [XNNPACK Execution Provider](../execution-providers/Xnnpack-ExecutionProvider.md) documentation for more details.
 
