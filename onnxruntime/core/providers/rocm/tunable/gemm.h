@@ -33,8 +33,10 @@ GEMM(BFloat16, float);
 
 }  // namespace row_major
 
-// TODO(anyone): the caller should not need to swap params a and b manaully, but all the current call site is doing so.
-// It is cumbersome and unintuitive. We shall correct all callsite and remove this namespace in the future.
+// TODO(anyone): the caller should not need to swap the params a and b manually, but all the current callsites are
+// doing so. It is cumbersome and unintuitive. At the moment, this namespace only ease the porting from old direct
+// rocblas_gemm* calls to tunable gemm calls. After all porting of all callsites, if there is no column_major usecase
+// left, then we shall remove this namespace, finally.
 namespace column_major {
 
 GEMM(double, double);

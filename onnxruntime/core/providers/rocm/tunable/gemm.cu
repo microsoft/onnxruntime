@@ -5,6 +5,7 @@
 #include "core/providers/rocm/tunable/gemm.h"
 
 #include <type_traits>
+#include <utility>
 
 #include "core/providers/rocm/tunable/gemm_rocblas.h"
 #include "core/providers/rocm/tunable/gemm_tunable.cuh"
