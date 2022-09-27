@@ -4987,6 +4987,8 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   }
 }
 
+// If EP is non-GPU EP or unknown, the sub-graph will be not fused because CPU impl for SimplifiedLayerNormalization
+// doesn't support input and scale having different data types.
 TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/simplified_layer_norm_with_casts.onnx";
   std::shared_ptr<Model> p_model;
@@ -4995,7 +4997,27 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest) {
 
   InlinedHashSet<std::string_view> compatible_eps;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps),
+                                                     TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 0);
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTestCudaEp) {
+  auto model_uri = MODEL_FOLDER "fusion/simplified_layer_norm_with_casts.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+
+  InlinedHashSet<std::string_view> compatible_eps;
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps),
+                                                     TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -5010,10 +5032,12 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest) {
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "SimplifiedLayerNormalization") {
       // LayerNormalization should have two inputs.
-      EXPECT_EQ(node.InputDefs().size(), 2u) << "LayerNormalization number of inputs does not equal to 2. Got:" << node.InputDefs().size();
+      EXPECT_EQ(node.InputDefs().size(), 2u)
+          << "LayerNormalization number of inputs does not equal to 2. Got:" << node.InputDefs().size();
       // LayerNormalization input "scale" and "bias" should have the same dimension.
       const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
-      EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+      EXPECT_EQ(scale_shape->dim_size(), 1)
+          << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
     } else if (node.OpType() == "Cast") {
       continue;
     } else {
