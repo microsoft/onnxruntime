@@ -18,9 +18,11 @@ platform:mobile:
   - '/\bobj-?c\b/i'
   - '/\bnnnapi\b/i'
   - '/\bcore-?ml\b/i'
+  - '/\bmobile\b/i'
 platform:windows:
   - '/\bwindows\b/i'
   - '/\bwinrt\b/i'
+  - '/\bwinml\b/i'
 model:transformer:
   - '/\bbert\b/i'
   - '/\bgpt-?2\b/i'
@@ -28,4 +30,4 @@ model:transformer:
   - '/\blong-?former\b/i'
   - '/\bt5\b/i'
 quantization:
-  - '/\bquantiz(?:e|ation)\b/i'
+  - '/is this a quantized model\?\n\nYes/i'
