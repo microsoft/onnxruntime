@@ -122,10 +122,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_Tvm("Vulkan -device=amd_apu");
 #endif
 
-#if USE_NUPHAR
-                opt.AppendExecutionProvider_Nuphar();
-#endif
-
 #if USE_OPENVINO
                 opt.AppendExecutionProvider_OpenVINO();
 #endif

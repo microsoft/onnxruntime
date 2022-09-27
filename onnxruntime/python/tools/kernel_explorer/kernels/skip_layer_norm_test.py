@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import re
 from itertools import product
 
 import kernel_explorer as ke
@@ -19,8 +20,8 @@ def get_bert_sizes():
 
 def dtype_to_funcs(dtype):
     type_map = {
-        "float16": list(filter(lambda x: "SkipLayerNormSmall_half" in x, dir(ke))),
-        "float32": list(filter(lambda x: "SkipLayerNormSmall_float" in x, dir(ke))),
+        "float16": list(filter(lambda x: re.search("SkipLayerNorm.*_half", x), dir(ke))),
+        "float32": list(filter(lambda x: re.search("SkipLayerNorm.*_float", x), dir(ke))),
     }
     return type_map[dtype]
 
@@ -109,9 +110,8 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
 
 
 def profile():
-    bert_sizes = get_bert_sizes()
     for dtype in dtypes:
-        for bert_size in bert_sizes:
+        for bert_size in get_bert_sizes():
             for func in dtype_to_funcs(dtype):
                 profile_skip_layer_norm_func(*bert_size, dtype, func)
             print()

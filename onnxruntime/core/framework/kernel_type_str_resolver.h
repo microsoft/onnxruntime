@@ -51,6 +51,9 @@ class IKernelTypeStrResolver {
    */
   virtual Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
                                       gsl::span<const ArgTypeAndIndex>& resolved_args) const = 0;
+
+ protected:
+  ~IKernelTypeStrResolver() = default;
 };
 
 /**
