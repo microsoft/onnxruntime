@@ -297,17 +297,13 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
 
     CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(operation_desc,
                                                      CUBLASLT_MATMUL_DESC_EPILOGUE,
-                                                     &epilogue_gelu, sizeof(epilogue_gelu)));  
+                                                     &epilogue_gelu, sizeof(epilogue_gelu)));
   }
 
   if (bias != nullptr) {
     CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(operation_desc,
                                                      CUBLASLT_MATMUL_DESC_BIAS_POINTER,
                                                      &bias, sizeof(bias)));
-  }
-
-  // TODO: Fix me
-  if (gelu_activation) {
   }
 
   // TODO (hasesh): Allow CublasLtMatmul tuning for clients by allowing them to pass in the
