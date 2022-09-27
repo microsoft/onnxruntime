@@ -950,6 +950,47 @@ std::vector<OrtValue> OpTester::ExecuteModel(
   return fetches;
 }
 
+bool SetEpForAllNodes(
+    Graph& graph,
+    const std::string& provider_type,
+    const std::unique_ptr<IExecutionProvider>& ep,
+    std::vector<std::shared_ptr<CustomRegistry>> custom_registries) {
+  const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == kConstant)
+      continue;
+
+    // if node is not registered for the provider, skip
+    node.SetExecutionProviderType(provider_type);
+    if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
+        provider_type == onnxruntime::kTensorrtExecutionProvider ||
+        // provider_type == onnxruntime::kTvmExecutionProvider ||
+        provider_type == onnxruntime::kNnapiExecutionProvider ||
+        provider_type == onnxruntime::kCoreMLExecutionProvider ||
+        provider_type == onnxruntime::kDnnlExecutionProvider ||
+        provider_type == onnxruntime::kSnpeExecutionProvider)
+      continue;
+    auto reg = ep->GetKernelRegistry();
+    if (!KernelRegistry::HasImplementationOf(*reg, node, ep->Type(),
+                                             kernel_type_str_resolver)) {
+      bool valid = false;
+      for (auto& custom_registry : custom_registries) {
+        if (KernelRegistry::HasImplementationOf(*custom_registry->GetKernelRegistry(),
+                                                node, ep->Type(),
+                                                kernel_type_str_resolver)) {
+          valid = true;
+          break;
+        }
+      }
+
+      if (!valid) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 void OpTester::Run(
     ExpectResult expect_result, const std::string& expected_failure_string,
     const std::unordered_set<std::string>& excluded_provider_types,
@@ -1183,44 +1224,7 @@ void OpTester::Run(
         if (execution_provider == nullptr)
           continue;
 
-        bool valid = true;
-        const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
-
-        // set execution provider for all nodes in the graph
-        for (auto& node : graph.Nodes()) {
-          if (node.OpType() == kConstant)
-            continue;
-
-          // if node is not registered for the provider, skip
-          node.SetExecutionProviderType(provider_type);
-          if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
-              provider_type == onnxruntime::kTensorrtExecutionProvider ||
-              // provider_type == onnxruntime::kTvmExecutionProvider ||
-              provider_type == onnxruntime::kNnapiExecutionProvider ||
-              provider_type == onnxruntime::kCoreMLExecutionProvider ||
-              provider_type == onnxruntime::kDnnlExecutionProvider ||
-              provider_type == onnxruntime::kSnpeExecutionProvider)
-            continue;
-          auto reg = execution_provider->GetKernelRegistry();
-          if (!KernelRegistry::HasImplementationOf(*reg, node, execution_provider->Type(),
-                                                   kernel_type_str_resolver)) {
-            valid = false;
-            for (auto& custom_session_registry : custom_session_registries_) {
-              if (KernelRegistry::HasImplementationOf(*custom_session_registry->GetKernelRegistry(),
-                                                      node, execution_provider->Type(),
-                                                      kernel_type_str_resolver)) {
-                valid = true;
-                break;
-              }
-            }
-
-            if (!valid) {
-              break;
-            }
-          }
-        }
-
-        if (!valid)
+        if (!SetEpForAllNodes(graph, provider_type, execution_provider, custom_session_registries_))
           continue;
 
         for (auto& custom_session_registry : custom_session_registries_)
