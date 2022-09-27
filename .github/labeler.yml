@@ -1,6 +1,6 @@
 # Add/remove 'ep:ACL' label if issue contains the word 'ACL'
 ep:ACL:
-  - '(ACL)'
+  - '(/ACL/i)'
 # Add/remove 'ep:ArmNN' label if issue contains the word 'ArmNN'
 ep:ArmNN:
   - '(ArmNN)'
