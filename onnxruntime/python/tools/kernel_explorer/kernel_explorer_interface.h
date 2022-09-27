@@ -4,9 +4,10 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
-#include "contrib_ops/rocm/bert/util.h"
+#include "core/providers/rocm/tunable/tunable.h"
+#include "core/providers/rocm/tunable/util.h"
 
-using onnxruntime::contrib::rocm::Timer;
+using onnxruntime::rocm::tunable::Timer;
 
 /// Wrapping around Op and TunableOp
 class IKernelExplorer {
@@ -22,7 +23,7 @@ class IKernelExplorer {
     for (int i = 0; i < 5; i++) {
       Run();
     }
-    Timer timer;
+    Timer timer{Stream()};
     timer.Start();
     for (int i = 0; i < repeats_; i++) {
       Run();
