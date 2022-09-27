@@ -93,7 +93,7 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
     return Status::OK();
   }
 
-  HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(GetDeviceProp(), Stream(), Y_data, mean_data, inv_var_data,
+  HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data,
                                                       X_data, n1, n2, epsilon_, scale_data, bias_data);
   return Status::OK();
 }
