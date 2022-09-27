@@ -18,6 +18,7 @@ jobs:
   steps:
   - checkout: self
     clean: true
+    submodules: recursive
 
   - template: templates/get-docker-image-steps.yml
     parameters:
@@ -49,10 +50,11 @@ jobs:
               --rocm_home /opt/rocm \
               --nccl_home /opt/rocm \
               --update \
-              --build_dir ./build \
+              --build_dir /build \
               --build \
               --parallel 8 \
               --build_wheel \
+              --skip_submodule_sync \
               --skip_tests
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime'
@@ -71,8 +73,8 @@ jobs:
           --group-add $(render) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
-          --workdir /onnxruntime_src \
+          --workdir /onnxruntime_src/build/RelWithDebInfo \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
-            /tools/ci_build/github/pai/migraphx_test_launcher.sh ./build/RelWithDebInfo
+            ../../tools/ci_build/github/pai/migraphx_test_launcher.sh
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
