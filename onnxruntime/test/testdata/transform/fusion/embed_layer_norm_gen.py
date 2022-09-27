@@ -21,6 +21,7 @@ def CreateModelUseSpecificOpset(graph, opset):
 
     return helper.make_model(graph, producer_name="embed_layer_norm_gen", **kwargs)
 
+
 def GenerateNodes(model_name, has_cast, suffix=""):
     nodes = [  # LayerNorm subgraph
         helper.make_node("Shape", ["input_ids" + suffix], ["shape1_out" + suffix], "shape1" + suffix),
@@ -316,7 +317,7 @@ def GenerateMultipleEmbedModel(model_name, opset_version):
         initializers,
     )
 
-    model =  CreateModelUseSpecificOpset(graph, opset_version)
+    model = CreateModelUseSpecificOpset(graph, opset_version)
     onnx.save(model, model_name)
 
 
@@ -956,12 +957,16 @@ def GenerateModel9(model_name, opset_version):
 for opset_version in [11, 13]:
     postfix = ""
     if opset_version == 13:
-        postfix= "_opset13"
+        postfix = "_opset13"
     GenerateModel3(f"embed_layer_norm_format3{postfix}.onnx", True, opset_version)
     GenerateModel3(f"embed_layer_norm_format3_no_cast{postfix}.onnx", False, opset_version)
     GenerateModel5(f"embed_layer_norm_format5{postfix}.onnx", opset_version)
     GenerateModel6(f"embed_layer_norm_format6{postfix}.onnx", opset_version)
     GenerateModel7(f"embed_layer_norm_format7{postfix}.onnx", opset_version)  # distilbert
-    GenerateModel8(f"embed_layer_norm_format8{postfix}.onnx", opset_version)  # distilbert & shape nodes integration with input mask
-    GenerateModel9(f"embed_layer_norm_format9{postfix}.onnx", opset_version)  # distilbert & shape nodes integration without input mask
+    GenerateModel8(
+        f"embed_layer_norm_format8{postfix}.onnx", opset_version
+    )  # distilbert & shape nodes integration with input mask
+    GenerateModel9(
+        f"embed_layer_norm_format9{postfix}.onnx", opset_version
+    )  # distilbert & shape nodes integration without input mask
     GenerateMultipleEmbedModel(f"embed_layer_norm_multiple{postfix}.onnx", opset_version)
