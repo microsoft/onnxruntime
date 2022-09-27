@@ -4,7 +4,6 @@ FROM ubuntu:${UBUNTU_VERSION}
 ARG OPENVINO_VERSION=2022.1.0
 ARG PYTHON_VERSION=3.8
 
-
 ADD scripts /tmp/scripts
 RUN /tmp/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} -d EdgeDevice && \
     /tmp/scripts/install_os_deps.sh -d EdgeDevice && \
