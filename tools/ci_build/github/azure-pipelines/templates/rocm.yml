@@ -32,6 +32,14 @@ jobs:
         value: 'onnxruntime_rocm_enable_profiling'
 
   steps:
+  - task: CmdLine@2
+    displayName: 'check variables'
+    inputs:
+      script: |
+        echo "BuildConfig is "${{ variables['BuildConfig'] }} && \
+        echo "EnableProfiling is "${{ variables['EnableProfiling'] }} && \
+        echo "ArtifactName is "${{ variables['ArtifactName'] }}
+
   - checkout: self
     clean: true
     submodules: recursive
