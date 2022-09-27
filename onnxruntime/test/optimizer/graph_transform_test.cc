@@ -269,7 +269,9 @@ TEST_F(GraphTransformationTests, ConstantFolding) {
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1));
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/,
+                                        false /*enable_enhanced_shape_constant_fold*/),
+      TransformerLevel::Level1));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -288,7 +290,9 @@ TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1));
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/,
+                                        false /*enable_enhanced_shape_constant_fold*/),
+      TransformerLevel::Level1));
 
   // assign all nodes to CUDA. the constant folding should override this to perform the constant folding on cpu
   for (auto& node : graph.Nodes()) {
@@ -372,7 +376,9 @@ TEST_F(GraphTransformationTests, ConstantFoldingSubgraph) {
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1));
+      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/,
+                                        false /*enable_enhanced_shape_constant_fold*/),
+      TransformerLevel::Level1));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -400,6 +406,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithShapeToInitializer) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(),
                                         false /*skip_dequantize_linear*/,
+                                        false /*enable_enhanced_shape_constant_fold*/,
                                         compatible_eps,
                                         excluded_initializers),
       TransformerLevel::Level1));
@@ -429,6 +436,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithScalarShapeToInitializer) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(),
                                         false /*skip_dequantize_linear*/,
+                                        false /*enable_enhanced_shape_constant_fold*/,
                                         compatible_eps),
       TransformerLevel::Level1));
 
@@ -510,7 +518,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Shape15CannotFold) {
     InlinedHashSet<std::string_view> compatible_eps;
     std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
-        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+        *e.get(), false /*skip_dequantize_linear*/, true /*enable_enhanced_shape_constant_fold*/, compatible_eps);
     TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                          pre_graph_checker, post_graph_checker);
   }
@@ -559,7 +567,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Shape15) {
     // Try to parse int64 type constant initializers.
     InlinedVector<int64_t> shape_values;
     ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *input_arg, shape_values, true));
-    ASSERT_EQ(shape_values.size(), 2);
+    ASSERT_EQ(shape_values.size(), 2U);
     ASSERT_EQ(shape_values[0], 512);
     ASSERT_EQ(shape_values[1], 1536);
   };
@@ -588,7 +596,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Shape15) {
     InlinedHashSet<std::string_view> compatible_eps;
     std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
-        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+        *e.get(), false /*skip_dequantize_linear*/, true /*enable_enhanced_shape_constant_fold*/, compatible_eps);
     TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                          pre_graph_checker, post_graph_checker);
   }
@@ -632,7 +640,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Shape15TakesGraphInput) {
     // Try to parse int64 type constant initializers.
     InlinedVector<int64_t> shape_values;
     ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *input_arg, shape_values, true));
-    ASSERT_EQ(shape_values.size(), 2);
+    ASSERT_EQ(shape_values.size(), 2U);
     ASSERT_EQ(shape_values[0], 512);
     ASSERT_EQ(shape_values[1], 1536);
   };
@@ -658,7 +666,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Shape15TakesGraphInput) {
     InlinedHashSet<std::string_view> compatible_eps;
     std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
-        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+        *e.get(), false /*skip_dequantize_linear*/, true /*enable_enhanced_shape_constant_fold*/, compatible_eps);
     TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                          pre_graph_checker, post_graph_checker);
   }
@@ -703,7 +711,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Shape15GeneratesGraphOutpu
     // Try to parse int64 type constant initializers.
     InlinedVector<int64_t> shape_values;
     ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *input_arg, shape_values, true));
-    ASSERT_EQ(shape_values.size(), 2);
+    ASSERT_EQ(shape_values.size(), 2U);
     ASSERT_EQ(shape_values[0], 512);
     ASSERT_EQ(shape_values[1], 1536);
   };
@@ -729,7 +737,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Shape15GeneratesGraphOutpu
     InlinedHashSet<std::string_view> compatible_eps;
     std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
-        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+        *e.get(), false /*skip_dequantize_linear*/, true /*enable_enhanced_shape_constant_fold*/, compatible_eps);
     TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                          pre_graph_checker, post_graph_checker);
   }
@@ -780,7 +788,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Slice) {
     // Try to parse int64 type constant initializers.
     InlinedVector<int64_t> shape_values;
     ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *input_arg, shape_values, true));
-    ASSERT_EQ(shape_values.size(), 2);
+    ASSERT_EQ(shape_values.size(), 2U);
     ASSERT_EQ(shape_values[0], 512);
     ASSERT_EQ(shape_values[1], 1536);
   };
@@ -812,7 +820,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Slice) {
     InlinedHashSet<std::string_view> compatible_eps;
     std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
-        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+        *e.get(), false /*skip_dequantize_linear*/, true /*enable_enhanced_shape_constant_fold*/, compatible_eps);
     TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                          pre_graph_checker, post_graph_checker);
   }
@@ -860,7 +868,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_SliceGeneratesGraphOutput)
     // Try to parse int64 type constant initializers.
     InlinedVector<int64_t> shape_values;
     ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *input_arg, shape_values, true));
-    ASSERT_EQ(shape_values.size(), 2);
+    ASSERT_EQ(shape_values.size(), 2U);
     ASSERT_EQ(shape_values[0], 512);
     ASSERT_EQ(shape_values[1], 1536);
   };
@@ -888,7 +896,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_SliceGeneratesGraphOutput)
     InlinedHashSet<std::string_view> compatible_eps;
     std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
-        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+        *e.get(), false /*skip_dequantize_linear*/, true /*enable_enhanced_shape_constant_fold*/, compatible_eps);
     TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                          pre_graph_checker, post_graph_checker);
   }
@@ -940,7 +948,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Gather) {
             InlinedVector<int64_t> shape_values;
             auto input_arg = graph.GetNodeArg(gather_output_name);
             ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *input_arg, shape_values, true));
-            ASSERT_EQ(shape_values.size(), 1);
+            ASSERT_EQ(shape_values.size(), 1U);
             ASSERT_EQ(shape_values[0], 24);
           }
         }
@@ -977,7 +985,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_Gather) {
     InlinedHashSet<std::string_view> compatible_eps;
     std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
-        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+        *e.get(), false /*skip_dequantize_linear*/, true /*enable_enhanced_shape_constant_fold*/, compatible_eps);
     TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                          pre_graph_checker, post_graph_checker);
   }
@@ -1047,7 +1055,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_ConcreteDimUsedBySlice) {
 
         // Try to parse int64 type constant initializers.
         ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *shape_input, shape_values, true));
-        ASSERT_EQ(shape_values.size(), 3);
+        ASSERT_EQ(shape_values.size(), 3U);
         ASSERT_EQ(shape_values[0], -1);
         ASSERT_EQ(shape_values[1], 512);
         ASSERT_EQ(shape_values[2], 512);
@@ -1136,7 +1144,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_ConcreteDimUsedBySlice) {
     InlinedHashSet<std::string_view> compatible_eps;
     std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
-        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+        *e.get(), false /*skip_dequantize_linear*/, true /*enable_enhanced_shape_constant_fold*/, compatible_eps);
     TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                          pre_graph_checker, post_graph_checker);
   }
@@ -1224,7 +1232,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_ConcreteDimUsedByGatherSli
         // Try to parse int64 type constant initializers.
         InlinedVector<int64_t> shape_values;
         ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *shape_input, shape_values, true));
-        ASSERT_EQ(shape_values.size(), 3);
+        ASSERT_EQ(shape_values.size(), 3U);
         ASSERT_EQ(shape_values[0], -1);
         ASSERT_EQ(shape_values[1], 512);
         ASSERT_EQ(shape_values[2], 64);
@@ -1300,7 +1308,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_ConcreteDimUsedByGatherSli
     InlinedHashSet<std::string_view> compatible_eps;
     std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
-        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+        *e.get(), false /*skip_dequantize_linear*/, true /*enable_enhanced_shape_constant_fold*/, compatible_eps);
     TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                          pre_graph_checker, post_graph_checker);
   }
@@ -1391,7 +1399,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_SymbolicDimUsedByGather_Co
         // Try to parse int64 type constant initializers.
         InlinedVector<int64_t> shape_values;
         ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *shape_input, shape_values, true));
-        ASSERT_EQ(shape_values.size(), 1);
+        ASSERT_EQ(shape_values.size(), 1U);
         ASSERT_EQ(shape_values[0], 24);
       }
     }
@@ -1450,7 +1458,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingShape_SymbolicDimUsedByGather_Co
     InlinedHashSet<std::string_view> compatible_eps;
     std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantFolding>(
-        *e.get(), false /*skip_dequantize_linear*/, compatible_eps);
+        *e.get(), false /*skip_dequantize_linear*/, true /*enable_enhanced_shape_constant_fold*/, compatible_eps);
     TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                          pre_graph_checker, post_graph_checker);
   }

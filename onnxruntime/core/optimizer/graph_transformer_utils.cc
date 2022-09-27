@@ -185,7 +185,16 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
-      transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));
+
+      bool enable_enhanced_shape_constant_fold = false;
+#ifdef ENABLE_TRAINING
+      // Some python based graph transformer used a fixed pattern to do fusion.
+      // If enhanced shape constant folding is enabled, it maybe not match the pattern, resulting in failed fusion.
+      // So we disable it for inference.
+      enable_enhanced_shape_constant_fold = true;
+#endif
+      transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq,
+                                                                  enable_enhanced_shape_constant_fold));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>());
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(

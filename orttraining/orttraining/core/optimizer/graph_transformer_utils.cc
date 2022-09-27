@@ -112,7 +112,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       }
       InlinedHashSet<std::string> excluded_initializers(weights_to_train.begin(), weights_to_train.end());
       transformers.emplace_back(std::make_unique<ConstantFolding>(
-          execution_provider, false /*skip_dequantize_linear*/, compatible_eps, excluded_initializers));
+          execution_provider, false /*skip_dequantize_linear*/, true, compatible_eps, excluded_initializers));
       transformers.emplace_back(std::make_unique<ReshapeFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -190,11 +190,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     case TransformerLevel::Level1: {
       InlinedHashSet<std::string_view> l1_execution_providers = {};
       InlinedHashSet<std::string_view> cuda_rocm_execution_providers = {onnxruntime::kCudaExecutionProvider,
-                                                                       onnxruntime::kRocmExecutionProvider};
+                                                                        onnxruntime::kRocmExecutionProvider};
 
       // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
       //             ORT uses CPU kernels to evaluate constant values but some of them don't support fp16
-      //transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
+      // transformers.emplace_back(std::make_unique<ConstantFolding>(l1_execution_providers));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(free_dimension_overrides));
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cuda_rocm_execution_providers));

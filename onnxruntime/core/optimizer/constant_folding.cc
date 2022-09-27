@@ -17,10 +17,12 @@ namespace onnxruntime {
 
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
                                  bool skip_dequantize_linear,
+                                 bool enable_enhanced_shape_constant_fold,
                                  const InlinedHashSet<std::string_view>& compatible_execution_providers,
                                  const InlinedHashSet<std::string>& excluded_initializers) noexcept
     : GraphTransformer("ConstantFolding", compatible_execution_providers),
       skip_dequantize_linear_(skip_dequantize_linear),
+      enable_enhanced_shape_constant_fold_(enable_enhanced_shape_constant_fold),
       excluded_initializers_(excluded_initializers),
       execution_provider_(execution_provider) {
 }
@@ -105,7 +107,8 @@ bool CanConstantFoldShape(Node& node,
 // Shape to be able to be constant folded.
 bool ConstantFoldShapeNode(Graph& graph,
                            Node& node,
-                           InlinedVector<Node*>& nodes_to_remove) {
+                           InlinedVector<Node*>& nodes_to_remove,
+                           bool enable_enhanced_shape_constant_fold) {
   auto shape = node.MutableInputDefs()[0]->Shape();
 
   if (shape != nullptr) {
@@ -132,7 +135,7 @@ bool ConstantFoldShapeNode(Graph& graph,
       return true;
     }
 
-    if (!has_concrete_dim) {
+    if (!has_concrete_dim || !enable_enhanced_shape_constant_fold) {
       return false;
     }
 
@@ -283,7 +286,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     bool converted_to_constant = false;
     InlinedVector<Node*> nodes_to_remove;
     if (node->OpType().compare("Shape") == 0) {
-      converted_to_constant = ConstantFoldShapeNode(graph, *node, nodes_to_remove);
+      converted_to_constant = ConstantFoldShapeNode(graph, *node, nodes_to_remove,
+                                                    enable_enhanced_shape_constant_fold_);
     } else {
       InitializedTensorSet constant_inputs;
 

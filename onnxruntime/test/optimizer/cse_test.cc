@@ -283,7 +283,11 @@ TEST(CseTests, MergeConstants) {
   ASSERT_TRUE(
       graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1).IsOK());
   ASSERT_TRUE(
-      graph_transformation_mgr.Register(std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1).IsOK());
+      graph_transformation_mgr.Register(
+                                  std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/,
+                                                                    false /*enable_enhanced_shape_constant_fold*/),
+                                  TransformerLevel::Level1)
+          .IsOK());
   ASSERT_TRUE(
       graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, DefaultLoggingManager().DefaultLogger()).IsOK());
 
