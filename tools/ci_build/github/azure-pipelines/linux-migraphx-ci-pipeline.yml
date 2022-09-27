@@ -40,7 +40,6 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /onnxruntime_src \
-          --user onnxruntimedev \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
             python tools/ci_build/build.py \
               --config RelWithDebInfo \
@@ -73,7 +72,6 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /onnxruntime_src \
-          --user onnxruntimedev \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
             /tools/ci_build/github/pai/migraphx_test_launcher.sh ./build/RelWithDebInfo
       workingDirectory: $(Build.SourcesDirectory)
