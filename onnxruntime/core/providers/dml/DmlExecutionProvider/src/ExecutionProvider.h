@@ -158,6 +158,16 @@ namespace Dml
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
         GetInternalRegistrationInfoMap() const;
 
+        void IncreasePartitionKernelPrefixVal() const
+        {
+            m_partitionKernelPrefixVal++;
+        }
+
+        uint64_t GetPartitionKernelPrefixVal() const
+        {
+            return m_partitionKernelPrefixVal;
+        }
+
         onnxruntime::common::Status OnSessionInitializationEnd();
 
     private:
@@ -176,7 +186,6 @@ namespace Dml
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;
-
         bool m_closed = false;
     };
 

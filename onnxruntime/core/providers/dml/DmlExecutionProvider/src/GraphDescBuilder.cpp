@@ -37,7 +37,7 @@ namespace Dml::GraphDescBuilder
         const uint8_t* isConstGpuGraphInput,
         const size_t isConstGpuGraphInputCount,
         std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
-        const onnxruntime::Graph& graph,
+        const onnxruntime::Graph* graph,
         const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
         const gsl::span<const std::string> fusedNodeOutputArgOriginalNames,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
@@ -58,7 +58,7 @@ namespace Dml::GraphDescBuilder
 
         for (size_t inputIndex = 0; inputIndex < fusedNodeInputArgOriginalNames.size(); ++inputIndex)
         {
-            const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(fusedNodeInputArgOriginalNames[inputIndex]);
+            const onnxruntime::NodeArg* graphInput = graph->GetNodeArg(fusedNodeInputArgOriginalNames[inputIndex]);
 
             if (!graphInput)
             {
@@ -81,7 +81,7 @@ namespace Dml::GraphDescBuilder
 
         // Get the topological sorting of Lotus nodes
         // paulm: breaking change from LOTUS that removed GetNodesInTopologicalOrder from Graph
-        onnxruntime::GraphViewer viewer(graph);
+        onnxruntime::GraphViewer viewer(*graph);
         const std::vector<onnxruntime::NodeIndex>& orderedNodeIndices = viewer.GetNodesInTopologicalOrder();
 
         // Avoid using separate command lists for small graphs. This value can be reduced by tuning the 
@@ -116,7 +116,7 @@ namespace Dml::GraphDescBuilder
         // Iterate through each node and create a corresponding node in the new graph
         for (size_t sortedNodeIndex : orderedNodeIndices) 
         {
-            const onnxruntime::Node& node = *graph.GetNode(sortedNodeIndex);
+            const onnxruntime::Node& node = *graph->GetNode(sortedNodeIndex);
 
             const GraphNodeProperties& graphNodeProps = graphNodePropertyMap.find(GetUniqueNodeName(node))->second;
             const auto& requiredConstantCpuInputs = graphNodeProps.internalRegInfo->requiredConstantCpuInputs;
@@ -264,7 +264,7 @@ namespace Dml::GraphDescBuilder
         // Add graph output nodes, which might be in a different order from the encapsulating node
         for (size_t outputIndex = 0; outputIndex < fusedNodeOutputArgOriginalNames.size(); ++outputIndex)
         {
-            const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(fusedNodeOutputArgOriginalNames[outputIndex]);
+            const onnxruntime::NodeArg* graphOutput = graph->GetNodeArg(fusedNodeOutputArgOriginalNames[outputIndex]);
 
             ORT_THROW_HR_IF_NULL_MSG(E_POINTER, graphOutput, "FusedNode's nodeArgList does not contain one of the nodeArg");
             const auto& outputNodeAndIndex = nameToNodeAndIndexMap.at(graphOutput->Name());
