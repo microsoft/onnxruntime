@@ -867,6 +867,19 @@ class Graph {
     return nullptr;
   }
 
+  NodeArg* GetNodeArg(const std::string& name, bool check_ancestors) {
+    auto iter = node_args_.find(name);
+    if (iter != node_args_.end()) {
+      return iter->second.get();
+    }
+    
+    if (parent_graph_ != nullptr) {
+      return parent_graph_->GetNodeArg(name, check_ancestors);
+    }
+
+    return nullptr;
+  }
+
   /** Gets the const NodeArg with the provided name.
   @returns Pointer to const NodeArg if found, nullptr if not. */
   const NodeArg* GetNodeArg(const std::string& name) const {
