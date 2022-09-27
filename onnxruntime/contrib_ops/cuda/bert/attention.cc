@@ -82,9 +82,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int input_hidden_size = static_cast<int>(shape[2]);
 
   onnxruntime::contrib::cuda::transformers::CudaTensorConsoleDumper dump;
-  dump.Print("GPUINPUT", *input);
-  dump.Print("GPUBIAS", *bias);
-  dump.Print("GPUWEIGHTS", *weights);
 
   // bias shape (3 * hidden_size)
   const auto& bias_shape = bias->Shape();
