@@ -18,6 +18,7 @@ namespace Dml
 
         FusedGraphKernel(
             const onnxruntime::OpKernelInfo& kernelInfo,
+            const PartitionGraphDetails& partitionGraphDetails,
             const std::unordered_map<std::string, GraphNodeProperties> &graphNodePropertyMap,
             std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
             const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
@@ -27,8 +28,8 @@ namespace Dml
             // capacity returned by the execution provider's graph partitioner
             auto& node = kernelInfo.node();
             ORT_THROW_HR_IF(E_UNEXPECTED, node.NodeType() != onnxruntime::Node::Type::Fused);
-            auto func = node.GetFunctionBody();
-            const onnxruntime::Graph& graph = func->Body();
+            /*auto func = node.GetFunctionBody();*/
+            const onnxruntime::Graph* graph = partitionGraphDetails.partitionONNXGraph.get();
 
             // Get the shapes for outputs of the overall graph.  These should be static, because 
             // the partitioner checked that each node has static shapes before fusing into a 
@@ -58,7 +59,7 @@ namespace Dml
 
         void TranslateAndCompileGraph(
             const onnxruntime::OpKernelInfo& kernelInfo,
-            const onnxruntime::Graph& graph,
+            const onnxruntime::Graph* graph,
             const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
             const gsl::span<const std::string> fusedNodeOutputArgOriginalNames,
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
@@ -518,6 +519,7 @@ namespace Dml
 
     onnxruntime::OpKernel* CreateFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info, 
+        const PartitionGraphDetails& partitionGraphDetails,
         const std::unordered_map<std::string, GraphNodeProperties> &graphNodePropertyMap,
         std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
         const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
@@ -526,6 +528,7 @@ namespace Dml
     {
         return new FusedGraphKernel(
             info, 
+            partitionGraphDetails,
             graphNodePropertyMap, 
             transferredInitializerMap, 
             fusedNodeInputArgOriginalNames, 

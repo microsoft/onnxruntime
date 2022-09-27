@@ -3,11 +3,13 @@
 
 #include "core/framework/op_kernel.h"
 #include "GraphDescBuilder.h"
+#include "DmlGraphFusionTransformer.h"
 
 namespace Dml
 {
     onnxruntime::OpKernel* CreateFusedGraphKernel(
-        const onnxruntime::OpKernelInfo& info, 
+        const onnxruntime::OpKernelInfo& info,
+        const PartitionGraphDetails& partitionGraphDetails,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
         const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
