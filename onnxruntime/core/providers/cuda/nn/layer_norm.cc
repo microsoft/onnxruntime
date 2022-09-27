@@ -103,15 +103,18 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   template class LayerNorm<T, U, V, simplified>;
 
 // contrib op usage
+LAYERNORM_IMPL(float, float, float, false)
 LAYERNORM_IMPL(double, double, double, false)
 LAYERNORM_IMPL(MLFloat16, float, MLFloat16, false)
 LAYERNORM_IMPL(float, float, MLFloat16, false)
+LAYERNORM_IMPL(MLFloat16, float, float, false)
 LAYERNORM_IMPL(BFloat16, float, BFloat16, false)
 
 LAYERNORM_IMPL(float, float, float, true)
 LAYERNORM_IMPL(double, double, double, true)
 LAYERNORM_IMPL(MLFloat16, float, MLFloat16, true)
 LAYERNORM_IMPL(float, float, MLFloat16, true)
+LAYERNORM_IMPL(MLFloat16, float, float, true)
 LAYERNORM_IMPL(BFloat16, float, BFloat16, true)
 #endif
 }  // namespace cuda
