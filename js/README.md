@@ -448,7 +448,7 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
 
    When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-{android|mobile}/<version>/onnxruntime-{android|mobile}-<version>.aar` into the `<ORT_ROOT>/js/react_native/e2e/android/app/libs` directory.
 
-   When testing with a custom built ONNX Runtime iOS package, copy `onnxruntime-{android|mobile}-c.zip` into the `<ORT_ROOT>/js/react_native/local_pods` director.
+   When testing with a custom built ONNX Runtime iOS package, copy `onnxruntime-[mobile-]c.zip` into the `<ORT_ROOT>/js/react_native/local_pods` directory.
 
    If using the reduced size build it is necessary to update some configuration to use the mobile ORT package:
      - replace `com.microsoft.onnxruntime:onnxruntime-android` with `com.microsoft.onnxruntime:onnxruntime-mobile` in /js/react_native/e2e/android/app/build.gradle
