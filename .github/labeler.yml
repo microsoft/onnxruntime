@@ -31,3 +31,4 @@ model:transformer:
   - '/\bt5\b/i'
 quantization:
   - '/is this a quantized model\?\n\nYes/i'
+  - '/\bquantization\b/i'
