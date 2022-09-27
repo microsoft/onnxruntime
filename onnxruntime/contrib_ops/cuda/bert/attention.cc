@@ -136,7 +136,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int m = batch_size * sequence_length;
   int n = (q_hidden_size + k_hidden_size + v_hidden_size);
   int k = input_hidden_size;
-  auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * n * element_size);
+  size_t gemm_buffer_size = static_cast<size_t>(batch_size) * sequence_length * n * element_size;
+  auto gemm_buffer = GetScratchBuffer<T>(gemm_buffer_size);
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
