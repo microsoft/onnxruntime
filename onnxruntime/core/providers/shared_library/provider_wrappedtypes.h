@@ -711,8 +711,6 @@ struct Graph final {
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->Graph__GetNodeArg(this, name); }
   const std::string& Name() const noexcept { return g_host->Graph__Name(this); }
 
-  bool IsLocalValue(const std::string& name) const { return g_host->Graph__IsLocalValue(this, name); }
-
   PROVIDER_DISALLOW_ALL(Graph)
 };
 

@@ -682,8 +682,6 @@ struct ProviderHost {
   virtual const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const = 0;
   virtual const std::string& Graph__Name(const Graph* p) const noexcept = 0;
 
-  virtual bool Graph__IsLocalValue(const Graph* p, const std::string& name) const = 0;
-
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;
   virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger) = 0;

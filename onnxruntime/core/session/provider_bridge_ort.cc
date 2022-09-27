@@ -774,8 +774,6 @@ struct ProviderHostImpl : ProviderHost {
   const NodeArg* Graph__GetNodeArg(const Graph* p, const std::string& name) const override { return p->GetNodeArg(name); }
   const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
 
-  bool Graph__IsLocalValue(const Graph* p, const std::string& name) const override { return p->IsLocalValue(name); }
-
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
   std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
