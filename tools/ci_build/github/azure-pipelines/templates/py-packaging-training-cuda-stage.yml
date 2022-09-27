@@ -57,7 +57,7 @@ stages:
 
   variables:
     - name: isMain
-      value: ${{ eq(variables['Build.SourceBranch'], 'refs/heads/main') }}
+      value: ${{ or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'rel-')) }}
     - name: finalStorage
       ${{ if eq(variables['isMain'], 'true') }}:
         value: '--final_storage'
