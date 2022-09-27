@@ -111,7 +111,6 @@ Status QkvToContext(
   // input should be BxSx3xNxH => qkv: 3xBxNxSxH
   T* qkv = workspace;
   onnxruntime::contrib::cuda::transformers::CudaTensorConsoleDumper dump;
-  dump.Print("GPUComputed Input", input, batch_size, sequence_length, (qkv_sizes[0] + qkv_sizes[1] + qkv_sizes[2]));
   if (bias == nullptr) {
     ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, qkv_head_size[0], num_heads,
                                        max_threads_per_block, false, input, qkv));
@@ -123,11 +122,9 @@ Status QkvToContext(
     LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
                            sequence_length, num_heads, qkv_head_size[0],
                            input, bias, qkv,
-                           enable_half4);
+                           enable_half4, qkv_head_size);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
-
-  dump.Print("GPUComputed AddBiasTransposeOutput", qkv, batch_size, sequence_length, (qkv_sizes[0] + qkv_sizes[1] + qkv_sizes[2]));
 
   // Q, K, V has size BxNxSxH
   const int batches = batch_size * num_heads;
@@ -171,10 +168,6 @@ Status QkvToContext(
     k = q + (batches * sequence_length * qkv_head_size[0]);
     v = k + (batches * sequence_length * qkv_head_size[1]);
   }
-
-  dump.Print("GPUComputed Q", q, batch_size, sequence_length, qkv_sizes[0]);
-  dump.Print("GPUComputed K", k, batch_size, sequence_length, qkv_sizes[1]);
-  dump.Print("GPUComputed V", v, batch_size, sequence_length, qkv_sizes[2]);
 
   cublasSetStream(cublas, stream);
 

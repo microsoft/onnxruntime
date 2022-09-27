@@ -112,7 +112,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   int past_sequence_length = 0;
-  Tensor* present = GetPresent(context, past, batch_size, qkv_head_size[2], sequence_length, past_sequence_length);
+  Tensor* present = GetPresent(context, past, batch_size, qkv_head_size[0], sequence_length, past_sequence_length);
 
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
@@ -122,12 +122,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                            nullptr == present &&
                            nullptr == extra_add_qk &&
                            !is_unidirectional_ &&
-                           HasFusedFp16Kernel(sm, qkv_head_size[2], sequence_length));
+                           HasFusedFp16Kernel(sm, qkv_head_size[0], sequence_length));
 
   MHARunner* fused_runner = nullptr;
   if (use_fused_runner) {
     if (nullptr == fused_fp16_runner_.get()) {
-      fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, qkv_head_size[2], sm));
+      fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, qkv_head_size[0], sm));
     }
     // In case some kernel  not loaded due to shared memory limit, we need to double check here.
     if (fused_fp16_runner_->isValid(sequence_length)) {

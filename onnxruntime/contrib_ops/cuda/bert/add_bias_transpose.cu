@@ -98,51 +98,69 @@ __global__ void AddBiasTransposeQKV(const T* input, const T* biases, T* output) 
   int s = blockIdx.x;
   int b = blockIdx.y;
   int m = blockIdx.z;  // matrix id
-  const int h = threadIdx.x;
 
+  const int head_size = blockDim.x;
   const int num_heads = blockDim.y;
 
   const int sequence_length = gridDim.x;
   const int batch_size = gridDim.y;
   const int M = gridDim.z;
-  int H_tmp;
-  const int head_size_qk = 3;
-  const int head_size_v = 2;
-
-  const int head_size = head_size_qk;
-
   const int H = head_size;
-
   const int NH = num_heads * head_size;
   const int NHS = NH * sequence_length;
 
-  const int total_size = num_heads * (head_size_qk + head_size_qk + head_size_v);
+  int in_offset = n * head_size + (m + s * M) * NH + b * NHS * M;
+  const int out_offset = s * head_size + n * sequence_length * H + b * NHS + m * NHS * batch_size;
 
-  // int in_offset = n * head_size + (m + s * M) * NH + b * NHS * M;
-  // const int out_offset = s * head_size + n * sequence_length * H + b * NHS + m * NHS * batch_size;
+  const int h = threadIdx.x;
+  if (h < head_size) {
+    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+  }
+}
+
+template <typename T>
+__global__ void AddBiasTransposeQKV(const T* input, const T* biases, T* output, int v_head_size) {
+  // Input:  BxSxMxNxH  (Format 1)
+  // Output: MxBxNxSxH
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+
+  int n = threadIdx.y;          // head_num_id
+  int s = blockIdx.x;           // sequence_id 
+  int b = blockIdx.y;           // batch_id
+  int m = blockIdx.z;           // matrix id (Q=0, K=1, V=2)
+  const int h = threadIdx.x;    // head_element_id
+
+  const int qk_head_size = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+
+  const int qkv_head_sizes[3] = {qk_head_size, qk_head_size, v_head_size};
+
+  const int total_head_size = num_heads * (qkv_head_sizes[0] + qkv_head_sizes[1] + qkv_head_sizes[2]);
+
   int in_offset;
   int out_offset;
   int bias_offset;
-  if (m != 2) {
-    in_offset = n * head_size_qk + (m * head_size_qk * num_heads) + s * (head_size_qk + head_size_qk + head_size_v) * num_heads + b * num_heads * (head_size_qk + head_size_qk + head_size_v) * sequence_length;
-    out_offset = m * (num_heads * head_size_qk * sequence_length * batch_size) + b * (num_heads * head_size_qk *sequence_length) + n * (sequence_length * head_size_qk) + s * head_size_qk;
-    bias_offset = m * NH + n * H + h;
-    if (h < head_size_qk) {
-      printf("Adding input (%f) to bias (%f), matrix_id (%i), n (%i), s (%i), b (%i), m (%i), head_size (%i), num_heads (%i), seq_len (%i), batch_size (%i), M (%i), h (%i)\n", input[in_offset + h], biases[m * NH + n * H + h], m, n, s, b, m, head_size, num_heads, sequence_length, batch_size, M, h);
-      printf("Input: (%f) - Input offset = %i, Output offset= %i, bias offset=%i\n", input[in_offset + h], in_offset + h, out_offset + h, bias_offset);
-      // output[out_offset + h] = input[in_offset + h] + biases[bias_offset];
-      output[out_offset + h] = input[in_offset + h] + biases[bias_offset];
-    }
-  } else {
-    in_offset = n * head_size_v + (m * head_size_qk * num_heads) + s * (head_size_qk + head_size_qk + head_size_v) * num_heads + b * total_size * sequence_length;
-    out_offset = m * (num_heads * head_size_qk * sequence_length * batch_size) + b * (num_heads * head_size_v *sequence_length) + n * (sequence_length * head_size_v) + s * head_size_v;
-    bias_offset = m * NH + n * head_size_v + h;
-    if (h < head_size_v) {
-      printf("Adding input (%f) to bias (%f), matrix_id (%i), n (%i), s (%i), b (%i), m (%i), head_size (%i), num_heads (%i), seq_len (%i), batch_size (%i), M (%i), h (%i)\n", input[in_offset + h], biases[m * NH + n * H + h], m, n, s, b, m, head_size, num_heads, sequence_length, batch_size, M, h);
-      printf("Input: (%f) - Input offset = %i, Output offset= %i, bias offset=%i\n", input[in_offset + h], in_offset + h, out_offset + h, bias_offset);
-      // output[out_offset + h] = input[in_offset + h] + biases[bias_offset];
-      output[out_offset + h] = input[in_offset + h] + biases[bias_offset];
-    }
+  in_offset = b * (total_head_size * sequence_length) +  // B
+              s * (total_head_size) +                    // S
+              m * (qk_head_size * num_heads) +           // M
+              n * qkv_head_sizes[m] +                    // N
+              h;                                         // H
+
+  out_offset = m * (num_heads * qk_head_size * sequence_length * batch_size) +  // M
+               b * (num_heads * qkv_head_sizes[m] * sequence_length) +          // B
+               n * (sequence_length * qkv_head_sizes[m]) +                      // N
+               s * (qkv_head_sizes[m]) +                                        // S
+               h;                                                               // H
+
+  bias_offset = m * (num_heads * qk_head_size)+  // QKV
+                n * (qkv_head_sizes[m]) +        // N
+                h;                               // H
+
+  if (h < qkv_head_sizes[m]) {
+      output[out_offset] = input[in_offset] + biases[bias_offset];
   }
 }
 
@@ -232,14 +250,19 @@ template <typename T>
 void InvokeAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
-    const T* input, const T* biases, T* output) {
+    const T* input, const T* biases, T* output, const int* qkv_head_sizes) {
   const dim3 grid(sequence_length, batch_size, num_matrices);
   if (head_size * num_heads <= max_threads_per_block) {
     const dim3 block(head_size, num_heads, 1);
     if (format == 2) {
       AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(input, biases, output);
     } else if (format == 1) {
-      AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output);
+      if ((qkv_head_sizes == nullptr) || (qkv_head_sizes[0] == qkv_head_sizes[2])) {
+        AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output);
+      }
+      else {
+        AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output, qkv_head_sizes[2]);
+      }
     } else {
       AddBiasTranspose<T><<<grid, block, 0, stream>>>(input, biases, output);
     }
@@ -260,24 +283,24 @@ void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const half* input, const half* biases, half* output,
-    bool enable_half4) {
+    bool enable_half4, const int* qkv_head_sizes) {
   if (enable_half4 && 0 == (head_size % 4)) {
     const int H = head_size / 4;
     const Half4* input2 = reinterpret_cast<const Half4*>(input);
     const Half4* biases2 = reinterpret_cast<const Half4*>(biases);
     Half4* output2 = reinterpret_cast<Half4*>(output);
     InvokeAddBiasTranspose<Half4>(stream, num_matrices, format, max_threads_per_block,
-                                  batch_size, sequence_length, num_heads, H, input2, biases2, output2);
+                                  batch_size, sequence_length, num_heads, H, input2, biases2, output2, qkv_head_sizes);
   } else if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const half2* input2 = reinterpret_cast<const half2*>(input);
     const half2* biases2 = reinterpret_cast<const half2*>(biases);
     half2* output2 = reinterpret_cast<half2*>(output);
     InvokeAddBiasTranspose<half2>(stream, num_matrices, format, max_threads_per_block,
-                                  batch_size, sequence_length, num_heads, H, input2, biases2, output2);
+                                  batch_size, sequence_length, num_heads, H, input2, biases2, output2, qkv_head_sizes);
   } else {
     InvokeAddBiasTranspose<half>(stream, num_matrices, format, max_threads_per_block,
-                                 batch_size, sequence_length, num_heads, head_size, input, biases, output);
+                                 batch_size, sequence_length, num_heads, head_size, input, biases, output, qkv_head_sizes);
   }
 }
 
@@ -286,14 +309,14 @@ void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const float* input, const float* biases, float* output,
-    bool /*enable_half4*/) {
+    bool /*enable_half4*/, const int* qkv_head_sizes) {
   if (0 == (head_size % 4)) {
     const int H = head_size / 4;
     const float4* input2 = reinterpret_cast<const float4*>(input);
     const float4* biases2 = reinterpret_cast<const float4*>(biases);
     float4* output2 = reinterpret_cast<float4*>(output);
     InvokeAddBiasTranspose<float4>(stream, num_matrices, format, max_threads_per_block,
-                                   batch_size, sequence_length, num_heads, H, input2, biases2, output2);
+                                   batch_size, sequence_length, num_heads, H, input2, biases2, output2, qkv_head_sizes);
   } else if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     const float2* input2 = reinterpret_cast<const float2*>(input);
@@ -301,10 +324,10 @@ void LaunchAddBiasTranspose(
     float2* output2 = reinterpret_cast<float2*>(output);
 
     InvokeAddBiasTranspose<float2>(stream, num_matrices, format, max_threads_per_block,
-                                   batch_size, sequence_length, num_heads, H, input2, biases2, output2);
+                                   batch_size, sequence_length, num_heads, H, input2, biases2, output2, qkv_head_sizes);
   } else {
     InvokeAddBiasTranspose<float>(stream, num_matrices, format, max_threads_per_block,
-                                  batch_size, sequence_length, num_heads, head_size, input, biases, output);
+                                  batch_size, sequence_length, num_heads, head_size, input, biases, output, qkv_head_sizes);
   }
 }
 
