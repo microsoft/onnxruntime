@@ -4,10 +4,10 @@
 #pragma once
 
 #include <limits.h>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/common/common.h"
@@ -54,7 +54,7 @@ class KernelDef {
   }
 
   // type constraints with types supported in this build
-  const std::map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
+  const std::unordered_map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
     return type_constraints_;
   }
 
@@ -125,7 +125,7 @@ class KernelDef {
 
   // The data types that are supported in this build (enabled) for inputs/outputs.
   // Key is input/output/type constraint name defined in op schema, Value is supported types.
-  std::map<std::string, std::vector<MLDataType>> type_constraints_;
+  std::unordered_map<std::string, std::vector<MLDataType>> type_constraints_;
 
   // An element <i, j> means that output j reuses the memory of input i.
   std::vector<std::pair<int, int>> inplace_map_;
