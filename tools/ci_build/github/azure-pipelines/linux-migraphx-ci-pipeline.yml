@@ -12,43 +12,67 @@ jobs:
       value: 44
     - name: render
       value: 109
-
-  # generated from tools/ci_build/github/pai/migraphx-ci-pipeline-env.Dockerfile
-  container:
-    image: onnxruntimecibuildenvironment.azurecr.io/migraphx-ci-pipeline-env:rocm5.2.3
-    endpoint: onnxruntimecibuildenvironmentforamd
-    options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
+    - name: RocmVersion
+      value: 5.2.3
 
   steps:
   - checkout: self
     clean: true
 
-  - script: |-
-      echo "Selecting GPU based on HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES"
-    displayName: 'Initialize environment'
+  - template: get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/pai/migraphx-ci-pipeline-env.Dockerfile
+      Context: tools/ci_build/github/pai
+      Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
     inputs:
       script: |-
-        export ROCM_HOME=/opt/rocm
-        python tools/ci_build/build.py \
-        --config RelWithDebInfo \
-        --mpi_home /opt/ompi \
-        --use_migraphx \
-        --rocm_version=5.2.3 \
-        --rocm_home /opt/rocm \
-        --nccl_home /opt/rocm \
-        --update \
-        --build_dir ./build \
-        --build \
-        --parallel 8 \
-        --build_wheel \
-        --skip_tests
+      docker run --rm \
+        -e HIP_VISIBLE_DEVICES \
+        --privileged \
+        --security-opt seccomp=unconfined \
+        --shm-size=1024m \
+        --device=/dev/kfd \
+        --device=/dev/dri \
+        --group-add $(video) \
+        --group-add $(render) \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
+        --workdir /onnxruntime_src \
+        --user onnxruntimedev \
+        onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+          python tools/ci_build/build.py \
+            --config RelWithDebInfo \
+            --mpi_home /opt/ompi \
+            --use_migraphx \
+            --rocm_version=5.2.3 \
+            --rocm_home /opt/rocm \
+            --nccl_home /opt/rocm \
+            --update \
+            --build_dir ./build \
+            --build \
+            --parallel 8 \
+            --build_wheel \
+            --skip_tests
     displayName: 'Build onnxruntime'
 
   - task: CmdLine@2
     inputs:
       script: |-
-        cd ./build/RelWithDebInfo &&\
-        ../../tools/ci_build/github/pai/migraphx_test_launcher.sh
+      docker run --rm \
+        -e HIP_VISIBLE_DEVICES \
+        --privileged \
+        --security-opt seccomp=unconfined \
+        --shm-size=1024m \
+        --device=/dev/kfd \
+        --device=/dev/dri \
+        --group-add $(video) \
+        --group-add $(render) \
+        --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        --volume $(Build.BinariesDirectory):/build \
+        --workdir /onnxruntime_src \
+        --user onnxruntimedev \
+        onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+          /tools/ci_build/github/pai/migraphx_test_launcher.sh ./build/RelWithDebInfo
     displayName: 'Run onnxruntime unit tests'
