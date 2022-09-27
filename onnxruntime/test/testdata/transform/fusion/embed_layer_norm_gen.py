@@ -303,15 +303,15 @@ def GenerateMultipleEmbedModel(model_name, opset_version):
         nodes,
         "EmbedLayerNorm_format3",  # name
         [  # inputs
-            helper.make_tensor_value_info("input_ids_1", TensorProto.INT64, ["batch", 3]),
-            helper.make_tensor_value_info("segment_ids_1", TensorProto.INT64, ["batch", 3]),
-            helper.make_tensor_value_info("input_mask_1", TensorProto.INT64, ["batch", 3]),
-            helper.make_tensor_value_info("input_ids_2", TensorProto.INT64, ["batch", 3]),
-            helper.make_tensor_value_info("segment_ids_2", TensorProto.INT64, ["batch", 3]),
-            helper.make_tensor_value_info("input_mask_2", TensorProto.INT64, ["batch", 3]),
+            helper.make_tensor_value_info("input_ids_1", TensorProto.INT64, ["batch", "seq_length"]),
+            helper.make_tensor_value_info("segment_ids_1", TensorProto.INT64, ["batch", "seq_length"]),
+            helper.make_tensor_value_info("input_mask_1", TensorProto.INT64, ["batch", "seq_length"]),
+            helper.make_tensor_value_info("input_ids_2", TensorProto.INT64, ["batch", "seq_length"]),
+            helper.make_tensor_value_info("segment_ids_2", TensorProto.INT64, ["batch", "seq_length"]),
+            helper.make_tensor_value_info("input_mask_2", TensorProto.INT64, ["batch", "seq_length"]),
         ],
         [  # outputs
-            helper.make_tensor_value_info("add3_out", TensorProto.FLOAT, ["batch", 3, 4]),
+            helper.make_tensor_value_info("add3_out", TensorProto.FLOAT, ["batch", "seq_length", 4]),
         ],
         initializers,
     )
