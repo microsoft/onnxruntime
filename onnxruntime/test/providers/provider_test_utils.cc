@@ -1057,32 +1057,8 @@ void OpTester::Run(
     std::unordered_map<std::string, OrtValue> feeds;
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
+
     // Run the model
-#ifdef USE_TENSORRT
-    // only run trt ep to reduce test time
-    static const std::string all_provider_types[] = {
-        kTensorrtExecutionProvider,
-    };
-#else
-    static const std::string all_provider_types[] = {
-        kCpuExecutionProvider,
-        kCudaExecutionProvider,
-        kDnnlExecutionProvider,
-        kTensorrtExecutionProvider,
-        kOpenVINOExecutionProvider,
-        kDmlExecutionProvider,
-        kAclExecutionProvider,
-        kArmNNExecutionProvider,
-        kNnapiExecutionProvider,
-        kRocmExecutionProvider,
-        kCoreMLExecutionProvider,
-        kSnpeExecutionProvider,
-        kXnnpackExecutionProvider,
-    };
-#endif
-
-    bool has_run = false;
-
     if (execution_providers) {
       for (auto& entry : *execution_providers) {
         // Be noted, entry in execution providers passed in OpTester will be std::moved in the first OpTester::Run(),
@@ -1131,6 +1107,31 @@ void OpTester::Run(
       }
 
     } else {
+#ifdef USE_TENSORRT
+      // only run trt ep to reduce test time
+      static const std::string all_provider_types[] = {
+          kTensorrtExecutionProvider,
+      };
+#else
+      static const std::string all_provider_types[] = {
+          kCpuExecutionProvider,
+          kCudaExecutionProvider,
+          kDnnlExecutionProvider,
+          kTensorrtExecutionProvider,
+          kOpenVINOExecutionProvider,
+          kDmlExecutionProvider,
+          kAclExecutionProvider,
+          kArmNNExecutionProvider,
+          kNnapiExecutionProvider,
+          kRocmExecutionProvider,
+          kCoreMLExecutionProvider,
+          kSnpeExecutionProvider,
+          kXnnpackExecutionProvider,
+      };
+#endif
+
+      bool has_run = false;
+
       for (const std::string& provider_type : all_provider_types) {
         if (excluded_provider_types.count(provider_type) > 0)
           continue;
