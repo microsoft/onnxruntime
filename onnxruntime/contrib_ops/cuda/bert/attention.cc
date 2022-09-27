@@ -6,7 +6,6 @@
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -81,8 +80,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int sequence_length = static_cast<int>(shape[1]);
   int input_hidden_size = static_cast<int>(shape[2]);
 
-  onnxruntime::contrib::cuda::transformers::CudaTensorConsoleDumper dump;
-
   // bias shape (3 * hidden_size)
   const auto& bias_shape = bias->Shape();
   int q_hidden_size;
@@ -155,7 +152,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
                                                    num_heads_,
-                                                   qkv_head_size[0] + qkv_head_size[1] + qkv_head_size[2],
+                                                   qkv_head_size[0],
                                                    sequence_length,
                                                    past_sequence_length,
                                                    fused_runner);

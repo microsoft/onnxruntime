@@ -33,7 +33,6 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/transformer_common.h"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -110,7 +109,6 @@ Status QkvToContext(
 
   // input should be BxSx3xNxH => qkv: 3xBxNxSxH
   T* qkv = workspace;
-  onnxruntime::contrib::cuda::transformers::CudaTensorConsoleDumper dump;
   if (bias == nullptr) {
     ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, qkv_head_size[0], num_heads,
                                        max_threads_per_block, false, input, qkv));
