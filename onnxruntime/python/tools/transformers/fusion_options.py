@@ -24,7 +24,7 @@ class FusionOptions:
         self.enable_bias_skip_layer_norm = True
         self.enable_bias_gelu = True
         self.enable_gelu_approximation = False
-        self.enable_matmul_bias_gelu = True
+        self.enable_gemm_gelu = True
 
         self.enable_shape_inference = True
 
@@ -61,8 +61,8 @@ class FusionOptions:
             options.enable_bias_gelu = False
         if args.enable_gelu_approximation:
             options.enable_gelu_approximation = True
-        if args.disable_matmul_bias_gelu:
-            options.enable_matmul_bias_gelu = False
+        if args.disable_gemm_gelu:
+            options.enable_gemm_gelu = False
         if args.disable_shape_inference:
             options.enable_shape_inference = False
         if args.use_mask_index:
@@ -114,10 +114,10 @@ class FusionOptions:
         parser.set_defaults(disable_bias_gelu=False)
 
         parser.add_argument(
-            "--disable_matmul_bias_gelu",
+            "--disable_gemm_gelu",
             required=False,
             action="store_true",
-            help="disable Matmul, Add Bias, Gelu/FastGelu fusion",
+            help="disable Matmul, Gelu/BiasGelu fusion",
         )
         parser.set_defaults(disable_matmul_bias_gelu=False)
 

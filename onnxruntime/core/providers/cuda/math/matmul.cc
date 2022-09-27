@@ -141,6 +141,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           &zero,
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
           ldc,
+          NULL, false,
           NULL, 0,
           Stream()));
     } else {

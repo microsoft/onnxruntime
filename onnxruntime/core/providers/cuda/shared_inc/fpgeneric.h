@@ -217,6 +217,8 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            const half* B, int ldb,
                                            const half* beta,
                                            half* C, int ldc,
+                                           const half* bias,
+                                           bool gelu_activation,
                                            void* workspace_memory,
                                            size_t workspace_size,
                                            cudaStream_t stream) {
@@ -277,6 +279,37 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
     return CUBLAS_STATUS_ALLOC_FAILED;
   }
 
+  if (gelu_activation && bias != nullptr) {
+    cublasLtEpilogue_t epilogue_gelu_bias = CUBLASLT_EPILOGUE_GELU_BIAS;
+
+    CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(operation_desc,
+                                                     CUBLASLT_MATMUL_DESC_EPILOGUE,
+                                                     &epilogue_gelu_bias, sizeof(epilogue_gelu_bias)));
+
+  } else if (bias != nullptr) {
+    cublasLtEpilogue_t epilogue_bias = CUBLASLT_EPILOGUE_BIAS;
+
+    CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(operation_desc,
+                                                     CUBLASLT_MATMUL_DESC_EPILOGUE,
+                                                     &epilogue_bias, sizeof(epilogue_bias)));
+  } else if (gelu_activation) {
+    cublasLtEpilogue_t epilogue_gelu = CUBLASLT_EPILOGUE_GELU;
+
+    CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(operation_desc,
+                                                     CUBLASLT_MATMUL_DESC_EPILOGUE,
+                                                     &epilogue_gelu, sizeof(epilogue_gelu)));  
+  }
+
+  if (bias != nullptr) {
+    CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(operation_desc,
+                                                     CUBLASLT_MATMUL_DESC_BIAS_POINTER,
+                                                     &bias, sizeof(bias)));
+  }
+
+  // TODO: Fix me
+  if (gelu_activation) {
+  }
+
   // TODO (hasesh): Allow CublasLtMatmul tuning for clients by allowing them to pass in the
   // workspace and algo of their choice.
   // According to the cublasLtMatmul documentation, passing in NULL for the algo means that
@@ -304,6 +337,8 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            const float* B, int ldb,
                                            const float* beta,
                                            float* C, int ldc,
+                                           const float* bias,
+                                           bool gelu_activation,
                                            void* workspace_memory,
                                            size_t workspace_size,
                                            cudaStream_t stream) {
@@ -321,6 +356,8 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
   ORT_UNUSED_PARAMETER(beta);
   ORT_UNUSED_PARAMETER(C);
   ORT_UNUSED_PARAMETER(ldc);
+  ORT_UNUSED_PARAMETER(bias);
+  ORT_UNUSED_PARAMETER(gelu_activation);
   ORT_UNUSED_PARAMETER(workspace_memory);
   ORT_UNUSED_PARAMETER(workspace_size);
   ORT_UNUSED_PARAMETER(stream);
@@ -337,6 +374,8 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            const double* B, int ldb,
                                            const double* beta,
                                            double* C, int ldc,
+                                           const double* bias,
+                                           bool gelu_activation,
                                            void* workspace_memory,
                                            size_t workspace_size,
                                            cudaStream_t stream) {
@@ -354,6 +393,8 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
   ORT_UNUSED_PARAMETER(beta);
   ORT_UNUSED_PARAMETER(C);
   ORT_UNUSED_PARAMETER(ldc);
+  ORT_UNUSED_PARAMETER(bias);
+  ORT_UNUSED_PARAMETER(gelu_activation);
   ORT_UNUSED_PARAMETER(workspace_memory);
   ORT_UNUSED_PARAMETER(workspace_size);
   ORT_UNUSED_PARAMETER(stream);
@@ -370,6 +411,8 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            const BFloat16* B, int ldb,
                                            const BFloat16* beta,
                                            BFloat16* C, int ldc,
+                                           const BFloat16* bias,
+                                           bool gelu_activation,
                                            void* workspace_memory,
                                            size_t workspace_size,
                                            cudaStream_t stream) {
@@ -387,6 +430,8 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
   ORT_UNUSED_PARAMETER(beta);
   ORT_UNUSED_PARAMETER(C);
   ORT_UNUSED_PARAMETER(ldc);
+  ORT_UNUSED_PARAMETER(bias);
+  ORT_UNUSED_PARAMETER(gelu_activation);
   ORT_UNUSED_PARAMETER(workspace_memory);
   ORT_UNUSED_PARAMETER(workspace_size);
   ORT_UNUSED_PARAMETER(stream);

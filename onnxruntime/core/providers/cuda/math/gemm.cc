@@ -148,6 +148,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
         (trans_A_ ? M : K),
         (B != nullptr) ? &beta : &zero,
         out_data, N,
+        NULL, false,
         NULL, 0,
         Stream()));
   } else {  // Use CublasGemm instead

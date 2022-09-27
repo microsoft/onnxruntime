@@ -13,11 +13,13 @@ from onnx_model import OnnxModel
 logger = getLogger(__name__)
 
 
-class FusionMatmulBiasGelu(Fusion):
-    def __init__(self, model: OnnxModel, is_fastgelu):
-        super().__init__(model, "MatmulBiasGelu", "BiasGelu")
+class FusionGemmGelu(Fusion):
+    def __init__(self, model: OnnxModel):
+        super().__init__(model, "GemmGelu", ["BiasGelu", "Gelu"])
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        has_bias = True if node.op_type == "BiasGelu" else False
+
         matmul = self.model.match_parent_path(node, ["MatMul"], [0])
         
         if matmul is None:
@@ -31,11 +33,17 @@ class FusionMatmulBiasGelu(Fusion):
 
         self.nodes_to_remove.extend(subgraph_nodes)
 
+        inputs = []
+        if has_bias:
+            inputs=[matmul.input[0], matmul.input[1], node.input[1]]
+        else:
+            inputs=[matmul.input[0], matmul.input[1]]
+
         fused_node = helper.make_node(
-            "MatmulBiasGelu",
-            inputs=[matmul.input[0], matmul.input[1], node.input[1]],
+            "GemmGelu",
+            inputs=inputs,
             outputs=node.output,
-            name=self.model.create_node_name("MatmulBiasGelu", "BiasGelu_AddBias_"),
+            name=self.model.create_node_name("GemmGelu", "GemmGelu_"),
         )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)

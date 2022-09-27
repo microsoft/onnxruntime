@@ -126,9 +126,7 @@ Status QkvToContext(
   const int size_per_batch = sequence_length * head_size;
   const int total_size = batches * size_per_batch;
 
-  T* scratch1 = qkv + 3 * total_size;
-  T* temp_output = scratch1;
-  if (nullptr != fused_runner && bias != nullptr) {
+  if (nullptr != fused_runner) {
     int* sequence_offset = reinterpret_cast<int*>(qkv + 4 * total_size);
     LaunchTrtSequenceOffset(sequence_offset, mask_index, batch_size, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
@@ -144,6 +142,9 @@ Status QkvToContext(
   const int all_sequence_length = past_sequence_length + sequence_length;
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
                                                sequence_length, all_sequence_length);
+
+  T* scratch1 = qkv + 3 * total_size;
+  T* temp_output = scratch1;
   T* scratch2 = scratch1 + (bytes / element_size);
 
   const T* q = qkv;

@@ -143,6 +143,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
         reinterpret_cast<const CudaT*>(input->Data<T>()), k,
         &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n,
+        NULL, false,
         NULL, 0,
         Stream()));
   } else {

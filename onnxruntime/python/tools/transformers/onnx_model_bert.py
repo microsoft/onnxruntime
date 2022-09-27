@@ -12,8 +12,8 @@ from fusion_embedlayer import FusionEmbedLayerNormalization
 from fusion_fastgelu import FusionFastGelu
 from fusion_gelu import FusionGelu
 from fusion_gelu_approximation import FusionGeluApproximation
+from fusion_gemm_gelu import FusionGemmGelu
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
-from fusion_matmul_bias_gelu import FusionMatmulBiasGelu
 from fusion_options import FusionOptions
 from fusion_reshape import FusionReshape
 from fusion_shape import FusionShape
@@ -65,8 +65,8 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionBiasGelu(self, is_fastgelu)
         fusion.apply()
 
-    def fuse_matmul_bias_gelu(self):
-        fusion = FusionMatmulBiasGelu(self)
+    def fuse_gemm_gelu(self):
+        fusion = FusionGemmGelu(self)
         fusion.apply()
 
     def gelu_approximation(self):
@@ -392,8 +392,9 @@ class BertOnnxModel(OnnxModel):
         if options is not None and options.enable_gelu_approximation:
             self.gelu_approximation()
 
+
         if (options is not None) or options.enable_matmul_bias_gelu:
-            self.fuse_matmul_bias_gelu()
+            self.fuse_gemm_gelu()
 
         self.remove_unused_constant()
 
