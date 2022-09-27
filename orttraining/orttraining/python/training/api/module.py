@@ -84,11 +84,11 @@ class Module:
         # TODO : move this out of Module Class.
         self._model.save_checkpoint(ckpt_uri)
 
-    def get_contagious_parameters(self):
+    def get_contagious_parameters(self, trainable_only: bool = False):
         """
         Returns contiguous parameters object.
         """
-        size = self._model.get_parameters_size(False)
+        size = self._model.get_parameters_size(trainable_only)
         parameters = OrtValue.ortvalue_from_shape_and_type(
             [
                 size,
@@ -100,6 +100,12 @@ class Module:
         self._model.copy_parameters_to_buffer(parameters)
 
         return parameters
+
+    def get_parameters_size(self, trainable_only: bool = False):
+        """
+        Returns the size of the parameters.
+        """
+        return self._model.get_parameters_size(trainable_only)
 
     def copy_buffer_to_parameters(self, buffer):
         """
