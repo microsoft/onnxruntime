@@ -1,16 +1,25 @@
 from enum import Enum
 
 import onnx
-from onnx import TensorProto, helper
-from packaging import version
+from onnx import OperatorSetIdProto, TensorProto, helper
 
-if version.parse(onnx.__version__) == version.parse("1.8.0"):
-    opset_version = 13
-elif version.parse(onnx.__version__) == version.parse("1.6.0"):
-    opset_version = 11
-else:
-    raise RuntimeError("Please pip install onnx==1.8.0 or 1.6.0 before running this script")
 
+def CreateModelUseSpecificOpset(graph, opset):
+    opsets = []
+    onnxdomain = OperatorSetIdProto()
+    onnxdomain.version = opset
+    onnxdomain.domain = ""  # The empty string ("") or absence of this field implies the operator set that is defined as part of the ONNX specification.
+    opsets.append(onnxdomain)
+
+    msdomain = OperatorSetIdProto()
+    msdomain.version = 1
+    msdomain.domain = "com.microsoft"
+
+    opsets.append(msdomain)
+    kwargs = {}
+    kwargs["opset_imports"] = opsets
+
+    return helper.make_model(graph, producer_name="embed_layer_norm_gen", **kwargs)
 
 def GenerateNodes(model_name, has_cast, suffix=""):
     nodes = [  # LayerNorm subgraph
@@ -281,7 +290,7 @@ def GenerateInitializers():
     return initializers
 
 
-def GenerateMultipleEmbedModel(model_name):
+def GenerateMultipleEmbedModel(model_name, opset_version):
     nodes_1 = GenerateNodes(model_name, False, "_1")
     nodes_2 = GenerateNodes(model_name, False, "_2")
     nodes = nodes_1 + nodes_2
@@ -307,11 +316,11 @@ def GenerateMultipleEmbedModel(model_name):
         initializers,
     )
 
-    model = helper.make_model(graph)
+    model =  CreateModelUseSpecificOpset(graph, opset_version)
     onnx.save(model, model_name)
 
 
-def GenerateModel3(model_name, has_cast):
+def GenerateModel3(model_name, has_cast, opset_version):
     nodes = GenerateNodes(model_name, has_cast)
 
     # hidden_size=4, num_heads=2, max_seq_length=3
@@ -321,21 +330,21 @@ def GenerateModel3(model_name, has_cast):
         nodes,
         "EmbedLayerNorm_format3",  # name
         [  # inputs
-            helper.make_tensor_value_info("input_ids", TensorProto.INT64, ["batch", 3]),
-            helper.make_tensor_value_info("segment_ids", TensorProto.INT64, ["batch", 3]),
-            helper.make_tensor_value_info("input_mask", TensorProto.INT64, ["batch", 3]),
+            helper.make_tensor_value_info("input_ids", TensorProto.INT64, ["batch", "seq_length"]),
+            helper.make_tensor_value_info("segment_ids", TensorProto.INT64, ["batch", "seq_length"]),
+            helper.make_tensor_value_info("input_mask", TensorProto.INT64, ["batch", "seq_length"]),
         ],
         [  # outputs
-            helper.make_tensor_value_info("add2_out", TensorProto.FLOAT, ["batch", 3, 4]),
+            helper.make_tensor_value_info("add2_out", TensorProto.FLOAT, ["batch", "seq_length", 4]),
         ],
         initializers,
     )
 
-    model = helper.make_model(graph)
+    model = CreateModelUseSpecificOpset(graph, opset_version)
     onnx.save(model, model_name)
 
 
-def GenerateModel5(model_name):
+def GenerateModel5(model_name, opset_version):
     batch_size = 2
     hidden_size = 4
     attention_heads = 2
@@ -506,11 +515,11 @@ def GenerateModel5(model_name):
         initializers,
     )
 
-    model = helper.make_model(graph)
+    model = CreateModelUseSpecificOpset(graph, opset_version)
     onnx.save(model, model_name)
 
 
-def GenerateModel6(model_name):
+def GenerateModel6(model_name, opset_version):
     nodes = [  # LayerNorm subgraph
         helper.make_node("Shape", ["input_ids"], ["shape1_out"], "shape1"),
         helper.make_node("Gather", ["shape1_out", "indices_0"], ["gather0_out"], "gather0"),
@@ -675,7 +684,7 @@ def GenerateModel6(model_name):
         initializers,
     )
 
-    model = helper.make_model(graph)
+    model = CreateModelUseSpecificOpset(graph, opset_version)
     onnx.save(model, model_name)
 
 
@@ -810,7 +819,7 @@ def GenerateNodes2(attention_heads):
     return nodes
 
 
-def GenerateModel7(model_name):
+def GenerateModel7(model_name, opset_version):
     batch_size = 2
     hidden_size = 4
     attention_heads = 2
@@ -837,11 +846,11 @@ def GenerateModel7(model_name):
         initializers,
     )
 
-    model = helper.make_model(graph)
+    model = CreateModelUseSpecificOpset(graph, opset_version)
     onnx.save(model, model_name)
 
 
-def GenerateModel8(model_name):
+def GenerateModel8(model_name, opset_version):
     batch_size = -1
     hidden_size = 4
     attention_heads = 2
@@ -877,11 +886,11 @@ def GenerateModel8(model_name):
         initializers,
     )
 
-    model = helper.make_model(graph)
+    model = CreateModelUseSpecificOpset(graph, opset_version)
     onnx.save(model, model_name)
 
 
-def GenerateModel9(model_name):
+def GenerateModel9(model_name, opset_version):
     batch_size = -1
     hidden_size = 4
     attention_heads = 2
@@ -940,25 +949,19 @@ def GenerateModel9(model_name):
         initializers,
     )
 
-    model = helper.make_model(graph)
+    model = CreateModelUseSpecificOpset(graph, opset_version)
     onnx.save(model, model_name)
 
 
-if opset_version == 11:
-    GenerateModel3("embed_layer_norm_format3.onnx", True)
-    GenerateModel3("embed_layer_norm_format3_no_cast.onnx", False)
-    GenerateModel5("embed_layer_norm_format5.onnx")
-    GenerateModel6("embed_layer_norm_format6.onnx")
-    GenerateModel7("embed_layer_norm_format7.onnx")  # distilbert
-    GenerateModel8("embed_layer_norm_format8.onnx")  # distilbert & shape nodes integration with input mask
-    GenerateModel9("embed_layer_norm_format9.onnx")  # distilbert & shape nodes integration without input mask
-    GenerateMultipleEmbedModel("embed_layer_norm_multiple.onnx")
-else:
-    GenerateModel3("embed_layer_norm_format3_opset13.onnx", True)
-    GenerateModel3("embed_layer_norm_format3_no_cast_opset13.onnx", False)
-    GenerateModel5("embed_layer_norm_format5_opset13.onnx")
-    GenerateModel6("embed_layer_norm_format6_opset13.onnx")
-    GenerateModel7("embed_layer_norm_format7_opset13.onnx")
-    GenerateModel8("embed_layer_norm_format8_opset13.onnx")
-    GenerateModel9("embed_layer_norm_format9_opset13.onnx")
-    GenerateMultipleEmbedModel("embed_layer_norm_multiple_opset13.onnx")
+for opset_version in [11, 13]:
+    postfix = ""
+    if opset_version == 13:
+        postfix= "_opset13"
+    GenerateModel3(f"embed_layer_norm_format3{postfix}.onnx", True, opset_version)
+    GenerateModel3(f"embed_layer_norm_format3_no_cast{postfix}.onnx", False, opset_version)
+    GenerateModel5(f"embed_layer_norm_format5{postfix}.onnx", opset_version)
+    GenerateModel6(f"embed_layer_norm_format6{postfix}.onnx", opset_version)
+    GenerateModel7(f"embed_layer_norm_format7{postfix}.onnx", opset_version)  # distilbert
+    GenerateModel8(f"embed_layer_norm_format8{postfix}.onnx", opset_version)  # distilbert & shape nodes integration with input mask
+    GenerateModel9(f"embed_layer_norm_format9{postfix}.onnx", opset_version)  # distilbert & shape nodes integration without input mask
+    GenerateMultipleEmbedModel(f"embed_layer_norm_multiple{postfix}.onnx", opset_version)
