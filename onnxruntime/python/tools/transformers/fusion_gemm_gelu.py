@@ -25,9 +25,10 @@ class FusionGemmGelu(Fusion):
         if matmul is None:
             return
 
+        matmul = matmul[0]
         subgraph_nodes = [matmul, node]
         if not self.model.is_safe_to_fuse_nodes(
-            subgraph_nodes, [node.output[0]], input_name_to_nodes, output_name_to_node
+            subgraph_nodes, node.output, input_name_to_nodes, output_name_to_node
         ):
             return
 
