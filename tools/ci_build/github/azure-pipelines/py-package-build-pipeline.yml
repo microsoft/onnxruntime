@@ -22,7 +22,7 @@ parameters:
 - name: python_version
   displayName: 'Python version used for build'
   type: object
-  default: ["'3.7'", "'3.8'", "'3.9'"]
+  default: ["'3.8'"]
 
 - name: cpu_build_py_parameters
   displayName: 'Extra parameters to pass to build.py for CPU package.'
