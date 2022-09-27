@@ -60,20 +60,21 @@ jobs:
 
   - task: CmdLine@2
     inputs:
-      script: |-
-      docker run --rm \
-        -e HIP_VISIBLE_DEVICES \
-        --privileged \
-        --security-opt seccomp=unconfined \
-        --shm-size=1024m \
-        --device=/dev/kfd \
-        --device=/dev/dri \
-        --group-add $(video) \
-        --group-add $(render) \
-        --volume $(Build.SourcesDirectory):/onnxruntime_src \
-        --volume $(Build.BinariesDirectory):/build \
-        --workdir /onnxruntime_src \
-        --user onnxruntimedev \
-        onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
-          /tools/ci_build/github/pai/migraphx_test_launcher.sh ./build/RelWithDebInfo
+      script: |
+        docker run --rm \
+          -e HIP_VISIBLE_DEVICES \
+          --privileged \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri \
+          --group-add $(video) \
+          --group-add $(render) \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /onnxruntime_src \
+          --user onnxruntimedev \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+            /tools/ci_build/github/pai/migraphx_test_launcher.sh ./build/RelWithDebInfo
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
