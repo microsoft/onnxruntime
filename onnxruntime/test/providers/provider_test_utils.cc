@@ -950,44 +950,59 @@ std::vector<OrtValue> OpTester::ExecuteModel(
   return fetches;
 }
 
-bool SetEpForAllNodes(
+bool SetEpsForAllNodes(
     Graph& graph,
-    const std::string& provider_type,
-    const std::unique_ptr<IExecutionProvider>& ep,
-    std::vector<std::shared_ptr<CustomRegistry>> custom_registries) {
+    const std::vector<std::unique_ptr<IExecutionProvider>>& execution_providers,
+    const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries) {
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == kConstant)
       continue;
 
-    // if node is not registered for the provider, skip
-    node.SetExecutionProviderType(provider_type);
-    if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
-        provider_type == onnxruntime::kTensorrtExecutionProvider ||
-        // provider_type == onnxruntime::kTvmExecutionProvider ||
-        provider_type == onnxruntime::kNnapiExecutionProvider ||
-        provider_type == onnxruntime::kCoreMLExecutionProvider ||
-        provider_type == onnxruntime::kDnnlExecutionProvider ||
-        provider_type == onnxruntime::kSnpeExecutionProvider)
-      continue;
-    auto reg = ep->GetKernelRegistry();
-    if (!KernelRegistry::HasImplementationOf(*reg, node, ep->Type(),
-                                             kernel_type_str_resolver)) {
-      bool valid = false;
-      for (auto& custom_registry : custom_registries) {
-        if (KernelRegistry::HasImplementationOf(*custom_registry->GetKernelRegistry(),
-                                                node, ep->Type(),
-                                                kernel_type_str_resolver)) {
-          valid = true;
-          break;
-        }
+    bool found = false;
+
+    for (const auto& ep : execution_providers) {
+      auto provider_type = ep->Type();
+
+      node.SetExecutionProviderType(provider_type);
+      if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
+          provider_type == onnxruntime::kTensorrtExecutionProvider ||
+          // provider_type == onnxruntime::kTvmExecutionProvider ||
+          provider_type == onnxruntime::kNnapiExecutionProvider ||
+          provider_type == onnxruntime::kCoreMLExecutionProvider ||
+          provider_type == onnxruntime::kDnnlExecutionProvider ||
+          provider_type == onnxruntime::kSnpeExecutionProvider) {
+        found = true;
+        break;
       }
 
-      if (!valid) {
-        return false;
+      // Check the EP has an impl for the node from builtin registry.
+      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver)) {
+        found = true;
+        break;
+      }
+
+      // Check the EP has an impl for the node from custom_registries
+      if (custom_registries != nullptr &&
+          std::any_of(custom_registries->cbegin(), custom_registries->cend(),
+                      [&](auto reg) { return KernelRegistry::HasImplementationOf(
+                                          *reg->GetKernelRegistry(),
+                                          node, ep->Type(),
+                                          kernel_type_str_resolver); })) {
+        found = true;
+        break;
       }
     }
+
+    // We will reach here:
+    //  - either we could not find an impl in all possible kernel registries
+    //  - or we skip the registry search and blindly assign the node to the EP due to impl details.
+    if (!found) {
+      return false;
+    }
   }
+
+  // all nodes have been assigned an EP
   return true;
 }
 
@@ -1101,52 +1116,15 @@ void OpTester::Run(
 
     // Run the model
     if (execution_providers) {
-      for (auto& entry : *execution_providers) {
-        // Be noted, entry in execution providers passed in OpTester will be std::moved in the first OpTester::Run(),
-        // To make the error more obvious to debug (instead of a segment fault), we do check explicitly here.
-        ASSERT_TRUE(entry) << "Execution provider entry invalid.";
-
-        if (entry->Type() == kDmlExecutionProvider) {
-          so.enable_mem_pattern = false;
-          so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-          break;
-        }
-      }
-
-      InferenceSession session_object{so, GetEnvironment()};
-
-      if (add_prepacked_shared_container_to_sessions_) {
-        ASSERT_STATUS_OK(session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_));
-      }
-
-      ASSERT_TRUE(!execution_providers->empty())
-          << "Empty execution providers vector.";
-      std::string provider_types;
-
-      for (auto& entry : *execution_providers) {
-        provider_types += entry->Type() + ":";
-        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(entry)));
-      }
-
-      fetches_ = ExecuteModel<InferenceSession>(
-          *p_model, session_object, expect_result, expected_failure_string,
-          run_options, feeds, output_names, provider_types, allow_released_onnx_opset_only);
-
-      // After the model has initialized (happens in ExecuteModel),
-      // we should be able to tell how many constant initializers were pre-packed
-      // and out of these pre-packed ones how many of them used a "cached" version
-      // from the shared container.
-      // Populate these value if the user has requested this information.
-      if (number_of_pre_packed_weights_counter) {
-        *number_of_pre_packed_weights_counter =
-            session_object.GetSessionState().GetNumberOfPrepacksCounter();
-      }
-
-      if (number_of_shared_pre_packed_weights_counter) {
-        *number_of_shared_pre_packed_weights_counter =
-            session_object.GetSessionState().GetUsedSharedPrePackedWeightCounter();
-      }
-
+      ExecuteModelForEps(
+          std::move(*execution_providers), *p_model, so,
+          expect_result, expected_failure_string,
+          run_options, feeds, output_names,
+          /*custom_registries=*/nullptr,
+          /*assign_ep_for_nodes=*/false,
+          allow_released_onnx_opset_only,
+          number_of_pre_packed_weights_counter,
+          number_of_shared_pre_packed_weights_counter);
     } else {
 #ifdef USE_TENSORRT
       // only run trt ep to reduce test time
@@ -1178,19 +1156,6 @@ void OpTester::Run(
           continue;
 
         cur_provider = provider_type;
-
-        if (provider_type == kDmlExecutionProvider) {
-          so.enable_mem_pattern = false;
-          so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-        }
-        InferenceSession session_object{so, GetEnvironment()};
-
-        if (add_prepacked_shared_container_to_sessions_) {
-          ASSERT_STATUS_OK(session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_));
-        }
-
-        for (auto& custom_session_registry : custom_session_registries_)
-          ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
 
         std::unique_ptr<IExecutionProvider> execution_provider;
         if (provider_type == onnxruntime::kCpuExecutionProvider)
@@ -1224,34 +1189,19 @@ void OpTester::Run(
         if (execution_provider == nullptr)
           continue;
 
-        if (!SetEpForAllNodes(graph, provider_type, execution_provider, custom_session_registries_))
-          continue;
-
-        for (auto& custom_session_registry : custom_session_registries_)
-          ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(custom_session_registry));
+        std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+        execution_providers.emplace_back(std::move(execution_provider));
+        ExecuteModelForEps(
+            std::move(execution_providers), *p_model, so,
+            expect_result, expected_failure_string,
+            run_options, feeds, output_names,
+            &custom_session_registries_,
+            /*assign_ep_for_nodes=*/true,
+            allow_released_onnx_opset_only,
+            number_of_pre_packed_weights_counter,
+            number_of_shared_pre_packed_weights_counter);
 
         has_run = true;
-
-        ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
-        fetches_ = ExecuteModel<InferenceSession>(
-            *p_model, session_object, expect_result, expected_failure_string,
-            run_options, feeds, output_names, provider_type, allow_released_onnx_opset_only);
-
-        // After the model has initialized (happens in ExecuteModel),
-        // we should be able to tell how many constant initializers were pre-packed
-        // and out of these pre-packed ones how many of them used a "cached" version
-        // from the shared container.
-        // Populate these value if the user has requested this information.
-        if (number_of_pre_packed_weights_counter) {
-          *number_of_pre_packed_weights_counter =
-              session_object.GetSessionState().GetNumberOfPrepacksCounter();
-        }
-
-        if (number_of_shared_pre_packed_weights_counter) {
-          *number_of_shared_pre_packed_weights_counter =
-              session_object.GetSessionState().GetUsedSharedPrePackedWeightCounter();
-        }
-
         cur_provider = "not set";
       }
 
@@ -1273,6 +1223,79 @@ void OpTester::Run(
     ORT_RETHROW;
   }
 }
+
+void OpTester::ExecuteModelForEps(
+    std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers,
+    onnxruntime::Model& model,
+    SessionOptions sess_options,  // session options is copied to avoid the side effect in this function
+    onnxruntime::test::OpTester::ExpectResult expect_result,
+    const std::string& expected_failure_string,
+    const onnxruntime::RunOptions* run_options,
+    const std::unordered_map<std::string, OrtValue>& feeds,
+    const std::vector<std::string>& output_names,
+    const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries,
+    bool assign_ep_for_nodes,
+    bool allow_released_onnx_opset_only,
+    size_t* number_of_pre_packed_weights_counter,
+    size_t* number_of_shared_pre_packed_weights_counter) {
+  for (auto& entry : execution_providers) {
+    // Be noted, entry in execution providers passed in OpTester will be std::moved in the first OpTester::Run(),
+    // To make the error more obvious to debug (instead of a segment fault), we do check explicitly here.
+    ASSERT_TRUE(entry) << "Execution provider entry invalid.";
+
+    if (entry->Type() == kDmlExecutionProvider) {
+      sess_options.enable_mem_pattern = false;
+      sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+      break;
+    }
+  }
+
+  InferenceSession session_object{sess_options, GetEnvironment()};
+
+  if (add_prepacked_shared_container_to_sessions_) {
+    ASSERT_STATUS_OK(session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_));
+  }
+  ASSERT_TRUE(!execution_providers.empty()) << "Empty execution providers vector.";
+  if (assign_ep_for_nodes) {
+    ASSERT_TRUE(SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries))
+        << "registered execution providers were unable to run the model.";
+  }
+
+  std::string provider_type;
+  for (auto&& ep : execution_providers) {
+    provider_type += ep->Type() + ":";
+  }
+  provider_type.resize(provider_type.size() - 1);  // remove the trailing ':'
+
+  if (custom_registries != nullptr) {
+    for (const auto& reg : *custom_registries) {
+      ASSERT_PROVIDER_STATUS_OK(session_object.RegisterCustomRegistry(reg));
+    }
+  }
+
+  for (auto&& entry : execution_providers) {
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(entry)));
+  }
+
+  fetches_ = ExecuteModel<InferenceSession>(
+      model, session_object, expect_result, expected_failure_string,
+      run_options, feeds, output_names, provider_type, allow_released_onnx_opset_only);
+
+  // After the model has initialized (happens in ExecuteModel),
+  // we should be able to tell how many constant initializers were pre-packed
+  // and out of these pre-packed ones how many of them used a "cached" version
+  // from the shared container.
+  // Populate these value if the user has requested this information.
+  if (number_of_pre_packed_weights_counter != nullptr) {
+    *number_of_pre_packed_weights_counter =
+        session_object.GetSessionState().GetNumberOfPrepacksCounter();
+  }
+
+  if (number_of_shared_pre_packed_weights_counter != nullptr) {
+    *number_of_shared_pre_packed_weights_counter =
+        session_object.GetSessionState().GetUsedSharedPrePackedWeightCounter();
+  }
+};
 
 void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_error) {
   SessionOptions so;
