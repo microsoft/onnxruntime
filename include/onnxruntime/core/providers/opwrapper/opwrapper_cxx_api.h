@@ -78,13 +78,26 @@ const OrtOpWrapperApi* Global<T>::api_ = detail::GetOrtOpWrapperApi();
 
 struct OpWrapperProviderOptions : Ort::Base<OrtOpWrapperProviderOptions> {
   explicit OpWrapperProviderOptions(std::nullptr_t) {}
+  OpWrapperProviderOptions(); // Wraps OrtOpWrapperApi::CreateProviderOptions.
+
+  // Wraps OrtOpWrapperApi::CreateProviderOptions and OrtOpWrapperApi::ProviderOptions_Update.
+  explicit OpWrapperProviderOptions(const std::unordered_map<std::string, std::string>& options);
   explicit OpWrapperProviderOptions(OrtOpWrapperProviderOptions* options);
 
   size_t HasOption(const char* key) const;
   std::string GetOption(const char* key, size_t value_size = 0) const;
+  void UpdateOptions(const std::unordered_map<std::string, std::string>& options);
   std::unordered_map<std::string, std::string> ToMap() const;
 
   static OpWrapperProviderOptions FromKernelInfo(Unowned<const KernelInfo> kernel_info, const char* op_name);
+};
+
+struct SessionOptions : Ort::SessionOptions {
+  explicit SessionOptions(std::nullptr_t x) : Ort::SessionOptions{x} {}
+  SessionOptions() {}
+  explicit SessionOptions(OrtSessionOptions* p) : Ort::SessionOptions{p} {}
+
+  SessionOptions& AppendExecutionProvider_OpWrapper(const std::unordered_map<std::string, OpWrapperProviderOptions>& options);
 };
 }  // namespace OpWrapper
 

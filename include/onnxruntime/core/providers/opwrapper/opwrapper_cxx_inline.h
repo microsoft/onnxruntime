@@ -12,6 +12,15 @@ inline OpWrapperProviderOptions::OpWrapperProviderOptions(OrtOpWrapperProviderOp
     : Base<OrtOpWrapperProviderOptions>{options} {
 }
 
+inline OpWrapperProviderOptions::OpWrapperProviderOptions() {
+  Ort::ThrowOnError(GetApi().CreateProviderOptions(&p_));
+}
+
+inline OpWrapperProviderOptions::OpWrapperProviderOptions(const std::unordered_map<std::string, std::string>& opts) {
+  Ort::ThrowOnError(GetApi().CreateProviderOptions(&p_));
+  UpdateOptions(opts);
+}
+
 inline size_t OpWrapperProviderOptions::HasOption(const char* key) const {
   size_t size = 0;
   Ort::ThrowOnError(GetApi().ProviderOptions_HasOption(p_, key, &size));
@@ -30,6 +39,22 @@ inline std::string OpWrapperProviderOptions::GetOption(const char* key, size_t v
   value.resize(value_size - 1);  // remove the terminating character '\0'
 
   return value;
+}
+
+inline void OpWrapperProviderOptions::UpdateOptions(const std::unordered_map<std::string, std::string>& options) {
+  const size_t num_options = options.size();
+  std::vector<const char*> keys;
+  std::vector<const char*> vals;
+
+  keys.reserve(num_options);
+  vals.reserve(num_options);
+
+  for (const auto& it : options) {
+    keys.push_back(it.first.c_str());
+    vals.push_back(it.second.c_str());
+  }
+
+  Ort::ThrowOnError(GetApi().ProviderOptions_Update(p_, keys.data(), vals.data(), num_options));
 }
 
 inline std::unordered_map<std::string, std::string> OpWrapperProviderOptions::ToMap() const {
@@ -71,6 +96,25 @@ OpWrapperProviderOptions OpWrapperProviderOptions::FromKernelInfo(Unowned<const 
   OrtOpWrapperProviderOptions* options = nullptr;
   Ort::ThrowOnError(GetApi().KernelInfo_GetProviderOptions(kernel_info, op_name, &options));
   return OpWrapperProviderOptions(options);
+}
+
+SessionOptions& SessionOptions::AppendExecutionProvider_OpWrapper(const std::unordered_map<std::string, OpWrapperProviderOptions>& options) {
+  const size_t num_ops = options.size();
+  std::vector<const char*> op_names;
+  std::vector<const OrtOpWrapperProviderOptions*> op_options;
+
+  op_names.reserve(num_ops);
+  op_options.reserve(num_ops);
+
+  for (const auto& it : options) {
+    op_names.push_back(it.first.c_str());
+    op_options.push_back(it.second);
+  }
+
+  Ort::ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpWrapper(p_, op_names.data(),
+                                                                             op_options.data(), num_ops));
+
+  return *this;
 }
 }  // namespace OpWrapper
 }  // namespace Ort
