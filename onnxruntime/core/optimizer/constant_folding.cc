@@ -189,6 +189,8 @@ bool IsSliceNodeCanBeConstantFolded(Graph& graph,
     return false;
   }
 
+  start = starts_values[0];
+  end = ends_values[0];
   clamped_slice_length = HandleSliceOrShape15Indices(start, end,
                                                      static_cast<int64_t>(dim_values.size()));
 
