@@ -26,13 +26,9 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ScatterElements, Input, 0, element_type_lists::All);
 }  // namespace op_kernel_type_control
 
-using ScatterDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Scatter, Input, 0);
 using EnabledScatterDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Scatter, Input, 0);
 
-using ScatterElementsDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, ScatterElements, Input, 0);
 using EnabledScatterElementsDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ScatterElements, Input, 0);
 
@@ -64,7 +60,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterDataTypes>);
@@ -76,7 +71,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterElementsDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
@@ -88,7 +82,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterElementsDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
@@ -99,7 +92,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterElementsDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
