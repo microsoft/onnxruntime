@@ -26,7 +26,13 @@ class ConstantFolding : public GraphTransformer {
                   bool skip_dequantize_linear,
                   bool enable_enhanced_shape_constant_fold = false,
                   const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-                  const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept;
+                  const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept
+      : GraphTransformer("ConstantFolding", compatible_execution_providers),
+        skip_dequantize_linear_(skip_dequantize_linear),
+        enable_enhanced_shape_constant_fold_(enable_enhanced_shape_constant_fold),
+        excluded_initializers_(excluded_initializers),
+        execution_provider_(execution_provider) {
+  }
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
