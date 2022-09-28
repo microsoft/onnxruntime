@@ -128,9 +128,9 @@ Status QkvToContext(
 
   // Q, K, V has size BxNxSxH
   const int batches = batch_size * num_heads;
-  const int size_per_batch = sequence_length * qk_head_size;
+  const int size_per_batch_qk = sequence_length * qk_head_size;
   const int size_per_batch_v = sequence_length * v_head_size;
-  const int total_size = batches * size_per_batch;
+  const int total_size_qk = batches * size_per_batch_qk;
 
   const int qkv_hidden_sizes[3] = {qk_head_size * num_heads, qk_head_size * num_heads, v_head_size * num_heads};
 
@@ -139,7 +139,7 @@ Status QkvToContext(
 
   T* temp_output = scratch1;
   if (nullptr != fused_runner && bias != nullptr) {
-    int* sequence_offset = reinterpret_cast<int*>(qkv + 4 * total_size);
+    int* sequence_offset = reinterpret_cast<int*>(qkv + 4 * total_size_qk);
     LaunchTrtSequenceOffset(sequence_offset, mask_index, batch_size, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
@@ -194,7 +194,7 @@ Status QkvToContext(
           cublas, CUBLAS_OP_T, CUBLAS_OP_N,
           all_sequence_length, sequence_length, qk_head_size,
           &alpha, k, qk_head_size, present_size_per_batch_k,
-          q, qk_head_size, size_per_batch,
+          q, qk_head_size, size_per_batch_qk,
           &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop));
 
   // apply softmax and store result P to scratch2: BxNxSxS*
