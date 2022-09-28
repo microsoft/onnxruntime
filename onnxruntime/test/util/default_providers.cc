@@ -164,10 +164,11 @@ std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_ar
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider() {
+std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool use_tunable_op) {
 #ifdef USE_ROCM
   OrtROCMProviderOptions provider_options{};
   provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tunable_op = use_tunable_op;
   if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
 #endif
