@@ -2494,6 +2494,24 @@ Example 4:
            {{"X_1"}, "Cos", {"X"}},
            {{"dX"}, "Mul", {"X_1", "dY"}}}));
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(CosGrad)
+    .SetDomain(kOnnxDomain)
+    .SinceVersion(9)
+    .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+    .SetDoc("Gradient function for Cos")
+    .AllowUncheckedAttributes()
+    .Input(0, "dY", "Cos output's grad", "T")
+    .Input(1, "X", "Input tensor", "T")
+    .Output(0, "dX", "Cos input's grad", "T")
+    .TypeConstraint(
+        "T",
+        {"tensor(float16)", "tensor(float)", "tensor(double)"},
+        "Constrain input and output types to all numeric tensors.")
+    .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
+        {// nodes: {outputs, op, inputs, attributes}
+          {{"X_1"}, "Sin", {"X"}},
+          {{"dX"}, "Mul", {"X_1", "dY"}}}));
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryScalar)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
