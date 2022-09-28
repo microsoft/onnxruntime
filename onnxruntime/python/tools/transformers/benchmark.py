@@ -34,6 +34,8 @@
             python benchmark.py -e torchscript -g -p "fp16"
         Run ONNXRuntime and TorchScript on CPU for all models with quantization:
             python benchmark.py -e torchscript onnxruntime -p "int8" -o
+        Run OnnxRuntime with the ROCM provider and graph optimization script:
+            python benchmark.py -g -m bert-base-cased --provider rocm --optimizer_info by_script --disable_embed_layer_norm
 
     It is recommended to use run_benchmark.sh to launch benchmark.
 """
@@ -51,6 +53,7 @@ from enum import Enum
 from benchmark_helper import (OptimizerInfo, create_onnxruntime_session, Precision, setup_logger, get_latency_result,
                               output_details, output_summary, output_fusion_statistics, inference_ort,
                               inference_ort_with_io_binding, allocateOutputBuffers, ConfigModifier)
+from fusion_options import FusionOptions
 from quantize_helper import QuantizeHelper
 from onnx_exporter import create_onnxruntime_input, load_pretrained_model, export_onnx_model_from_pt, export_onnx_model_from_tf
 
@@ -71,7 +74,7 @@ from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model, Lxmer
 def run_onnxruntime(use_gpu, provider, model_names, model_class, config_modifier, precision, num_threads, batch_sizes,
                     sequence_lengths, repeat_times, input_counts, optimizer_info, validate_onnx, cache_dir, onnx_dir,
                     verbose, overwrite, disable_ort_io_binding, use_raw_attention_mask, model_fusion_statistics,
-                    model_source):
+                    model_source, args):
     import onnxruntime
 
     results = []
@@ -92,6 +95,9 @@ def run_onnxruntime(use_gpu, provider, model_names, model_class, config_modifier
             )
             return results
 
+    if optimizer_info == OptimizerInfo.NOOPT:
+        logger.warning(f"OptimizerInfo is set to {optimizer_info}, graph optimizations specified in FusionOptions are not applied.")
+
     for model_name in model_names:
         all_input_names = MODELS[model_name][0]
         for num_inputs in input_counts:
@@ -99,18 +105,20 @@ def run_onnxruntime(use_gpu, provider, model_names, model_class, config_modifier
                 break
 
             input_names = all_input_names[:num_inputs]
+            args.model_type = MODELS[model_name][3]
+            fusion_options = FusionOptions.parse(args)
 
             if 'pt' in model_source:
                 with torch.no_grad():
                     onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_pt(
                         model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
                         config_modifier, cache_dir, onnx_dir, input_names, use_gpu, precision, optimizer_info,
-                        validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics)
+                        validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics, fusion_options)
             if 'tf' in model_source:
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_tf(
                     model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
                     config_modifier, cache_dir, onnx_dir, input_names, use_gpu, precision, optimizer_info,
-                    validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics)
+                    validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics, fusion_options)
 
             if not is_valid_onnx_model:
                 continue
@@ -198,7 +206,7 @@ def run_pytorch(use_gpu, model_names, model_class, config_modifier, precision, n
 
     for model_name in model_names:
         config = AutoConfig.from_pretrained(model_name, torchscript=torchscript, cache_dir=cache_dir)
-        config_modifier(config)
+        config_modifier.modify(config)
         model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class)
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
@@ -240,6 +248,7 @@ def run_pytorch(use_gpu, model_names, model_class, config_modifier, precision, n
                     result = {
                         "engine": "torchscript" if torchscript else "torch",
                         "version": torch.__version__,
+                        "providers": "NA",
                         "device": "cuda" if use_gpu else "cpu",
                         "optimizer": "",
                         "precision": precision,
@@ -315,7 +324,7 @@ def run_tensorflow(use_gpu, model_names, model_class, config_modifier, precision
 
     for model_name in model_names:
         config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
-        config_modifier(config)
+        config_modifier.modify(config)
 
         model = load_pretrained_model(model_name,
                                       config=config,
@@ -373,6 +382,7 @@ def run_tensorflow(use_gpu, model_names, model_class, config_modifier, precision
                     result = {
                         "engine": "tensorflow",
                         "version": tf.__version__,
+                        "providers": "NA",
                         "device": "cuda" if use_gpu else "cpu",
                         "optimizer": "",
                         "precision": precision,
@@ -517,6 +527,8 @@ def parse_arguments():
                         default=None,
                         help="Manually set the model's layer number")
 
+    FusionOptions.add_arguments(parser)
+
     args = parser.parse_args()
     return args
 
@@ -584,7 +596,7 @@ def main():
                                            args.test_times, args.input_counts, args.optimizer_info, args.validate_onnx,
                                            args.cache_dir, args.onnx_dir, args.verbose, args.overwrite,
                                            args.disable_ort_io_binding, use_raw_attention_mask, model_fusion_statistics,
-                                           args.model_source)
+                                           args.model_source, args)
             except:
                 logger.error(f"Exception", exc_info=True)
 

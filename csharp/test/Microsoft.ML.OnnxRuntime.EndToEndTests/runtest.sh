@@ -19,7 +19,7 @@ echo "Current NuGet package version is $CurrentOnnxRuntimeVersion"
 if [ $RunTestCsharp = "true" ]; then
   if [[ $IsMacOS == "True" || $IsMacOS == "true" ]]; then
     mkdir -p $BUILD_BINARIESDIRECTORY/models
-    ln -s $BUILD_SOURCESDIRECTORY/cmake/external/onnx/onnx/backend/test/data/node $BUILD_BINARIESDIRECTORY/models/opset14
+    ln -s $BUILD_SOURCESDIRECTORY/cmake/external/onnx/onnx/backend/test/data/node $BUILD_BINARIESDIRECTORY/models/opset16
   fi
   # Run C# tests
   dotnet restore $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo -s https://api.nuget.org/v3/index.json

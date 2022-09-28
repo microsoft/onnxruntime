@@ -1134,8 +1134,16 @@ def test_gradient_correctness_reducesum(dim, keepdim):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
-@pytest.mark.parametrize("equation", ["s,se->se", "se,sc->sec", "se,se->s", "sec,sm->ecm",
-                                      "sec,ecm->sm", "ks,ksm->sm", "kes,ems->mek", "kes,ksm->ms"])
+# In PyTorch 1.11.0, there is issue during reduce node shape handling for exporter, so any sub-graph that
+# contains ReduceProd will fail to run, for example, "sec,sm->ecm", "sec,ecm->sm".
+# Currently skip these cases and test_gradient_correctness_einsum_2,
+# will enable these tests again once the issue in PyTorch is fixed.
+skip_torch_1_11 = pytest.mark.skipif(LooseVersion(torch.__version__) >= LooseVersion('1.11.0'), reason="PyTorch 1.11 incompatible")
+@pytest.mark.parametrize("equation", [
+    "s,se->se", "se,sc->sec", "se,se->s", "ks,ksm->sm", "kes,ems->mek", "kes,ksm->ms",
+    pytest.param("sec,sm->ecm", marks=[skip_torch_1_11]),
+    pytest.param("sec,ecm->sm", marks=[skip_torch_1_11])
+])
 def test_gradient_correctness_einsum(equation):
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):
@@ -1183,6 +1191,7 @@ def test_gradient_correctness_einsum(equation):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-3, rtol=1e-3)
 
+@skip_torch_1_11
 def test_gradient_correctness_einsum_2():
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):
@@ -4818,3 +4827,43 @@ def test_check_opset_is_default_opset_after_training():
     _test_helpers.assert_values_are_close(pt_loss, ort_loss)
     _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
     assert ortmodule_module.ONNX_OPSET_VERSION == DEFAULT_OPSET
+
+
+def test_random_states_unchanged_for_ortmodule():
+    import numpy
+
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = 'False'
+
+    class NeuralNetSlice(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetSlice, self).__init__()
+            self.dim = 32
+
+        def forward(self, x):
+            # This slice operation will call sympy.Min() when exporting, which will change Python's random state
+            return x[:self.dim, :]
+
+    def random_state_equal(a, b):
+        assert type(a) == type(b)
+        if isinstance(a, tuple):
+            assert len(a) == len(b)
+            return all([random_state_equal(a_i, b_i) for a_i, b_i in zip(a, b)])
+        if isinstance(a, numpy.ndarray):
+            return numpy.array_equal(a, b)
+        if isinstance(a, torch.Tensor):
+            return torch.equal(a, b)
+        return a == b
+
+    model = NeuralNetSlice()
+    x = torch.randn(16, 16)
+
+    ori_random_states = _utils.get_random_states()
+
+    ort_model = ORTModule(model)
+    ort_model(x)
+
+    new_random_states = _utils.get_random_states()
+
+    assert random_state_equal(ori_random_states, new_random_states)
+
+    del os.environ['ORTMODULE_FALLBACK_RETRY']

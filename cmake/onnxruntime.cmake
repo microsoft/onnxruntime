@@ -213,8 +213,13 @@ install(TARGETS onnxruntime
 
 set_target_properties(onnxruntime PROPERTIES FOLDER "ONNXRuntime")
 
-if (WINDOWS_STORE)
-  target_link_options(onnxruntime PRIVATE /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll)
+if (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+  # Workaround STL bug https://github.com/microsoft/STL/issues/434#issuecomment-921321254
+  # Note that the workaround makes std::system_error crash before Windows 10
+
+  # The linker warns "LNK4199: /DELAYLOAD:api-ms-win-core-heapl2-1-0.dll ignored; no imports found from api-ms-win-core-heapl2-1-0.dll"
+  # when you're not using imports directly, even though the import exists in the STL and the DLL would have been linked without DELAYLOAD
+  target_link_options(onnxruntime PRIVATE /DELAYLOAD:api-ms-win-core-heapl2-1-0.dll /ignore:4199)
 endif()
 
 if (winml_is_inbox)

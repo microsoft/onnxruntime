@@ -280,6 +280,12 @@ def convert_float_to_float16(model,
                         if n.name not in graph_io_to_skip:
                             n.type.tensor_type.elem_type = onnx_proto.TensorProto.FLOAT16
                             value_info_list.append(n)
+                    if n.type.HasField('sequence_type'):
+                        if n.type.sequence_type.elem_type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT:
+                            if n.name not in graph_io_to_skip:
+                                n.type.sequence_type.elem_type.tensor_type.elem_type = onnx_proto.TensorProto.FLOAT16
+                                value_info_list.append(n)
+                            
         queue = next_level
 
     for key, value in fp32_initializers.items():

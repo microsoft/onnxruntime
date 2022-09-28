@@ -1537,21 +1537,11 @@ TEST_F(GraphTest, AddTensorAttribute) {
 }
 
 void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, int64_t attr_value) {
-  AttributeProto attr;
-  attr.set_name(attr_name);
-  attr.set_type(AttributeProto_AttributeType_INT);
-  attr.set_i(attr_value);
-  p_node.AddAttribute(attr_name, attr);
+  p_node.AddAttribute(attr_name, attr_value);
 }
 
 void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, std::initializer_list<int64_t> attr_value) {
-  AttributeProto attr;
-  attr.set_name(attr_name);
-  attr.set_type(AttributeProto_AttributeType_INTS);
-  for (auto v : attr_value) {
-    attr.add_ints(v);
-  }
-  p_node.AddAttribute(attr_name, attr);
+  p_node.AddAttribute(attr_name, attr_value);
 }
 
 // Test that output type can be inferred for ops with a type-attribute

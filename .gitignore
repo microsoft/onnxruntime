@@ -36,6 +36,7 @@ onnxruntime_profile*.json
 /csharp/**/bin/
 /csharp/Directory.Build.props
 docs/python/inference/*.onnx
+*.onnx
 onnxprofile_profile_test_*.json
 /csharp/packages
 /csharp/src/Microsoft.ML.OnnxRuntime/targets/**/*.targets

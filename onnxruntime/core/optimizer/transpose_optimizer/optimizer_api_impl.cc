@@ -326,7 +326,7 @@ void ApiNode::CopyAttributes(const api::NodeRef& node) {
   const ApiNode& ort_node = static_cast<const ApiNode&>(node);
   const NodeAttributes& attributes = ort_node.node_.GetAttributes();
   for (const auto& pair : attributes) {
-    node_.AddAttribute(pair.first, pair.second);
+    node_.AddAttributeProto(pair.second);
   }
 }
 

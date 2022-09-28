@@ -6,7 +6,6 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "hailo_op.h"
 #include "utils.h"
-#include "hailo_global_vdevice.h"
 
 #include <iostream>
 #include <mutex>
@@ -50,7 +49,16 @@ HailoKernel::HailoKernel(const OpKernelInfo& info) : OpKernel(info), m_mutex()
     HAILO_ORT_ENFORCE(status.IsOK(), "attribute '",  OUTPUT_ORDER_ATTRIBUTE, "' is not set");
 
     m_hef = create_hef_from_memory(binary_hef.c_str(), binary_hef.length());
-    m_vdevice = GlobalVDevice::get_instance().get_vdevice();
+
+    hailo_vdevice_params_t params;
+    auto hailo_status = hailo_init_vdevice_params(&params);
+    HAILO_ORT_ENFORCE(HAILO_SUCCESS == hailo_status, "Failed init vdevice_params, status = ", hailo_status);
+    params.scheduling_algorithm = HAILO_SCHEDULING_ALGORITHM_ROUND_ROBIN;
+    params.group_id = "SHARED";
+    auto expected_vdevice = VDevice::create(params);
+    HAILO_CHECK_EXPECTED(expected_vdevice, "Failed to create VDevice");
+    m_vdevice = std::move(expected_vdevice.value());
+
     m_network_group = configure_network_group(*m_vdevice.get());
 
     auto output_nodes = info.node().OutputDefs();
@@ -64,7 +72,6 @@ HailoKernel::~HailoKernel()
     m_network_group.reset();
     m_vdevice.reset();
     m_hef.reset();
-    GlobalVDevice::get_instance().release();
 }
 
 std::unique_ptr<Hef> HailoKernel::create_hef_from_memory(const void* binary_hef, size_t size)

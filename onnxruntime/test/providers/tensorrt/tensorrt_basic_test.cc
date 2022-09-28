@@ -36,7 +36,7 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  * Create a simple model with dynamic or non-dynamic input shape.
  * \param model_name - model name
  * \param graph_name - graph name
- * \params dims - input dimensions 
+ * \params dims - input dimensions
  *
  * input: "X", "Y" and "Z"
  *        you can specify input dimensions, for example (1, 3, 2), (1, 2) or (1, -1, -1)). Note: -1 means the dimension is dynamic.
@@ -46,9 +46,9 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  *      "X"  "Y"
  *        \  /
  *    "Z"  Add
- *      \  / 
+ *      \  /
  *       Add
- *       / 
+ *       /
  *     "M"
  *
  */
@@ -389,7 +389,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
       // check min/max shape ranges of dynamic shape dimensions
       for(auto it = shape_ranges.cbegin(); it != shape_ranges.cend(); ++it) {
-        auto ranges = it->second;  
+        auto ranges = it->second;
         for (auto it2 = ranges.cbegin(); it2 != ranges.cend(); ++it2) {
           if (it2->first == 1) {
             ASSERT_EQ(it2->second.first, 3);
@@ -439,7 +439,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
       // check min/max shape ranges of dynamic shape dimensions
       for(auto it = shape_ranges2.cbegin(); it != shape_ranges2.cend(); ++it) {
-        auto ranges = it->second;  
+        auto ranges = it->second;
         for (auto it2 = ranges.cbegin(); it2 != ranges.cend(); ++it2) {
           if (it2->first == 1) {
             ASSERT_EQ(it2->second.first, 1);
@@ -470,7 +470,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
  * We have following test parameters:
  * - engine_static: engine cache enabled with non-dynamic input shape
  * - engine_dynamic: engine cache enabled with dynamic input shape
- * - timing_static: will be added 
+ * - timing_static: will be added
  * - timing_dynamic: will be added
  */
 INSTANTIATE_TEST_SUITE_P(TensorrtExecutionProviderCacheTests, TensorrtExecutionProviderCacheTest, testing::Values("engine_static",
@@ -591,11 +591,7 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   auto& output_arg_1 = graph.GetOrCreateNodeArg("node_1_out", &uint8_tensor);
   outputs.push_back(&output_arg_1);
   auto& cast_node = graph.AddNode("cast1", "Cast", "node 1.", inputs, outputs);
-  AttributeProto attr_proto;
-  attr_proto.set_name("to");
-  attr_proto.set_type(AttributeProto_AttributeType_INT);
-  attr_proto.set_i(2);
-  cast_node.AddAttribute("to", attr_proto);
+  cast_node.AddAttribute("to", int64_t{2});
 
   inputs.clear();
   inputs.push_back(&output_arg_1);
@@ -603,11 +599,7 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   outputs.clear();
   outputs.push_back(&output_arg_2);
   auto& cast_node_2 = graph.AddNode("cast2", "Cast", "node 2.", inputs, outputs);
-  AttributeProto attr_proto_2;
-  attr_proto_2.set_name("to");
-  attr_proto_2.set_type(AttributeProto_AttributeType_INT);
-  attr_proto_2.set_i(9);
-  cast_node_2.AddAttribute("to", attr_proto_2);
+  cast_node_2.AddAttribute("to", int64_t{9});
 
   auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &float_tensor);
   auto& input_arg_3 = graph.GetOrCreateNodeArg("Z", &float_tensor);

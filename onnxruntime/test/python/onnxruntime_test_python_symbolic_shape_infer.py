@@ -25,20 +25,12 @@ def unique_element(lst):
 
 class TestSymbolicShapeInference(unittest.TestCase):
     def test_symbolic_shape_infer(self):
-        # skip these tests before this issue is fixed:
-        # https://github.com/microsoft/onnxruntime/issues/10761
-        test_skip_due_to_onnx_1_11_shape_inference_change = ["GPT2", "GPT2_LM_HEAD", "test_GPT2"]
-
+        
         cwd = os.getcwd()
         test_model_dir = os.path.join(cwd, '..', 'models')
         for filename in Path(test_model_dir).rglob('*.onnx'):
             if filename.name.startswith('.'):
                 continue  # skip some bad model files
-
-            if len(filename.parts) > 1 and \
-                filename.parts[len(filename.parts) - 2] in test_skip_due_to_onnx_1_11_shape_inference_change:
-                print("Skip symbolic shape inference on : " + str(filename))
-                continue
 
             print("Running symbolic shape inference on : " + str(filename))
             SymbolicShapeInference.infer_shapes(in_mp=onnx.load(str(filename)),

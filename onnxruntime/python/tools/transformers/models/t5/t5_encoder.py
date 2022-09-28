@@ -5,6 +5,8 @@
 # --------------------------------------------------------------------------
 
 import random
+import sys
+import os
 from pathlib import Path
 from typing import List
 import logging
@@ -13,12 +15,14 @@ import torch
 from transformers import T5Config
 from onnxruntime import InferenceSession
 
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from torch_onnx_export_helper import torch_onnx_export
+
 logger = logging.getLogger(__name__)
 
 
 class T5Encoder(torch.nn.Module):
     """ T5 encoder outputs only the last hidden state"""
-
     def __init__(self, encoder, config: T5Config):
         super().__init__()
         self.encoder = encoder
@@ -29,7 +33,6 @@ class T5Encoder(torch.nn.Module):
 
 
 class T5EncoderInputs:
-
     def __init__(self, input_ids, attention_mask):
         self.input_ids: torch.LongTensor = input_ids
         self.attention_mask: torch.LongTensor = attention_mask
@@ -44,7 +47,7 @@ class T5EncoderInputs:
             sequence_length (int): sequence length
             vocab_size (int): vocaburary size
             device (torch.device): device of output tensors
-        
+
         Returns:
             T5EncoderInputs: dummy inputs for encoder
         """
@@ -67,7 +70,6 @@ class T5EncoderInputs:
 
 
 class T5EncoderHelper:
-
     @staticmethod
     def export_onnx(encoder: T5Encoder,
                     device: torch.device,
@@ -93,7 +95,7 @@ class T5EncoderHelper:
             outputs = encoder(encoder_inputs.input_ids, encoder_inputs.attention_mask)
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-        torch.onnx.export(encoder,
+        torch_onnx_export(encoder,
                           args=tuple(encoder_inputs.to_list()),
                           f=onnx_model_path,
                           export_params=True,

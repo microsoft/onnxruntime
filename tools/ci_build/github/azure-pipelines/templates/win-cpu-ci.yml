@@ -85,7 +85,7 @@ jobs:
     displayName: 'API Documentation Check and generate'
 
   - script: |
-     python -m pip install -q setuptools wheel numpy six
+     python -m pip install -q setuptools wheel numpy
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
@@ -173,7 +173,7 @@ jobs:
 
   - ${{ if eq(parameters.EnablePython, true) }}:
       - powershell: |
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
        
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'

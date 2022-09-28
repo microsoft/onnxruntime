@@ -83,7 +83,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     for (const auto& attr : attrs) {
       AttributeProto fused_gemm_attr(attr.second);
       fused_gemm_attr.set_name("activation_" + attr.first);
-      fused_gemm.AddAttribute("activation_" + attr.first, std::move(fused_gemm_attr));
+      fused_gemm.AddAttributeProto(std::move(fused_gemm_attr));
     }
 
     // move output definitions and edges from act_node to fused_gemm. delete gemm_node and act_node.

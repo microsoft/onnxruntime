@@ -43,7 +43,7 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensors) {
 
   allreduce_test.AddOutput<float>("G_new1", {3}, output_grad);
   allreduce_test.AddOutput<float>("G_new2", {3}, output_grad);
-  allreduce_test.AddAttribute("reduce_algo", static_cast<int64_t>(0));
+  allreduce_test.AddAttribute("reduce_algo", int64_t{0});
 
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
@@ -86,7 +86,7 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensorsFP16) {
   allreduce_test.AddOutput<MLFloat16>("G_new1", {3}, output_grad_half);
   allreduce_test.AddOutput<MLFloat16>("G_new2", {3}, output_grad_half);
 
-  allreduce_test.AddAttribute("reduce_algo", static_cast<int64_t>(0));
+  allreduce_test.AddAttribute("reduce_algo", int64_t{0});
 
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
@@ -112,7 +112,7 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestFailTensorCountMismatch) {
 
   allreduce_test.AddOutput<float>("G_new1", {3}, {5.6301f, 6.5235f, 7.4169f});
   allreduce_test.AddOutput<float>("G_new2", {3}, {5.6301f, 6.5235f, 7.4169f});
-  allreduce_test.AddAttribute("reduce_algo", static_cast<int64_t>(0));
+  allreduce_test.AddAttribute("reduce_algo", int64_t{0});
 
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.push_back(DefaultCpuExecutionProvider());
@@ -224,18 +224,8 @@ void build_optimizer_node(Graph& graph,
   auto& optimizer_node = graph.AddNode(input_gradient->Name() + "_adam_optimizer", "AdamOptimizer", "Adam optimizer.", optimizer_inputs, optimizer_outputs,
                                        nullptr /*attributes*/, kMSDomain);
 
-  ONNX_NAMESPACE::AttributeProto bias_correction_attribute, weight_decay_mode_attribute;
-
-  bias_correction_attribute.set_name("do_bias_correction");
-  bias_correction_attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-  bias_correction_attribute.set_i(0);
-
-  weight_decay_mode_attribute.set_name("weight_decay_mode");
-  weight_decay_mode_attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-  weight_decay_mode_attribute.set_i(0);
-
-  optimizer_node.AddAttribute("do_bias_correction", bias_correction_attribute);
-  optimizer_node.AddAttribute("weight_decay_mode", weight_decay_mode_attribute);
+  optimizer_node.AddAttribute("do_bias_correction", int64_t{0});
+  optimizer_node.AddAttribute("weight_decay_mode", int64_t{0});
 }
 
 using AllreduceGraphConfigVector = std::vector<std::tuple<std::string /*input name*/,
@@ -288,12 +278,7 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
     auto& level_1_allreduce_node = graph.AddNode("node_level_1", level_1_allreduce,
                                                  "level 1 allreduce.", level_1_inputs, level_1_outputs,
                                                  nullptr /*attributes*/, kMSDomain);
-    ONNX_NAMESPACE::AttributeProto level_1_group_type_attribute;
-
-    level_1_group_type_attribute.set_name("group_type");
-    level_1_group_type_attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-    level_1_group_type_attribute.set_i(2 /*node local data parallel*/);
-    level_1_allreduce_node.AddAttribute("group_type", level_1_group_type_attribute);
+    level_1_allreduce_node.AddAttribute("group_type", int64_t{2} /*node local data parallel*/);
     // Set inputs of next node to be outputs of level 1 reduction node.
     inputs.clear();
     inputs = std::move(level_1_outputs);
@@ -317,11 +302,7 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
         auto& scaled_grad_node = graph.AddNode(std::get<0>(config[i]) + "_scaled_grad", "MixedPrecisionScale",
                                                "scale grad", scale_grad_inputs, {&scale_grad_output_arg},
                                                nullptr /*attributes*/, kMSDomain);
-        ONNX_NAMESPACE::AttributeProto scale_attribute;
-        scale_attribute.set_name("to");
-        scale_attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-        scale_attribute.set_i(static_cast<int64_t>(element_type));
-        scaled_grad_node.AddAttribute("to", scale_attribute);
+        scaled_grad_node.AddAttribute("to", int64_t{element_type});
       }
       // Set inputs of next node to be outputs of scale node.
       inputs.clear();
@@ -359,19 +340,9 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
   auto& allreduce_node = graph.AddNode("node_allreduce", allreduce_op_name, "node allreduce.", inputs, allreduce_outputs,
                                        nullptr /*attributes*/, kMSDomain);
   if (adasum_reduce_type != training::AdasumReductionType::None) {
-    // Attribute
-    ONNX_NAMESPACE::AttributeProto adasum_reduction_type_attribute;
-    adasum_reduction_type_attribute.set_name("reduce_algo");
-    adasum_reduction_type_attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-    adasum_reduction_type_attribute.set_i(static_cast<int64_t>(adasum_reduce_type));
-    allreduce_node.AddAttribute("reduce_algo", adasum_reduction_type_attribute);
+    allreduce_node.AddAttribute("reduce_algo", static_cast<int64_t>(adasum_reduce_type));
   } else {
-    // Attribute
-    ONNX_NAMESPACE::AttributeProto group_type_attribute;
-    group_type_attribute.set_name("group_type");
-    group_type_attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-    group_type_attribute.set_i(0 /*data parallel*/);
-    allreduce_node.AddAttribute("group_type", group_type_attribute);
+    allreduce_node.AddAttribute("group_type", int64_t{0} /*data parallel*/);
   }
 
   if (build_optimizer) {

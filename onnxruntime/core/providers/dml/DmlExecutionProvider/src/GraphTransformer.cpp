@@ -214,7 +214,7 @@ namespace Dml
                 // Change the name of the attribute to its fused node version
                 std::string fusedAttributeName = Dml::FusionHelpers::GetFusedAttributeName(attribute.first);
                 attribute.second.set_name(fusedAttributeName);
-                node.AddAttribute(fusedAttributeName, attribute.second);
+                node.AddAttributeProto(attribute.second);
             }
         }
     }

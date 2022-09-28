@@ -1,3 +1,8 @@
+#-------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+#--------------------------------------------------------------------------
+
 import argparse
 from dataclasses import dataclass
 import numpy as np

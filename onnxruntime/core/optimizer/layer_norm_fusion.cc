@@ -447,7 +447,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
     bool cast_1_present = false;
-    int64_t cast_1_to_attr;
+    int64_t cast_1_to_attr{};
     // check if there are Casts as input to the Pow and Div
     if (p_div_input == p_pow_input) {
       const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
@@ -574,7 +574,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // Assign provider to this new node. Provider should be same as the provider for old node.
     layer_norm_node.SetExecutionProviderType(reduce_mean_node.GetExecutionProviderType());
 
-    if (allow_precision_change_ && p_cast_2 != nullptr) {
+    if (allow_precision_change_ && cast_1_present && p_cast_2 != nullptr) {
       ONNX_NAMESPACE::TensorProto_DataType cast_1_type = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(cast_1_to_attr);
       const ONNX_NAMESPACE::TypeProto* casted_type = DataTypeImpl::TensorTypeFromONNXEnum(cast_1_type)->GetTypeProto();
       NodeArg* LN_output = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("layer_norm_out"), casted_type);

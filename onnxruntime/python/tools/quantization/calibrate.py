@@ -608,7 +608,7 @@ class HistogramCollector(CalibrationDataCollector):
             cdf = np.cumsum(hist/total)
             if self.symmetric:
                 idx_right = np.searchsorted(cdf, percentile / 100.0)
-                thresholds_dict[tensor] = (-float(hist_edges[idx_ringht]), float(hist_edges[idx_right]))
+                thresholds_dict[tensor] = (-float(hist_edges[idx_right]), float(hist_edges[idx_right]))
             else:
                 percent_to_cut_one_side = (100.0 - percentile) / 200.0
                 idx_right = np.searchsorted(cdf, 1.0 - percent_to_cut_one_side)

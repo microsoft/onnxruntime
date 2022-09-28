@@ -52,7 +52,26 @@ def image_to_numpy(filename, shape, channels_last, add_batch_dim):
 
     img = PIL.Image.open(filename)
     if shape:
-        img = img.resize(shape, PIL.Image.ANTIALIAS)
+        w, h = img.size
+        new_w = shape[1]
+        new_h = shape[0]
+
+        # use the dimension that needs to shrink the least to resize to an image where that dimension matches the
+        # target size.
+        w_ratio = new_w / w
+        h_ratio = new_h / h
+        ratio = w_ratio if w_ratio > h_ratio else h_ratio
+        interim_w = int(w * ratio)
+        interim_h = int(h * ratio)
+        img = img.resize((interim_w, interim_h), PIL.Image.ANTIALIAS)
+
+        # center crop to the final target size
+        left = (interim_w - new_w) / 2
+        top = (interim_h - new_h) / 2
+        right = (interim_w + new_w) / 2
+        bottom = (interim_h + new_h) / 2
+        img = img.crop((left, top, right, bottom))
+
     img_as_np = np.array(img).astype(np.float32)
     if not channels_last:
         # HWC to CHW
@@ -110,8 +129,8 @@ def get_arg_parser():
     image_to_pb_group = parser.add_argument_group('image_to_pb',
                                                   'image_to_pb specific options')
     image_to_pb_group.add_argument('--resize', default=None, type=lambda s: [int(item) for item in s.split(',')],
-                                   help='Provide the shape as comma separated values to resize the image to.'
-                                        ' e.g. --shape 200,200')
+                                   help='Provide the height and width to resize to as comma separated values.'
+                                        ' e.g. --shape 200,300 will resize to height 200 and width 300.')
     image_to_pb_group.add_argument('--channels_last', action='store_true',
                                    help='Transpose image from channels first to channels last.')
     image_to_pb_group.add_argument('--add_batch_dim', action='store_true',

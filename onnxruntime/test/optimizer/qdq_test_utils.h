@@ -256,8 +256,9 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
 }
 
 template <typename InputType, typename OutputType>
-GetQDQTestCaseFn BuildQDQSoftMaxTestCase(const std::vector<int64_t>& input_shape, const int64_t& axis = -1) {
-  return [input_shape, axis](ModelTestBuilder& builder) {
+GetQDQTestCaseFn BuildQDQSoftMaxTestCase(const std::vector<int64_t>& input_shape, const int64_t& axis,
+                                         float output_scales, OutputType output_zero_point) {
+  return [input_shape, axis, output_scales, output_zero_point](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<InputType>(input_shape,
                                                    std::numeric_limits<InputType>::min(),
                                                    std::numeric_limits<InputType>::max());
@@ -275,7 +276,7 @@ GetQDQTestCaseFn BuildQDQSoftMaxTestCase(const std::vector<int64_t>& input_shape
     softmax_node.AddAttribute("axis", axis);
 
     // add Q
-    builder.AddQuantizeLinearNode<OutputType>(softmax_output, 1.f / 256, 0, output_arg);
+    builder.AddQuantizeLinearNode<OutputType>(softmax_output, output_scales, output_zero_point, output_arg);
   };
 }
 
@@ -287,6 +288,8 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
                                         bool has_input_float = false,
                                         bool has_input_int8 = false,
                                         bool has_output_int8 = false);
+
+GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupportedInputScaleZp();
 
 }  // namespace test
 }  // namespace onnxruntime

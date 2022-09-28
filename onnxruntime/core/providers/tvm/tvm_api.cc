@@ -17,16 +17,9 @@ using TvmPackedFunc = ::tvm::PackedFunc;
 
 TvmModule TVMCompile(const std::string& onnx_txt,
                      const std::string& model_path,
-                     const std::string& executor,
-                     const std::string& target,
-                     const std::string& target_host,
-                     int opt_level,
+                     const TvmEPOptions& options,
                      int opset,
-                     bool freeze_params,
-                     const std::vector<std::vector<int64_t>>& input_shapes,
-                     bool nhwc,
-                     const std::string& tuning_logfile,
-                     const std::string& tuning_type)
+                     const TVMTensorShapes& input_shapes)
 {
   ::tvm::Array<TvmIntArray> shapes;
   for (size_t i = 0; i < input_shapes.size(); ++i)
@@ -41,19 +34,18 @@ TvmModule TVMCompile(const std::string& onnx_txt,
 
   const TvmPackedFunc* compile = ::tvm::runtime::Registry::Get("tvm_onnx_import_and_compile");
   ORT_ENFORCE(compile != nullptr, "Unable to retrieve 'tvm_onnx_import_and_compile'.");
-  TvmModule mod = (*compile)(
-          TVMByteArray{onnx_txt.data(), onnx_txt.size()},
-          model_path,
-          executor,
-          target,
-          target_host,
-          opt_level,
-          opset,
-          freeze_params,
-          shapes,
-          nhwc,
-          tuning_logfile,
-          tuning_type);
+  TvmModule mod = (*compile)(TVMByteArray{onnx_txt.data(), onnx_txt.size()},
+                             model_path,
+                             options.executor,
+                             options.target,
+                             options.target_host,
+                             options.opt_level,
+                             opset,
+                             options.freeze_weights,
+                             shapes,
+                             options.to_nhwc,
+                             options.tuning_file_path,
+                             options.tuning_type);
   ORT_ENFORCE(mod.get() != nullptr, "Compiled TVM Module is nullptr!");
   return mod;
 }
@@ -108,20 +100,19 @@ void TVM_VM_GetOutputs(TvmModule& mod,
 }
 
 void TVMGetOutputShapes(TvmModule& mod,
-                        size_t num_outputs,
-                        std::vector<std::vector<int64_t>>& output_shapes)
+                        TVMTensorShapes& output_shapes)
 {
-  output_shapes.clear();
+  size_t size = output_shapes.size();
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
-  for (size_t i = 0; i < num_outputs; ++i) {
+  for (size_t i = 0; i < size; ++i) {
     ::tvm::runtime::NDArray output_array = get_output(i);
     ::tvm::runtime::ShapeTuple shape_tuple = output_array.Shape();
     size_t dims_num = shape_tuple.size();
-    std::vector<int64_t> dims;
+    TensorShapeVector dims;
     for (size_t j = 0; j < dims_num; ++j) {
       dims.push_back(int64_t(shape_tuple[j]));
     }
-    output_shapes.push_back(dims);
+    output_shapes[i] = dims;
   }
 }
 

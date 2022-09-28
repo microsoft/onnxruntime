@@ -263,7 +263,7 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::InitOpTesterWithGraph(
   }
   // Currently only allows setting int attributes to zero. TODO: Expand this
   for (auto attr : attributes) {
-    op_session.AddAttribute<AttributeProto>(attr.name(), attr);
+    op_session.AddAttributeProto(attr);
   }
 
   // build graph

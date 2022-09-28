@@ -5,11 +5,11 @@ Hailo ONNX Runtime integrates ONNX Runtime with HailoRT to enable Hailo-EP, prov
 * ONNX Runtime version 1.11.1 with Python 3.7 and above
 
 # Prerequisites
-* HailoRT v4.8.1
+* HailoRT v4.10.0
 
 # Build Instructions
 To build ONNXRuntime with HailoRT please follow the following steps:
-* Clone ONNXRuntime-Hailo from github.
+* Clone ONNXRuntime-Hailo from github
 * Compile ONNXRuntime with Hailo using the following command:
     ```
         ./build.sh --use_hailo --parallel --skip_tests --enable_pybind --build_wheel --config Release
@@ -17,8 +17,8 @@ To build ONNXRuntime with HailoRT please follow the following steps:
 
 # Run ONNX Runtime with HailoRT
 To run your ONNX model on ONNXRuntime with Hailo execution provider, follow the following steps:
-1. Convert your ONNX model with DFC tool - see [Model Compilation](https://hailo.ai/developer-zone/documentation/dataflow-compiler/latest/?sp_referrer=compilation.html#for-inference-using-onnx-runtime).
-2. Create the ONNXRuntime session with `"HailoExecutionProvider"` in the execution providers list, and run the ONNX model.
+1. Convert your ONNX model with DFC tool - see [Model Compilation](https://hailo.ai/developer-zone/documentation/dataflow-compiler/latest/?sp_referrer=compilation.html#for-inference-using-onnx-runtime)
+2. Create the ONNXRuntime session with `"HailoExecutionProvider"` in the execution providers list, and run the ONNX model
 
 ## Examples:
 * C++
@@ -27,9 +27,14 @@ To run your ONNX model on ONNXRuntime with Hailo execution provider, follow the 
     
     The ONNX models used in these tests are located in [testdata/hailo directory](./../onnxruntime/test/testdata/hailo/).
     To run the tests, do the following:
-    1. Compile onnxruntime with Hailo.
-    2. Go to `build/Linux/Release/`.
-    3. Run a test with the name `Test_Name`: `./onnxruntime_test_all --gtest_filter=HailoCustomOpTest.Test_Name`.
+    1. Compile onnxruntime with Hailo
+    2. Go to `build/Linux/Release/`
+    3. Run a test with the name `Test_Name`: `./onnxruntime_test_all --gtest_filter=HailoCustomOpTest.Test_Name`
 * Python
 
     The example `hailo/examples/hailo_example.py` contains a basic inference example using onnxruntime with Hailo-EP.
+    The ONNX model used in this example is located in [hailo/examples/](./../examples/).
+    To run the example, do the following:
+    1. Compile onnxruntime with Hailo
+    2. Go to `build/Linux/Release/dist/` and install the Python wheel (for example: `pip install onnxruntime-1.11.0-cp36-cp36m-linux_x86_64.whl`)
+    3. Go to `hailo/examples` and run `python hailo_example.py`

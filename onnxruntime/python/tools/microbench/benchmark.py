@@ -1,63 +1,94 @@
+#-------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+#--------------------------------------------------------------------------
+
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser
-import time
+import logging
 import numpy
 import onnxruntime as ort
+import time
 import torch
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def numpy_type(torch_type):
     type_map = {torch.float32: numpy.float32,
-                torch.float16: numpy.float16}
+                torch.float16: numpy.float16,
+                torch.int32: numpy.int32}
     return type_map[torch_type]
 
 
 def add_arguments(parser: ArgumentParser):
-    parser.add_argument("--provider", required=False, type=str, default="rocm", help="Execution provider to use")
-    parser.add_argument("--precision", required=False, type=str, default="fp16", help="Number format to use")
-    parser.add_argument('--profiling', type=bool, default=False, help='If enable profiling')
+    parser.add_argument("--provider", required=False, type=str,
+                        choices=["cuda", "rocm", "cpu", None], default=None,
+                        help=("Execution provider to use. By default, a "
+                              "provider is selected in the priority order "
+                              "(cuda|rocm, cpu) depending on availability."))
+    parser.add_argument("--precision", required=False, type=str,
+                        choices=["fp16", "fp32"], default="fp16",
+                        help="Number format to use")
+    parser.add_argument('--profiling', required=False, type=bool,
+                        default=False, help='If enable profiling')
+
+
+def provider_name(name):
+    provider_map = {"cuda": "CUDAExecutionProvider",
+                    "rocm": "ROCMExecutionProvider",
+                    "cpu": "CPUExecutionProvider"}
+    return provider_map[name]
+
+
+def get_default_provider():
+    if "CUDAExecutionProvider" in ort.get_available_providers():
+        return "CUDAExecutionProvider"
+    if "ROCMExecutionProvider" in ort.get_available_providers():
+        return "ROCMExecutionProvider"
+    return "CPUExecutionProvider"
 
 
 class Benchmark:
     def __init__(self, model, inputs, outputs, args):
-        self.provider = args.provider
+        self.provider = (get_default_provider() if args.provider == None
+                         else provider_name(args.provider))
+        logger.info(f"Execution provider: {self.provider}")
         self.profiling = args.profiling
         self.model = model
+        logger.info(f"Model: {self.model}")
         self.inputs = inputs
         self.outputs = outputs
 
     def create_input_output_tensors(self):
-        device = "cuda"
-        input_tensors = {name: torch.from_numpy(array).to(device) for name, array in self.inputs.items()}
-        output_tensors = {name: torch.from_numpy(array).to(device) for name, array in self.outputs.items()}
+        on_gpu = (self.provider == "CUDAExecutionProvider" 
+                  or self.provider == "ROCMExecutionProvider")
+        device = "cuda" if on_gpu else "cpu"
+        input_tensors = {name: torch.from_numpy(array).to(device)
+                         for name, array in self.inputs.items()}
+        output_tensors = {name: torch.from_numpy(array).to(device)
+                          for name, array in self.outputs.items()}
         return input_tensors, output_tensors
 
     @classmethod
     def create_io_binding(cls, sess, input_tensors, output_tensors):
         io_binding = sess.io_binding()
         for name, tensor in input_tensors.items():
-            io_binding.bind_input(name, tensor.device.type, 0, numpy_type(tensor.dtype), tensor.shape, tensor.data_ptr())
+            io_binding.bind_input(name, tensor.device.type, 0,
+                                  numpy_type(tensor.dtype), tensor.shape,
+                                  tensor.data_ptr())
         for name, tensor in output_tensors.items():
-            io_binding.bind_output(name, tensor.device.type, 0, numpy_type(tensor.dtype), tensor.shape, tensor.data_ptr())
+            io_binding.bind_output(name, tensor.device.type, 0,
+                                   numpy_type(tensor.dtype), tensor.shape,
+                                   tensor.data_ptr())
         return io_binding
 
     def create_session(self):
         sess_opt = ort.SessionOptions()
         sess_opt.enable_profiling = self.profiling
-        if self.provider == "rocm":
-            execution_provider = ["ROCMExecutionProvider"]
-        elif self.provider == "cuda":
-            execution_provider = ["CUDAExecutionProvider"]
-        else:
-            raise ValueError(f"The script doesn't support provider type '{self.provider}' yet.")
-
-        sess = ort.InferenceSession(self.model, sess_options=sess_opt, providers=execution_provider)
-
-        if self.provider == "rocm":
-            assert 'ROCMExecutionProvider' in sess.get_providers()
-        elif self.provider == "cuda":
-            assert 'CUDAExecutionProvider' in sess.get_providers()
-
+        sess = ort.InferenceSession(self.model, sess_options=sess_opt,
+                                    providers=[self.provider])
         return sess
 
     def benchmark(self):

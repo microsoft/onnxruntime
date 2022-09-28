@@ -21,6 +21,7 @@ import statistics
 import psutil
 import csv
 import numpy as np
+import torch
 import random
 from datetime import datetime
 import multiprocessing
@@ -36,6 +37,7 @@ class TestSetting:
     test_cases: int
     test_times: int
     use_gpu: bool
+    use_io_binding: bool
     provider: str
     intra_op_num_threads: int
     seed: int
@@ -119,6 +121,55 @@ def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_op
 
     return session
 
+def numpy_type(torch_type):
+    type_map = {torch.float32: np.float32,
+                torch.float16: np.float16,
+                torch.int32: np.int32,
+                torch.int64: np.longlong}
+    return type_map[torch_type]
+
+def create_input_output_tensors(inputs, outputs, device):
+    input_tensors = {name: torch.from_numpy(array).to(device)
+                        for name, array in inputs.items()}
+    output_tensors = {name: torch.from_numpy(array).to(device)
+                        for name, array in outputs.items()}
+    return input_tensors, output_tensors
+
+def create_io_binding(sess, input_tensors, output_tensors):
+    io_binding = sess.io_binding()
+    for name, tensor in input_tensors.items():
+        io_binding.bind_input(name, tensor.device.type, 0,
+                                numpy_type(tensor.dtype), tensor.shape,
+                                tensor.data_ptr())
+    for name, tensor in output_tensors.items():
+        io_binding.bind_output(name, tensor.device.type, 0,
+                                numpy_type(tensor.dtype), tensor.shape,
+                                tensor.data_ptr())
+    return io_binding
+
+def onnxruntime_inference_with_io_binding(session, all_inputs, output_names, test_setting):
+    results = []
+    latency_list = []
+    device = 'cuda' if test_setting.use_gpu else 'cpu'
+    for test_case_id, inputs in enumerate(all_inputs):
+        result = session.run(output_names, inputs)
+        results.append(result)
+        outputs = {}
+        for i in range(len(output_names)):
+            outputs[output_names[i]] = result[i]
+
+        input_tensors, output_tensors = create_input_output_tensors(inputs, outputs, device)
+        io_binding = create_io_binding(session, input_tensors, output_tensors)
+
+        # warm up once
+        session.run_with_iobinding(io_binding)
+
+        start_time = timeit.default_timer()
+        session.run_with_iobinding(io_binding)
+        latency = timeit.default_timer() - start_time
+        latency_list.append(latency)
+
+    return results, latency_list
 
 def onnxruntime_inference(session, all_inputs, output_names):
     if len(all_inputs) > 0:
@@ -134,7 +185,6 @@ def onnxruntime_inference(session, all_inputs, output_names):
         results.append(result)
         latency_list.append(latency)
     return results, latency_list
-
 
 def to_string(model_path, session, test_setting):
     sess_options = session.get_session_options()
@@ -159,9 +209,14 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
     print("Running test:", key)
 
     all_latency_list = []
-    for i in range(test_setting.test_times):
-        results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
-        all_latency_list.extend(latency_list)
+    if test_setting.use_io_binding:
+        for i in range(test_setting.test_times):
+            results, latency_list = onnxruntime_inference_with_io_binding(session, all_inputs, output_names, test_setting)
+            all_latency_list.extend(latency_list)
+    else:
+        for i in range(test_setting.test_times):
+            results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
+            all_latency_list.extend(latency_list)
 
     # latency in miliseconds
     latency_ms = np.array(all_latency_list) * 1000
@@ -269,6 +324,9 @@ def parse_arguments():
     parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU")
     parser.set_defaults(use_gpu=False)
 
+    parser.add_argument('--use_io_binding', required=False, action='store_true', help="use io_binding")
+    parser.set_defaults(use_io_binding=False)
+
     parser.add_argument("--provider",
                         required=False,
                         type=str,
@@ -311,7 +369,7 @@ def main():
                                  args.opt_level)
 
     for batch_size in batch_size_set:
-        test_setting = TestSetting(batch_size, args.sequence_length, args.samples, args.test_times, args.use_gpu,
+        test_setting = TestSetting(batch_size, args.sequence_length, args.samples, args.test_times, args.use_gpu, args.use_io_binding,
                                    args.provider, args.intra_op_num_threads, args.seed, args.verbose)
 
         print("test setting", test_setting)
