@@ -170,7 +170,5 @@ class FusionReshape(Fusion):
 
         self.replace_reshape_node(shape, reshape_node, concat_node)
 
-        self.nodes_to_remove.extend(path0)
-        self.nodes_to_remove.extend(path1)
-        self.nodes_to_remove.extend(path2)
-        self.nodes_to_remove.extend(path3)
+        # TODO(tlwu): Subgraph blocks pruning un-used nodes. Add code to remove un-used nodes safely.
+        self.prune_graph = True
