@@ -2,9 +2,9 @@ jobs:
 - job: ObjCStaticAnalysis
 
   pool:
-    vmImage: 'macOS-11'
+    vmImage: 'macOS-12'
 
-  timeoutInMinutes: 90
+  timeoutInMinutes: 30
 
   steps:
   - task: UsePythonVersion@0
@@ -24,7 +24,7 @@ jobs:
         --config Debug \
         --build_shared_lib --use_coreml --build_objc \
         --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        --update
+        --update \
         --build --parallel --target onnx_proto
     displayName: Generate compile_commands.json and ONNX protobuf files
 
