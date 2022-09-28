@@ -15,17 +15,19 @@
 namespace onnxruntime {
 
 #ifdef _WIN32
-GroupAffinity GetGroupAffinities() {
-  GroupAffinity group_affinities;
+GroupAffinities GetGroupAffinities() {
+  GroupAffinities group_affinities;
   LOGICAL_PROCESSOR_RELATIONSHIP relation = RelationGroup;
-  SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX processorInfos[128];
-  DWORD returnLength = 128;
+  constexpr static const size_t num_information = 128;
+  constexpr static const size_t size_information = sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
+  SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX processorInfos[num_information];
+  DWORD returnLength = num_information * size_information;
   WORD group_id = 0;
   ORT_ENFORCE(GetLogicalProcessorInformationEx(relation, processorInfos, &returnLength),
               "Failed to fetch processor info, error code: ", GetLastError());
-  auto numGroups = returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
+  auto numGroups = returnLength / size_information;
   for (int64_t i = 0; i < static_cast<int64_t>(numGroups); ++i) {
-    ORT_ENFORCE(processorInfos[i].Relationship == RelationGroup, "Returned processors not divided by group");
+    ORT_ENFORCE(processorInfos[i].Relationship == RelationGroup, "Returned processors not belong to same group");
     for (int64_t j = 0; j < static_cast<int>(processorInfos[i].Group.ActiveGroupCount); ++j) {
       const auto& groupInfo = processorInfos[i].Group.GroupInfo[j];
       KAFFINITY processor_affinity = 1UL;

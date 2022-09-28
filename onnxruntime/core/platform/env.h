@@ -40,7 +40,7 @@ class ThreadPoolInterface;
 }
 namespace onnxruntime {
 
-using GroupAffinity = std::vector<std::pair<int64_t,int64_t>>;
+using GroupAffinities = std::vector<std::pair<int64_t,int64_t>>;
 
 #ifdef _WIN32
 using PIDType = unsigned long;
@@ -83,7 +83,7 @@ struct ThreadOptions {
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
   int dynamic_block_base_ = 0;
 
-  GroupAffinity group_affinities;
+  GroupAffinities group_affinities;
 };
 
 struct ProcessorGroup {
