@@ -2012,7 +2012,7 @@ lunr.Index.load = function (serializedIndex) {
  * @property {number} _b - A parameter to control field length normalization, setting this to 0 disabled normalization, 1 fully normalizes field lengths, the default value is 0.75.
  * @property {number} _k1 - A parameter to control how quickly an increase in term frequency results in term frequency saturation, the default value is 1.2.
  * @property {number} termIndex - A counter incremented for each unique term, used to identify a terms position in the vector space.
- * @property {array} metadataWhitelist - A list of metadata keys that have been whitelisted for entry in the index.
+ * @property {array} metadataAcceptedlist - A list of metadata keys that have been listed for entry in the index.
  */
 lunr.Builder = function () {
   this._ref = "id"
@@ -2027,7 +2027,7 @@ lunr.Builder = function () {
   this._b = 0.75
   this._k1 = 1.2
   this.termIndex = 0
-  this.metadataWhitelist = []
+  this.metadataAcceptedlist = []
 }
 
 /**
@@ -2149,10 +2149,10 @@ lunr.Builder.prototype.add = function (doc) {
         this.invertedIndex[term][fieldName][docRef] = Object.create(null)
       }
 
-      // store all whitelisted metadata about this token in the
+      // store all metadata about this token in the
       // inverted index
-      for (var l = 0; l < this.metadataWhitelist.length; l++) {
-        var metadataKey = this.metadataWhitelist[l],
+      for (var l = 0; l < this.metadataAcceptedlist.length; l++) {
+        var metadataKey = this.metadataAcceptedlist[l],
             metadata = term.metadata[metadataKey]
 
         if (this.invertedIndex[term][fieldName][docRef][metadataKey] == undefined) {

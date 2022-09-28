@@ -201,7 +201,7 @@
       "output": {
         ".html": {
           "relative_path": "api/Microsoft.ML.OnnxRuntime.OrtApi.html",
-          "hash": "FzIrfDIbrEulqdrXgi81tr4mr5E78lWI9TuQo4zt2p0="
+          "hash": "sAtiOlRPkaoRheEH0Hs6p5PUIvrmf5sGMeV33rM5v3Q="
         }
       },
       "is_incremental": true,
@@ -405,7 +405,7 @@
       "output": {
         ".html": {
           "relative_path": "api/Microsoft.ML.OnnxRuntime.SessionOptions.html",
-          "hash": "bo1tpjILfewDePcgPolqlmt4kdgnIFGarF5mDUzzAY4="
+          "hash": "8OAPzYOSpAUgnb8+xvi9mE741cw5BHomfioRQcCzKG0="
         }
       },
       "is_incremental": true,
