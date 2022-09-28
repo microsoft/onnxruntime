@@ -12,11 +12,11 @@ ep:TensorRT:
   - '/\btensor\s*rt\b/i'
   - '/\btrt\b/i'
 ep:tvm: '/\btvm\b/i'
-ep:VitisAI: '/\bvitus(?:ai)?\b/i'
+ep:VitisAI: '/\bvitis(?:ai)?\b/i'
 platform:jetson: '/\bjetson\b/i'
 platform:mobile:
   - '/\bobj(?:jective)?-?c\b/i'
-  - '/\bnnnapi\b/i'
+  - '/\bnnapi\b/i'
   - '/\bcore-?ml\b/i'
   - '/\bmobile\b/i'
 platform:windows:
