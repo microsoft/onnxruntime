@@ -15,8 +15,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 
-#include <xnnpack.h>
-
 namespace onnxruntime {
 
 namespace xnnpack {
@@ -155,8 +153,13 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 using namespace xnnpack;
 
-XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& /*info*/)
+XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
+  if (info.xnn_thread_pool_size > 1) {
+    // pthreadpool is independent of ort-threadpoool, so we have to disable cpu spinning for ort-threadpool.
+    // otherwise, the pthreadpool will be starved and harm performance a lot.
+    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info.xnn_thread_pool_size));
+  }
 }
 
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
@@ -251,7 +254,7 @@ static void AddComputeCapabilityForEachNodeInNodeUnit(
 
 std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
-    const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+    const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
 
   std::shared_ptr<KernelRegistry> registry = GetKernelRegistry();
@@ -349,6 +352,7 @@ std::shared_ptr<KernelRegistry> XnnpackExecutionProvider::GetKernelRegistry() co
 
 XnnpackExecutionProvider::~XnnpackExecutionProvider() {
   xnn_deinitialize();
+  pthreadpool_destroy(xnnpack_thread_pool_);
 }
 
 }  // namespace onnxruntime

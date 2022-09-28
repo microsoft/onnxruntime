@@ -3,18 +3,18 @@
 
 #pragma once
 
-#include "core/framework/op_kernel.h"
 #include "core/framework/allocator.h"
+#include "core/providers/xnnpack/xnnpack_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/xnnpack/detail/utils.h"
-#include "xnnpack.h"
+
 
 namespace onnxruntime {
 class GraphViewer;
 class Node;
 namespace xnnpack {
 
-class Conv : public OpKernel {
+class Conv : public XnnpackKernel {
  public:
   Conv(const OpKernelInfo& info);
 

@@ -65,8 +65,6 @@ option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
-
-option(onnxruntime_USE_NUPHAR_TVM "Build TVM for code generation for NUPHAR EP" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
@@ -77,7 +75,7 @@ option(onnxruntime_USE_AVX512 "Use AVX512 instructions" OFF)
 option(onnxruntime_BUILD_SHARED_LIB "Build a shared library" OFF)
 option(onnxruntime_BUILD_APPLE_FRAMEWORK "Build a macOS/iOS framework" OFF)
 option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable microsoft internal only code" OFF)
-option(onnxruntime_USE_NUPHAR "Build with Nuphar" OFF)
+
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_USE_TENSORRT_BUILTIN_PARSER "Use TensorRT builtin parser" OFF)
@@ -107,6 +105,7 @@ option(onnxruntime_ARMNN_BN_USE_CPU "Use the CPU implementation for the Batch No
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF)
+option(onnxruntime_USE_CANN "Build with CANN support" OFF)
 #The onnxruntime_PREFER_SYSTEM_LIB is mainly designed for package managers like apt/yum/vcpkg.
 #Please note, by default Protobuf_USE_STATIC_LIBS is OFF but it's recommended to turn it ON on Windows. You should set it properly when onnxruntime_PREFER_SYSTEM_LIB is ON otherwise you'll hit linkage errors.
 #If you have already installed protobuf(or the others) in your system at the default system paths(like /usr/include), then it's better to set onnxruntime_PREFER_SYSTEM_LIB ON. Otherwise onnxruntime may see two different protobuf versions and we won't know which one will be used, the worst case could be onnxruntime picked up header files from one of them but the binaries from the other one.
@@ -1039,7 +1038,7 @@ if (onnxruntime_USE_CUDA)
       #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
       if (WIN32)
         if(onnxruntime_CUDNN_HOME)
-          list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib/x64)
+          list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib ${onnxruntime_CUDNN_HOME}/lib/x64)
         endif()
         list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/x64/lib64)
       else()
@@ -1164,6 +1163,10 @@ else()
   if (HAS_ENUM_CONSTEXPR_CONVERSION)
     target_compile_options(${PROTOBUF_LIB} PRIVATE "-Wno-enum-constexpr-conversion")
   endif()
+  if (onnxruntime_USE_ROCM)
+    # float16.h:90:12: error: ‘tmp’ is used uninitialized
+    list(APPEND ORT_WARNING_FLAGS -Wno-uninitialized)
+  endif()
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
@@ -1216,11 +1219,6 @@ if (onnxruntime_USE_SNPE)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES snpe)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_SNPE=1)
 endif()
-if (onnxruntime_USE_NUPHAR)
-    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_NUPHAR=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NUPHAR=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
-endif()
 if (onnxruntime_USE_TVM)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_TVM=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_TVM=1)
@@ -1265,6 +1263,11 @@ if (onnxruntime_USE_XNNPACK)
   list(APPEND ORT_PROVIDER_FLAGS -DUSE_XNNPACK=1)
   list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_XNNPACK=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES xnnpack)
+endif()
+if (onnxruntime_USE_CANN)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_CANN=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CANN=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES cann)
 endif()
 
 function(onnxruntime_set_compile_flags target_name)
@@ -1478,67 +1481,6 @@ if (onnxruntime_USE_DNNL)
   include(dnnl)
 endif()
 
-# NUPHAR EP
-if (onnxruntime_USE_NUPHAR_TVM)
-  if (NOT TARGET tvm)
-    message(STATUS "Include TVM(*).")
-    include(tvm)
-  endif()
-  if (onnxruntime_USE_CUDA)
-    set(USE_CUDA ON CACHE BOOL "Only defined for TVM")
-  endif()
-  if (onnxruntime_USE_LLVM)
-    set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
-    add_definitions(-DUSE_NUPHAR_TVM_WITH_LLVM)
-  endif()
-
-  message(STATUS "tvm_SOURCE_DIR=${tvm_SOURCE_DIR}")
-  message(STATUS "tvm_BINARY_DIR=${tvm_BINARY_DIR}")
-  add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
-
-  set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
-  set_target_properties(tvm_topi PROPERTIES FOLDER ${tvm_SOURCE_DIR})
-  set_target_properties(tvm_runtime PROPERTIES FOLDER ${tvm_SOURCE_DIR})
-
-  set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
-    ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
-    ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
-    $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
-
-  add_definitions(-DUSE_NUPHAR_TVM)
-
-  set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
-
-  # needs to link with stdc++fs in Linux
-  if (UNIX)
-    if (NOT APPLE)
-      set(FS_STDLIB stdc++fs)
-    endif()
-  endif()
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
-
-  if (WIN32 AND MSVC)
-    # wd4100: identifier' : unreferenced formal parameter
-    # wd4244: conversion from 'int' to 'char', possible loss of data
-    # wd4251: class X needs to have dll-interface to be used by clients of class Y
-    # wd4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
-    # wd4275: non dll-interface class X used as base for dll-interface class Y
-    # wd4389: signed/unsigned mismatch
-    # wd4456: declaration of X hides previous local declaration
-    set(DISABLED_WARNINGS_FOR_TVM "/wd4100" "/wd4244" "/wd4251" "/wd4267" "/wd4275" "/wd4389" "/wd4456")
-  else()
-    set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=ignored-qualifiers" "-Wno-unused-parameter" "-Wno-ignored-qualifiers")
-    list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=unused-parameter")
-    if (HAS_CATCH_VALUE)
-      #TODO: send a PR to TVM and fix it
-      list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=catch-value")
-    endif()
-  endif()
-
-endif(onnxruntime_USE_NUPHAR_TVM)
-
 # TVM EP
 if (onnxruntime_USE_TVM)
   if (NOT TARGET tvm)
@@ -1708,21 +1650,18 @@ if (onnxruntime_USE_OPENVINO)
   endif()
 
   # Check OpenVINO version for support
-  if (${VER} MATCHES "2021.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.2")
-    set(OPENVINO_VERSION "2021.2")
-    add_definitions(-DOPENVINO_2021_2=1)
-  elseif (${VER} MATCHES "2021.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.3")
-    set(OPENVINO_VERSION "2021.3")
-    add_definitions(-DOPENVINO_2021_3=1)
-  elseif (${VER} MATCHES "2021.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.4")
+  if (${VER} MATCHES "2021.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.4")
     set(OPENVINO_VERSION "2021.4")
     add_definitions(-DOPENVINO_2021_4=1)
   elseif (${VER} MATCHES "2022.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2022.1")
     set(OPENVINO_VERSION "2022.1")
     add_definitions(-DOPENVINO_2022_1=1)
+  elseif (${VER} MATCHES "2022.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2022.2")
+    set(OPENVINO_VERSION "2022.2")
+    add_definitions(-DOPENVINO_2022_2=1)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "openvino")
-    set(OPENVINO_VERSION "2022.1")
-    add_definitions(-DOPENVINO_2022_1=1)
+    set(OPENVINO_VERSION "2022.2")
+    add_definitions(-DOPENVINO_2022_2=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
@@ -1741,6 +1680,10 @@ if (onnxruntime_USE_OPENVINO)
 
   if (onnxruntime_USE_OPENVINO_CPU_FP32)
     add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
+  endif()
+
+  if (onnxruntime_USE_OPENVINO_CPU_FP16)
+    add_definitions(-DOPENVINO_CONFIG_CPU_FP16=1)
   endif()
 
   if (onnxruntime_USE_OPENVINO_VAD_M)
@@ -1765,9 +1708,14 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
-
+  
   if (onnxruntime_USE_OPENVINO_CPU_FP32_NP)
     add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
+    add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
+  endif()
+
+  if (onnxruntime_USE_OPENVINO_CPU_FP16_NP)
+    add_definitions(-DOPENVINO_CONFIG_CPU_FP16=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
 
@@ -1796,6 +1744,10 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DDEVICE_NAME="${onnxruntime_USE_OPENVINO_DEVICE}")
   endif()
 
+  if($ENV{FIL_ENABLED})
+    add_definitions(-DOPENVINO_FIL_ENABLED=1)
+  endif()
+  
 endif()
 
 if (onnxruntime_USE_VITISAI)
@@ -2058,9 +2010,7 @@ set(VERSION_PRIVATE_PART     0 CACHE STRING "Fourth part of numeric file/product
 set(VERSION_STRING       "Internal Build" CACHE STRING "String representation of file/product version.")
 
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
-if (onnxruntime_USE_NUPHAR_TVM)
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_codegen_tvm)
-endif()
+
 if (onnxruntime_ENABLE_EAGER_MODE)
   if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
     message(

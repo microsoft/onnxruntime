@@ -1525,9 +1525,6 @@ public class InferenceTest {
         case XNNPACK:
           options.addXnnpack(Collections.emptyMap());
           break;
-        case NUPHAR:
-          options.addNuphar(true, "");
-          break;
         case VITIS_AI:
         case RK_NPU:
         case MI_GRAPH_X:

@@ -193,8 +193,8 @@ bool AveragePool::IsAveragePoolOnnxNodeSupported(const NodeUnit& node_unit,
 }
 
 AveragePool::AveragePool(const OpKernelInfo& info)
-    : OpKernel(info),
-      pool_attrs_{info, info.node().OpType(), info.node().SinceVersion()} {
+    : XnnpackKernel(info),
+      pool_attrs_{info, "AveragePool", info.node().SinceVersion()} {
   // get values from any fusion with an activation
   if (std::string activation; info.GetAttr<std::string>("activation", &activation).IsOK()) {
     if (activation == "Clip" || activation == "Relu") {
@@ -266,23 +266,24 @@ Status AveragePool::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
+  pthreadpool_t t_pool = GetThreadPool();
   xnn_status status = xnn_status_invalid_state;
   if (pool_attrs_.global_pooling) {
     if (avgpool_type_ == OpComputeType::op_compute_type_fp32) {
       status = xnn_setup_global_average_pooling_nwc_f32(
           op0_.get(),
           N, H * W, X.template Data<float>(), Y.template MutableData<float>(),
-          nullptr /* thread pool */);
+          t_pool /* thread pool */);
     } else if (avgpool_type_ == OpComputeType::op_compute_type_qu8) {
       status = xnn_setup_global_average_pooling_nwc_qu8(
           op0_.get(),
           N, H * W, X.template Data<uint8_t>(), Y.template MutableData<uint8_t>(),
-          nullptr /* thread pool */);
+          t_pool /* thread pool */);
     } else if (avgpool_type_ == OpComputeType::op_compute_type_qs8) {
       status = xnn_setup_global_average_pooling_nwc_qs8(
           op0_.get(),
           N, H * W, X.template Data<int8_t>(), Y.template MutableData<int8_t>(),
-          nullptr /* thread pool */);
+          t_pool /* thread pool */);
     }
   } else {
     if (avgpool_type_ == OpComputeType::op_compute_type_fp32) {
@@ -301,7 +302,7 @@ Status AveragePool::Compute(OpKernelContext* context) const {
                            OpTypeToString(avgpool_type_), " returned ", status);
   }
 
-  status = xnn_run_operator(op0_.get(), nullptr);
+  status = xnn_run_operator(op0_.get(), t_pool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }

@@ -57,6 +57,7 @@ class Model {
 #endif
 
  public:
+  Model();
   ~Model();
   Model(const Model&) = delete;
   Model& operator=(const Model&) = delete;
@@ -70,7 +71,7 @@ class Model {
   // Returns the data type and dimension of the given input/output
   // Please note the output type will have updated dimensions
   const android::nn::wrapper::OperandType& GetInputType(const std::string& name) const;
-  android::nn::wrapper::OperandType GetOutputType(const std::string& name, const Execution& execution) const;
+  android::nn::wrapper::OperandType GetOutputType(const std::string& name, const Execution& /* execution */) const;
 
   // Set the mapping between input/output name and ORT kernel context
   // input/output index, at execution time
@@ -123,8 +124,6 @@ class Model {
   std::unordered_map<std::string, android::nn::wrapper::OperandType> operand_types_;
   std::unordered_set<std::string> scalar_outputs_;
 
-  Shaper shaper_;
-
   std::unordered_map<std::string, size_t> input_map_;
   std::unordered_map<std::string, size_t> output_map_;
 
@@ -134,7 +133,6 @@ class Model {
 
   OrtMutex mutex_;
 
-  Model();
   void AddInput(const std::string& name, const android::nn::wrapper::OperandType& operand_type);
 
   // It is possible that the actual output from NNAPI model is not the same as the name of
@@ -144,8 +142,6 @@ class Model {
                  const android::nn::wrapper::OperandType& operand_type);
 
   void AddScalarOutput(const std::string& output_name);
-
-  void SetShaper(const Shaper& shaper) { shaper_ = shaper; }
 
   int32_t GetNNAPIFeatureLevel() const;
 };
@@ -165,12 +161,14 @@ class Execution {
   };
 
  public:
-  explicit Execution(ANeuralNetworksExecution& execution, const Shaper& shaper);
+  explicit Execution(ANeuralNetworksExecution& execution /* , const Shaper& shaper */);
   ~Execution();
   Execution(const Execution&) = delete;
   Execution& operator=(const Execution&) = delete;
 
-  const Shaper& GetShaper() const { return shaper_; }
+  // Before we validate if we actually need to keep a shaper instance for Execution (if we have dynamic shape
+  // outputs, shape can get updated during execution), we commented out Shaper here for now.
+  /* const Shaper& GetShaper() const { return shaper_; } */
 
   // Set the input/output data buffers
   // These need to be called before calling Predict()
@@ -187,7 +185,7 @@ class Execution {
 
   const NnApi* nnapi_{nullptr};
   ANeuralNetworksExecution* execution_;
-  Shaper shaper_;
+  /* Shaper shaper_; */
 };
 
 }  // namespace nnapi
