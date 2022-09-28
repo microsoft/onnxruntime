@@ -6,7 +6,6 @@
 #
 # Checks that are turned off:
 #
-# -cppcoreguidelines-init-variables: Produces a lot of false positives in CI.
 # -cppcoreguidelines-macro-usage: There are a lot of false-positives like Function-like macro 'Foo' used; consider a 'constexpr' template function
 # -cppcoreguidelines-pro-type-reinterpret-cast: Originally turned off.
 # -google-readability-todo: Not enforced.
@@ -24,14 +23,12 @@ Checks: >
   bugprone-*,
   performance-*,
   misc-*,
-  -cppcoreguidelines-init-variables,
   -cppcoreguidelines-macro-usage,
   -cppcoreguidelines-pro-type-reinterpret-cast,
   -google-readability-todo,
   -google-runtime-references,
   -modernize-concat-nested-namespaces,
   -modernize-use-trailing-return-type,
-  -readability-braces-around-statements,
   -readability-identifier-length,
 WarningsAsErrors: ""
 HeaderFilterRegex: '.*onnxruntime\/core\/.*'
