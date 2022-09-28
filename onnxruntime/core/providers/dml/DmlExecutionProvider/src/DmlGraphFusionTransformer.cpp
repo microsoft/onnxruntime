@@ -160,7 +160,7 @@ namespace Dml
         std::vector<std::string> fusedNodeOutputArgOriginalNames = indexedSubGraph.GetMetaDef()->outputs;
 
         // convert partitionONNXGraph into DML EP GraphDesc
-        const uint32_t graphInputCount = gsl::narrow_cast<uint32_t>(partitionONNXGraph.GetInputs().size());
+        const uint32_t graphInputCount = gsl::narrow_cast<uint32_t>(fusedNode.InputDefs().size());
         std::vector<uint8_t> inputsConstant(graphInputCount);
         for (uint32_t index = 0; index < graphInputCount; ++index)
         {
