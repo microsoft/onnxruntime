@@ -4,10 +4,13 @@
 #pragma once
 
 #include "contrib_ops/cpu/transformers/subgraph_base.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
+
+constexpr const char* kUseSequenceAsInputIds = "ORT_USE_SEQUENCE_AS_INPUT_IDS";
 
 // A class for T5 decoder subgraph inputs and outputs preparation.
 class T5DecoderSubgraph : public Subgraph {
@@ -54,8 +57,9 @@ class T5DecoderSubgraph : public Subgraph {
     return first_present_output_index_;
   }
 
-  int HasHiddenStates() const {
-    return has_hidden_state_;
+  bool UseSequenceAsInputIds() const {
+    // Custom model use sequence as input ids for decoder subgraph input.
+    return ParseEnvironmentVariableWithDefault<bool>(kUseSequenceAsInputIds, false);
   }
 
  private:
