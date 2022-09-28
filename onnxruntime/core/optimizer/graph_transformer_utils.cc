@@ -219,10 +219,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,
                                                                   onnxruntime::kCudaExecutionProvider,
                                                                   onnxruntime::kRocmExecutionProvider};
-      /*const InlinedHashSet<std::string_view> cpu_cuda_rocm_dml_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                      onnxruntime::kCudaExecutionProvider,
-                                                                      onnxruntime::kRocmExecutionProvider,
-                                                                      onnxruntime::kDmlExecutionProvider};*/
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_eps = {onnxruntime::kCpuExecutionProvider,
                                                                             onnxruntime::kCudaExecutionProvider,
                                                                             onnxruntime::kRocmExecutionProvider,

@@ -532,15 +532,6 @@ namespace Dml
                 kernel_lookup,
                 deviceDataTypeMask
             );
-
-        /*return PartitionGraph(
-            graph,
-            *m_internalRegInfoMap,
-            kernel_lookup,
-            deviceDataTypeMask,
-            m_kernelRegistry.get(),
-            partitionKernelPrefix
-        );*/
     }
 
     bool IsGpuTensor(const onnxruntime::Tensor& tensor)
