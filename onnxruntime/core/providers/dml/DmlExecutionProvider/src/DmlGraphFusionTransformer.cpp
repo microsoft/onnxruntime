@@ -8,6 +8,9 @@
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/kernel_lookup.h"
 #include "FusedGraphKernel.h"
+#include "MLOperatorAuthorImpl.h"
+#include "GraphKernelHelper.h"
+
 
 namespace Dml
 {
@@ -53,7 +56,7 @@ namespace Dml
     }
 
     void CreateONNXGraphForPartition(
-        onnxruntime::Graph* partitionGraph,
+        onnxruntime::Graph& partitionGraph,
         onnxruntime::Graph& mainGraph,
         const onnxruntime::IndexedSubGraph& nodes_to_fuse)
     {
@@ -65,7 +68,7 @@ namespace Dml
         for (auto& input : meta_def->inputs) 
         {
             auto input_arg = mainGraph.GetNodeArg(input);
-            auto& function_body_graph_input_arg = partitionGraph->GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
+            auto& function_body_graph_input_arg = partitionGraph.GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
             partitionGraphInputs[i] = &function_body_graph_input_arg;
             ++i;
         }
@@ -76,13 +79,13 @@ namespace Dml
         for (auto& output : meta_def->outputs) 
         {
             auto output_arg = mainGraph.GetNodeArg(output);
-            auto& function_body_graph_output_arg = partitionGraph->GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+            auto& function_body_graph_output_arg = partitionGraph.GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
             partitionGraphOutputs[i] = &function_body_graph_output_arg;
             ++i;
         }
 
-        partitionGraph->SetInputs(partitionGraphInputs);
-        partitionGraph->SetOutputs(partitionGraphOutputs);
+        partitionGraph.SetInputs(partitionGraphInputs);
+        partitionGraph.SetOutputs(partitionGraphOutputs);
 
         // Add node and node args
         for (auto& node_index : nodes_to_fuse.nodes) 
@@ -91,14 +94,14 @@ namespace Dml
             std::vector<onnxruntime::NodeArg*> inputs;
             std::vector<onnxruntime::NodeArg*> outputs;
             for (auto input : node->InputDefs()) {
-                auto& n_input = partitionGraph->GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+                auto& n_input = partitionGraph.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
                 inputs.push_back(&n_input);
             }
             for (auto output : node->OutputDefs()) {
-                auto& n_output = partitionGraph->GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+                auto& n_output = partitionGraph.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
                 outputs.push_back(&n_output);
             }
-            partitionGraph->AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
+            partitionGraph.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
         }
 
         for (const auto& input : meta_def->inputs) 
@@ -108,9 +111,9 @@ namespace Dml
             {
                 // meta_def->inputs could have duplicates so make sure we only add once
                 const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-                if (!partitionGraph->GetInitializedTensor(input, subgraph_initializer)) 
+                if (!partitionGraph.GetInitializedTensor(input, subgraph_initializer)) 
                 {
-                    partitionGraph->AddInitializedTensor(*initializer);
+                    partitionGraph.AddInitializedTensor(*initializer);
                 }
             }
         }
@@ -121,35 +124,30 @@ namespace Dml
             ORT_ENFORCE(initializer != nullptr, "Initializer " + constant_initializer + " is not found or is not constant initializer.");
             // meta_def->constant_initializers could have duplicates so make sure we only add once
             const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-            if (!partitionGraph->GetInitializedTensor(constant_initializer, subgraph_initializer)) 
+            if (!partitionGraph.GetInitializedTensor(constant_initializer, subgraph_initializer)) 
             {
-                partitionGraph->AddInitializedTensor(*initializer);
+                partitionGraph.AddInitializedTensor(*initializer);
             }
         }
 
         //TODO: if we reuse the nodes in parent graph, maybe we don't need to resolve it.
-        auto status = partitionGraph->Resolve();
+        auto status = partitionGraph.Resolve();
         ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     }
 
-    PartitionGraphDetails CreateDmlGraphForPartition(
+    void CreateIDmlCompiledOperatorAndRegisterKernel(
         onnxruntime::Graph& graph, 
-        const onnxruntime::IndexedSubGraph& nodes_to_fuse/*,
+        const onnxruntime::IndexedSubGraph& nodes_to_fuse,
+        const onnxruntime::Node& fusedNode,
         const std::unordered_map<std::string, GraphNodeProperties>& partitionNodePropsMap,
-        std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
+        std::shared_ptr<std::unordered_map<std::string, onnx::TensorProto>> transferredInitializerMap,
         std::vector<std::string>& fusedNodeInputArgOriginalNames,
-        std::vector<std::string>& fusedNodeOutputArgOriginalNames*/)
+        std::vector<std::string>& fusedNodeOutputArgOriginalNames,
+        const ExecutionProviderImpl* providerImpl,
+        onnxruntime::KernelRegistry* registryForPartitionKernels)
     {
-        ONNX_NAMESPACE::GraphProto function_storage_proto_;
-        std::shared_ptr<onnxruntime::Graph> partitionONNXGraph = std::make_shared<onnxruntime::Graph>(
-            graph.GetModel(), 
-            graph.GetSchemaRegistry(), 
-            function_storage_proto_,
-            graph.DomainToVersionMap(),
-            graph.GetLogger(),
-            graph.StrictShapeTypeInference());
-
-        /*onnxruntime::Graph partitionONNXGraph(
+        ONNX_NAMESPACE::GraphProto functionStorageProto;
+        /*std::shared_ptr<onnxruntime::Graph> partitionONNXGraph = std::make_shared<onnxruntime::Graph>(
             graph.GetModel(), 
             graph.GetSchemaRegistry(), 
             function_storage_proto_,
@@ -157,9 +155,116 @@ namespace Dml
             graph.GetLogger(),
             graph.StrictShapeTypeInference());*/
 
-        CreateONNXGraphForPartition(partitionONNXGraph.get(), graph, nodes_to_fuse);
-        PartitionGraphDetails partitionGraphDetails{function_storage_proto_, partitionONNXGraph};
-        return partitionGraphDetails;
+        onnxruntime::Graph partitionONNXGraph(
+            graph.GetModel(), 
+            graph.GetSchemaRegistry(), 
+            functionStorageProto,
+            graph.DomainToVersionMap(),
+            graph.GetLogger(),
+            graph.StrictShapeTypeInference());
+
+        CreateONNXGraphForPartition(partitionONNXGraph, graph, nodes_to_fuse);
+
+
+        
+
+        const uint32_t graphInputCount = gsl::narrow_cast<uint32_t>(fusedNode.InputDefs().size());
+        std::vector<uint8_t> inputsConstant(graphInputCount);
+        
+        for (uint32_t i = 0; i < graphInputCount; ++i)
+        {
+            inputsConstant[i] = GraphKernelHelper::GetGraphInputConstness(i, fusedNodeInputArgOriginalNames, *transferredInitializerMap);
+        }
+
+        ComPtr<IDMLDevice> device;
+        ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
+
+        GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
+            inputsConstant.data(),
+            inputsConstant.size(),
+            *transferredInitializerMap,
+            partitionONNXGraph,
+            fusedNodeInputArgOriginalNames,
+            fusedNodeOutputArgOriginalNames,
+            partitionNodePropsMap,
+            device.Get(),
+            providerImpl);
+
+
+        DML_GRAPH_DESC dmlGraphDesc = {};
+        std::vector<DML_OPERATOR_GRAPH_NODE_DESC> dmlOperatorGraphNodes(graphDesc.nodes.size());
+        std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes(graphDesc.nodes.size());
+
+        std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(graphDesc.inputEdges.size());
+        std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(graphDesc.outputEdges.size());
+        std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(graphDesc.intermediateEdges.size());
+
+        GraphKernelHelper::ConvertGraphDesc(
+            graphDesc, 
+            dmlGraphDesc, 
+            graphInputCount,
+            gsl::narrow_cast<uint32_t>(fusedNode.OutputDefs().size()),
+            dmlOperatorGraphNodes,
+            dmlGraphNodes,
+            dmlInputEdges,
+            dmlOutputEdges,
+            dmlIntermediateEdges);
+
+        DML_EXECUTION_FLAGS executionFlags = DML_EXECUTION_FLAG_NONE;
+        if (graphDesc.reuseCommandList)
+        {
+            executionFlags |= DML_EXECUTION_FLAG_DESCRIPTORS_VOLATILE;
+        }
+
+        // Query DML execution provider to see if metacommands is enabled
+        if (!providerImpl->MetacommandsEnabled())
+        {
+            executionFlags |= DML_EXECUTION_FLAG_DISABLE_META_COMMANDS;
+        }
+
+        ComPtr<IDMLDevice1> device1;
+        ORT_THROW_IF_FAILED(device.As(&device1));
+        ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator;
+
+        ORT_THROW_IF_FAILED(device1->CompileGraph(
+            &dmlGraphDesc,
+            executionFlags,
+            IID_PPV_ARGS(&compiledExecutionPlanOperator)));
+
+         Windows::AI::MachineLearning::Adapter::EdgeShapes outputShapes;
+         ORT_THROW_HR_IF(E_UNEXPECTED, !TryGetStaticOutputShapes(fusedNode, outputShapes));
+         std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges = graphDesc.inputEdges;
+         bool resuableCommandList = graphDesc.reuseCommandList;
+
+        // graphDesc.inputEdges -> need to get the GraphInputIndex for each edge
+        auto fused_kernel_func = [compiledExecutionPlanOperator, outputShapes, inputEdges, resuableCommandList, inputsConstant, transferredInitializerMap, fusedNodeInputArgOriginalNames]
+                    (onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
+        {
+            out.reset(CreateFusedGraphKernel(
+                info, 
+                compiledExecutionPlanOperator,
+                outputShapes,
+                inputEdges,
+                resuableCommandList,
+                inputsConstant,
+                *transferredInitializerMap, 
+                fusedNodeInputArgOriginalNames));
+			return Status::OK();
+        };
+
+        // build the kernel definition on the fly, and register it to the fused_kernel_regisitry.
+        onnxruntime::KernelDefBuilder builder;
+
+        builder.SetName(nodes_to_fuse.GetMetaDef()->name)
+            .SetDomain(nodes_to_fuse.GetMetaDef()->domain)
+            .SinceVersion(nodes_to_fuse.GetMetaDef()->since_version)
+            .Provider(onnxruntime::kDmlExecutionProvider);
+
+        ORT_THROW_IF_ERROR(registryForPartitionKernels->Register(builder, fused_kernel_func));
+
+
+        /*PartitionGraphDetails partitionGraphDetails{function_storage_proto_, partitionONNXGraph};
+        return partitionGraphDetails;*/
     }
 
     void FusePartitionAndRegisterKernel(
@@ -169,7 +274,8 @@ namespace Dml
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const std::string& partitionKernelPrefix,
-        std::shared_ptr<std::unordered_map<std::string, onnx::TensorProto>> transferredInitializerMap)
+        std::shared_ptr<std::unordered_map<std::string, onnx::TensorProto>> transferredInitializerMap,
+        const ExecutionProviderImpl* providerImpl)
     {
         assert(partition->IsDmlGraphPartition());
 
@@ -226,40 +332,18 @@ namespace Dml
         //      present in FusedNode (Node::Definitions::input_defs) as part of some transformers like memcopy, or L1/L2/L3 transformers.
         std::vector<std::string> fusedNodeInputArgOriginalNames = subGraph.GetMetaDef()->inputs;
         std::vector<std::string> fusedNodeOutputArgOriginalNames = subGraph.GetMetaDef()->outputs;
-        /*CreateDmlGraphForPartition(graph, subGraph, 
-            partitionNodePropsMap, *transferredInitializerMap, fusedNodeInputArgOriginalNames, fusedNodeOutputArgOriginalNames);*/
-        PartitionGraphDetails partitionGraphDetails = CreateDmlGraphForPartition(graph, subGraph);
-
-        auto fused_kernel_func = [partitionNodePropsMap, transferredInitializerMap, partitionGraphDetails,
-            fusedNodeInputArgOriginalNames, fusedNodeOutputArgOriginalNames](onnxruntime::FuncManager& func_mgr, 
-                const onnxruntime::OpKernelInfo& info, 
-                std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
-        {
-            out.reset(CreateFusedGraphKernel(
-                info, 
-                partitionGraphDetails, 
-                std::move(partitionNodePropsMap), 
-                *transferredInitializerMap, 
-                fusedNodeInputArgOriginalNames, 
-                fusedNodeOutputArgOriginalNames));
-			return Status::OK();
-        };
-
-        // build the kernel definition on the fly, and register it to the fused_kernel_regisitry.
-        onnxruntime::KernelDefBuilder builder;
-
-        builder.SetName(subGraph.GetMetaDef()->name)
-            .SetDomain(subGraph.GetMetaDef()->domain)
-            .SinceVersion(subGraph.GetMetaDef()->since_version)
-            .Provider(onnxruntime::kDmlExecutionProvider);
-
-        ORT_THROW_IF_ERROR(registryForPartitionKernels->Register(builder, fused_kernel_func));
-
+        CreateIDmlCompiledOperatorAndRegisterKernel(
+            graph, 
+            subGraph,
+            fusedNode,
+            partitionNodePropsMap, 
+            transferredInitializerMap, 
+            fusedNodeInputArgOriginalNames, 
+            fusedNodeOutputArgOriginalNames,
+            providerImpl,
+            registryForPartitionKernels);
         
         graph.FinalizeFuseSubGraph(subGraph, fusedNode);
-
-        
-        /*return std::make_unique<onnxruntime::ComputeCapability>(std::move(subGraph));*/
     }
 
     onnxruntime::common::Status DmlGraphFusionTransformer::ApplyImpl(
@@ -358,7 +442,8 @@ namespace Dml
                     graphNodePropertyMap,
                     m_providerImpl->GetKernelRegistry().get(),
                     partitionKernelPrefix,
-                    transferredInitializerMap
+                    transferredInitializerMap,
+                    m_providerImpl
                 );
             }
         }

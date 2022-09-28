@@ -104,7 +104,6 @@ namespace GraphKernelHelper
 
     bool GetGraphInputConstness(
         uint32_t index,
-        const onnxruntime::OpKernelInfo& kernelInfo,
         const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
         const std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap) 
     {
@@ -115,22 +114,22 @@ namespace GraphKernelHelper
             return true;
         }
 
-        // If an initializer wasn't transferred, the constant input may be available from ORT
-        const onnxruntime::Tensor* inputTensor = nullptr;
-        if (!kernelInfo.TryGetConstantInput(index, &inputTensor) || inputTensor == nullptr)
-        {
-            return false;
-        }
+        //// If an initializer wasn't transferred, the constant input may be available from ORT
+        //const onnxruntime::Tensor* inputTensor = nullptr;
+        //if (!kernelInfo.TryGetConstantInput(index, &inputTensor) || inputTensor == nullptr)
+        //{
+        //    return false;
+        //}
 
-        // Check that the constant ORT input is in GPU memory
-        if (!strcmp(inputTensor->Location().name, onnxruntime::CPU) ||
-            inputTensor->Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput ||
-            inputTensor->Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput)
-        {
-            return false;
-        }
+        //// Check that the constant ORT input is in GPU memory
+        //if (!strcmp(inputTensor->Location().name, onnxruntime::CPU) ||
+        //    inputTensor->Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput ||
+        //    inputTensor->Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput)
+        //{
+        //    return false;
+        //}
 
-        return true;
+        return false;
     };
 
     void ProcessInputData(
@@ -138,7 +137,7 @@ namespace GraphKernelHelper
         IWinmlExecutionProvider* winmlProvider,
         const std::vector<uint8_t>& inputsConstant,
         const onnxruntime::OpKernelInfo& kernelInfo,
-        const Dml::GraphDescBuilder::GraphDesc& graphDesc,
+        std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges,
         const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
         _Out_ std::vector<bool>& inputsUsed,
         _Inout_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
@@ -162,7 +161,7 @@ namespace GraphKernelHelper
 
         // Walk through each graph edge and mark used inputs
         inputsUsed.assign(graphInputCount, false);
-        for (const DML_INPUT_GRAPH_EDGE_DESC& edge : graphDesc.inputEdges) {
+        for (const DML_INPUT_GRAPH_EDGE_DESC& edge : inputEdges) {
             inputsUsed[edge.GraphInputIndex] = true;
         }
 
@@ -278,14 +277,15 @@ namespace GraphKernelHelper
     void ConvertGraphDesc(
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
         _Out_ DML_GRAPH_DESC& dmlGraphDesc,
-        const onnxruntime::OpKernelInfo& kernelInfo,
+        const uint32_t inputCount,
+        const uint32_t outputCount,
         _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
         _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges)
     {
-        const uint32_t graphInputCount = kernelInfo.GetInputCount();
+        const uint32_t graphInputCount = inputCount;
 
         for (size_t i = 0; i < graphDesc.nodes.size(); ++i)
         {
@@ -310,7 +310,7 @@ namespace GraphKernelHelper
         }
 
         dmlGraphDesc.InputCount = graphInputCount;
-        dmlGraphDesc.OutputCount = kernelInfo.GetOutputCount();
+        dmlGraphDesc.OutputCount = outputCount;
         dmlGraphDesc.NodeCount = gsl::narrow_cast<uint32_t>(dmlGraphNodes.size());
         dmlGraphDesc.Nodes = dmlGraphNodes.data();
         dmlGraphDesc.InputEdgeCount = gsl::narrow_cast<uint32_t>(dmlInputEdges.size());
