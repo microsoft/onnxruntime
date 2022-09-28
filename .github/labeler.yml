@@ -15,7 +15,7 @@ ep:tvm: '/\btvm\b/i'
 ep:VitisAI: '/\bvitus(?:ai)?\b/i'
 platform:jetson: '/\bjetson\b/i'
 platform:mobile:
-  - '/\bobj-?c\b/i'
+  - '/\bobj(?:jective)?-?c\b/i'
   - '/\bnnnapi\b/i'
   - '/\bcore-?ml\b/i'
   - '/\bmobile\b/i'
