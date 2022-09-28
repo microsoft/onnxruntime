@@ -22,6 +22,18 @@ class SinGrad final : public OpKernel {
 };
 
 template <typename T>
+class CosGrad final : public OpKernel {
+ public:
+  explicit CosGrad(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CosGrad);
+};
+
+template <typename T>
 class ReluGrad final : public OpKernel {
  public:
   explicit ReluGrad(const OpKernelInfo& info) : OpKernel(info) {
