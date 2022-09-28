@@ -126,9 +126,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
     if (!disable_cublaslt_matmul_) {
-      ORT_ENFORCE(disable_cublaslt_matmul_);
-      ORT_THROW("Reached");
-      /*
+      size_t workspace_size = 32 * 1024 * 1024;
+      auto workspace_memory = GetScratchBuffer<void>(workspace_size); 
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
           transB,
@@ -145,9 +144,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
           ldc,
           NULL, false,
-          NULL, 0,
+          workspace_memory.get(), workspace_size,
           Stream()));
-          */
     } else {
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           Base::CublasHandle(),
