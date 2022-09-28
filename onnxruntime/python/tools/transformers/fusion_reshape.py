@@ -16,6 +16,7 @@ logger = getLogger(__name__)
 class FusionReshape(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "Reshape", "Reshape")
+        self.prune_graph: bool = False
 
     def replace_reshape_node(self, shape, reshape_node, concat_node):
         shape_value = np.asarray(shape, dtype=np.int64)

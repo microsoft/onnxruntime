@@ -10,7 +10,6 @@ from collections import deque
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
 from float16 import convert_float_to_float16
 from onnx import AttributeProto, GraphProto, ModelProto, NodeProto, TensorProto, helper, numpy_helper, save_model
 from shape_infer_helper import SymbolicShapeInferenceHelper
