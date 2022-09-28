@@ -171,37 +171,54 @@ Status KernelTypeStrResolver::SaveToOrtFormat(
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+// returns an error message string which is empty if successful
 static std::string LoadFromOrtFormatImpl(const fbs::KernelTypeStrResolver& fbs_kernel_type_str_resolver,
                                          OpKernelTypeStrMap& op_kernel_type_str_map_out) {
   const auto* fbs_op_kernel_type_str_args = fbs_kernel_type_str_resolver.op_kernel_type_str_args();
-  if (!fbs_op_kernel_type_str_args) return "op_kernel_type_str_args is null.";
+  if (!fbs_op_kernel_type_str_args) {
+    return "op_kernel_type_str_args is null.";
+  }
 
   OpKernelTypeStrMap op_kernel_type_str_map{};
   op_kernel_type_str_map.reserve(fbs_op_kernel_type_str_args->size());
   for (const auto* fbs_op_kernel_type_str_args_entry : *fbs_op_kernel_type_str_args) {
-    if (!fbs_op_kernel_type_str_args_entry) return "op_kernel_type_str_args entry is null.";
+    if (!fbs_op_kernel_type_str_args_entry) {
+      return "op_kernel_type_str_args entry is null.";
+    }
 
     const auto* fbs_op_id = fbs_op_kernel_type_str_args_entry->op_id();
-    if (!fbs_op_id) return "op_id is null.";
+    if (!fbs_op_id) {
+      return "op_id is null.";
+    }
 
     const auto* fbs_kernel_type_str_args = fbs_op_kernel_type_str_args_entry->kernel_type_str_args();
-    if (!fbs_kernel_type_str_args) return "kernel_type_str_args is null.";
+    if (!fbs_kernel_type_str_args) {
+      return "kernel_type_str_args is null.";
+    }
 
     KernelTypeStrToArgsMap kernel_type_str_map{};
     kernel_type_str_map.reserve(fbs_kernel_type_str_args->size());
     for (const auto* fbs_kernel_type_str_args_entry : *fbs_kernel_type_str_args) {
-      if (!fbs_kernel_type_str_args_entry) return "kernel_type_str_args entry is null.";
+      if (!fbs_kernel_type_str_args_entry) {
+        return "kernel_type_str_args entry is null.";
+      }
 
       const auto* fbs_kernel_type_str = fbs_kernel_type_str_args_entry->kernel_type_str();
-      if (!fbs_kernel_type_str) return "kernel_type_str is null.";
+      if (!fbs_kernel_type_str) {
+        return "kernel_type_str is null.";
+      }
 
       const auto* fbs_args = fbs_kernel_type_str_args_entry->args();
-      if (!fbs_args) return "args is null.";
+      if (!fbs_args) {
+        return "args is null.";
+      }
 
       InlinedVector<ArgTypeAndIndex> args{};
       args.reserve(fbs_args->size());
       for (const auto* fbs_arg : *fbs_args) {
-        if (!fbs_arg) return "args entry is null.";
+        if (!fbs_arg) {
+          return "args entry is null.";
+        }
         args.push_back(ArgTypeAndIndex{
             fbs_arg->arg_type() == fbs::ArgType::INPUT ? ArgType::kInput : ArgType::kOutput,
             fbs_arg->index()});
