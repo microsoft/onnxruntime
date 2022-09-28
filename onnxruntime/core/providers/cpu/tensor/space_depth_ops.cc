@@ -20,8 +20,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<uint8_t>(),
-                              DataTypeImpl::GetTensorType<int8_t>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<int8_t>()}),
     SpaceToDepth);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -31,8 +30,7 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<uint8_t>(),
-                              DataTypeImpl::GetTensorType<int8_t>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<int8_t>()}),
     SpaceToDepth);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -42,8 +40,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<uint8_t>(),
-                              DataTypeImpl::GetTensorType<int8_t>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<int8_t>()}),
     DepthToSpace);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -54,8 +51,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<uint8_t>(),
-                              DataTypeImpl::GetTensorType<int8_t>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<int8_t>()}),
     DepthToSpace);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -65,8 +61,7 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
                               DataTypeImpl::GetTensorType<uint8_t>(),
-                              DataTypeImpl::GetTensorType<int8_t>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<int8_t>()}),
     DepthToSpace);
 
 // intermediate tensor shapes are:
