@@ -392,14 +392,16 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
     for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
       onnx_output_name = it->first;
       if (output_names.find(onnx_output_name) != output_names.end()) {
-        //Assigning the output_name
+        // Assigning the output_name
         output_name = it->first;
         output_name_found = true;
         break;
       }
     }
-    if(!output_name_found) {
-      ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX. [ONNX Output: ] " + onnx_output_name + " doesn't exist in the list of OpenVINO output tensor names");
+    if (!output_name_found) {
+      ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX. "
+                "[ONNX Output: ] " + onnx_output_name + " doesn't exist in the "
+                "list of OpenVINO output tensor names");
     }
     graph_output_blob = infer_request->GetTensor(output_name);
     size_t batch_size = 1;
