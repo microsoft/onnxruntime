@@ -10,24 +10,15 @@
 #include <vector>
 
 #include "core/providers/rocm/rocm_common.h"
-#include "contrib_ops/rocm/bert/tunable_op.h"
-#include "python/tools/kernel_explorer/kernels/gemm.h"
-#include "python/tools/kernel_explorer/kernels/gemm_ck.h"
-#include "python/tools/kernel_explorer/kernels/gemm_rocblas.h"
+#include "core/providers/rocm/tunable/gemm_common.h"
+#include "core/providers/rocm/tunable/gemm_tunable.cuh"
+#include "python/tools/kernel_explorer/device_array.h"
+#include "python/tools/kernel_explorer/kernel_explorer_interface.h"
+
+using namespace onnxruntime::rocm::tunable::blas;
+using namespace onnxruntime::rocm::tunable::blas::internal;
 
 namespace onnxruntime {
-
-template <typename T, typename ALayout, typename BLayout>
-class GemmTunableOp : public contrib::rocm::TunableOp<GemmParams<T>> {
- public:
-  GemmTunableOp() {
-    this->ops_.emplace_back(RocBlasGemmOp<T>);
-    for (auto&& [_, op] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
-      ORT_UNUSED_PARAMETER(_);
-      this->ops_.emplace_back(std::move(op));
-    }
-  }
-};
 
 template <typename T, typename ALayout, typename BLayout>
 class GemmTunable : public IKernelExplorer {

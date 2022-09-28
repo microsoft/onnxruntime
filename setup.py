@@ -14,9 +14,9 @@ from os import environ, getcwd, path, popen, remove
 from pathlib import Path
 from shutil import copyfile
 
+from packaging.tags import sys_tags
 from setuptools import Extension, setup
 from setuptools.command.install import install as InstallCommandBase
-from wheel.vendored.packaging.tags import sys_tags
 
 nightly_build = False
 package_name = "onnxruntime"
@@ -68,8 +68,6 @@ elif parse_arg_remove_boolean(sys.argv, "--use_openvino"):
     package_name = "onnxruntime-openvino"
 elif parse_arg_remove_boolean(sys.argv, "--use_dnnl"):
     package_name = "onnxruntime-dnnl"
-elif parse_arg_remove_boolean(sys.argv, "--use_nuphar"):
-    package_name = "onnxruntime-nuphar"
 elif parse_arg_remove_boolean(sys.argv, "--use_tvm"):
     package_name = "onnxruntime-tvm"
 elif parse_arg_remove_boolean(sys.argv, "--use_vitisai"):
@@ -104,6 +102,7 @@ manylinux_tags = [
     "manylinux2014_ppc64le",
     "manylinux2014_s390x",
     "manylinux_2_27_x86_64",
+    "manylinux_2_27_aarch64",
 ]
 is_manylinux = environ.get("AUDITWHEEL_PLAT", None) in manylinux_tags
 
@@ -323,8 +322,6 @@ if platform.system() == "Linux":
     libs.extend(["libonnxruntime_providers_openvino.so"])
     libs.append(providers_cuda_or_rocm)
     libs.append(providers_tensorrt_or_migraphx)
-    # Nuphar Libs
-    libs.extend(["libtvm.so.0.5.1"])
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.so"])
 elif platform.system() == "Darwin":
@@ -346,8 +343,6 @@ else:
     libs.extend(["onnxruntime_providers_cuda.dll"])
     # DirectML Libs
     libs.extend(["DirectML.dll"])
-    # Nuphar Libs
-    libs.extend(["tvm.dll"])
     if nightly_build:
         libs.extend(["onnxruntime_pywrapper.dll"])
 
@@ -539,10 +534,6 @@ if enable_training:
             else:
                 # cpu version for documentation
                 local_version = "+cpu"
-
-if package_name == "onnxruntime-nuphar":
-    packages += ["onnxruntime.nuphar"]
-    extra += [path.join("nuphar", "NUPHAR_CACHE_VERSION")]
 
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]
