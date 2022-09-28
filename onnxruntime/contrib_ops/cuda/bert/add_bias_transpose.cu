@@ -125,7 +125,7 @@ __global__ void AddBiasTransposeQKV(const T* input, const T* biases, T* output, 
   // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
 
   int n = threadIdx.y;          // head_num_id
-  int s = blockIdx.x;           // sequence_id 
+  int s = blockIdx.x;           // sequence_id
   int b = blockIdx.y;           // batch_id
   int m = blockIdx.z;           // matrix id (Q=0, K=1, V=2)
   const int h = threadIdx.x;    // head_element_id
@@ -259,8 +259,7 @@ void InvokeAddBiasTranspose(
     } else if (format == 1) {
       if ((v_head_size == -1) || (qk_head_size == v_head_size)) {
         AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output);
-      }
-      else {
+      } else {
         AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size);
       }
     } else {
