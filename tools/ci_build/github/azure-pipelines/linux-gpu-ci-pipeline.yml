@@ -115,6 +115,7 @@ jobs:
          cd $(Build.SourcesDirectory)/java
          /usr/local/gradle/bin/gradle "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release" "-DUSE_CUDA=1"
          cd /tmp
+         export ORT_SKIP_CPU_EP=1
          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
               --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
               --config Release --test \

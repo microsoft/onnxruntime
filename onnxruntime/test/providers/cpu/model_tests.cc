@@ -810,7 +810,12 @@ TEST_P(ModelTest, Run) {
 // TODO: all providers
 ::std::vector<::std::basic_string<ORTCHAR_T>> GetParameterStrings() {
   std::vector<const ORTCHAR_T*> provider_names;
-  provider_names.push_back(ORT_TSTR("cpu"));
+  auto env_cpu_ep = Env::Default().GetEnvironmentVar("ORT_SKIP_CPU_EP");
+  if (env_cpu_ep == "1") {
+    std::cout << "All CPU EP tests are skipped";
+  } else {
+    provider_names.push_back(ORT_TSTR("cpu"));
+  }
 #ifdef USE_TENSORRT
   provider_names.push_back(ORT_TSTR("tensorrt"));
 #endif
