@@ -31,6 +31,11 @@ struct DataTypeAdaptor<half> {
   using type = ck::half_t;
 };
 
+template <>
+struct DataTypeAdaptor<BFloat16> {
+  using type = ck::bhalf16_t;
+};
+
 using Row = ck::tensor_layout::gemm::RowMajor;
 using Col = ck::tensor_layout::gemm::ColumnMajor;
 
@@ -50,6 +55,12 @@ auto GetCKGemmTypeStringAndOps() {
     auto type_string = impl->GetTypeString();
     auto invoker = impl->MakeInvokerPointer();
     auto ck_gemm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GemmParams<T>* params) -> Status {
+      auto one = ToHipType<T>::FromFloat(1.0f);
+      auto zero = ToHipType<T>::FromFloat(0.0f);
+      TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(
+          params->alpha != one || params->beta != zero,
+          impl->GetTypeString(), " only supports alpha == 1 and beta == 0", params->Signature());
+
       auto nop = Nop{};
       auto arg = impl->MakeArgumentPointer(params->a, params->b, params->c,
                                            params->m, params->n, params->k,
