@@ -453,6 +453,23 @@ void DataOps::populate_op_mode_supported() {
                                     return true;
                                   }
                                }
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                  bool if_bias = false;
+                                  const auto& attributes = node->GetAttributes();
+                                  auto conv_filter = attributes.find("kernel_shape");
+                                  if (conv_filter != attributes.end()) {
+                                    auto& ints = conv_filter->second().ints();
+                                    // check if the Input for the op has bias
+                                    if (node->InputDefs().size() > 2) {
+                                      if (node->InputDefs()[2]->Name() == "B")
+                                        if_bias = true;
+                                    }
+                                    // If the kernel size is 3D and the input doesnot have bias,
+                                    // the op is rejected in case of GPU
+                                    if (ints.size() == 3 && !if_bias)
+                                      return true;
+                                  }
+                                }
                                 return false;
                              }};
     op_list_.insert({"Conv", obj});
@@ -534,13 +551,23 @@ void DataOps::populate_op_mode_supported() {
                                if (device_id_.find("GPU") != std::string::npos) {
                                 // If the device is GPU, only 2D dilations with 1x1 pixel are supported
                                 const auto& attributes = node->GetAttributes();
-                                auto& dilation_attr = attributes.at("dilations");
-                                auto int_size = dilation_attr.ints_size();
-                                if(int_size == 2) {
-                                  if(dilation_attr.ints(0) != 1 || dilation_attr.ints(1) !=1) {
-                                    return true;
+                                auto dilation = attributes.find("dilations");
+                                if (dilation != attributes.end()) {
+                                  auto& dilation_attr = attributes.at("dilations");
+                                  auto int_size = dilation_attr.ints_size();
+                                  if (int_size == 2) {
+                                    if (dilation_attr.ints(0) != 1 || dilation_attr.ints(1) !=1) {
+                                      return true;
+                                    }
                                   }
+                                  // If 3D dilations, reject the op
+                                  if (int_size == 3)
+                                    return true;
                                 }
+                                auto group_attr = attributes.find("group");
+                                // group 4 is not supported
+                                if (group_attr->second().i() == 4)
+                                  return true;
                                }
                                return false;
                              }};
@@ -803,6 +830,54 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Pow", obj});
   }
   {
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               // Max op with one input is not supporting for GPU_FP16
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
+                                if (prec_str == "FP16") {
+                                 if (node->InputDefs().size() == 1) {
+                                   return true;
+                                 }
+                                }
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Max", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               // Min op with one input is not supporting for GPU_FP16
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
+                                if (prec_str == "FP16") {
+                                 if (node->InputDefs().size() == 1) {
+                                   return true;
+                                 }
+                                }
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Min", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               // Sum op with one input is not supporting for GPU_FP16
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                auto prec_str = openvino_ep::BackendManager::GetGlobalContext().precision_str;
+                                if (prec_str == "FP16") {
+                                 if (node->InputDefs().size() == 1) {
+                                   return true;
+                                 }
+                                }
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Sum", obj});
+  }
+  {
     UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                auto slope = node->InputDefs()[1];
@@ -1025,6 +1100,20 @@ void DataOps::populate_op_mode_supported() {
                                const auto& attributes = node->GetAttributes();
                                if (attributes.count("axes") == 0)
                                  return true;
+                               return false;
+                             }};
+    op_list_.insert({"Squeeze", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1, V_2022_2},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                if (node->InputDefs().size() > 1 &&
+                                 (node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() ==
+                                 ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)) {
+                                  return true;
+                                }
+                               }
                                return false;
                              }};
     op_list_.insert({"Squeeze", obj});
