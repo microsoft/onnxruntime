@@ -34,10 +34,13 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 #endif
+
 namespace Eigen {
 class ThreadPoolInterface;
 }
 namespace onnxruntime {
+
+using GroupAffinity = std::vector<std::pair<int64_t,int64_t>>;
 
 #ifdef _WIN32
 using PIDType = unsigned long;
@@ -79,7 +82,15 @@ struct ThreadOptions {
   void* custom_thread_creation_options = nullptr;
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
   int dynamic_block_base_ = 0;
+
+  GroupAffinity group_affinities;
 };
+
+struct ProcessorGroup {
+  int64_t processor_count = 0;
+  int64_t processor_mask = 0;
+};
+
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
 ///
