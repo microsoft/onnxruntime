@@ -29,8 +29,8 @@ class XnnpackExecutionProvider : public IExecutionProvider {
   ~XnnpackExecutionProvider() override;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
-      const onnxruntime::GraphViewer& graph,
-      const std::vector<const KernelRegistry*>& kernel_registries) const override;
+      const onnxruntime::GraphViewer& graph_viewer,
+      const IKernelLookup& /*kernel_lookup*/) const override;
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 

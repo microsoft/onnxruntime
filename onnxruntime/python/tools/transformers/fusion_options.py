@@ -25,6 +25,7 @@ class FusionOptions:
         self.enable_bias_gelu = True
         self.enable_gelu_approximation = False
         self.enable_gemm_gelu = True
+        self.enable_qordered_matmul = True
 
         self.enable_shape_inference = True
 

@@ -216,13 +216,13 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
   std::array<double_t, 5> outValues{std::numeric_limits<double_t>::min(), 1.0f, 2.0f, 3.0f,
                                     std::numeric_limits<double_t>::max()};
   std::function<NSNumber *(double_t value)> convert = [](double_t value) { return [NSNumber numberWithDouble:value]; };
-  testCreateOutputTensorT<double_t>(outValues, convert, JsTensorTypeDouble, @"test_types_double", @"ort");
+  testCreateOutputTensorT<double_t>(outValues, convert, JsTensorTypeDouble, @"test_types_double", @"onnx");
 }
 
 - (void)testCreateOutputTensorBool {
   std::array<bool, 5> outValues{false, true, true, false, true};
   std::function<NSNumber *(bool value)> convert = [](bool value) { return [NSNumber numberWithBool:value]; };
-  testCreateOutputTensorT<bool>(outValues, convert, JsTensorTypeBool, @"test_types_bool", @"ort");
+  testCreateOutputTensorT<bool>(outValues, convert, JsTensorTypeBool, @"test_types_bool", @"onnx");
 }
 
 - (void)testCreateOutputTensorInt8 {

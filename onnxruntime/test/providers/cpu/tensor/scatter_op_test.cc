@@ -66,11 +66,10 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
   test.AddOutput<T>("y", input_dims, output_data);
   // OpenVINO doesn't support negative indices value.
   // Disable TensorRT due to missing int8 calibrator.
-  // Nuphar doesn't have MLFloat16 impl.
   if (std::is_same<T, int8_t>::value) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
   } else if (std::is_same<T, MLFloat16>::value) {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kOpenVINOExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   } else {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   }
@@ -84,7 +83,7 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
   if (std::is_same<T, int8_t>::value) {
     test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
   } else if (std::is_same<T, MLFloat16>::value) {
-    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kOpenVINOExecutionProvider});
+    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   } else {
     test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   }
