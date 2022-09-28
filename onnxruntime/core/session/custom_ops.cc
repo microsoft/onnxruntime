@@ -11,6 +11,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_typeinfo.h"
+#include "core/framework/utils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
@@ -63,35 +64,13 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* 
   API_IMPL_END
 };
 
-static OrtStatusPtr CopyStringToMemory(_In_ const std::string& str, _In_ const char* error_msg,
-                                       _Out_opt_ char* out, _Inout_ size_t* size) {
-  const size_t str_len = str.length();
-  const size_t req_size = str_len + 1;
-
-  if (out == nullptr) {  // User is querying the total output buffer size
-    *size = req_size;
-    return nullptr;
-  }
-
-  if (*size >= req_size) {  // User provided a buffer of sufficient size
-    std::memcpy(out, str.data(), str_len);
-    out[str_len] = '\0';
-    *size = req_size;
-    return nullptr;
-  }
-
-  // User has provided a buffer that is not large enough
-  *size = req_size;
-  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, error_msg);
-}
-
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
                     _Out_opt_ char* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   std::string value;
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<std::string>(name, &value);
   if (status.IsOK()) {
-    return CopyStringToMemory(value, "Result buffer is not large enough", out, size);
+    status = onnxruntime::utils::CopyStringToOutputArg(value, "Result buffer is not large enough", out, size);
   }
   return onnxruntime::ToOrtStatus(status);
   API_IMPL_END
@@ -190,131 +169,12 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputNodeArg, _In_ const OrtKernelIn
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetProviderOptions, _In_ const OrtKernelInfo* info,
-    _Outptr_ OrtProviderOptions** provider_options) {
-  API_IMPL_BEGIN
-  const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
-  auto* ep_options = new onnxruntime::ProviderOptions(op_info->GetExecutionProvider()->GetProviderOptions());
-
-  *provider_options = reinterpret_cast<OrtProviderOptions*>(ep_options);
-
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::ProviderOptions_HasOption, _In_ const OrtProviderOptions* provider_options,
-                    _In_ const char* key, _Inout_ size_t* value_size) {
-  API_IMPL_BEGIN
-  const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
-  auto it = options->find(key);
-
-  if (it == options->end()) {
-    *value_size = 0;
-  } else {
-    *value_size = it->second.length() + 1;
-  }
-
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::ProviderOptions_GetOption, _In_ const OrtProviderOptions* provider_options,
-                    _In_ const char* key, _Out_opt_ char* value, _Inout_ size_t* value_size) {
-  API_IMPL_BEGIN
-  const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
-  auto it = options->find(key);
-
-  if (it == options->end()) {
-    std::string err_msg("Provider option '");
-    err_msg += key;
-    err_msg += "' was not found.";
-
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.c_str());
-  }
-
-  return CopyStringToMemory(it->second, "Provider option's output buffer is too small", value, value_size);
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::ProviderOptions_Serialize, _In_ const OrtProviderOptions* provider_options,
-                    _Out_opt_ char* keys, _Inout_ size_t* keys_size,
-                    _Out_opt_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options) {
-  API_IMPL_BEGIN
-  const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
-
-  size_t k_size = 0;
-  size_t v_size = 0;
-
-  // Calculate total serialized sizes.
-  for (const auto& it : *options) {
-    k_size += it.first.length() + 1;  // Include separating null-terminators
-    v_size += it.second.length() + 1;
-  }
-
-  if (num_options) {  // Always set num_options if user pass a valid pointer.
-    *num_options = options->size();
-  }
-
-  if (keys == nullptr || values == nullptr) {  // User is querying buffer sizes.
-    *keys_size = k_size;
-    *values_size = v_size;
-    return nullptr;
-  }
-
-  const bool keys_fit = *keys_size >= k_size;
-  const bool vals_fit = *values_size >= v_size;
-
-  if (keys_fit && vals_fit) {  // User provided buffers that are large enough.
-    auto push_str = [](char* out, const std::string& str) {
-      const size_t len = str.length();
-
-      std::memcpy(out, str.data(), len);
-      out[len] = '\0';
-      out += len + 1;
-
-      return out;
-    };
-
-    // Copy all items to output buffers. Items are separated by null-terminators.
-    for (const auto& it : *options) {
-      keys = push_str(keys, it.first);
-      values = push_str(values, it.second);
-    }
-
-    *keys_size = k_size;
-    *values_size = v_size;
-    return nullptr;
-  }
-
-  // User has provided at least one buffer that is not large enough
-  *keys_size = k_size;
-  *values_size = v_size;
-
-  const char* err_msg = nullptr;
-
-  if (keys_fit && !vals_fit) {
-    err_msg = "Values buffer is not large enough";
-  } else if (!keys_fit && vals_fit) {
-    err_msg = "Keys buffer is not large enough";
-  } else {
-    err_msg = "Values and keys buffers are not large enough";
-  }
-
-  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg);
-  API_IMPL_END
-}
-
-ORT_API(void, OrtApis::ReleaseProviderOptions, _Frees_ptr_opt_ OrtProviderOptions* provider_options) {
-  if (provider_options) {
-    delete reinterpret_cast<onnxruntime::ProviderOptions*>(provider_options);
-  }
-}
-
 ORT_API_STATUS_IMPL(OrtApis::NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_opt_ char* out,
                     _Inout_ size_t* size) {
   API_IMPL_BEGIN
   const std::string& name = reinterpret_cast<const onnxruntime::NodeArg*>(node_arg)->Name();
-  return CopyStringToMemory(name, "NodeArg's name buffer is too small", out, size);
+  auto status = onnxruntime::utils::CopyStringToOutputArg(name, "NodeArg's name buffer is too small", out, size);
+  return onnxruntime::ToOrtStatus(status);
   API_IMPL_END
 }
 

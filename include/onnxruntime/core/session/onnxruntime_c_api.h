@@ -271,7 +271,6 @@ ORT_RUNTIME_CLASS(CANNProviderOptions);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(NodeArg);
-ORT_RUNTIME_CLASS(ProviderOptions)
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -3445,7 +3444,6 @@ struct OrtApi {
    * Currently supported providers:
    *   SNPE
    *   XNNPACK
-   *   OpWrapper
    *
    * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
    *       that should be used to add it.
@@ -3605,96 +3603,6 @@ struct OrtApi {
   */
   ORT_API2_STATUS(KernelInfo_GetOutputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
                   _Outptr_ const OrtNodeArg** node_arg);
-
-  /** \brief Get execution provider options from an instance of OrtKernelInfo.
-  *
-  * \param[in] info An instance of OrtKernelInfo.
-  * \param[out] provider_options A copy of the provider options. Must free with OrtApi::ReleaseProviderOptions.
-  *
-  * \snippet{doc} snippets.dox OrtStatus Return Value
-  * \since Version 1.13
-  */
-  ORT_API2_STATUS(KernelInfo_GetProviderOptions, _In_ const OrtKernelInfo* info,
-                  _Outptr_ OrtProviderOptions** provider_options);
-
-  /// @}
-  /// \name OrtProviderOptions
-  /// @{
-
-  /** \brief Get serialized provider options keys and values.
-  *
-  * If either `keys` or `values` are nullptr, the values of `keys_size` and `values_size`
-  * are set to the minimum buffer sizes necessary to store all serialized keys and values respectively,
-  * and a success status is returned.
-  *
-  * If the `keys_size` and `values_size` parameters are both large enough,
-  * the values of `keys_size` and `values_size` are set to the actual serialized sizes, the provided buffers
-  * are filled with the corresponding keys or values (separated by '\0'), and a success status is returned.
-  *
-  * If either of the `keys_size` or `values_size` parameters is less than the required size and
-  * both `keys` and `values` are not nullptr, the values `keys_size` and `values_size` are set to the required
-  * sizes and a failure status is returned.
-  *
-  * \param[in] provider_options
-  * \param[out] keys The buffer into which to serialize keys (separated by '\0').
-  * \param[out] keys_size See above comments for details.
-  * \param[out] values The buffer into which to serialize values (separated by '\0').
-  * \param[out] values_size See above comments for details.
-  * \param[out] num_options Set to the number of provider options if not a nullptr.
-  *
-  * \snippet{doc} snippets.dox OrtStatus Return Value
-  * \since Version 1.13
-  */
-  ORT_API2_STATUS(ProviderOptions_Serialize, _In_ const OrtProviderOptions* provider_options,
-                  _Out_opt_ char* keys, _Inout_ size_t* keys_size,
-                  _Out_opt_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options);
-
-  /** \brief Check if a provider option exists and get its size.
-  *
-  * If the option exists, the option value's size (string length + 1) is returned
-  * in the `value_size` parameter.
-  *
-  * If the option does not exist, the `value_size` parameter is set to 0.
-  *
-  * \param[in] provider_options
-  * \param[in] key The option to check.
-  * \param[out] value_size The option value's size if it exists. See above comments for details.
-  *
-  * \snippet{doc} snippets.dox OrtStatus Return Value
-  * \since Version 1.13
-  */
-  ORT_API2_STATUS(ProviderOptions_HasOption, _In_ const OrtProviderOptions* provider_options,
-                  _In_ const char* key, _Inout_ size_t* value_size);
-
-  /** \brief Get a the value of a provider option.
-  *
-  * If `value` is a nullptr, `value_size` is set to the length of the option value (plus 1),
-  * and a success status is returned.
-  *
-  * If the `value_size` parameter is large enough, `value_size` is set to the length of the option value (plus 1),
-  * the provided buffer is filled with the null-terminated option value, and a success status is returned.
-  *
-  * If `value_size` is less than the required size and `value` is not a nullptr,
-  * `value_size` is set to the required size, and a failure status is returned.
-  *
-  * \param[in] provider_options
-  * \param[in] key The option to get.
-  * \param[out] value The buffer into which to store the null-terminated option value.
-  * \param[out] value_size The value buffer's size. See above comments for details.
-  *
-  * \snippet{doc} snippets.dox OrtStatus Return Value
-  * \since Version 1.13
-  */
-  ORT_API2_STATUS(ProviderOptions_GetOption, _In_ const OrtProviderOptions* provider_options,
-                  _In_ const char* key, _Out_opt_ char* value, _Inout_ size_t* value_size);
-
-  /* \brief: Release provider options
-  *
-  * \param[in] OrtProviderOptions Provider options returned by KernelInfo_GetProviderOptions
-  *
-  * \since Version 1.13.
-  */
-  ORT_CLASS_RELEASE(ProviderOptions);
 
   /// @}
   /// \name OrtNodeArg

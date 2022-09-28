@@ -1588,6 +1588,11 @@ if (onnxruntime_USE_OPWRAPPER)
   )
 
   add_dependencies(onnxruntime_providers_opwrapper onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/opwrapper
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
+  )
+
   set_target_properties(onnxruntime_providers_opwrapper PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_opwrapper PROPERTIES LINKER_LANGUAGE CXX)
 

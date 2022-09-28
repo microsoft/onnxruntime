@@ -10,6 +10,6 @@
 
 namespace onnxruntime {
 struct OpWrapperProviderFactoryCreator {
-  static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& provider_options);
+  static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptionsMap& provider_options);
 };
 }  // namespace onnxruntime

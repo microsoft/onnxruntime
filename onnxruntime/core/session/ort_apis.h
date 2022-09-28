@@ -408,17 +408,6 @@ ORT_API_STATUS_IMPL(KernelInfo_GetInputNodeArg, _In_ const OrtKernelInfo* info, 
                     _Outptr_ const OrtNodeArg** node_arg);
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
                     _Outptr_ const OrtNodeArg** node_arg);
-ORT_API_STATUS_IMPL(KernelInfo_GetProviderOptions, _In_ const OrtKernelInfo* info,
-                    _Outptr_ OrtProviderOptions** provider_options);
-
-ORT_API_STATUS_IMPL(ProviderOptions_Serialize, _In_ const OrtProviderOptions* provider_options,
-                    _Out_opt_ char* keys, _Inout_ size_t* keys_size,
-                    _Out_opt_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options);
-ORT_API_STATUS_IMPL(ProviderOptions_HasOption, _In_ const OrtProviderOptions* provider_options,
-                    _In_ const char* key, _Inout_ size_t* value_size);
-ORT_API_STATUS_IMPL(ProviderOptions_GetOption, _In_ const OrtProviderOptions* provider_options,
-                    _In_ const char* key, _Out_opt_ char* value, _Inout_ size_t* value_size);
-ORT_API(void, ReleaseProviderOptions, _Frees_ptr_opt_ OrtProviderOptions* provider_options);
 
 ORT_API_STATUS_IMPL(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_opt_ char* out, _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(NodeArg_GetTypeInfo, _In_ const OrtNodeArg* info, _Outptr_ OrtTypeInfo** type_info);

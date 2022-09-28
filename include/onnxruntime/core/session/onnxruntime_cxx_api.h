@@ -119,7 +119,6 @@ ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(IoBinding);
 ORT_DEFINE_RELEASE(ArenaCfg);
 ORT_DEFINE_RELEASE(KernelInfo);
-ORT_DEFINE_RELEASE(ProviderOptions);
 
 #undef ORT_DEFINE_RELEASE
 
@@ -1075,14 +1074,7 @@ struct NodeArg {
   const OrtNodeArg* p_;
 };
 
-struct ProviderOptions : Base<OrtProviderOptions> {
-  explicit ProviderOptions(std::nullptr_t) {}
-  explicit ProviderOptions(OrtProviderOptions* options);
 
-  size_t HasOption(const char* key) const;
-  std::string GetOption(const char* key, size_t value_size = 0) const;
-  std::unordered_map<std::string, std::string> ToMap() const;
-};
 
 /// <summary>
 /// This struct owns the OrtKernInfo* pointer when a copy is made.
@@ -1106,8 +1098,6 @@ struct KernelInfo : Base<OrtKernelInfo> {
 
   Ort::NodeArg GetInput(size_t index) const;
   Ort::NodeArg GetOutput(size_t index) const;
-
-  Ort::ProviderOptions GetProviderOptions() const;
 };
 
 struct CustomOpApi {

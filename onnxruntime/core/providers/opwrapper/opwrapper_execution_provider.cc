@@ -9,8 +9,8 @@
 
 namespace onnxruntime {
 
-OpWrapperExecutionProvider::OpWrapperExecutionProvider(const ProviderOptions& provider_options)
-    : IExecutionProvider{onnxruntime::kOpWrapperExecutionProvider}, provider_options_{provider_options} {
+OpWrapperExecutionProvider::OpWrapperExecutionProvider(const ProviderOptionsMap& provider_options_map)
+    : IExecutionProvider{onnxruntime::kOpWrapperExecutionProvider}, provider_options_map_{provider_options_map} {
   AllocatorCreationInfo device_info(
       [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo("OpWrapper", OrtAllocatorType::OrtDeviceAllocator));
@@ -20,5 +20,10 @@ OpWrapperExecutionProvider::OpWrapperExecutionProvider(const ProviderOptions& pr
 }
 
 OpWrapperExecutionProvider::~OpWrapperExecutionProvider() {}
+
+ProviderOptions OpWrapperExecutionProvider::GetOpProviderOptions(const std::string& op_name) const {
+  auto it = provider_options_map_.find(op_name);
+  return (it == provider_options_map_.end()) ? ProviderOptions{} : it->second;
+}
 
 }  // namespace onnxruntime
