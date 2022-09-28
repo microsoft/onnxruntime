@@ -10,7 +10,13 @@
 #include <vector>
 
 #include "core/providers/rocm/rocm_common.h"
+#include "core/providers/rocm/tunable/gemm_common.h"
+#include "core/providers/rocm/tunable/gemm_rocblas.h"
 #include "python/tools/kernel_explorer/device_array.h"
+#include "python/tools/kernel_explorer/kernel_explorer_interface.h"
+
+using namespace onnxruntime::rocm::tunable::blas;
+using namespace onnxruntime::rocm::tunable::blas::internal;
 
 namespace py = pybind11;
 
@@ -65,7 +71,7 @@ class RocBlasGemm : public IKernelExplorer {
   rocblas_handle rocblas_handle_;
 
   using ParamsT = GemmParams<T>;
-  using OpT = contrib::rocm::Op<ParamsT>;
+  using OpT = rocm::tunable::Op<ParamsT>;
 
   ParamsT params_{};
   OpT op_{RocBlasGemmOp<T>};

@@ -161,7 +161,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   // When first_past_input_index_ == 3, the encoder_hidden_states and past states are copied from the second output
   // of encoder.
   // When first_past_input_index_ == 2, the past states are copied from the second output of encoder.
-  for (size_t j = 4 - first_past_input_index_; j < encoder_fetches.size(); j++) {
+  for (size_t j = static_cast<size_t>(4) - first_past_input_index_; j < encoder_fetches.size(); j++) {
     if (j == 1) {
       ORT_RETURN_IF(has_hidden_state_ == false, "Invalid hidden_states expension: has_hidden_state_ == false");
       OrtValue expanded_hidden_states;
