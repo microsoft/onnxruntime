@@ -7,6 +7,10 @@ jobs:
   timeoutInMinutes: 30
 
   steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
   - task: UsePythonVersion@0
     inputs:
       versionSpec: "3.9"
@@ -24,7 +28,7 @@ jobs:
         --config Debug \
         --build_shared_lib --use_coreml --build_objc \
         --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        --update \
+        --update --skip_submodule_sync \
         --build --parallel --target onnx_proto
     displayName: Generate compile_commands.json and ONNX protobuf files
 
