@@ -130,7 +130,7 @@ struct GetCapabilityForEPParams {
 }  // namespace
 
 static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
-  const auto& current_ep = params.current_ep.get();
+  auto& current_ep = params.current_ep.get();
   const auto& ep_type = current_ep.Type();
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
