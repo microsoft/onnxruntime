@@ -106,7 +106,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   int past_sequence_length = 0;
-  Tensor* present = GetPresent(context, past, batch_size, qkv_head_size[0], sequence_length, past_sequence_length);
+  Tensor* present = GetPresent(context, past, batch_size, qkv_head_size[1], sequence_length, past_sequence_length);
 
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
@@ -156,7 +156,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    qkv_head_size[0],
                                                    sequence_length,
                                                    past_sequence_length,
-                                                   fused_runner);
+                                                   fused_runner,
+                                                   qkv_head_size[2]);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
   ORT_RETURN_IF_ERROR(LaunchAttentionKernel(
@@ -167,7 +168,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       batch_size,
       sequence_length,
       num_heads_,
-      qkv_head_size,
+      qkv_head_size[0],
       past_sequence_length,
       is_unidirectional_,
       reinterpret_cast<const void*>(gemm_buffer.get()),
@@ -180,7 +181,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       output->MutableData<T>(),
       nullptr == present ? nullptr : present->MutableData<T>(),
       fused_runner,
-      qkv_hidden_sizes_));
+      qkv_head_size[2]));
 
   return Status::OK();
 }
