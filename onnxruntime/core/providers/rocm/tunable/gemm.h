@@ -5,7 +5,6 @@
 
 #include "core/common/status.h"
 #include "core/framework/float16.h"
-// #include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/tunable/gemm_common.h"
 
 namespace onnxruntime {
