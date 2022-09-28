@@ -141,6 +141,7 @@ public:
             epsilon,
             fusedActivation ? &fusedActivationDmlDesc : nullptr
         );
+
         DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
         m_compiledOperator.Attach(graph.Compile(executionFlags, { batchNormalization }).Detach());
     }
