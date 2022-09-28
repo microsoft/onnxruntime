@@ -114,21 +114,6 @@ namespace GraphKernelHelper
             return true;
         }
 
-        //// If an initializer wasn't transferred, the constant input may be available from ORT
-        //const onnxruntime::Tensor* inputTensor = nullptr;
-        //if (!kernelInfo.TryGetConstantInput(index, &inputTensor) || inputTensor == nullptr)
-        //{
-        //    return false;
-        //}
-
-        //// Check that the constant ORT input is in GPU memory
-        //if (!strcmp(inputTensor->Location().name, onnxruntime::CPU) ||
-        //    inputTensor->Location().mem_type == ::OrtMemType::OrtMemTypeCPUOutput ||
-        //    inputTensor->Location().mem_type == ::OrtMemType::OrtMemTypeCPUInput)
-        //{
-        //    return false;
-        //}
-
         return false;
     };
 
