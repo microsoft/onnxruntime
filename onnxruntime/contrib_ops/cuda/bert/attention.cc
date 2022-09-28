@@ -133,27 +133,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
-  // CublasLtMatmul requires that M (which is actually N here as the row-major inputs will be swapped to
-  // account for the col-major format of Cublas) and K are multiples of 4
-  auto use_cublaslt_matmul = !disable_cublaslt_matmul_ && ((n % 4) == 0) && ((k % 4) == 0);
-
-  // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
-  if (use_cublaslt_matmul) {
-    CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
-        CublasLtHandle(), CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-        reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
-        reinterpret_cast<const CudaT*>(input->Data<T>()), k,
-        &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n,
-        reinterpret_cast<const CudaT*>(bias->Data<T>()), false,
-        NULL, 0,
-        Stream()));
-  } else {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-        cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-        reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
-        reinterpret_cast<const CudaT*>(input->Data<T>()), k,
-        &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
-  }
+  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
+      reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
+      reinterpret_cast<const CudaT*>(input->Data<T>()), k,
+      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
@@ -176,7 +160,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       past_sequence_length,
       is_unidirectional_,
       reinterpret_cast<const void*>(gemm_buffer.get()),
-      use_cublaslt_matmul ? nullptr : bias->Data<T>(),
+      bias->Data<T>(),
       nullptr == mask_index ? nullptr : mask_index->Data<int>(),
       nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
       nullptr == past ? nullptr : past->Data<T>(),
