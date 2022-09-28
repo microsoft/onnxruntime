@@ -47,20 +47,25 @@ jobs:
       script: |-
         export ROCM_HOME=/opt/rocm
         python tools/ci_build/build.py \
-        --config RelWithDebInfo \
-        --enable_training \
-        --enable_training_torch_interop \
-        --mpi_home /opt/ompi \
-        --use_rocm \
-        --rocm_version=5.2.3 \
-        --rocm_home /opt/rocm \
-        --nccl_home /opt/rocm \
-        --update \
-        --build_dir ./build \
-        --build \
-        --parallel 8 \
-        --build_wheel \
-        --skip_tests
+          --config RelWithDebInfo \
+          --enable_training \
+          --enable_training_torch_interop \
+          --mpi_home /opt/ompi \
+          --cmake_generator Ninja \
+          --cmake_extra_defines \
+              CMAKE_C_COMPILER=${ROCM_HOME}/llvm/bin/clang \
+              CMAKE_CXX_COMPILER=${ROCM_HOME}/llvm/bin/clang++ \
+              onnxruntime_DEV_MODE=OFF \
+          --use_rocm \
+          --rocm_version=5.2.3 \
+          --rocm_home /opt/rocm \
+          --nccl_home /opt/rocm \
+          --update \
+          --build_dir ./build \
+          --parallel 8 \
+          --build_wheel \
+          --skip_tests
+        cmake --build ./build/RelWithDebInfo
     displayName: 'Build onnxruntime'
 
   - bash: |-
