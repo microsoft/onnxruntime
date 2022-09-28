@@ -126,6 +126,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
     if (!disable_cublaslt_matmul_) {
+      ORT_ENFORCE(disable_cublaslt_matmul_);
+      /*
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
           transB,
@@ -144,6 +146,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           NULL, false,
           NULL, 0,
           Stream()));
+          */
     } else {
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           Base::CublasHandle(),
