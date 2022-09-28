@@ -244,7 +244,7 @@ const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {
   return &p_seq_exec_plan_.value();
 }
 
-void Print(const std::string& type, const std::vector<AllocPlanPerValue>& alloc_plans) {
+void Print(const std::string& type, gsl::span<const AllocPlanPerValue> alloc_plans) {
   std::cout << type << std::endl;
   int i = 0;
   for (const auto& alloc_plan : alloc_plans) {
