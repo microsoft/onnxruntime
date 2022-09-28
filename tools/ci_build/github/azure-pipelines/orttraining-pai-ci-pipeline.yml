@@ -64,8 +64,8 @@ jobs:
           --build_dir ./build \
           --parallel 8 \
           --build_wheel \
-          --skip_tests
-        cmake --build ./build/RelWithDebInfo
+          --skip_tests \
+          --build
     displayName: 'Build onnxruntime'
 
   - bash: |-
