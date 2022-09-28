@@ -4,6 +4,9 @@
 #pragma once
 #include "opwrapper_provider_factory.h"
 #include "onnxruntime_cxx_api.h"
+#include <string>
+#include <vector>
+#include <unordered_map>
 
 /** \brief All C++ ONNXRuntime APIs in onnxruntime_cxx_api.h are defined inside the Ort:: namespace.
  *
@@ -72,7 +75,6 @@ const OrtOpWrapperApi* Global<T>::api_ = detail::GetOrtOpWrapperApi();
 #pragma warning(pop)
 #endif
 #endif
-
 
 struct OpWrapperProviderOptions : Ort::Base<OrtOpWrapperProviderOptions> {
   explicit OpWrapperProviderOptions(std::nullptr_t) {}
