@@ -16,7 +16,7 @@ ep:VitisAI: '/\bvitis(?:ai)?\b/i'
 platform:jetson: '/\bjetson\b/i'
 platform:mobile:
   - '/\bobj-?c\b/i'
-  - '/\bnnnapi\b/i'
+  - '/\bnnapi\b/i'
   - '/\bcore-?ml\b/i'
   - '/\bmobile\b/i'
 platform:windows:
