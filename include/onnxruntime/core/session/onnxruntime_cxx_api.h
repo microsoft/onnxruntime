@@ -78,6 +78,7 @@ template <typename T>
 const OrtApi* Global<T>::api_{};
 inline void InitApi() { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
 inline void InitApi(const OrtApi* api) { Global<void>::api_ = api; }
+inline bool ApiIsInit() { return Global<void>::api_ != nullptr; }
 #else
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
