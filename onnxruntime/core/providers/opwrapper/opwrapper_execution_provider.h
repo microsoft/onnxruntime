@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {

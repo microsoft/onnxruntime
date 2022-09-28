@@ -15,7 +15,6 @@ typedef struct OrtOpWrapperApi OrtOpWrapperApi;
 ORT_RUNTIME_CLASS(OpWrapperProviderOptions);
 
 struct OrtOpWrapperApi {
-
   /** \brief Append OpWrapper execution provider to the session options
   *
   * If OpWrapper is not enabled (due to build options), this function returns a failure status.
@@ -56,8 +55,8 @@ struct OrtOpWrapperApi {
   * \since Version 1.13
   */
   ORT_API2_STATUS(ProviderOptions_Update, _Inout_ OrtOpWrapperProviderOptions* provider_options,
-	              _In_reads_(num_options) const char* const* options_keys,
-	              _In_reads_(num_options) const char* const* options_values,
+                  _In_reads_(num_options) const char* const* options_keys,
+                  _In_reads_(num_options) const char* const* options_values,
                   _In_ size_t num_options);
 
   /** \brief Check if a provider option exists and get its size.

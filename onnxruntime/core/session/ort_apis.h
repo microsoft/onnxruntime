@@ -177,8 +177,8 @@ ORT_API_STATUS_IMPL(GetOpaqueValue, _In_ const char* domain_name, _In_ const cha
 
 ORT_API_STATUS_IMPL(KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out);
 ORT_API_STATUS_IMPL(KernelInfoGetAttribute_int64, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ int64_t* out);
-ORT_API_STATUS_IMPL(KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_opt_ char* out,
-                    _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
+                    _Out_opt_ char* out, _Inout_ size_t* size);
 
 ORT_API_STATUS_IMPL(KernelContext_GetInputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out);
 ORT_API_STATUS_IMPL(KernelContext_GetOutputCount, _In_ const OrtKernelContext* context, _Out_ size_t* out);

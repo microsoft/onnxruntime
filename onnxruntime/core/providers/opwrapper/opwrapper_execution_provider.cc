@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <memory>
-
 #include "core/providers/opwrapper/opwrapper_execution_provider.h"
+
+#include <memory>
+#include <string>
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
 

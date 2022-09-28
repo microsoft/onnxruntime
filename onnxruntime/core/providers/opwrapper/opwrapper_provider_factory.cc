@@ -1,15 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/opwrapper/ort_opwrapper_apis.h"
 #include "core/providers/opwrapper/opwrapper_provider_factory.h"
+
+#include <sstream>
+#include "core/providers/opwrapper/ort_opwrapper_apis.h"
 #include "core/providers/opwrapper/opwrapper_provider_factory_creator.h"
 #include "core/providers/opwrapper/opwrapper_execution_provider.h"
 #include "core/session/ort_apis.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/utils.h"
-#include <sstream>
 
 namespace onnxruntime {
 
@@ -32,7 +33,8 @@ OpWrapperProviderFactoryCreator::Create(const ProviderOptionsMap& provider_optio
 
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtOpWrapperApis::SessionOptionsAppendExecutionProvider_OpWrapper, _In_ OrtSessionOptions* session_options,
+ORT_API_STATUS_IMPL(OrtOpWrapperApis::SessionOptionsAppendExecutionProvider_OpWrapper,
+                    _In_ OrtSessionOptions* session_options,
                     _In_reads_(num_ops) const char* const* op_names,
                     _In_reads_(num_ops) const OrtOpWrapperProviderOptions* const* provider_options,
                     _In_ size_t num_ops) {
@@ -73,7 +75,8 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_Update, _Inout_ OrtOpWrapp
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_HasOption, _In_ const OrtOpWrapperProviderOptions* provider_options,
+ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_HasOption,
+                    _In_ const OrtOpWrapperProviderOptions* provider_options,
                     _In_ const char* key, _Inout_ size_t* value_size) {
   API_IMPL_BEGIN
   const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
@@ -89,7 +92,8 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_HasOption, _In_ const OrtO
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_GetOption, _In_ const OrtOpWrapperProviderOptions* provider_options,
+ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_GetOption,
+                    _In_ const OrtOpWrapperProviderOptions* provider_options,
                     _In_ const char* key, _Out_opt_ char* value, _Inout_ size_t* value_size) {
   API_IMPL_BEGIN
   const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
@@ -108,7 +112,8 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_GetOption, _In_ const OrtO
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_Serialize, _In_ const OrtOpWrapperProviderOptions* provider_options,
+ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_Serialize,
+                    _In_ const OrtOpWrapperProviderOptions* provider_options,
                     _Out_opt_ char* keys, _Inout_ size_t* keys_size,
                     _Out_opt_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options) {
   API_IMPL_BEGIN
@@ -176,14 +181,15 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_Serialize, _In_ const OrtO
   API_IMPL_END
 }
 
-ORT_API(void, OrtOpWrapperApis::ReleaseOpWrapperProviderOptions, _Frees_ptr_opt_ OrtOpWrapperProviderOptions* provider_options) {
+ORT_API(void, OrtOpWrapperApis::ReleaseOpWrapperProviderOptions,
+        _Frees_ptr_opt_ OrtOpWrapperProviderOptions* provider_options) {
   if (provider_options) {
     delete reinterpret_cast<onnxruntime::ProviderOptions*>(provider_options);
   }
 }
 
-ORT_API_STATUS_IMPL(OrtOpWrapperApis::KernelInfo_GetProviderOptions, _In_ const OrtKernelInfo* info, _In_ const char* op_name,
-                    _Outptr_ OrtOpWrapperProviderOptions** provider_options) {
+ORT_API_STATUS_IMPL(OrtOpWrapperApis::KernelInfo_GetProviderOptions, _In_ const OrtKernelInfo* info,
+                    _In_ const char* op_name, _Outptr_ OrtOpWrapperProviderOptions** provider_options) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
   const auto* ep = op_info->GetExecutionProvider();
