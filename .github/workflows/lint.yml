@@ -90,6 +90,8 @@ jobs:
             --build_dir build \
             --update \
             --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - name: Build protobuf
+        run: cmake --build build/Debug --config Debug --target onnx_proto
       - name: Run clang-tidy
         uses: ZedThree/clang-tidy-review@526cbfb043719639f1ebdeedae0cc1eacd219d8f
         with:
