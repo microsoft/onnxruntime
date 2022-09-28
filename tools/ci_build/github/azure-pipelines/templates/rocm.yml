@@ -16,6 +16,8 @@ jobs:
   timeoutInMinutes: 180
   pool: Ubuntu-2004-rocm-aiinfra
   variables:
+    - name: PythonVersion
+      value: ${{ parameters.PythonVersion }}
     - name: EnableProfiling
       ${{ if eq(parameters.BuildConfig, 'Release') }}:
         value: ''
