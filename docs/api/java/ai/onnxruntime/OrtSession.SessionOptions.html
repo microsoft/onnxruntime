@@ -319,52 +319,51 @@ implements java.lang.AutoCloseable</pre>
 </tr>
 <tr id="i13" class="rowColor">
 <td class="colFirst"><code>void</code></td>
-<th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#addNuphar(boolean,java.lang.String)">addNuphar</a></span>&#8203;(boolean&nbsp;allowUnalignedBuffers,
-         java.lang.String&nbsp;settings)</code></th>
-<td class="colLast">
-<div class="block">Adds Nuphar as an execution backend.</div>
-</td>
-</tr>
-<tr id="i14" class="altColor">
-<td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#addOpenVINO(java.lang.String)">addOpenVINO</a></span>&#8203;(java.lang.String&nbsp;deviceId)</code></th>
 <td class="colLast">
 <div class="block">Adds OpenVINO as an execution backend.</div>
 </td>
 </tr>
-<tr id="i15" class="rowColor">
+<tr id="i14" class="altColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#addROCM()">addROCM</a></span>()</code></th>
 <td class="colLast">
 <div class="block">Add ROCM as an execution backend, using device 0.</div>
 </td>
 </tr>
-<tr id="i16" class="altColor">
+<tr id="i15" class="rowColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#addROCM(int)">addROCM</a></span>&#8203;(int&nbsp;deviceNum)</code></th>
 <td class="colLast">
 <div class="block">Add ROCM as an execution backend, using the specified ROCM device id.</div>
 </td>
 </tr>
-<tr id="i17" class="rowColor">
+<tr id="i16" class="altColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#addTensorrt(int)">addTensorrt</a></span>&#8203;(int&nbsp;deviceNum)</code></th>
 <td class="colLast">
 <div class="block">Adds Nvidia's TensorRT as an execution backend.</div>
 </td>
 </tr>
-<tr id="i18" class="altColor">
+<tr id="i17" class="rowColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#addTensorrt(ai.onnxruntime.providers.OrtTensorRTProviderOptions)">addTensorrt</a></span>&#8203;(<a href="providers/OrtTensorRTProviderOptions.html" title="class in ai.onnxruntime.providers">OrtTensorRTProviderOptions</a>&nbsp;tensorRTOpts)</code></th>
 <td class="colLast">
 <div class="block">Adds Nvidia's TensorRT as an execution backend.</div>
 </td>
 </tr>
-<tr id="i19" class="rowColor">
+<tr id="i18" class="altColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#addTvm(java.lang.String)">addTvm</a></span>&#8203;(java.lang.String&nbsp;settings)</code></th>
 <td class="colLast">
 <div class="block">Adds TVM as an execution backend.</div>
+</td>
+</tr>
+<tr id="i19" class="rowColor">
+<td class="colFirst"><code>void</code></td>
+<th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#addXnnpack(java.util.Map)">addXnnpack</a></span>&#8203;(java.util.Map&lt;java.lang.String,&#8203;java.lang.String&gt;&nbsp;providerOptions)</code></th>
+<td class="colLast">
+<div class="block">Adds Xnnpack as an execution backend.</div>
 </td>
 </tr>
 <tr id="i20" class="altColor">
@@ -1038,25 +1037,6 @@ implements java.lang.AutoCloseable</pre>
 </dl>
 </li>
 </ul>
-<a id="addNuphar(boolean,java.lang.String)">
-<!--   -->
-</a>
-<ul class="blockList">
-<li class="blockList">
-<h4>addNuphar</h4>
-<pre class="methodSignature">public&nbsp;void&nbsp;addNuphar&#8203;(boolean&nbsp;allowUnalignedBuffers,
-                      java.lang.String&nbsp;settings)
-               throws <a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></pre>
-<div class="block">Adds Nuphar as an execution backend.</div>
-<dl>
-<dt><span class="paramLabel">Parameters:</span></dt>
-<dd><code>allowUnalignedBuffers</code> - Allow unaligned memory buffers.</dd>
-<dd><code>settings</code> - See the documentation for valid settings strings.</dd>
-<dt><span class="throwsLabel">Throws:</span></dt>
-<dd><code><a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></code> - If there was an error in native code.</dd>
-</dl>
-</li>
-</ul>
 <a id="addTvm(java.lang.String)">
 <!--   -->
 </a>
@@ -1143,7 +1123,7 @@ implements java.lang.AutoCloseable</pre>
 <a id="addCoreML(java.util.EnumSet)">
 <!--   -->
 </a>
-<ul class="blockListLast">
+<ul class="blockList">
 <li class="blockList">
 <h4>addCoreML</h4>
 <pre class="methodSignature">public&nbsp;void&nbsp;addCoreML&#8203;(java.util.EnumSet&lt;<a href="providers/CoreMLFlags.html" title="enum in ai.onnxruntime.providers">CoreMLFlags</a>&gt;&nbsp;flags)
@@ -1152,6 +1132,24 @@ implements java.lang.AutoCloseable</pre>
 <dl>
 <dt><span class="paramLabel">Parameters:</span></dt>
 <dd><code>flags</code> - The flags which control the CoreML configuration.</dd>
+<dt><span class="throwsLabel">Throws:</span></dt>
+<dd><code><a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></code> - If there was an error in native code.</dd>
+</dl>
+</li>
+</ul>
+<a id="addXnnpack(java.util.Map)">
+<!--   -->
+</a>
+<ul class="blockListLast">
+<li class="blockList">
+<h4>addXnnpack</h4>
+<pre class="methodSignature">public&nbsp;void&nbsp;addXnnpack&#8203;(java.util.Map&lt;java.lang.String,&#8203;java.lang.String&gt;&nbsp;providerOptions)
+                throws <a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></pre>
+<div class="block">Adds Xnnpack as an execution backend. Needs to list all options here if a new option
+ supported. current supported options: {}</div>
+<dl>
+<dt><span class="paramLabel">Parameters:</span></dt>
+<dd><code>providerOptions</code> - options pass to XNNPACK EP for initialization.</dd>
 <dt><span class="throwsLabel">Throws:</span></dt>
 <dd><code><a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></code> - If there was an error in native code.</dd>
 </dl>
