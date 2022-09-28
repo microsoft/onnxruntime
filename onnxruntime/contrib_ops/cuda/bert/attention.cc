@@ -143,7 +143,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
         reinterpret_cast<const CudaT*>(input->Data<T>()), k,
         &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n,
-        NULL, false,
+        reinterpret_cast<const CudaT*>(bias->Data<T>()), false,
         NULL, 0,
         Stream()));
   } else {
@@ -175,7 +175,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       past_sequence_length,
       is_unidirectional_,
       reinterpret_cast<const void*>(gemm_buffer.get()),
-      bias->Data<T>(),
+      use_cublaslt_matmul ? nullptr : bias->Data<T>(),
       nullptr == mask_index ? nullptr : mask_index->Data<int>(),
       nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
       nullptr == past ? nullptr : past->Data<T>(),
