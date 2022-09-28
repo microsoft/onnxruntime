@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include "core/providers/opwrapper/opwrapper_provider_factory.h"
 #include "core/common/gsl_suppress.h"
 

@@ -90,9 +90,7 @@ struct OpWrapperProviderOptions : Ort::Base<OrtOpWrapperProviderOptions> {
 #define ORT_OPWRAPPER_DEFINE_RELEASE(NAME) \
   inline void OrtRelease(Ort##NAME* ptr) { Ort::OpWrapper::GetApi().Release##NAME(ptr); }
 
-
 ORT_OPWRAPPER_DEFINE_RELEASE(OpWrapperProviderOptions)
-
 }  // namespace Ort
 
 #include "opwrapper_cxx_inline.h"

@@ -1075,8 +1075,6 @@ struct NodeArg {
   const OrtNodeArg* p_;
 };
 
-
-
 /// <summary>
 /// This struct owns the OrtKernInfo* pointer when a copy is made.
 /// For convenient wrapping of OrtKernelInfo* passed to kernel constructor
