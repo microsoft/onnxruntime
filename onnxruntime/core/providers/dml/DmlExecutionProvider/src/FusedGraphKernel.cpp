@@ -24,24 +24,12 @@ namespace Dml
             bool reuseCommandList,
             std::vector<uint8_t>& inputsConstant,
             std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
-            const gsl::span<const std::string> fusedNodeInputArgOriginalNames) : 
+            const gsl::span<const std::string> fusedNodeInputArgOriginalNames) :
             OpKernel(kernelInfo), 
             m_compiledExecutionPlanOperator(compiledExecutionPlanOperator),
             m_outputShapes(outputShapes),
             m_inputsConstant(inputsConstant)
         {       
-            // Get the graph for the function which was created according to the computational
-            // capacity returned by the execution provider's graph partitioner
-            //auto& node = kernelInfo.node();
-            //ORT_THROW_HR_IF(E_UNEXPECTED, node.NodeType() != onnxruntime::Node::Type::Fused);
-            /*auto func = node.GetFunctionBody();*/
-            //const onnxruntime::Graph* graph = partitionGraphDetails.partitionONNXGraph.get();
-
-            // Get the shapes for outputs of the overall graph.  These should be static, because 
-            // the partitioner checked that each node has static shapes before fusing into a 
-            // graph partition.
-            /*ORT_THROW_HR_IF(E_UNEXPECTED, !TryGetStaticOutputShapes(node, m_outputShapes));*/
-
             // Get the execution provider interfaces
             m_executionHandle = kernelInfo.GetExecutionProvider()->GetExecutionHandle();
             if (m_executionHandle)
@@ -70,32 +58,7 @@ namespace Dml
             bool reuseCommandList
         )
         {
-            /*ComPtr<IDMLDevice> device;
-            ORT_THROW_IF_FAILED(m_provider->GetDmlDevice(device.GetAddressOf()));
-
-            ComPtr<IDMLDevice1> device1;
-            ORT_THROW_IF_FAILED(device.As(&device1));*/
-
             const uint32_t graphInputCount = kernelInfo.GetInputCount();
-
-            /*m_inputsConstant.resize(graphInputCount);
-            for (uint32_t i = 0; i < graphInputCount; ++i)
-            {
-              m_inputsConstant[i] = GraphKernelHelper::GetGraphInputConstness(i, kernelInfo, fusedNodeInputArgOriginalNames, transferredInitializerMap);
-            }
-
-            GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
-                kernelInfo,
-                m_inputsConstant.data(),
-                m_inputsConstant.size(),
-                transferredInitializerMap,
-                graph,
-                fusedNodeInputArgOriginalNames,
-                fusedNodeOutputArgOriginalNames,
-                graphNodePropertyMap,
-                device.Get(),
-                m_executionHandle);*/
-
             // Populate input bindings for operator initialization
             std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initInputResources;  // For lifetime control
             std::vector<DML_BUFFER_BINDING> initInputBindings(graphInputCount);
@@ -116,42 +79,7 @@ namespace Dml
                 initializeResourceRefs,
                 nullptr,
                 transferredInitializerMap);
-
-            /*DML_GRAPH_DESC dmlGraphDesc = {};
-            std::vector<DML_OPERATOR_GRAPH_NODE_DESC> dmlOperatorGraphNodes(graphDesc.nodes.size());
-            std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes(graphDesc.nodes.size());
-
-            std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(graphDesc.inputEdges.size());
-            std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(graphDesc.outputEdges.size());
-            std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(graphDesc.intermediateEdges.size());
-
-            GraphKernelHelper::ConvertGraphDesc(
-                graphDesc, 
-                dmlGraphDesc, 
-                kernelInfo,
-                dmlOperatorGraphNodes,
-                dmlGraphNodes,
-                dmlInputEdges,
-                dmlOutputEdges,
-                dmlIntermediateEdges);*/
-
-            //DML_EXECUTION_FLAGS executionFlags = DML_EXECUTION_FLAG_NONE;
-            //if (graphDesc.reuseCommandList)
-            //{
-            //    executionFlags |= DML_EXECUTION_FLAG_DESCRIPTORS_VOLATILE;
-            //}
-
-            //// Query DML execution provider to see if metacommands is enabled
-            //if (!m_provider->MetacommandsEnabled())
-            //{
-            //    executionFlags |= DML_EXECUTION_FLAG_DISABLE_META_COMMANDS;
-            //}
-
-            //ORT_THROW_IF_FAILED(device1->CompileGraph(
-            //    &dmlGraphDesc,
-            //    executionFlags,
-            //    IID_PPV_ARGS(&m_compiledExecutionPlanOperator)));
-
+            
             // Allocate a persistent resource and initialize the operator
             UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)

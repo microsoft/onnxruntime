@@ -8,12 +8,6 @@
 
 namespace Dml
 {
-	struct PartitionGraphDetails
-    {
-        ONNX_NAMESPACE::GraphProto functionStorageProto;
-        std::shared_ptr<onnxruntime::Graph> partitionONNXGraph;
-    };
-
 	class ExecutionProviderImpl;
 
 	class DmlGraphFusionTransformer : public onnxruntime::GraphTransformer
@@ -23,6 +17,10 @@ namespace Dml
 			const std::string& name,
 			const onnxruntime::IExecutionProvider* provider
 		);
+
+	public:
+		inline const static char* const DML_GRAPH_FUSION_NODE_NAME_PREFIX = "DmlFusedNode_";
+		inline const static char* const DML_GRAPH_FUSION_NODE_DOMAIN = "DmlFusedNodeDomain";
 
 	private:
 		onnxruntime::common::Status ApplyImpl(onnxruntime::Graph& graph, 

@@ -33,9 +33,6 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
 
       bool modified = false;
       ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
-      if (modified) {
-        std::cout << transformer->Name() << std::endl;
-      }
       graph_changed = graph_changed || modified;
     }
     if (!graph_changed) {
