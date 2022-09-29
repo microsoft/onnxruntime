@@ -62,9 +62,6 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
-#ifdef USE_DML
-#include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
-#endif
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
@@ -286,11 +283,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
       // fusions might be prevented if this one removes a Q/DQ node too early.
       transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>(enable_quant_qdq_cleanup));
-#ifdef USE_DML
-      // This transformer applies DML-specific fusions that go beyond what ORT offers by default
-      const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
-      transformers.emplace_back(std::make_unique<Dml::GraphTransformer>("DmlOperatorFusionTransformer", dml_ep));
-#endif
     } break;
 
     case TransformerLevel::Level3: {

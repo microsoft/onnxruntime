@@ -78,7 +78,7 @@ namespace Dml
         for (auto& node : graph->Nodes())
         {
             // Ignore the nodes which were not assigned to the DML by ORT during IExecutionProvider::GetCapability()
-            if (onnxruntime::graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()))
+            if (!onnxruntime::graph_utils::IsSupportedProvider(node, {onnxruntime::kDmlExecutionProvider}))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;
