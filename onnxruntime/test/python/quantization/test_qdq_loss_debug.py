@@ -20,6 +20,7 @@ import onnxruntime
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 from onnxruntime.quantization.qdq_loss_debug import (
+    QUANT_INPUT_SUFFIX,
     collect_activations,
     compute_activation_error,
     compute_weight_error,
@@ -317,6 +318,12 @@ class TestSaveActivations(unittest.TestCase):
             float_array = matched_weights[weight_name]["float"]
             dq_array = matched_weights[weight_name]["dequantized"]
             self.assertEqual(float_array.shape, dq_array.shape)
+
+    def test_none_test(self):
+        a = np.array([2, 3, 4])
+        b = np.array([7, 8, 9])
+        c = np.array([1, 2, 3])
+        create_activation_matching({"test" + QUANT_INPUT_SUFFIX: a, "test": c}, {"test": b})
 
 
 if __name__ == "__main__":

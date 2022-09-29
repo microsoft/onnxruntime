@@ -49,7 +49,15 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   int n1 = gsl::narrow<int>(x_shape.SizeToDimension(axis));
   int n2 = gsl::narrow<int>(x_shape.SizeFromDimension(axis));
 
-  ORT_ENFORCE(n2 != 1, "n2 should not be 1");
+  const auto scale_size = scale->Shape().Size();
+  const auto bias_size = (bias_data) ? bias->Shape().Size() : 0;
+  if (n2 == 1 || scale_size != n2 || (bias_data && bias_size != n2)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Size of X.shape()[axis:] == ", n2,
+                           ". Size of scale and bias (if provided) must match this "
+                           "and the size must not be 1. Got scale size of ",
+                           scale_size, " and bias size of ", bias_size);
+  }
 
   // Outputs
   Tensor* Y = ctx->Output(0, x_shape);
@@ -95,15 +103,18 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   template class LayerNorm<T, U, V, simplified>;
 
 // contrib op usage
+LAYERNORM_IMPL(float, float, float, false)
 LAYERNORM_IMPL(double, double, double, false)
 LAYERNORM_IMPL(MLFloat16, float, MLFloat16, false)
 LAYERNORM_IMPL(float, float, MLFloat16, false)
+LAYERNORM_IMPL(MLFloat16, float, float, false)
 LAYERNORM_IMPL(BFloat16, float, BFloat16, false)
 
 LAYERNORM_IMPL(float, float, float, true)
 LAYERNORM_IMPL(double, double, double, true)
 LAYERNORM_IMPL(MLFloat16, float, MLFloat16, true)
 LAYERNORM_IMPL(float, float, MLFloat16, true)
+LAYERNORM_IMPL(MLFloat16, float, float, true)
 LAYERNORM_IMPL(BFloat16, float, BFloat16, true)
 #endif
 }  // namespace cuda

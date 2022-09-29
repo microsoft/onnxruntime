@@ -124,5 +124,23 @@ TEST(LayerNormTest, LayerNorm17_double) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider});
 }
 
+TEST(LayerNormTest, LayerNorm_InvalidScaleBias) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  // as axis is 1, the scale and bias should have size 6
+  std::vector<int64_t> dims{1, 3, 2};
+  test.AddInput<float>("x", dims, {1.2416f, 0.946123f, 13.1685f, 0.36423f, 21.145f, 0.03941f});
+  test.AddInput<float>("gamma", {2}, {-0.6953f, 5.1824f});
+  test.AddInput<float>("bias", {2}, {0.6435f, -0.3964f});
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddOutput<float>("output", dims, {-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f});
+  // CPU and CUDA EPs have check for unexpected scale or bias sizes. Exclude other EPs with a LayerNormalization
+  // implementation for which we don't control the check or error message.
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Size of X.shape()[axis:] == 6. Size of scale and bias (if provided) must match this",
+           {kDnnlExecutionProvider, kDmlExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime
