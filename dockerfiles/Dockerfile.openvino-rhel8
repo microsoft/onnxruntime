@@ -25,7 +25,7 @@ RUN yum install -y yum-utils autoconf automake libtool unzip udev wget zlib-deve
     cd $MY_ROOT && \
     wget https://www.python.org/ftp/python/3.8.9/Python-3.8.9.tgz && tar xvf Python-3.8.9.tgz && rm -rf Python-3.8.9.tgz && \
     cd Python-3.8*/ && ./configure && make && make install && \
-    cd ../ &&  mkdir -p /usr/bin/Python38 && ln -s Python-3.8.9/ /usr/bin/Python38 && \
+    cd ../ &&  mkdir -p /usr/bin/Python38 && ln -s Python-3.8.9/ /usr/bin/Python38 && ln -s /usr/bin/pip3 /usr/bin/pip && \
 # libusb1.0.22
     cd /opt/ && wget https://github.com/libusb/libusb/archive/v1.0.22.zip && \
     unzip v1.0.22.zip && rm -rf v1.0.22.zip && cd  /opt/libusb-1.0.22 && \
@@ -64,9 +64,9 @@ RUN yum install -y yum-utils autoconf automake libtool unzip udev wget zlib-deve
     make install && \
 # Build onnxruntime
     cd $MY_ROOT && \
-    pip3 install numpy wheel setuptools cython && \
+    pip3 install numpy wheel setuptools cython onnx && \
     git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} && \
-    pip3 install onnx && \
+    bash onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
     source /opt/intel/openvino_2022.2.0.7713/setupvars.sh && \
     cd /code/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel && \
     pip3 install /code/onnxruntime/build/Linux/Release/dist/*-linux_x86_64.whl && \
