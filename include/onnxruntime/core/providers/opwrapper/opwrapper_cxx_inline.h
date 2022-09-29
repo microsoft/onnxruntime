@@ -91,14 +91,14 @@ inline std::unordered_map<std::string, std::string> OpWrapperProviderOptions::To
   return map;
 }
 
-OpWrapperProviderOptions OpWrapperProviderOptions::FromKernelInfo(Unowned<const KernelInfo> kernel_info,
+inline OpWrapperProviderOptions OpWrapperProviderOptions::FromKernelInfo(Unowned<const KernelInfo>& kernel_info,
                                                                   const char* op_name) {
   OrtOpWrapperProviderOptions* options = nullptr;
   Ort::ThrowOnError(GetApi().KernelInfo_GetProviderOptions(kernel_info, op_name, &options));
   return OpWrapperProviderOptions(options);
 }
 
-SessionOptions& SessionOptions::AppendExecutionProvider_OpWrapper(const std::unordered_map<std::string, OpWrapperProviderOptions>& options) {
+inline SessionOptions& SessionOptions::AppendExecutionProvider_OpWrapper(const std::unordered_map<std::string, OpWrapperProviderOptions>& options) {
   const size_t num_ops = options.size();
   std::vector<const char*> op_names;
   std::vector<const OrtOpWrapperProviderOptions*> op_options;

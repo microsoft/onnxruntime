@@ -22,7 +22,7 @@ namespace detail {
 /** \brief Internal function that gets the OrtOpWrapperApi from OrtApi's GetExecutionProviderApi().
  *
  */
-const OrtOpWrapperApi* GetOrtOpWrapperApi() {
+inline const OrtOpWrapperApi* GetOrtOpWrapperApi() {
   const OrtApi& ort_api = Ort::GetApi();
   const void* opwrapper_api = nullptr;
 
@@ -89,7 +89,7 @@ struct OpWrapperProviderOptions : Ort::Base<OrtOpWrapperProviderOptions> {
   void UpdateOptions(const std::unordered_map<std::string, std::string>& options);
   std::unordered_map<std::string, std::string> ToMap() const;
 
-  static OpWrapperProviderOptions FromKernelInfo(Unowned<const KernelInfo> kernel_info, const char* op_name);
+  static OpWrapperProviderOptions FromKernelInfo(Unowned<const KernelInfo>& kernel_info, const char* op_name);
 };
 
 struct SessionOptions : Ort::SessionOptions {
