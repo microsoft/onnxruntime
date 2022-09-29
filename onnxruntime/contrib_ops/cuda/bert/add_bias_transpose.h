@@ -25,7 +25,7 @@ template <typename T>
 void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
-    const T* input, const T* biases, T* output, bool enable_half4, const int v_head_size = -1);
+    const T* input, const T* biases, T* output, bool enable_half4, const int v_head_size);
 
 }  // namespace cuda
 }  // namespace contrib
