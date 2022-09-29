@@ -48,17 +48,20 @@ class MemoryAlleviation : public GraphTransformer {
   MemoryAlleviation(const std::string& enable_memory_alleviation) : GraphTransformer("MemoryAlleviation") {
     // Parse user defined alleviation configs.
     ORT_ENFORCE(ParseAlleviationConfigFromString(enable_memory_alleviation).IsOK());
-    entry_op_type_to_input_arg_index_map_.insert(
-        {{"Gelu", memory_alleviation::EntryOperatorConfig{{0}, gelu_alleviation_type_}},
-         {"FastGelu", memory_alleviation::EntryOperatorConfig{{0}, gelu_alleviation_type_}},
-         {"BiasGelu", memory_alleviation::EntryOperatorConfig{{0}, gelu_alleviation_type_}}});
+    entry_op_type_to_input_arg_index_map_.insert({
+        {"Gelu", memory_alleviation::EntryOperatorConfig{{0}, gelu_alleviation_type_}},
+        {"FastGelu", memory_alleviation::EntryOperatorConfig{{0}, gelu_alleviation_type_}},
+        {"BiasGelu", memory_alleviation::EntryOperatorConfig{{0}, gelu_alleviation_type_}},
+    });
 
-    entry_op_type_to_input_arg_index_map_.insert(
-        {{"Dropout", memory_alleviation::EntryOperatorConfig{{0}, dropout_alleviation_type_}},
-         {"BitmaskDropout", memory_alleviation::EntryOperatorConfig{{0}, dropout_alleviation_type_}}});
+    entry_op_type_to_input_arg_index_map_.insert({
+        {"Dropout", memory_alleviation::EntryOperatorConfig{{0}, dropout_alleviation_type_}},
+        {"BitmaskDropout", memory_alleviation::EntryOperatorConfig{{0}, dropout_alleviation_type_}},
+    });
 
-    entry_op_type_to_input_arg_index_map_.insert(
-        {{"Tile", memory_alleviation::EntryOperatorConfig{{0}, tile_alleviation_type_}}});
+    entry_op_type_to_input_arg_index_map_.insert({
+        {"Tile", memory_alleviation::EntryOperatorConfig{{0}, tile_alleviation_type_}},
+    });
 
     ORT_ENFORCE(RegisterRecomputableIntermediateOps().IsOK());
   }

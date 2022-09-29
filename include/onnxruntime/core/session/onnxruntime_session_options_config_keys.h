@@ -64,7 +64,9 @@ static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimizati
 #ifdef ENABLE_TRAINING
 // Specifies a list of op types for memory footprint reduction.
 // The value should be a ","-delimited list of pair of <op type, alleviation strategy>.
-// For example, "Gelu:1,Dropout:1,Tile:2". Alleviation strateg currently has valid values: 0 - disabled, 1 - recompute.
+// For example, "Gelu:1,Dropout:0,Tile:0". Alleviation strategy currently has valid values: 0 - disabled, 1 - recompute.
+// Currently, we allow user to control operator-level recompute switch for limited types including
+// Gelu, Dropout and Tile.
 static const char* const kOrtSessionOptionsEnableMemoryAlleviation = "optimization.enable_memory_alleviation";
 #endif
 
