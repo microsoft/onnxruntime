@@ -38,7 +38,7 @@ Status RocBlasGemmOp(const GemmParams<T>* params) {
   // NOTE: rocblas assumes the storage is column-majored, swapping A and B makes it have the same interface
   // as those with row-majored convention. That is, if you treat the storage as row-majored but view the matrices as
   // transposed, then by using the property Transpose(A*B) = Tranpose(B)*Transpose(A), the correctness is obvious.
-  auto status = rocblasGemmHelper(
+  return ROCBLAS_CALL(rocblasGemmHelper(
       params->handle,
       params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
       params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
@@ -47,9 +47,7 @@ Status RocBlasGemmOp(const GemmParams<T>* params) {
       params->b, params->ldb,
       params->a, params->lda,
       &(params->beta),
-      params->c, params->ldc);
-  ORT_RETURN_IF(status != rocblas_status_success, rocblas_status_to_string(status));
-  return Status::OK();
+      params->c, params->ldc));
 }
 
 }  // namespace internal
