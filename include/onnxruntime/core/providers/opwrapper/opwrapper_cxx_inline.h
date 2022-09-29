@@ -112,8 +112,8 @@ inline Ort::SessionOptions& AppendExecutionProvider(Ort::SessionOptions& session
     op_options.push_back(it.second);
   }
 
-  Ort::ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpWrapper(session_options, op_names.data(),
-                                                                             op_options.data(), num_ops));
+  Ort::ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider(session_options, op_names.data(),
+                                                                   op_options.data(), num_ops));
 
   return session_options;
 }
@@ -124,8 +124,8 @@ inline Ort::SessionOptions& AppendExecutionProvider(Ort::SessionOptions& session
   constexpr size_t num_ops = 1;
   const OrtOpWrapperProviderOptions* ops_options[num_ops] = {op_options};
 
-  Ort::ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpWrapper(session_options, &op_name,
-                                                                             ops_options, num_ops));
+  Ort::ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider(session_options, &op_name,
+                                                                   ops_options, num_ops));
   return session_options;
 }
 }  // namespace OpWrapper

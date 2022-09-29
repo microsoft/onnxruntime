@@ -27,7 +27,7 @@ struct OrtOpWrapperApi {
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.13
   */
-  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_OpWrapper, _In_ OrtSessionOptions* session_options,
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider, _In_ OrtSessionOptions* session_options,
                   _In_reads_(num_ops) const char* const* op_names,
                   _In_reads_(num_ops) const OrtOpWrapperProviderOptions* const* provider_options,
                   _In_ size_t num_ops);

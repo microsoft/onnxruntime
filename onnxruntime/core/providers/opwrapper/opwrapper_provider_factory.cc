@@ -33,7 +33,7 @@ OpWrapperProviderFactoryCreator::Create(const ProviderOptionsMap& provider_optio
 
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtOpWrapperApis::SessionOptionsAppendExecutionProvider_OpWrapper,
+ORT_API_STATUS_IMPL(OrtOpWrapperApis::SessionOptionsAppendExecutionProvider,
                     _In_ OrtSessionOptions* session_options,
                     _In_reads_(num_ops) const char* const* op_names,
                     _In_reads_(num_ops) const OrtOpWrapperProviderOptions* const* provider_options,
@@ -210,7 +210,7 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::KernelInfo_GetProviderOptions, _In_ const 
 }
 
 static constexpr OrtOpWrapperApi ort_opwrapper_api_13_to_x = {
-  &OrtOpWrapperApis::SessionOptionsAppendExecutionProvider_OpWrapper,
+  &OrtOpWrapperApis::SessionOptionsAppendExecutionProvider,
   &OrtOpWrapperApis::CreateProviderOptions,
   &OrtOpWrapperApis::ProviderOptions_Update,
   &OrtOpWrapperApis::ProviderOptions_HasOption,
