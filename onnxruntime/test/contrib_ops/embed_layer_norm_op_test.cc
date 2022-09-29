@@ -150,7 +150,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_Float16) {
 #ifdef _WIN32
   // it's always failed in P100 on Windows
   GTEST_SKIP();
-#elif
+#else
   RunTest(embedlayernorm::EmbedLayerNormBatch1(), /*use_float16=*/true);
 #endif
 }
