@@ -31,8 +31,8 @@ class MlasPool2DTest : public MlasTestBase {
             size_t PaddingRightWidth,
             size_t StrideHeight,
             size_t StrideWidth) {
-    const size_t DilationHeight = 1;
-    const size_t DilationWidth = 1;
+    constexpr size_t DilationHeight = 1;
+    constexpr size_t DilationWidth = 1;
 
     int64_t OutputHeight64 =
         ((int64_t(InputHeight) + int64_t(PaddingLeftHeight) + int64_t(PaddingRightHeight)) -

@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
 #include "core/providers/shared_library/provider_api.h"

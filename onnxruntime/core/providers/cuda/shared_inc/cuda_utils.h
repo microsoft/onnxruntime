@@ -9,6 +9,7 @@
 #include <memory>
 #include <type_traits>
 #include <vector>
+#include <gsl/gsl>
 
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
@@ -49,8 +50,18 @@ void Fill(cudaStream_t stream, T* output, T value, int64_t count);
 */
 template <typename T, int32_t capacity = 8>
 struct TArray {
-  TArray() : size_(0), data_() {
-  }
+
+#if defined(USE_ROCM)
+#define TARRAY_CONSTRUCTOR_SPECIFIERS __host__ __device__
+#else
+#define TARRAY_CONSTRUCTOR_SPECIFIERS
+#endif
+
+  TARRAY_CONSTRUCTOR_SPECIFIERS TArray() = default;
+  TARRAY_CONSTRUCTOR_SPECIFIERS TArray(const TArray&) = default;
+  TARRAY_CONSTRUCTOR_SPECIFIERS TArray& operator=(const TArray&) = default;
+
+#undef TARRAY_CONSTRUCTOR_SPECIFIERS
 
   TArray(int32_t size) : size_(size), data_() {
     ORT_ENFORCE(
@@ -59,6 +70,11 @@ struct TArray {
   }
 
   TArray(const std::vector<T>& vec) : TArray(static_cast<int32_t>(vec.size())) {
+    static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable.");
+    memcpy(data_, vec.data(), vec.size() * sizeof(T));
+  }
+
+  TArray(gsl::span<const T> vec) : TArray(static_cast<int32_t>(vec.size())) {
     static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable.");
     memcpy(data_, vec.data(), vec.size() * sizeof(T));
   }
@@ -93,9 +109,13 @@ struct TArray {
   static constexpr int32_t Capacity() { return capacity; };
 
  private:
-  int32_t size_;
-  T data_[capacity];
+  int32_t size_ = 0;
+  T data_[capacity] = {};
 };
+
+// Bitmask tensor is uint_32 type.
+using BitmaskElementType = uint32_t;
+constexpr int kNumBitsPerBitmaskElement = std::numeric_limits<BitmaskElementType>::digits;
 
 }  // namespace cuda
 }  // namespace onnxruntime

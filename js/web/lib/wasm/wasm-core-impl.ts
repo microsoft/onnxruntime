@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {InferenceSession, Tensor} from 'onnxruntime-common';
+
 import {SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
@@ -176,9 +177,9 @@ const tensorDataTypeEnumToString = (typeProto: DataType): Tensor.Type => {
     case DataType.string:
       return 'string';
     case DataType.int64:
-      return 'int32';
+      return 'int64';
     case DataType.uint64:
-      return 'uint32';
+      return 'uint64';
 
     default:
       throw new Error(`unsupported data type: ${typeProto}`);
@@ -327,7 +328,7 @@ export const run =
                 errorCode = wasm._OrtGetTensorData(
                     tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
                 if (errorCode !== 0) {
-                  throw new Error(`Can't get a tensor data. error code = ${errorCode}`);
+                  throw new Error(`Can't access output tensor data. error code = ${errorCode}`);
                 }
                 let tensorDataIndex = tensorDataOffset / 4;
                 const dataType = wasm.HEAPU32[tensorDataIndex++];

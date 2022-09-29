@@ -26,6 +26,7 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::CloneModel,
     &winmla::ModelGetAuthor,
     &winmla::ModelGetName,
+    &winmla::ModelSetName,
     &winmla::ModelGetDomain,
     &winmla::ModelGetDescription,
     &winmla::ModelGetVersion,
@@ -64,15 +65,11 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::DmlExecutionProviderSetDefaultRoundingMode,
     &winmla::DmlExecutionProviderFlushContext,
     &winmla::DmlExecutionProviderReleaseCompletedReferences,
-    &winmla::DmlCreateGPUAllocationFromD3DResource,
-    &winmla::DmlFreeGPUAllocation,
-    &winmla::DmlGetD3D12ResourceFromAllocation,
     &winmla::DmlCopyTensor,
 
     &winmla::GetProviderMemoryInfo,
     &winmla::GetProviderAllocator,
     &winmla::FreeProviderAllocator,
-    &winmla::GetValueMemoryInfo,
 
     &winmla::ExecutionProviderSync,
 
@@ -94,13 +91,16 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::OperatorGetInputName,
     &winmla::OperatorGetNumOutputs,
     &winmla::OperatorGetOutputName,
+    &winmla::JoinModels,
+    &winmla::CreateThreadPool,
 
     // Release
-    &winmla::ReleaseModel
+    &winmla::ReleaseModel,
+    &winmla::ReleaseThreadPool,
 };
 
-const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(_In_ const OrtApi* ort_api) NO_EXCEPTION {
-  if (OrtApis::GetApi(2) == ort_api) {
+const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(_In_ uint32_t ort_version) NO_EXCEPTION {
+  if (ort_version >= 2) {
     return &winml_adapter_api_1;
   }
 

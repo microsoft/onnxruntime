@@ -25,6 +25,7 @@ WINML_CATCH_ALL
 
 LearningModelDevice::LearningModelDevice(winml::LearningModelDeviceKind const& deviceKind) try : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(deviceKind)) {
   m_deviceKind = deviceKind;
+  telemetry_helper.SetLearningModelDeviceKind(static_cast<int>(deviceKind));
   m_isCpuDevice = m_deviceKind == LearningModelDeviceKind::Cpu || m_deviceKind == LearningModelDeviceKind::Default;
   if (m_isCpuDevice) {
     assert(m_deviceCache->GetD3D12Device() == nullptr);
@@ -100,7 +101,7 @@ LearningModelDevice::GetDeviceQueue() {
 
 STDMETHODIMP
 LearningModelDevice::SetMetacommandsEnabled(boolean enabled) {
-  m_areMetacommandsEnabled = enabled;
+  m_areMetacommandsEnabled = (enabled != 0);
   return S_OK;
 }
 
@@ -113,6 +114,39 @@ LearningModelDevice::SharedHandleInitialized() {
   return m_deviceCache->SharedHandleInitialized();
 }
 
+STDMETHODIMP
+LearningModelDevice::GetThreadPool(_winml::IThreading** thread_pool) {
+  m_threadPool.copy_to(thread_pool);
+  return S_OK;
+}
+
+STDMETHODIMP
+LearningModelDevice::CacheThreadPool(_winml::IThreading* thread_pool) {
+  m_threadPool.copy_from(thread_pool);
+  return S_OK;
+}
+
+uint32_t LearningModelDevice::NumberOfIntraOpThreads() {
+  if (IsCpuDevice()) {
+    return std::thread::hardware_concurrency();
+  } else {
+    // GPU sessions should not rely on intra op threads.
+    // Creating a large thread pool is unnecessary and wasteful, and can cause
+    // thread competition in the process.
+    return 1;
+  }
+}
+
+bool LearningModelDevice::AllowSpinning() {
+  if (IsCpuDevice()) {
+    return true;
+  } else {
+    // GPU sessions should not run operators on cpu threads.
+    // CPU threads created should not spin, as it will drain cpu resources unnecessarily.
+    return false;
+  }
+}
+
 }  // namespace WINMLP 
 
 namespace WINML::factory_implementation {
@@ -123,8 +157,8 @@ HRESULT __stdcall LearningModelDevice::CreateFromD3D12CommandQueue(
     ID3D12CommandQueue* queue,
     IUnknown** device) noexcept {
   try {
-    WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, queue, "Failed to create LearningModelDevice. Ivalid argument queue.");
-    WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, device, "Failed to create LearningModelDevice. Ivalid argument device.");
+    WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, queue, "Failed to create LearningModelDevice. Invalid argument queue.");
+    WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, device, "Failed to create LearningModelDevice. Invalid argument device.");
 
     auto machineLearningDevice = make<implementation::LearningModelDevice>(queue);
     *device = machineLearningDevice.as<IUnknown>().detach();

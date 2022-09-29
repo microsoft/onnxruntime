@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
 #include <memory>
@@ -18,7 +18,9 @@ BackendFactory::MakeBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   std::string type = global_context.device_type;
   if (type.find("HDDL") != std::string::npos) {
     return std::make_shared<VADMBackend>(model_proto, global_context, subgraph_context);
-  } else if (type == "CPU" || type == "GPU" || type == "MYRIAD" || type.find("HETERO") != std::string::npos || type.find("MULTI") != std::string::npos) {
+  } else if (type == "CPU" || type.find("GPU") != std::string::npos || type == "MYRIAD" ||
+            type.find("HETERO") != std::string::npos || type.find("MULTI") != std::string::npos ||
+            type.find("AUTO") != std::string::npos) {
     return std::make_shared<BasicBackend>(model_proto, global_context, subgraph_context);
   } else {
     ORT_THROW("[OpenVINO-EP] Backend factory error: Unknown backend type: " + type);

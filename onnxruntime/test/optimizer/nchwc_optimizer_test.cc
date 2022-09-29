@@ -9,6 +9,7 @@
 #include "test/compare_ortvalue.h"
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include <cmath>
 
@@ -179,7 +180,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
               domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
   NchwcTestHelper helper(model.MainGraph());
   build_test_case(helper);
-  ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
 
   // Serialize the model to a string.
   std::string model_data;
@@ -190,15 +191,11 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
     session_options.graph_optimization_level = level;
     session_options.session_logid = "NchwcOptimizerTests";
     InferenceSessionWrapper session{session_options, GetEnvironment()};
-    ASSERT_TRUE(session.Load(model_data.data(), static_cast<int>(model_data.size())).IsOK());
-    ASSERT_TRUE(session.Initialize().IsOK());
+    ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+    ASSERT_STATUS_OK(session.Initialize());
 
     RunOptions run_options;
-    auto status = session.Run(run_options, helper.feeds_, helper.output_names_, &fetches);
-    if (!status.IsOK()) {
-      std::cout << "Run failed with status message: " << status.ErrorMessage() << std::endl;
-    }
-    ASSERT_TRUE(status.IsOK());
+    ASSERT_STATUS_OK(session.Run(run_options, helper.feeds_, helper.output_names_, &fetches));
 
     if (level == TransformerLevel::Level3) {
       check_nchwc_graph(session);
@@ -212,7 +209,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   run_model(TransformerLevel::Level3, level3_fetches);
 
   size_t num_outputs = level2_fetches.size();
-  ASSERT_TRUE(num_outputs == level3_fetches.size());
+  ASSERT_EQ(num_outputs, level3_fetches.size());
 
   for (size_t i = 0; i < num_outputs; i++) {
     double relative_per_sample_tolerance = 0.0;
@@ -1234,8 +1231,11 @@ TEST(NchwcOptimizerTests, UpsampleNearest) {
         std::vector<int64_t> sizes_shape(4);
         sizes_shape[0] = 3;
         sizes_shape[1] = 42;
-        sizes_shape[2] = static_cast<int64_t>(scale_h * 27);
-        sizes_shape[3] = static_cast<int64_t>(scale_w * 15);
+        constexpr int64_t shape2 = 27;
+        constexpr int64_t shape3 = 15;
+        //The result is 64-bit. Use double for calculation to get better precision.
+        sizes_shape[2] = static_cast<int64_t>(static_cast<double>(scale_h) * shape2);
+        sizes_shape[3] = static_cast<int64_t>(static_cast<double>(scale_w) * shape3);
         input_args.push_back(helper.Make1DInitializer<float>({}));
         input_args.push_back(helper.Make1DInitializer<int64_t>(sizes_shape));
       } else {

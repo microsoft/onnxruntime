@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <pybind11/pybind11.h>
+#include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include "core/providers/get_execution_providers.h"
 
@@ -20,5 +20,5 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");
 }
-}
-}
+}  // namespace python
+}  // namespace onnxruntime

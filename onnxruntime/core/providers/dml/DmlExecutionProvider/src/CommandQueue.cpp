@@ -11,9 +11,8 @@ namespace Dml
         , m_type(existingQueue->GetDesc().Type)
     {
         ComPtr<ID3D12Device> device;
-        THROW_IF_FAILED(m_queue->GetDevice(IID_PPV_ARGS(&device)));
-
-        THROW_IF_FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
+        GRAPHICS_THROW_IF_FAILED(m_queue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
+        ORT_THROW_IF_FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_GRAPHICS_PPV_ARGS(m_fence.ReleaseAndGetAddressOf())));
     }
 
     void CommandQueue::ExecuteCommandList(ID3D12CommandList* commandList)
@@ -26,15 +25,15 @@ namespace Dml
         m_queue->ExecuteCommandLists(gsl::narrow<uint32_t>(commandLists.size()), commandLists.data());
 
         ++m_lastFenceValue;
-        THROW_IF_FAILED(m_queue->Signal(m_fence.Get(), m_lastFenceValue));
+        ORT_THROW_IF_FAILED(m_queue->Signal(m_fence.Get(), m_lastFenceValue));
     }
 
     void CommandQueue::Wait(ID3D12Fence* fence, uint64_t value)
     {
-        THROW_IF_FAILED(m_queue->Wait(fence, value));
+        ORT_THROW_IF_FAILED(m_queue->Wait(fence, value));
 
         ++m_lastFenceValue;
-        THROW_IF_FAILED(m_queue->Signal(m_fence.Get(), m_lastFenceValue));
+        ORT_THROW_IF_FAILED(m_queue->Signal(m_fence.Get(), m_lastFenceValue));
     }
 
     GpuEvent CommandQueue::GetCurrentCompletionEvent()

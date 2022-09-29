@@ -34,7 +34,7 @@ ONNX_OPERATOR_KERNEL_EX(
       Stream(),                                                                             \
       offset,                                                                               \
       dim1 + 1,                                                                             \
-      reinterpret_cast<typename ToCudaType<T>::MappedType*>(T2->template MutableData<T>()), \
+      reinterpret_cast<typename ToCudaType<T>::MappedType*>(T2->MutableData<T>()), \
       diag_count);                                                                          \
   break;
 
@@ -42,7 +42,7 @@ Status EyeLike::ComputeInternal(OpKernelContext* context) const {
   const auto* T1 = context->Input<Tensor>(0);
   ORT_ENFORCE(T1 != nullptr);
 
-  const std::vector<int64_t>& input_dims = T1->Shape().GetDims();
+  auto input_dims = T1->Shape().GetDims();
   if (input_dims.size() != 2) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "EyeLike : Input tensor dimension is not 2");
   }

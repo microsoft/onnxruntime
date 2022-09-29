@@ -38,19 +38,19 @@ Status ConvGrad<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
   // Copied from conv_impl.h, maybe refactor
-  std::vector<int64_t> kernel_shape;
+  TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
   size_t kernel_rank = kernel_shape.size();
 
-  std::vector<int64_t> pads(conv_attrs_.pads);
+  ConvAttributes::ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_rank * 2, 0);
   }
-  std::vector<int64_t> dilations(conv_attrs_.dilations);
+  TensorShapeVector dilations(conv_attrs_.dilations);
   if (dilations.empty()) {
     dilations.resize(kernel_rank, 1);
   }
-  std::vector<int64_t> strides(conv_attrs_.strides);
+  TensorShapeVector strides(conv_attrs_.strides);
   if (strides.empty()) {
     strides.resize(kernel_rank, 1);
   }

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 
@@ -21,94 +21,144 @@ int NumActualValues(const Node& node, bool input) {
 }
 }  // namespace
 
-bool BaseSelector::CheckQDQNodes(const Graph& graph, const Node& node,
-                                 const std::vector<const Node*>& dq_nodes,
-                                 const std::vector<const Node*>& q_nodes,
-                                 int num_dq_inputs) const {
+static std::vector<const Node*> FindQDQNodes(const GraphViewer& graph_viewer, const Node& node, bool find_dq_nodes) {
+  // First get all the upstream (DQ) or downstream (Q) nodes
+  std::vector<const Node*> nodes =
+      find_dq_nodes ? graph_utils::FindParentsByType(node, QDQ::DQOpName)
+                    : graph_utils::FindChildrenByType(node, QDQ::QOpName);
+
+  // Remove all the nodes which are not in the graph_viewer
+  nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
+                             [&graph_viewer](const Node* _node) {
+                               return _node == nullptr || graph_viewer.GetNode(_node->Index()) == nullptr;
+                             }),
+              nodes.end());
+
+  return nodes;
+}
+
+bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
+                                      const std::vector<const Node*>& dq_nodes,
+                                      const std::vector<const Node*>& q_nodes,
+                                      int num_dq_inputs,
+                                      bool is_empty_q_nodes_allowed) const {
   if (num_dq_inputs == -1) {
     num_dq_inputs = NumActualValues(node, true);
   }
 
-  int num_outputs = NumActualValues(node, false);  // number of outputs that exist
-
-  return num_dq_inputs == gsl::narrow_cast<int>(dq_nodes.size()) &&
-         num_outputs == gsl::narrow_cast<int>(q_nodes.size()) &&
-         !graph.NodeProducesGraphOutput(node);
-}
-
-bool BaseSelector::Select(Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const {
-  std::vector<const Node*> dq_nodes = graph_utils::FindParentsByType(node, QDQ::DQOpName);
-  std::vector<const Node*> q_nodes = graph_utils::FindChildrenByType(node, QDQ::QOpName);
-
-  if (!Check(graph, node, dq_nodes, q_nodes)) {
+  // The input is a Graph Viewer, so cannot use graph_utils or optimizer_utils
+  if (num_dq_inputs != gsl::narrow_cast<int>(dq_nodes.size())) {
     return false;
   }
 
-  auto get_mutable_node = [&graph](const Node* node) {
-    // we use the non-const GetNode to convert the const Node* to Node*
-    return graph.GetNode(node->Index());
-  };
-
-  NodesToOptimizeBuilder builder;
-  builder.input_nodes.reserve(dq_nodes.size());
-  builder.output_nodes.reserve(q_nodes.size());
-
-  for (const Node* dq_node : dq_nodes) {
-    builder.input_nodes.push_back(dq_node != nullptr ? get_mutable_node(dq_node) : nullptr);
+  if (q_nodes.empty()) {
+    return is_empty_q_nodes_allowed;
   }
 
-  builder.target_node = get_mutable_node(&node);
-
-  for (const Node* q_node : q_nodes) {
-    builder.output_nodes.push_back(get_mutable_node(q_node));
-  }
-
-  UpdateBuilder(builder);
-
-  selection = builder.Build();
-
-  return true;
+  int num_outputs = NumActualValues(node, false);  // number of outputs that exist
+  return (num_outputs == gsl::narrow_cast<int>(q_nodes.size())) &&
+         q_nodes.size() == node.GetOutputEdgesCount() &&
+         !graph_viewer.NodeProducesGraphOutput(node);
 }
 
-bool DropDQDNodesSelector::Check(const Graph& graph,
-                                 const Node& node,
-                                 const std::vector<const Node*>& dq_nodes,
-                                 const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes, 1)) {
+std::optional<NodeGroup> NodeGroupSelector::GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const {
+  std::vector<const Node*> dq_nodes = FindQDQNodes(graph_viewer, node, true);
+  std::vector<const Node*> q_nodes = FindQDQNodes(graph_viewer, node, false);
+  if (!Check(graph_viewer, node, dq_nodes, q_nodes)) {
+    return std::nullopt;
+  }
+
+  NodeGroup node_group;
+  node_group.dq_nodes.reserve(dq_nodes.size());
+  node_group.q_nodes.reserve(q_nodes.size());
+  node_group.target_node = node.Index();
+  auto get_node_idx = [&](const Node* n) { return n->Index(); };
+  std::transform(dq_nodes.begin(), dq_nodes.end(), std::back_inserter(node_group.dq_nodes), get_node_idx);
+  std::transform(q_nodes.begin(), q_nodes.end(), std::back_inserter(node_group.q_nodes), get_node_idx);
+  return node_group;
+}
+
+std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& graph_viewer, const Node& node) const {
+  const auto qdq_group = node_group_selector_->GetQDQSelection(graph_viewer, node);
+  if (!qdq_group.has_value()) {
+    return std::nullopt;
+  }
+
+  NodesToOptimizeIndicesBuilder builder;
+  // TODO(edgchen1) update NodeGroup to use InlinedVector
+  builder.input_nodes.assign(qdq_group->dq_nodes.begin(), qdq_group->dq_nodes.end());
+  builder.output_nodes.assign(qdq_group->q_nodes.begin(), qdq_group->q_nodes.end());
+  //builder.input_nodes = qdq_group->dq_nodes;
+  //builder.output_nodes = qdq_group->q_nodes;
+  builder.target_node = qdq_group->target_node;
+
+  UpdateBuilder(builder);
+  return builder.Build();
+}
+
+bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                     const Node& node,
+                                     const std::vector<const Node*>& dq_nodes,
+                                     const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
     return false;
   }
 
   const Node& dq_node = *dq_nodes.front();
   const Node& q_node = *q_nodes.front();
 
-  return IsQDQPairSupported(graph, q_node, dq_node);
+  auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
+    return graph_viewer.GetConstantInitializer(initializer_name, true);
+  };
+
+  return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
-bool UnarySelector::Check(const Graph& graph, const Node& node,
-                          const std::vector<const Node*>& dq_nodes,
-                          const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes, 1)) {
+bool DropDQNodeGroupSelector::CheckDQNodes(const Node& node, const std::vector<const Node*>& dq_nodes) const {
+  int num_dq_inputs = NumActualValues(node, true);
+
+  return num_dq_inputs == gsl::narrow_cast<int>(dq_nodes.size());
+}
+
+bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                    const Node& node,
+                                    const std::vector<const Node*>& dq_nodes,
+                                    const std::vector<const Node*>& q_nodes) const {
+  if (!CheckDQNodes(node, dq_nodes)) {
+    return false;
+  }
+
+  (void)q_nodes;
+  const Node& dq_node = *dq_nodes.front();
+
+  auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
+    return graph_viewer.GetConstantInitializer(initializer_name, true);
+  };
+
+  return IsDQSupported(dq_node, get_const_initializer);
+}
+
+bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                   const std::vector<const Node*>& dq_nodes,
+                                   const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
     return false;
   }
 
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
 
-  return ((dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-           (int8_allowed_ && dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8))) &&
-         ((dt_output == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-           (int8_allowed_ && dt_output == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8)));
+  return dt_input == dt_output;
 }
 
-bool BinarySelector::Check(const Graph& graph,
-                           const Node& node,
-                           const std::vector<const Node*>& dq_nodes,
-                           const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes)) {
+bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                    const Node& node,
+                                    const std::vector<const Node*>& dq_nodes,
+                                    const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }
 
-  // Currently QLinearAdd and QLinearMul only support activation type uint8_t
   int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
@@ -116,11 +166,11 @@ bool BinarySelector::Check(const Graph& graph,
          dt_input_1 == dt_output;
 }
 
-bool VariadicSelector::Check(const Graph& graph,
-                             const Node& node,
-                             const std::vector<const Node*>& dq_nodes,
-                             const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes)) {
+bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                      const Node& node,
+                                      const std::vector<const Node*>& dq_nodes,
+                                      const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -133,27 +183,42 @@ bool VariadicSelector::Check(const Graph& graph,
   }
 
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  for (size_t q_idx = 1; q_idx < q_nodes.size(); q_idx++) {
+    if (dt_output != q_nodes[q_idx]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type()) {
+      return false;
+    }
+  }
   return dt_input == dt_output;
 }
 
-void VariadicSelector::UpdateBuilder(NodesToOptimizeBuilder& builder) const {
+void InputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.num_input_defs = 1;  // set to 1 as the first input is variadic
 }
 
-bool ConvSelector::Check(const Graph& graph,
-                         const Node& node,
-                         const std::vector<const Node*>& dq_nodes,
-                         const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes)) {
+void OutputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
+  builder.num_output_defs = 1;  // set to 1 as the first output is variadic
+}
+
+bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                  const Node& node,
+                                  const std::vector<const Node*>& dq_nodes,
+                                  const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
     return false;
   }
 
-  // Currently QLinearConv only support activation type uint8_t and output type uint8_t
+  // input and output types need to be same
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_weight = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  if (dt_input != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-      dt_output != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
+  if (dt_input != dt_output) {
     return false;
+  }
+
+  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if (!int8_allowed_ || dt_weight != dt_input) {
+      return false;
+    }
   }
 
   if (dq_nodes.size() < 3) {  // no bias
@@ -164,16 +229,25 @@ bool ConvSelector::Check(const Graph& graph,
   return dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
 }
 
-void ConvSelector::UpdateBuilder(NodesToOptimizeBuilder& builder) const {
-  builder.input_nodes.resize(3);  // add nullptr for bias if missing
+void ConvSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
+  builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
-bool MatMulSelector::Check(const Graph& graph,
-                           const Node& node,
-                           const std::vector<const Node*>& dq_nodes,
-                           const std::vector<const Node*>& q_nodes) const {
+bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                    const Node& node,
+                                    const std::vector<const Node*>& dq_nodes,
+                                    const std::vector<const Node*>& q_nodes) const {
   if (dq_nodes.size() != 2) {
     return false;
+  }
+
+  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_weight = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if (!int8_allowed_ || dt_weight != dt_input) {
+      return false;
+    }
   }
 
   // potential match for QLinearMatMul or MatMulIntegerToFloat
@@ -181,24 +255,61 @@ bool MatMulSelector::Check(const Graph& graph,
 
   if (qlinear) {
     // QLinearMatMul
-    if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes)) {
+    if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
       return false;
     }
 
     int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    if (dt_output != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
-      return false;
-    }
+    return dt_input == dt_output;
   } else {
-    // MatMulIntegerToFloat has no Q node, so no call to CheckQDQNodes
+    // can be converted to MatMulIntegerToFloat if EP supports that.
+    return matmulintegertofloat_allowed_;
+  }
+}
+
+bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                  const Node& node,
+                                  const std::vector<const Node*>& dq_nodes,
+                                  const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes,
+                     -1 /*num_dq_inputs*/, true /*is_empty_q_nodes_allowed*/)) {
+    return false;
   }
 
-  // Currently Quant MatMul only support activation type uint8_t
-  int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  return (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8);
+  // input and output types need to be same
+  int32_t dt_A = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_B = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  if (dt_A == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if (dt_A != dt_B) {  // if A is signed int, B must be signed int
+      return false;
+    }
+  }
+
+  if (!q_nodes.empty()) {
+    int32_t dt_Y = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (dt_A != dt_Y) {  // activation and output must be same type
+      return false;
+    }
+  }
+
+  if (dq_nodes.size() < 3) {  // no bias
+    return true;
+  }
+
+  if (node.GetAttributes().at("beta").f() != 1.0) {  // beta needs to be 1.0
+    return false;
+  }
+
+  int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  return dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
+}
+
+void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
+  builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
 }  // namespace QDQ
 }  // namespace onnxruntime
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

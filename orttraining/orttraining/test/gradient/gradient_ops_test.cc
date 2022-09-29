@@ -21,6 +21,15 @@
 
 #include "onnx/defs/attr_proto_util.h"
 
+/**
+ * The GradientChecker will compute numeric Jacobian and theoretical Jacobian for comparison during the test.
+ * The nemeric Jacobian is computed on every single input element by running the forward graph using OpTester twice.
+ * The theoretical Jacobian is computed on every single output element by running both forward and backward graph
+ * using OpTester. I.E., if there are M elements in inputs and N elements in outputs, it will run forward graph
+ * (M * 2 + N) times and backward graph N times using OpTester, which is super time consuming. So please keep the
+ * size of inputs and outputs small in the tests.
+ */
+
 namespace onnxruntime {
 namespace test {
 
@@ -31,29 +40,25 @@ static bool IsErrorWithinTolerance(float error, float tolerance) {
   return !std::isnan(error) && !std::isnan(tolerance) && error <= tolerance;
 }
 
-#define EXPECT_IS_TINIER_THAN(max_error, tolerance)         \
-  EXPECT_TRUE(IsErrorWithinTolerance(max_error, tolerance)) \
-      << "max_error: " << max_error                         \
-      << "; tolerance: " << tolerance                       \
+#define EXPECT_IS_TINIER_THAN(max_error, tolerance)                 \
+  EXPECT_TRUE(IsErrorWithinTolerance(max_error, tolerance))         \
+      << "max_error: " << max_error << "; tolerance: " << tolerance \
       << "; ORT test random seed: " << GetTestRandomSeed() << "; "
 
-#define EXPECT_IS_TINY(max_error) \
-  EXPECT_IS_TINIER_THAN(max_error, 1.5e-2f)
+#define EXPECT_IS_TINY(max_error) EXPECT_IS_TINIER_THAN(max_error, 1.5e-2f)
 
-static void RunReductionTests(const OpDef& op_def,
-                              bool axes_as_input = false,
+static void RunReductionTests(const OpDef& op_def, bool axes_as_input = false,
                               bool check_not_have_shape_inferencing = false) {
-  std::vector<std::vector<int64_t>>
-      x_shapes = {
-          {4, 3, 2},
-          {4, 3, 2},
-          {4, 3, 2},
-          {4, 3, 2},
-          {4, 3, 2},
-          {4, 3, 2},
-          {4, 3, 2},
-          {4, 3, 2},
-      };
+  std::vector<std::vector<int64_t>> x_shapes = {
+      {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
+      {4, 3, 2},
+  };
   std::vector<std::vector<int64_t>> y_shapes = {
       {1, 1, 1},
       {},
@@ -65,7 +70,7 @@ static void RunReductionTests(const OpDef& op_def,
       {4},
   };
   std::vector<std::vector<int64_t>> axes_vec = {
-      {},  //default case
+      {},  // default case
       {0, 1, 2},
       {0, 2},
       {0, 1},
@@ -75,7 +80,7 @@ static void RunReductionTests(const OpDef& op_def,
       {-2, -1},
   };
   std::vector<int64_t> keepdims_ip = {
-      -1,  //default case
+      -1,  // default case
       0,
       1,
       0,
@@ -90,8 +95,8 @@ static void RunReductionTests(const OpDef& op_def,
   float max_error;
   for (size_t i = 0; i < x_shapes.size(); i++) {
     max_error = 0;
-    TensorShape x_shape = x_shapes[i];
-    TensorShape y_shape = y_shapes[i];
+    TensorShape x_shape(gsl::make_span(x_shapes[i]));
+    TensorShape y_shape(gsl::make_span(y_shapes[i]));
     std::vector<int64_t> axes = axes_vec[i];
     std::vector<std::vector<float>> x_datas;
     RandomValueGenerator random{};
@@ -101,26 +106,25 @@ static void RunReductionTests(const OpDef& op_def,
     if (keepdims_ip[i] != -1) attributes.push_back(MakeAttribute("keepdims", keepdims_ip[i]));
     if (axes_as_input) {
       std::vector<float> axes_float;
-      std::transform(begin(axes), end(axes), std::back_inserter(axes_float), [](int64_t i) { return static_cast<float>(i); });
+      axes_float.reserve(axes.size());
+      std::transform(std::begin(axes), std::end(axes), std::back_inserter(axes_float),
+                     [](int64_t i) { return static_cast<float>(i); });
       TensorInfo axes_info({static_cast<int64_t>(axes.size())}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
       input.push_back(axes_info);
       x_datas.push_back(axes_float);
     } else {
-      if (axes.size() > 0)
-        attributes.push_back(MakeAttribute("axes", axes));
+      if (axes.size() > 0) attributes.push_back(MakeAttribute("axes", axes));
     }
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas,
-                                                           attributes, true, check_not_have_shape_inferencing));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas, attributes,
+                                                           true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 }
 
 template <typename T>
-void GenerateRandomDataWithOneHot(
-    std::vector<std::vector<float>>& x_datas,
-    std::vector<TensorShape> input_shapes,
-    const std::unordered_set<int>& one_hot_input_indices) {
+void GenerateRandomDataWithOneHot(std::vector<std::vector<float>>& x_datas, std::vector<TensorShape> input_shapes,
+                                  const std::unordered_set<int>& one_hot_input_indices) {
   for (int i = 0; i < 2; i++) {
     // TODO: Consider varying mean and variance
     float scale = 5.f;
@@ -138,31 +142,31 @@ void GenerateRandomDataWithOneHot(
       int64_t D = input_shapes[i][input_shapes[i].NumDimensions() - 1];
 
       std::fill(x_datas[i].begin(), x_datas[i].end(), (T)0);
-      for (int64_t k = 0; k < N; k++)
-        x_datas[i][k * D + (seed % D)] = (T)1;
+      for (int64_t k = 0; k < N; k++) x_datas[i][k * D + (seed % D)] = (T)1;
     } else {
       std::generate(x_datas[i].begin(), x_datas[i].end(), [&] { return distribution(generator); });
     }
   }
 }
 
-void UnaryOpGradientTest(const std::string& op_type, const std::string& domain = kOnnxDomain, const int opset_version = 9,
-                         std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr) {
+void UnaryOpGradientTest(const std::string& op_type, const std::string& domain = kOnnxDomain,
+                         const int opset_version = 9,
+                         std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
+                         std::function<float(float)>* transformer = nullptr) {
   TensorShape shape({2, 3, 4});
+  TensorInfo x_info{shape, true, transformer};
   float max_error;
   float error_tolerance = 1e-3f;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{op_type, domain, opset_version};
 
-  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {}, true, false,
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {shape}, &max_error, {}, true, false,
                                                          execution_providers));
 
   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
 }
 
-TEST(GradientCheckerTest, ErfGrad) {
-  UnaryOpGradientTest("Erf");
-}
+TEST(GradientCheckerTest, ErfGrad) { UnaryOpGradientTest("Erf"); }
 
 TEST(GradientCheckerTest, SqrtGrad) {
   TensorShape shape({2, 3, 4});
@@ -180,127 +184,128 @@ TEST(GradientCheckerTest, SqrtGrad) {
   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
 }
 
-void RunBroadcastableBinaryOpGradTests(const OpDef& op_def,
-                                       std::function<float(float)>* transformer,
+void RunBroadcastableBinaryOpGradTests(const OpDef& op_def, std::function<float(float)>* transformer,
                                        bool check_not_have_shape_inferencing) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
-  //shape(A) = (2, 3, 4, 5), shape(B) = (2, 3, 4, 5), ==> shape(result) = (2, 3, 4, 5)
+  // shape(A) = (2, 3, 2, 3), shape(B) = (2, 3, 2, 3), ==> shape(result) = (2, 3, 2, 3)
   {
-    TensorInfo A_info{{2, 3, 4, 5}, true, transformer};
-    TensorInfo B_info{{2, 3, 4, 5}, true, transformer};
-    TensorInfo Y_info{{2, 3, 4, 5}};
+    TensorInfo A_info{{2, 3, 2, 3}, true, transformer};
+    TensorInfo B_info{{2, 3, 2, 3}, true, transformer};
+    TensorInfo Y_info{{2, 3, 2, 3}};
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                                           attributes, true, check_not_have_shape_inferencing));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error, attributes,
+                                                           true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 
-  //shape(A) = (2, 3, 4, 5), shape(B) = (,), i.e. B is a scalar ==> shape(result) = (2, 3, 4, 5)
+  // shape(A) = (2, 3, 2, 3), shape(B) = (,), i.e. B is a scalar ==> shape(result) = (2, 3, 2, 3)
   {
-    TensorInfo A_info{{2, 3, 4, 5}, true, transformer};
+    TensorInfo A_info{{2, 3, 2, 3}, true, transformer};
     TensorInfo B_info{{}, true, transformer};
-    TensorInfo Y_info{{2, 3, 4, 5}};
+    TensorInfo Y_info{{2, 3, 2, 3}};
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                                           attributes, true, check_not_have_shape_inferencing));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error, attributes,
+                                                           true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 
-  //shape(A) = (,), shape(B) = (2, 3, 4, 5), i.e. A is a scalar ==> shape(result) = (2, 3, 4, 5)
+  // shape(A) = (,), shape(B) = (2, 3, 2, 3), i.e. A is a scalar ==> shape(result) = (2, 3, 2, 3)
   {
     TensorInfo A_info{{}, true, transformer};
-    TensorInfo B_info{{2, 3, 4, 5}, true, transformer};
-    TensorInfo Y_info{{2, 3, 4, 5}};
+    TensorInfo B_info{{2, 3, 2, 3}, true, transformer};
+    TensorInfo Y_info{{2, 3, 2, 3}};
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                                           attributes, true, check_not_have_shape_inferencing));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error, attributes,
+                                                           true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 
-  //shape(A) = (2, 3, 4, 5), shape(B) = (5,), ==> shape(result) = (2, 3, 4, 5)
+  // shape(A) = (2, 3, 2, 3), shape(B) = (3,), ==> shape(result) = (2, 3, 2, 3)
   {
-    TensorInfo A_info{{2, 3, 4, 5}, true, transformer};
-    TensorInfo B_info{{5}, true, transformer};
-    TensorInfo Y_info{{2, 3, 4, 5}};
+    TensorInfo A_info{{2, 3, 2, 3}, true, transformer};
+    TensorInfo B_info{{3}, true, transformer};
+    TensorInfo Y_info{{2, 3, 2, 3}};
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                                           attributes, true, check_not_have_shape_inferencing));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error, attributes,
+                                                           true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 
-  //shape(A) = (4, 5), shape(B) = (2, 3, 4, 5), ==> shape(result) = (2, 3, 4, 5)
+  // shape(A) = (2, 3), shape(B) = (2, 3, 2, 3), ==> shape(result) = (2, 3, 2, 3)
   {
-    TensorInfo A_info{{4, 5}, true, transformer};
-    TensorInfo B_info{{2, 3, 4, 5}, true, transformer};
-    TensorInfo Y_info{{2, 3, 4, 5}};
+    TensorInfo A_info{{2, 3}, true, transformer};
+    TensorInfo B_info{{2, 3, 2, 3}, true, transformer};
+    TensorInfo Y_info{{2, 3, 2, 3}};
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                                           attributes, true, check_not_have_shape_inferencing));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error, attributes,
+                                                           true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 
-  //shape(A) = (1, 4, 5), shape(B) = (2, 3, 1, 1), ==> shape(result) = (2, 3, 4, 5)
+  // shape(A) = (1, 2, 3), shape(B) = (2, 3, 1, 1), ==> shape(result) = (2, 3, 2, 3)
   {
-    TensorInfo A_info{{1, 4, 5}, true, transformer};
+    TensorInfo A_info{{1, 2, 3}, true, transformer};
     TensorInfo B_info{{2, 3, 1, 1}, true, transformer};
-    TensorInfo Y_info{{2, 3, 4, 5}};
+    TensorInfo Y_info{{2, 3, 2, 3}};
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                                           attributes, true, check_not_have_shape_inferencing));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error, attributes,
+                                                           true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 
-  //shape(A) = (3, 4, 5), shape(B) = (2, 1, 1, 1), ==> shape(result) = (2, 3, 4, 5)
+  // shape(A) = (3, 2, 3), shape(B) = (2, 1, 1, 1), ==> shape(result) = (2, 3, 2, 3)
   {
-    TensorInfo A_info{{3, 4, 5}, true, transformer};
+    TensorInfo A_info{{3, 2, 3}, true, transformer};
     TensorInfo B_info{{2, 1, 1, 1}, true, transformer};
-    TensorInfo Y_info{{2, 3, 4, 5}};
+    TensorInfo Y_info{{2, 3, 2, 3}};
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                                           attributes, true, check_not_have_shape_inferencing));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error, attributes,
+                                                           true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 
-  //shape(A) = (2, 1, 1, 5), shape(B) = (1, 3, 4, 1), ==> shape(result) = (2, 3, 4, 5)
+  // shape(A) = (2, 1, 1, 3), shape(B) = (1, 3, 2, 1), ==> shape(result) = (2, 3, 2, 3)
   {
-    TensorInfo A_info{{2, 1, 1, 5}, true, transformer};
-    TensorInfo B_info{{1, 3, 4, 1}, true, transformer};
-    TensorInfo Y_info{{2, 3, 4, 5}};
+    TensorInfo A_info{{2, 1, 1, 3}, true, transformer};
+    TensorInfo B_info{{1, 3, 2, 1}, true, transformer};
+    TensorInfo Y_info{{2, 3, 2, 3}};
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                                           attributes, true, check_not_have_shape_inferencing));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error, attributes,
+                                                           true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 
   // symbolic broadcast
-  // shape(A) = (4, 2, 1, "seq(3)"), shape(B) = (4, 2, 1, 1), ==> shape(result) = (4, 2, 1, 3)
+  // shape(A) = (3, 2, 1, "seq(3)"), shape(B) = (3, 2, 1, 1), ==> shape(result) = (3, 2, 1, 3)
   {
-    TensorInfo A_info{{4, 2, 1, 3}, true, transformer, DataTypeImpl::GetTensorType<float>(), {"4", "2", "1", "seq"}};
-    TensorInfo B_info{{4, 2, 1, 1}, true, transformer, DataTypeImpl::GetTensorType<float>(), {"4", "2", "1", "1"}};
-    TensorInfo Y_info{{4, 2, 1, 3}};
+    TensorInfo A_info{{3, 2, 1, 3}, true, transformer, DataTypeImpl::GetTensorType<float>(), {"3", "2", "1", "seq"}};
+    TensorInfo B_info{{3, 2, 1, 1}, true, transformer, DataTypeImpl::GetTensorType<float>(), {"3", "2", "1", "1"}};
+    TensorInfo Y_info{{3, 2, 1, 3}};
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                                           attributes, true, check_not_have_shape_inferencing));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error, attributes,
+                                                           true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
   // symbolic broadcast + numeric broadcast
-  // shape(A) = ("batch(4)", 2, "seq(3)", "seq(3)"), shape(B) = ("batch(4)", 1, "seq(3)", "seq(3)"), ==> shape(result) = (4, 2, 3, 3)
+  // shape(A) = ("batch(3)", 2, "seq(3)", "seq(3)"), shape(B) = ("batch(3)", 1, 1, "seq(3)"), ==> shape(result) =
+  // (3, 2, 3, 3)
   {
-    TensorInfo A_info{{4, 2, 3, 3}, true, transformer, DataTypeImpl::GetTensorType<float>(), {"batch", "2", "seq", "seq"}};
-    TensorInfo B_info{{4, 1, 1, 3}, true, transformer, DataTypeImpl::GetTensorType<float>(), {"batch", "1", "1", "seq"}};
-    TensorInfo Y_info{{4, 2, 3, 3}};
+    TensorInfo A_info{
+        {3, 2, 3, 3}, true, transformer, DataTypeImpl::GetTensorType<float>(), {"batch", "2", "seq", "seq"}};
+    TensorInfo B_info{
+        {3, 1, 1, 3}, true, transformer, DataTypeImpl::GetTensorType<float>(), {"batch", "1", "1", "seq"}};
+    TensorInfo Y_info{{3, 2, 3, 3}};
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error,
-                                                           attributes, true, check_not_have_shape_inferencing));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {A_info, B_info}, {Y_info}, &max_error, attributes,
+                                                           true, check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 }
 
-void TestBroadcastableBinaryOpGrad(const std::string& op_type,
-                                   std::function<float(float)>* transformer = nullptr,
+void TestBroadcastableBinaryOpGrad(const std::string& op_type, std::function<float(float)>* transformer = nullptr,
                                    bool check_not_have_shape_inferencing = true) {
   OpDef op_def_opset11{op_type, kOnnxDomain, 11};
   RunBroadcastableBinaryOpGradTests(op_def_opset11, transformer, check_not_have_shape_inferencing);
@@ -308,18 +313,12 @@ void TestBroadcastableBinaryOpGrad(const std::string& op_type,
   RunBroadcastableBinaryOpGradTests(op_def_opset13, transformer, check_not_have_shape_inferencing);
 }
 
-TEST(GradientCheckerTest, AddGrad) {
-  TestBroadcastableBinaryOpGrad("Add");
-}
+TEST(GradientCheckerTest, AddGrad) { TestBroadcastableBinaryOpGrad("Add"); }
 
-TEST(GradientCheckerTest, SubGrad) {
-  TestBroadcastableBinaryOpGrad("Sub");
-}
+TEST(GradientCheckerTest, SubGrad) { TestBroadcastableBinaryOpGrad("Sub"); }
 
-//flaky
-TEST(GradientCheckerTest, DISABLED_MulGrad) {
-  TestBroadcastableBinaryOpGrad("Mul");
-}
+// flaky
+TEST(GradientCheckerTest, DISABLED_MulGrad) { TestBroadcastableBinaryOpGrad("Mul"); }
 
 TEST(GradientCheckerTest, DivGrad) {
   std::function<float(float)> transformer = [](float x) { return x > 0 ? x + 0.2f : x - 0.2f; };
@@ -355,63 +354,63 @@ TEST(GradientCheckerTest, PowGrad) {
 
 void RunMatMulGradTests(const OpDef& op_def) {
   float max_error;
-  const float error_tolerance = 1e-1f;
+  constexpr float error_tolerance = 1e-1f;
   GradientChecker<float, float, float> gradient_checker;
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
   // 2D x 2D
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}}, {{2, 3}}, &max_error,
-                                                           attributes, true, true));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {{2, 2}, {2, 3}}, {{2, 3}}, &max_error, attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // 3D x 3D
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 4}, {2, 4, 3}}, {{2, 3, 3}}, &max_error,
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 2}, {2, 2, 3}}, {{2, 3, 3}}, &max_error,
                                                            attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // 3D x 2D
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 4}, {4, 3}}, {{2, 3, 3}}, &max_error,
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 2}, {2, 3}}, {{2, 3, 3}}, &max_error,
                                                            attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // 2D x 3D
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{3, 4}, {2, 4, 3}}, {{2, 3, 3}}, &max_error,
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{3, 2}, {2, 2, 3}}, {{2, 3, 3}}, &max_error,
                                                            attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // 4D x 4D
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 4, 5}, {2, 3, 5, 4}}, {{2, 3, 4, 4}}, &max_error,
-                                                           attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 3, 2}, {2, 3, 2, 3}}, {{2, 3, 3, 3}},
+                                                           &max_error, attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // 4D x 2D
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 4, 5}, {5, 4}}, {{2, 3, 4, 4}}, &max_error,
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 3, 2}, {2, 3}}, {{2, 3, 3, 3}}, &max_error,
                                                            attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // 4D x 3D
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 4, 5}, {3, 5, 4}}, {{2, 3, 4, 4}}, &max_error,
-                                                           attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 3, 2}, {3, 2, 3}}, {{2, 3, 3, 3}},
+                                                           &max_error, attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // 4D x 4D with broadcast
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 1, 4, 5}, {1, 3, 5, 4}}, {{2, 3, 4, 4}}, &max_error,
-                                                           attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 2}, {1, 3, 2, 3}}, {{2, 3, 3, 3}},
+                                                           &max_error, attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
@@ -423,27 +422,25 @@ TEST(GradientCheckerTest, MatMulGrad) {
   RunMatMulGradTests(op_def_opset13);
 }
 
-TEST(GradientCheckerTest, SinGrad) {
-  UnaryOpGradientTest("Sin");
-}
+TEST(GradientCheckerTest, SinGrad) { UnaryOpGradientTest("Sin"); }
 
-TEST(GradientCheckerTest, NegGrad) {
-  UnaryOpGradientTest("Neg");
-}
+TEST(GradientCheckerTest, NegGrad) { UnaryOpGradientTest("Neg"); }
 
 TEST(GradientCheckerTest, AbsGrad) {
-  UnaryOpGradientTest("Abs");
+  // Exclude input data at 0, since Abs is not smooth at 0.
+  std::function<float(float)> transformer = [](float x) { return x > 0 ? x + 0.2f : x - 0.2f; };
+  UnaryOpGradientTest("Abs", kOnnxDomain, 9, nullptr, &transformer);
 }
 
 TEST(GradientCheckerTest, LogGrad) {
-  TensorShape shape({2, 5, 6});
+  TensorShape shape({2, 3, 4});
 
   std::function<float(float)> transformer = [](float x) { return std::fabs(x) + 1e-1f; };
   TensorInfo x_info{shape, true, &transformer};
 
   float max_error;
 #ifdef USE_DNNL
-  float error_tolerance = 3e-3f;
+  float error_tolerance = 4e-3f;
 #else
   float error_tolerance = 1e-3f;
 #endif
@@ -477,80 +474,80 @@ TEST(GradientCheckerTest, ExpGrad) {
 }
 
 TEST(GradientCheckerTest, FlattenGrad) {
-  TensorShape shape({2, 3, 4});
+  TensorShape shape({2, 3, 2});
   float max_error;
   float error_tolerance = 1e-3f;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Flatten", kOnnxDomain, 11};
 
   const std::vector<std::pair<int, TensorShape>> axis_to_shape = {
-      {-3, {1, 24}},
-      {-2, {2, 12}},
-      {-1, {6, 4}},
-      {0, {1, 24}},
-      {1, {2, 12}},
-      {2, {6, 4}},
-      {3, {24, 1}}};
+      {-3, {1, 12}}, {-2, {2, 6}}, {-1, {6, 2}}, {0, {1, 12}}, {1, {2, 6}}, {2, {6, 2}}, {3, {12, 1}}};
 
   for (auto& pair : axis_to_shape) {
     int axis = pair.first;
     const TensorShape& output_shape = pair.second;
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {output_shape}, &max_error, {MakeAttribute("axis", int64_t(axis))}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {output_shape}, &max_error,
+                                                           {MakeAttribute("axis", int64_t(axis))}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
 
-TEST(GradientCheckerTest, TanhGrad) {
-  UnaryOpGradientTest("Tanh");
-}
+TEST(GradientCheckerTest, TanhGrad) { UnaryOpGradientTest("Tanh"); }
 
 // TODO fix flaky test
 // failing random seed with error_tolerance of 1.5e-2f: 322298223
 void RunGemmGradTests(const OpDef& op_def) {
   float max_error;
-  const float error_tolerance = 2e-2f;
+  constexpr float error_tolerance = 2e-2f;
   GradientChecker<float, float, float> gradient_checker;
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
   // Single Batch no third input
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}}, {{1, 3}}, &max_error, attributes, true, true));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {{1, 3}, {3, 2}}, {{1, 2}}, &max_error, attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Single Batch with Scalar Bias
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {}}, {{1, 3}}, &max_error, attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{1, 3}, {3, 2}, {}}, {{1, 2}}, &max_error,
+                                                           attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Single Batch with Vector Bias
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}, {3}}, {{1, 3}}, &max_error, attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{1, 3}, {3, 2}, {2}}, {{1, 2}}, &max_error,
+                                                           attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Non-Single Batch with Scalar Bias
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {}}, {{2, 3}}, &max_error, attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {}}, {{2, 3}}, &max_error,
+                                                           attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Non-Single Batch with Vector Bias
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {3}}, {{2, 3}}, &max_error, attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {3}}, {{2, 3}}, &max_error,
+                                                           attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Non-Single Batch with Broadcast Bias
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {1, 3}}, {{2, 3}}, &max_error, attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {1, 3}}, {{2, 3}}, &max_error,
+                                                           attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // Non-Single Batch with Non-BroadcastBias
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {2, 3}}, {{2, 3}}, &max_error, attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {2, 3}}, {{2, 3}}, &max_error,
+                                                           attributes, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -570,18 +567,16 @@ void RunGemmGradTests(const OpDef& op_def) {
 
   // TransA and TransB
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{4, 2}, {3, 4}, {3}}, {{2, 3}}, &max_error,
-                                                           {MakeAttribute("transA", int64_t(1)),
-                                                            MakeAttribute("transB", int64_t(1))},
-                                                           true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {{4, 2}, {3, 4}, {3}}, {{2, 3}}, &max_error,
+        {MakeAttribute("transA", int64_t(1)), MakeAttribute("transB", int64_t(1))}, true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
   // alpha and beta + no_broadcast
   {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {2, 3}}, {{2, 3}}, &max_error,
-                                                           {MakeAttribute("alpha", 0.7f),
-                                                            MakeAttribute("beta", 5.0f)},
+                                                           {MakeAttribute("alpha", 0.7f), MakeAttribute("beta", 5.0f)},
                                                            true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
@@ -589,8 +584,7 @@ void RunGemmGradTests(const OpDef& op_def) {
   // alpha and beta + broadcast
   {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 4}, {4, 3}, {3}}, {{2, 3}}, &max_error,
-                                                           {MakeAttribute("alpha", 0.7f),
-                                                            MakeAttribute("beta", 5.0f)},
+                                                           {MakeAttribute("alpha", 0.7f), MakeAttribute("beta", 5.0f)},
                                                            true, true));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
@@ -605,9 +599,11 @@ TEST(GradientCheckerTest, GemmGrad) {
 
 TEST(GradientCheckerTest, ReduceMeanGrad) {
   // Attribute axes supports negative values from opset 11.
-  OpDef op_def{"ReduceMean", kOnnxDomain, 11};
+  OpDef op_def_opset11{"ReduceMean", kOnnxDomain, 11};
+  RunReductionTests(op_def_opset11);
 
-  RunReductionTests(op_def);
+  OpDef op_def_opset13{"ReduceMean", kOnnxDomain, 13};
+  RunReductionTests(op_def_opset13);
 }
 
 TEST(GradientCheckerTest, ReduceSumGrad) {
@@ -678,8 +674,8 @@ TEST(GradientCheckerTest, CastGrad) {
     GradientChecker<float, float, float> gradient_checker;
     OpDef op_def{"Cast"};
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error,
-                                                           {MakeAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {shape}, {shape}, &max_error, {MakeAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT))}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
@@ -694,7 +690,7 @@ TEST(GradientCheckerTest, SplitGrad) {
                                                          {MakeAttribute("axis", int64_t(0))}));
   EXPECT_IS_TINY(max_error);
 
-  //opset13 test
+  // opset13 test
   OpDef op_def_13{"Split", kOnnxDomain, 13};
   ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def_13, {shape}, {{3, 5}, {3, 5}, {3, 5}}, &max_error,
                                                          {MakeAttribute("axis", int64_t(0))}));
@@ -729,8 +725,8 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"MaxPool"};
-  const float error_tolerance = 1e-3f;
-  //maxpool_1d_default
+  constexpr float error_tolerance = 1e-3f;
+  // maxpool_1d_default
   {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 2, 9}}, {{2, 2, 8}}, &max_error,
                                                            GetRandomValuesForMaxPool<float>({{2, 2, 9}}),
@@ -738,7 +734,7 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
-  //maxpool_2d_default
+  // maxpool_2d_default
   {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 5, 5}}, {{2, 3, 4, 4}}, &max_error,
                                                            GetRandomValuesForMaxPool<float>({{2, 3, 5, 5}}),
@@ -756,7 +752,7 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
-  //maxpool_2d_strides
+  // maxpool_2d_strides
   {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{1, 1, 32, 32}}, {{1, 1, 10, 10}}, &max_error,
                                                            GetRandomValuesForMaxPool<float>({{1, 1, 32, 32}}),
@@ -765,11 +761,11 @@ TEST(GradientCheckerTest, MaxPoolGrad) {
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
-  //maxpool_3d_default
+  // maxpool_3d_default
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 3, 3}}, {{2, 1, 2, 2, 2}}, &max_error,
-                                                           GetRandomValuesForMaxPool<float>({{2, 1, 3, 3, 3}}),
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2})}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {{2, 1, 3, 3, 3}}, {{2, 1, 2, 2, 2}}, &max_error, GetRandomValuesForMaxPool<float>({{2, 1, 3, 3, 3}}),
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2})}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
@@ -778,9 +774,9 @@ TEST(GradientCheckerTest, GlobalAveragePoolGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"GlobalAveragePool"};
-  const float error_tolerance = 1e-3f;
+  constexpr float error_tolerance = 1e-3f;
 
-  //globalaveragepool
+  // globalaveragepool
   {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 5, 5}}, {{2, 3, 1, 1}}, &max_error, {},
                                                            /*check_not_have_gradient*/ true,
@@ -788,7 +784,7 @@ TEST(GradientCheckerTest, GlobalAveragePoolGrad) {
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
-  //globalaveragepool_precomputed
+  // globalaveragepool_precomputed
   {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 1, 3, 3}}, {{2, 1, 1, 1}}, &max_error, {},
                                                            /*check_not_have_gradient*/ true,
@@ -811,14 +807,12 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({2, 2, 3});
     TensorShape b_shape({2});
     TensorShape y_shape({2, 2, 5});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{3}), MakeAttribute("pads", std::vector<int64_t>{1, 1})},
+        // TODO: ConvGrad does not handle the case where W does not have gradient.
+        // Check for not has_gradient need to be disabled to pass this test.
+        false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -828,15 +822,13 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({1, 1, 3});
     TensorShape b_shape({1});
     TensorShape y_shape({2, 1, 4});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1}),
-                                                            MakeAttribute("strides", std::vector<int64_t>{2})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{3}), MakeAttribute("pads", std::vector<int64_t>{1, 1}),
+         MakeAttribute("strides", std::vector<int64_t>{2})},
+        // TODO: ConvGrad does not handle the case where W does not have gradient.
+        // Check for not has_gradient need to be disabled to pass this test.
+        false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -846,14 +838,12 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({1, 1, 1});
     TensorShape b_shape({1});
     TensorShape y_shape({2, 1, 7});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{1}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{1}), MakeAttribute("pads", std::vector<int64_t>{1, 1})},
+        // TODO: ConvGrad does not handle the case where W does not have gradient.
+        // Check for not has_gradient need to be disabled to pass this test.
+        false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -863,14 +853,12 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({1, 1, 1});
     TensorShape b_shape({1});
     TensorShape y_shape({2, 1, 5});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{1}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{0, 0})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{1}), MakeAttribute("pads", std::vector<int64_t>{0, 0})},
+        // TODO: ConvGrad does not handle the case where W does not have gradient.
+        // Check for not has_gradient need to be disabled to pass this test.
+        false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -880,14 +868,13 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({1, 1, 3, 3});
     TensorShape b_shape({1});
     TensorShape y_shape({1, 1, 3, 3});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
+                                              // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                              // Check for not has_gradient need to be disabled to pass this test.
+                                              false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -897,14 +884,13 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({1, 1, 3, 3});
     TensorShape b_shape({1});
     TensorShape y_shape({2, 1, 5, 5});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
+                                              // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                              // Check for not has_gradient need to be disabled to pass this test.
+                                              false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -914,14 +900,13 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({1, 1, 1, 1});
     TensorShape b_shape({1});
     TensorShape y_shape({1, 1, 3, 3});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
+                                              // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                              // Check for not has_gradient need to be disabled to pass this test.
+                                              false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -931,14 +916,13 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({1, 1, 1, 1});
     TensorShape b_shape({1});
     TensorShape y_shape({1, 1, 1, 1});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{0, 0, 0, 0})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
+                                               MakeAttribute("pads", std::vector<int64_t>{0, 0, 0, 0})},
+                                              // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                              // Check for not has_gradient need to be disabled to pass this test.
+                                              false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -948,15 +932,13 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({1, 1, 3, 3});
     TensorShape b_shape({1});
     TensorShape y_shape({2, 1, 4, 3});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1}),
-                                                            MakeAttribute("strides", std::vector<int64_t>{2, 2})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+         MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1}), MakeAttribute("strides", std::vector<int64_t>{2, 2})},
+        // TODO: ConvGrad does not handle the case where W does not have gradient.
+        // Check for not has_gradient need to be disabled to pass this test.
+        false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -966,15 +948,14 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({1, 1, 3, 3});
     TensorShape b_shape({1});
     TensorShape y_shape({2, 1, 1, 1});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{0, 0, 0, 0}),
-                                                            MakeAttribute("dilations", std::vector<int64_t>{2, 2})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{0, 0, 0, 0}),
+                                               MakeAttribute("dilations", std::vector<int64_t>{2, 2})},
+                                              // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                              // Check for not has_gradient need to be disabled to pass this test.
+                                              false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -984,15 +965,14 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({1, 1, 3, 3});
     TensorShape b_shape({1});
     TensorShape y_shape({2, 1, 5, 3});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1}),
-                                                            MakeAttribute("dilations", std::vector<int64_t>{2, 2})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1}),
+                                               MakeAttribute("dilations", std::vector<int64_t>{2, 2})},
+                                              // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                              // Check for not has_gradient need to be disabled to pass this test.
+                                              false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1002,14 +982,13 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({1, 1, 3, 3, 3});
     TensorShape b_shape({1});
     TensorShape y_shape({2, 1, 5, 5, 5});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1})},
+                                              // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                              // Check for not has_gradient need to be disabled to pass this test.
+                                              false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1019,15 +998,14 @@ void ConvGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* e
     TensorShape w_shape({1, 1, 3, 3, 3});
     TensorShape b_shape({1});
     TensorShape y_shape({2, 1, 4, 3, 3});
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1}),
-                                                            MakeAttribute("strides", std::vector<int64_t>{2, 2, 2})},
-                                                           // TODO: ConvGrad does not handle the case where W does not have gradient.
-                                                           // Check for not has_gradient need to be disabled to pass this test.
-                                                           false,
-                                                           false,
-                                                           execution_providers));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape, w_shape, b_shape}, {y_shape}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1}),
+                                               MakeAttribute("strides", std::vector<int64_t>{2, 2, 2})},
+                                              // TODO: ConvGrad does not handle the case where W does not have gradient.
+                                              // Check for not has_gradient need to be disabled to pass this test.
+                                              false, false, execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
@@ -1048,77 +1026,70 @@ TEST(GradientCheckerTest, ConvGrad) {
   ConvGradientCheckerTest(&execution_providers);
 }
 
-static void TestConcatOpGrad(const std::string& op_type,
-                             const std::string& domain = kOnnxDomain,
-                             int opset_version = 9,
+static void TestConcatOpGrad(const std::string& op_type, const std::string& domain = kOnnxDomain, int opset_version = 9,
                              bool check_not_have_shape_inferencing = false) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   const bool extra_input = op_type == "ConcatTraining";
   OpDef op_def{op_type, domain, opset_version};
 
-  //concat_1d
+  // concat_1d
   {
     TensorShape x_shape({2});
     TensorShape y_shape({6});
     std::vector<TensorInfo> output = {y_shape};
     if (extra_input) output.push_back(TensorInfo({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape},
-                                                           output, &max_error,
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape}, output, &max_error,
                                                            {MakeAttribute("axis", int64_t(0))}, true,
                                                            check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 
-  //concat_2d
+  // concat_2d
   {
     TensorShape x_shape({2, 2});
     TensorShape y_shape({2, 6});
     std::vector<TensorInfo> output = {y_shape};
     if (extra_input) output.push_back(TensorInfo({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape},
-                                                           output, &max_error,
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape}, output, &max_error,
                                                            {MakeAttribute("axis", int64_t(1))}, true,
                                                            check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 
-  //concat_3d
+  // concat_3d
   {
     TensorShape x_shape({1, 2, 3});
     TensorShape y_shape({1, 2, 9});
     std::vector<TensorInfo> output = {y_shape};
     if (extra_input) output.push_back(TensorInfo({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape},
-                                                           output, &max_error,
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape, x_shape, x_shape}, output, &max_error,
                                                            {MakeAttribute("axis", int64_t(2))}, true,
                                                            check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 
-  //concat_different_shape
+  // concat_different_shape
   {
     TensorShape x1_shape({2, 2});
     TensorShape x2_shape({2, 4});
     TensorShape y_shape({2, 6});
     std::vector<TensorInfo> output = {y_shape};
     if (extra_input) output.push_back(TensorInfo({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape},
-                                                           output, &max_error,
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape}, output, &max_error,
                                                            {MakeAttribute("axis", int64_t(1))}, true,
                                                            check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
   }
 
-  //concat_different_shape_and_negative_axis
+  // concat_different_shape_and_negative_axis
   {
     TensorShape x1_shape({2, 2});
     TensorShape x2_shape({2, 4});
     TensorShape y_shape({2, 6});
     std::vector<TensorInfo> output = {y_shape};
     if (extra_input) output.push_back(TensorInfo({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>()));
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape},
-                                                           output, &max_error,
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x1_shape, x2_shape}, output, &max_error,
                                                            {MakeAttribute("axis", int64_t(-1))}, true,
                                                            check_not_have_shape_inferencing));
     EXPECT_IS_TINY(max_error);
@@ -1126,7 +1097,9 @@ static void TestConcatOpGrad(const std::string& op_type,
 }
 
 TEST(GradientCheckerTest, ConcatGrad) {
+  // Concat's gradient uses Split, and Split Op move "split" attribute to input since OpSet13.
   TestConcatOpGrad("Concat");
+  TestConcatOpGrad("Concat", kOnnxDomain, 13);
 }
 
 TEST(GradientCheckerTest, ConcatTrainingGrad) { /*also test w/o shape inferencing */
@@ -1138,97 +1111,91 @@ void AveragepoolGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvid
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"AveragePool"};
 
-  //averagepool - 1D
+  // averagepool - 1D
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 8}}, {{2, 3, 4}}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2}),
-                                                            MakeAttribute("strides", std::vector<int64_t>{2})},
-                                                           true, false,
-                                                           execution_provider));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {{2, 3, 8}}, {{2, 3, 4}}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{2}), MakeAttribute("strides", std::vector<int64_t>{2})},
+        true, false, execution_provider));
 
     EXPECT_IS_TINY(max_error);
   }
 
-  //averagepool - 2D
+  // averagepool - 2D
   {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 8, 8}}, {{2, 3, 7, 7}}, &max_error,
                                                            {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
                                                             MakeAttribute("strides", std::vector<int64_t>{1, 1})},
-                                                           true, false,
-                                                           execution_provider));
+                                                           true, false, execution_provider));
 
     EXPECT_IS_TINY(max_error);
   }
 
-  //averagepool - 3D
+  // averagepool - 3D
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{2, 3, 8, 8, 8}}, {{2, 3, 4, 4, 4}}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2}),
-                                                            MakeAttribute("strides", std::vector<int64_t>{2, 2, 2})},
-                                                           true, false,
-                                                           execution_provider));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {{2, 3, 8, 8, 8}}, {{2, 3, 4, 4, 4}}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2}),
+                                               MakeAttribute("strides", std::vector<int64_t>{2, 2, 2})},
+                                              true, false, execution_provider));
 
     EXPECT_IS_TINY(max_error);
   }
 
-  //averagepool - 1D - With padding
+  // averagepool - 1D - With padding
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{1, 3, 8}}, {{1, 3, 3}}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3}),
-                                                            MakeAttribute("strides", std::vector<int64_t>{3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 0})},
-                                                           true, false,
-                                                           execution_provider));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {{1, 3, 8}}, {{1, 3, 3}}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{3}), MakeAttribute("strides", std::vector<int64_t>{3}),
+         MakeAttribute("pads", std::vector<int64_t>{1, 0})},
+        true, false, execution_provider));
 
     EXPECT_IS_TINY(max_error);
   }
 
   // averagepool - 2D - With padding - include pads
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{1, 3, 7, 8}}, {{1, 3, 3, 4}}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 2}),
-                                                            MakeAttribute("strides", std::vector<int64_t>{3, 2}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 0, 1, 0}),
-                                                            MakeAttribute("count_include_pad", int64_t(1))},
-                                                           true, false,
-                                                           execution_provider));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {{1, 3, 7, 8}}, {{1, 3, 3, 4}}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 2}),
+         MakeAttribute("strides", std::vector<int64_t>{3, 2}), MakeAttribute("pads", std::vector<int64_t>{1, 0, 1, 0}),
+         MakeAttribute("count_include_pad", int64_t(1))},
+        true, false, execution_provider));
 
     EXPECT_IS_TINY(max_error);
   }
 
   // averagepool - 2D - With padding - exclude pads
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{1, 3, 7, 7}}, {{1, 3, 3, 3}}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
-                                                            MakeAttribute("strides", std::vector<int64_t>{3, 3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
-                                                           true, false,
-                                                           execution_provider));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {{1, 3, 7, 7}}, {{1, 3, 3, 3}}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
+         MakeAttribute("strides", std::vector<int64_t>{3, 3}), MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
+        true, false, execution_provider));
 
     EXPECT_IS_TINY(max_error);
   }
 
-  //averagepool - 3D - With padding
+  // averagepool - 3D - With padding
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{1, 3, 8, 8, 8}}, {{1, 3, 3, 3, 3}}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
-                                                            MakeAttribute("strides", std::vector<int64_t>{3, 3, 3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 0, 0, 0})},
-                                                           true, false,
-                                                           execution_provider));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {{1, 3, 8, 8, 8}}, {{1, 3, 3, 3, 3}}, &max_error,
+                                              {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
+                                               MakeAttribute("strides", std::vector<int64_t>{3, 3, 3}),
+                                               MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 0, 0, 0})},
+                                              true, false, execution_provider));
 
     EXPECT_IS_TINY(max_error);
   }
 
-  //averagepool - 3D - With padding- exclude pads
+  // averagepool - 3D - With padding- exclude pads
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {{1, 4, 7, 7, 7}}, {{1, 4, 3, 3, 3}}, &max_error,
-                                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
-                                                            MakeAttribute("strides", std::vector<int64_t>{3, 3, 3}),
-                                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1}),
-                                                            MakeAttribute("count_include_pad", int64_t(1))},
-                                                           true, false,
-                                                           execution_provider));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {{1, 4, 7, 7, 7}}, {{1, 4, 3, 3, 3}}, &max_error,
+        {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
+         MakeAttribute("strides", std::vector<int64_t>{3, 3, 3}),
+         MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1}), MakeAttribute("count_include_pad", int64_t(1))},
+        true, false, execution_provider));
 
     EXPECT_IS_TINY(max_error);
   }
@@ -1241,7 +1208,7 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultDnnlExecutionProvider());
   AveragepoolGradientCheckerTest(&execution_providers);
-#endif  //USE_DNNL
+#endif  // USE_DNNL
 }
 
 TEST(GradientCheckerTest, TransposeGrad) {
@@ -1255,8 +1222,8 @@ TEST(GradientCheckerTest, TransposeGrad) {
     TensorShape x_shape({2, 3, 4});
     TensorShape y_shape({4, 3, 2});
     const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error,
-                                                           attributes, true, true /*also test w/o shape inferencing */));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, attributes, true,
+                                                           true /*also test w/o shape inferencing */));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1265,7 +1232,8 @@ TEST(GradientCheckerTest, TransposeGrad) {
     TensorShape x_shape({2, 3, 4});
     TensorShape y_shape({2, 3, 4});
     std::vector<int64_t> perm{0, 1, 2};
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)}));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1274,7 +1242,8 @@ TEST(GradientCheckerTest, TransposeGrad) {
     TensorShape x_shape({2, 3, 4});
     TensorShape y_shape({2, 4, 3});
     std::vector<int64_t> perm{0, 2, 1};
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)}));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1283,7 +1252,8 @@ TEST(GradientCheckerTest, TransposeGrad) {
     TensorShape x_shape({2, 3, 4});
     TensorShape y_shape({3, 2, 4});
     std::vector<int64_t> perm{1, 0, 2};
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)}));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1292,7 +1262,8 @@ TEST(GradientCheckerTest, TransposeGrad) {
     TensorShape x_shape({2, 3, 4});
     TensorShape y_shape({3, 4, 2});
     std::vector<int64_t> perm{1, 2, 0};
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)}));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1301,7 +1272,8 @@ TEST(GradientCheckerTest, TransposeGrad) {
     TensorShape x_shape({2, 3, 4});
     TensorShape y_shape({4, 2, 3});
     std::vector<int64_t> perm{2, 0, 1};
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)}));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1310,23 +1282,22 @@ TEST(GradientCheckerTest, TransposeGrad) {
     TensorShape x_shape({2, 3, 4});
     TensorShape y_shape({4, 3, 2});
     std::vector<int64_t> perm{2, 1, 0};
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)}));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_shape}, {y_shape}, &max_error, {MakeAttribute("perm", perm)}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
 
-static void RunSqueezeUnsqueezeTests(const OpDef& op_def,
-                                     std::vector<std::vector<int64_t>> x_shapes,
+static void RunSqueezeUnsqueezeTests(const OpDef& op_def, std::vector<std::vector<int64_t>> x_shapes,
                                      std::vector<std::vector<int64_t>> y_shapes,
-                                     std::vector<std::vector<int64_t>> axes_ip,
-                                     bool axes_input = false) {
+                                     std::vector<std::vector<int64_t>> axes_ip, bool axes_input = false) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   float error_tolerance = 1e-3f;
 
   for (size_t i = 0; i < x_shapes.size(); i++) {
-    TensorShape x_shape = x_shapes[i];
-    TensorShape y_shape = y_shapes[i];
+    TensorShape x_shape(gsl::make_span(x_shapes[i]));
+    TensorShape y_shape(gsl::make_span(y_shapes[i]));
     std::vector<int64_t> axes = axes_ip[i];
     std::vector<std::vector<float>> x_datas;
     RandomValueGenerator random{};
@@ -1336,14 +1307,16 @@ static void RunSqueezeUnsqueezeTests(const OpDef& op_def,
 
     // Test case w/o axes attribute/input, only valid for Squeeze Op.
     if (op_def.type == "Squeeze") {
-      ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas, attributes));
+      ASSERT_STATUS_OK(
+          gradient_checker.ComputeGradientError(op_def, input, {y_shape}, &max_error, x_datas, attributes));
       EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
     }
 
     // test case w/ axes attribute/input.
     if (axes_input) {
       std::vector<float> axes_float;
-      std::transform(begin(axes), end(axes), std::back_inserter(axes_float), [](int64_t i) { return static_cast<float>(i); });
+      std::transform(begin(axes), end(axes), std::back_inserter(axes_float),
+                     [](int64_t i) { return static_cast<float>(i); });
       TensorInfo axes_info({static_cast<int64_t>(axes.size())}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
       input.push_back(axes_info);
       x_datas.push_back(axes_float);
@@ -1362,31 +1335,22 @@ TEST(GradientCheckerTest, SqueezeGrad) {
     TensorShape y_shape({2, 3});
   */
   std::vector<std::vector<int64_t>> x_shapes = {
-      {1, 2, 3, 1},
-      {1, 1, 2, 3, 4},
-      {1, 2, 1, 3, 1},
-      {1, 2, 1, 3, 1},
+      {1, 2, 3, 1}, {1, 1, 2, 3, 2}, {1, 2, 1, 3, 1}, {1, 2, 1, 3, 1},
       // {1, 2, 1, 3, 1},
   };
   std::vector<std::vector<int64_t>> y_shapes = {
-      {2, 3},
-      {2, 3, 4},
-      {2, 3},
-      {1, 2, 3, 1},
+      {2, 3}, {2, 3, 2}, {2, 3}, {1, 2, 3, 1},
       // {2, 3},
   };
   std::vector<std::vector<int64_t>> axes_ip = {
-      {0, 3},
-      {0, 1},
-      {0, 2, 4},
-      {2},
+      {0, 3}, {0, 1}, {0, 2, 4}, {2},
       // {}
   };
 
   OpDef op_def{"Squeeze"};
   RunSqueezeUnsqueezeTests(op_def, x_shapes, y_shapes, axes_ip);
 
-  //axes as input from opset 13
+  // axes as input from opset 13
   OpDef op_def_2{"Squeeze", kOnnxDomain, 13};
   RunSqueezeUnsqueezeTests(op_def_2, x_shapes, y_shapes, axes_ip, true);
 }
@@ -1411,7 +1375,7 @@ TEST(GradientCheckerTest, UnsqueezeGrad) {
   OpDef op_def{"Unsqueeze"};
   RunSqueezeUnsqueezeTests(op_def, x_shapes, y_shapes, axes_ip);
 
-  //axes as input from opset 13
+  // axes as input from opset 13
   OpDef op_def_2{"Unsqueeze", kOnnxDomain, 13};
   RunSqueezeUnsqueezeTests(op_def_2, x_shapes, y_shapes, axes_ip, true);
 }
@@ -1447,8 +1411,10 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
     TensorInfo saved_mean_info(channel_shape, false);
     TensorInfo saved_var_info(channel_shape, false);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                                           {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_info, scale_info, bias_info, mean_info, var_info},
+        {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
+        {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1470,8 +1436,10 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
     TensorInfo saved_mean_info(channel_shape, false);
     TensorInfo saved_var_info(channel_shape, false);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                                           {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_info, scale_info, bias_info, mean_info, var_info},
+        {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
+        {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1493,8 +1461,10 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
     TensorInfo saved_mean_info(channel_shape, false);
     TensorInfo saved_var_info(channel_shape, false);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                                           {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_info, scale_info, bias_info, mean_info, var_info},
+        {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
+        {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1516,8 +1486,10 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
     TensorInfo saved_mean_info(channel_shape, false);
     TensorInfo saved_var_info(channel_shape, false);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                                           {MakeAttribute("momentum", momentum)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_info, scale_info, bias_info, mean_info, var_info},
+        {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
+        {MakeAttribute("momentum", momentum)}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1539,8 +1511,10 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
     TensorInfo saved_mean_info(channel_shape, false);
     TensorInfo saved_var_info(channel_shape, false);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                                           {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_info, scale_info, bias_info, mean_info, var_info},
+        {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
+        {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 
@@ -1562,25 +1536,23 @@ TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
     TensorInfo saved_mean_info(channel_shape, false);
     TensorInfo saved_var_info(channel_shape, false);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info}, {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error,
-                                                           {MakeAttribute("epsilon", epsilon), MakeAttribute("momentum", momentum)}));
-    EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, bias_info, mean_info, var_info},
+  {y_info, running_mean_info, running_var_info, saved_mean_info, saved_var_info}, &max_error, {MakeAttribute("epsilon",
+  epsilon), MakeAttribute("momentum", momentum)})); EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
   */
 }
 #endif
 
-TEST(GradientCheckerTest, SigmoidGrad) {
-  UnaryOpGradientTest("Sigmoid");
-}
+TEST(GradientCheckerTest, SigmoidGrad) { UnaryOpGradientTest("Sigmoid"); }
 
-void GradientCheckerSoftmaxGradHelper(bool is_log_softmax) {
-  TensorShape shape({3, 4, 5});
+void GradientCheckerSoftmaxGradHelper(bool is_log_softmax, int version = 11) {
+  TensorShape shape({2, 3, 4});
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
 
   const std::string op = is_log_softmax ? "LogSoftmax" : "Softmax";
-  OpDef op_def{op};
+  OpDef op_def{op, kOnnxDomain, version};
 
   // default_axis
   {
@@ -1590,23 +1562,34 @@ void GradientCheckerSoftmaxGradHelper(bool is_log_softmax) {
 
   // axis=0
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(0))}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error,
+                                                           {MakeAttribute("axis", int64_t(0))}));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // axis=1
+  {
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error,
+                                                           {MakeAttribute("axis", int64_t(1))}));
     EXPECT_IS_TINY(max_error);
   }
 
   // axis=2
   {
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error, {MakeAttribute("axis", int64_t(2))}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {shape}, {shape}, &max_error,
+                                                           {MakeAttribute("axis", int64_t(2))}));
     EXPECT_IS_TINY(max_error);
   }
 }
 
 TEST(GradientCheckerTest, SoftMaxGrad) {
   GradientCheckerSoftmaxGradHelper(false);
+  GradientCheckerSoftmaxGradHelper(false, 13);
 }
 
 TEST(GradientCheckerTest, LogSoftMaxGrad) {
   GradientCheckerSoftmaxGradHelper(true);
+  GradientCheckerSoftmaxGradHelper(true, 13);
 }
 
 void TestSoftmaxCrossEntropyGrad(const TensorShape& input_shape, const std::string& reduction) {
@@ -1634,27 +1617,26 @@ void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"SparseSoftmaxCrossEntropy"};
 
-  const int64_t D = 7;
+  constexpr int64_t D = 7;
   std::function<float(float)> transformer_index = [](float x) { return std::fmod(std::fabs(x) * 5.0f, 7.0f); };
   std::function<float(float)> transformer_weight = [](float x) { return std::fmod(std::fabs(x), 2.0f); };
 
   // without weight
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    auto logit_shape(index_shape.AsShapeVector());
     logit_shape.emplace_back(D);
 
     TensorInfo x_info(logit_shape);
     TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, index_info},
-                                                           {{}, {logit_shape, false}}, &max_error,
-                                                           {MakeAttribute("reduction", reduction)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, index_info}, {{}, {logit_shape, false}},
+                                                           &max_error, {MakeAttribute("reduction", reduction)}));
     EXPECT_IS_TINY(max_error);
   }
 
   // with weight
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    auto logit_shape(index_shape.AsShapeVector());
     logit_shape.emplace_back(D);
 
     TensorInfo x_info(logit_shape);
@@ -1675,16 +1657,16 @@ TEST(GradientCheckerTest, SparseSoftmaxCrossEntropyGrad) {
   TestSparseSoftmaxCrossEntropyGrad({2, 3, 2}, "sum");
 }
 
-void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_shape
-                                     const std::string& reduction,
-                                     int64_t ignore_index = 0,
+void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  // label_shape
+                                     const std::string& reduction, int64_t ignore_index = 0,
                                      int64_t D = 2 /* num_class*/) {
   float max_error;
   bool include_ignore_index = false;
   bool insert_ignore_index = false;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"SoftmaxCrossEntropyLoss", kOnnxDomain, 12};
-  std::function<float(float)> transformer_index = [D, &include_ignore_index, &insert_ignore_index, ignore_index](float x) {
+  std::function<float(float)> transformer_index = [D, &include_ignore_index, &insert_ignore_index,
+                                                   ignore_index](float x) {
     if (include_ignore_index) {
       if (insert_ignore_index) {
         insert_ignore_index = false;
@@ -1702,7 +1684,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
 
   // without weight and ignore_index
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    TensorShapeVector logit_shape(index_shape.AsShapeVector());
     auto it = logit_shape.begin() + 1;
     logit_shape.insert(it, D);
     TensorInfo loss_info = {};
@@ -1722,7 +1704,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
 
   // with weight and no ignore_index
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    TensorShapeVector logit_shape(index_shape.AsShapeVector());
     auto it = logit_shape.begin() + 1;
     logit_shape.insert(it, D);
     TensorInfo loss_info = {};
@@ -1743,7 +1725,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
 
   // without weight and ignore index
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    TensorShapeVector logit_shape(index_shape.AsShapeVector());
     auto it = logit_shape.begin() + 1;
     logit_shape.insert(it, D);
     TensorInfo loss_info = {};
@@ -1755,15 +1737,15 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
     TensorInfo x_info(logit_shape);
     TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, index_info},
-                                                           {loss_info, {logit_shape, false}}, &max_error,
-                                                           {MakeAttribute("reduction", reduction), MakeAttribute("ignore_index", ignore_index)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_info, index_info}, {loss_info, {logit_shape, false}}, &max_error,
+        {MakeAttribute("reduction", reduction), MakeAttribute("ignore_index", ignore_index)}));
     EXPECT_IS_TINY(max_error);
   }
 
   // with weight and ignore_index
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDims());
+    TensorShapeVector logit_shape(index_shape.AsShapeVector());
     auto it = logit_shape.begin() + 1;
     logit_shape.insert(it, D);
     TensorInfo loss_info = {};
@@ -1776,9 +1758,9 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
     TensorInfo index_info(index_shape, false, &transformer_index, DataTypeImpl::GetTensorType<int64_t>());
     TensorInfo weight_info({logit_shape[1]}, false, &transformer_weight);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, index_info, weight_info},
-                                                           {loss_info, {logit_shape, false}}, &max_error,
-                                                           {MakeAttribute("reduction", reduction), MakeAttribute("ignore_index", ignore_index)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_info, index_info, weight_info}, {loss_info, {logit_shape, false}}, &max_error,
+        {MakeAttribute("reduction", reduction), MakeAttribute("ignore_index", ignore_index)}));
     EXPECT_IS_TINY(max_error);
   }
 }
@@ -1800,13 +1782,9 @@ TEST(GradientCheckerTest, DISABLED_SoftmaxCrossEntropyLossGrad) {
   TestSoftmaxCrossEntropyLossGrad({2, 3, 2}, "none", -1);
 }
 
-TEST(GradientCheckerTest, GeluGrad) {
-  UnaryOpGradientTest("Gelu", kMSDomain, 1);
-}
+TEST(GradientCheckerTest, GeluGrad) { UnaryOpGradientTest("Gelu", kMSDomain, 1); }
 
-TEST(GradientCheckerTest, FastGeluGrad) {
-  UnaryOpGradientTest("FastGelu", kMSDomain, 1);
-}
+TEST(GradientCheckerTest, FastGeluGrad) { UnaryOpGradientTest("FastGelu", kMSDomain, 1); }
 
 // used for BiasGelu and FastGelu
 void TestBiasGeluGrad(const std::string& op_type, const std::string& domain, int opset_version) {
@@ -1818,28 +1796,23 @@ void TestBiasGeluGrad(const std::string& op_type, const std::string& domain, int
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
   float max_error;
-  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
-      op_def, {input_shape, bias_shape}, {input_shape}, &max_error,
-      attributes, true, true));
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {input_shape, bias_shape}, {input_shape}, &max_error,
+                                                         attributes, true, true));
 
   EXPECT_IS_TINY(max_error);
 }
 
-TEST(GradientCheckerTest, FastGeluGrad_Bias) {
-  TestBiasGeluGrad("FastGelu", kMSDomain, 1);
-}
+TEST(GradientCheckerTest, FastGeluGrad_Bias) { TestBiasGeluGrad("FastGelu", kMSDomain, 1); }
 
-TEST(GradientCheckerTest, BiasGeluGrad) {
-  TestBiasGeluGrad("BiasGelu", kMSDomain, 1);
-}
+TEST(GradientCheckerTest, BiasGeluGrad) { TestBiasGeluGrad("BiasGelu", kMSDomain, 1); }
 
 TEST(GradientCheckerTest, GatherGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Gather"};
 
-  TensorInfo x_info({5, 4, 3, 2});
-  std::function<float(float)> transformer = [](float x) { return std::fmod(7 * std::fabs(x), 5.0f); };
+  TensorInfo x_info({4, 2, 3, 2});
+  std::function<float(float)> transformer = [](float x) { return std::fmod(7 * std::fabs(x), 4.0f); };
 
   // gather_0 without duplicated indices
   {
@@ -1857,7 +1830,7 @@ TEST(GradientCheckerTest, GatherGrad) {
 
   // gather_0 with duplicated indices
   {
-    int num_indices = 10;
+    int num_indices = 8;
     TensorInfo indices_info({num_indices}, false, &transformer, DataTypeImpl::GetTensorType<int64_t>());
 
     TensorShape y_shape{x_info.shape};
@@ -1871,8 +1844,8 @@ TEST(GradientCheckerTest, GatherGrad) {
 
   // gather_1
   {
-    int num_indices = 8;
-    std::function<float(float)> transformer2 = [](float x) { return std::fmod(7 * std::fabs(x), 4.0f); };
+    int num_indices = 3;
+    std::function<float(float)> transformer2 = [](float x) { return std::fmod(7 * std::fabs(x), 2.0f); };
     TensorInfo indices_info({num_indices}, false, &transformer2, DataTypeImpl::GetTensorType<int64_t>());
 
     TensorShape y_shape{x_info.shape};
@@ -1888,7 +1861,7 @@ TEST(GradientCheckerTest, GatherGrad) {
   {
     TensorInfo indices_info({2, 3}, false, &transformer, DataTypeImpl::GetTensorType<int64_t>());
 
-    TensorShape y_shape{2, 3, 4, 3, 2};
+    TensorShape y_shape{2, 3, 2, 3, 2};
 
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info}, {y_shape}, &max_error,
                                                            {MakeAttribute("axis", int64_t(0))}));
@@ -1906,31 +1879,31 @@ TEST(GradientCheckerTest, GatherGrad) {
     int64_t axis = 0;
     y_shape[axis] = 3;
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info_2, indices_info}, {y_shape}, &max_error, x_datas,
-                                                           {MakeAttribute("axis", axis)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info_2, indices_info}, {y_shape}, &max_error,
+                                                           x_datas, {MakeAttribute("axis", axis)}));
     EXPECT_IS_TINY(max_error);
   }
 }
 
 void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true) {
   OpTester test("Dropout", 12, kOnnxDomain, false);
-  if (default_ratio)
-    ratio = 0.5f;
+  if (default_ratio) ratio = 0.5f;
   float input_constant = 3.0f;
   std::vector<float> x_data(x_shape.Size(), input_constant);
   std::vector<float> y_data(x_shape.Size(), 3.0f);
 
-  test.AddInput<float>("x", x_shape.GetDims(), x_data);
-  if (!default_ratio)
-    test.AddInput<float>("ratio", {}, {ratio});
-  test.AddOutput<float>("y", x_shape.GetDims(), y_data);
-  test.AddOutput<bool>("mask", x_shape.GetDims(), {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true});
+  test.AddInput<float>("x", x_shape.AsShapeVector(), x_data);
+  if (!default_ratio) test.AddInput<float>("ratio", {}, {ratio});
+  test.AddOutput<float>("y", x_shape.AsShapeVector(), y_data);
+  test.AddOutput<bool>(
+      "mask", x_shape.AsShapeVector(),
+      {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true});
   test.Run();
 
-  //Check output
+  // Check output
   auto fwd_output = test.GetFetches();
   for (size_t idx = 0; idx < x_data.size() / 8; ++idx) {
-    //convert the binary to bool
+    // convert the binary to bool
     if (ratio > 0) {
       std::bitset<8> mask(fwd_output[1].Get<Tensor>().Data<bool>()[idx]);
       for (size_t i = 0; i < 8; ++i) {
@@ -1952,25 +1925,23 @@ void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true)
 
 void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = true) {
   OpTester test("DropoutGrad", 1, kMSDomain, true);
-  if (default_ratio)
-    ratio = 0.5;
+  if (default_ratio) ratio = 0.5;
   float input_constant = 3;
 
   std::vector<float> dy_data(x_shape.Size(), input_constant);
   std::vector<float> ratio_data(1, ratio);
 
   float output_constant = input_constant / (1 - ratio);
-  std::vector<float> dx_data({output_constant, output_constant, output_constant, 0,
-                              output_constant, 0, output_constant, 0,
-                              output_constant, 0, output_constant, 0,
-                              output_constant, 0, output_constant, 0});
+  std::vector<float> dx_data({output_constant, output_constant, output_constant, 0, output_constant, 0, output_constant,
+                              0, output_constant, 0, output_constant, 0, output_constant, 0, output_constant, 0});
 
-  test.AddInput<float>("dy", x_shape.GetDims(), dy_data);
+  test.AddInput<float>("dy", x_shape.AsShapeVector(), dy_data);
 
-  test.AddInput<bool>("mask", x_shape.GetDims(), {true, true, true, false,   //
-                                                  true, false, true, false,  //
-                                                  true, false, true, false,  //
-                                                  true, false, true, false});
+  test.AddInput<bool>("mask", x_shape.AsShapeVector(),
+                      {true, true, true, false,   //
+                       true, false, true, false,  //
+                       true, false, true, false,  //
+                       true, false, true, false});
   if (!default_ratio) {
     test.AddInput<float>("ratio", {1}, ratio_data);
   } else {
@@ -1979,7 +1950,7 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
 
   test.AddInput("training_mode", {}, {true});
 
-  test.AddOutput<float>("dx", x_shape.GetDims(), dx_data);
+  test.AddOutput<float>("dx", x_shape.AsShapeVector(), dx_data);
 
   test.Run();
 }
@@ -1987,22 +1958,22 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
 #ifdef USE_CUDA
 TEST(GradientCheckerTest, DISABLED_Dropout) {
   {
-    //Ratio 0
+    // Ratio 0
     TensorShape x_shape({2, 2, 2, 2});
     TestDropoutOp(0.0f, x_shape, false);
   }
-  //Ratio 0.2, 3D
+  // Ratio 0.2, 3D
   {
     TensorShape x_shape({4, 2, 2});
     TestDropoutOp(0.2f, x_shape, false);
   }
-  //Ratio 0.4, 2D
+  // Ratio 0.4, 2D
   {
     TensorShape x_shape({4, 4});
     TestDropoutOp(0.4f, x_shape, false);
   }
 
-  //Default ratio, 1D
+  // Default ratio, 1D
   {
     TensorShape x_shape({16});
     TestDropoutOp(0.2f, x_shape, true);
@@ -2011,30 +1982,30 @@ TEST(GradientCheckerTest, DISABLED_Dropout) {
 
 TEST(GradientCheckerTest, DISABLED_DropoutGrad) {
   {
-    //Ratio 0
+    // Ratio 0
     TensorShape x_shape({8, 2});
     TestDropoutGradOp(0.0f, x_shape);
   }
 
-  //Ratio 0.2, 1D
+  // Ratio 0.2, 1D
   {
     TensorShape x_shape({16});
     TestDropoutGradOp(0.2f, x_shape, false);
   }
 
-  //Ratio 0.3, 2D
+  // Ratio 0.3, 2D
   {
     TensorShape x_shape({8, 2});
     TestDropoutGradOp(0.3f, x_shape, false);
   }
 
-  //Ratio 0.4, 3D
+  // Ratio 0.4, 3D
   {
     TensorShape x_shape({2, 4, 2});
     TestDropoutGradOp(0.4f, x_shape, false);
   }
 
-  //default Ratio, 4D
+  // default Ratio, 4D
   {
     TensorShape x_shape({2, 4, 2});
     TestDropoutGradOp(0.6f, x_shape);
@@ -2053,7 +2024,8 @@ TEST(GradientCheckerTest, GatherNDGrad_repeat_float_data) {
   TensorInfo y_info({2}, true);
   int64_t batch_dims = 0;
 
-  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("batch_dims", batch_dims)}));
+  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas,
+                                                         {MakeAttribute("batch_dims", batch_dims)}));
   EXPECT_IS_TINY(max_error);
 }
 
@@ -2070,7 +2042,8 @@ TEST(GradientCheckerTest, GatherNDGrad_unique_float_data) {
     TensorInfo y_info({2}, true);
     int64_t batch_dims = 0;
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("batch_dims", batch_dims)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas,
+                                                           {MakeAttribute("batch_dims", batch_dims)}));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2082,7 +2055,8 @@ TEST(GradientCheckerTest, GatherNDGrad_unique_float_data) {
     TensorInfo y_info({2, 3}, true);
     int64_t batch_dims = 1;
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("batch_dims", batch_dims)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas,
+                                                           {MakeAttribute("batch_dims", batch_dims)}));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2094,13 +2068,19 @@ TEST(GradientCheckerTest, GatherNDGrad_unique_float_data) {
     TensorInfo y_info({2, 2}, true);
     int64_t batch_dims = 2;
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas, {MakeAttribute("batch_dims", batch_dims)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indice_info}, {y_info}, &max_error, x_datas,
+                                                           {MakeAttribute("batch_dims", batch_dims)}));
     EXPECT_IS_TINY(max_error);
   }
 }
 
 TEST(GradientCheckerTest, LayerNormGrad) {
+  // Seems the CPU kernel of LayerNorm/LayerNormGrad has some issue so that for some random seed this test will fail.
+  // So we pass in the CUDA EP to calculate both the numeric and theoretical Jacobian on CUDA.
   GradientChecker<float, float, float> gradient_checker;
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+
   {
     TensorShape shape({2, 3, 4});
     TensorInfo x_info{shape, true};
@@ -2110,16 +2090,21 @@ TEST(GradientCheckerTest, LayerNormGrad) {
     TensorInfo var_info{{2, 3, 1}, false};
 
     float max_error;
-    float error_tolerance = 1e-2f;
+    float error_tolerance = 3e-2f;
 
     OpDef op_def{"LayerNormalization"};
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, B_info}, {shape, mean_info, var_info}, &max_error));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, scale_info, B_info},
+                                                           {shape, mean_info, var_info}, &max_error, {}, true, false,
+                                                           &execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
 
 TEST(GradientCheckerTest, SimplifiedLayerNormGrad) {
   GradientChecker<float, float, float> gradient_checker;
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+
   {
     TensorShape shape({2, 3, 8});
     TensorInfo x_info{shape, true};
@@ -2127,25 +2112,133 @@ TEST(GradientCheckerTest, SimplifiedLayerNormGrad) {
     TensorInfo var_info{{2, 3, 1}, false};
 
     float max_error;
-    float error_tolerance = 1e-2f;
+    float error_tolerance = 3e-2f;
 
     OpDef op_def{"SimplifiedLayerNormalization"};
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, scale_info}, {shape, var_info}, &max_error));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, scale_info}, {shape, var_info}, &max_error,
+                                                           {}, true, false, &execution_providers));
     EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
   }
 }
-#endif  //USE_CUDA
+#endif  // USE_CUDA
 
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
   OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
 
-  test.AddInput<float>("old_sum", {3}, {1, 2, 3});
-  test.AddInput<float>("value", {3}, {4, 5, 6});
+  test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
+  test.AddInput<float>("value", {3}, {4.f, 5.f, 6.f});
 
-  test.AddOutput<float>("new_sum", {3}, {5, 7, 9});
+  test.AddOutput<float>("new_sum", {3}, {5.f, 7.f, 9.f});
 
   test.Run();
 }
+
+void TestInPlaceAccumulatorV2(
+    const std::vector<int64_t>& tensor_dim,
+    const std::unordered_set<std::string>& excluded_providers,
+    std::vector<std::unique_ptr<IExecutionProvider>>& providers,
+    bool* need_override) {
+  // create rand inputs
+  RandomValueGenerator random{};
+  std::vector<float> buffer_data = random.Uniform<float>(tensor_dim, -10.0f, 10.0f);
+  std::vector<float> grad_data = random.Uniform<float>(tensor_dim, -10.0f, 10.0f);
+
+  size_t num_of_elem = tensor_dim[0];
+  for (size_t i = 1; i < tensor_dim.size(); ++i) {
+    num_of_elem *= tensor_dim[i];
+  }
+
+  bool override = (need_override != nullptr) && *need_override;
+  std::vector<float> updated_buffer_data(num_of_elem);
+  for (size_t i = 0; i < num_of_elem; ++i) {
+    updated_buffer_data[i] = *(buffer_data.data() + i) + (override ? 0 : *(grad_data.data() + i));
+  }
+
+  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("old_sum", tensor_dim, buffer_data);
+  test.AddInput<float>("value", tensor_dim, grad_data);
+  if (need_override != nullptr) {
+    test.AddInput<bool>("overwrite", {1}, {*need_override});
+  }
+  test.AddOutput<bool>("updated", {1}, {true});
+  test.AddOutput<float>("new_sum", tensor_dim, updated_buffer_data);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers, nullptr, &providers);
+}
+
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_CPU) {
+  std::vector<int64_t> test_dim{3};
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCpuExecutionProvider());
+  TestInPlaceAccumulatorV2(test_dim, {}, providers, nullptr);
+}
+
+TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
+  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
+
+  test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
+  test.AddInput<float>("value", {3}, {4.f, 5.f, 6.f});
+  test.AddInput<bool>("overwrite", {1}, {true});
+  test.AddOutput<bool>("updated", {1}, {true});
+  test.AddOutput<float>("new_sum", {3}, {4.f, 5.f, 6.f});
+
+  // This test can run on all EPs back to back because
+  // the input buffer (accumulation buffer) is overwritten and
+  // not used to compute the output for that run.
+  test.Run();
+}
+
+#if defined(USE_CUDA)
+// TODO: Add rocm kernel defs
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_GPU) {
+  std::vector<std::vector<int64_t>> test_dims{
+      {768},
+      {32},
+      {3072},
+      {514, 768},
+      {768, 768},
+      {1024, 768},
+      {2048, 768},
+      {3072, 768},
+      {4096, 768},
+      {8192, 768},
+      {16384, 768},
+      {32768, 768},
+      {65536, 768},
+      {131072, 768},
+      {250002, 768},
+      {500004, 768},
+  };
+
+  for (const auto& test_dim : test_dims) {
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.emplace_back(DefaultCudaExecutionProvider());
+    TestInPlaceAccumulatorV2(test_dim, {}, providers, nullptr);
+  }
+}
+
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_Float16) {
+  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
+
+  std::vector<float> old_sum = {1.0f, 2.0f, 3.0f};
+  std::vector<float> value = {4.0f, 5.0f, 6.0f};
+  std::vector<float> new_sum = {4.0f, 5.0f, 6.0f};
+
+  std::vector<MLFloat16> value_half(3);
+  ConvertFloatToMLFloat16(value.data(), value_half.data(), 3);
+
+  test.AddInput<float>("old_sum", {3}, old_sum);
+  test.AddInput<MLFloat16>("value", {3}, value_half);
+  test.AddInput<bool>("overwrite", {1}, {true});
+  test.AddOutput<bool>("updated", {1}, {true});
+  test.AddOutput<float>("new_sum", {3}, new_sum);
+
+  // Didn't implement mixed precision InPlaceAccumulatorV2 in CPU
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+#endif
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
@@ -2165,7 +2258,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   // Didn't implement mixed precision InPlaceAccumulator in CPU
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
-#endif  //defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA) || defined(USE_ROCM)
 
 TEST(GradientUtilsTest, ZeroGradientFloat32) {
   OpTester test("ZeroGradient", 1, onnxruntime::kMSDomain);
@@ -2205,7 +2298,7 @@ TEST(GradientCheckerTest, WhereGrad) {
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Where"};
 
-  std::vector<int64_t> shape{4, 3, 2};
+  TensorShapeVector shape{4, 3, 2};
   TensorInfo x_info(shape), y_info(shape);
   std::function<float(float)> transformer = [](float x) {
     return static_cast<float>(std::fmod(std::fabs(x), 1.0f) > 0.5f);
@@ -2213,7 +2306,8 @@ TEST(GradientCheckerTest, WhereGrad) {
   TensorInfo condition_info(shape, false, &transformer, DataTypeImpl::GetTensorType<bool>());
 
   TensorShape output_shape{shape};
-  ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {condition_info, x_info, y_info}, {output_shape}, &max_error));
+  ASSERT_STATUS_OK(
+      gradient_checker.ComputeGradientError(op_def, {condition_info, x_info, y_info}, {output_shape}, &max_error));
   EXPECT_IS_TINY(max_error);
 }
 
@@ -2231,7 +2325,8 @@ TEST(GradientCheckerTest, SliceGrad) {
 
     TensorInfo y_info({1, 3}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, start_info, end_info}, {y_info}, &max_error, x_datas));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_info, start_info, end_info}, {y_info}, &max_error, x_datas));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2246,8 +2341,8 @@ TEST(GradientCheckerTest, SliceGrad) {
 
     TensorInfo y_info({1, 2}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, start_info, end_info, axes_info, steps_info},
-                                                           {y_info}, &max_error, x_datas));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_info, start_info, end_info, axes_info, steps_info}, {y_info}, &max_error, x_datas));
 
     EXPECT_IS_TINY(max_error);
   }
@@ -2259,12 +2354,13 @@ TEST(GradientCheckerTest, SliceGrad) {
     TensorInfo end_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
     TensorInfo axes_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
     TensorInfo steps_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8}, {1, 0}, {2, 3}, {0, 1}, {1, 2}};
+    std::vector<std::vector<float>> x_datas = {
+        {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8}, {1, 0}, {2, 3}, {0, 1}, {1, 2}};
 
     TensorInfo y_info({1, 2, 2}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, start_info, end_info, axes_info, steps_info}, {y_info},
-                                                           &max_error, x_datas));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(
+        op_def, {x_info, start_info, end_info, axes_info, steps_info}, {y_info}, &max_error, x_datas));
 
     EXPECT_IS_TINY(max_error);
   }
@@ -2275,75 +2371,81 @@ void RunExpandGradTests(const OpDef& op_def) {
   GradientChecker<float, float, float> gradient_checker;
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
-  //input_shape = (2, 3, 1), target_shape = (2, 3, 4) ==> shape(result) = (2, 3, 4)
+  // input_shape = (2, 2, 1), target_shape = (2, 2, 3) ==> shape(result) = (2, 2, 3)
   {
-    TensorInfo x_info({2, 3, 1}, true);
+    TensorInfo x_info({2, 2, 1}, true);
     TensorInfo shape_info({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6}, {2, 3, 4}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4}, {2, 2, 3}};
 
-    TensorInfo y_info({2, 3, 4}, true);
+    TensorInfo y_info({2, 2, 3}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas,
+                                                           attributes, true, true));
     EXPECT_IS_TINY(max_error);
   }
 
-  //input_shape = (2, 3, 1), target_shape = (1, 1, 4) ==> shape(result) = (2, 3, 4)
+  // input_shape = (2, 2, 1), target_shape = (1, 1, 3) ==> shape(result) = (2, 2, 3)
   {
-    TensorInfo x_info({2, 3, 1}, true);
+    TensorInfo x_info({2, 2, 1}, true);
     TensorInfo shape_info({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6}, {1, 1, 4}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4}, {1, 1, 3}};
 
-    TensorInfo y_info({2, 3, 4}, true);
+    TensorInfo y_info({2, 2, 3}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas,
+                                                           attributes, true, true));
     EXPECT_IS_TINY(max_error);
   }
 
-  //input_shape = (2, 3, 1), target_shape = (4) ==> shape(result) = (2, 3, 4)
+  // input_shape = (2, 2, 1), target_shape = (3) ==> shape(result) = (2, 2, 3)
   {
-    TensorInfo x_info({2, 3, 1}, true);
+    TensorInfo x_info({2, 2, 1}, true);
     TensorInfo shape_info({1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6}, {4}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4}, {3}};
 
-    TensorInfo y_info({2, 3, 4}, true);
+    TensorInfo y_info({2, 2, 3}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas,
+                                                           attributes, true, true));
     EXPECT_IS_TINY(max_error);
   }
 
-  //input_shape = (2, 3, 1), target_shape = (1, 1) ==> shape(result) = (2, 3, 1)
+  // input_shape = (2, 2, 1), target_shape = (1, 1) ==> shape(result) = (2, 2, 1)
   {
-    TensorInfo x_info({2, 3, 1}, true);
+    TensorInfo x_info({2, 2, 1}, true);
     TensorInfo shape_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6}, {1, 1}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4}, {1, 1}};
 
-    TensorInfo y_info({2, 3, 1}, true);
+    TensorInfo y_info({2, 2, 1}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas,
+                                                           attributes, true, true));
     EXPECT_IS_TINY(max_error);
   }
 
-  //input_shape = (2, 3), target_shape = (4, 5, 2, 3) ==> shape(result) = (4, 5, 2, 3)
+  // input_shape = (2, 3), target_shape = (3, 2, 2, 3) ==> shape(result) = (3, 2, 2, 3)
   {
     TensorInfo x_info({2, 3}, true);
     TensorInfo shape_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6}, {4, 5, 2, 3}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6}, {3, 2, 2, 3}};
 
-    TensorInfo y_info({4, 5, 2, 3}, true);
+    TensorInfo y_info({3, 2, 2, 3}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas,
+                                                           attributes, true, true));
     EXPECT_IS_TINY(max_error);
   }
 
-  //input_shape = (1, 2, 3), target_shape = (4, 5, 1, 1) ==> shape(result) = (4, 5, 2, 3)
+  // input_shape = (1, 2, 3), target_shape = (3, 2, 1, 1) ==> shape(result) = (3, 2, 2, 3)
   {
     TensorInfo x_info({1, 2, 3}, true);
     TensorInfo shape_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6}, {4, 5, 1, 1}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6}, {3, 2, 1, 1}};
 
-    TensorInfo y_info({4, 5, 2, 3}, true);
+    TensorInfo y_info({3, 2, 2, 3}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas, attributes, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, shape_info}, {y_info}, &max_error, x_datas,
+                                                           attributes, true, true));
     EXPECT_IS_TINY(max_error);
   }
 }
@@ -2369,8 +2471,8 @@ TEST(GradientCheckerTest, GatherElementsGrad) {
     TensorInfo y_info({2, 3}, true);
     int64_t axis = 0;
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
-                                                           {MakeAttribute("axis", axis)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error,
+                                                           x_datas, {MakeAttribute("axis", axis)}));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2383,8 +2485,8 @@ TEST(GradientCheckerTest, GatherElementsGrad) {
     TensorInfo y_info({2, 3}, true);
     int64_t axis = 0;
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
-                                                           {MakeAttribute("axis", axis)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error,
+                                                           x_datas, {MakeAttribute("axis", axis)}));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2397,8 +2499,8 @@ TEST(GradientCheckerTest, GatherElementsGrad) {
     TensorInfo y_info({2, 3}, true);
     int64_t axis = 1;
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
-                                                           {MakeAttribute("axis", axis)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error,
+                                                           x_datas, {MakeAttribute("axis", axis)}));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2411,8 +2513,8 @@ TEST(GradientCheckerTest, GatherElementsGrad) {
     TensorInfo y_info({2, 1, 2}, true);
     int64_t axis = 1;
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
-                                                           {MakeAttribute("axis", axis)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error,
+                                                           x_datas, {MakeAttribute("axis", axis)}));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2425,8 +2527,8 @@ TEST(GradientCheckerTest, GatherElementsGrad) {
     TensorInfo y_info({2, 4}, true);
     int64_t axis = 1;
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error, x_datas,
-                                                           {MakeAttribute("axis", axis)}));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indice_info}, {y_info}, &max_error,
+                                                           x_datas, {MakeAttribute("axis", axis)}));
     EXPECT_IS_TINY(max_error);
   }
 }
@@ -2442,7 +2544,8 @@ TEST(GradientCheckerTest, TopKGrad) {
     std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {1}};
     TensorInfo y1_info({2, 2, 1}, true);
     TensorInfo y2_info({2, 2, 1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y1_info, y2_info}, &max_error, x_datas, {}, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y1_info, y2_info}, &max_error,
+                                                           x_datas, {}, true, true));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2452,7 +2555,8 @@ TEST(GradientCheckerTest, TopKGrad) {
     std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {1}};
     TensorInfo y1_info({2, 1, 2}, true);
     TensorInfo y2_info({2, 1, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y1_info, y2_info}, &max_error, x_datas, {MakeAttribute("axis", int64_t(-2))}, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y1_info, y2_info}, &max_error,
+                                                           x_datas, {MakeAttribute("axis", int64_t(-2))}, true, true));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2462,7 +2566,8 @@ TEST(GradientCheckerTest, TopKGrad) {
     std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9}, {2}};
     TensorInfo y1_info({3, 2}, true);
     TensorInfo y2_info({3, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y1_info, y2_info}, &max_error, x_datas, {}, true, true));
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y1_info, y2_info}, &max_error,
+                                                           x_datas, {}, true, true));
     EXPECT_IS_TINY(max_error);
   }
 }
@@ -2478,7 +2583,8 @@ TEST(GradientCheckerTest, ClipGrad) {
     TensorInfo max_info({}, false);
     std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {2.8f}, {7.2f}};
     TensorInfo y_info({2, 2, 2}, true);
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, min_info, max_info}, {y_info}, &max_error, x_datas));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_info, min_info, max_info}, {y_info}, &max_error, x_datas));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2506,10 +2612,12 @@ void GradientCheckerMinMaxGradHelper(const std::string op) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{op, kOnnxDomain, 11};
-  // Ensure the gap between x1 and x2 is greater than 1e-3f, otherwise the result of NumericJacobian
+  // Ensure the gap between tensors is greater than 1e-3f, otherwise the result of NumericJacobian
   // will be incorrect. This also excludes equal inputs case, where Min/Max is not smooth.
   std::function<float(float)> x1_transformer = [](float x) { return (int)(x * 100) / 100.f; };
   std::function<float(float)> x2_transformer = [](float x) { return (int)(x * 100) / 100.f + 0.002f; };
+  std::function<float(float)> x3_transformer = [](float x) { return (int)(x * 100) / 100.f + 0.004f; };
+  std::function<float(float)> x4_transformer = [](float x) { return (int)(x * 100) / 100.f + 0.006f; };
   TensorInfo x1_info({2, 3}, true, &x1_transformer);
   TensorInfo y_info({2, 3}, true);
 
@@ -2530,15 +2638,28 @@ void GradientCheckerMinMaxGradHelper(const std::string op) {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info}, {y_info}, &max_error));
     EXPECT_IS_TINY(max_error);
   }
+
+  // More than 2 inputs.
+  {
+    TensorInfo x2_info({2, 3}, true, &x2_transformer);
+    TensorInfo x3_info({2, 3}, true, &x3_transformer);
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info, x3_info}, {y_info}, &max_error));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x2_info({3}, true, &x2_transformer);
+    TensorInfo x3_info({2, 1}, true, &x3_transformer);
+    TensorInfo x4_info({2, 3}, true, &x4_transformer);
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info, x3_info, x4_info}, {y_info}, &max_error));
+    EXPECT_IS_TINY(max_error);
+  }
 }
 
-TEST(GradientCheckerTest, MinGrad) {
-  GradientCheckerMinMaxGradHelper("Min");
-}
+TEST(GradientCheckerTest, MinGrad) { GradientCheckerMinMaxGradHelper("Min"); }
 
-TEST(GradientCheckerTest, MaxGrad) {
-  GradientCheckerMinMaxGradHelper("Max");
-}
+TEST(GradientCheckerTest, MaxGrad) { GradientCheckerMinMaxGradHelper("Max"); }
 
 TEST(GradientCheckerTest, TileGrad) {
   float max_error;
@@ -2547,13 +2668,14 @@ TEST(GradientCheckerTest, TileGrad) {
 
   // 2D input
   {
-    TensorInfo x_info({2, 4}, true);
+    TensorInfo x_info({2, 3}, true);
     TensorInfo repeat_info({2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {2, 2}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6}, {2, 2}};
 
-    TensorInfo y_info({4, 8}, true);
+    TensorInfo y_info({4, 6}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, repeat_info}, {y_info}, &max_error, x_datas));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_info, repeat_info}, {y_info}, &max_error, x_datas));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2561,11 +2683,12 @@ TEST(GradientCheckerTest, TileGrad) {
   {
     TensorInfo x_info({2}, true);
     TensorInfo repeat_info({1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1, 2}, {4}};
+    std::vector<std::vector<float>> x_datas = {{1, 2}, {2}};
 
-    TensorInfo y_info({8}, true);
+    TensorInfo y_info({4}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, repeat_info}, {y_info}, &max_error, x_datas));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_info, repeat_info}, {y_info}, &max_error, x_datas));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2573,11 +2696,12 @@ TEST(GradientCheckerTest, TileGrad) {
   {
     TensorInfo x_info({2, 2, 3}, true);
     TensorInfo repeat_info({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
-    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, {2, 3, 4}};
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, {2, 3, 2}};
 
-    TensorInfo y_info({4, 6, 12}, true);
+    TensorInfo y_info({4, 6, 6}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, repeat_info}, {y_info}, &max_error, x_datas));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_info, repeat_info}, {y_info}, &max_error, x_datas));
     EXPECT_IS_TINY(max_error);
   }
 
@@ -2589,7 +2713,8 @@ TEST(GradientCheckerTest, TileGrad) {
 
     TensorInfo y_info({2, 2, 3}, true);
 
-    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, repeat_info}, {y_info}, &max_error, x_datas));
+    ASSERT_STATUS_OK(
+        gradient_checker.ComputeGradientError(op_def, {x_info, repeat_info}, {y_info}, &max_error, x_datas));
     EXPECT_IS_TINY(max_error);
   }
 }
@@ -2746,6 +2871,115 @@ TEST(GradientCheckerTest, ScatterNDGrad) {
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
                                                            {output_info}, &max_error, input_datas));
     EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, ScatterElementsGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"ScatterElements", kOnnxDomain, 13};
+
+  {  // without axis
+    TensorInfo data_info({3, 3}, true);
+    TensorInfo indices_info({2, 3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({2, 3}, true);
+    std::vector<std::vector<float>> input_datas = {{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+                                                   {1, 0, 2, 0, 2, 1},
+                                                   {1.0f, 1.1f, 1.2f, 2.0f, 2.1f, 2.2f}};
+
+    TensorInfo output_info({3, 3}, true);
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                                           {output_info}, &max_error, input_datas));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {  // with axis
+    TensorInfo data_info({1, 5}, true);
+    TensorInfo indices_info({1, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({1, 2}, true);
+    std::vector<std::vector<float>> input_datas = {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f}, {1, 3}, {1.1f, 2.1f}};
+
+    TensorInfo output_info({1, 5}, true);
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                                           {output_info}, &max_error, input_datas,
+                                                           {MakeAttribute("axis", static_cast<int64_t>(1))}));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {  // with -ve axis
+    TensorInfo data_info({1, 5}, true);
+    TensorInfo indices_info({1, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({1, 2}, true);
+    std::vector<std::vector<float>> input_datas = {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f}, {1, 3}, {1.1f, 2.1f}};
+
+    TensorInfo output_info({1, 5}, true);
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                                           {output_info}, &max_error, input_datas,
+                                                           {MakeAttribute("axis", static_cast<int64_t>(-1))}));
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, TriluGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Trilu", kMSDomain, 1};
+  constexpr int M = 3;
+  constexpr int N = 4;
+  TensorShape shape = {M, N};
+  TensorInfo x_info(shape);
+  TensorInfo k_info({1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+  TensorInfo y_info(shape);
+  std::vector<float> x_data = {};
+  // Initialize input data
+  float f = 1.0;
+  for (int i = 0; i < M; i++) {
+    for (int j = 0; j < N; j++, f++) {
+      x_data.push_back(f);
+    }
+  }
+
+  // Test without optional input and without attribute
+  {
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error, {x_data}));
+    EXPECT_IS_TINY(max_error);
+  }
+  {
+    // Test without optional input and with attribute upper=1
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error, {x_data},
+                                                           {MakeAttribute("upper", int64_t(1))}));
+    EXPECT_IS_TINY(max_error);
+  }
+  {
+    // Test without optional input and with attribute upper=0
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error, {x_data},
+                                                           {MakeAttribute("upper", int64_t(0))}));
+    EXPECT_IS_TINY(max_error);
+  }
+  for (int64_t k = -M; k <= M; k++) {
+    std::vector<float> k_data = {static_cast<float>(k)};
+
+    // Test with optional input and without attribute
+    {
+      ASSERT_STATUS_OK(
+          gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y_info}, &max_error, {x_data, k_data}));
+      EXPECT_IS_TINY(max_error);
+    }
+    {
+      // Test with optional input and with attribute upper=1
+      ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y_info}, &max_error,
+                                                             {x_data, k_data}, {MakeAttribute("upper", int64_t(1))}));
+      EXPECT_IS_TINY(max_error);
+    }
+    {
+      // Test with optional input and with attribute upper=0
+      ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, k_info}, {y_info}, &max_error,
+                                                             {x_data, k_data}, {MakeAttribute("upper", int64_t(0))}));
+      EXPECT_IS_TINY(max_error);
+    }
   }
 }
 

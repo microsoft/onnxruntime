@@ -7,6 +7,10 @@ namespace ONNX_NAMESPACE {
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#elif defined(_MSC_VER) && !defined(__clang__)
+// VC++ suggests we can attempt to make 'onnx::float_to_bits' constexpr, but it is not valid.
+#pragma warning(disable : 26497)
+#pragma warning(disable : 26450)
 #endif
 
 static uint32_t float_to_bits(float f) { return *reinterpret_cast<uint32_t*>(&f); }
@@ -20,10 +24,10 @@ static float bits_to_float(uint32_t bits) { return *reinterpret_cast<float*>(&bi
 static uint16_t floatToHalf(float ff) {
   uint32_t floatbits = float_to_bits(ff);
 
-  const uint32_t f32infty = {255 << 23};
-  const uint32_t f16max = {(127 + 16) << 23};
-  const uint32_t denorm_magic = {((127 - 15) + (23 - 10) + 1) << 23};
-  const uint32_t sign_mask = 0x80000000u;
+  constexpr uint32_t f32infty = {255 << 23};
+  constexpr uint32_t f16max = {(127 + 16) << 23};
+  constexpr uint32_t denorm_magic = {((127 - 15) + (23 - 10) + 1) << 23};
+  constexpr uint32_t sign_mask = 0x80000000u;
 
   uint16_t result = static_cast<uint16_t>(0x0u);
 

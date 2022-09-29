@@ -29,7 +29,7 @@ PathString MakeCheckpointPath(
 bool ParseCheckpointFileName(
     const PathString& checkpoint_file_name, CheckpointRegistry::CheckpointId& id) {
   static RE2 re = {R"(^checkpoint_(\d+)$)"};
-  return RE2::FullMatch(ToMBString(checkpoint_file_name), re, &id);
+  return RE2::FullMatch(ToUTF8String(checkpoint_file_name), re, &id);
 }
 
 }  // namespace

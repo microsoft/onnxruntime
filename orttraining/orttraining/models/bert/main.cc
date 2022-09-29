@@ -7,22 +7,12 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/profiler.h"
-#include "core/session/environment.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/random_seed.h"
-#include "core/providers/cpu/cpu_provider_factory_creator.h"
-#ifdef USE_CUDA
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
-}  // namespace onnxruntime
-#endif
-#ifdef USE_ROCM
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(const OrtROCMProviderOptions* provider_options);
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
-}  // namespace onnxruntime
-#endif
+#include "core/providers/provider_factory_creators.h"
+#include "core/session/environment.h"
+#include "core/session/onnxruntime_c_api.h"
+
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
@@ -30,6 +20,17 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const c
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/models/runner/data_loader.h"
+
+#ifdef USE_CUDA
+namespace onnxruntime {
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
+#endif
+#ifdef USE_ROCM
+namespace onnxruntime {
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
+#endif
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -58,7 +59,8 @@ static SessionOptions session_options = {
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
     {},                                //config_options
-    {},                                // initializers_to_share_map
+    {},                                //initializers_to_share_map
+    {},                                // external_initializers
 };
 
 struct BertParameters : public TrainingRunner::Parameters {
@@ -620,7 +622,7 @@ void setup_training_params(BertParameters& params) {
     }
     info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 
-    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
+    params.providers.emplace(kCudaExecutionProvider, CudaProviderFactoryCreator::Create(&info));
     params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
   }
 #endif
@@ -636,7 +638,7 @@ void setup_training_params(BertParameters& params) {
     }
     info.miopen_conv_exhaustive_search = true; // true, exhaustive search (slow)
 
-    params.providers.emplace(kRocmExecutionProvider, CreateExecutionProviderFactory_Rocm(&info));
+    params.providers.emplace(kRocmExecutionProvider, RocmProviderFactoryCreator::Create(&info));
     params.input_allocator = CreateROCMPinnedAllocator(info.device_id, CUDA_PINNED);
   }
 #endif
@@ -800,7 +802,7 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
 }
 
 static Status RunTraining(const BertParameters& params, const Environment& env) {
-  const size_t max_num_files_preload = 2;
+  constexpr size_t max_num_files_preload = 2;
 
   auto runner = std::make_unique<TrainingRunner>(params, env, session_options);
   ORT_RETURN_IF_ERROR(runner->Initialize());
@@ -853,7 +855,7 @@ int main(int argc, char* argv[]) {
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
+  logging::LoggingManager default_logging_manager{std::make_unique<logging::CLogSink>(),
                                                   ort_params.log_severity,
                                                   false,
                                                   logging::LoggingManager::InstanceType::Default,
@@ -874,7 +876,7 @@ int main(int argc, char* argv[]) {
   if (!params.convergence_test_output_file.empty()) {
     std::ofstream output_file(params.convergence_test_output_file);
     LOGS_DEFAULT_IF(!output_file, WARNING)
-        << "Failed to open convergence test output file: " << ToMBString(params.convergence_test_output_file);
+        << "Failed to open convergence test output file: " << ToUTF8String(params.convergence_test_output_file);
     output_file << ConvergenceTestDataRecord::GetCsvHeaderLine();
   }
 

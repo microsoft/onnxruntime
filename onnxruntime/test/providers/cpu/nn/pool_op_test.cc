@@ -162,7 +162,7 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order = 0) {
     storage_order == 0 ? test.AddOutput<int64_t>("Indices", expected_dims, expected_indices_row)
                        : test.AddOutput<int64_t>("Indices", expected_dims, expected_indices_col);
   }
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider, kArmNNExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider, kArmNNExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_8_With_Index) {
@@ -400,7 +400,8 @@ TEST(PoolTest, MaxPool_10_DilationPadding_1d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_2d) {
@@ -474,7 +475,7 @@ TEST(PoolTest, MaxPool_10_DilationPadding_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
@@ -579,7 +580,8 @@ TEST(PoolTest, MaxPool_10_DilationPadding_3d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider, kRocmExecutionProvider});
 }
 
 TEST(PoolTest, GlobalMaxPool) {

@@ -34,7 +34,7 @@ class TrainingSession : public InferenceSession {
    */
   struct PartitionInfo {
     // value of the original shape of the weight
-    std::vector<int64_t> original_dim;
+    TensorShapeVector original_dim;
     // indicates whether weight was megatron partitioned or not.
     // -1: not partitioned; 0: column partitioned; 1: row partitioned
     int megatron_row_partition = -1;
@@ -45,7 +45,7 @@ class TrainingSession : public InferenceSession {
   };
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
-      : InferenceSession(session_options, env) {}
+      : InferenceSession(session_options, env), is_mixed_precision_enabled_(false) {}
   virtual ~TrainingSession(){};
 
   /**
@@ -485,8 +485,11 @@ class TrainingSession : public InferenceSession {
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel);
 
   /** override the parent method in inference session for training specific transformers */
-  common::Status AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                           TransformerLevel graph_optimization_level) override;
+  common::Status AddPredefinedTransformers(
+      GraphTransformerManager& transformer_manager,
+      TransformerLevel graph_optimization_level,
+      MinimalBuildOptimizationHandling minimal_build_optimization_handling,
+      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const override;
 
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.

@@ -171,7 +171,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatTensorLarge) {
     OpTester test("IsAllFinite", 1, kMSDomain);
     bool expected_answer = false;
     auto tensors = generate_is_all_finite_test_data(13, 941736, expected_answer, test_count);
-    for (int i = 0; i < tensors.size(); ++i) {
+    for (size_t i = 0; i < tensors.size(); ++i) {
       auto name = std::string("X") + std::to_string(i);
       auto size = static_cast<int64_t>(tensors[i].size());
       test.AddInput<float>(name.c_str(), {size}, tensors[i]);
@@ -186,7 +186,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatManyBlock) {
     OpTester test("IsAllFinite", 1, kMSDomain);
     bool expected_answer = false;
     auto tensors = generate_is_all_finite_test_data(894, 17, expected_answer, test_count);
-    for (int i = 0; i < tensors.size(); ++i) {
+    for (size_t i = 0; i < tensors.size(); ++i) {
       auto name = std::string("X") + std::to_string(i);
       auto size = static_cast<int64_t>(tensors[i].size());
       test.AddInput<float>(name.c_str(), {size}, tensors[i]);
@@ -199,7 +199,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatManyBlock) {
 TEST(IsAllFiniteTest, MoreFalseFloatMultipleFalse) {
   OpTester test("IsAllFinite", 1, kMSDomain);
   auto tensors = generate_is_all_finite_test_data(1234, 1987, 0.1f, 0);
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (size_t i = 0; i < tensors.size(); ++i) {
     auto name = std::string("X") + std::to_string(i);
     auto size = static_cast<int64_t>(tensors[i].size());
     test.AddInput<float>(name.c_str(), {size}, tensors[i]);
@@ -212,7 +212,7 @@ TEST(IsAllFiniteTest, MoreTrueFloatTensorLarge) {
   OpTester test("IsAllFinite", 1, kMSDomain);
   bool expected_answer = true;
   auto tensors = generate_is_all_finite_test_data(12, 941736, expected_answer, 0);
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (size_t i = 0; i < tensors.size(); ++i) {
     auto name = std::string("X") + std::to_string(i);
     auto size = static_cast<int64_t>(tensors[i].size());
     test.AddInput<float>(name.c_str(), {size}, tensors[i]);
@@ -227,7 +227,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatManyBlockFloat16) {
   OpTester test("IsAllFinite", 1, kMSDomain);
   bool expected_answer = false;
   auto tensors = generate_is_all_finite_test_data(894, 17, expected_answer, 0);
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (size_t i = 0; i < tensors.size(); ++i) {
     auto name = std::string("X") + std::to_string(i);
     auto size = static_cast<int64_t>(tensors[i].size());
     std::vector<MLFloat16> buffer_half(tensors[i].size());
@@ -242,7 +242,7 @@ TEST(IsAllFiniteTest, MoreFalseFloatTensorLargeFloat16) {
   OpTester test("IsAllFinite", 1, kMSDomain);
   bool expected_answer = false;
   auto tensors = generate_is_all_finite_test_data(12, 941736, expected_answer, 0);
-  for (int i = 0; i < tensors.size(); ++i) {
+  for (size_t i = 0; i < tensors.size(); ++i) {
     auto name = std::string("X") + std::to_string(i);
     auto size = static_cast<int64_t>(tensors[i].size());
     std::vector<MLFloat16> buffer_half(tensors[i].size());

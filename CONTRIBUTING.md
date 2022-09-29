@@ -11,43 +11,37 @@ We're always looking for your help to improve the product (bug fixes, new featur
 ## Propose a new public API
 
  ONNX Runtime has a collection of [public APIs](./README.md#api-documentation).  Some of these APIs make their way back into the Windows OS.  We make compatibility commitments for these APIs and follow a structured process when adding to them.  Please use the [Feature Request issue template](https://github.com/microsoft/onnxruntime/issues/new?template=feature_request.md) before starting any PRs that affect any of the public APIs.
- 
- If your proposal contributes the Windows Machine Learning WinRT API and will affect the Windows.AI.MachineLearning namespace, please review [Windows ML main principles](./docs/WinML_principles.md) before you submit your request. 
+
+ If your proposal contributes the Windows Machine Learning WinRT API and will affect the Windows.AI.MachineLearning namespace, please review [Windows ML main principles](./docs/WinML_principles.md) before you submit your request.
 
 ## Process details
 
 Please search the [issue tracker](https://github.com/microsoft/onnxruntime/issues) for a similar idea first: there may already be an issue you can contribute to.
 
-1. **Create Issue**  
-To propose a new feature or API please start by filing a new issue in the [issue tracker](https://github.com/microsoft/onnxruntime/issues).  
+1. **Create Issue**
+To propose a new feature or API please start by filing a new issue in the [issue tracker](https://github.com/microsoft/onnxruntime/issues).
 Include as much detail as you have. It's fine if it's not a complete design: just a summary and rationale is a good starting point.
 
-2. **Discussion**  
+2. **Discussion**
 We'll keep the issue open for community discussion until it has been resolved or is deemed no longer relevant.
 Note that if an issue isn't a high priority or has many open questions then it might stay open for a long time.
 
-3. **Owner Review**  
+3. **Owner Review**
 The ONNX Runtime team will review the proposal and either approve or close the issue based on whether it broadly aligns with the [Onnx Runtime Roadmap - High Level Goals section](./docs/Roadmap.md) and contribution guidelines.
 
-4. **API Review**  
-If the feature adds new APIs then we'll start an API review. All new public APIs must be reviewed before merging. 
+4. **API Review**
+If the feature adds new APIs then we'll start an API review. All new public APIs must be reviewed before merging.
 For making changes to the C API refer to guidance [here](./docs/C_API_Guidelines.md).
-For making changes to the Windows Machine Learning WinRT API, please label your request as *api:WinML*, and someone from the Windows ML team will work with you. 
+For making changes to the Windows Machine Learning WinRT API, please label your request as *api:WinML*, and someone from the Windows ML team will work with you.
 
 5. **Implementation**
-* A feature can be implemented by you, the ONNX Runtime team, or other community members.  Code contributions are greatly appreciated: feel free to work on any reviewed feature you proposed, or choose one in the backlog and send us a PR. If you are new to the project and want to work on an existing issue, we recommend starting with issues that are tagged with “good first issue”. Please let us know in the issue comments if you are actively working on implementing a feature so we can ensure it's assigned to you.  
+* A feature can be implemented by you, the ONNX Runtime team, or other community members.  Code contributions are greatly appreciated: feel free to work on any reviewed feature you proposed, or choose one in the backlog and send us a PR. If you are new to the project and want to work on an existing issue, we recommend starting with issues that are tagged with “good first issue”. Please let us know in the issue comments if you are actively working on implementing a feature so we can ensure it's assigned to you.
 * Unit tests: New code *must* be accompanied by unit tests.
 * Documentation and sample updates: If the PR affects any of the documentation or samples then include those updates in the same PR.
-* Build instructions are [here](https://onnxruntime.ai/docs/how-to/build/).
-* Checkin Procedure:  Once a feature is complete and tested according to the contribution guidelines follow these steps:
-   * Fork the repo
-   * git clone your fork
-   * Create feature branch
-   * Make and checkin your changes along with unit tests
-   * git commit your changes
-   * git push origin HEAD
-   * To request merge into master, send a pull request from the [web ui](https://github.com/Microsoft/onnxruntime).
-  * Add 'Microsoft/onnxruntime' as a reviewer.
+* Build instructions are [here](https://onnxruntime.ai/docs/build/).
+* Once a feature is complete and tested according to the contribution guidelines follow these steps:
+  * Follow the [standard GitHub process to open a pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests)
+  * Add reviewers who have context from the earlier discussion. If you can't find a reviewer, add 'microsoft/onnxruntime'.
 * Binaries: We periodically produce signed prerelease binaries from the master branch to validate new features and APIs.  After the feature has been sufficiently validated as part of a prerelease package we will include it in the next stable binary release.
 * Note: After creating a pull request, you might not see a build getting triggered right away. One of the
 onnxruntime team members will trigger the build for you.

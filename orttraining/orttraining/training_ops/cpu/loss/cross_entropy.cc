@@ -203,7 +203,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
     const TensorShape weight_shape{weight.Shape()};
     ORT_ENFORCE(weight_shape == label_shape, "The shape of weight and label is different");
     const float* weight_data = weight.template Data<float>();
-    for (int i = 0; i < n; i++) {
+    for (ptrdiff_t i = 0; i < n; i++) {
       loss_sample[i] = -log_prob_data[i * d + label_data[i]] * weight_data[i];
     }
 
@@ -217,7 +217,7 @@ Status SparseSoftmaxCrossEntropy<T>::Compute(OpKernelContext* context) const {
       *loss_data /= sum_weight;
     }
   } else {
-    for (int i = 0; i < n; i++) {
+    for (ptrdiff_t i = 0; i < n; i++) {
       loss_sample[i] = -log_prob_data[i * d + label_data[i]];
     }
     // Sum loss over n samples

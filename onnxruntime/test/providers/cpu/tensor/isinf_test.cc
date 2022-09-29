@@ -9,13 +9,13 @@
 namespace onnxruntime {
 namespace test {
 
-const float FLOAT_INF = std::numeric_limits<float>::infinity();
-const float FLOAT_NINF = -std::numeric_limits<float>::infinity();
-const float FLOAT_NAN = std::numeric_limits<float>::quiet_NaN();
+constexpr float FLOAT_INF = std::numeric_limits<float>::infinity();
+constexpr float FLOAT_NINF = -std::numeric_limits<float>::infinity();
+constexpr float FLOAT_NAN = std::numeric_limits<float>::quiet_NaN();
 
-const double DOUBLE_INF = std::numeric_limits<double>::infinity();
-const double DOUBLE_NINF = -std::numeric_limits<double>::infinity();
-const double DOUBLE_NAN = std::numeric_limits<double>::quiet_NaN();
+constexpr double DOUBLE_INF = std::numeric_limits<double>::infinity();
+constexpr double DOUBLE_NINF = -std::numeric_limits<double>::infinity();
+constexpr double DOUBLE_NAN = std::numeric_limits<double>::quiet_NaN();
 
 TEST(IsInfTest, test_isinf_float) {
   // Defaults for detect_negative = 1

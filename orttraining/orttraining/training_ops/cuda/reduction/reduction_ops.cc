@@ -94,8 +94,8 @@ Status ReduceKernel<true>::ComputeImplEx<int32_t, CUDNN_REDUCE_TENSOR_NO_INDICES
 
   int64_t input_count = prepare_reduce_metadata.input_count;
   int64_t output_count = prepare_reduce_metadata.output_count;
-  std::vector<int64_t>& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;
-  std::vector<int64_t>& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
+  auto& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;
+  auto& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
 
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {

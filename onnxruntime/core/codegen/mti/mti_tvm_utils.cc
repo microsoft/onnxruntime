@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Array<tvm::Expr> ToTvmArray(const std::vector<int64_t>& shape) {
+tvm::Array<tvm::Expr> ToTvmArray(gsl::span<const int64_t> shape) {
   tvm::Array<tvm::Expr> arr;
   for (size_t i = 0; i < shape.size(); ++i) {
     arr.push_back(tvm::Expr(static_cast<int32_t>(shape[i])));
@@ -19,7 +19,7 @@ tvm::Array<tvm::Expr> ToTvmArray(const std::vector<int64_t>& shape) {
   return arr;
 }
 
-tvm::Array<tvm::Integer> ToTvmArrayInt(const std::vector<int64_t>& shape) {
+tvm::Array<tvm::Integer> ToTvmArrayInt(gsl::span<const int64_t> shape) {
   tvm::Array<tvm::Integer> arr;
   for (size_t i = 0; i < shape.size(); ++i) {
     arr.push_back(shape[i]);

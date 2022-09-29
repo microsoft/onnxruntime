@@ -271,7 +271,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.ComputeExpF32Kernel(Input, Output, N);
+    GetMlasPlatform().ComputeExpF32Kernel(Input, Output, N);
 #else
     MlasComputeExpF32Kernel(Input, Output, N);
 #endif
@@ -850,7 +850,7 @@ Return Value:
         //
 
 #if defined(MLAS_TARGET_AMD64)
-        float Maximum = MlasPlatform.ReduceMaximumF32Kernel(Input, D);
+        float Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
 #else
         float Maximum = MlasReduceMaximumF32Kernel(Input, D);
 #endif
@@ -863,7 +863,7 @@ Return Value:
             //
 
 #if defined(MLAS_TARGET_AMD64)
-            float Accumulation = MlasPlatform.ComputeSumExpF32Kernel(Input, nullptr, D, &NegativeMaximum);
+            float Accumulation = GetMlasPlatform().ComputeSumExpF32Kernel(Input, nullptr, D, &NegativeMaximum);
 #else
             float Accumulation = MlasComputeSumExpF32Kernel(Input, nullptr, D, &NegativeMaximum);
 #endif
@@ -875,7 +875,7 @@ Return Value:
             float Parameters[] = { NegativeMaximum, std::log(Accumulation)};
 
 #if defined(MLAS_TARGET_AMD64)
-            MlasPlatform.ComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
+            GetMlasPlatform().ComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
 #else
             MlasComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
 #endif
@@ -888,7 +888,7 @@ Return Value:
             //
 
 #if defined(MLAS_TARGET_AMD64)
-            float Accumulation = MlasPlatform.ComputeSumExpF32Kernel(Input, Output, D, &NegativeMaximum);
+            float Accumulation = GetMlasPlatform().ComputeSumExpF32Kernel(Input, Output, D, &NegativeMaximum);
 #else
             float Accumulation = MlasComputeSumExpF32Kernel(Input, Output, D, &NegativeMaximum);
 #endif
@@ -900,7 +900,7 @@ Return Value:
             float Parameters[] = { 1.0f / Accumulation };
 
 #if defined(MLAS_TARGET_AMD64)
-            MlasPlatform.ComputeSoftmaxOutputF32Kernel(Output, D, Parameters);
+            GetMlasPlatform().ComputeSoftmaxOutputF32Kernel(Output, D, Parameters);
 #else
             MlasComputeSoftmaxOutputF32Kernel(Output, D, Parameters);
 #endif

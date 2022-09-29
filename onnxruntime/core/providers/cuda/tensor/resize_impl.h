@@ -5,14 +5,14 @@
 #include <stdint.h>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/common/common.h"
-#include "core/providers/cpu/tensor/resize.h"
+#include "core/providers/cpu/tensor/upsamplebase.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 size_t CalcResizeBufferSize(const onnxruntime::UpsampleMode upsample_mode,
-                            const std::vector<int64_t>& output_dims);
+                            const gsl::span<const int64_t>& output_dims);
 
 template <typename T>
 void ResizeImpl(

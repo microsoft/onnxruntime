@@ -22,14 +22,12 @@ class InPlaceAccumulator final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-// Implementation can be found in cuda file, optimizers_impl.cu
 template <typename T, typename T_GRAD>
-void InPlaceAccumulatorImpl(
-    cudaStream_t stream,
-    const T* gradient_buffer,
-    const T_GRAD* gradient,
-    T* accumulated_gradient,
-    size_t count);
+class InPlaceAccumulatorV2 final : public CudaKernel {
+ public:
+  InPlaceAccumulatorV2(const OpKernelInfo& info) : CudaKernel(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
 
 }  // namespace cuda
 }  // namespace onnxruntime

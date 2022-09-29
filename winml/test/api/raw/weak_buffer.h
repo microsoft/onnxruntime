@@ -10,14 +10,16 @@
 #include <windows.storage.streams.h>
 #include <robuffer.h>
 
-namespace Microsoft { namespace AI { namespace MachineLearning { namespace Details {
+namespace WinMLTest {
 
 template <typename T>
-struct weak_buffer
+struct WeakBuffer
     : public Microsoft::WRL::RuntimeClass<
           Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::WinRtClassicComMix | Microsoft::WRL::InhibitRoOriginateError>,
           ABI::Windows::Storage::Streams::IBuffer,
           Windows::Storage::Streams::IBufferByteAccess> {
+  InspectableClass(L"WinMLTest.WeakBuffer", BaseTrust)
+
 private:
     const T* m_p_begin;
     const T* m_p_end;
@@ -42,9 +44,13 @@ public:
     }
 
     virtual HRESULT STDMETHODCALLTYPE get_Length(
-        UINT32 * /*value*/)
+        UINT32 * value)
     {
-        return E_NOTIMPL;
+        if (value == nullptr) {
+            return E_POINTER;
+        }
+        *value = static_cast<uint32_t>(m_p_end - m_p_begin) * sizeof(T);
+        return S_OK;
     }
 
     virtual HRESULT STDMETHODCALLTYPE put_Length(
@@ -64,6 +70,6 @@ public:
     }
 };
 
-}}}} // namespace Microsoft::AI::MachineLearning::Details
+} // namespace WinMLTest
 
 #endif // WEAK_BUFFER_H

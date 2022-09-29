@@ -2,16 +2,19 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include "core/common/inlined_containers.h"
+
 namespace onnxruntime {
 
 // structure to hold some inputs and some metadata to be used during Compute()
 struct Prepare {
+  static constexpr size_t kExpectedNumberOfInputs = 5;
   struct InputInfo {
     const Tensor* tensor;
     int64_t axis_pitch;
     int64_t num_elements;
   };
-  std::vector<InputInfo> inputs;
+  InlinedVector<InputInfo, kExpectedNumberOfInputs> inputs;
   int64_t output_num_elements;
   int64_t output_axis_pitch;
   Tensor* output_tensor;
@@ -23,7 +26,8 @@ class ConcatBase {
  public:
   // the core method that will be invoked by the 'Concat' (CPU and GPU)
   // and 'ConcatFromSequence' kernels
-  Status PrepareForCompute(OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors,
+  using InlinedTensorsVector = InlinedVector<const Tensor*, Prepare::kExpectedNumberOfInputs>;
+  Status PrepareForCompute(OpKernelContext* ctx, const InlinedTensorsVector& input_tensors,
                            Prepare& p) const;
 
  protected:

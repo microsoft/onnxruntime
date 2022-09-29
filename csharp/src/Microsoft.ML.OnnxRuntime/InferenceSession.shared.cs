@@ -40,7 +40,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Dictionary that represents overridableInitializers metadata
         /// </summary>
         private Dictionary<string, NodeMetadata> _overridableInitializerMetadata;
-		
+
         private SessionOptions _builtInSessionOptions = null;
         private RunOptions _builtInRunOptions = null;
         private ModelMetadata _modelMetadata = null;
@@ -773,14 +773,14 @@ namespace Microsoft.ML.OnnxRuntime
 
             if (prepackedWeightsContainer == null)
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath),
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
                     options.Handle, out session));
             }
 
             else
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionWithPrepackedWeightsContainer(
-                    envHandle, NativeMethods.GetPlatformSerializedString(modelPath),
+                    envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
                     options.Handle, prepackedWeightsContainer.Pointer, out session));
             }
 
@@ -998,9 +998,15 @@ namespace Microsoft.ML.OnnxRuntime
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(tensorInfo, out el_type));
                 type = (TensorElementType)el_type;
             }
+
             Type dotnetType = null;
             int width = 0;
-            TensorElementTypeConverter.GetTypeAndWidth(type, out dotnetType, out width);
+            if (!TensorElementTypeConverter.GetTypeAndWidth(type, out dotnetType, out width))
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                    "Unable to query type information for data type: " + type.ToString());
+            }
+
             UIntPtr numDimensions;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetDimensionsCount(tensorInfo, out numDimensions));
 

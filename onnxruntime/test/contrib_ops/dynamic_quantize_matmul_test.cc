@@ -46,7 +46,7 @@ void TestDynamicQuantizeMatMul(const std::vector<int64_t>& A_dims,
   std::for_each(B_zero_point.begin(),
                 B_zero_point.end(),
                 [&random](T& zp) {
-                  zp = static_cast<T>(random.Uniform<int32_t>({1}, std::numeric_limits<T>::min(), std::numeric_limits<T>::max())[0]);
+                  zp = static_cast<T>(random.Uniform<int32_t>(std::array<int64_t, 1>{1}, std::numeric_limits<T>::min(), std::numeric_limits<T>::max())[0]);
                 });
 
   std::vector<float> Bias = random.Uniform<float>({B_dims.back()}, -0.1f, 0.1f);

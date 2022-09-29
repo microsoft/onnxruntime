@@ -8,7 +8,8 @@
 class OnnxModelInfo : public TestModelInfo {
  private:
   std::string node_name_;
-  std::string onnx_commit_tag_;
+  // Due to performance, the opset version is get from directory name, so it's nominal
+  std::string onnx_nominal_opset_vesion_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> input_value_info_;
   std::vector<ONNX_NAMESPACE::ValueInfoProto> output_value_info_;
   std::unordered_map<std::string, int64_t> domain_to_version_;
@@ -18,9 +19,7 @@ class OnnxModelInfo : public TestModelInfo {
   void InitOnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
   void InitOrtModelInfo(_In_ const PATH_CHAR_TYPE* model_url);
-#endif
 
  public:
   OnnxModelInfo(_In_ const PATH_CHAR_TYPE* model_url, bool is_ort_model = false);
@@ -34,7 +33,7 @@ class OnnxModelInfo : public TestModelInfo {
   }
 
   const PATH_CHAR_TYPE* GetModelUrl() const override { return model_url_.c_str(); }
-  std::string GetModelVersion() const override { return onnx_commit_tag_; }
+  std::string GetNominalOpsetVersion() const override { return onnx_nominal_opset_vesion_;  }
 
   const std::string& GetNodeName() const override { return node_name_; }
 

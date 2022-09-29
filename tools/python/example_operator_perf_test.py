@@ -3,18 +3,19 @@ Example python code for creating a model with a single operator and performance 
 input combinations.
 """
 
-import onnx
-from onnx import helper
-from onnx import TensorProto
-import numpy as np
 import time
 import timeit
-import onnxruntime as rt
+
+import numpy as np
+import onnx
 
 # if you copy this script elsewhere you may need to add the tools\python dir to the sys.path for this
 # import to work.
 # e.g. sys.path.append(r'<path to onnxruntime source>\tools\python')
 import ort_test_dir_utils
+from onnx import TensorProto, helper
+
+import onnxruntime as rt
 
 # make input deterministic
 np.random.seed(123)
@@ -26,22 +27,26 @@ np.random.seed(123)
 def create_model(model_name):
     graph_def = helper.make_graph(
         nodes=[
-            helper.make_node(op_type="TopK", inputs=['X', 'K'], outputs=['Values', 'Indices'], name='topk',
-                             # attributes are also key-value pairs using the attribute name and appropriate type
-                             largest=1),
+            helper.make_node(
+                op_type="TopK",
+                inputs=["X", "K"],
+                outputs=["Values", "Indices"],
+                name="topk",
+                # attributes are also key-value pairs using the attribute name and appropriate type
+                largest=1,
+            ),
         ],
-        name='test-model',
+        name="test-model",
         inputs=[
             # create inputs with symbolic dims so we can use any input sizes
-            helper.make_tensor_value_info("X", TensorProto.FLOAT, ['batch', 'items']),
+            helper.make_tensor_value_info("X", TensorProto.FLOAT, ["batch", "items"]),
             helper.make_tensor_value_info("K", TensorProto.INT64, [1]),
         ],
         outputs=[
-            helper.make_tensor_value_info("Values", TensorProto.FLOAT, ['batch', 'k']),
-            helper.make_tensor_value_info("Indices", TensorProto.INT64, ['batch', 'k']),
+            helper.make_tensor_value_info("Values", TensorProto.FLOAT, ["batch", "k"]),
+            helper.make_tensor_value_info("Indices", TensorProto.INT64, ["batch", "k"]),
         ],
-        initializer=[
-        ]
+        initializer=[],
     )
 
     model = helper.make_model(graph_def, opset_imports=[helper.make_operatorsetid("", 11)])
@@ -56,7 +61,7 @@ def create_model(model_name):
 def create_test_input(n, num_items, k):
     x = np.random.randn(n, num_items).astype(np.float32)
     k_in = np.asarray([k]).astype(np.int64)
-    inputs = {'X': x, 'K': k_in}
+    inputs = {"X": x, "K": k_in}
 
     return inputs
 
@@ -98,12 +103,12 @@ def run_perf_tests(model_path, num_threads=1):
                 # ignore the outputs as we're not validating them in a performance test
                 sess.run(None, inputs)
             end = time.time_ns()
-            assert (end - start > 0)
+            assert end - start > 0
             total += end - start
             total_iters += iters
 
         # Adjust the output you want as needed
-        print('n={},items={},k={},avg:{:.4f}'.format(n, num_items, k, total / total_iters))
+        print("n={},items={},k={},avg:{:.4f}".format(n, num_items, k, total / total_iters))
 
     # combine the various input parameters and create input for each test
     for n in batches:
@@ -126,21 +131,21 @@ def create_example_test_directory():
 
     # fill in the inputs that we want to use specific values for
     input_data = {}
-    input_data['K'] = np.asarray([64]).astype(np.int64)
+    input_data["K"] = np.asarray([64]).astype(np.int64)
 
     # provide symbolic dim values as needed
-    symbolic_dim_values = {'batch': 25, 'items': 256}
+    symbolic_dim_values = {"batch": 25, "items": 256}
 
     # create the directory. random input will be created for any missing inputs.
     # the model will be run and the output will be saved as expected output for future runs
-    ort_test_dir_utils.create_test_dir('topk.onnx', 'PerfTests', 'test1', input_data, symbolic_dim_values)
+    ort_test_dir_utils.create_test_dir("topk.onnx", "PerfTests", "test1", input_data, symbolic_dim_values)
 
 
 # this will create the model file in the current directory
-create_model('topk.onnx')
+create_model("topk.onnx")
 
 # this will create a test directory that can be used with onnx_test_runner or onnxruntime_perf_test
 create_example_test_directory()
 
 # this can loop over various combinations of input, using the specified number of threads
-run_perf_tests('topk.onnx', 1)
+run_perf_tests("topk.onnx", 1)

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cuda_fp16.h>
+#include "core/framework/float16.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -17,10 +18,8 @@ template <>
 struct AccumulationType<float> { using type = float; };
 template <>
 struct AccumulationType<double> { using type = double; };
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 template <>
-struct AccumulationType<nv_bfloat16> { using type = float; };
-#endif
+struct AccumulationType<BFloat16> { using type = float; };
 
 template <typename T>
 using AccumulationType_t = typename AccumulationType<T>::type;

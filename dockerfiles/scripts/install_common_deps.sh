@@ -16,6 +16,8 @@ rm ~/miniconda.sh
 /opt/miniconda/bin/conda clean -ya
 
 pip install numpy
+pip install packaging
+pip install "wheel>=0.35.1"
 rm -rf /opt/miniconda/pkgs
 
 # Dependencies: cmake

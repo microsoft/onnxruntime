@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "core/common/inlined_containers.h"
+
 namespace onnxruntime {
 
 enum class Mode : int {
@@ -13,6 +15,9 @@ enum class Mode : int {
 
 class PadBase {
  public:
+  // Pads and slices are usually about twice the shapes involved
+  using PadsVector = InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize * 2>;
+
   // Update the output_shape to make it consistent with numpy handling where there are one or more dimensions
   // in the input_shape with a value of zero.
   static Status HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape);
@@ -42,9 +47,10 @@ class PadBase {
     }
 
     if (!is_dynamic_) {
-      if (!info.GetAttrs("pads", pads_).IsOK())
+      gsl::span<const int64_t> pads_span;
+      if (!info.GetAttrsAsSpan("pads", pads_span).IsOK())
         ORT_THROW("Invalid 'pads' attribute value");
-
+      pads_.assign(pads_span.cbegin(), pads_span.cend());
       // Separate out any negative pads_ into the slices_ array
       slices_.resize(pads_.size(), 0);
       for (size_t index = 0; index < pads_.size(); index++) {
@@ -59,8 +65,8 @@ class PadBase {
   ~PadBase() = default;
 
   Mode mode_{Mode::Constant};
-  std::vector<int64_t> pads_;    // After construction, only >=0 values are in here
-  std::vector<int64_t> slices_;  // All of the negative padding values are separated out into slices_
+  PadsVector pads_;              // After construction, only >=0 values are in here
+  PadsVector slices_;  // All of the negative padding values are separated out into slices_
   const float value_;            // will always be float (when 'value' parsed from attribute - opset 10 and below)
 
   // flag used to differentiate the cases where some input values to the op are

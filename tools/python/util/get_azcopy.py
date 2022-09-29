@@ -27,9 +27,7 @@ _log = logging.getLogger("util.get_azcopy")
 
 
 def _check_version(azcopy_path):
-    proc = subprocess.run(
-        [azcopy_path, "--version"],
-        stdout=subprocess.PIPE, universal_newlines=True)
+    proc = subprocess.run([azcopy_path, "--version"], stdout=subprocess.PIPE, universal_newlines=True)
     match = re.search(r"\d+(?:\.\d+)+", proc.stdout)
 
     if not match:
@@ -62,12 +60,10 @@ def get_azcopy(local_azcopy_path="azcopy"):
         azcopy_path = shutil.which(local_azcopy_path)
 
         if azcopy_path is None or not _check_version(azcopy_path):
-            temp_dir = context_stack.enter_context(
-                tempfile.TemporaryDirectory())
+            temp_dir = context_stack.enter_context(tempfile.TemporaryDirectory())
 
             download_url = _AZCOPY_DOWNLOAD_URLS[platform.system()]
-            download_basename = urllib.parse.urlsplit(
-                download_url).path.rsplit("/", 1)[-1]
+            download_basename = urllib.parse.urlsplit(download_url).path.rsplit("/", 1)[-1]
             assert len(download_basename) > 0
             downloaded_path = os.path.join(temp_dir, download_basename)
 

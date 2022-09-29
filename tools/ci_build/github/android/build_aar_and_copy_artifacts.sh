@@ -28,7 +28,6 @@ else
 fi
 
 # Copy the built artifacts to give folder for publishing
-PACKAGE_NAME=onnxruntime-mobile
 BASE_PATH=/build/aar_out/${BUILD_CONFIG}/com/microsoft/onnxruntime/${PACKAGE_NAME}/${ORT_VERSION}
 cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}-javadoc.jar  /home/onnxruntimedev/.artifacts
 cp ${BASE_PATH}/${PACKAGE_NAME}-${ORT_VERSION}-sources.jar  /home/onnxruntimedev/.artifacts

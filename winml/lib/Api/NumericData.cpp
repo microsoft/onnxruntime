@@ -19,10 +19,10 @@ std::shared_ptr<_winml::idata> numeric_data::create(
 
 numeric_data::numeric_data(
   size_t num_elements, size_t element_size_in_bytes, wfc::IIterable<wss::IBuffer> const& buffers) :
-  num_elements_(num_elements),
-  element_size_in_bytes_(element_size_in_bytes),
   combined_buffer_(nullptr),
-  buffers_() {
+  buffers_(),
+  num_elements_(num_elements),
+  element_size_in_bytes_(element_size_in_bytes) {
   if (buffers != nullptr) {
     buffers_ = { begin(buffers), end(buffers) };
   }

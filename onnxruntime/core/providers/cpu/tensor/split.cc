@@ -5,9 +5,9 @@
 
 #include "gsl/gsl"
 
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -22,23 +22,15 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
-using SplitDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
 using EnabledSplitDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
-
-using OldSplitDataTypes = onnxruntime::TypeList<float, int32_t, int64_t, uint8_t, std::string>;
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Split,
     2,
     10,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
-                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>())
-        .FixedTypeConstraintForHash(
-            "T",
-            BuildKernelDefConstraintsFromTypeList<OldSplitDataTypes>()),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
 // Opset 11 starts to support Neg Axis.
@@ -47,11 +39,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
-                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>())
-        .FixedTypeConstraintForHash(
-            "T",
-            BuildKernelDefConstraintsFromTypeList<OldSplitDataTypes>()),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
 // Opset 13 starts to supports 'split' as optional input.
@@ -59,17 +47,13 @@ ONNX_CPU_OPERATOR_KERNEL(
     Split,
     13,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
-                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>())
-        .FixedTypeConstraintForHash(
-            "T",
-            BuildKernelDefConstraintsFromTypeList<OldSplitDataTypes>()),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
 Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                     int& after_dims_including_split_axis, int& after_dims_excluding_split,
                                     std::vector<int64_t>& split_sizes) const {
-  auto& input_dims = input_shape.GetDims();
+  auto input_dims = input_shape.GetDims();
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   axis = HandleNegativeAxis(axis_, num_dimensions);  // handle negative and enforce axis is valid
   const int64_t split_dim_size = input_dims[axis];
@@ -159,7 +143,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
     //override the attribute value with the input value for split
     ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
-    const auto* data = split_tensor->template Data<int64_t>();
+    const auto* data = split_tensor->Data<int64_t>();
     split_sizes.assign(data, data + nDims);
   } else {
     split_sizes.assign(split_sizes_.begin(), split_sizes_.end());
@@ -173,11 +157,10 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
                                         split_sizes));
 
   // copy dimensions so we can update the selected axis in place
-  auto& input_dims = input_shape.GetDims();
-  std::vector<int64_t> output_dimensions{input_dims};
+  auto output_dimensions = input_shape.AsShapeVector();
 
   int64_t input_offset = 0;
-  const T* input_data = input.template Data<T>();
+  const T* input_data = input.Data<T>();
 
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on
@@ -185,7 +168,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
     output_dimensions[axis] = split_size;
 
     Tensor* output = context.Output(i, TensorShape{output_dimensions});
-    T* output_data = output->template MutableData<T>();
+    T* output_data = output->MutableData<T>();
 
     ::onnxruntime::math::CopyMatrix<T>(
         before_dims,                                       // M
@@ -198,7 +181,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
           copy_data<T>(src, dst, count);
         });
 
-    input_offset += split_size * after_dims_excluding_split;  // offset by the N data we used in this iteration
+    input_offset += static_cast<int64_t>(split_size) * after_dims_excluding_split;  // offset by the N data we used in this iteration
   }
 
   return Status::OK();

@@ -91,15 +91,14 @@ void MaxPoolWithIndex(
     cudaStream_t stream,
     const TensorShape& input_shape,
     const TensorShape& output_shape,
-    const std::vector<int64_t>& kernel_shape,
-    const std::vector<int64_t>& stride_shape,
-    const std::vector<int64_t>& pads,
-    const std::vector<int64_t>& dilations,
+    const gsl::span<const int64_t>& kernel_shape,
+    const gsl::span<const int64_t>& stride_shape,
+    const gsl::span<const int64_t>& pads,
+    const gsl::span<const int64_t>& dilations,
     int64_t storage_order,
     const T* p_input,
     T* p_output,
     int64_t* p_indices) {
-
   int64_t batchs = input_shape[0];
   int64_t channels = input_shape[1];
   int64_t height = input_shape[2];
@@ -163,18 +162,18 @@ void MaxPoolWithIndex(
       p_indices);
 }
 
-#define INSTANTIATEMAXPOOLWITHINDEX(T)          \
-  template void MaxPoolWithIndex<T>(            \
-      cudaStream_t stream,                \
-      const TensorShape& input_shape,           \
-      const TensorShape& output_shape,          \
-      const std::vector<int64_t>& kernel_shape, \
-      const std::vector<int64_t>& stride_shape, \
-      const std::vector<int64_t>& pads,         \
-      const std::vector<int64_t>& dilations,    \
-      int64_t storage_order,                    \
-      const T* p_input,                         \
-      T* p_output,                              \
+#define INSTANTIATEMAXPOOLWITHINDEX(T)              \
+  template void MaxPoolWithIndex<T>(                \
+      cudaStream_t stream,                          \
+      const TensorShape& input_shape,               \
+      const TensorShape& output_shape,              \
+      const gsl::span<const int64_t>& kernel_shape, \
+      const gsl::span<const int64_t>& stride_shape, \
+      const gsl::span<const int64_t>& pads,         \
+      const gsl::span<const int64_t>& dilations,    \
+      int64_t storage_order,                        \
+      const T* p_input,                             \
+      T* p_output,                                  \
       int64_t* p_indices);
 
 INSTANTIATEMAXPOOLWITHINDEX(float)

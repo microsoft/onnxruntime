@@ -18,6 +18,9 @@ struct OrtThreadPoolParams {
   bool auto_set_affinity = false;
   //If it is true, the thread pool will spin a while after the queue became empty.
   bool allow_spinning = true;
+  //It it is non-negative, thread pool will split a task by a decreasing block size
+  //of remaining_of_total_iterations / (num_of_threads * dynamic_block_base_)
+  int dynamic_block_base_ = 0;
 
   unsigned int stack_size = 0;
   //Index is thread id, value is processor ID
@@ -28,6 +31,11 @@ struct OrtThreadPoolParams {
 
   // Set or unset denormal as zero
   bool set_denormal_as_zero = false;
+
+  // members to manage custom threads
+  OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
+  void* custom_thread_creation_options = nullptr;
+  OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
 };
 
 struct OrtThreadingOptions {

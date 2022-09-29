@@ -20,6 +20,7 @@
 #include "core/platform/path_lib.h"
 #include "orttraining/core/framework/protobuf_message_sequence.h"
 #include "core/util/protobuf_parsing_utils.h"
+#include "orttraining/core/framework/checkpoint_common.h"
 
 namespace onnxruntime {
 namespace training {
@@ -70,7 +71,7 @@ Status SaveRuntimeTensor(
   };
 
   // TODO is the encoding correct? https://github.com/onnx/onnx/issues/2392
-  add_external_data("location", ToMBString(relative_data_path));
+  add_external_data("location", ToUTF8String(relative_data_path));
   const std::streamoff offset = data_file.tellp();
   add_external_data("offset", std::to_string(offset));
   const auto length = tensor_data.size_bytes();
@@ -80,39 +81,17 @@ Status SaveRuntimeTensor(
 
   // TODO need to ensure the data is written in little-endian format...
   // e.g., with endian_utils.h:WriteLittleEndian()
-  // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/framework/endian_utils.h
+  // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/framework/endian_utils.h
   if constexpr (endian::native != endian::little) {
     ORT_NOT_IMPLEMENTED("checkpointing currently requires little-endian host byte order");
   }
 
   ORT_RETURN_IF_NOT(
       data_file.write(tensor_data.data(), length),
-      "Failed to write to data file: ", ToMBString(relative_data_path));
+      "Failed to write to data file: ", ToUTF8String(relative_data_path));
 
   tensor_proto = std::move(saved_tensor_proto);
   return Status::OK();
-}
-
-// opens file descriptor and calls use_fn
-//   use_fn should have this signature: Status use_fn(int file_descriptor)
-template <typename TUseFileFn>
-Status WithOpenFile(const PathString& path, bool readonly, TUseFileFn use_fn) {
-  int fd;
-  if (readonly) {
-    ORT_RETURN_IF_ERROR(Env::Default().FileOpenRd(path, fd));
-  } else {
-    ORT_RETURN_IF_ERROR(Env::Default().FileOpenWr(path, fd));
-  }
-
-  Status use_fn_status{};
-  try {
-    use_fn_status = use_fn(fd);
-  } catch (std::exception& e) {
-    use_fn_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
-  }
-
-  Status close_status = Env::Default().FileClose(fd);
-  return !use_fn_status.IsOK() ? use_fn_status : close_status;
 }
 
 std::vector<std::string> GetOrderedOrtValueNames(const NameMLValMap& name_to_value) {
@@ -207,7 +186,7 @@ Status SaveModelCheckpoint(
     const DataTransferManager& data_transfer_manager,
     const NameMLValMap& runtime_tensors,
     const std::unordered_map<std::string, std::string>& properties) {
-  LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToMBString(checkpoint_path);
+  LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
 
   LOGS_DEFAULT_IF(Env::Default().FolderExists(checkpoint_path), WARNING)
       << "Checkpoint directory exists - data may be overwritten.";
@@ -245,7 +224,7 @@ Status UpdateTensorsExternalDataLocations(
     ORT_RETURN_IF_NOT(location_it != external_data.end(), "location_it == external_data.end()");
 
     // TODO is the encoding correct? https://github.com/onnx/onnx/issues/2392
-    location_it->set_value(ToMBString(external_data_path));
+    location_it->set_value(ToUTF8String(external_data_path));
   }
 
   return Status::OK();
@@ -257,7 +236,7 @@ Status LoadModelCheckpoint(
     const PathString& model_path,
     std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
     std::unordered_map<std::string, std::string>& properties) {
-  LOGS_DEFAULT(INFO) << "Loading model checkpoint files from " << ToMBString(checkpoint_path);
+  LOGS_DEFAULT(INFO) << "Loading model checkpoint files from " << ToUTF8String(checkpoint_path);
 
   // read tensors file
   std::vector<ONNX_NAMESPACE::TensorProto> loaded_tensor_protos{};

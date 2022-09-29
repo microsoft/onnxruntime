@@ -15,6 +15,7 @@
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
+#include "asserts.h"
 #include "test_utils.h"
 #include "file_util.h"
 #include "default_providers.h"
@@ -95,8 +96,8 @@ This operator constructs a sparse tensor from three tensors that provide a COO
   }
 
   /**
- *  @brief An implementation of the SparseFromCOO op.
- */
+   *  @brief An implementation of the SparseFromCOO op.
+   */
   class OpKernelImpl final : public OpKernel {
    public:
     OpKernelImpl(const OpKernelInfo& info) : OpKernel{info} {}
@@ -147,13 +148,10 @@ This operator constructs a sparse tensor from three tensors that provide a COO
   static KernelDefBuilder KernelDef() {
     KernelDefBuilder def;
     def.SetName(SparseFromCOO::OpName())
-        .TypeConstraint("values", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("indices", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>())
 #if !defined(DISABLE_SPARSE_TENSORS)
-        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("sparse_rep", DataTypeImpl::GetSparseTensorType<int64_t>());
-#else
-        .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>());
+        .TypeConstraint("T", DataTypeImpl::GetSparseTensorType<int64_t>());
 #endif
     return def;
   }
@@ -264,7 +262,7 @@ struct SparseToValues {
     return schema;
   }
 
-  //  A kernel implementation of SparseToValues
+  // A kernel implementation of SparseToValues
   class OpKernelImpl final : public OpKernel {
    public:
     OpKernelImpl(const OpKernelInfo& info) : OpKernel{info} {}
@@ -294,8 +292,8 @@ struct SparseToValues {
     KernelDefBuilder def;
 #if !defined(DISABLE_SPARSE_TENSORS)
     def.SetName(OpName())
-        .TypeConstraint("sparse_rep", DataTypeImpl::GetSparseTensorType<int64_t>())
-        .TypeConstraint("values", DataTypeImpl::GetTensorType<int64_t>());
+        .TypeConstraint("T1", DataTypeImpl::GetSparseTensorType<int64_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>());
 #endif
     return def;
   }
@@ -313,10 +311,12 @@ class SparseTensorTests : public testing::Test {
   std::vector<Action> register_actions;
   std::vector<TypeProto> types;
 
- public:
   SparseTensorTests() : session_object(SessionOptions(), GetEnvironment()),
                         registry(std::make_shared<CustomRegistry>()) {
-    EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
+  }
+
+  void SetUp() override {
+    ASSERT_STATUS_OK(session_object.RegisterCustomRegistry(registry));
   }
 
   template <typename Op>
@@ -333,14 +333,14 @@ class SparseTensorTests : public testing::Test {
           .SetDomain(onnxruntime::kMLDomain)
           .SinceVersion(10)
           .Provider(onnxruntime::kCpuExecutionProvider);
-      KernelCreateFn kernel_create_fn = [](const OpKernelInfo& info) { return new typename Op::OpKernelImpl(info); };
-      EXPECT_TRUE(registry2->RegisterCustomKernel(kernel_def_builder, kernel_create_fn).IsOK());
+      KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) { out = std::make_unique<typename Op::OpKernelImpl>(info); return Status::OK(); };
+      ASSERT_STATUS_OK(registry2->RegisterCustomKernel(kernel_def_builder, kernel_create_fn));
     };
     register_actions.push_back(register_kernel);
   }
 
   void RegisterOps() {
-    EXPECT_TRUE(registry->RegisterOpSet(schemas, onnxruntime::kMLDomain, 10, 11).IsOK());
+    ASSERT_STATUS_OK(registry->RegisterOpSet(schemas, onnxruntime::kMLDomain, 10, 11));
     for (auto& registerop : register_actions)
       registerop(registry.get());
   }
@@ -357,8 +357,8 @@ class SparseTensorTests : public testing::Test {
     auto model_proto = model->ToProto();
     EXPECT_TRUE(model_proto.SerializeToString(&serialized_model));
     std::stringstream sstr(serialized_model);
-    EXPECT_TRUE(session_object.Load(sstr).IsOK());
-    EXPECT_TRUE(session_object.Initialize().IsOK());
+    ASSERT_STATUS_OK(session_object.Load(sstr));
+    ASSERT_STATUS_OK(session_object.Initialize());
   }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -438,7 +438,7 @@ class SparseTensorTests : public testing::Test {
     RunOptions run_options;
     std::vector<OrtValue> fetches;
 
-    EXPECT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
+    ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
 
     ASSERT_EQ(expected_output.size(), fetches.size());
     for (size_t i = 0; i < fetches.size(); ++i) {
@@ -481,7 +481,7 @@ TEST_F(SparseTensorTests, Test1) {
 
   // Check graph, serialize it and deserialize it back
   Graph& graph = model->MainGraph();
-  EXPECT_TRUE(graph.Resolve().IsOK());
+  ASSERT_STATUS_OK(graph.Resolve());
   SerializeAndLoad();
 
   // Run the model
@@ -525,7 +525,7 @@ TEST_F(SparseTensorTests, Test2) {
 
   // Check graph, serialize it and deserialize it back
   Graph& graph = model->MainGraph();
-  EXPECT_TRUE(graph.Resolve().IsOK());
+  ASSERT_STATUS_OK(graph.Resolve());
   SerializeAndLoad();
 
   // Run the model
@@ -537,16 +537,16 @@ TEST_F(SparseTensorTests, Test2) {
 }
 
 TEST(SparseCrcsFormatTests, Test1) {
-  //const std::vector<float> input_data = {
-  //    0, 1, 2, 0, 0, 0, 3, 4, 5,
-  //    6, 7, 8, 0, 0, 0, 9, 10, 11,
-  //    12, 13, 14, 0, 0, 0, 15, 16, 17,
-  //    0, 0, 0, 18, 19, 20, 21, 22, 23,
-  //    0, 0, 0, 24, 25, 26, 27, 28, 29,
-  //    0, 0, 0, 30, 31, 32, 33, 34, 35,
-  //    36, 37, 38, 39, 40, 41, 0, 0, 0,
-  //    42, 43, 44, 45, 46, 47, 0, 0, 0,
-  //    48, 49, 50, 51, 52, 53, 0, 0, 0};
+  // const std::vector<float> input_data = {
+  //     0, 1, 2, 0, 0, 0, 3, 4, 5,
+  //     6, 7, 8, 0, 0, 0, 9, 10, 11,
+  //     12, 13, 14, 0, 0, 0, 15, 16, 17,
+  //     0, 0, 0, 18, 19, 20, 21, 22, 23,
+  //     0, 0, 0, 24, 25, 26, 27, 28, 29,
+  //     0, 0, 0, 30, 31, 32, 33, 34, 35,
+  //     36, 37, 38, 39, 40, 41, 0, 0, 0,
+  //     42, 43, 44, 45, 46, 47, 0, 0, 0,
+  //     48, 49, 50, 51, 52, 53, 0, 0, 0};
   auto* cpu_provider = TestCPUExecutionProvider();
   auto cpu_transfer = cpu_provider->GetDataTransfer();
 
@@ -664,7 +664,7 @@ static void CreateTensorWithExternalData(
   // set the tensor_proto to reference this external data
   onnx::StringStringEntryProto* location = tensor_proto.mutable_external_data()->Add();
   location->set_key("location");
-  location->set_value(ToMBString(filename));
+  location->set_value(ToUTF8String(filename));
   tensor_proto.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
   tensor_proto.set_data_type(type);
 }
@@ -698,7 +698,7 @@ struct InsertIndices {
     std::vector<int8_t> indices_data;
     insert_indices_data(indices_1D, values_size, shape_size, indices_data, indices_tp);
     indices_tp.set_data_type(utils::ToTensorProtoElementType<T>());
-    ORT_IF_CONSTEXPR (sizeof(T) == sizeof(int8_t)) {
+    if constexpr (sizeof(T) == sizeof(int8_t)) {
       indices_tp.mutable_raw_data()->assign(reinterpret_cast<const char*>(indices_data.data()), indices_data.size());
     } else {
       // Conversion on the fly to the target data type
@@ -823,8 +823,7 @@ static void TestConversion(
       TensorProto_DataType_INT8,
       TensorProto_DataType_INT16,
       TensorProto_DataType_INT32,
-      TensorProto_DataType_INT64
-  };
+      TensorProto_DataType_INT64};
 
   for (auto dt : indices_types) {
     TestConversion(true, dt, inserter, checker);
@@ -1037,7 +1036,7 @@ TensorProto CreateDenseTensor(size_t indices_start,
                               std::vector<T>& expected_values, std::vector<int64_t>& expected_indicies) {
   TensorProto result;
   std::vector<T> values = CreateSparseValues<T>(indices_start);
-  auto ind_start = static_cast<int64_t>(indices_start); 
+  auto ind_start = static_cast<int64_t>(indices_start);
   expected_indicies = {ind_start, ind_start + 1};
   for (const auto& ind : expected_indicies) {
     expected_values.push_back(values[ind]);
@@ -1110,11 +1109,11 @@ void RawSparseDataChecker<MLFloat16>(gsl::span<const MLFloat16> expected_bfloat,
 
 template <typename T>
 static void TestDenseToSparseConversionValues(size_t indices_start,
-    std::function<void(const std::vector<T>& values, TensorProto& tp)> inserter,
-    std::function<void(gsl::span<const T> expected,
-                       gsl::span<const int64_t> expected_indicies,
-                       const SparseTensorProto& actual)>
-        checker) {
+                                              std::function<void(const std::vector<T>& values, TensorProto& tp)> inserter,
+                                              std::function<void(gsl::span<const T> expected,
+                                                                 gsl::span<const int64_t> expected_indicies,
+                                                                 const SparseTensorProto& actual)>
+                                                  checker) {
   std::vector<T> expected_values;
   std::vector<int64_t> expected_indicies;
   // Path is required for loading external data
@@ -1291,7 +1290,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
   auto cpu_allocator = cpu_provider->GetAllocator(0, OrtMemTypeDefault);
 
-  const std::vector<int64_t> dense_shape{3, 3};
+  const TensorShape dense_shape{3, 3};
   std::vector<int32_t> dense_data = {
       0, 0, 1,
       1, 0, 1,
@@ -1435,7 +1434,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
                                                 gsl::make_span(expected_inner), gsl::make_span(expected_outer)));
     ASSERT_EQ(str_cpu_src.Format(), SparseFormat::kCsrc);
     ASSERT_TRUE(str_cpu_src.IsDataTypeString());
-    ASSERT_EQ(str_cpu_src.DenseShape().GetDims(), dense_shape);
+    ASSERT_EQ(str_cpu_src.DenseShape(), dense_shape);
     ASSERT_EQ(str_cpu_src.NumValues(), expected_values_str.size());
     auto values = str_cpu_src.Values().DataAsSpan<std::string>();
     ASSERT_TRUE(std::equal(expected_values_str.cbegin(), expected_values_str.cend(), values.cbegin(), values.cend()));
@@ -1510,7 +1509,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
   auto cpu_allocator = cpu_provider->GetAllocator(0, OrtMemTypeDefault);
 
-  const std::vector<int64_t> dense_shape{3, 3};
+  const TensorShapeVector dense_shape{3, 3};
   std::vector<int32_t> dense_data = {
       0, 0, 1,
       1, 0, 1,
@@ -1638,7 +1637,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
                                                 gsl::make_span(expected_linear_indices)));
     ASSERT_EQ(str_cpu_src.Format(), SparseFormat::kCoo);
     ASSERT_TRUE(str_cpu_src.IsDataTypeString());
-    ASSERT_EQ(str_cpu_src.DenseShape().GetDims(), dense_shape);
+    ASSERT_EQ(str_cpu_src.DenseShape(), TensorShape(dense_shape));
     ASSERT_EQ(str_cpu_src.NumValues(), expected_values_str.size());
     auto values = str_cpu_src.Values().DataAsSpan<std::string>();
     ASSERT_TRUE(std::equal(expected_values_str.cbegin(), expected_values_str.cend(), values.cbegin(), values.cend()));
@@ -1862,7 +1861,7 @@ TEST(SparseTensorConversionTests, BlockSparse) {
                            indices_span.cbegin(), indices_span.cend()));
   }
 }
-#endif  //  !defined(DISABLE_SPARSE_TENSORS)
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -14,7 +14,9 @@ struct NnApi;
 namespace onnxruntime {
 namespace nnapi {
 
+#if defined(__ANDROID__)
 #define USENNAPISHAREDMEM 1
+#endif
 
 class Execution;
 
@@ -55,6 +57,7 @@ class Model {
 #endif
 
  public:
+  Model();
   ~Model();
   Model(const Model&) = delete;
   Model& operator=(const Model&) = delete;
@@ -68,7 +71,7 @@ class Model {
   // Returns the data type and dimension of the given input/output
   // Please note the output type will have updated dimensions
   const android::nn::wrapper::OperandType& GetInputType(const std::string& name) const;
-  android::nn::wrapper::OperandType GetOutputType(const std::string& name, const Execution& execution) const;
+  android::nn::wrapper::OperandType GetOutputType(const std::string& name, const Execution& /* execution */) const;
 
   // Set the mapping between input/output name and ORT kernel context
   // input/output index, at execution time
@@ -103,7 +106,7 @@ class Model {
   // this output may need special handling
   bool IsScalarOutput(const std::string& output_name) const;
 
-  Status PrepareForExecution(std::unique_ptr<Execution>& execution) ORT_MUST_USE_RESULT;
+  common::Status PrepareForExecution(std::unique_ptr<Execution>& execution);
 
  private:
   const NnApi* nnapi_{nullptr};
@@ -121,8 +124,6 @@ class Model {
   std::unordered_map<std::string, android::nn::wrapper::OperandType> operand_types_;
   std::unordered_set<std::string> scalar_outputs_;
 
-  Shaper shaper_;
-
   std::unordered_map<std::string, size_t> input_map_;
   std::unordered_map<std::string, size_t> output_map_;
 
@@ -132,7 +133,6 @@ class Model {
 
   OrtMutex mutex_;
 
-  Model();
   void AddInput(const std::string& name, const android::nn::wrapper::OperandType& operand_type);
 
   // It is possible that the actual output from NNAPI model is not the same as the name of
@@ -142,8 +142,6 @@ class Model {
                  const android::nn::wrapper::OperandType& operand_type);
 
   void AddScalarOutput(const std::string& output_name);
-
-  void SetShaper(const Shaper shaper) { shaper_ = shaper; }
 
   int32_t GetNNAPIFeatureLevel() const;
 };
@@ -163,30 +161,31 @@ class Execution {
   };
 
  public:
-  explicit Execution(ANeuralNetworksExecution& execution, const Shaper& shaper);
+  explicit Execution(ANeuralNetworksExecution& execution /* , const Shaper& shaper */);
   ~Execution();
   Execution(const Execution&) = delete;
   Execution& operator=(const Execution&) = delete;
 
-  const Shaper& GetShaper() const { return shaper_; }
+  // Before we validate if we actually need to keep a shaper instance for Execution (if we have dynamic shape
+  // outputs, shape can get updated during execution), we commented out Shaper here for now.
+  /* const Shaper& GetShaper() const { return shaper_; } */
 
   // Set the input/output data buffers
   // These need to be called before calling Predict()
-  Status SetInputBuffers(const std::vector<InputBuffer>& inputs) ORT_MUST_USE_RESULT;
-  Status SetOutputBuffers(const std::vector<OutputBuffer>& outputs) ORT_MUST_USE_RESULT;
+  common::Status SetInputBuffers(const std::vector<InputBuffer>& inputs);
+  common::Status SetOutputBuffers(const std::vector<OutputBuffer>& outputs);
 
   // Execute the NNAPI model
   // if there is dynamic output shape, will output the actual output shapes
-  Status Predict(const std::vector<int32_t>& dynamic_outputs, std::vector<Shaper::Shape>& dynamic_output_shapes)
-      ORT_MUST_USE_RESULT;
+  common::Status Predict(const std::vector<int32_t>& dynamic_outputs, std::vector<Shaper::Shape>& dynamic_output_shapes);
 
  private:
-  Status SetInputBuffer(const int32_t index, const InputBuffer& input) ORT_MUST_USE_RESULT;
-  Status SetOutputBuffer(const int32_t index, const OutputBuffer& output) ORT_MUST_USE_RESULT;
+  common::Status SetInputBuffer(const int32_t index, const InputBuffer& input);
+  common::Status SetOutputBuffer(const int32_t index, const OutputBuffer& output);
 
   const NnApi* nnapi_{nullptr};
   ANeuralNetworksExecution* execution_;
-  Shaper shaper_;
+  /* Shaper shaper_; */
 };
 
 }  // namespace nnapi

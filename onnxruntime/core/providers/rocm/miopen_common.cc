@@ -26,13 +26,13 @@ Status MiopenTensor::CreateTensorIfNeeded() {
   return Status::OK();
 }
 
-Status MiopenTensor::Set(const std::vector<int64_t>& input_dims, miopenDataType_t dataType) {
+Status MiopenTensor::Set(gsl::span<const int64_t> input_dims, miopenDataType_t dataType) {
   ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
 
   int rank = gsl::narrow_cast<int>(input_dims.size());
   TensorPitches pitches(input_dims);
-  std::vector<int> dims(rank);
-  std::vector<int> strides(rank);
+  InlinedVector<int> dims(rank);
+  InlinedVector<int> strides(rank);
   for (int i = 0; i < rank; i++) {
     dims[i] = gsl::narrow_cast<int>(input_dims[i]);
     strides[i] = gsl::narrow_cast<int>(pitches[i]);
@@ -58,12 +58,12 @@ MiopenTensorDescriptor::~MiopenTensorDescriptor() {
   }
 }
 
-Status MiopenTensorDescriptor::Set(const std::vector<int64_t>& filter_dims, miopenDataType_t data_type) {
+Status MiopenTensorDescriptor::Set(gsl::span<const int64_t> filter_dims, miopenDataType_t data_type) {
   if (!desc_)
     MIOPEN_RETURN_IF_ERROR(miopenCreateTensorDescriptor(&desc_));
 
   int rank = gsl::narrow_cast<int>(filter_dims.size());
-  std::vector<int> w_dims(rank);
+  InlinedVector<int> w_dims(rank);
   for (int i = 0; i < rank; i++) {
     w_dims[i] = gsl::narrow_cast<int>(filter_dims[i]);
   }
@@ -81,6 +81,13 @@ miopenDataType_t MiopenTensor::GetDataType() {
   ORT_THROW("miopen engine currently supports only single/half/int32/int8 precision data types.");
 }
 
+#if ROCM_VERSION >= 50000
+template<>
+miopenDataType_t MiopenTensor::GetDataType<double>() {
+  return miopenDouble;
+}
+#endif
+
 template<>
 miopenDataType_t MiopenTensor::GetDataType<float>() {
   return miopenFloat;
@@ -89,6 +96,12 @@ miopenDataType_t MiopenTensor::GetDataType<float>() {
 template <>
 miopenDataType_t MiopenTensor::GetDataType<half>() {
   return miopenHalf;
+}
+
+template <>
+miopenDataType_t MiopenTensor::GetDataType<BFloat16>() {
+  ORT_THROW("miopen doesn't support BFloat16.");
+  return miopenFloat;
 }
 
 template <>
@@ -117,10 +130,18 @@ const float Consts<half>::Zero = 0;
 
 const float Consts<half>::One = 1;
 
+const float Consts<BFloat16>::Zero = 0;
+
+const float Consts<BFloat16>::One = 1;
+
 #if ROCM_VERSION >= 40300
 const float ReduceConsts<half>::One = 1;
 
 const float ReduceConsts<half>::Zero = 0;
+
+const float ReduceConsts<BFloat16>::One = 1;
+
+const float ReduceConsts<BFloat16>::Zero = 0;
 #else
 // Up until ROCm 4.2, miopenReduceTensor() required alpha/beta to be the same data
 // type as the input type. This differs from cudnnReduceTensor() and other
@@ -130,6 +151,12 @@ const half ReduceConsts<half>::One = 1.f;
 
 template <>
 const half ReduceConsts<half>::Zero = 0.f;
+
+template <>
+const BFloat16 ReduceConsts<BFloat16>::One = 1.f;
+
+template <>
+const BFloat16 ReduceConsts<BFloat16>::Zero = 0.f;
 #endif
 
 template <>

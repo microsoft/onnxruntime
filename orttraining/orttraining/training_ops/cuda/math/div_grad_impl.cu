@@ -434,114 +434,114 @@ template <typename T>
 void ImplDivGrad(
     cudaStream_t stream,
     int32_t output_rank,
-    const TArray<int64_t>* a_padded_strides,
+    const TArray<int64_t>& a_padded_strides,
     const T* a_data,
-    const TArray<int64_t>* b_padded_strides,
+    const TArray<int64_t>& b_padded_strides,
     const T* b_data,
     const T* dy_data,
     size_t count,
-    const TArray<fast_divmod>* fdm_output_strides,
+    const TArray<fast_divmod>& fdm_output_strides,
     T* da_output_data,
     T* db_output_data) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  if (a_padded_strides && a_padded_strides->Size() && b_padded_strides && b_padded_strides->Size()) {
+  if (a_padded_strides.Size() && b_padded_strides.Size()) {
     if (da_output_data && db_output_data)
       _DivGrad<T, true, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
-          *a_padded_strides,
+          a_padded_strides,
           a_data,
-          *b_padded_strides,
+          b_padded_strides,
           b_data,
           dy_data,
-          *fdm_output_strides,
+          fdm_output_strides,
           da_output_data,
           db_output_data,
           N);
     else if (da_output_data)
       _DivGrad_A<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
-          *b_padded_strides,
+          b_padded_strides,
           b_data,
           dy_data,
-          *fdm_output_strides,
+          fdm_output_strides,
           da_output_data,
           N);
     else
       _DivGrad_B<T, true, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
-          *a_padded_strides,
+          a_padded_strides,
           a_data,
-          *b_padded_strides,
+          b_padded_strides,
           b_data,
           dy_data,
-          *fdm_output_strides,
+          fdm_output_strides,
           db_output_data,
           N);
-  } else if (a_padded_strides && a_padded_strides->Size()) {
+  } else if (a_padded_strides.Size()) {
     if (da_output_data && db_output_data)
       _DivGrad<T, true, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
-          *a_padded_strides,
+          a_padded_strides,
           a_data,
-          *b_padded_strides,
+          b_padded_strides,
           b_data,
           dy_data,
-          *fdm_output_strides,
+          fdm_output_strides,
           da_output_data,
           db_output_data,
           N);
     else if (da_output_data)
       _DivGrad_A<T, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
-          *b_padded_strides,
+          b_padded_strides,
           b_data,
           dy_data,
-          *fdm_output_strides,
+          fdm_output_strides,
           da_output_data,
           N);
     else
       _DivGrad_B<T, true, false><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
-          *a_padded_strides,
+          a_padded_strides,
           a_data,
-          *b_padded_strides,
+          b_padded_strides,
           b_data,
           dy_data,
-          *fdm_output_strides,
+          fdm_output_strides,
           db_output_data,
           N);
   } else {
     if (da_output_data && db_output_data)
       _DivGrad<T, false, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
-          *a_padded_strides,
+          a_padded_strides,
           a_data,
-          *b_padded_strides,
+          b_padded_strides,
           b_data,
           dy_data,
-          *fdm_output_strides,
+          fdm_output_strides,
           da_output_data,
           db_output_data,
           N);
     else if (da_output_data)
       _DivGrad_A<T, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
-          *b_padded_strides,
+          b_padded_strides,
           b_data,
           dy_data,
-          *fdm_output_strides,
+          fdm_output_strides,
           da_output_data,
           N);
     else
       _DivGrad_B<T, false, true><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           output_rank,
-          *a_padded_strides,
+          a_padded_strides,
           a_data,
-          *b_padded_strides,
+          b_padded_strides,
           b_data,
           dy_data,
-          *fdm_output_strides,
+          fdm_output_strides,
           db_output_data,
           N);
   }
@@ -551,13 +551,13 @@ void ImplDivGrad(
   template void ImplDivGrad<T>(                      \
       cudaStream_t stream,                           \
       int32_t output_rank,                           \
-      const TArray<int64_t>* a_padded_strides,       \
+      const TArray<int64_t>& a_padded_strides,       \
       const T* a_data,                               \
-      const TArray<int64_t>* b_padded_strides,       \
+      const TArray<int64_t>& b_padded_strides,       \
       const T* b_data,                               \
       const T* dy_data,                              \
       size_t count,                                  \
-      const TArray<fast_divmod>* fdm_output_strides, \
+      const TArray<fast_divmod>& fdm_output_strides, \
       T* da_output_data,                             \
       T* db_output_data);                            \
   template void ImplDivGradRhsPerChannelBatch1<T>(   \

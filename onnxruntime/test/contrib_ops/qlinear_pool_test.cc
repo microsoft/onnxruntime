@@ -6,6 +6,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/providers/common.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace test {
@@ -46,14 +47,15 @@ struct DimIterator {
   int64_t index_;
 };
 
+template <typename T8Bits>
 static void
-CalculateAvgPoolNchwU8(
-    uint8_t* x,
+CalculateAvgPoolNchw(
+    T8Bits* x,
     const std::vector<int64_t> x_dims,
-    const quantization::Params<uint8_t>& x_params,
-    uint8_t* y,
+    const quantization::Params<T8Bits>& x_params,
+    T8Bits* y,
     const std::vector<int64_t> y_dims,
-    const quantization::Params<uint8_t>& y_params,
+    const quantization::Params<T8Bits>& y_params,
     const std::vector<int64_t> kernel_shape,
     const std::vector<int64_t> strides,
     const std::vector<int64_t> pads,
@@ -73,8 +75,8 @@ CalculateAvgPoolNchwU8(
   int64_t x_step = std::accumulate(x_img_dims.begin(), x_img_dims.end(), 1LL, std::multiplies<int64_t>());
   for (int64_t b = 0; b < batch; ++b) {
     for (int64_t c = 0; c < channel; ++c) {
-      uint8_t* ybc = y + (b * channel + c) * y_step;
-      uint8_t* xbc = x + (b * channel + c) * x_step;
+      T8Bits* ybc = y + (b * channel + c) * y_step;
+      T8Bits* xbc = x + (b * channel + c) * x_step;
 
       DimIterator yit(y_img_dims);
       while (yit.has_next()) {
@@ -103,14 +105,15 @@ CalculateAvgPoolNchwU8(
           }
         }
         auto y_offset = yit.next();
-        auto y_u8 = QuantizeTestValue<uint8_t>(y_value_sum / count, y_params);
+        auto y_u8 = QuantizeTestValue<T8Bits>(y_value_sum / count, y_params);
         ybc[y_offset] = y_u8;
       }
     }
   }
 }
 
-void RunQLinearAveragePoolNchwU8(
+template <typename T8Bits = uint8_t>
+void RunQLinearAveragePoolNchw(
     const std::vector<int64_t> x_dims,
     const std::vector<int64_t> y_dims,
     const std::vector<int64_t> kernel_shape,
@@ -119,17 +122,19 @@ void RunQLinearAveragePoolNchwU8(
     const int64_t count_include_pad = 0) {
   auto run_test = [&](bool only_x_not_initializer, bool x_y_same_zero_point) {
     float x_scale = 1.0f / 255.0f;
-    quantization::Params<uint8_t> x_params(x_scale, /*zero_point=*/128);
+    T8Bits x_zero_point = (std::numeric_limits<T8Bits>::lowest() + std::numeric_limits<T8Bits>::max() - 5) / 2;
+    quantization::Params<T8Bits> x_params(x_scale, x_zero_point);
     RandomValueGenerator random{};
     std::vector<float> x_data_fp32 = random.Uniform<float>(x_dims, -0.5f, 0.5f);
-    std::vector<uint8_t> x_data = QuantizeTestVector<uint8_t>(x_data_fp32, x_params);
+    std::vector<T8Bits> x_data = QuantizeTestVector<T8Bits>(x_data_fp32, x_params);
 
     float y_scale = 1.0f / 255.0f;
-    uint8_t y_zero_point = x_y_same_zero_point ? x_params.zero_point : 100;
-    const quantization::Params<uint8_t> y_params(y_scale, y_zero_point);
+    T8Bits y_zero_point_not_same = (std::numeric_limits<T8Bits>::lowest() + std::numeric_limits<T8Bits>::max() + 10) / 2;
+    T8Bits y_zero_point = x_y_same_zero_point ? x_params.zero_point : y_zero_point_not_same;
+    const quantization::Params<T8Bits> y_params(y_scale, y_zero_point);
     int64_t y_size = std::accumulate(y_dims.begin(), y_dims.end(), 1LL, std::multiplies<int64_t>());
-    std::vector<uint8_t> y_data(y_size);
-    CalculateAvgPoolNchwU8(
+    std::vector<T8Bits> y_data(y_size);
+    CalculateAvgPoolNchw(
         x_data.data(), x_dims, x_params,
         y_data.data(), y_dims, y_params,
         kernel_shape, strides, pads, count_include_pad);
@@ -142,12 +147,12 @@ void RunQLinearAveragePoolNchwU8(
     test.AddAttribute("kernel_shape", kernel_shape);
     test.AddAttribute("count_include_pad", count_include_pad);
 
-    test.AddInput<uint8_t>("X", x_dims, x_data);
+    test.AddInput<T8Bits>("X", x_dims, x_data);
     test.AddInput<float>("x_scale", {}, {x_scale}, only_x_not_initializer);
-    test.AddInput<uint8_t>("x_zero_point", {}, {x_params.zero_point}, only_x_not_initializer);
+    test.AddInput<T8Bits>("x_zero_point", {}, {x_params.zero_point}, only_x_not_initializer);
     test.AddInput<float>("y_scale", {}, {y_scale}, only_x_not_initializer);
-    test.AddInput<uint8_t>("y_zero_point", {}, {y_params.zero_point}, only_x_not_initializer);
-    test.AddOutput<uint8_t>("Y", y_dims, y_data);
+    test.AddInput<T8Bits>("y_zero_point", {}, {y_params.zero_point}, only_x_not_initializer);
+    test.AddOutput<T8Bits>("Y", y_dims, y_data);
 
     auto q8checker = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
       const OrtValue& ort_value = fetches[0];
@@ -160,7 +165,7 @@ void RunQLinearAveragePoolNchwU8(
       ORT_ENFORCE(y_shape == output_tensor.Shape(),
                   "Expected output shape [" + y_shape.ToString() + "] did not match run output shape [" +
                       output_tensor.Shape().ToString() + "] for Y @" + provider_type);
-      auto* output = output_tensor.Data<uint8_t>();
+      auto* output = output_tensor.Data<T8Bits>();
       auto size = static_cast<int>(output_tensor.Shape().Size());
       for (int i = 0; i < size; ++i) {
         int diff = abs(y_data[i] - output[i]);
@@ -188,15 +193,16 @@ static std::vector<int64_t> dims_to_nhwc(const std::vector<int64_t>& nchw) {
   return nhwc;
 }
 
-static std::vector<uint8_t> transpose_to_nhwc(const std::vector<uint8_t>& nchw_data, const std::vector<int64_t>& nchw_dims) {
-  std::vector<uint8_t> nhwc_data(nchw_data.size());
+template <typename T8Bits>
+static std::vector<T8Bits> transpose_to_nhwc(const std::vector<T8Bits>& nchw_data, const std::vector<int64_t>& nchw_dims) {
+  std::vector<T8Bits> nhwc_data(nchw_data.size());
 
   auto batch_count = nchw_dims[0];
   auto channels = nchw_dims[1];
   int64_t image_size = std::accumulate(nchw_dims.begin() + 2, nchw_dims.end(), 1LL, std::multiplies<int64_t>());
   for (int64_t b = 0; b < batch_count; b++) {
-    const uint8_t* nchw_image = nchw_data.data() + (b * channels * image_size);
-    uint8_t* nhwc_image = nhwc_data.data() + (b * channels * image_size);
+    const T8Bits* nchw_image = nchw_data.data() + (b * channels * image_size);
+    T8Bits* nhwc_image = nhwc_data.data() + (b * channels * image_size);
     for (int64_t img_index = 0; img_index < image_size; ++img_index) {
       for (int64_t c = 0; c < channels; c++) {
         *nhwc_image++ = nchw_image[c * image_size + img_index];
@@ -207,7 +213,8 @@ static std::vector<uint8_t> transpose_to_nhwc(const std::vector<uint8_t>& nchw_d
   return nhwc_data;
 }
 
-void RunQLinearAveragePoolNhwcU8(
+template <typename T8Bits = uint8_t>
+void RunQLinearAveragePoolNhwc(
     const std::vector<int64_t> x_dims,
     const std::vector<int64_t> y_dims,
     const std::vector<int64_t> kernel_shape,
@@ -215,23 +222,25 @@ void RunQLinearAveragePoolNhwcU8(
     const std::vector<int64_t> pads,
     const int64_t count_include_pad = 0) {
   float x_scale = 1.0f / 255.0f;
-  const quantization::Params<uint8_t> x_params(x_scale, /*zero_point=*/128);
+  T8Bits x_zero_point = (std::numeric_limits<T8Bits>::lowest() + std::numeric_limits<T8Bits>::max() - 5) / 2;
+  const quantization::Params<T8Bits> x_params(x_scale, x_zero_point);
   RandomValueGenerator random{};
   std::vector<float> x_data_fp32 = random.Uniform<float>(x_dims, -0.5f, 0.5f);
-  std::vector<uint8_t> x_data = QuantizeTestVector<uint8_t>(x_data_fp32, x_params);
+  std::vector<T8Bits> x_data = QuantizeTestVector<T8Bits>(x_data_fp32, x_params);
 
   float y_scale = 1.0f / 255.0f;
-  const quantization::Params<uint8_t> y_params(y_scale, /*zero_point=*/100);
+  T8Bits y_zero_point = (std::numeric_limits<T8Bits>::lowest() + std::numeric_limits<T8Bits>::max() + 10) / 2;
+  const quantization::Params<T8Bits> y_params(y_scale, y_zero_point);
   int64_t y_size = std::accumulate(y_dims.begin(), y_dims.end(), 1LL, std::multiplies<int64_t>());
-  std::vector<uint8_t> y_data(y_size);
-  CalculateAvgPoolNchwU8(
+  std::vector<T8Bits> y_data(y_size);
+  CalculateAvgPoolNchw(
       x_data.data(), x_dims, x_params,
       y_data.data(), y_dims, y_params,
       kernel_shape, strides, pads, count_include_pad);
 
   // transpose the result
-  std::vector<uint8_t> y_data_nhwc = transpose_to_nhwc(y_data, y_dims);
-  std::vector<uint8_t> x_data_nhwc = transpose_to_nhwc(x_data, x_dims);
+  std::vector<T8Bits> y_data_nhwc = transpose_to_nhwc(y_data, y_dims);
+  std::vector<T8Bits> x_data_nhwc = transpose_to_nhwc(x_data, x_dims);
   auto x_dims_nhwc = dims_to_nhwc(x_dims);
   auto y_dims_nhwc = dims_to_nhwc(y_dims);
 
@@ -244,12 +253,12 @@ void RunQLinearAveragePoolNhwcU8(
   test.AddAttribute("count_include_pad", count_include_pad);
   test.AddAttribute("channels_last", (int64_t)1LL);
 
-  test.AddInput<uint8_t>("X", x_dims_nhwc, x_data_nhwc);
+  test.AddInput<T8Bits>("X", x_dims_nhwc, x_data_nhwc);
   test.AddInput<float>("x_scale", {}, {x_scale});
-  test.AddInput<uint8_t>("x_zero_point", {}, {x_params.zero_point});
+  test.AddInput<T8Bits>("x_zero_point", {}, {x_params.zero_point});
   test.AddInput<float>("y_scale", {}, {y_scale});
-  test.AddInput<uint8_t>("y_zero_point", {}, {y_params.zero_point});
-  test.AddOutput<uint8_t>("Y", y_dims_nhwc, y_data_nhwc);
+  test.AddInput<T8Bits>("y_zero_point", {}, {y_params.zero_point});
+  test.AddOutput<T8Bits>("Y", y_dims_nhwc, y_data_nhwc);
 
   auto q8checker = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
     const OrtValue& ort_value = fetches[0];
@@ -262,7 +271,7 @@ void RunQLinearAveragePoolNhwcU8(
     ORT_ENFORCE(y_shape == output_tensor.Shape(),
                 "Expected output shape [" + y_shape.ToString() + "] did not match run output shape [" +
                     output_tensor.Shape().ToString() + "] for Y @" + provider_type);
-    auto* output = output_tensor.Data<uint8_t>();
+    auto* output = output_tensor.Data<T8Bits>();
     auto size = static_cast<int>(output_tensor.Shape().Size());
     for (int i = 0; i < size; ++i) {
       int diff = abs(y_data_nhwc[i] - output[i]);
@@ -278,7 +287,7 @@ void RunQLinearAveragePoolNhwcU8(
 }
 
 TEST(QLinearPoolTest, AveragePool1D_ExcludePadPixel) {
-  RunQLinearAveragePoolNchwU8(
+  RunQLinearAveragePoolNchw(
       {1, 1, 5},  // x shape
       {1, 1, 6},  // expected y shape
       {3},        // kernel shape
@@ -288,7 +297,7 @@ TEST(QLinearPoolTest, AveragePool1D_ExcludePadPixel) {
 }
 
 TEST(QLinearPoolTest, AveragePool1D_IncludePadPixel) {
-  RunQLinearAveragePoolNchwU8(
+  RunQLinearAveragePoolNchw(
       {1, 1, 5},  // x shape
       {1, 1, 6},  // expected y shape
       {3},        // kernel shape
@@ -298,7 +307,7 @@ TEST(QLinearPoolTest, AveragePool1D_IncludePadPixel) {
 }
 
 TEST(QLinearPoolTest, AveragePool2D_ExcludePadPixel) {
-  RunQLinearAveragePoolNchwU8(
+  RunQLinearAveragePoolNchw(
       {1, 1, 5, 7},  // x shape
       {1, 1, 6, 4},  // expected y shape
       {3, 4},        // kernel shape
@@ -308,7 +317,7 @@ TEST(QLinearPoolTest, AveragePool2D_ExcludePadPixel) {
 }
 
 TEST(QLinearPoolTest, AveragePool2D_IncludePadPixel) {
-  RunQLinearAveragePoolNchwU8(
+  RunQLinearAveragePoolNchw(
       {1, 1, 5, 7},  // x shape
       {1, 1, 6, 4},  // expected y shape
       {3, 4},        // kernel shape
@@ -318,7 +327,7 @@ TEST(QLinearPoolTest, AveragePool2D_IncludePadPixel) {
 }
 
 TEST(QLinearPoolTest, AveragePool2D_MultiChannel) {
-  RunQLinearAveragePoolNchwU8(
+  RunQLinearAveragePoolNchw(
       {1, 3, 5, 7},  // x shape
       {1, 3, 6, 4},  // expected y shape
       {3, 4},        // kernel shape
@@ -328,7 +337,7 @@ TEST(QLinearPoolTest, AveragePool2D_MultiChannel) {
 }
 
 TEST(QLinearPoolTest, AveragePool3D_ExcludePadPixel) {
-  RunQLinearAveragePoolNchwU8(
+  RunQLinearAveragePoolNchw(
       {1, 1, 5, 7, 9},     // x shape
       {1, 1, 6, 4, 3},     // expected y shape
       {3, 4, 5},           // kernel shape
@@ -338,7 +347,7 @@ TEST(QLinearPoolTest, AveragePool3D_ExcludePadPixel) {
 }
 
 TEST(QLinearPoolTest, AveragePool3D_IncludePadPixel) {
-  RunQLinearAveragePoolNchwU8(
+  RunQLinearAveragePoolNchw(
       {1, 1, 5, 7, 9},     // x shape
       {1, 1, 6, 4, 3},     // expected y shape
       {3, 4, 5},           // kernel shape
@@ -351,7 +360,7 @@ TEST(QLinearPoolTest, AveragePool3D_IncludePadPixel) {
 * Channels last test
 **************************************************/
 TEST(QLinearPoolTest, AveragePool1D_ExcludePadPixel_nhwc) {
-  RunQLinearAveragePoolNhwcU8(
+  RunQLinearAveragePoolNhwc(
       {1, 1, 5},  // x shape
       {1, 1, 6},  // expected y shape
       {3},        // kernel shape
@@ -361,7 +370,7 @@ TEST(QLinearPoolTest, AveragePool1D_ExcludePadPixel_nhwc) {
 }
 
 TEST(QLinearPoolTest, AveragePool1D_IncludePadPixel_nhwc) {
-  RunQLinearAveragePoolNhwcU8(
+  RunQLinearAveragePoolNhwc(
       {1, 1, 5},  // x shape
       {1, 1, 6},  // expected y shape
       {3},        // kernel shape
@@ -371,7 +380,7 @@ TEST(QLinearPoolTest, AveragePool1D_IncludePadPixel_nhwc) {
 }
 
 TEST(QLinearPoolTest, AveragePool2D_ExcludePadPixel_nhwc) {
-  RunQLinearAveragePoolNhwcU8(
+  RunQLinearAveragePoolNhwc(
       {1, 1, 5, 7},  // x shape
       {1, 1, 6, 4},  // expected y shape
       {3, 4},        // kernel shape
@@ -381,7 +390,7 @@ TEST(QLinearPoolTest, AveragePool2D_ExcludePadPixel_nhwc) {
 }
 
 TEST(QLinearPoolTest, AveragePool2D_IncludePadPixel_nhwc) {
-  RunQLinearAveragePoolNhwcU8(
+  RunQLinearAveragePoolNhwc(
       {1, 1, 5, 7},  // x shape
       {1, 1, 6, 4},  // expected y shape
       {3, 4},        // kernel shape
@@ -391,7 +400,7 @@ TEST(QLinearPoolTest, AveragePool2D_IncludePadPixel_nhwc) {
 }
 
 TEST(QLinearPoolTest, AveragePool2D_MultiChannel_nhwc) {
-  RunQLinearAveragePoolNhwcU8(
+  RunQLinearAveragePoolNhwc(
       {1, 3, 5, 7},  // x shape
       {1, 3, 6, 4},  // expected y shape
       {3, 4},        // kernel shape
@@ -401,7 +410,7 @@ TEST(QLinearPoolTest, AveragePool2D_MultiChannel_nhwc) {
 }
 
 TEST(QLinearPoolTest, AveragePool3D_ExcludePadPixel_nhwc) {
-  RunQLinearAveragePoolNhwcU8(
+  RunQLinearAveragePoolNhwc(
       {1, 1, 5, 7, 9},     // x shape
       {1, 1, 6, 4, 3},     // expected y shape
       {3, 4, 5},           // kernel shape
@@ -411,7 +420,7 @@ TEST(QLinearPoolTest, AveragePool3D_ExcludePadPixel_nhwc) {
 }
 
 TEST(QLinearPoolTest, AveragePool3D_IncludePadPixel_nhwc) {
-  RunQLinearAveragePoolNhwcU8(
+  RunQLinearAveragePoolNhwc(
       {1, 1, 5, 7, 9},     // x shape
       {1, 1, 6, 4, 3},     // expected y shape
       {3, 4, 5},           // kernel shape
@@ -420,9 +429,8 @@ TEST(QLinearPoolTest, AveragePool3D_IncludePadPixel_nhwc) {
       1);                  // count_include_pad
 }
 
-
 TEST(QLinearPoolTest, AveragePool2D_BigImage) {
-  RunQLinearAveragePoolNchwU8(
+  RunQLinearAveragePoolNchw(
       {1, 1, 32, 64},  // x shape
       {1, 1, 32, 64},  // expected y shape
       {3, 3},          // kernel shape
@@ -432,7 +440,7 @@ TEST(QLinearPoolTest, AveragePool2D_BigImage) {
 }
 
 TEST(QLinearPoolTest, AveragePool2D_BigImage_nhwc) {
-  RunQLinearAveragePoolNhwcU8(
+  RunQLinearAveragePoolNhwc(
       {1, 1, 32, 64},  // x shape
       {1, 1, 32, 64},  // expected y shape
       {3, 3},          // kernel shape
@@ -442,7 +450,7 @@ TEST(QLinearPoolTest, AveragePool2D_BigImage_nhwc) {
 }
 
 TEST(QLinearPoolTest, AveragePool2D_Global) {
-  RunQLinearAveragePoolNchwU8(
+  RunQLinearAveragePoolNchw(
       {1, 2, 32, 16},  // x shape
       {1, 2, 1, 1},    // expected y shape
       {32, 16},        // kernel shape
@@ -452,7 +460,7 @@ TEST(QLinearPoolTest, AveragePool2D_Global) {
 }
 
 TEST(QLinearPoolTest, AveragePool2D_Global_nhwc) {
-  RunQLinearAveragePoolNhwcU8(
+  RunQLinearAveragePoolNhwc(
       {1, 2, 32, 16},  // x shape
       {1, 2, 1, 1},    // expected y shape
       {32, 16},        // kernel shape
@@ -461,6 +469,188 @@ TEST(QLinearPoolTest, AveragePool2D_Global_nhwc) {
       1);              // count_include_pad
 }
 
+TEST(QLinearPoolTest, AveragePool1D_ExcludePadPixel_S8) {
+  RunQLinearAveragePoolNchw<int8_t>(
+      {1, 1, 5},  // x shape
+      {1, 1, 6},  // expected y shape
+      {3},        // kernel shape
+      {1},        // strides
+      {1, 2},     // pads
+      0);         // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool1D_IncludePadPixel_S8) {
+  RunQLinearAveragePoolNchw<int8_t>(
+      {1, 1, 5},  // x shape
+      {1, 1, 6},  // expected y shape
+      {3},        // kernel shape
+      {1},        // strides
+      {1, 2},     // pads
+      1);         // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_ExcludePadPixel_S8) {
+  RunQLinearAveragePoolNchw<int8_t>(
+      {1, 1, 5, 7},  // x shape
+      {1, 1, 6, 4},  // expected y shape
+      {3, 4},        // kernel shape
+      {1, 2},        // strides
+      {1, 3, 2, 1},  // pads
+      0);            // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_IncludePadPixel_S8) {
+  RunQLinearAveragePoolNchw<int8_t>(
+      {1, 1, 5, 7},  // x shape
+      {1, 1, 6, 4},  // expected y shape
+      {3, 4},        // kernel shape
+      {1, 2},        // strides
+      {1, 3, 2, 1},  // pads
+      1);            // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_MultiChannel_S8) {
+  RunQLinearAveragePoolNchw<int8_t>(
+      {1, 3, 5, 7},  // x shape
+      {1, 3, 6, 4},  // expected y shape
+      {3, 4},        // kernel shape
+      {1, 2},        // strides
+      {1, 3, 2, 1},  // pads
+      1);            // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool3D_ExcludePadPixel_S8) {
+  RunQLinearAveragePoolNchw<int8_t>(
+      {1, 1, 5, 7, 9},     // x shape
+      {1, 1, 6, 4, 3},     // expected y shape
+      {3, 4, 5},           // kernel shape
+      {1, 2, 3},           // strides
+      {1, 3, 2, 2, 1, 2},  // pads
+      0);                  // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool3D_IncludePadPixel_S8) {
+  RunQLinearAveragePoolNchw<int8_t>(
+      {1, 1, 5, 7, 9},     // x shape
+      {1, 1, 6, 4, 3},     // expected y shape
+      {3, 4, 5},           // kernel shape
+      {1, 2, 3},           // strides
+      {1, 3, 2, 2, 1, 2},  // pads
+      1);                  // count_include_pad
+}
+
+/*************************************************
+* Channels last test
+**************************************************/
+TEST(QLinearPoolTest, AveragePool1D_ExcludePadPixel_nhwc_S8) {
+  RunQLinearAveragePoolNhwc<int8_t>(
+      {1, 1, 5},  // x shape
+      {1, 1, 6},  // expected y shape
+      {3},        // kernel shape
+      {1},        // strides
+      {1, 2},     // pads
+      0);         // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool1D_IncludePadPixel_nhwc_S8) {
+  RunQLinearAveragePoolNhwc<int8_t>(
+      {1, 1, 5},  // x shape
+      {1, 1, 6},  // expected y shape
+      {3},        // kernel shape
+      {1},        // strides
+      {1, 2},     // pads
+      1);         // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_ExcludePadPixel_nhwc_S8) {
+  RunQLinearAveragePoolNhwc<int8_t>(
+      {1, 1, 5, 7},  // x shape
+      {1, 1, 6, 4},  // expected y shape
+      {3, 4},        // kernel shape
+      {1, 2},        // strides
+      {1, 3, 2, 1},  // pads
+      0);            // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_IncludePadPixel_nhwc_S8) {
+  RunQLinearAveragePoolNhwc<int8_t>(
+      {1, 1, 5, 7},  // x shape
+      {1, 1, 6, 4},  // expected y shape
+      {3, 4},        // kernel shape
+      {1, 2},        // strides
+      {1, 3, 2, 1},  // pads
+      1);            // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_MultiChannel_nhwc_S8) {
+  RunQLinearAveragePoolNhwc<int8_t>(
+      {1, 3, 5, 7},  // x shape
+      {1, 3, 6, 4},  // expected y shape
+      {3, 4},        // kernel shape
+      {1, 2},        // strides
+      {1, 3, 2, 1},  // pads
+      1);            // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool3D_ExcludePadPixel_nhwc_S8) {
+  RunQLinearAveragePoolNhwc<int8_t>(
+      {1, 1, 5, 7, 9},     // x shape
+      {1, 1, 6, 4, 3},     // expected y shape
+      {3, 4, 5},           // kernel shape
+      {1, 2, 3},           // strides
+      {1, 3, 2, 2, 1, 2},  // pads
+      0);                  // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool3D_IncludePadPixel_nhwc_S8) {
+  RunQLinearAveragePoolNhwc<int8_t>(
+      {1, 1, 5, 7, 9},     // x shape
+      {1, 1, 6, 4, 3},     // expected y shape
+      {3, 4, 5},           // kernel shape
+      {1, 2, 3},           // strides
+      {1, 3, 2, 2, 1, 2},  // pads
+      1);                  // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_BigImage_S8) {
+  RunQLinearAveragePoolNchw<int8_t>(
+      {1, 1, 32, 64},  // x shape
+      {1, 1, 32, 64},  // expected y shape
+      {3, 3},          // kernel shape
+      {1, 1},          // strides
+      {1, 1, 1, 1},    // pads
+      1);              // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_BigImage_nhwc_S8) {
+  RunQLinearAveragePoolNhwc<int8_t>(
+      {1, 1, 32, 64},  // x shape
+      {1, 1, 32, 64},  // expected y shape
+      {3, 3},          // kernel shape
+      {1, 1},          // strides
+      {1, 1, 1, 1},    // pads
+      1);              // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_Global_S8) {
+  RunQLinearAveragePoolNchw<int8_t>(
+      {1, 2, 32, 16},  // x shape
+      {1, 2, 1, 1},    // expected y shape
+      {32, 16},        // kernel shape
+      {1, 1},          // strides
+      {0, 0, 0, 0},    // pads
+      1);              // count_include_pad
+}
+
+TEST(QLinearPoolTest, AveragePool2D_Global_nhwc_S8) {
+  RunQLinearAveragePoolNhwc<int8_t>(
+      {1, 2, 32, 16},  // x shape
+      {1, 2, 1, 1},    // expected y shape
+      {32, 16},        // kernel shape
+      {1, 1},          // strides
+      {0, 0, 0, 0},    // pads
+      1);              // count_include_pad
+}
 
 }  // namespace test
 }  // namespace onnxruntime

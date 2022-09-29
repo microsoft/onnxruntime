@@ -20,7 +20,7 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
   auto input_count = Node().InputArgCount().front();
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
-  std::vector<const Tensor*> input_tensors;
+  InlinedTensorsVector input_tensors;
   input_tensors.reserve(input_count);
   for (int i = 0; i < input_count; ++i) {
     input_tensors.push_back(ctx->Input<Tensor>(i));
@@ -34,21 +34,21 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  std::vector<int64_t> concat_sizes(input_count);
+  TensorShapeVector concat_sizes(input_count);
 
   CudaAsyncBuffer<const void*> input_ptr(this, input_count);
   gsl::span<const void*> input_ptr_cpuspan = input_ptr.CpuSpan();
-  std::vector<int64_t> axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
+  TensorShapeVector axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
   int index = 0;
   for (int i = 0; i < input_count; ++i) {
-    auto input = p.inputs[i];
+    const auto& input = p.inputs[i];
     concat_sizes[i] = input.tensor->Shape()[p.axis];
     input_ptr_cpuspan[i] = input.tensor->DataRaw();
     for (int j = 0; j < input.tensor->Shape()[p.axis]; ++j) {
       axis_dimension_input_output_mapping.at(index++) = i;
     }
   }
-  std::vector<int64_t> concat_sizes_range(concat_sizes);
+  TensorShapeVector concat_sizes_range(concat_sizes);
   for (size_t i = 1; i < concat_sizes_range.size(); ++i) {
     concat_sizes_range[i] += concat_sizes_range[i - 1];
   }
@@ -56,7 +56,7 @@ Status ConcatTraining::ComputeInternal(OpKernelContext* ctx) const {
   auto element_bytes = p.output_tensor->DataType()->Size();
   int block_size_inside_axis_dim = static_cast<int>(p.output_axis_pitch / p.output_tensor->Shape()[p.axis]);
   int block_size_including_axis_dim = static_cast<int>(p.output_axis_pitch);
-  if (std::all_of(concat_sizes.begin(), concat_sizes.end(), [&] (int64_t i) {return i == concat_sizes[0];})) {
+  if (std::all_of(concat_sizes.begin(), concat_sizes.end(), [&](int64_t i) { return i == concat_sizes[0]; })) {
     if (input_count <= 32) {
       // pass by value to avoid host-to-device copy on same stream
       TArray<const void*, 32> input_table(input_count);

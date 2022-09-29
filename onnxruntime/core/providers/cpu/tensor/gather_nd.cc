@@ -33,7 +33,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         // official ONNX spec only supports `int64_t` for indices
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("indices", DataTypeImpl::GetTensorType<int64_t>()),
     GatherND);
 
 // opset 12 added batch_dims attribute
@@ -42,7 +42,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12, 12,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("indices", DataTypeImpl::GetTensorType<int64_t>()),
     GatherND);
 
 // spec added BFloat16
@@ -51,7 +51,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("indices", DataTypeImpl::GetTensorType<int64_t>()),
     GatherND);
 
 template <typename Tind>
@@ -100,7 +100,7 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
       relative_slice_offset += index * sizes_from_slice_dims[dim_idx];
     }
 
-    p.slice_offsets[slice_idx] = input_base_offset + relative_slice_offset;
+    p.slice_offsets[slice_idx] = static_cast<uint64_t>(input_base_offset) + relative_slice_offset;
   };
 
   concurrency::ThreadPool::TryParallelFor(

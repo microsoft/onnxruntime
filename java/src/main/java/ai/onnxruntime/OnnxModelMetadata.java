@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Licensed under the MIT License.
+ */
 package ai.onnxruntime;
 
 import java.util.Collections;
@@ -17,6 +21,7 @@ public final class OnnxModelMetadata {
 
   private final String producerName;
   private final String graphName;
+  private final String graphDescription;
   private final String domain;
   private final String description;
   private final long version;
@@ -29,6 +34,7 @@ public final class OnnxModelMetadata {
    *
    * @param producerName The model producer name.
    * @param graphName The model graph name.
+   * @param graphDescription The model graph description.
    * @param domain The model domain name.
    * @param description The model description.
    * @param version The model version.
@@ -37,12 +43,14 @@ public final class OnnxModelMetadata {
   OnnxModelMetadata(
       String producerName,
       String graphName,
+      String graphDescription,
       String domain,
       String description,
       long version,
       String[] customMetadataArray) {
     this.producerName = producerName == null ? "" : producerName;
     this.graphName = graphName == null ? "" : graphName;
+    this.graphDescription = graphDescription == null ? "" : graphDescription;
     this.domain = domain == null ? "" : domain;
     this.description = description == null ? "" : description;
     this.version = version;
@@ -66,6 +74,7 @@ public final class OnnxModelMetadata {
    *
    * @param producerName The model producer name.
    * @param graphName The model graph name.
+   * @param graphDescription The model graph name.
    * @param domain The model domain name.
    * @param description The model description.
    * @param version The model version.
@@ -74,12 +83,14 @@ public final class OnnxModelMetadata {
   OnnxModelMetadata(
       String producerName,
       String graphName,
+      String graphDescription,
       String domain,
       String description,
       long version,
       Map<String, String> customMetadata) {
     this.producerName = producerName == null ? "" : producerName;
     this.graphName = graphName == null ? "" : graphName;
+    this.graphDescription = graphDescription == null ? "" : graphDescription;
     this.domain = domain == null ? "" : domain;
     this.description = description == null ? "" : description;
     this.version = version;
@@ -94,6 +105,7 @@ public final class OnnxModelMetadata {
   public OnnxModelMetadata(OnnxModelMetadata other) {
     this.producerName = other.producerName;
     this.graphName = other.graphName;
+    this.graphDescription = other.graphDescription;
     this.domain = other.domain;
     this.description = other.description;
     this.version = other.version;
@@ -111,6 +123,7 @@ public final class OnnxModelMetadata {
     return version == that.version
         && producerName.equals(that.producerName)
         && graphName.equals(that.graphName)
+        && graphDescription.equals(that.graphDescription)
         && domain.equals(that.domain)
         && description.equals(that.description)
         && customMetadata.equals(that.customMetadata);
@@ -118,7 +131,8 @@ public final class OnnxModelMetadata {
 
   @Override
   public int hashCode() {
-    return Objects.hash(producerName, graphName, domain, description, version, customMetadata);
+    return Objects.hash(
+        producerName, graphName, graphDescription, domain, description, version, customMetadata);
   }
 
   /**
@@ -137,6 +151,15 @@ public final class OnnxModelMetadata {
    */
   public String getGraphName() {
     return graphName;
+  }
+
+  /**
+   * Gets the graph description.
+   *
+   * @return The graph description.
+   */
+  public String getGraphDescription() {
+    return graphDescription;
   }
 
   /**
@@ -194,6 +217,9 @@ public final class OnnxModelMetadata {
         + '\''
         + ", graphName='"
         + graphName
+        + '\''
+        + ", graphDescription='"
+        + graphDescription
         + '\''
         + ", domain='"
         + domain

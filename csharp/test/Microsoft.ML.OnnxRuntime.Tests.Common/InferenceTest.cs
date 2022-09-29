@@ -27,7 +27,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact(DisplayName = "TestSessionOptions")]
         public void TestSessionOptions()
         {
-            // get instance to setup logging 
+            // get instance to setup logging
             var ortEnvInstance = OrtEnv.Instance();
 
             using (SessionOptions opt = new SessionOptions())
@@ -118,8 +118,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 opt.AppendExecutionProvider_Nnapi(0);
 #endif
 
-#if USE_NUPHAR
-                opt.AppendExecutionProvider_Nuphar();
+#if USE_TVM
+                opt.AppendExecutionProvider_Tvm("Vulkan -device=amd_apu");
 #endif
 
 #if USE_OPENVINO
@@ -132,6 +132,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
 #if USE_TENSORRT
                 opt.AppendExecutionProvider_Tensorrt(0);
+#endif
+#if USE_XNNPACK
+                opt.AppendExecutionProvider("XNNPACK");
+#else
+                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("XNNPACK"); });
+                Assert.Contains("XNNPACK execution provider is not supported in this build", ex.Message);
+#endif
+#if USE_SNPE
+                opt.AppendExecutionProvider("SNPE");
+#else
+                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("SNPE"); });
+                Assert.Contains("SNPE execution provider is not supported in this build", ex.Message);
 #endif
 
                 opt.AppendExecutionProvider_CPU(1);
@@ -1670,8 +1682,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     ioBinding.BindInput(inputName, fixeInputBuffer);
                     ioBinding.BindOutput(outputName, fixedOutputBuffer);
+                    ioBinding.SynchronizeBoundInputs();
                     using (var outputs = session.RunWithBindingAndNames(runOptions, ioBinding))
                     {
+                        ioBinding.SynchronizeBoundOutputs();
                         Assert.Equal(1, outputs.Count);
                         var output = outputs.First();
                         Assert.Equal(outputName, output.Name);
@@ -1687,9 +1701,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     ioBinding.BindInput(inputName, fixedInputBuffer);
                     ioBinding.BindOutputToDevice(outputName, allocator.Info);
-
+                    ioBinding.SynchronizeBoundInputs();
                     using (var outputs = session.RunWithBindingAndNames(runOptions, ioBinding))
                     {
+                        ioBinding.SynchronizeBoundOutputs();
                         Assert.Equal(1, outputs.Count);
                         var output = outputs.First();
                         Assert.Equal(outputName, output.Name);
@@ -1919,7 +1934,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var session = (deviceId.HasValue)
                     ? new InferenceSession(model, option)
                     : new InferenceSession(model);
-                float[] inputData = TestDataLoader.LoadTensorFromEmbeddedResource("bench.in"); 
+                float[] inputData = TestDataLoader.LoadTensorFromEmbeddedResource("bench.in");
                 float[] expectedOutput = TestDataLoader.LoadTensorFromEmbeddedResource("bench.expected_out");
                 var inputMeta = session.InputMetadata;
                 var tensor = new DenseTensor<float>(inputData, inputMeta["data_0"].Dimensions);
@@ -1937,6 +1952,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 return Math.Abs(x - y) <= (atol + rtol * Math.Abs(y));
             }
             public int GetHashCode(float x)
+            {
+                return x.GetHashCode();
+            }
+        }
+
+        internal class DoubleComparer : IEqualityComparer<double>
+        {
+            private double atol = 1e-3;
+            private double rtol = 1.7e-2;
+
+            public bool Equals(double x, double y)
+            {
+                return Math.Abs(x - y) <= (atol + rtol * Math.Abs(y));
+            }
+            public int GetHashCode(double x)
             {
                 return x.GetHashCode();
             }

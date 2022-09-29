@@ -68,6 +68,18 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
       excluded_providers.insert(kNnapiExecutionProvider);
     }
 #endif
+// Use relative error because of computation error for float::max
+#if defined(USE_DNNL)
+    int gelu = strcmp(szOp, "Gelu");
+    if (gelu == 0) {
+      // OneDNN has a computation difference when computing FLT_MAX
+      // Expected: 3.4028234663852886e+38
+      // Actual:   3.4028232635611926e+38
+      // Since the numbers are large relative error is used instead of
+      // the default threshold which is a small value.
+      test.SetOutputRelErr("Y", .000001f);
+    }
+#endif
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
   }
 }

@@ -62,7 +62,6 @@ file(GLOB onnxruntime4j_native_src
 onnxruntime_add_shared_library_module(onnxruntime4j_jni ${onnxruntime4j_native_src})
 set_property(TARGET onnxruntime4j_jni PROPERTY CXX_STANDARD 11)
 
-
 # depend on java sources. if they change, the JNI should recompile
 add_dependencies(onnxruntime4j_jni onnxruntime4j)
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
@@ -95,6 +94,8 @@ if(APPLE)
    endif()
    if(JNI_ARCH STREQUAL "x86_64")
        set(JNI_ARCH x64)
+   elseif(JNI_ARCH STREQUAL "arm64")
+       set(JNI_ARCH aarch64)
    endif()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
   set(JNI_ARCH ${ANDROID_ABI})

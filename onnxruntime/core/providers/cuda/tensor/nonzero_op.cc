@@ -51,16 +51,16 @@ NONZERO_TYPED_KERNEL(float)
 
 template <typename T>
 Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
-  static const std::vector<int64_t> kScalarDims = {1};
+  static const TensorShape kScalarDims{1};
   const auto x = context->Input<Tensor>(0);
 
   int nonzero_elements = 0;
   const auto& x_shape = x->Shape();
   const int x_rank = x_shape.IsScalar() ? 1 : static_cast<int>(x_shape.NumDimensions());
-  const std::vector<int64_t>& x_dims = (x_shape.IsScalar()) ? kScalarDims : x_shape.GetDims();
+  auto x_dims = (x_shape.IsScalar()) ? kScalarDims.GetDims() : x_shape.GetDims();
   const int64_t x_size = x_shape.Size();
   if (x_size > 0) {
-    auto x_data = reinterpret_cast<const typename ToCudaType<T>::MappedType*>(x->template Data<T>());
+    auto x_data = reinterpret_cast<const typename ToCudaType<T>::MappedType*>(x->Data<T>());
 
     const int number_of_blocks = NonZeroCalcBlockCount(x_size);
     auto prefix_buffer = GetScratchBuffer<int>(number_of_blocks);
@@ -88,7 +88,7 @@ Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
     ORT_ENFORCE(output_tensor, "failed to get first output!");
     CUDA_RETURN_IF_ERROR(NonZeroOutputPositions(
         Stream(), x_data, x_size, x_rank, fdm_x_strides,
-        prefix_counts, nonzero_elements, output_tensor->template MutableData<int64_t>()));
+        prefix_counts, nonzero_elements, output_tensor->MutableData<int64_t>()));
   } else {
     context->Output(0, {x_rank, nonzero_elements});
   }

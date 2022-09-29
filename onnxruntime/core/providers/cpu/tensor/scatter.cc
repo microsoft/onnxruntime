@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//https://github.com/onnx/onnx/blob/master/docs/Operators.md#Scatter
+//https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
 #include <type_traits>
 
 #include "gsl/gsl"
@@ -9,9 +9,9 @@
 #include "core/common/common.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "orttraining/training_ops/cpu/tensor/gather_elements_grad_impl.h"
 #endif
@@ -26,13 +26,9 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ScatterElements, Input, 0, element_type_lists::All);
 }  // namespace op_kernel_type_control
 
-using ScatterDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Scatter, Input, 0);
 using EnabledScatterDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Scatter, Input, 0);
 
-using ScatterElementsDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, ScatterElements, Input, 0);
 using EnabledScatterElementsDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ScatterElements, Input, 0);
 
@@ -42,6 +38,12 @@ class Scatter final : public OpKernel {
   explicit Scatter(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(),
                 "Missing/Invalid 'axis' attribute value");
+
+    // 'reduction' attribute was added in opset 16.
+    // its default value is 'none' in which case the op behaves the same as before opset 16.
+    if (!info.GetAttr<std::string>("reduction", &reduction_).IsOK()) {
+      reduction_ = "none";
+    }
   }
 
   ~Scatter() = default;
@@ -49,6 +51,7 @@ class Scatter final : public OpKernel {
 
  private:
   int64_t axis_;
+  std::string reduction_;
 };
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -57,7 +60,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterDataTypes>);
@@ -69,18 +71,27 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterElementsDataTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
+    Scatter<EnabledScatterElementsDataTypes>);
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    ScatterElements,
+    13,
+    15,
+    KernelDefBuilder()
+        .MayInplace(0, 0)
+        .TypeConstraint("T",
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
 
 ONNX_CPU_OPERATOR_KERNEL(
     ScatterElements,
-    13,
+    16,
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterElementsDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
@@ -88,8 +99,71 @@ ONNX_CPU_OPERATOR_KERNEL(
 template <class T>
 struct Func_Assignment {
   void operator()(T* a, const T* b) const {
-    *a = *b;
+    (*a) = (*b);
   }
+};
+
+template <class T>
+struct Func_Add {
+  void operator()(T* a, const T* b) const {
+    (*a) += (*b);
+  }
+};
+
+template<>
+struct Func_Add<bool> {
+  void operator()(bool* a, const bool* b) const {
+    (*a) |= (*b);
+  }
+};
+
+template<>
+struct Func_Add<MLFloat16> {
+  void operator()(MLFloat16*, const MLFloat16*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'add'.");
+    }
+};
+
+template<>
+struct Func_Add<BFloat16> {
+  void operator()(BFloat16*, const BFloat16*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'add'.");
+    }
+};
+
+template <class T>
+struct Func_Mul {
+  void operator()(T* a, const T* b) const {
+    (*a) *= (*b);
+  }
+};
+
+template<>
+struct Func_Mul<bool> {
+  void operator()(bool* a, const bool* b) const {
+    (*a) &= (*b);
+  }
+};
+
+template<>
+struct Func_Mul<std::string> {
+  void operator()(std::string*, const std::string*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with ScatterElements opset 16 when reduction is 'mul'.");
+  }
+};
+
+template<>
+struct Func_Mul<MLFloat16> {
+  void operator()(MLFloat16*, const MLFloat16*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'mul'.");
+    }
+};
+
+template<>
+struct Func_Mul<BFloat16> {
+  void operator()(BFloat16*, const BFloat16*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'mul'.");
+    }
 };
 
 template <class TIndex>
@@ -97,7 +171,7 @@ Status GetIndices(
     const Tensor& data_input, const Tensor& indices_input, int64_t axis,
     std::vector<int64_t>& indices_data) {
   const auto& input_data_shape = data_input.Shape();
-  const auto* indices_data_raw = indices_input.template Data<TIndex>();
+  const auto* indices_data_raw = indices_input.Data<TIndex>();
   const auto num_indices = indices_input.Shape().Size();
   const auto axis_dim_limit = input_data_shape[axis];
 
@@ -122,7 +196,7 @@ Status GetIndices(
 }
 
 template <class Tdata, typename FuncT>
-Status CopyScatterData(
+Status ScatterData(
     const FuncT& func,
     const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
     Tensor* data_output) {
@@ -140,9 +214,9 @@ Status CopyScatterData(
   // we do not copy
   if (src_base != dst_base) {
     if (std::is_same<Tdata, std::string>::value) {
-      const auto* str_begin = data_input->template Data<std::string>();
+      const auto* str_begin = data_input->Data<std::string>();
       const std::string* str_end = str_begin + input_elements;
-      auto* dst = data_output->template MutableData<std::string>();
+      auto* dst = data_output->MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
       memcpy(static_cast<void*>(dst_base), static_cast<const void*>(src_base), total_input_bytes);
@@ -234,11 +308,18 @@ Status CopyScatterData(
 }
 
 template <typename TData>
-struct CopyScatterDataDispatchTarget {
+struct ScatterDataDispatchTarget {
   Status operator()(const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
-                    Tensor* data_output) const {
-    return CopyScatterData<TData>(
-        Func_Assignment<TData>(), data_input, indices_data, updates_input, axis, data_output);
+                    const std::string &reduction, Tensor* data_output) const {
+    if(reduction == "add")
+      return ScatterData<TData>(
+          Func_Add<TData>(), data_input, indices_data, updates_input, axis, data_output);
+    else if(reduction == "mul")
+      return ScatterData<TData>(
+          Func_Mul<TData>(), data_input, indices_data, updates_input, axis, data_output);
+    else // if (reduction == "none")
+      return ScatterData<TData>(
+          Func_Assignment<TData>(), data_input, indices_data, updates_input, axis, data_output);
   }
 };
 
@@ -255,8 +336,8 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "data type is different from updates type");
   }
 
-  auto& indices_dims = indices_input->Shape().GetDims();
-  auto& updates_dims = updates_input->Shape().GetDims();
+  auto indices_dims = indices_input->Shape().GetDims();
+  auto updates_dims = updates_input->Shape().GetDims();
   if (indices_dims.size() != updates_dims.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Indices and updates must have the same rank");
@@ -272,7 +353,7 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
   // According to the spec the rank of ind/upd shall be the same as input(data)
   // and we also want to make sure that the dimensions of the of the ind/upd do not
   // exceed that of the input
-  auto& input_dims = input_data_shape.GetDims();
+  auto input_dims = input_data_shape.GetDims();
   if (input_dims.size() != indices_dims.size()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices must have the same rank as Input. Indices rank=",
                            indices_dims.size(), ". Input rank=", input_dims.size());
@@ -281,7 +362,7 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
   for (size_t i = 0; i < input_dims.size(); ++i) {
     // For all axes except the axis of interest, make sure that the corresponding 'indices' shape
     // value is within bounds of the corresponding 'data' shape.
-    if (static_cast<int64_t>(i) != axis_ && input_dims[i] < indices_dims[i]) {
+    if (static_cast<int64_t>(i) != axis && input_dims[i] < indices_dims[i]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices dim=", indices_dims[i], " at pos=", i,
                              " is greater than input dim=", input_dims[i]);
     }
@@ -307,8 +388,8 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
   const auto data_type = data_input->GetElementType();
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledDataTypes> dispatcher{data_type};
-  status = dispatcher.template InvokeRet<Status, CopyScatterDataDispatchTarget>(
-      data_input, indices_data, updates_input, axis, data_output);
+  status = dispatcher.template InvokeRet<Status, ScatterDataDispatchTarget>(
+      data_input, indices_data, updates_input, axis, this->reduction_, data_output);
 
   return status;
 }
@@ -329,7 +410,7 @@ Status GatherElementsGradImpl(const Tensor* indices_input, const Tensor* updates
                               const int64_t axis, Tensor* data_output) {
   std::vector<int64_t> indices_data{};
   ORT_RETURN_IF_ERROR(GetIndices<Tin>(*data_output, *indices_input, axis, indices_data));
-  return CopyScatterData<Tdata>(Func_Add<Tdata>(), data_output, indices_data, updates_input, axis, data_output);
+  return ScatterData<Tdata>(Func_Add<Tdata>(), data_output, indices_data, updates_input, axis, data_output);
 }
 
 #define GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(Tin, Tdata)         \

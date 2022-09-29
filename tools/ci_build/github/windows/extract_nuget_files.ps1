@@ -10,16 +10,16 @@ New-Item -Path $nuget_artifacts_dir -ItemType directory
 
 ## .zip files
 # unzip directly
-Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.zip | 
+Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.zip |
 Foreach-Object {
  $cmd = "7z.exe x $($_.FullName) -y -o$nuget_artifacts_dir"
  Write-Output $cmd
- Invoke-Expression -Command $cmd 
+ Invoke-Expression -Command $cmd
 }
 
 ## .tgz files
 # first extract the tar file from the tgz
-Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.tgz | 
+Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.tgz |
 Foreach-Object {
  $cmd = "7z.exe x $($_.FullName) -y -o$Env:BUILD_BINARIESDIRECTORY\nuget-artifact"
  Write-Output $cmd
@@ -27,16 +27,17 @@ Foreach-Object {
 }
 
 # now extract the actual folder structure from the tar file to the build dir
-Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.tar | 
+Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter *.tar |
 Foreach-Object {
  $cmd = "7z.exe x $($_.FullName) -y -o$nuget_artifacts_dir"
  Write-Output $cmd
  Invoke-Expression -Command $cmd
 }
 
-# copy android AAR. 
-# should only be one .aar file called onnxruntime-mobile-x.y.z.aar but sanity check that
-$aars = Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter onnxruntime-mobile-*.aar 
+# copy android AAR.
+# for full build of onnxruntime Android AAR, there should only be one .aar file
+# called onnxruntime-android-x.y.z.aar but sanity check that
+$aars = Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter onnxruntime-android-*.aar
 
 if ($aars.Count -eq 1) {
   $aar = $aars[0]
@@ -61,11 +62,11 @@ Copy-Item -Path $Env:BUILD_BINARIESDIRECTORY\extra-artifact\protoc.exe $Env:BUIL
 $ort_dirs = Get-ChildItem -Directory -Path $nuget_artifacts_dir\onnxruntime-*
 foreach ($ort_dir in $ort_dirs)
 {
-  # remove the last '-xxx' segment from the dir name. typically that's the architecture. 
+  # remove the last '-xxx' segment from the dir name. typically that's the architecture.
   $dirname = Split-Path -Path $ort_dir -Leaf
   $dirname = $dirname.SubString(0,$dirname.LastIndexOf('-'))
   Write-Output "Renaming $ort_dir to $dirname"
-  Rename-Item -Path $ort_dir -NewName $nuget_artifacts_dir\$dirname  
+  Rename-Item -Path $ort_dir -NewName $nuget_artifacts_dir\$dirname
 }
 
 # List artifacts

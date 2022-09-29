@@ -153,7 +153,7 @@ Status DataLoader::LoadFile(const PathString& file_path, std::shared_ptr<DataSet
     Status s = LoadOneSample(coded_in, sample_size, data_set);
     if (!s.IsOK()) {
       return ORT_MAKE_STATUS(
-          ONNXRUNTIME, FAIL, "Failed to parse file '", ToMBString(file_path), "': ", s.ErrorMessage());
+          ONNXRUNTIME, FAIL, "Failed to parse file '", ToUTF8String(file_path), "': ", s.ErrorMessage());
     }
   }
   return Status::OK();

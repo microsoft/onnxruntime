@@ -169,21 +169,20 @@ struct MyCustomOpWithAttributes : Ort::CustomOpBase<MyCustomOpWithAttributes, My
 
 //Slice array of floats or doubles between [from, to) and save to output
 struct SliceCustomOpKernel {
-  SliceCustomOpKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/, void* compute_stream)
-      : ort_(ort), compute_stream_(compute_stream) {
+  SliceCustomOpKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/)
+      : ort_(ort) {
   }
 
   void Compute(OrtKernelContext* context);
 
  private:
   Ort::CustomOpApi ort_;
-  void* compute_stream_;
 };
 
 struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
-  explicit SliceCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+  explicit SliceCustomOp(const char* provider) : provider_(provider) {}
   void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const {
-    return new SliceCustomOpKernel(api, info, compute_stream_);
+    return new SliceCustomOpKernel(api, info);
   };
 
   const char* GetName() const { return "Slice"; };
@@ -204,6 +203,46 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const {
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
+
+ private:
+  const char* provider_;
+};
+
+struct StandaloneCustomKernel {
+  StandaloneCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*);
+  ~StandaloneCustomKernel();
+  void Compute(OrtKernelContext* context);
+
+ private:
+  void InitTopK(Ort::CustomOpApi ort);
+  void InvokeTopK(OrtKernelContext* context);
+
+  void InitGru(Ort::CustomOpApi ort);
+  void InvokeGru(OrtKernelContext* context);
+
+  void InitInvokeConv(OrtKernelContext* context);  // create Conv and invoke in Compute(...)
+
+  Ort::CustomOpApi ort_;
+  OrtKernelInfo* info_copy_{};
+  OrtOp* op_add_{};
+  OrtOp* op_topk_{};
+  OrtOp* op_gru_{};
+};
+
+struct StandaloneCustomOp : Ort::CustomOpBase<StandaloneCustomOp, StandaloneCustomKernel> {
+  explicit StandaloneCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new StandaloneCustomKernel(api, info, compute_stream_); };
+  const char* GetName() const { return "Foo"; };
+  const char* GetExecutionProviderType() const { return provider_; };
+
+  size_t GetInputTypeCount() const { return 2; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
  private:
   const char* provider_;

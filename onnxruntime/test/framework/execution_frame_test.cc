@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/span_utils.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
@@ -82,9 +83,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   ASSERT_TRUE(p_ml_value != nullptr);
   Tensor* p_tensor = p_ml_value->GetMutable<Tensor>();
   ASSERT_TRUE(p_tensor != nullptr);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&p_tensor->Shape()),
-            *reinterpret_cast<const std::vector<int64_t>*>(&shape));
+  ASSERT_EQ(p_tensor->Shape(), shape);
   ASSERT_EQ(p_tensor->DataType(), DataTypeImpl::GetType<float>());
 
   //test share memory from tensor
@@ -99,10 +98,8 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   const OrtValue* p_ml_value_const = frame.GetNodeInputOrOutputMLValue(1);
   auto tensor2 = p_ml_value_const ? &(p_ml_value_const->Get<Tensor>()) : nullptr;
   ASSERT_TRUE(tensor2);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&tensor2->Shape()),
-            *reinterpret_cast<const std::vector<int64_t>*>(&shape2));
-  ASSERT_EQ(tensor2->template Data<float>(), p_tensor->template Data<float>());
+  ASSERT_EQ(tensor2->Shape(), shape2);
+  ASSERT_EQ(tensor2->Data<float>(), p_tensor->Data<float>());
 }
 
 TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
@@ -203,9 +200,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   OrtValue* p_ml_value = frame.GetMutableNodeInputOrOutputMLValue(0);
   Tensor* p_tensor_arg_0 = p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
   ASSERT_TRUE(p_tensor_arg_0);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&p_tensor_arg_0->Shape()),
-            *reinterpret_cast<const std::vector<int64_t>*>(&shape));
+  ASSERT_EQ(p_tensor_arg_0->Shape(), shape);
   ASSERT_EQ(p_tensor_arg_0->DataType(), DataTypeImpl::GetType<float>());
   ASSERT_EQ(p_tensor_arg_0->MutableData<float>(), value.GetMutable<Tensor>()->MutableData<float>());
 }
@@ -275,8 +270,8 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
                        std::vector<int64_t>{2, 3},
                        std::vector<float>(6, 1.0f), &v3);
 
-  vector<OrtValue> outputs;
-  ExecutionFrame frame({x1_idx, x2_idx, x3_idx}, {v1, v2, v3}, {t3_idx}, outputs, {}, state);
+  std::vector<OrtValue> outputs;
+  ExecutionFrame frame(AsSpan({x1_idx, x2_idx, x3_idx}), AsSpan({v1, v2, v3}), {t3_idx}, outputs, {}, state);
 
   OrtValue& mlvalue3 = *frame.GetMutableNodeInputOrOutputMLValue(3);
   OrtValue& mlvalue4 = *frame.GetMutableNodeInputOrOutputMLValue(4);
@@ -297,7 +292,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
                                                             cpu_allocator->Info(),
                                                             TensorShape(std::vector<int64_t>{2, 3})));
   MemoryPatternGroup pattern;
-  ASSERT_STATUS_OK(frame.GeneratePatterns(&pattern));
+  ASSERT_STATUS_OK(frame.GeneratePatterns(pattern));
 
   ASSERT_EQ(pattern.patterns.size(), pattern.locations.size());
   ASSERT_EQ(pattern.patterns.size(), 1u);
@@ -374,7 +369,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
       y_value, y_idx, DataTypeImpl::GetType<float>(), cpu_allocator->Info(), TensorShape(std::vector<int64_t>{2, 2})));
 
   MemoryPatternGroup pattern;
-  ASSERT_STATUS_OK(frame.GeneratePatterns(&pattern));
+  ASSERT_STATUS_OK(frame.GeneratePatterns(pattern));
 
   ASSERT_EQ(pattern.patterns.size(), pattern.locations.size());
   ASSERT_EQ(pattern.patterns.size(), 1u);
@@ -444,7 +439,8 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
     const void* orig_buffer = results[0].Get<Tensor>().DataRaw();
 
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<const std::string>(),
+                                 EmptySpan<const OrtValue>(), AsSpan({std::string("values")}), &results, nullptr));
 
     EXPECT_EQ(results[0].Get<Tensor>().DataRaw(), orig_buffer);
     EXPECT_THAT(results[0].Get<Tensor>().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected)));
@@ -458,7 +454,8 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 
     std::vector<OrtValue> results;
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<std::string>(),
+      EmptySpan<OrtValue>(), AsSpan({std::string("values")}), &results, nullptr));
 
     // output buffer should not be the same as the initializer in SessionState
     const auto& initializers = session.GetSessionState().GetInitializedTensors();
@@ -469,7 +466,6 @@ TEST(ExecutionFrameTestInit, InitializerAsOutput) {
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
-
   const std::vector<int64_t> dense_shape{3, 3};
   std::vector<float> dense_data = {
       0, 0, 1.764052391052246f,
@@ -496,20 +492,20 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
     auto ml_type = DataTypeImpl::GetType<SparseTensor>();
     results[0].Init(p_tensor.release(), ml_type, ml_type->GetDeleteFunc());
     RunOptions ro;
-    ASSERT_STATUS_OK(session.Run(ro, {}, {}, {"values"}, &results, nullptr));
+    ASSERT_STATUS_OK(session.Run(ro, EmptySpan<std::string>(), EmptySpan<OrtValue>(), AsSpan<std::string>({"values"}), &results, nullptr));
 
     ASSERT_TRUE(results[0].IsAllocated());
     ASSERT_TRUE(results[0].IsSparseTensor());
     const SparseTensor& result = results[0].Get<SparseTensor>();
     ASSERT_EQ(result.DataType(), DataTypeImpl::GetType<float>());
-    EXPECT_THAT(result.DenseShape().GetDims(), ::testing::ContainerEq(dense_shape));
+    EXPECT_THAT(result.DenseShape().GetDims(), ::testing::ContainerEq(gsl::make_span(dense_shape)));
     ASSERT_EQ(result.NumValues(), 3U);
     EXPECT_THAT(result.Values().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected_values)));
     auto coo_view = result.AsCoo();
     EXPECT_THAT(coo_view.Indices().DataAsSpan<int64_t>(), ::testing::ContainerEq(gsl::make_span(expected_linear_indices)));
   }
 }
-#endif // !defined(DISABLE_SPARSE_TENSORS)
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace test
 }  // namespace onnxruntime

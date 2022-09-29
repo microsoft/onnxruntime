@@ -80,6 +80,10 @@ class GraphViewer {
   */
   const std::vector<const NodeArg*>& GetOutputs() const noexcept;
 
+  /** Returns true if one or more of the Node outputs are Graph outputs.
+   */
+  bool NodeProducesGraphOutput(const Node& node) const;
+
   /** Gets all ValueInfo NodeArg instances in the Graph.
   @remarks NOT filtered using filter_info_.
   */
@@ -139,12 +143,29 @@ class GraphViewer {
   /** Get the internal graph*/
   const Graph& GetGraph() const { return *graph_; }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept;
+#endif
+
   /**
   returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime.
   @param check_outer_scope If true and the 'graph_' is a subgraph, check parent graph/s for 'name'
                            if the name is not found in 'graph_'.
   */
   bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;
+
+  /** Check if a given name is an initializer tensor's name in this graph. */
+  bool IsInitializedTensor(const std::string& name) const;
+
+  /** returns the initializer's TensorProto if 'name' is an initializer, is constant and
+  cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
+  @param check_outer_scope If true and the graph is a subgraph,
+         check ancestor graph/s for 'name' if not found in 'graph'.
+  @remarks This function will return the result from GetConstantInitializer of the underlying Graph,
+           if a const initializer is part of the underlying Graph but not part of this GraphViewer,
+           it will still be returned instead of nullptr
+  */
+  const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
 
   /** Get the Node containing this Graph if IsSubgraph is true. Returns nullptr otherwise. */
   const Node* ParentNode() const noexcept { return graph_->ParentNode(); }
@@ -165,6 +186,10 @@ class GraphViewer {
   @returns Filter info or nullptr
   */
   const IndexedSubGraph* GetFilterInfo() const { return filter_info_; }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return graph_->GetSchemaRegistry(); }
+#endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
@@ -187,7 +212,8 @@ class GraphViewer {
   // if we're limiting the view to an IndexedSubGraph we need to create a few pieces of infrastructure that would
   // usually come from the full graph
   const IndexedSubGraph* filter_info_{nullptr};
-  std::unordered_set<NodeIndex> filtered_node_indices_;
+  using FilteredNodeSet = InlinedHashSet<NodeIndex>;
+  FilteredNodeSet filtered_node_indices_;
   std::vector<const NodeArg*> filtered_node_inputs_;
   std::vector<const NodeArg*> filtered_node_inputs_including_initializers_;
   std::vector<const NodeArg*> filtered_node_outputs_;

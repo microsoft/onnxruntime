@@ -25,12 +25,9 @@ namespace logging {
 class Logger;
 }
 
-namespace experimental {
-
 namespace fbs {
 struct Attribute;
 struct Tensor;
-}  // namespace fbs
 
 namespace utils {
 
@@ -52,10 +49,19 @@ onnxruntime::common::Status SaveAttributeOrtFormat(
     flatbuffers::Offset<fbs::Attribute>& fbs_attr, const Path& model_path,
     const onnxruntime::Graph* subgraph);
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
-onnxruntime::common::Status LoadInitializerOrtFormat(
-    const fbs::Tensor& fbs_tensor, ONNX_NAMESPACE::TensorProto& initializer);
+/// <summary>
+/// Load an initializer from an ORT format flatbuffer.
+/// </summary>
+/// <param name="fbs_tensor">Flatbuffer Tensor</param>
+/// <param name="initializer">TensorProto to load data into</param>
+/// <param name="can_use_flatbuffer_for_initializers">
+/// If true, set the TensorProto to point to the memory in the flatbuffer instead of copying data.
+/// This requires the buffer to remain valid for the entire duration of the InferenceSession.
+/// </param>
+/// <returns>Status</returns>
+onnxruntime::common::Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
+                                                     ONNX_NAMESPACE::TensorProto& initializer,
+                                                     bool can_use_flatbuffer_for_initializers = false);
 
 onnxruntime::common::Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor,
                                                            ONNX_NAMESPACE::SparseTensorProto& initializer);
@@ -66,11 +72,10 @@ onnxruntime::common::Status LoadSparseInitializerOrtFormat(const fbs::SparseTens
 onnxruntime::common::Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
                                                    ONNX_NAMESPACE::AttributeProto& attr_proto,
                                                    std::unique_ptr<onnxruntime::Graph>& sub_graph,
-                                                   Graph& graph, Node& node,
+                                                   onnxruntime::Graph& graph, onnxruntime::Node& node,
+                                                   bool can_use_flatbuffer_for_initializers,
                                                    const logging::Logger& logger);
 
-#endif
-
 }  // namespace utils
-}  // namespace experimental
+}  // namespace fbs
 }  // namespace onnxruntime

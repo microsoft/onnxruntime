@@ -25,7 +25,7 @@
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 
-//Gist Encoding
+// Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
@@ -36,7 +36,7 @@
 #ifdef ENABLE_NVTX_PROFILE
 #include <set>
 #include <thread>
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 
 namespace onnxruntime {
@@ -126,7 +126,7 @@ Status SetupOptimizerParams(
   // check if shared initial optimizer states have been provided
   const auto optim_state_it = init_optimizer_states.find(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY);
   if (optim_state_it != init_optimizer_states.end()) {
-    opt_graph_config.shared_optimizer_states = std::move(optim_state_it->second);
+    opt_graph_config.shared_optimizer_states = optim_state_it->second;
   }
 
   opt_node_configs_result = std::move(opt_node_configs);
@@ -317,7 +317,7 @@ static Status AddFakeLossScaling(
     Graph& graph, std::string& loss_scale_name) {
   GraphAugmenter::GraphDefs defs{};
   loss_scale_name = graph.GenerateNodeArgName("loss_scale");
-  const auto* loss_scale_type = defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  const auto* loss_scale_type = defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   graph.GetOrCreateNodeArg(loss_scale_name, loss_scale_type);
   defs.AddGraphInputs({loss_scale_name});
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
@@ -349,7 +349,7 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  MemoryInfo::SetLocalRank(config.distributed_config.world_rank);
+  GetMemoryProfiler().GetMemoryInfo().SetLocalRank(config.distributed_config.world_rank);
 #endif
 
 #ifdef USE_MPI
@@ -597,7 +597,7 @@ static Status AddLossScaling(
   GraphAugmenter::GraphDefs defs{};
   *loss_scale_input_name = graph.GenerateNodeArgName("loss_scale");
   const auto* loss_scale_input_type =
-      defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   scaled_loss_name = graph.GenerateNodeArgName("scaled_loss");
   defs.AddNodeDef(NodeDef{
       "Mul",
@@ -754,8 +754,15 @@ void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execu
 }
 
 // Registers all the predefined transformers with transformer manager
-Status TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                  TransformerLevel graph_optimization_level) {
+Status TrainingSession::AddPredefinedTransformers(
+    GraphTransformerManager& transformer_manager,
+    TransformerLevel graph_optimization_level,
+    MinimalBuildOptimizationHandling minimal_build_optimization_handling,
+    RecordRuntimeOptimizationProducedNodeOpSchemaFn /*record_runtime_optimization_produced_op_schema_fn*/) const {
+  ORT_RETURN_IF_NOT(
+      minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations,
+      "Only applying full build optimizations is supported by TrainingSession.");
+
   ORT_RETURN_IF_NOT(graph_optimization_level <= TransformerLevel::MaxLevel,
                     "Exceeded max transformer level. Current level is set to " +
                         std::to_string(static_cast<uint32_t>(graph_optimization_level)));
@@ -788,7 +795,7 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
   // CPU allocator for partitioning the optimizer state by column.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  std::unordered_set<std::string> compatible_eps = {};
+  InlinedHashSet<std::string_view> compatible_eps = {};
   LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
   transformers_to_register.emplace_back(std::make_unique<MegatronTransformer>(
       training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
@@ -992,7 +999,7 @@ Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri
                                                      const std::string& external_file_name,
                                                      size_t initializer_size_threshold) {
   // Delete the old files before saving.
-  std::remove(ToMBString(model_uri).c_str());
+  std::remove(ToUTF8String(model_uri).c_str());
   std::remove(external_file_name.c_str());
 
   return Model::SaveWithExternalInitializers(*model_, model_uri, external_file_name, initializer_size_threshold);
@@ -1000,7 +1007,7 @@ Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri
 
 Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveOption opt) {
   // Delete the old file before saving.
-  std::remove(ToMBString(model_uri).c_str());  // TODO would be good to have something like RemoveFile(PathString)
+  std::remove(ToUTF8String(model_uri).c_str());  // TODO would be good to have something like RemoveFile(PathString)
 
   if (opt == TrainingSession::SaveOption::NO_RELOAD) {
     return Model::Save(*model_, model_uri);
@@ -1052,7 +1059,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 
   if (!status.IsOK()) {
     LOGS(*session_logger_, WARNING)
-        << "Error when saving model " << ToMBString(model_uri) << " : " << status.ErrorMessage();
+        << "Error when saving model " << ToUTF8String(model_uri) << " : " << status.ErrorMessage();
   }
 
   return status;
@@ -1412,7 +1419,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   };
 
   // perform reverse dfs from output node to discover trainable parameters
-  graph.ReverseDFSFrom({graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
+  graph.ReverseDFSFrom(std::array{graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
   return trainable_initializers;
 }
 
@@ -1843,7 +1850,7 @@ void PipelineTrainingSession::CreatePipelineEvents(
 common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_options, IOBinding& io_binding) {
   const size_t num_steps = pipeline_context_.num_pipeline_micro_batches;
   const size_t stage_id = pipeline_context_.pipeline_stage_id;
-  const bool training_mode = true;
+  constexpr bool training_mode = true;
 
   std::vector<std::unique_ptr<IOBinding>> sub_io_bindings(num_steps);
 

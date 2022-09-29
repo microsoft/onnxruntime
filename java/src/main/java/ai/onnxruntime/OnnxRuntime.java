@@ -36,6 +36,8 @@ final class OnnxRuntime {
   private static final int ORT_API_VERSION_7 = 7;
   // Post 1.7 builds of the ORT API
   private static final int ORT_API_VERSION_8 = 8;
+  // Post 1.10 builds of the ORT API
+  private static final int ORT_API_VERSION_11 = 11;
 
   /**
    * The name of the system property which when set gives the path on disk where the ONNX Runtime
@@ -136,7 +138,7 @@ final class OnnxRuntime {
 
       load(ONNXRUNTIME_LIBRARY_NAME);
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
-      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_8);
+      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_11);
       providers = initialiseProviders(ortApiHandle);
       loaded = true;
     } finally {

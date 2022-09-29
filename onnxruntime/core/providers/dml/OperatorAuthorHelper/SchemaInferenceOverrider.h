@@ -4,7 +4,7 @@
 #pragma once
 
 #include "OperatorHelper.h"
-#include "OperatorRegistration.h"
+#include "OperatorVersions.h"
 
 namespace SchemaInferenceOverrider
 {
@@ -14,9 +14,9 @@ namespace SchemaInferenceOverrider
     // require type inference functions.
     template <typename T>
     void OverrideSchemaInferenceFunction(
-        _In_z_ const char* name, 
-        int version, 
-        bool isLatest, 
+        _In_z_ const char* name,
+        int version,
+        bool isLatest,
         gsl::span<const uint32_t> constantCpuInputs
     )
     {
@@ -40,11 +40,12 @@ namespace SchemaInferenceOverrider
                     }
                 }
 
-                auto abiContext =
-                    wil::MakeOrThrow<Windows::AI::MachineLearning::Adapter::MLSchemaInferenceContext>(
-                        &nodeInfo, &ctx, constantCpuInputsCapture);
+                auto abiContext = Windows::AI::MachineLearning::Adapter::MLSchemaInferenceContext::Create(
+                    &nodeInfo,
+                    &ctx,
+                    constantCpuInputsCapture);
 
-                THROW_IF_FAILED(shapeInferrer->InferOutputShapes(abiContext.Get()));
+                ORT_THROW_IF_FAILED(shapeInferrer->InferOutputShapes(abiContext.Get()));
                 abiContext->Close();
             }
         });
@@ -53,18 +54,18 @@ namespace SchemaInferenceOverrider
         {
             // Assert that this is the latest schema version for the operator, since a new version might need
             // the same treatment.
-            const uint32_t maxVersion = 9;
+            [[maybe_unused]] constexpr uint32_t maxVersion = 9;
             assert(
                 !onnx::OpSchemaRegistry::Schema(name, maxVersion) ||
                 onnx::OpSchemaRegistry::Schema(name, maxVersion) == onnx::OpSchemaRegistry::Schema(name, version));
         }
     }
 
-#pragma push_macro("REGISTER_FUSED_OP_SCHEMA")
+#pragma push_macro("OVERRIDE_SCHEMA")
 #define OVERRIDE_SCHEMA(version, isLatest, opName) \
 OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##opName>( \
     #opName, OperatorHelper::OnnxOperatorSet##version##::sc_sinceVer_##opName, isLatest, gsl::span<uint32_t>());
-    
+
 #pragma push_macro("OVERRIDE_SCHEMA_EX")
 #define OVERRIDE_SCHEMA_EX(version, isLatest, opName, shapeInferenceName, /*CPU constant tensor indices*/ ...) \
 OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##shapeInferenceName>( \
@@ -81,7 +82,7 @@ OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##shapeInfe
         OVERRIDE_SCHEMA_EX( 7,  false, Upsample, Upsample7);
         OVERRIDE_SCHEMA_EX( 9,  true,  Upsample, Upsample9, 1);
         OVERRIDE_SCHEMA_EX( 7,  true,  Slice, Slice7);
-        OVERRIDE_SCHEMA(    7,  true,  Split);
+        OVERRIDE_SCHEMA_EX( 7,  true,  Split, Split7);
         OVERRIDE_SCHEMA_EX( 7,  true,  Tile, Tile, 1);
         OVERRIDE_SCHEMA_EX( 8,  true,  Expand, Expand, 1);
         OVERRIDE_SCHEMA(    8,  true,  MaxPool);
@@ -90,6 +91,6 @@ OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##shapeInfe
 
     }
 #pragma pop_macro("OVERRIDE_SCHEMA_EX")
-#pragma pop_macro("REGISTER_FUSED_OP_SCHEMA")
+#pragma pop_macro("OVERRIDE_SCHEMA")
 
 }

@@ -30,19 +30,25 @@ class InferenceSessionProtectedLoadAccessor : public onnxruntime::InferenceSessi
  public:
   onnxruntime::common::Status
   Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) {
-    return onnxruntime::InferenceSession::Load(std::move(p_model_proto));
+    return onnxruntime::InferenceSession::LoadOnnxModel(std::move(p_model_proto));
   }
   const onnxruntime::SessionState& GetSessionState() {
     return onnxruntime::InferenceSession::GetSessionState();
   }
 };
 
-ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** session) {
+ORT_API_STATUS_IMPL(winmla::CreateSessionWithoutModel, _In_ OrtEnv* env, _In_ const OrtSessionOptions* options,
+ _In_ OrtThreadPool* inter_op_thread_pool, _In_ OrtThreadPool* intra_op_thread_pool, _Outptr_ OrtSession** session) {
   API_IMPL_BEGIN
   std::unique_ptr<onnxruntime::InferenceSession> inference_session;
   try {
     // Create the inference session
-    inference_session = std::make_unique<onnxruntime::InferenceSession>(options->value, env->GetEnvironment());
+    inference_session =
+        std::make_unique<onnxruntime::InferenceSession>(
+            options->value,
+            env->GetEnvironment(),
+            reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(intra_op_thread_pool),
+            reinterpret_cast<onnxruntime::concurrency::ThreadPool*>(inter_op_thread_pool));
   } catch (const std::exception& e) {
     return OrtApis::CreateStatus(ORT_FAIL, e.what());
   }
@@ -208,7 +214,7 @@ static OrtDevice GetSessionGetInputDevice(_In_ OrtSession* session, _In_ const c
       static_cast<InferenceSessionProtectedLoadAccessor*>(inference_session);
   const onnxruntime::SessionState& session_state = session_protected_load_accessor->GetSessionState();
 
-  std::vector<onnxruntime::SessionState::NodeInfo> node_info_vec;
+  onnxruntime::InlinedVector<onnxruntime::SessionState::NodeInfo>node_info_vec;
   ORT_THROW_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
   const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
   return *node_info.device;
@@ -252,9 +258,17 @@ ORT_API_STATUS_IMPL(winmla::SessionCopyOneInputAcrossDevices, _In_ OrtSession* s
 
 ORT_API_STATUS_IMPL(winmla::SessionGetNumberOfIntraOpThreads, _In_ OrtSession* session, _Out_ uint32_t* num_threads) {
   API_IMPL_BEGIN
-  auto inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
-  auto session_options = inference_session->GetSessionOptions();
-  *num_threads = session_options.intra_op_param.thread_pool_size;
+
+  struct ThreadPoolSessionInspector : public ::onnxruntime::InferenceSession {
+   public:
+    onnxruntime::concurrency::ThreadPool* IntraOpThreadPool() const {
+      return GetIntraOpThreadPoolToUse();
+    }
+  };
+
+  auto inference_session = reinterpret_cast<ThreadPoolSessionInspector*>(session);
+  auto thread_pool = inference_session->IntraOpThreadPool();
+  *num_threads = ::onnxruntime::concurrency::ThreadPool::DegreeOfParallelism(thread_pool);
   return nullptr;
   API_IMPL_END
 }

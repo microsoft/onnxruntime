@@ -22,10 +22,10 @@ TEST_F(WriteScores, multiple_scores_transform_none) {
                                  POST_EVAL_TRANSFORM::SOFTMAX_ZERO,
                                  POST_EVAL_TRANSFORM::PROBIT};
   for (POST_EVAL_TRANSFORM tran : trans) {
-    std::vector<float> v1(100);
+    InlinedVector<float> v1(100);
     std::uniform_real_distribution<float> uniform_dist(-1, 1);
     std::generate_n(v1.data(), v1.size(), [&]() -> float { return uniform_dist(rd); });
-    std::vector<float> v2 = v1;
+    InlinedVector<float> v2 = v1;
     auto alloc = std::make_shared<test::DummyAllocator>();
     Tensor t(DataTypeImpl::GetType<float>(), {static_cast<int64_t>(v1.size())}, alloc);
     if (tran == POST_EVAL_TRANSFORM::SOFTMAX_ZERO) {
@@ -55,10 +55,10 @@ TEST_F(WriteScores, multiple_scores_transform_none) {
 }
 
 TEST_F(WriteScores, single_score_transform_none) {
-  std::vector<float> v1;
+  InlinedVector<float> v1;
   std::uniform_real_distribution<float> uniform_dist(-100, 100);
   v1.push_back(uniform_dist(rd));
-  std::vector<float> v2 = v1;
+  InlinedVector<float> v2 = v1;
   auto alloc = std::make_shared<test::DummyAllocator>();
   Tensor t(DataTypeImpl::GetType<float>(), {static_cast<int64_t>(v1.size())}, alloc);
   write_scores<float>(v1, POST_EVAL_TRANSFORM::NONE, 0, &t, -1);
@@ -70,10 +70,10 @@ TEST_F(WriteScores, single_score_transform_none) {
 
 TEST_F(WriteScores, single_score_transform_none_add_second_class) {
   for (int i = 0; i != 4; ++i) {
-    std::vector<float> v1;
+    InlinedVector<float> v1;
     std::uniform_real_distribution<float> uniform_dist(-100, 100);
     v1.push_back(uniform_dist(rd));
-    std::vector<float> v2 = v1;
+    InlinedVector<float> v2 = v1;
     auto alloc = std::make_shared<test::DummyAllocator>();
     Tensor t(DataTypeImpl::GetType<float>(), {2}, alloc);
     write_scores<float>(v1, POST_EVAL_TRANSFORM::NONE, 0, &t, i);

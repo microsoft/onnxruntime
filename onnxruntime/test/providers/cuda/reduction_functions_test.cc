@@ -269,8 +269,8 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
          const optional<int>& expected_n = nullopt) {
         SCOPED_TRACE(MakeString(
             "cudnn_op: ", cudnn_op,
-            ", dims: ", TensorShape::ReinterpretBaseType(dims),
-            ", axes: ", TensorShape::ReinterpretBaseType(axes)));
+            ", dims: ", TensorShape::FromExistingBuffer(dims),
+            ", axes: ", TensorShape::FromExistingBuffer(axes)));
         int m{}, n{};
         EXPECT_EQ(
             static_cast<int>(get_applicable_matrix_reduction(cudnn_op, dims, axes, m, n)),

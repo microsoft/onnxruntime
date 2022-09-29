@@ -16,7 +16,7 @@ namespace cuda {
 class INcclService;
 }
 namespace profile {
-  class NvtxRangeCreator;
+class NvtxRangeCreator;
 }
 
 struct ProviderInfo_CUDA {
@@ -32,8 +32,8 @@ struct ProviderInfo_CUDA {
   virtual void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) = 0;
   virtual void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) = 0;
 
-  virtual bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
-  virtual bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
+  virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 
   virtual void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) = 0;
   virtual void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) = 0;
@@ -46,12 +46,18 @@ struct ProviderInfo_CUDA {
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
-  virtual void NvtxRangeCreator__BeginImpl(profile::NvtxRangeCreator *p) = 0;
+  virtual void NvtxRangeCreator__BeginImpl(profile::NvtxRangeCreator* p) = 0;
   virtual void NvtxRangeCreator__EndImpl(profile::NvtxRangeCreator* p) = 0;
 #endif
 
   virtual std::shared_ptr<onnxruntime::IExecutionProviderFactory> CreateExecutionProviderFactory(const onnxruntime::CUDAExecutionProviderInfo& info) = 0;
   virtual std::shared_ptr<onnxruntime::IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) = 0;
+
+#ifndef NDEBUG
+  // This function is the entry point to CUDA EP's internal (aka not accessible from bridge code for shared library)
+  // tests and is only called from onnxruntime_test_all. Release builds don't need this function.
+  virtual bool TestAll() = 0;
+#endif
 };
 
 }  // namespace onnxruntime

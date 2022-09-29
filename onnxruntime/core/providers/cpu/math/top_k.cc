@@ -26,7 +26,6 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace std;
 namespace onnxruntime {
 
 template <typename T>
@@ -123,7 +122,7 @@ static void HeapifyIthPosition(int64_t* heap, size_t i, size_t k, const HeapCmp&
 template <class Comparator>
 static void SelectTopK(const Comparator& comparer,
                        int64_t row_offset, int64_t num_blocks, int64_t block_slice, int64_t inter_block_offset,
-                       const unsigned k, bool sort_top_k, vector<int64_t>& data_holder) {
+                       const unsigned k, bool sort_top_k, std::vector<int64_t>& data_holder) {
   for (int64_t l = 0; l < num_blocks; ++l) {
     data_holder[l] = (row_offset + (l * block_slice + inter_block_offset));
   }
@@ -150,13 +149,13 @@ static void FindTopKElements(const Tensor* input, const TensorShape& input_shape
   // Cache some values that will be used in the implementation below
   const int64_t rows = input_shape.SizeToDimension(static_cast<size_t>(axis_parsed));
   const int64_t cols = input->Shape().Size() / rows;
-  const auto* input_data = input->template Data<typename Comparator::DataType>();
+  const auto* input_data = input->Data<typename Comparator::DataType>();
 
   // Use Eigen maps for convenient indexing into the 2d tensors like Values_map(i,j)
   const int64_t reduced_cols = output_shape.SizeFromDimension(static_cast<size_t>(axis_parsed));
 
-  auto* values_data = values->template MutableData<typename Comparator::DataType>();
-  auto* indices_data = indices->template MutableData<int64_t>();
+  auto* values_data = values->MutableData<typename Comparator::DataType>();
+  auto* indices_data = indices->MutableData<int64_t>();
   auto values_map = EigenMatrixMapRowMajor<typename Comparator::DataType>(values_data, rows, reduced_cols);
   auto indices_map = EigenMatrixMapRowMajor<int64_t>(indices_data, rows, reduced_cols);
 
@@ -370,6 +369,56 @@ static Status TopKImpl(OpKernelContext* p_op_kernel_context, const Tensor* input
   return Status::OK();
 }
 
+// Wrapper over core TopK implementation
+template <typename T>
+Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
+               AllocatorPtr allocator,
+               onnxruntime::concurrency::ThreadPool* threadpool,
+               Tensor& output_values,
+               Tensor& output_indices) {
+  const TensorShape& input_shape = input->Shape();
+
+  // Will return axis_ as is if positive or fixes it in case it is negative
+  const auto axis_parsed = HandleNegativeAxis(axis, static_cast<int64_t>(input_shape.NumDimensions()));
+
+  // Check to ensure k is within the bounds of what is available in that specific axis
+  if (input_shape[axis_parsed] < k) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k argument [", k,
+                           "] should not be greater than specified axis dim value [", input_shape[axis_parsed], "]");
+  }
+
+  // Resize output tensors to be the same shape as the input except
+  // for the specified dimension ((i.e.) axis_parsed), which will be of size k. E.x. for an input tensor
+  // of shape [3, 4, 5] and k=2 with axis_parsed=1, both of the outputs will be shape [3, 2, 5]
+  TensorShape output_shape = input_shape;
+  output_shape[axis_parsed] = k;
+
+  output_values = Tensor(input->DataType(), output_shape, allocator);
+  output_indices = Tensor(DataTypeImpl::GetType<int64_t>(), output_shape, allocator);
+
+  // no-op - no output buffers to fill - return silently
+  if (k == 0) {
+    return Status::OK();
+  }
+
+  if (largest) {
+    FindTopKElements<GreaterValueCmp<T>>(input, input_shape, &output_values, &output_indices, output_shape, k, sorted,
+                                         gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
+  } else {
+    FindTopKElements<LesserValueCmp<T>>(input, input_shape, &output_values, &output_indices, output_shape, k, sorted,
+                                        gsl::narrow_cast<unsigned>(axis_parsed), threadpool);
+  }
+
+  return Status::OK();
+}
+
+// explicit instantiation
+template Status GetTopK<float>(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
+                               AllocatorPtr allocator,
+                               onnxruntime::concurrency::ThreadPool* threadpool,
+                               Tensor& output_values,
+                               Tensor& output_indices);
+
 // Opset ver - 1 to 9
 
 static void TopkOpset9ConstructorCommon(const OpKernelInfo& op_kernel_info, int& axis, unsigned int& k) {
@@ -431,12 +480,12 @@ static Status ComputeImplOpset1011(OpKernelContext* p_op_kernel_context, int axi
                            "the tensor to be processed and a tensor containing k value");
   }
 
-  const vector<int64_t>& y_shape = Y->Shape().GetDims();
+  auto y_shape = Y->Shape().GetDims();
   if (y_shape.size() != 1 || y_shape[0] != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "k tensor should be a 1D tensor of size 1");
   }
 
-  auto parsed_input_k = Y->template Data<int64_t>()[0];
+  auto parsed_input_k = Y->Data<int64_t>()[0];
   if (parsed_input_k < 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "value of k must not be negative");
   }
@@ -523,7 +572,7 @@ Status TopK<11, int64_t>::Compute(OpKernelContext* p_op_kernel_context) const {
 }
 
 // Register necessary kernels
-// spec https://github.com/onnx/onnx/blob/master/docs/Operators.md#TopK
+// spec https://github.com/onnx/onnx/blob/main/docs/Operators.md#TopK
 
 #define REGISTER_TOPK_VERSIONED_TYPED_KERNEL(OPSET1, OPSET2, TYPE)                                           \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(TopK, OPSET1, OPSET2, TYPE,                                       \

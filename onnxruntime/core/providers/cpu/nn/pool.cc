@@ -4,10 +4,10 @@
 #include "core/providers/cpu/nn/pool.h"
 
 #include "core/framework/data_types_internal.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/nn/pool_functors.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 
 using namespace ::onnxruntime::common;
 
@@ -26,12 +26,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint8_t);
 }  // namespace op_kernel_type_control
 
-using MaxPool8DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
-    kCpuExecutionProvider, kOnnxDomain, MaxPool, 8, Input, 0);
 using EnabledMaxPool8DataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, MaxPool, 8, Input, 0);
-using MaxPool12DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
-    kCpuExecutionProvider, kOnnxDomain, MaxPool, 12, Input, 0);
 using EnabledMaxPool12DataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, MaxPool, 12, Input, 0);
 
@@ -53,8 +49,8 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
-  std::vector<int64_t> pads = pool_attrs_.pads;
-  std::vector<int64_t> kernel_shape = pool_attrs_.kernel_shape;
+  auto pads = pool_attrs_.pads;
+  auto kernel_shape = pool_attrs_.kernel_shape;
 
   if (pool_attrs_.global_pooling) {
     const auto& input_dims = x_shape.GetDims();
@@ -62,11 +58,11 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     pads.assign(kernel_shape.size(), 0);
   }
 
-  std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+  auto output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, output_dims);
 
-  const auto* X_data = X->template Data<T>();
-  auto* Y_data = Y->template MutableData<T>();
+  const auto* X_data = X->Data<T>();
+  auto* Y_data = Y->MutableData<T>();
 
   // The main loop
   const int64_t channels = x_shape[1];
@@ -127,8 +123,8 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
                       "kernel_shape num_dims is not compatible with X num_dims.");
   }
 
-  std::vector<int64_t> pads = pool_attrs_.pads;
-  std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+  auto pads = pool_attrs_.pads;
+  auto output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   TensorShape output_shape(output_dims);
   Tensor* Y = context->Output(0, output_shape);
 
@@ -144,7 +140,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
            pool_attrs_.global_pooling ? nullptr : pool_attrs_.kernel_shape.data(),
            pool_attrs_.global_pooling ? nullptr : pads.data(),
            pool_attrs_.global_pooling ? nullptr : pool_attrs_.strides.data(), output_dims.data(),
-           X->template Data<float>(), Y->template MutableData<float>(), thread_pool);
+           X->Data<float>(), Y->MutableData<float>(), thread_pool);
 
   return Status::OK();
 }
@@ -189,16 +185,16 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
 
   ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
-  std::vector<int64_t> pads = pool_attrs_.pads;
-  std::vector<int64_t> kernel_shape = pool_attrs_.kernel_shape;
+  auto pads = pool_attrs_.pads;
+  auto kernel_shape = pool_attrs_.kernel_shape;
 
-  std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+  auto output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, output_dims);
   Tensor* I = context->Output(1, output_dims);
 
-  const auto* X_data = X->template Data<T>();
-  auto* Y_data = Y->template MutableData<T>();
-  int64_t* I_data = I != nullptr ? I->template MutableData<int64_t>() : nullptr;
+  const auto* X_data = X->Data<T>();
+  auto* Y_data = Y->MutableData<T>();
+  int64_t* I_data = I != nullptr ? I->MutableData<int64_t>() : nullptr;
 
   // The main loop
   int64_t channels = x_shape[1];
@@ -272,7 +268,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(MaxPool, 8, 11,
                                    KernelDefBuilder()
                                        .TypeConstraint(
                                            "T",
-                                           BuildKernelDefConstraintsFromTypeList<MaxPool8DataTypes>(),
                                            BuildKernelDefConstraintsFromTypeList<EnabledMaxPool8DataTypes>())
                                        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
                                    MaxPoolV8);
@@ -281,7 +276,6 @@ ONNX_CPU_OPERATOR_KERNEL(MaxPool, 12,
                          KernelDefBuilder()
                              .TypeConstraint(
                                  "T",
-                                 BuildKernelDefConstraintsFromTypeList<MaxPool12DataTypes>(),
                                  BuildKernelDefConstraintsFromTypeList<EnabledMaxPool12DataTypes>())
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
                          MaxPoolV8);

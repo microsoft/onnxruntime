@@ -12,14 +12,21 @@ export const TEST_ROOT = __dirname;
 export const TEST_DATA_ROOT = path.join(TEST_ROOT, 'testdata');
 
 export const ORT_ROOT = path.join(__dirname, '../../..');
-export const NODE_TESTS_ROOT = path.join(ORT_ROOT, 'cmake/external/onnx/onnx/backend/test/data/node');
+export const NODE_TESTS_ROOT = path.join(ORT_ROOT, 'js/test/data/node');
 
 export const SQUEEZENET_INPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT, 'squeezenet.input0.json'));
 export const SQUEEZENET_OUTPUT0_DATA: number[] = require(path.join(TEST_DATA_ROOT, 'squeezenet.output0.json'));
 
-export const BACKEND_TEST_SERIES_FILTERS: {[name: string]: string[]} =
+const BACKEND_TEST_SERIES_FILTERS: {[name: string]: Array<string|[string, string]>} =
     jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc'));
 
+const OVERRIDES: {
+  atol_default: number; rtol_default: number; atol_overrides: {[name: string]: number};
+  rtol_overrides: {[name: string]: number};
+} = jsonc.readSync(path.join(ORT_ROOT, 'onnxruntime/test/testdata/onnx_backend_test_series_overrides.jsonc'));
+
+const ATOL_DEFAULT = OVERRIDES.atol_default;
+const RTOL_DEFAULT = OVERRIDES.rtol_default;
 
 export const NUMERIC_TYPE_MAP = new Map<Tensor.Type, new (len: number) => Tensor.DataType>([
   ['float32', Float32Array],
@@ -75,7 +82,7 @@ export function warmup(): void {
     this.timeout(0);
     // we have test cases to verify correctness in other place, so do no check here.
     try {
-      const session = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_INT32.pb'));
+      const session = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_int32.onnx'));
       await session.run({input: new Tensor(new Float32Array(5), [1, 5])}, {output: null}, {});
     } catch (e) {
     }
@@ -83,9 +90,10 @@ export function warmup(): void {
 }
 
 export function assertFloatEqual(
-    actual: number[]|Float32Array|Float64Array, expected: number[]|Float32Array|Float64Array): void {
-  const THRESHOLD_ABSOLUTE_ERROR = 1.0e-4;
-  const THRESHOLD_RELATIVE_ERROR = 1.000001;
+    actual: number[]|Float32Array|Float64Array, expected: number[]|Float32Array|Float64Array, atol?: number,
+    rtol?: number): void {
+  const absolute_tol: number = atol ?? 1.0e-4;
+  const relative_tol: number = 1 + (rtol ?? 1.0e-6);
 
   assert.strictEqual(actual.length, expected.length);
 
@@ -114,10 +122,10 @@ export function assertFloatEqual(
     //   test fail
     // endif
     //
-    if (Math.abs(a - b) < THRESHOLD_ABSOLUTE_ERROR) {
+    if (Math.abs(a - b) < absolute_tol) {
       continue;  // absolute error check pass
     }
-    if (a !== 0 && b !== 0 && a * b > 0 && a / b < THRESHOLD_RELATIVE_ERROR && b / a < THRESHOLD_RELATIVE_ERROR) {
+    if (a !== 0 && b !== 0 && a * b > 0 && a / b < relative_tol && b / a < relative_tol) {
       continue;  // relative error check pass
     }
 
@@ -126,12 +134,14 @@ export function assertFloatEqual(
   }
 }
 
-export function assertDataEqual(type: Tensor.Type, actual: Tensor.DataType, expected: Tensor.DataType): void {
+export function assertDataEqual(
+    type: Tensor.Type, actual: Tensor.DataType, expected: Tensor.DataType, atol?: number, rtol?: number): void {
   switch (type) {
     case 'float32':
     case 'float64':
       assertFloatEqual(
-          actual as number[] | Float32Array | Float64Array, expected as number[] | Float32Array | Float64Array);
+          actual as number[] | Float32Array | Float64Array, expected as number[] | Float32Array | Float64Array, atol,
+          rtol);
       break;
 
     case 'uint8':
@@ -153,7 +163,7 @@ export function assertDataEqual(type: Tensor.Type, actual: Tensor.DataType, expe
 }
 
 // This function check whether 2 tensors should be considered as 'match' or not
-export function assertTensorEqual(actual: Tensor, expected: Tensor): void {
+export function assertTensorEqual(actual: Tensor, expected: Tensor, atol?: number, rtol?: number): void {
   assert(typeof actual === 'object');
   assert(typeof expected === 'object');
 
@@ -168,7 +178,7 @@ export function assertTensorEqual(actual: Tensor, expected: Tensor): void {
   assert.strictEqual(actualType, expectedType);
   assert.deepStrictEqual(actualDims, expectedDims);
 
-  assertDataEqual(actualType, actual.data, expected.data);
+  assertDataEqual(actualType, actual.data, expected.data, atol, rtol);
 }
 
 export function loadTensorFromFile(pbFile: string): Tensor {
@@ -250,8 +260,8 @@ export function loadTensorFromFile(pbFile: string): Tensor {
   }
 }
 
-export function shouldSkipModel(model: string, eps: string[]): boolean {
-  const filters = ['(FLOAT16)'];
+function loadFiltersRegex(): Array<{opset?: RegExp | undefined; name: RegExp}> {
+  const filters: Array<string|[string, string]> = ['(FLOAT16)'];
   filters.push(...BACKEND_TEST_SERIES_FILTERS.current_failing_tests);
 
   if (process.arch === 'x32') {
@@ -263,14 +273,36 @@ export function shouldSkipModel(model: string, eps: string[]): boolean {
   filters.push(...BACKEND_TEST_SERIES_FILTERS.failing_permanently);
   filters.push(...BACKEND_TEST_SERIES_FILTERS.test_with_types_disabled_due_to_binary_size_concerns);
 
-  for (const filter of filters) {
-    const regex = new RegExp(filter);
+  filters.push(...BACKEND_TEST_SERIES_FILTERS.failing_permanently_nodejs_binding);
+
+  return filters.map(
+      filter => typeof filter === 'string' ? {name: new RegExp(filter)} :
+                                             {opset: new RegExp(filter[0]), name: new RegExp(filter[1])});
+}
+
+const BACKEND_TEST_SERIES_FILTERS_REGEX = loadFiltersRegex();
+
+export function shouldSkipModel(model: string, opset: string, eps: string[]): boolean {
+  for (const regex of BACKEND_TEST_SERIES_FILTERS_REGEX) {
+    if (regex.opset) {
+      if (!regex.opset.test(opset)) {
+        continue;
+      }
+    }
     for (const ep of eps) {
-      if (regex.test(`${model}_${ep}`)) {
+      if (regex.name.test(`${model}_${ep}`)) {
         return true;
       }
     }
   }
 
   return false;
+}
+
+export function atol(model: string): number {
+  return OVERRIDES.atol_overrides[model] ?? ATOL_DEFAULT;
+}
+
+export function rtol(model: string): number {
+  return OVERRIDES.rtol_overrides[model] ?? RTOL_DEFAULT;
 }

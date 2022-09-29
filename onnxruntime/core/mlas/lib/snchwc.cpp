@@ -102,7 +102,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
-    return MlasPlatform.NchwcBlockSize;
+    return GetMlasPlatform().NchwcBlockSize;
 #else
     return 1;
 #endif
@@ -675,7 +675,7 @@ struct MLAS_NCHWC_CONV_NCHWC_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         const size_t BlockedOutputWidth = BlockSize * OutputWidth;
 
 #if defined(MLAS_TARGET_AMD64)
-        MLAS_CONV_FLOAT_KERNEL* Kernel = MlasPlatform.ConvNchwcFloatKernel;
+        MLAS_CONV_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvNchwcFloatKernel;
 #else
         MLAS_CONV_FLOAT_KERNEL* Kernel = MlasConvNchwcFloatKernel;
 #endif
@@ -785,7 +785,7 @@ struct MLAS_NCHWC_CONV_NCHW_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         const size_t BlockedOutputWidth = BlockSize * OutputWidth;
 
 #if defined(MLAS_TARGET_AMD64)
-        MLAS_CONV_FLOAT_KERNEL* Kernel = MlasPlatform.ConvNchwFloatKernel;
+        MLAS_CONV_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvNchwFloatKernel;
 #else
         MLAS_CONV_FLOAT_KERNEL* Kernel = MlasConvNchwFloatKernel;
 #endif
@@ -880,7 +880,7 @@ struct MLAS_NCHWC_CONV_POINTWISE_ALGORITHM : MLAS_NCHWC_GROUPED_CONV_ALGORITHM
         const size_t OutputStrideBytes = BlockSize * OutputSize * sizeof(float);
 
 #if defined(MLAS_TARGET_AMD64)
-        MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = MlasPlatform.ConvPointwiseFloatKernel;
+        MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvPointwiseFloatKernel;
 #else
         MLAS_CONV_POINTWISE_FLOAT_KERNEL* Kernel = MlasConvPointwiseFloatKernel;
 #endif
@@ -1017,7 +1017,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
         const size_t BlockedOutputWidth = BlockSize * OutputWidth;
 
 #if defined(MLAS_TARGET_AMD64)
-        MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = MlasPlatform.ConvDepthwiseFloatKernel;
+        MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = GetMlasPlatform().ConvDepthwiseFloatKernel;
 #else
         MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* Kernel = MlasConvDepthwiseFloatKernel;
 #endif
@@ -1132,7 +1132,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
         const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
 
 #if defined(MLAS_TARGET_AMD64)
-        MLAS_POOL_FLOAT_KERNEL* Kernel = MlasPlatform.PoolFloatKernel[WorkBlock->PoolingKind];
+        MLAS_POOL_FLOAT_KERNEL* Kernel = GetMlasPlatform().PoolFloatKernel[WorkBlock->PoolingKind];
 #else
         MLAS_POOL_FLOAT_KERNEL* Kernel = PoolKernels[WorkBlock->PoolingKind];
 #endif

@@ -41,14 +41,14 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
   test.AddInput<T>("mean", input_shapes_map.at("mean"), input_data_map.at("mean"), all_input_except_x_are_initializers);
   test.AddInput<T>("var", input_shapes_map.at("var"), input_data_map.at("var"), all_input_except_x_are_initializers);
   test.AddOutput<T>("output", expected_output_shape, expected_output);
-  // Weight as input is not supported by TensorRT and spatial == 0 is not supported by Nuphar
+  // Weight as input is not supported by TensorRT
   std::unordered_set<std::string> excluded_eps = {kTensorrtExecutionProvider};
   if (spatial_mode == 0) {
     excluded_eps.insert(kOpenVINOExecutionProvider);
   }
 
 // OpenVINO: Disabled due to software limitations
-#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32) || defined(OPENVINO_CONFIG_CPU_FP16)
   excluded_eps.insert(kOpenVINOExecutionProvider);
 #endif
   test.Run(expect_result, err_str, excluded_eps);
@@ -644,8 +644,8 @@ TEST(BatchNormTest, NonSpatial_Complicated) {
                 8);  // opset-8
 }
 
-// Only CUDA kernel has float 16 support
-#ifdef USE_CUDA
+// Only CUDA and ROCm kernels have float 16 support
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(BatchNormTest, BatchNorm2d_fp16) {
   vector<float> X{-0.91221f, -0.283559f, 0.937637f, 2.09818f, -0.100199f, -0.608113f, 0.444562f, -1.07505f, 0.940591f,
                   -0.922262f, 0.0931303f, 0.69611f, 1.55187f, 0.159808f, 0.914874f, -1.24856f, -1.98928f, -0.331621f,
@@ -763,7 +763,9 @@ TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
 
   // exclude CUDA Execution Provider due to flakiness
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kRocmExecutionProvider,
+            kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
 TEST(BatchNormTest, ForwardTrainingTestOpset14) {
@@ -789,7 +791,9 @@ TEST(BatchNormTest, ForwardTrainingTestOpset14) {
 
   // exclude CUDA Execution Provider due to flakiness
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kRocmExecutionProvider,
+            kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 
 TEST(BatchNormTest, ForwardTrainingTestOpset15) {
@@ -814,7 +818,9 @@ TEST(BatchNormTest, ForwardTrainingTestOpset15) {
   test.AddOutput<float>("running_var", channel_dims, {0.696052f, 1.41316f});
 
   // Same exclusions as the opset 14 test
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kRocmExecutionProvider,
+            kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
 }
 #endif  // BATCHNORM_INCLUDE_TRAINING_SUPPORT
 

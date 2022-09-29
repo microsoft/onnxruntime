@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// if we can't load an ORT format model we can't really test anything
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
 // custom ops are only supported in a minimal build if explicitly enabled
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
@@ -147,5 +144,3 @@ TEST(OrtFormatCustomOpTests, LoadOrtModel) {
 #endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-
-#endif  // #if defined(ENABLE_ORT_FORMAT_LOAD)

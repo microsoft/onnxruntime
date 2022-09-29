@@ -8,9 +8,10 @@
 
 import argparse
 import logging
-import numpy as np
 import sys
-from typing import Tuple, List
+from typing import List, Tuple
+
+import numpy as np
 import onnx
 from onnx import ModelProto, SparseTensorProto, TensorProto, numpy_helper
 
@@ -21,16 +22,20 @@ real_types = set((int(TensorProto.FLOAT), int(TensorProto.DOUBLE)))
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input', required=True, type=str, help='input model path')
-    parser.add_argument('--output', required=True, type=str, help='output model path')
-    parser.add_argument('--exclude', required=False, type=str,
-                        help='semicolon separated list of initializer names to exclude')
-    parser.add_argument('--tolerance', required=False, type=float, default=1e-6,
-                        help='FP absolute tolerance.')
-    parser.add_argument('--sparsity_threshold', required=False,
-                        type=float, default=0.5,
-                        help='convert to sparse initializers if sparsity is at least this much')
-    parser.add_argument('--verbose', required=False, action='store_true')
+    parser.add_argument("--input", required=True, type=str, help="input model path")
+    parser.add_argument("--output", required=True, type=str, help="output model path")
+    parser.add_argument(
+        "--exclude", required=False, type=str, help="semicolon separated list of initializer names to exclude"
+    )
+    parser.add_argument("--tolerance", required=False, type=float, default=1e-6, help="FP absolute tolerance.")
+    parser.add_argument(
+        "--sparsity_threshold",
+        required=False,
+        type=float,
+        default=0.5,
+        help="convert to sparse initializers if sparsity is at least this much",
+    )
+    parser.add_argument("--verbose", required=False, action="store_true")
     parser.set_defaults(verbose=False)
     args = parser.parse_args()
     return args
@@ -39,21 +44,20 @@ def parse_arguments():
 def setup_logging(verbose):  # type: (bool)  -> None
     log_handler = logging.StreamHandler(sys.stdout)
     if verbose:
-        log_handler.setFormatter(logging.Formatter('[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s'))
+        log_handler.setFormatter(logging.Formatter("[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s"))
         logging_level = logging.DEBUG
     else:
-        log_handler.setFormatter(logging.Formatter('%(filename)20s: %(message)s'))
+        log_handler.setFormatter(logging.Formatter("%(filename)20s: %(message)s"))
         logging_level = logging.INFO
     log_handler.setLevel(logging_level)
     logger.addHandler(log_handler)
     logger.setLevel(logging_level)
 
 
-def convert_tensor_to_sparse(tensor,
-                             sparsity_threshold,
-                             tolerance):  # type: (TensorProto, float, float) -> Tuple[SparseTensorProto, float]
-    """ returns a tuple of sparse_tensor and sparsity level
-    """
+def convert_tensor_to_sparse(
+    tensor, sparsity_threshold, tolerance
+):  # type: (TensorProto, float, float) -> Tuple[SparseTensorProto, float]
+    """returns a tuple of sparse_tensor and sparsity level"""
     values = []
     indices = []
     nnz_count = 0
@@ -74,7 +78,7 @@ def convert_tensor_to_sparse(tensor,
                 indices.append(index)
                 nnz_count += 1
 
-    sparsity = float(1.) - float(nnz_count)/data_len
+    sparsity = float(1.0) - float(nnz_count) / data_len
 
     ind_data_type = TensorProto.INT8
     ind_dtype = np.int8
@@ -95,9 +99,11 @@ def convert_tensor_to_sparse(tensor,
             ind_data_type = TensorProto.INT64
             ind_dtype = np.int64
 
-    logger.debug(f"initializer={tensor.name}, dtype={tensor_data.dtype}, \
+    logger.debug(
+        f"initializer={tensor.name}, dtype={tensor_data.dtype}, \
                  data_len={data_len}, nnz={nnz_count}, sparsity={sparsity}, \
-                 max_indices_value={max_indices_value}, sparse_indices_type={ind_dtype}")
+                 max_indices_value={max_indices_value}, sparse_indices_type={ind_dtype}"
+    )
 
     if sparsity < sparsity_threshold:
         return (object(), sparsity)
@@ -109,8 +115,10 @@ def convert_tensor_to_sparse(tensor,
     np_indices = np.array(indices).astype(ind_dtype)
     total_sparse_bytes = np_values.nbytes + np_indices.nbytes
 
-    logger.debug(f"initializer={tensor.name}, initializer_bytes={tensor_data_bytes}, \
-                sparse_initializer_bytes={total_sparse_bytes}")
+    logger.debug(
+        f"initializer={tensor.name}, initializer_bytes={tensor_data_bytes}, \
+                sparse_initializer_bytes={total_sparse_bytes}"
+    )
 
     # This check is usually useful for sparsity_threshold=0.5 where much
     # depends on the size of the indices entries and the size of the original tensor.
@@ -118,30 +126,23 @@ def convert_tensor_to_sparse(tensor,
     # int32 indices are often selected, thus we really want to guard against loosing
     # rather than winning.
     if tensor_data_bytes <= total_sparse_bytes:
-        sparsity = float(1.) - float(tensor_data_bytes)/total_sparse_bytes
+        sparsity = float(1.0) - float(tensor_data_bytes) / total_sparse_bytes
         logger.debug(f"initializer={tensor.name}, adjusted_sparsity={sparsity}")
         return (object(), sparsity)
 
-    values_tensor = onnx.helper.make_tensor(tensor.name,
-                                            tensor.data_type,
-                                            [len(values)],
-                                            np_values.tobytes(),
-                                            raw=True)
+    values_tensor = onnx.helper.make_tensor(tensor.name, tensor.data_type, [len(values)], np_values.tobytes(), raw=True)
 
-    indicies_tensor = onnx.helper.make_tensor(tensor.name + '_indicies',
-                                              ind_data_type,
-                                              [ind_len],
-                                              np_indices.tobytes(),
-                                              raw=True)
+    indicies_tensor = onnx.helper.make_tensor(
+        tensor.name + "_indicies", ind_data_type, [ind_len], np_indices.tobytes(), raw=True
+    )
 
     sparse_tensor = onnx.helper.make_sparse_tensor(values_tensor, indicies_tensor, tensor.dims)
     return (sparse_tensor, sparsity)
 
 
-def convert_initializers(model,
-                         exclude_names,
-                         sparsity_threshold,
-                         tolerance):  # type: (ModelProto, List[str], float, float) -> None
+def convert_initializers(
+    model, exclude_names, sparsity_threshold, tolerance
+):  # type: (ModelProto, List[str], float, float) -> None
     graph = model.graph
     converted_sparse = []
     remaining_initializers = []
@@ -170,7 +171,7 @@ def main():
     args = parse_arguments()
     setup_logging(args.verbose)
 
-    exclude_names = set() if args.exclude is None else set(args.exclude.split(';'))
+    exclude_names = set() if args.exclude is None else set(args.exclude.split(";"))
 
     model = ModelProto()
     with open(args.input, "rb") as input_file:

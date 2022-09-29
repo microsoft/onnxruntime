@@ -262,7 +262,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.ErfKernelRoutine(Input, Output, N);
+    GetMlasPlatform().ErfKernelRoutine(Input, Output, N);
 #else
     MlasErfKernel(Input, Output, N);
 #endif

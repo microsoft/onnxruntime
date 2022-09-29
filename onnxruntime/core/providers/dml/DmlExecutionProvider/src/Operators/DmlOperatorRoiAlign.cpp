@@ -19,8 +19,7 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1, "RoiAlign expects 1 output tensor.");
 
         DmlOperator::Initialize(kernelCreationContext);
-        DmlOperator::Remap64bitDmlDataTypesTo32bit();
-        m_inputTensorDescs[2].ForceUnsignedDataType();
+        m_inputTensorDescs[2].ForceUnsignedDataType(); // DML operator accepts uint32_t/uint64_t for batch_indices tensor.
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();

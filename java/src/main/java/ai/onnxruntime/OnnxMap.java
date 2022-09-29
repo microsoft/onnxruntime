@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -137,10 +137,10 @@ public class OnnxMap implements OnnxValue {
    * @throws OrtException If the onnx runtime failed to read the entries.
    */
   @Override
-  public Map<Object, Object> getValue() throws OrtException {
-    HashMap<Object, Object> map = new HashMap<>();
+  public Map<? extends Object, ? extends Object> getValue() throws OrtException {
     Object[] keys = getMapKeys();
     Object[] values = getMapValues();
+    HashMap<Object, Object> map = new HashMap<>(OrtUtil.capacityFromSize(keys.length));
     for (int i = 0; i < keys.length; i++) {
       map.put(keys[i], values[i]);
     }

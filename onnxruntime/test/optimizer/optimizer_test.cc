@@ -30,8 +30,8 @@ TEST(OptimizerTest, Basic) {
   Model model("OptimizerBasic", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
-  const int tensor_dim = 10;
-  const int input_num = 2;
+  constexpr int tensor_dim = 10;
+  constexpr int input_num = 2;
   TensorProto initializer_tensor[input_num];
   std::vector<std::unique_ptr<NodeArg>> inputs(input_num);
   std::vector<std::unique_ptr<NodeArg>> outputs(1);
@@ -100,7 +100,7 @@ TEST(OptimizerTest, Basic) {
     std::vector<OrtValue> fetches;
     ASSERT_STATUS_OK(frame.GetOutputs(fetches));
     auto& tensor = fetches[0].Get<Tensor>();
-    const std::vector<int32_t> found(tensor.template Data<int32_t>(), tensor.template Data<int32_t>() + tensor_dim);
+    const std::vector<int32_t> found(tensor.Data<int32_t>(), tensor.Data<int32_t>() + tensor_dim);
     std::vector<int32_t> expected;
     for (int j = 0; j < tensor_dim; j++) {
       expected.push_back(3 * j);

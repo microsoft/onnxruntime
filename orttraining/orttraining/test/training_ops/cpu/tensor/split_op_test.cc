@@ -38,7 +38,7 @@ void SplitTrainingOpTester(int64_t axis, const std::vector<int64_t> split_sizes,
 }
 
 TEST(SplitTrainingOpTest, Axis0EqualSplitFloat) {
-  const int64_t axis = 0;
+  constexpr int64_t axis = 0;
   std::vector<ShapeAndFloatData> outputs;
 
   // input shape and data
@@ -81,20 +81,20 @@ Setup_Axis0EqualSplitFloat_N_inputs(const int num_outputs) {
 
 // <=32 with same sizes passes output addresses as kernel args
 TEST(SplitTrainingOpTest, Axis0EqualSplitFloat_16_outputs) {
-  const int64_t axis = 0;
+  constexpr int64_t axis = 0;
   auto io = Setup_Axis0EqualSplitFloat_N_inputs(16);
   SplitTrainingOpTester<float>(axis, {}, std::get<0>(io), std::get<1>(io));
 }
  
 // > 32 with same sizes passes output addresses as device buffer
 TEST(SplitTrainingOpTest, Axis0EqualSplitFloat_64_outputs) {
-  const int64_t axis = 0;
+  constexpr int64_t axis = 0;
   auto io = Setup_Axis0EqualSplitFloat_N_inputs(64);
   SplitTrainingOpTester<float>(axis, {}, std::get<0>(io), std::get<1>(io));
 }
 
 TEST(SplitTrainingOpTest, Axis0UnequalSplitFloat) {
-  const int64_t axis = 0;
+  constexpr int64_t axis = 0;
   std::vector<ShapeAndFloatData> outputs;
 
   // input shape and data
@@ -118,7 +118,7 @@ TEST(SplitTrainingOpTest, Axis0UnequalSplitFloat) {
 
 
 TEST(SplitTrainingOpTest, Axis0EqualSplitFloat_not_initializer) {
-  const int64_t axis = 0;
+  constexpr int64_t axis = 0;
   std::vector<ShapeAndFloatData> outputs;
 
   // input shape and data
@@ -140,7 +140,7 @@ TEST(SplitTrainingOpTest, Axis0EqualSplitFloat_not_initializer) {
 }
 
 TEST(SplitTrainingOpTest, Axis0UnequalSplitFloat_not_initializer) {
-  const int64_t axis = 0;
+  constexpr int64_t axis = 0;
   std::vector<ShapeAndFloatData> outputs;
 
   // input shape and data

@@ -10,7 +10,9 @@
 #include "core/common/logging/sinks/composite_sink.h"
 
 #include "test/common/logging/helpers.h"
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26400)
+#endif
 namespace onnxruntime {
 namespace test {
 

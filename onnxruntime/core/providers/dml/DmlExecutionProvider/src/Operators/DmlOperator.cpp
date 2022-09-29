@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "precomp.h"
+#include "DmlOperator.h"
 
 namespace Dml
 {
@@ -12,7 +13,7 @@ namespace Dml
     }
 
     void DmlOperator::SetDmlOperatorDesc(
-        const DML_OPERATOR_DESC& operatorDesc, 
+        const DML_OPERATOR_DESC& operatorDesc,
         const MLOperatorKernelCreationContext& kernelInfo
         )
     {
@@ -39,10 +40,10 @@ namespace Dml
 
         // Create and compile the operator.
         ComPtr<IDMLOperator> dmlOperator;
-        THROW_IF_FAILED(m_dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
+        ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
 
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
-        THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
+        ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
 
         if (contextPrivate->IsDmlGraphNode())
         {
@@ -63,23 +64,23 @@ namespace Dml
             auto kernelInputIndices = ReplaceUnusedEdgeIndicesWithSentinel(m_kernelInputIndices);
             properties.dmlInputCount = static_cast<uint32_t>(kernelInputIndices.size());
             properties.kernelInputIndices = kernelInputIndices.data();
-            
+
             auto kernelOutputIndices = ReplaceUnusedEdgeIndicesWithSentinel(m_kernelOutputIndices);
             properties.dmlOutputCount = static_cast<uint32_t>(kernelOutputIndices.size());
             properties.kernelOutputIndices = kernelOutputIndices.data();
             properties.allowHalfPrecisionComputation = AllowHalfPrecisionComputation();
 
-            THROW_IF_FAILED(contextPrivate->SetDmlOperator(dmlOperator.Get(), &operatorDesc, &properties));
+            ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(dmlOperator.Get(), &operatorDesc, &properties));
         }
         else
         {
             DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
-            THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), executionFlags, IID_PPV_ARGS(&m_compiledOperator)));
+            ORT_THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), executionFlags, IID_PPV_ARGS(&m_compiledOperator)));
 
             UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
+                ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
                     static_cast<size_t>(persistentResourceSize),
                     AllocatorRoundingMode::Enabled,
                     m_persistentResource.GetAddressOf(),
@@ -87,10 +88,10 @@ namespace Dml
 
                 m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
             }
-            
+
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
 
-            THROW_IF_FAILED(m_executionProvider->InitializeOperator(
+            ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
                 m_compiledOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initializationInputBindings)));
@@ -98,7 +99,7 @@ namespace Dml
     }
 
     void DmlOperator::SetDmlOperatorDesc(
-        const DML_OPERATOR_DESC& operatorDesc, 
+        const DML_OPERATOR_DESC& operatorDesc,
         const MLOperatorKernelContext& kernelInfo
         )
     {
@@ -107,8 +108,8 @@ namespace Dml
         // call this method more than once, since Compute may take different inputs each execution.
         m_compiledOperator.Reset();
         ComPtr<IDMLOperator> dmlOperator;
-        THROW_IF_FAILED(m_dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
-        THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), GetExecutionFlags(), IID_PPV_ARGS(&m_compiledOperator)));
+        ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&operatorDesc, IID_PPV_ARGS(&dmlOperator)));
+        ORT_THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), GetExecutionFlags(), IID_PPV_ARGS(&m_compiledOperator)));
 
         UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
         if (persistentResourceSize > 0)
@@ -116,7 +117,7 @@ namespace Dml
             if (!m_persistentResource || m_persistentResource->GetDesc().Width < persistentResourceSize)
             {
                 m_persistentResource = nullptr;
-                THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
+                ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
                     static_cast<size_t>(persistentResourceSize),
                     AllocatorRoundingMode::Enabled,
                     m_persistentResource.GetAddressOf(),
@@ -126,7 +127,7 @@ namespace Dml
             m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
         }
 
-        THROW_IF_FAILED(m_executionProvider->InitializeOperator(
+        ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::span<const DML_BUFFER_BINDING>() // Empty input bindings since ownedByDml is not used.
@@ -182,7 +183,7 @@ namespace Dml
             else
             {
                 m_inputTensorDescs.push_back(CreateTensorDescFromInput(
-                    kernelInfo, 
+                    kernelInfo,
                     *m_kernelInputIndices[i],
                     TensorAxis::DoNotCoerce,
                     TensorAxis::W,
@@ -204,7 +205,7 @@ namespace Dml
             else
             {
                 m_outputTensorDescs.push_back(CreateTensorDescFromOutput(
-                    kernelInfo, 
+                    kernelInfo,
                     *m_kernelOutputIndices[i],
                     TensorAxis::DoNotCoerce,
                     TensorAxis::W,
@@ -215,12 +216,118 @@ namespace Dml
         }
     }
 
+    void DmlOperator::InitializeWithShapes(
+        const MLOperatorKernelCreationContext& kernelInfo,
+        const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices,
+        const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices,
+        const std::optional<gsl::span<gsl::span<const uint32_t>>> inputShapes,
+        const std::optional<gsl::span<gsl::span<const uint32_t>>> outputShapes,
+        uint32_t minDimensionCount
+        )
+    {
+        if (kernelInputIndices)
+        {
+            m_kernelInputIndices = *kernelInputIndices;
+        }
+        else
+        {
+            m_kernelInputIndices.resize(kernelInfo.GetInputCount());
+            std::iota(m_kernelInputIndices.begin(), m_kernelInputIndices.end(), 0);
+        }
+
+        if (kernelOutputIndices)
+        {
+            m_kernelOutputIndices = *kernelOutputIndices;
+        }
+        else
+        {
+            m_kernelOutputIndices.resize(kernelInfo.GetOutputCount());
+            std::iota(m_kernelOutputIndices.begin(), m_kernelOutputIndices.end(), 0);
+        }
+
+        for (uint32_t i = 0; i < m_kernelInputIndices.size(); i++)
+        {
+            // Update m_kernelInputIndices to reflect optional tensors.
+            if (m_kernelInputIndices[i] == std::nullopt ||
+                !kernelInfo.IsInputValid(*m_kernelInputIndices[i]))
+            {
+                m_kernelInputIndices[i] = std::nullopt;
+                m_inputTensorDescs.push_back(TensorDesc());
+            }
+            else
+            {
+                auto edgeDesc = kernelInfo.GetInputEdgeDescription(*m_kernelInputIndices[i]);
+                assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
+
+                // prioritize the given input shapes
+                TensorDesc tensorDesc;
+                if (inputShapes.has_value() && i < (*inputShapes).size())
+                {
+                    tensorDesc = TensorDesc(
+                        edgeDesc.tensorDataType,
+                        (*inputShapes)[i], // desired
+                        (*inputShapes)[i], // original
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        minDimensionCount,
+                        0
+                    );
+                }
+                else if (kernelInfo.HasTensorShapeDescription())
+                {
+                    std::vector<uint32_t> actualTensorShape = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(*m_kernelInputIndices[i]);
+                    tensorDesc = TensorDesc(
+                        edgeDesc.tensorDataType,
+                        actualTensorShape, // desired
+                        actualTensorShape, // original
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        minDimensionCount,
+                        0
+                    );
+                }
+                m_inputTensorDescs.push_back(tensorDesc);
+            }
+        }
+
+        for (uint32_t i = 0; i < m_kernelOutputIndices.size(); i++)
+        {
+            // Update m_kernelOutputIndices to reflect optional tensors.
+            if (m_kernelOutputIndices[i] == std::nullopt ||
+                !kernelInfo.IsOutputValid(*m_kernelOutputIndices[i]))
+            {
+                m_kernelOutputIndices[i] = std::nullopt;
+                m_outputTensorDescs.push_back(TensorDesc());
+            }
+            else
+            {
+                std::optional<gsl::span<const uint32_t>> outputShape;
+                if (outputShapes.has_value() && i < (*outputShapes).size())
+                {
+                    outputShape = (*outputShapes)[i];
+                }
+
+                m_outputTensorDescs.push_back(CreateTensorDescFromOutput(
+                    kernelInfo,
+                    *m_kernelOutputIndices[i],
+                    TensorAxis::DoNotCoerce,
+                    TensorAxis::W,
+                    TensorAxis::RightAligned,
+                    outputShape,
+                    minDimensionCount
+                ));
+            }
+        }
+    }
+
     void DmlOperator::Compute(const MLOperatorKernelContext& kernelContext)
     {
         std::vector<IMLOperatorTensor*> inputTensors = GetInputTensorsForExecute(kernelContext);
         std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
 
-        THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+        ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),
@@ -230,7 +337,7 @@ namespace Dml
     bool DmlOperator::AllowHalfPrecisionComputation() const
     {
         // Most of our operators work with float data, but some do not. In those cases
-        // no input params are float tensors. This function returns true if the operator 
+        // no input params are float tensors. This function returns true if the operator
         // works with at least one float16 tensor and has no tensors of float32 type
         bool usesFloat16Tensors = false;
 
@@ -365,10 +472,10 @@ namespace Dml
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_ELEMENT_WISE_LOGICAL_XOR, &xorDesc };
 
         ComPtr<IDMLOperator> dmlOperator;
-        THROW_IF_FAILED(m_dmlDevice->CreateOperator(&opDesc, IID_PPV_ARGS(&dmlOperator)));
+        ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(&opDesc, IID_PPV_ARGS(&dmlOperator)));
 
         ComPtr<IDMLCompiledOperator> dmlCompiledOperator;
-        THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), GetExecutionFlags(), IID_PPV_ARGS(&dmlCompiledOperator)));
+        ORT_THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), GetExecutionFlags(), IID_PPV_ARGS(&dmlCompiledOperator)));
 
         return dmlCompiledOperator;
     }
@@ -380,7 +487,7 @@ namespace Dml
         IMLOperatorTensor* inputTensors[] = { tensor, tensor };
         IMLOperatorTensor* outputTensors[] = { tensor };
 
-        THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
+        ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(
             compiledOperator,
             nullptr, // persistent resource binding
             gsl::make_span(inputTensors),
@@ -388,38 +495,10 @@ namespace Dml
             ));
     }
 
-    void DmlOperator::Remap64bitDmlDataTypesTo32bit()
-    {
-        for (auto& tensor : m_inputTensorDescs)
-        {
-            tensor.Remap64bitDmlDataTypeTo32bit();
-        }
-
-        for (auto& tensor : m_outputTensorDescs)
-        {
-            tensor.Remap64bitDmlDataTypeTo32bit();
-        }
-    }
-
-    void DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded()
-    {
-        // Conditionally remap 64-bit data types to strided 32-bit if DML does not
-        // support 64-bit data types directly on the device.
-
-        uint32_t deviceTypeMask = Dml::GetSupportedDeviceDataTypeMask(m_dmlDevice.Get());
-        uint32_t deviceTypeMask64bit = (1 << DML_TENSOR_DATA_TYPE_INT64) | (1 << DML_TENSOR_DATA_TYPE_UINT64);
-
-        // If the device doesn't support 64-bit tensors, fall back to 32-bit with strides.
-        if (!(deviceTypeMask & deviceTypeMask64bit))
-        {
-            Remap64bitDmlDataTypesTo32bit();
-        }
-    }
-
     TensorDesc DmlOperator::CreateTensorDescFromInput(
         const MLOperatorKernelCreationContext& kernelInfo,
         uint32_t index,
-        uint32_t coerceAxis,
+        int32_t coerceAxis,
         int32_t placement,
         int32_t leftAlignedDimensionCount,
         std::optional<gsl::span<const uint32_t>> tensorShape,
@@ -461,7 +540,7 @@ namespace Dml
     TensorDesc DmlOperator::CreateTensorDescFromOutput(
         const MLOperatorKernelCreationContext& kernelInfo,
         uint32_t index,
-        uint32_t coerceAxis,
+        int32_t coerceAxis,
         int32_t placement,
         int32_t leftAlignedDimensionCount,
         std::optional<gsl::span<const uint32_t>> tensorShape,
@@ -491,7 +570,7 @@ namespace Dml
         }
 
         auto outputShape = outputShapeDescription.GetOutputTensorShape(index);
-        
+
         return TensorDesc(
             edgeDesc.tensorDataType,
             tensorShape ? *tensorShape : outputShape,

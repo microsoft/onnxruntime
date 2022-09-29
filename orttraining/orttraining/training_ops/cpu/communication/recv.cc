@@ -4,7 +4,7 @@
 
 #include "orttraining/training_ops/cpu/communication/recv.h"
 
-#include <mpi.h>
+#include "orttraining/core/framework/communication/mpi/mpi_include.h"
 
 #include "orttraining/training_ops/communication_common.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"

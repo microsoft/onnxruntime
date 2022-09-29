@@ -90,14 +90,14 @@ public class OnnxTensor implements OnnxValue {
         case BOOL:
           return getBool(OnnxRuntime.ortApiHandle, nativeHandle);
         case STRING:
-          return getString(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
+          return getString(OnnxRuntime.ortApiHandle, nativeHandle);
         case UNKNOWN:
         default:
           throw new OrtException("Extracting the value of an invalid Tensor.");
       }
     } else {
       Object carrier = info.makeCarrier();
-      getArray(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, carrier);
+      getArray(OnnxRuntime.ortApiHandle, nativeHandle, carrier);
       if ((info.type == OnnxJavaType.STRING) && (info.shape.length != 1)) {
         // We read the strings out from native code in a flat array and then reshape
         // to the desired output shape.
@@ -284,13 +284,12 @@ public class OnnxTensor implements OnnxValue {
 
   private native long getLong(long apiHandle, long nativeHandle, int onnxType) throws OrtException;
 
-  private native String getString(long apiHandle, long nativeHandle, long allocatorHandle)
-      throws OrtException;
+  private native String getString(long apiHandle, long nativeHandle) throws OrtException;
 
   private native boolean getBool(long apiHandle, long nativeHandle) throws OrtException;
 
-  private native void getArray(
-      long apiHandle, long nativeHandle, long allocatorHandle, Object carrier) throws OrtException;
+  private native void getArray(long apiHandle, long nativeHandle, Object carrier)
+      throws OrtException;
 
   private native void close(long apiHandle, long nativeHandle);
 
@@ -333,7 +332,7 @@ public class OnnxTensor implements OnnxValue {
    */
   static OnnxTensor createTensor(OrtEnvironment env, OrtAllocator allocator, Object data)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    if (!allocator.isClosed()) {
       TensorInfo info = TensorInfo.constructFromJavaArray(data);
       if (info.type == OnnxJavaType.STRING) {
         if (info.shape.length == 0) {
@@ -403,7 +402,7 @@ public class OnnxTensor implements OnnxValue {
    */
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, String[] data, long[] shape) throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    if (!allocator.isClosed()) {
       TensorInfo info =
           new TensorInfo(
               shape,
@@ -451,7 +450,7 @@ public class OnnxTensor implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, FloatBuffer data, long[] shape)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    if (!allocator.isClosed()) {
       OnnxJavaType type = OnnxJavaType.FLOAT;
       return createTensor(type, allocator, data, shape);
     } else {
@@ -492,7 +491,7 @@ public class OnnxTensor implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, DoubleBuffer data, long[] shape)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    if (!allocator.isClosed()) {
       OnnxJavaType type = OnnxJavaType.DOUBLE;
       return createTensor(type, allocator, data, shape);
     } else {
@@ -571,7 +570,7 @@ public class OnnxTensor implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, ByteBuffer data, long[] shape, OnnxJavaType type)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    if (!allocator.isClosed()) {
       return createTensor(type, allocator, data, shape);
     } else {
       throw new IllegalStateException("Trying to create an OnnxTensor on a closed OrtAllocator.");
@@ -611,7 +610,7 @@ public class OnnxTensor implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, ShortBuffer data, long[] shape)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    if (!allocator.isClosed()) {
       OnnxJavaType type = OnnxJavaType.INT16;
       return createTensor(type, allocator, data, shape);
     } else {
@@ -652,7 +651,7 @@ public class OnnxTensor implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, IntBuffer data, long[] shape)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    if (!allocator.isClosed()) {
       OnnxJavaType type = OnnxJavaType.INT32;
       return createTensor(type, allocator, data, shape);
     } else {
@@ -693,7 +692,7 @@ public class OnnxTensor implements OnnxValue {
   static OnnxTensor createTensor(
       OrtEnvironment env, OrtAllocator allocator, LongBuffer data, long[] shape)
       throws OrtException {
-    if ((!env.isClosed()) && (!allocator.isClosed())) {
+    if (!allocator.isClosed()) {
       OnnxJavaType type = OnnxJavaType.INT64;
       return createTensor(type, allocator, data, shape);
     } else {

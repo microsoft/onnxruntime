@@ -30,7 +30,7 @@ Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       continue;
     }
 
-    std::vector<NodeArg*> gelu_input;
+    InlinedVector<NodeArg*> gelu_input;
     const TensorShapeProto* input1_shape = node.MutableInputDefs()[0]->Shape();
     const TensorShapeProto* input2_shape = node.MutableInputDefs()[1]->Shape();
 

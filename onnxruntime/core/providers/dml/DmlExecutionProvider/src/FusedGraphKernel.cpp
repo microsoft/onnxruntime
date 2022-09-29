@@ -19,19 +19,21 @@ namespace Dml
         FusedGraphKernel(
             const onnxruntime::OpKernelInfo& kernelInfo,
             const std::unordered_map<std::string, GraphNodeProperties> &graphNodePropertyMap,
-            std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap) : OpKernel(kernelInfo)
+            std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
+            const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
+            const gsl::span<const std::string> fusedNodeOutputArgOriginalNames) : OpKernel(kernelInfo)
         {       
             // Get the graph for the function which was created according to the computational
             // capacity returned by the execution provider's graph partitioner
             auto& node = kernelInfo.node();
-            THROW_HR_IF(E_UNEXPECTED, node.NodeType() != onnxruntime::Node::Type::Fused);
+            ORT_THROW_HR_IF(E_UNEXPECTED, node.NodeType() != onnxruntime::Node::Type::Fused);
             auto func = node.GetFunctionBody();
             const onnxruntime::Graph& graph = func->Body();
 
             // Get the shapes for outputs of the overall graph.  These should be static, because 
             // the partitioner checked that each node has static shapes before fusing into a 
             // graph partition.
-            THROW_HR_IF(E_UNEXPECTED, !TryGetStaticOutputShapes(node, m_outputShapes));
+            ORT_THROW_HR_IF(E_UNEXPECTED, !TryGetStaticOutputShapes(node, m_outputShapes));
 
             // Get the execution provider interfaces
             m_executionHandle = kernelInfo.GetExecutionProvider()->GetExecutionHandle();
@@ -41,34 +43,40 @@ namespace Dml
                 ComPtr<IUnknown> providerExecutionObject = const_cast<IUnknown*>(static_cast<const IUnknown*>(m_executionHandle));
 
                 // Get the WinML-specific execution provider interface from the execution object. 
-                THROW_IF_FAILED(providerExecutionObject.As(&m_provider));
-                THROW_IF_FAILED(providerExecutionObject.As(&m_winmlProvider));
+                ORT_THROW_IF_FAILED(providerExecutionObject.As(&m_provider));
+                ORT_THROW_IF_FAILED(providerExecutionObject.As(&m_winmlProvider));
             }
 
-            TranslateAndCompileGraph(kernelInfo, graph, node.InputDefs(), node.OutputDefs(), graphNodePropertyMap, transferredInitializerMap);
+            TranslateAndCompileGraph(
+                kernelInfo, 
+                graph, 
+                fusedNodeInputArgOriginalNames,
+                fusedNodeOutputArgOriginalNames, 
+                graphNodePropertyMap, 
+                transferredInitializerMap);
         }
 
         void TranslateAndCompileGraph(
             const onnxruntime::OpKernelInfo& kernelInfo,
             const onnxruntime::Graph& graph,
-            const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,
-            const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeOutputDefs,
+            const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
+            const gsl::span<const std::string> fusedNodeOutputArgOriginalNames,
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
             std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap
         )
         {
             ComPtr<IDMLDevice> device;
-            THROW_IF_FAILED(m_provider->GetDmlDevice(device.GetAddressOf()));
+            ORT_THROW_IF_FAILED(m_provider->GetDmlDevice(device.GetAddressOf()));
 
             ComPtr<IDMLDevice1> device1;
-            THROW_IF_FAILED(device.As(&device1));
+            ORT_THROW_IF_FAILED(device.As(&device1));
 
             const uint32_t graphInputCount = kernelInfo.GetInputCount();
 
             m_inputsConstant.resize(graphInputCount);
             for (uint32_t i = 0; i < graphInputCount; ++i)
             {
-              m_inputsConstant[i] = GraphKernelHelper::GetGraphInputConstness(i, kernelInfo, fusedNodeInputDefs, transferredInitializerMap);
+              m_inputsConstant[i] = GraphKernelHelper::GetGraphInputConstness(i, kernelInfo, fusedNodeInputArgOriginalNames, transferredInitializerMap);
             }
 
             GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
@@ -77,8 +85,8 @@ namespace Dml
                 m_inputsConstant.size(),
                 transferredInitializerMap,
                 graph,
-                fusedNodeInputDefs,
-                fusedNodeOutputDefs,
+                fusedNodeInputArgOriginalNames,
+                fusedNodeOutputArgOriginalNames,
                 graphNodePropertyMap,
                 device.Get(),
                 m_executionHandle);
@@ -95,7 +103,7 @@ namespace Dml
                 m_inputsConstant,
                 kernelInfo,
                 graphDesc,
-                fusedNodeInputDefs,
+                fusedNodeInputArgOriginalNames,
                 m_inputsUsed,
                 initInputBindings,
                 initInputResources,
@@ -134,7 +142,7 @@ namespace Dml
                 executionFlags |= DML_EXECUTION_FLAG_DISABLE_META_COMMANDS;
             }
 
-            THROW_IF_FAILED(device1->CompileGraph(
+            ORT_THROW_IF_FAILED(device1->CompileGraph(
                 &dmlGraphDesc,
                 executionFlags,
                 IID_PPV_ARGS(&m_compiledExecutionPlanOperator)));
@@ -143,7 +151,7 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                THROW_IF_FAILED(m_provider->AllocatePooledResource(
+                ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
                     static_cast<size_t>(persistentResourceSize),
                     AllocatorRoundingMode::Disabled,
                     m_persistentResource.GetAddressOf(),
@@ -152,7 +160,7 @@ namespace Dml
                 m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
             }
 
-            THROW_IF_FAILED(m_provider->InitializeOperator(
+            ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
                 m_compiledExecutionPlanOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initInputBindings)));
@@ -164,7 +172,7 @@ namespace Dml
             std::for_each(
                 initializeResourceRefs.begin(), 
                 initializeResourceRefs.end(), 
-                [&](ComPtr<ID3D12Resource>& resource){ m_winmlProvider->QueueReference(resource.Get()); }
+                [&](ComPtr<ID3D12Resource>& resource){ m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(resource).Get()); }
             );  
 
             if (graphDesc.reuseCommandList)
@@ -187,7 +195,7 @@ namespace Dml
                     true,
                     nullptr);
 
-                THROW_IF_FAILED(m_provider->AddUAVBarrier());
+                ORT_THROW_IF_FAILED(m_provider->AddUAVBarrier());
 
                 // Get input resources for execution, excluding those which were specified as owned by DML and provided 
                 // at initialization instead.
@@ -207,18 +215,19 @@ namespace Dml
                     }
                     else if (!m_inputsConstant[i])
                     {
-                        THROW_IF_FAILED(contextWrapper.GetInputTensor(i, inputTensors[i].GetAddressOf()));
+                        ORT_THROW_IF_FAILED(contextWrapper.GetInputTensor(i, inputTensors[i].GetAddressOf()));
                         inputPtrs[i] = m_provider->DecodeResource(MLOperatorTensor(inputTensors[i].Get()).GetDataInterface().Get());
                     }
                 }
 
+                auto aux = contextWrapper.GetOutputTensors(m_outputShapes);
                 ExecuteOperator(
                     m_compiledExecutionPlanOperator.Get(),
                     m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                     inputPtrs,
-                    contextWrapper.GetOutputTensors(m_outputShapes));
+                    aux);
 
-                THROW_IF_FAILED(m_provider->AddUAVBarrier());
+                ORT_THROW_IF_FAILED(m_provider->AddUAVBarrier());
                 
                 // Queue references to objects which must be kept alive until resulting GPU work completes
                 m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
@@ -258,7 +267,7 @@ namespace Dml
                 }
             };
 
-            auto FillBindingsFromBuffers = [this](auto& bufferBindings, auto& bindingDescs,  gsl::span<ID3D12Resource*>& resources)
+            auto FillBindingsFromBuffers = [](auto& bufferBindings, auto& bindingDescs,  gsl::span<ID3D12Resource*>& resources)
             {
                 for (ID3D12Resource* resource : resources)
                 {
@@ -288,7 +297,7 @@ namespace Dml
             outputBindings.reserve(outputTensors.size());
             FillBindingsFromTensors(outputBufferBindings, outputBindings, outputTensors);
 
-            THROW_IF_FAILED(m_provider->ExecuteOperator(
+            ORT_THROW_IF_FAILED(m_provider->ExecuteOperator(
                 op, 
                 persistentResourceBinding,
                 inputBindings,
@@ -299,7 +308,7 @@ namespace Dml
         void BuildReusableCommandList()
         {
             ComPtr<IDMLDevice> device;
-            THROW_IF_FAILED(m_provider->GetDmlDevice(device.GetAddressOf()));
+            ORT_THROW_IF_FAILED(m_provider->GetDmlDevice(device.GetAddressOf()));
 
             DML_BINDING_PROPERTIES execBindingProps = m_compiledExecutionPlanOperator->GetBindingProperties();
 
@@ -309,9 +318,9 @@ namespace Dml
             desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
             
             ComPtr<ID3D12Device> d3dDevice;
-            THROW_IF_FAILED(m_provider->GetD3DDevice(d3dDevice.GetAddressOf()));
+            ORT_THROW_IF_FAILED(m_provider->GetD3DDevice(d3dDevice.GetAddressOf()));
 
-            THROW_IF_FAILED(d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_heap)));
+            ORT_THROW_IF_FAILED(d3dDevice->CreateDescriptorHeap(&desc, IID_GRAPHICS_PPV_ARGS(m_heap.ReleaseAndGetAddressOf())));
 
             // Create a binding table for execution.
             DML_BINDING_TABLE_DESC bindingTableDesc = {};
@@ -320,22 +329,22 @@ namespace Dml
             bindingTableDesc.GPUDescriptorHandle = m_heap->GetGPUDescriptorHandleForHeapStart();
             bindingTableDesc.SizeInDescriptors = execBindingProps.RequiredDescriptorCount;
 
-            THROW_IF_FAILED(device->CreateBindingTable(&bindingTableDesc, IID_PPV_ARGS(&m_bindingTable)));
+            ORT_THROW_IF_FAILED(device->CreateBindingTable(&bindingTableDesc, IID_PPV_ARGS(&m_bindingTable)));
 
             ComPtr<ID3D12CommandAllocator> allocator;
-            THROW_IF_FAILED(d3dDevice->CreateCommandAllocator(
+            ORT_THROW_IF_FAILED(d3dDevice->CreateCommandAllocator(
                 m_provider->GetCommandListTypeForQueue(),
-                IID_PPV_ARGS(&allocator)));
+                IID_GRAPHICS_PPV_ARGS(allocator.ReleaseAndGetAddressOf())));
 
             ComPtr<ID3D12CommandList> commandList;
-            THROW_IF_FAILED(d3dDevice->CreateCommandList(
+            ORT_THROW_IF_FAILED(d3dDevice->CreateCommandList(
                 0,
                 m_provider->GetCommandListTypeForQueue(),
                 allocator.Get(),
                 nullptr,
-                IID_PPV_ARGS(&commandList)));
+                IID_GRAPHICS_PPV_ARGS(commandList.ReleaseAndGetAddressOf())));
             
-            THROW_IF_FAILED(commandList.As(&m_graphicsCommandList));
+            ORT_THROW_IF_FAILED(commandList.As(&m_graphicsCommandList));
 
             if (m_persistentResource)
             {
@@ -348,11 +357,11 @@ namespace Dml
             m_graphicsCommandList->SetDescriptorHeaps(ARRAYSIZE(descriptorHeaps), descriptorHeaps);
 
             ComPtr<IDMLCommandRecorder> recorder;
-            THROW_IF_FAILED(device->CreateCommandRecorder(IID_PPV_ARGS(recorder.GetAddressOf())));
+            ORT_THROW_IF_FAILED(device->CreateCommandRecorder(IID_PPV_ARGS(recorder.GetAddressOf())));
 
             recorder->RecordDispatch(commandList.Get(), m_compiledExecutionPlanOperator.Get(), m_bindingTable.Get());
 
-            THROW_IF_FAILED(m_graphicsCommandList->Close());
+            ORT_THROW_IF_FAILED(m_graphicsCommandList->Close());
         }
 
         void ExecuteReusableCommandList(onnxruntime::OpKernelContext* kernelContext) const
@@ -421,7 +430,7 @@ namespace Dml
 
                 onnxruntime::Tensor* tensor = kernelContext->Output(
                     static_cast<int>(i), 
-                    onnxruntime::TensorShape::ReinterpretBaseType(outputDims)
+                    onnxruntime::TensorShape::FromExistingBuffer(outputDims)
                     );
 
                 uint64_t allocId;
@@ -444,14 +453,14 @@ namespace Dml
                 // which is scheduled up to the point that this method returns has completed.
                 ComPtr<IUnknown> tempAlloc;
                 uint64_t tempAllocId = 0;
-                THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(execBindingProps.TemporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
+                ORT_THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(execBindingProps.TemporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
 
                 ComPtr<IUnknown> tempResourceUnk;
                 m_winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnk);
                     
                 // Bind the temporary resource.
                 ComPtr<ID3D12Resource> tempResource;
-                THROW_IF_FAILED(tempResourceUnk->QueryInterface(tempResource.GetAddressOf()));
+                ORT_THROW_IF_FAILED(tempResourceUnk->QueryInterface(tempResource.GetAddressOf()));
                 DML_BUFFER_BINDING tempBufferBinding = {tempResource.Get(), 0, execBindingProps.TemporaryResourceSize};
                 DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
 
@@ -467,13 +476,13 @@ namespace Dml
             // re-used.
             ComPtr<ID3D12Fence> fence;
             uint64_t completionValue;
-            THROW_IF_FAILED(m_provider->ExecuteCommandList(m_graphicsCommandList.Get(), fence.GetAddressOf(), &completionValue));
+            ORT_THROW_IF_FAILED(m_provider->ExecuteCommandList(m_graphicsCommandList.Get(), fence.GetAddressOf(), &completionValue));
             m_fence = fence;
             m_completionValue = completionValue;
 
             // Queue references to objects which must be kept alive until resulting GPU work completes
-            m_winmlProvider->QueueReference(m_graphicsCommandList.Get());
-            m_winmlProvider->QueueReference(m_heap.Get());
+            m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_graphicsCommandList).Get());
+            m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_heap).Get());
             m_winmlProvider->QueueReference(m_bindingTable.Get());
             m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
         }
@@ -483,7 +492,7 @@ namespace Dml
         const void* m_executionHandle = nullptr;
         ComPtr<IWinmlExecutionProvider> m_winmlProvider;
         ComPtr<Dml::IExecutionProvider> m_provider;
-        EdgeShapes m_outputShapes;
+        Windows::AI::MachineLearning::Adapter::EdgeShapes m_outputShapes;
 
         // Re-usable command list, supporting descriptor heap, and DML binding table to update that heap.
         ComPtr<ID3D12GraphicsCommandList> m_graphicsCommandList;
@@ -510,9 +519,16 @@ namespace Dml
     onnxruntime::OpKernel* CreateFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info, 
         const std::unordered_map<std::string, GraphNodeProperties> &graphNodePropertyMap,
-        std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap
+        std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
+        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
+        const gsl::span<const std::string> fusedNodeOutputArgOriginalNames
         )
     {
-        return new FusedGraphKernel(info, graphNodePropertyMap, transferredInitializerMap);
+        return new FusedGraphKernel(
+            info, 
+            graphNodePropertyMap, 
+            transferredInitializerMap, 
+            fusedNodeInputArgOriginalNames, 
+            fusedNodeOutputArgOriginalNames);
     }
 } // namespace Dml

@@ -78,7 +78,7 @@ void wait_event_multiple_inputs_and_outputs(int64_t event_id) {
 }
 
 TEST(Synchronization, RecordAndWaitEvent) {
-  const int64_t event_id = static_cast<int64_t>(1736);
+  constexpr int64_t event_id = static_cast<int64_t>(1736);
   record_event(event_id);
   wait_event(event_id);
 }
@@ -88,13 +88,13 @@ TEST(Synchronization, WaitNullEvent) {
 }
 
 TEST(Synchronization, RecordAndWaitEventMultipleInputsAndOutputs) {
-  const int64_t event_id = static_cast<int64_t>(995);
+  constexpr int64_t event_id = static_cast<int64_t>(995);
   record_event_multiple_inputs_and_outputs(event_id);
   wait_event_multiple_inputs_and_outputs(event_id);
 }
 
 TEST(Synchronization, WaitAndRecordEvent) {
-  const int64_t event_id = static_cast<int64_t>(1228);
+  constexpr int64_t event_id = static_cast<int64_t>(1228);
   std::thread waiting_thread(wait_event, event_id);
   std::this_thread::sleep_for(std::chrono::milliseconds(5));
   std::thread recording_thread(record_event, event_id);
@@ -104,7 +104,7 @@ TEST(Synchronization, WaitAndRecordEvent) {
 }
 
 TEST(Synchronization, WaitAndRecordEventMany) {
-  const size_t event_count = 16;
+  constexpr size_t event_count = 16;
   for (int i = 0; i < 8; ++i) {
     std::thread thread_pool[2 * event_count];
     for (int j = 0; j < static_cast<int>(event_count); ++j) {

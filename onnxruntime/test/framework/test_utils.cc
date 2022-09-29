@@ -32,16 +32,11 @@ IExecutionProvider* TestCoreMLExecutionProvider(uint32_t coreml_flags) {
 }
 #endif
 
-static void CountOpsInGraphImpl(const Graph& graph, bool recurse_into_subgraphs, std::map<std::string, int>& ops) {
+static void CountOpsInGraphImpl(const Graph& graph, bool recurse_into_subgraphs, OpCountMap& ops) {
   for (auto& node : graph.Nodes()) {
     std::string key = node.Domain() + (node.Domain().empty() ? "" : ".") + node.OpType();
 
-    auto pos = ops.find(key);
-    if (pos == ops.end()) {
-      ops[key] = 1;
-    } else {
-      ++pos->second;
-    }
+    ++ops[key];
 
     if (recurse_into_subgraphs && node.ContainsSubgraph()) {
       for (auto& subgraph : node.GetSubgraphs()) {
@@ -53,8 +48,8 @@ static void CountOpsInGraphImpl(const Graph& graph, bool recurse_into_subgraphs,
 
 // Returns a map with the number of occurrences of each operator in the graph.
 // Helper function to check that the graph transformations have been successfully applied.
-std::map<std::string, int> CountOpsInGraph(const Graph& graph, bool recurse_into_subgraphs) {
-  std::map<std::string, int> ops;
+OpCountMap CountOpsInGraph(const Graph& graph, bool recurse_into_subgraphs) {
+  OpCountMap ops;
   CountOpsInGraphImpl(graph, recurse_into_subgraphs, ops);
 
   return ops;

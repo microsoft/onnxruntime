@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 import {Attribute} from '../../../attribute';
+import {MAX_CLIP, MIN_CLIP} from '../../../util';
 import {GlslValueFunction} from '../glsl-definitions';
+
 import {glslClip, glslRelu, glslSigmoid} from './unary-op';
 
 export interface InternalActivationAttributes {
@@ -12,7 +14,7 @@ export interface InternalActivationAttributes {
   readonly activationCacheKey: string;
 }
 
-export function getActicationSnippet(attributes: InternalActivationAttributes) {
+export function getActivationSnippet(attributes: InternalActivationAttributes) {
   let func: GlslValueFunction;
   switch (attributes.activation) {
     case 'Relu':
@@ -36,11 +38,10 @@ export function getActicationSnippet(attributes: InternalActivationAttributes) {
 }
 
 export const parseInternalActivationAttributes = (attributes: Attribute): InternalActivationAttributes => {
-  const activation = attributes.getString('__internal_activation', '');
+  const activation = attributes.getString('activation', '');
 
   if (activation === 'Clip') {
-    const clipMax = attributes.getFloat('__clip_max', 3.402823e+38);
-    const clipMin = attributes.getFloat('__clip_min', -3.402823e+38);
+    const [clipMin, clipMax] = attributes.getFloats('activation_params', [MIN_CLIP, MAX_CLIP]);
     return {activation, clipMax, clipMin, activationCacheKey: `${activation}:${clipMin},${clipMax}`};
   }
   return {activation, activationCacheKey: activation};

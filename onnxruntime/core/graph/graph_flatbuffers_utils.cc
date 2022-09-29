@@ -5,16 +5,14 @@
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "graph_flatbuffers_utils.h"
 #include "flatbuffers/flatbuffers.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
-using namespace ::onnxruntime::experimental;
 
-namespace onnxruntime {
-namespace experimental {
-namespace utils {
+namespace onnxruntime::fbs::utils {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -124,7 +122,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     case fbs::AttributeType::TENSOR: {
       flatbuffers::Offset<fbs::Tensor> fbs_tensor;
       ORT_RETURN_IF_ERROR(
-          experimental::utils::SaveInitializerOrtFormat(builder, attr_proto.t(), model_path, fbs_tensor));
+          SaveInitializerOrtFormat(builder, attr_proto.t(), model_path, fbs_tensor));
       GET_FBS_ATTR(builder, type, t, fbs_tensor);
     } break;
     case fbs::AttributeType::GRAPH: {
@@ -154,7 +152,7 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
       for (const auto& tensor : attr_proto.tensors()) {
         flatbuffers::Offset<fbs::Tensor> fbs_tensor;
         ORT_RETURN_IF_ERROR(
-            experimental::utils::SaveInitializerOrtFormat(builder, tensor, model_path, fbs_tensor));
+            SaveInitializerOrtFormat(builder, tensor, model_path, fbs_tensor));
         fbs_tensors_vec.push_back(fbs_tensor);
       }
       auto tensors = builder.CreateVector(fbs_tensors_vec);
@@ -174,10 +172,8 @@ Status SaveAttributeOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 #endif
 
-#if defined(ENABLE_ORT_FORMAT_LOAD)
-
-Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
-                                TensorProto& initializer) {
+Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& initializer,
+                                bool can_use_flatbuffer_for_initializers) {
   initializer.Clear();
 
   LOAD_STR_FROM_ORT_FORMAT(initializer, name, fbs_tensor.name());
@@ -201,8 +197,29 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
     const auto* fbs_raw_data = fbs_tensor.raw_data();
     ORT_RETURN_IF(nullptr == fbs_raw_data, "Missing raw data for initializer. Invalid ORT format model.");
 
-    // fbs_raw_data is uint8_t vector, so the size is byte size
-    initializer.set_raw_data(fbs_raw_data->Data(), fbs_raw_data->size());
+    if (can_use_flatbuffer_for_initializers && fbs_raw_data->size() > 127) {
+      initializer.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+      static_assert(sizeof(void*) <= sizeof(ExternalDataInfo::OFFSET_TYPE));
+      const void* data_offset = fbs_raw_data->Data();
+      // we reinterpret_cast this back to void* in tensorprotoutils.cc:GetExtDataFromTensorProto.
+      // use intptr_t as OFFSET_TYPE is signed. in theory you could get a weird looking value if the address uses the
+      // high bit, but that should be unlikely in a scenario where we care about memory usage enough to use this path.
+      auto offset = gsl::narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(data_offset));
+
+      ONNX_NAMESPACE::StringStringEntryProto* entry = initializer.mutable_external_data()->Add();
+      entry->set_key("location");
+      entry->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoMemoryAddressTag));
+      entry = initializer.mutable_external_data()->Add();
+      entry->set_key("offset");
+      entry->set_value(std::to_string(offset));
+      entry = initializer.mutable_external_data()->Add();
+      entry->set_key("length");
+      entry->set_value(std::to_string(fbs_raw_data->size()));
+    } else {
+      // fbs_raw_data is uint8_t vector, so the size is byte size
+      initializer.set_raw_data(fbs_raw_data->Data(), fbs_raw_data->size());
+    }
   }
 
   return Status::OK();
@@ -235,7 +252,8 @@ Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor
 Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
                               ONNX_NAMESPACE::AttributeProto& attr_proto,
                               std::unique_ptr<onnxruntime::Graph>& sub_graph,
-                              Graph& graph, Node& node,
+                              onnxruntime::Graph& graph, onnxruntime::Node& node,
+                              bool can_use_flatbuffer_for_initializers,
                               const logging::Logger& logger) {
   attr_proto.Clear();
   LOAD_STR_FROM_ORT_FORMAT(attr_proto, name, fbs_attr.name());
@@ -258,7 +276,8 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
     case AttributeProto_AttributeType_TENSOR: {
       auto fbs_tensor = fbs_attr.t();
       ORT_RETURN_IF(nullptr == fbs_tensor, "Null tensor attribute. Invalid ORT format model.");
-      ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_tensor, *attr_proto.mutable_t()));
+      ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_tensor, *attr_proto.mutable_t(),
+                                                   can_use_flatbuffer_for_initializers));
     } break;
     case AttributeProto_AttributeType_GRAPH: {
       // If the attribute type is a graph, we will create an empty graph in attr_proto so that the ONNX checker
@@ -266,7 +285,9 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
       auto fbs_graph = fbs_attr.g();
       ORT_RETURN_IF(nullptr == fbs_graph, "Null graph attribute. Invalid ORT format model.");
       attr_proto.mutable_g()->set_name("Empty graph proto from deserialization of ORT format model");
-      ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, graph, node, logger, sub_graph));
+      ORT_RETURN_IF_ERROR(onnxruntime::Graph::LoadFromOrtFormat(*fbs_graph, graph, node,
+                                                                can_use_flatbuffer_for_initializers,
+                                                                logger, sub_graph));
     } break;
     case AttributeProto_AttributeType_FLOATS: {
       auto fbs_floats = fbs_attr.floats();
@@ -299,7 +320,8 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
       tensors->Reserve(fbs_tensors->size());
       for (const auto* fbs_tensor : *fbs_tensors) {
         ORT_RETURN_IF(nullptr == fbs_tensor, "Null tensor in tensors attribute. Invalid ORT format model.");
-        ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_tensor, *tensors->Add()));
+        ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_tensor, *tensors->Add(),
+                                                     can_use_flatbuffer_for_initializers));
       }
     } break;
 
@@ -310,8 +332,4 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
   return Status::OK();
 }
 
-#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
-
-}  // namespace utils
-}  // namespace experimental
-}  // namespace onnxruntime
+}  // namespace onnxruntime::fbs::utils

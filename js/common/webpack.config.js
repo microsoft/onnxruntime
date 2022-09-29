@@ -7,7 +7,21 @@ const path = require('path');
 const webpack = require('webpack');
 const TerserPlugin = require("terser-webpack-plugin");
 
-function addCopyrightBannerPlugin(mode) {
+function terserEcmaVersionFromWebpackTarget(target) {
+  switch (target) {
+    case 'es5':
+      return 5;
+    case 'es6':
+    case 'es2015':
+      return 2015;
+    case 'es2017':
+      return 2017;
+    default:
+      throw new RangeError(`not supported ECMA version: ${target}`);
+  }
+}
+
+function addCopyrightBannerPlugin(mode, target) {
   const VERSION = require(path.join(__dirname, 'package.json')).version;
   const COPYRIGHT_BANNER = `/*!
  * ONNX Runtime Common v${VERSION}
@@ -19,6 +33,7 @@ function addCopyrightBannerPlugin(mode) {
     return new TerserPlugin({
       extractComments: false,
       terserOptions: {
+        ecma: terserEcmaVersionFromWebpackTarget(target),
         format: {
           preamble: COPYRIGHT_BANNER,
           comments: false,
@@ -36,7 +51,7 @@ function addCopyrightBannerPlugin(mode) {
 function buildConfig({
   suffix = '',
   format = 'umd',
-  target = 'es5',
+  target = 'es2017',
   mode = 'production',
   devtool = 'source-map'
 }) {
@@ -54,7 +69,7 @@ function buildConfig({
     resolve: { extensions: ['.ts', '.js'] },
     plugins: [
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
-      addCopyrightBannerPlugin(mode),
+      addCopyrightBannerPlugin(mode, target),
     ],
     module: {
       rules: [{
@@ -63,7 +78,7 @@ function buildConfig({
           {
             loader: 'ts-loader',
             options: {
-              compilerOptions: { target: target }
+              compilerOptions: { target }
             }
           }
         ]
@@ -76,10 +91,10 @@ function buildConfig({
 
 module.exports = (env, argv) => {
   return [
-    buildConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
-    buildConfig({ mode: 'development', devtool: 'inline-source-map' }),
+    buildConfig({ suffix: '.es5.min', target: 'es5' }),
     buildConfig({ suffix: '.es6.min', target: 'es6' }),
     buildConfig({ suffix: '.min' }),
+    buildConfig({ mode: 'development', devtool: 'inline-source-map' }),
     buildConfig({ format: 'commonjs', suffix: '.node' }),
   ];
 };

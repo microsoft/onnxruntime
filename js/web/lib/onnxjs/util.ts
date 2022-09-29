@@ -472,11 +472,14 @@ export class ProtoUtil {
 }
 
 export class LongUtil {
-  static longToNumber(n: Long|flatbuffers.Long|number) {
+  // This function is called to get a number from long type of data for attribute, dim, and ir version,
+  // which values are signed integers.
+  // To make it more generic, add an optional paramter to convert to a unsigned number.
+  static longToNumber(n: Long|flatbuffers.Long|number, unsigned?: boolean) {
     if (Long.isLong(n)) {
       return n.toNumber();
     } else if (n instanceof flatbuffers.Long) {
-      return Long.fromValue({low: n.low, high: n.high, unsigned: true}).toNumber();
+      return Long.fromValue({low: n.low, high: n.high, unsigned: unsigned ?? false}).toNumber();
     }
     return n;
   }
@@ -621,7 +624,7 @@ export class ShapeUtil {
    * originalDims = [2,2] and shapeHints = [0,-1] will return [2,2]
    * originalDims = [2,2] and shapeHints = [4] will return [4]
    * originalDims = [2,2] and shapeHints = [5] will throw an exception
-   * https://github.com/onnx/onnx/blob/master/docs/Operators.md#Reshape
+   * https://github.com/onnx/onnx/blob/main/docs/Operators.md#Reshape
    */
 
   static calculateReshapedDims(originalDims: readonly number[], shapeHints: ArrayLike<number>): number[] {
@@ -788,7 +791,7 @@ export class ShapeUtil {
 
     // set all axes indices to 1 in outputDims and check for duplicates
     for (let i = 0; i < axes.length; i++) {
-      const axis = ShapeUtil.normalizeAxis(axes[i], dims.length);
+      const axis = ShapeUtil.normalizeAxis(axes[i], outputDims.length);
       if (axis >= outputDims.length) {
         throw new Error('\'axes\' has an out of range axis');
       }
@@ -1246,3 +1249,7 @@ export class PoolConvUtil {
 
 export const MIN_CLIP = -3.4028234663852886e+38;
 export const MAX_CLIP = 3.4028234663852886e+38;
+
+export function decodeUtf8String(buffer: Uint8Array): string {
+  return new TextDecoder().decode(buffer);
+}

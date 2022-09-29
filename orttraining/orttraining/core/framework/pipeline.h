@@ -125,9 +125,9 @@ class PipelineSlot {
   // Print this structure following a fixed-length format.
   // It assumes there are at most 2 actions per slot.
   friend std::ostream& operator<<(std::ostream& stream, const PipelineSlot& slot);
-  void SetWaitedEvent(const std::vector<int> event);
+  void SetWaitedEvent(const std::vector<int>& event);
   std::vector<int> GetWaitedEvent() const;
-  void SetRecordedEvent(const std::vector<int> event);
+  void SetRecordedEvent(const std::vector<int>& event);
   std::vector<int> GetRecordedEvent() const;
 
   std::vector<PipelineTask> GetTasks() { return tasks_; }
@@ -322,13 +322,13 @@ struct PipelineTensorNames {
 
 struct PipelineContext {
   // Number of pipeline stages.
-  int num_pipeline_stages;
+  int num_pipeline_stages = 0;
   // Id of stage handled by this process. Currently, it matches the MPI's rank.
-  int pipeline_stage_id;
+  int pipeline_stage_id = 0;
   // The number of micro-batches per pipeline round.
   // Only the last step among num_gradient_accumulation_steps steps may call
   // optimizer to update the model.
-  int num_pipeline_micro_batches;
+  int num_pipeline_micro_batches = 0;
   // Names of scheduling event in graph's input list and
   // names of event ops' outputs. If an event name is an
   // empty string, it means no event should be waited or recorded.

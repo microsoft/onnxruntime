@@ -18,8 +18,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<double>()}),
     SpaceToDepth);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -27,8 +26,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<double>()}),
     SpaceToDepth);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -36,8 +34,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     1, 10,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -46,8 +43,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -55,14 +51,13 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 // intermediate tensor shapes are:
 // (batch, blocksize, blocksize, input_depth / (blocksize * blocksize), input_height, input_width) for DepthToSpace
 // (batch, input_depth, input_height / blocksize, blocksize, input_width / blocksize, blocksize) for SpaceToDepth
-const int IntermediateTensorRank = 6;
+constexpr int IntermediateTensorRank = 6;
 
 template <typename T>
 using EigenTensorMap = Eigen::TensorMap<Eigen::Tensor<T, IntermediateTensorRank, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned>;
@@ -80,8 +75,8 @@ static void SpaceDepthOpCpuImpl(const Tensor& input, Tensor& output,
                                 const Eigen::DenseIndex in_dim4, const Eigen::DenseIndex in_dim5,
                                 const Eigen::DenseIndex out_dim1, const Eigen::DenseIndex out_dim2, const Eigen::DenseIndex out_dim3,
                                 const Eigen::DenseIndex out_dim4, const Eigen::DenseIndex out_dim5) {
-  EigenTensorMap<T>(output.template MutableData<T>(), batch_size, out_dim1, out_dim2, out_dim3, out_dim4, out_dim5) =
-      ConstEigenTensorMap<T>(input.template Data<T>(), batch_size,
+  EigenTensorMap<T>(output.MutableData<T>(), batch_size, out_dim1, out_dim2, out_dim3, out_dim4, out_dim5) =
+      ConstEigenTensorMap<T>(input.Data<T>(), batch_size,
                              in_dim1, in_dim2, in_dim3, in_dim4, in_dim5)
           .shuffle(permutation);
 }

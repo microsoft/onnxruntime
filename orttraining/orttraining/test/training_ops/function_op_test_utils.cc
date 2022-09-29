@@ -86,7 +86,7 @@ std::unique_ptr<T> CreateOpTester(const onnxruntime::training::OpDef& op_def,
                                   int opset_version) {
   auto test = std::make_unique<T>(op_def.type.c_str(), opset_version, op_def.domain.c_str());
   for (auto attr : attributes)
-    test->AddAttribute(attr.name(), attr);
+    test->AddAttributeProto(attr);
 
   auto input_index = 0;
   for (auto& data : input_data) {

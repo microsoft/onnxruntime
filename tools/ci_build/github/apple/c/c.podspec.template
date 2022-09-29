@@ -1,0 +1,20 @@
+Pod::Spec.new do |spec|
+    spec.name                   = "@NAME@"
+    spec.version                = "@VERSION@"
+    spec.authors                = { "ONNX Runtime" => "onnxruntime@microsoft.com" }
+    spec.license                = { :type => "MIT", :file => "@LICENSE_FILE@" }
+    spec.homepage               = "https://github.com/microsoft/onnxruntime"
+    spec.source                 = { :http => "file:///http_source_placeholder" }
+    spec.summary                = "@SUMMARY@"
+    spec.platform               = :ios, "@IOS_DEPLOYMENT_TARGET@"
+    spec.vendored_frameworks    = "@ORT_C_FRAMEWORK@"
+    spec.static_framework       = true
+    spec.weak_framework         = [ @WEAK_FRAMEWORK@ ]
+    spec.source_files           = "@ORT_C_HEADERS_DIR@/*.h"
+    spec.preserve_paths         = [ "@LICENSE_FILE@" ]
+    spec.description            = "@DESCRIPTION@"
+    spec.library                = "c++"
+    spec.pod_target_xcconfig    = {
+        "OTHER_CPLUSPLUSFLAGS" => "-fvisibility=hidden -fvisibility-inlines-hidden",
+    }
+end

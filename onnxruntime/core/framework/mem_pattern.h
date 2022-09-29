@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/allocation_planner.h"
 
 namespace onnxruntime {
@@ -45,7 +46,7 @@ class MemoryPattern {
     return &it->second;
   }
 
-  const std::unordered_map<int, MemoryBlock>& GetPatternsMap() const {
+  const InlinedHashMap<int, MemoryBlock>& GetPatternsMap() const {
     return patterns_;
   }
 
@@ -53,7 +54,7 @@ class MemoryPattern {
   // allow move
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(MemoryPattern);
 
-  std::unordered_map<int, MemoryBlock> patterns_;
+  InlinedHashMap<int, MemoryBlock> patterns_;
   size_t peak_size_{0};
 };
 

@@ -48,19 +48,27 @@ class DnnlSubgraphPrimitive {
   //obtain a dnnl::memory with specified name, memory descriptor and engine, will perform extra reorder/reshape if necessary before returning
   dnnl::memory GetMemoryAndReshape(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose = false);
   //add dnnl primitive and memory map to subgraph primitive
-  void AddPrimitive(dnnl::primitive prim, std::unordered_map<int, dnnl::memory> mem_map);
+  //when you add primitive, you can optionally specify a vector of indexes to be printed in runtime for debug purpose
+  //eg, sp.AddPrimitve(prim,mem_map,{DNNL_ARG_SRC})
+  void AddPrimitive(dnnl::primitive prim, std::unordered_map<int, dnnl::memory> mem_map, std::vector<int> items_to_print = {});
   //add a reshape (e.g. squeeze, unsqueeze) to subgraph primitive
   void AddReshape(dnnl::memory src, dnnl::memory dst);
   bool HasMemory(std::string memory_name, dnnl::memory::desc mem_desc, dnnl::engine eng);
   dnnl::memory GetMemory(const DnnlTensor& tensor);
   dnnl::memory GetMemory(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng);
   //set memory to a tensor (output)
-  // if always_copy_output is true a copy of the memory will be made when the output is leaving the subgraph.
-  void SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output = false);
+  //if always_copy_output is true a copy of the memory will be made when the output is leaving the subgraph.
+  //is_scalar is true to indicate a scalar output in order to allocate the correct onnxruntime output buffer
+  void SetMemory(const DnnlTensor& tensor, dnnl::memory mem, bool always_copy_output = false, bool is_scalar = false);
   void SetMemory(std::string memory_name, dnnl::memory mem);
   void SetInitializer(std::string memory_name, dnnl::memory mem);
   dnnl::memory::desc GetOutputInfo(std::string name);
+  bool IsScalarOutput(const std::string& name);
   bool IsDynamic();
+  // All Scalar inputs are automatically converterted to a one dimentional tensor when used in OneDNN
+  // If the input being a scalar affects the operator this function can be used to determine if the
+  // original input from ORT was a scalar.
+  bool IsScalar(const DnnlTensor& tensor);
   OrtMutex& GetMutex() { return mutex_; }
 
   //GetMemory in OrtFormat if the memory is not in the OrtFormat this will reorder the memory.
@@ -75,6 +83,8 @@ class DnnlSubgraphPrimitive {
 
   std::unordered_map<std::string, dnnl::memory> inputs_;
   std::unordered_map<std::string, dnnl::memory::desc> inputs_md_;
+  std::unordered_set<std::string> input_is_scalar_;
+
 
   std::unordered_map<std::string, dnnl::memory> outputs_;
   std::unordered_map<std::string, dnnl::memory::desc> outputs_md_;
@@ -87,6 +97,7 @@ class DnnlSubgraphPrimitive {
   std::vector<std::unordered_map<int, dnnl::memory>> net_args_;
 
   std::vector<std::pair<dnnl::memory, dnnl::memory>> reshapes_;
+  std::unordered_set<std::string> scalar_outputs_;
 
   ort_dnnl::DnnlSubgraph* subgraph_;
 
@@ -97,7 +108,29 @@ class DnnlSubgraphPrimitive {
   dnnl::engine gpu_engine_;
 
   OrtMutex mutex_;
+
+  //for memory debug purpose
+  std::vector<std::pair<int,int>> items_to_print_;
+  void PrintMemory(const dnnl::memory& mem);
+  
 };
 
 }  // namespace ort_dnnl
+
+inline std::ostream& operator<<(std::ostream& os, const dnnl::memory::dims& dims) {
+  std::copy(dims.cbegin(), dims.cend(), std::ostream_iterator<dnnl::memory::dim>(os, " "));
+  return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const gsl::span<const int64_t>& span) {
+  std::copy(span.cbegin(), span.cend(), std::ostream_iterator<int64_t>(os, " "));
+  return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const gsl::span<int64_t>& span) {
+  std::copy(span.cbegin(), span.cend(), std::ostream_iterator<int64_t>(os, " "));
+  return os;
+}
+
 }  // namespace onnxruntime
+
