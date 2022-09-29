@@ -237,7 +237,7 @@ int RunTraining(const TestRunnerParameters& params) {
                                params.model_evaluation_graph_path,
                                params.optimizer_training_graph_path.size() > 0
                                    ? params.optimizer_training_graph_path
-                                   : std::optional<std::string>());
+                                   : std::optional<PathString>());
 
   int64_t sample_batch_count_per_epoch = params.train_batch_size;
   if (sample_batch_count_per_epoch < params.train_batch_size ||
@@ -322,7 +322,7 @@ int RunTraining(const TestRunnerParameters& params) {
         std::ostringstream oss;
         oss << "ckpt_" << params.model_name << std::to_string(batch_idx);
         PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, ToPathString(oss.str()));
-        Ort::SaveCheckpoint(session, ckpt_file.c_str(), true);
+        Ort::SaveCheckpoint(session, ckpt_file, true);
 
         // TODO(baiju): enable adding more properties to checkpoint
         // state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), epoch);
@@ -337,7 +337,7 @@ int RunTraining(const TestRunnerParameters& params) {
   std::ostringstream oss;
   oss << "ckpt_" << params.model_name;
   PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, ToPathString(oss.str()));
-  Ort::SaveCheckpoint(session, ckpt_file.c_str(), true);
+  Ort::SaveCheckpoint(session, ckpt_file, true);
 
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - end_to_end_start;

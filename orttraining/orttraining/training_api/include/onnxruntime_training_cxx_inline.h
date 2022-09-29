@@ -6,9 +6,9 @@ namespace Ort {
 
 inline TrainingSession::TrainingSession(const SessionOptions& session_options,
                                         CheckpointState& checkpoint_state,
-                                        const std::string& train_model_path,
-                                        const std::optional<std::string>& eval_model_path,
-                                        const std::optional<std::string>& optimizer_model_path) {
+                                        const std::basic_string<ORTCHAR_T>& train_model_path,
+                                        const std::optional<std::basic_string<ORTCHAR_T>>& eval_model_path,
+                                        const std::optional<std::basic_string<ORTCHAR_T>>& optimizer_model_path) {
   Env env = Env();
   ThrowOnError(GetTrainingApi().CreateTrainingSession(
       env, session_options, checkpoint_state,
@@ -77,13 +77,13 @@ inline void TrainingSession::OptimizerStep() {
   ThrowOnError(GetTrainingApi().OptimizerStep(p_, run_options));
 }
 
-inline CheckpointState LoadCheckpoint(const std::string& path_to_checkpoint) {
+inline CheckpointState LoadCheckpoint(const std::basic_string<ORTCHAR_T>& path_to_checkpoint) {
   OrtCheckpointState* checkpoint_state;
   ThrowOnError(GetTrainingApi().LoadCheckpoint(path_to_checkpoint.c_str(), &checkpoint_state));
   return CheckpointState(checkpoint_state);
 }
 
-inline void SaveCheckpoint(const TrainingSession& session, const std::string& path_to_checkpoint,
+inline void SaveCheckpoint(const TrainingSession& session, const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
                            bool include_optimizer_states) {
   ThrowOnError(GetTrainingApi().SaveCheckpoint(path_to_checkpoint.c_str(), session, include_optimizer_states));
 }

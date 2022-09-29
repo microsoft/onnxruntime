@@ -1,5 +1,6 @@
 #pragma once
 #include "onnxruntime_training_c_api.h"
+#include <optional>
 
 namespace Ort {
 
@@ -28,7 +29,7 @@ ORT_DEFINE_TRAINING_RELEASE(TrainingSession);
 class CheckpointState : Base<OrtCheckpointState> {
  private:
   friend class TrainingSession;
-  friend CheckpointState LoadCheckpoint(const std::string& path_to_checkpoint);
+  friend CheckpointState LoadCheckpoint(const std::basic_string<ORTCHAR_T>& path_to_checkpoint);
 
   CheckpointState(OrtCheckpointState* checkpoint_state) { p_ = checkpoint_state; }
 
@@ -44,16 +45,18 @@ class CheckpointState : Base<OrtCheckpointState> {
  */
 class TrainingSession : public Base<OrtTrainingSession> {
  private:
-  friend void SaveCheckpoint(const TrainingSession& session, const std::string& path_to_checkpoint,
+  friend void SaveCheckpoint(const TrainingSession& session, const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
                              bool include_optimizer_states);
 
   size_t training_model_output_count_, eval_model_output_count_;
 
  public:
   TrainingSession(const SessionOptions& session_options, CheckpointState& checkpoint_state,
-                  const std::string& train_model_path,
-                  const std::optional<std::string>& eval_model_path = std::optional<std::string>(),
-                  const std::optional<std::string>& optimizer_model_path = std::optional<std::string>());
+                  const std::basic_string<ORTCHAR_T>& train_model_path,
+                  const std::optional<std::basic_string<ORTCHAR_T>>& eval_model_path =
+                      std::optional<std::basic_string<ORTCHAR_T>>(),
+                  const std::optional<std::basic_string<ORTCHAR_T>>& optimizer_model_path =
+                      std::optional<std::basic_string<ORTCHAR_T>>());
 
   /** \brief Run the train step returning results in an Ort allocated vector.
    *
@@ -127,15 +130,21 @@ class TrainingSession : public Base<OrtTrainingSession> {
  * Wraps OrtTrainingApi::LoadCheckpoint
  *
  */
-CheckpointState LoadCheckpoint(const std::string& path_to_checkpoint);
+CheckpointState LoadCheckpoint(const std::basic_string<ORTCHAR_T>& path_to_checkpoint);
 
 /** \brief Saves the state of the training session to a checkpoint file provided by the given path.
  *
  * Wraps OrtTrainingApi::SaveCheckpoint
  *
  */
-void SaveCheckpoint(const TrainingSession& session, const std::string& path_to_checkpoint,
+void SaveCheckpoint(const TrainingSession& session, const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
                     bool include_optimizer_states);
+
+/** \brief Saves the checkpoint files to a model tensorproto file provided by the given path.
+ *
+ * Wraps OrtTrainingApi::SaveCheckpointAsInferenceModel
+ *
+ */
 
 }  // namespace Ort
 
