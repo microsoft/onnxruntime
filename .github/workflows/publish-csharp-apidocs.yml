@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+
 jobs:
   publish:
     runs-on: windows-latest
