@@ -68,7 +68,7 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
     my_gemm = func(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
 
     failures = {}
-    print(f"m={m:<5} n={n:<5} k={k:<5} dtype={dtype} bound: {bound}")
+    print(f"dtype={dtype} {transab_to_suffix((transa, transb))} m={m:<5} n={n:<5} k={k:<5} bound: {bound}")
 
     for impl in my_gemm.ListOps():
         if not my_gemm.SelectOp(impl):
@@ -80,6 +80,10 @@ def _test_gemm(func, dtype: str, m: int, n: int, k: int, transa=False, transb=Fa
         try:
             np.testing.assert_allclose(my_c, ref_c, rtol=bound)
         except Exception as err:
+            header = "*" * 30 + impl + "*" * 30
+            print(header)
+            print(err)
+            print("*" * len(header))
             failures[impl] = str(err)
 
     if failures:
@@ -166,14 +170,15 @@ def profile_gemm_func(f, transa: bool, transb: bool, dtype: str, m: int, n: int,
     my_gemm = f(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
     for impl in my_gemm.ListOps():
         if not my_gemm.SelectOp(impl):
-            print(f"{impl:<50} {transab_to_suffix((transa, transb))} {dtype} m={m:<4} k={k:<4} n={n:<4}, not supported")
+            print(f"{impl:<50} {dtype} {transab_to_suffix((transa, transb))} m={m:<4} n={n:<4} k={k:<4} not supported")
             sys.stdout.flush()
             continue
         time_ms = my_gemm.Profile()
         time_us = time_ms * 1000
         tflops = (m * k * n * 2) / (time_ms * 1e-3) / 1e12
         print(
-            f"{impl:<50} {transab_to_suffix((transa, transb))} {dtype} m={m:<4} k={k:<4} n={n:<4}, {time_us:>8.4f} us, {tflops:>5.2f} tflops"
+            f"{impl:<50} {dtype} {transab_to_suffix((transa, transb))}",
+            f"m={m:<4} n={n:<4} k={k:<4} {time_us:>8.4f} us {tflops:>5.2f} tflops",
         )
 
 
