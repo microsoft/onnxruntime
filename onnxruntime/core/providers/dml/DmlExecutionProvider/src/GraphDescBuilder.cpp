@@ -15,9 +15,9 @@ namespace Dml::GraphDescBuilder
     const std::string& GetUniqueNodeName(const onnxruntime::Node& node)
     {
         // The node's name is optional, and it might be re-created with a different index
-        // and pointer after partitioning occurs.  Use the name of the node's first valid 
+        // and pointer after partitioning occurs.  Use the name of the node's first valid
         // output as the unique identifier for the node itself.
-        for (const auto* arg : node.OutputDefs()) 
+        for (const auto* arg : node.OutputDefs())
         {
             if (arg->Exists())
             {
@@ -84,21 +84,16 @@ namespace Dml::GraphDescBuilder
         onnxruntime::GraphViewer viewer(graph);
         const std::vector<onnxruntime::NodeIndex>& orderedNodeIndices = viewer.GetNodesInTopologicalOrder();
 
-        // Avoid using separate command lists for small graphs. This value can be reduced by tuning the 
+        // Avoid using separate command lists for small graphs. This value can be reduced by tuning the
         // flushing behavior of DmlCommandRecorder.  Its current behavior is to assume that graphs contain
         // enough GPU work to be worth flushing immediately.
         const uint32_t minNodeCountToReuseCommandList = 5;
         bool reuseCommandList = false;
-        
+
         if (orderedNodeIndices.size() >= minNodeCountToReuseCommandList)
         {
             reuseCommandList = true;
         }
-
-#ifdef _GAMING_XBOX
-        // #40265989
-        reuseCommandList = false;
-#endif
 
         auto constantCpuGraphInputGetter = [&transferredInitializerMap](const std::string& argName)
         {
@@ -114,7 +109,7 @@ namespace Dml::GraphDescBuilder
         };
 
         // Iterate through each node and create a corresponding node in the new graph
-        for (size_t sortedNodeIndex : orderedNodeIndices) 
+        for (size_t sortedNodeIndex : orderedNodeIndices)
         {
             const onnxruntime::Node& node = *graph.GetNode(sortedNodeIndex);
 
@@ -205,10 +200,10 @@ namespace Dml::GraphDescBuilder
                     }
                 }
             }
-            
+
             // Store the new node for lookup when downstream nodes consume it.
 
-            for (uint32_t outputIndex = 0; outputIndex < graphNodeInfo.kernelOutputIndices.size(); ++outputIndex) 
+            for (uint32_t outputIndex = 0; outputIndex < graphNodeInfo.kernelOutputIndices.size(); ++outputIndex)
             {
                 if (graphNodeInfo.kernelOutputIndices[outputIndex] == std::numeric_limits<uint32_t>::max())
                 {
@@ -250,7 +245,7 @@ namespace Dml::GraphDescBuilder
             edge.GraphOutputIndex = gsl::narrow_cast<uint32_t>(outputIndex);
             graphOutputEdges.push_back(edge);
         }
-        
+
         GraphDesc graphDesc{};
         graphDesc.nodes = std::move(graphNodes);
         graphDesc.inputEdges = std::move(graphInputEdges);
