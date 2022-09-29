@@ -306,6 +306,25 @@ void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
+bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                    const Node& node,
+                                    const std::vector<const Node*>& dq_nodes,
+                                    const std::vector<const Node*>& q_nodes) const {
+  if (dq_nodes.size() != 2) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 2)) {
+    return false;
+  }
+
+  int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  return dt_input_1 == dt_input_2 &&
+         dt_input_1 == dt_output;
+}
+
 }  // namespace QDQ
 }  // namespace onnxruntime
 

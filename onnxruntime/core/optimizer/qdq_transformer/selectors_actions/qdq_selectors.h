@@ -130,6 +130,15 @@ class GemmNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 };
 
+// Input: DQ nodes for X, Y. condition input is bool, no need quantize
+// Output: Q node for output
+class WhereNodeGroupSelector : public NodeGroupSelector {
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
 /*
  * NodeSelector instances for use in the QDQ::SelectorActionTransformer.
  */
