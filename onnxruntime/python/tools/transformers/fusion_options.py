@@ -118,7 +118,7 @@ class FusionOptions:
             "--disable_gemm_gelu",
             required=False,
             action="store_true",
-            help="disable Matmul, Gelu/BiasGelu fusion",
+            help="disable Matmul, Gelu/FastGelu/BiasGelu fusion",
         )
         parser.set_defaults(disable_matmul_bias_gelu=False)
 

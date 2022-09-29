@@ -338,27 +338,93 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            void* workspace_memory,
                                            size_t workspace_size,
                                            cudaStream_t stream) {
-  ORT_UNUSED_PARAMETER(handle);
-  ORT_UNUSED_PARAMETER(transa);
-  ORT_UNUSED_PARAMETER(transb);
-  ORT_UNUSED_PARAMETER(m);
-  ORT_UNUSED_PARAMETER(n);
-  ORT_UNUSED_PARAMETER(k);
-  ORT_UNUSED_PARAMETER(alpha);
-  ORT_UNUSED_PARAMETER(A);
-  ORT_UNUSED_PARAMETER(lda);
-  ORT_UNUSED_PARAMETER(B);
-  ORT_UNUSED_PARAMETER(ldb);
-  ORT_UNUSED_PARAMETER(beta);
-  ORT_UNUSED_PARAMETER(C);
-  ORT_UNUSED_PARAMETER(ldc);
-  ORT_UNUSED_PARAMETER(bias);
-  ORT_UNUSED_PARAMETER(gelu_activation);
-  ORT_UNUSED_PARAMETER(workspace_memory);
-  ORT_UNUSED_PARAMETER(workspace_size);
-  ORT_UNUSED_PARAMETER(stream);
+  cudaDataType_t data_type = CUDA_R_32F;
+  cudaDataType_t scale_type = CUDA_R_32F;
+  cublasComputeType_t compute_type = CUBLAS_COMPUTE_32F;
 
-  return CUBLAS_STATUS_NOT_SUPPORTED;
+  cublasLtMatrixLayout_t A_desc = NULL, B_desc = NULL, C_desc = NULL;
+  cublasLtMatmulDesc_t operation_desc = NULL;
+
+  auto clean_desc_A = gsl::finally([&A_desc]() {
+    if (A_desc) {
+      cublasLtMatrixLayoutDestroy(A_desc);
+    }
+  });
+
+  auto clean_desc_B = gsl::finally([&B_desc]() {
+    if (B_desc) {
+      cublasLtMatrixLayoutDestroy(B_desc);
+    }
+  });
+
+  auto clean_desc_C = gsl::finally([&C_desc]() {
+    if (C_desc) {
+      cublasLtMatrixLayoutDestroy(C_desc);
+    }
+  });
+
+  auto clean_matmul_desc = gsl::finally([&operation_desc]() {
+    if (operation_desc) {
+      cublasLtMatmulDescDestroy(operation_desc);
+    }
+  });
+
+  if (Status::OK() != InitializeCublasLtMatmulDescAndOperationHelper(A_desc, lda,
+                                                                     transa,
+                                                                     B_desc, ldb,
+                                                                     transb,
+                                                                     C_desc, ldc,
+                                                                     data_type,
+                                                                     m, n, k,
+                                                                     operation_desc,
+                                                                     compute_type,
+                                                                     scale_type)) {
+    return CUBLAS_STATUS_ALLOC_FAILED;
+  }
+
+  if (gelu_activation && bias != nullptr) {
+    cublasLtEpilogue_t epilogue_gelu_bias = CUBLASLT_EPILOGUE_GELU_BIAS;
+
+    CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(operation_desc,
+                                                     CUBLASLT_MATMUL_DESC_EPILOGUE,
+                                                     &epilogue_gelu_bias, sizeof(epilogue_gelu_bias)));
+
+  } else if (bias != nullptr) {
+    cublasLtEpilogue_t epilogue_bias = CUBLASLT_EPILOGUE_BIAS;
+
+    CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(operation_desc,
+                                                     CUBLASLT_MATMUL_DESC_EPILOGUE,
+                                                     &epilogue_bias, sizeof(epilogue_bias)));
+  } else if (gelu_activation) {
+    cublasLtEpilogue_t epilogue_gelu = CUBLASLT_EPILOGUE_GELU;
+
+    CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(operation_desc,
+                                                     CUBLASLT_MATMUL_DESC_EPILOGUE,
+                                                     &epilogue_gelu, sizeof(epilogue_gelu)));
+  }
+
+  if (bias != nullptr) {
+    CUBLAS_CALL_THROW(cublasLtMatmulDescSetAttribute(operation_desc,
+                                                     CUBLASLT_MATMUL_DESC_BIAS_POINTER,
+                                                     &bias, sizeof(bias)));
+  }
+
+  // TODO (hasesh): Allow CublasLtMatmul tuning for clients by allowing them to pass in the
+  // workspace and algo of their choice.
+  // According to the cublasLtMatmul documentation, passing in NULL for the algo means that
+  // "an implicit heuristics query with
+  // default search preferences will be performed to determine actual algorithm to use".
+  // Source: cublasLtMatmul documentation.
+  return cublasLtMatmul(
+      handle, operation_desc,
+      reinterpret_cast<const void*>(alpha),
+      A, A_desc, B, B_desc,
+      reinterpret_cast<const void*>(beta),
+      C, C_desc,
+      C, C_desc,
+      /*algo*/ NULL,
+      workspace_memory, workspace_size,
+      stream);
 }
 
 inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,

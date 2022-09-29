@@ -15,10 +15,10 @@ logger = getLogger(__name__)
 
 class FusionGemmGelu(Fusion):
     def __init__(self, model: OnnxModel):
-        super().__init__(model, "GemmGelu", ["BiasGelu", "Gelu"])
+        super().__init__(model, "GemmGelu", ["BiasGelu", "FastGelu", "Gelu"])
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        has_bias = True if node.op_type == "BiasGelu" else False
+        has_bias = True if len(node.input) > 1 else False
 
         matmul = self.model.match_parent_path(node, ["MatMul"], [0])
         

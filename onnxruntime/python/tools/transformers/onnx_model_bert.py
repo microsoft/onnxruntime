@@ -419,7 +419,7 @@ class BertOnnxModel(OnnxModel):
             self.gelu_approximation()
 
 
-        if (options is not None) or options.enable_matmul_bias_gelu:
+        if (options is None) or options.enable_gemm_gelu:
             self.fuse_gemm_gelu()
 
         self.remove_unused_constant()
@@ -447,6 +447,7 @@ class BertOnnxModel(OnnxModel):
             "QOrderedLayerNormalization",
             "SkipLayerNormalization",
             "QOrderedMatMul",
+            "GemmGelu",
         ]
         for op in ops:
             nodes = self.get_nodes_by_op_type(op)

@@ -21,6 +21,7 @@ namespace cuda {
       GemmGelu<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(float)
 
 using namespace ONNX_NAMESPACE;
 
@@ -34,7 +35,9 @@ Status GemmGelu<T>::ComputeInternal(OpKernelContext* context) const {
 
   MatMulComputeHelper helper;
   // TODO: Handle transpose attributes
-  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(), right_X->Shape(), false, false, false, false, false));
+  ORT_RETURN_IF_ERROR(helper.Compute(left_X->Shape(),
+                                     right_X->Shape(),
+                                     false, false, false, false, false));
 
   // TODO: Fix me
   if (helper.OutputOffsets().size() != 1) {
