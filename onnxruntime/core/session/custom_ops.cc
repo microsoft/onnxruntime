@@ -12,6 +12,7 @@
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/utils.h"
+#include "core/common/string_helper.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
@@ -169,12 +170,17 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputNodeArg, _In_ const OrtKernelIn
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_opt_ char* out,
-                    _Inout_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** out, _Out_opt_ size_t* length) {
   API_IMPL_BEGIN
   const std::string& name = reinterpret_cast<const onnxruntime::NodeArg*>(node_arg)->Name();
-  auto status = onnxruntime::utils::CopyStringToOutputArg(name, "NodeArg's name buffer is too small", out, size);
-  return onnxruntime::ToOrtStatus(status);
+  *out = onnxruntime::StrDup(name, allocator);
+
+  if (length != nullptr) {
+    *length = name.length();
+  }
+
+  return nullptr;
   API_IMPL_END
 }
 

@@ -409,6 +409,7 @@ ORT_API_STATUS_IMPL(KernelInfo_GetInputNodeArg, _In_ const OrtKernelInfo* info, 
 ORT_API_STATUS_IMPL(KernelInfo_GetOutputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
                     _Outptr_ const OrtNodeArg** node_arg);
 
-ORT_API_STATUS_IMPL(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_opt_ char* out, _Inout_ size_t* size);
+ORT_API_STATUS_IMPL(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** out, _Out_opt_ size_t* length);
 ORT_API_STATUS_IMPL(NodeArg_GetTypeInfo, _In_ const OrtNodeArg* info, _Outptr_ OrtTypeInfo** type_info);
 }  // namespace OrtApis

@@ -3566,25 +3566,33 @@ struct OrtApi {
   /// \name OrtKernelInfo
   /// @{
 
-  /** \brief Used for custom operators, get the input count from kernel info
+  /** \brief Returns the number of input node arguments from ::OrtKernelInfo.
+  *
+  * \param[in]  info Instance of ::OrtKernelInfo.
+  * \param[out] out  Pointer to variable assigned with the result on success.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.13
   */
   ORT_API2_STATUS(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 
-  /** \brief Used for custom operators, get the output count from kernel info
+  /** \brief Returns the number of output node arguments from ::OrtKernelInfo.
+  *
+  * \param[in]  info Instance of ::OrtKernelInfo.
+  * \param[out] out  Pointer to variable assigned with the result on success.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.13
   */
   ORT_API2_STATUS(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 
-  /** \brief Get an input node argument definition from an instance of OrtKernelInfo.
+  /** \brief Returns an input node argument definition from ::OrtKernelInfo.
   *
-  * \param[in] info An instance of OrtKernelInfo.
-  * \param[in] index The index of the input node to get. Returns a failure status if out-of-bounds.
-  * \param[out] node_arg Do not free this value. It is owned by OrtKernelInfo.
+  * \param[in]  info     An instance of ::OrtKernelInfo.
+  * \param[in]  index    The index of the input node argument definition to get.
+  *                      Returns a failure status if out-of-bounds.
+  * \param[out] node_arg Pointer assigned with non-modifiable ::OrtNodeArg on success.
+  *                      Do not free this value, as it is owned by ::OrtKernelInfo.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.13
@@ -3592,11 +3600,13 @@ struct OrtApi {
   ORT_API2_STATUS(KernelInfo_GetInputNodeArg, _In_ const OrtKernelInfo* info, _In_ size_t index,
                   _Outptr_ const OrtNodeArg** node_arg);
 
-  /** \brief Get an output node argument definition from an instance of OrtKernelInfo.
+  /** \brief  Returns an output node argument definition from ::OrtKernelInfo.
   *
-  * \param[in] info An instance of OrtKernelInfo.
-  * \param[in] index The index of the output node to get. Returns a failure status if out-of-bounds.
-  * \param[out] node_arg Do not free this value. It is owned by OrtKernelInfo.
+  * \param[in]  info     An instance of ::OrtKernelInfo.
+  * \param[in]  index    The index of the output node argument definition to get.
+  *                      Returns a failure status if out-of-bounds.
+  * \param[out] node_arg Pointer set to non-modifiable ::OrtNodeArg on success.
+  *                      Do not free this value, as it is owned by ::OrtKernelInfo.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.13
@@ -3608,33 +3618,25 @@ struct OrtApi {
   /// \name OrtNodeArg
   /// @{
 
-  /** \brief Get a node argument's name.
+  /** \brief Returns a node argument's name.
   *
-  * If `out` is nullptr, the value of `size` is set to the true size of the
-  * name, and a success status is returned.
-  *
-  * If the `size` parameter is greater than or equal to the actual name's size,
-  * the value of `size` is set to the true size of the node's name, the provided memory
-  * is filled with the name's contents, and a success status is returned.
-  *
-  * If the `size` parameter is less than the actual name's size and `out`
-  * is not nullptr, the value of `size` is set to the true size of the node's name
-  * and a failure status is returned.
-  *
-  * \param[in] node_arg An instance of OrtNodeArg representing a node argument definition
-  *                     for both input and output.
-  * \param[out] out Pointer to memory where the null-terminated name will be stored.
-  * \param[in,out] size See above comments for details
+  * \param[in]     node_arg  An instance of ::OrtNodeArg.
+  * \param[in,out] allocator An instance of ::OrtAllocator used to allocate the node's name.
+  * \param[out]    out       Pointer set to the UTF-8 null-terminated string representing the node argument's name.
+  *                          Must be freed with the provided allocator.
+  * \param[in,out] length    Optional pointer set to the name's length (not counting the null-terminator).
+  *                          Ignored if NULL.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.13
   */
-  ORT_API2_STATUS(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Out_opt_ char* out, _Inout_ size_t* size);
+  ORT_API2_STATUS(NodeArg_GetName, _In_ const OrtNodeArg* node_arg, _Inout_ OrtAllocator* allocator,
+                  _Outptr_ char** out, _Out_opt_ size_t* length);
 
-  /** \brief Get a node argument definition's type information.
+  /** \brief Returns a node argument's type information.
   *
-  * \param[in] node_arg
-  * \param[out] type_info Must be freed with OrtApi::ReleaseTypeInfo.
+  * \param[in]  node_arg  An instance of ::OrtNodeArg.
+  * \param[out] type_info Pointer set to ::OrtTypeInfo that must be freed with OrtApi::ReleaseTypeInfo.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.13

@@ -1069,7 +1069,13 @@ struct ArenaCfg : Base<OrtArenaCfg> {
 struct NodeArg {
   explicit NodeArg(const OrtNodeArg* node_arg);
 
-  std::string GetName() const;
+  // Returns a pair consisting of a Ort::AllocatedStringPtr and the string's length.
+  // Ex: auto name = node_arg.GetName(allocator);
+  // name.first.get(); // Get char*
+  // name.second; // Get length
+  std::pair<AllocatedStringPtr, size_t> GetName(OrtAllocator* allocator) const;
+
+  // Returns the node's type and shape information.
   TypeInfo GetTypeInfo() const;
  private:
   const OrtNodeArg* p_;

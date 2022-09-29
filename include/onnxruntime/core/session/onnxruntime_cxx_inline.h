@@ -1101,22 +1101,11 @@ inline TensorTypeAndShapeInfo Value::GetTensorTypeAndShapeInfo() const {
 inline Ort::NodeArg::NodeArg(const OrtNodeArg* node_arg) : p_(node_arg) {
 }
 
-inline std::string Ort::NodeArg::GetName() const {
-  size_t size = 0;
-  std::string out;
-
-  // Pass a nullptr as the data buffer to query the size of the input's name
-  OrtStatus* status = GetApi().NodeArg_GetName(p_, nullptr, &size);
-
-  if (status == nullptr) {
-    out.resize(size);
-    ThrowOnError(GetApi().NodeArg_GetName(p_, &out[0], &size));
-    out.resize(size - 1);  // remove the terminating character '\0'
-  } else {
-    ThrowOnError(status);
-  }
-
-  return out;
+inline std::pair<AllocatedStringPtr, size_t> Ort::NodeArg::GetName(OrtAllocator* allocator) const {
+  char* out = nullptr;
+  size_t len = 0;
+  Ort::ThrowOnError(GetApi().NodeArg_GetName(p_, allocator, &out, &len));
+  return std::make_pair(AllocatedStringPtr(out, detail::AllocatedFree(allocator)), len);
 }
 
 inline TypeInfo Ort::NodeArg::GetTypeInfo() const {
