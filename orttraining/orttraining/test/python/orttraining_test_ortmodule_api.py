@@ -390,6 +390,7 @@ def run_before_tests():
 
 def _get_bert_for_sequence_classification_model(
     device,
+    is_training=False,
     output_attentions=False,
     output_hidden_states=False,
     return_dict=True,
@@ -414,6 +415,10 @@ def _get_bert_for_sequence_classification_model(
         config=config,
     ).to(device)
 
+    if is_training:
+        model.train()
+    else:
+        model.eval()
     return model
 
 
@@ -2012,7 +2017,7 @@ def test_bert_inputs_with_dynamic_shape():
 
     # create pytorch model with dropout disabled
     pt_model = _get_bert_for_sequence_classification_model(
-        "cuda", hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0
+        "cuda", is_training=True, hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0
     )
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -5334,3 +5339,21 @@ def test_squeeze_custom_symbolic_registry():
     _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
     _test_helpers.assert_values_are_close(pt_loss, ort_loss)
     _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+def test_eval_model_mode():
+    device = "cuda"
+    n, d_in, h_size, d_out = 64, 2, 2, 2
+    origin_model = NeuralNetSinglePositionalArgument(d_in, h_size, d_out).to(device)
+    x = torch.randn(n, d_in, device=device)
+    ort_model = ORTModule(origin_model)
+    for initial_mode in (True, False):
+        model = copy.deepcopy(ort_model)
+        model.train(initial_mode)
+        for step in range(10):
+            for new_mode in (True, False):
+                model.train(new_mode)
+                model(x)
+                assert model.training == new_mode
+                assert model._torch_module.is_training() == new_mode
+                assert model._torch_module._flattened_module.training == new_mode

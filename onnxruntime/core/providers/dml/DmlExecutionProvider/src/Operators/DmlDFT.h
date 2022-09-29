@@ -67,46 +67,58 @@ private:
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_pipelineState;
 
-    std::vector<uint32_t> m_inputDims = {};
-    std::vector<uint32_t> m_outputDims = {};
     int64_t m_axis;
     bool m_isOnesided;
     bool m_isInverse;
 
-    uint32_t m_outputDataSize = 0;
-    uint32_t m_inputDataSize = 0;
-    uint32_t m_outputIdx = 0;
-    uint32_t m_numPasses = 0;
-
-    // Allocate temporary buffers if needed
-    struct ResourceDesc
+    struct StockhamParameters
     {
-        ComPtr<ID3D12Resource> Resource;
-        std::array<uint32_t, 4> Sizes;
-        std::array<uint32_t, 4> Strides;
-    };
-    std::vector<ResourceDesc> m_resourceLoopList = {};
-
-    struct LoopRange
-    {
-        unsigned Left;
-        unsigned Right;
-        unsigned End;
-        unsigned CalculateIndex(unsigned index)
+        // Allocate temporary buffers if needed
+        struct ResourceDesc
         {
-            if (index > 0 && index < End)
+            ComPtr<ID3D12Resource> Resource;
+            std::array<uint32_t, 4> Sizes;
+            std::array<uint32_t, 4> Strides;
+        };
+
+        struct LoopRangeCalculator
+        {
+            unsigned Left;
+            unsigned Right;
+            unsigned End;
+            unsigned CalculateIndex(unsigned index) const
             {
-                unsigned range = Right - Left + 1;
-                index = Left + (index - 1) % range;
+                if (index > 0 && index < End)
+                {
+                    unsigned range = Right - Left + 1;
+                    index = Left + (index - 1) % range;
+                }
+                else if (index == End)
+                {
+                    index = Right + 1;
+                }
+                return index;
             }
-            else if (index == End)
-            {
-                index = Right + 1;
-            }
-            return index;
-        }
+        };
+
+        std::vector<ResourceDesc> ResourceLoopList = {};
+        LoopRangeCalculator LoopRange = {};
+        uint32_t OutputIndex = 0;
+        uint32_t NumberOfPasses = 0;
     };
-    LoopRange m_loopRange = {};
+
+    enum class DFTType
+    {
+        Stockham = 0,
+        BluesteinZChirp,
+    };
+
+    struct DFTParameters
+    {
+        DFTType Type = DFTType::Stockham;
+        StockhamParameters StockhamParams = {};
+        uint32_t DFTLength = 0;
+    };
 
     struct DFTShaderConstants
     {
@@ -119,6 +131,7 @@ private:
         uint32_t OutputSizes[4];
         uint32_t OutputStrides[4];
         float Scale;
+        uint32_t DFTLength;
     };
 
 public:
@@ -132,7 +145,6 @@ public:
 
         ORT_THROW_IF_FAILED(commandList->GetDevice(IID_ID3D12Device, &m_device));
 
-
         ORT_THROW_IF_FAILED(context->GetAttribute("axis", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&m_axis)));
 
         int64_t isInverseInt;
@@ -142,124 +154,6 @@ public:
         int64_t isOnesidedInt;
         ORT_THROW_IF_FAILED(context->GetAttribute("onesided", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isOnesidedInt)));
         m_isOnesided = static_cast<bool>(isOnesidedInt);
-
-        ComPtr<IMLOperatorTensorShapeDescription> shapeDesc;
-        ORT_THROW_IF_FAILED(context->GetTensorShapeDescription(shapeDesc.GetAddressOf()));
-
-        // Get the input and output shape sizes
-        uint32_t inputDimsSize;
-        ORT_THROW_IF_FAILED(shapeDesc->GetInputTensorDimensionCount(0, &inputDimsSize));
-        uint32_t outputDimsSize;
-        ORT_THROW_IF_FAILED(shapeDesc->GetOutputTensorDimensionCount(0, &outputDimsSize));
-        ORT_THROW_HR_IF(E_FAIL, inputDimsSize != outputDimsSize);
-
-        // Get the input shape
-        m_inputDims.resize(inputDimsSize);
-        ORT_THROW_IF_FAILED(shapeDesc->GetInputTensorShape(0, static_cast<uint32_t>(m_inputDims.size()), m_inputDims.data()));
-
-        // Get the output shape
-        m_outputDims.resize(outputDimsSize);
-        ORT_THROW_IF_FAILED(shapeDesc->GetOutputTensorShape(0, static_cast<uint32_t>(m_outputDims.size()), m_outputDims.data()));
-
-        // For the number of total elements in the input and output shapes
-        m_outputDataSize = ComputeElementCountFromDimensions(m_outputDims);
-        m_inputDataSize = ComputeElementCountFromDimensions(m_inputDims);
-
-        // { before_dft_axis, axis, after_dft_axis, real_or_complex }
-        std::array<uint32_t, 4> reshapedInputSize = { 1, 1, 1, m_inputDims.back() };
-        std::array<uint32_t, 4> reshapedOutputSize = { 1, 1, 1, m_outputDims.back() };
-
-        size_t reshapedIndex = 0;
-        for (int i = 0; i < m_inputDims.size() - 1; i++)
-        {
-            if (i == m_axis || i == (m_axis + 1))
-            {
-                reshapedIndex++;
-            }
-            reshapedInputSize[reshapedIndex] *= m_inputDims[i];
-            reshapedOutputSize[reshapedIndex] *= m_outputDims[i];
-        }
-
-        auto temporarySize = reshapedInputSize;
-        temporarySize.back() = reshapedOutputSize.back();
-
-        // Calculate elements and strides
-        std::array<uint32_t, 4> reshapedInputStrides = { 1, 1, 1, 1 };
-        std::array<uint32_t, 4> reshapedOutputStrides = { 1, 1, 1, 1 };
-        std::array<uint32_t, 4> temporaryStrides = { 1, 1, 1, 1 };
-        for (int i = static_cast<int>(m_inputDims.size()) - 2; i >= 0; i--)
-        {
-            reshapedInputStrides[i] = reshapedInputSize[i + 1] * reshapedInputStrides[i + 1];
-            reshapedOutputStrides[i] = reshapedOutputSize[i + 1] * reshapedOutputStrides[i + 1];
-            temporaryStrides[i] = temporarySize[i + 1] * temporaryStrides[i + 1];
-        }
-
-        // Get DFT Length
-        ML_CHECK_VALID_ARGUMENT(m_axis < inputDimsSize)
-        auto dftLength = m_inputDims[m_axis];
-
-        // Calculate passes
-        m_numPasses = static_cast<unsigned>(log2(dftLength));
-        bool hasOnePass = m_numPasses == 1;
-        bool hasOddPasses = m_numPasses % 2;
-        bool hasEvenPasses = !hasOddPasses;
-
-        // write directly input buffer to output buffer, dont create temps
-        bool writeToOutput = hasOnePass;
-        // First and final are input/output buffers, but all else ocillate between 2 temp buffers
-        bool oscillateBetweenTwoTemporaries = !hasOnePass && m_isOnesided;
-        // First is input buffer, all else ocillate between temp and output, causing the final pass to write to the output buffer
-        bool oscillateFirstOutputThenTemporary = hasOddPasses && !m_isOnesided;
-        // First is input buffer, all else ocillate between output and temp, causing the final pass to write to the output buffer
-        bool oscillateFirstTemporaryThenOutput = hasEvenPasses && !m_isOnesided;
-
-        // Create the resource loop list
-        // Add the input resource to the loop list
-        m_resourceLoopList.push_back({});
-        m_resourceLoopList.back().Resource = nullptr;
-        m_resourceLoopList.back().Sizes = reshapedInputSize;
-        m_resourceLoopList.back().Strides = reshapedInputStrides;
-
-        // If 1 temporary should be placed first, or multiple temporaries, then
-        // Add a temp in the list
-        if (oscillateFirstTemporaryThenOutput || oscillateBetweenTwoTemporaries)
-        {
-            m_resourceLoopList.push_back({});
-            m_resourceLoopList.back().Resource = CreateTemporaryResource(temporarySize);
-            m_resourceLoopList.back().Sizes = temporarySize;
-            m_resourceLoopList.back().Strides = temporaryStrides;
-        }
-
-        // If 2 temps, add another
-        if (oscillateBetweenTwoTemporaries)
-        {
-            m_resourceLoopList.push_back({});
-            m_resourceLoopList.back().Resource = CreateTemporaryResource(temporarySize);
-            m_resourceLoopList.back().Sizes = temporarySize;
-            m_resourceLoopList.back().Strides = temporaryStrides;
-        }
-
-        // Add output resource
-        m_resourceLoopList.push_back({});
-        m_resourceLoopList.back().Resource = nullptr;
-        m_resourceLoopList.back().Sizes = reshapedOutputSize;
-        m_resourceLoopList.back().Strides = reshapedOutputStrides;
-        m_outputIdx = static_cast<uint32_t>(m_resourceLoopList.size() - 1);
-
-        // Add the temporary after output incase of odd number of passes
-        if (oscillateFirstOutputThenTemporary)
-        {
-            m_resourceLoopList.push_back({});
-            m_resourceLoopList.back().Resource = CreateTemporaryResource(temporarySize);
-            m_resourceLoopList.back().Sizes = temporarySize;
-            m_resourceLoopList.back().Strides = temporaryStrides;
-        }
-
-        // Define the loop range
-        if (writeToOutput) { m_loopRange = { 0, 1, m_numPasses }; }
-        if (oscillateBetweenTwoTemporaries) { m_loopRange = { 1, 2, m_numPasses }; }
-        if (oscillateFirstOutputThenTemporary) { m_loopRange = { 1, 2, m_numPasses + 1 }; }
-        if (oscillateFirstTemporaryThenOutput) { m_loopRange = { 1, 2, m_numPasses + 1 }; }
 
         PrepareGpuResources();
     }
@@ -276,7 +170,7 @@ public:
             rootParameters[i].InitAsUnorderedAccessView(i);
         }
 
-        int constantCount = 21;
+        int constantCount = 22;
         rootParameters[uavCount].InitAsConstants(constantCount, 0);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
@@ -304,43 +198,6 @@ public:
         computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(g_DFT, sizeof(g_DFT));
 
         ORT_THROW_IF_FAILED(m_device->CreateComputePipelineState(&computePsoDesc, IID_ID3D12PipelineState, &m_pipelineState));
-    }
-
-    // Keep the temporary resources around so they are not destroyed while the operator is running
-    std::vector<ComPtr<ID3D12Resource>> resourceCache_ = {};
-    ComPtr<ID3D12Resource> CreateTemporaryResource(std::array<uint32_t, 4>& size)
-    {
-        // Regardless of inverse or onesided, temp resources are always in the middle of the
-        // middle of the computation passes, and as such will not be half length due to onesidedness.
-        // Consequently the input size can be used. However, a correction to double the size when
-        // real valued inputs are supplied must be made.
-        ComPtr<ID3D12Resource> output;
-        auto heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-        auto bufferByteSize = sizeof(float) * std::accumulate(size.begin(), size.end(), 1, std::multiplies());
-        D3D12_RESOURCE_DESC resourceDesc = {
-            D3D12_RESOURCE_DIMENSION_BUFFER,
-            0,
-            static_cast<uint64_t>(bufferByteSize),
-            1,
-            1,
-            1,
-            DXGI_FORMAT_UNKNOWN,
-            {1, 0},
-            D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
-        };
-
-        ORT_THROW_IF_FAILED(m_device->CreateCommittedResource(
-            &heapProperties,
-            D3D12_HEAP_FLAG_NONE,
-            &resourceDesc,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            nullptr,
-            IID_PPV_ARGS(&output)));
-
-        resourceCache_.push_back(output);
-
-        return output;
     }
 
     // Computes the outputs of the kernel.  This may be called multiple times
@@ -374,6 +231,67 @@ public:
             context->GetExecutionInterface(executionObject.GetAddressOf());
             executionObject.As(&commandList);
 
+            auto dftParams = PrepareDFT(context);
+            switch (dftParams.Type)
+            {
+                case DFTType::Stockham:
+                {
+                    StockhamFFT(dftParams, commandList.Get());
+                    break;
+                }
+                case DFTType::BluesteinZChirp:
+                    __fallthrough;
+                default:
+                    return E_NOTIMPL;
+            }
+        }
+        catch (...)
+        {
+            return E_FAIL;
+        }
+
+        return S_OK;
+    }
+
+    DFTParameters PrepareDFT(IMLOperatorKernelContext* context)
+    {
+        DFTParameters params = {};
+
+        // Get the input and output shape sizes
+        ComPtr<IMLOperatorTensor> inputTensor;
+        ORT_THROW_IF_FAILED(context->GetInputTensor(0, &inputTensor));
+        auto inputDims = GetTensorDimensions(inputTensor.Get());
+        ML_CHECK_VALID_ARGUMENT(static_cast<size_t>(m_axis) < inputDims.size())
+
+        ComPtr<IMLOperatorTensor> outputTensor;
+        ORT_THROW_IF_FAILED(context->GetOutputTensor(0, &outputTensor));
+        auto outputDims = GetTensorDimensions(outputTensor.Get());
+
+        ORT_THROW_HR_IF(E_FAIL, inputDims.size() != outputDims.size());
+
+        // Get optional dft_length input
+        ComPtr<IMLOperatorTensor> dftLengthTensor;
+        if (SUCCEEDED(context->GetInputTensor(1, &dftLengthTensor)) && dftLengthTensor != nullptr)
+        {
+            MLOperatorTensor tensor(dftLengthTensor.Get());
+            params.DFTLength = gsl::narrow_cast<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
+        }
+        else
+        {
+            params.DFTLength = inputDims[m_axis];
+        }
+
+        auto isPowerOfTwo = [](uint32_t n) { return (n != 0) && ((n & (n - 1)) == 0); };
+        if (!isPowerOfTwo(params.DFTLength))
+        {
+            params.Type = DFTType::BluesteinZChirp;
+            params.StockhamParams = {};
+        }
+        else
+        {
+            params.Type = DFTType::Stockham;
+            params.StockhamParams = {};
+
             ComPtr<IUnknown> inputUnknown;
             ComPtr<ID3D12Resource> inputResource;
             inputTensor->GetDataInterface(inputUnknown.GetAddressOf());
@@ -384,27 +302,120 @@ public:
             outputTensor->GetDataInterface(outputUnknown.GetAddressOf());
             outputUnknown.As(&outputResource);
 
-            auto isPowerOfTwo = [](uint32_t n) { return (n != 0) && ((n & (n - 1)) == 0); };
-            if (isPowerOfTwo(m_inputDims[m_axis]))
+            // { before_dft_axis, axis, after_dft_axis, real_or_complex }
+            std::array<uint32_t, 4> reshapedInputSize = { 1, 1, 1, inputDims.back() };
+            std::array<uint32_t, 4> reshapedOutputSize = { 1, 1, 1, outputDims.back() };
+
+            size_t reshapedIndex = 0;
+            for (int i = 0; i < inputDims.size() - 1; i++)
             {
-                StockhamFFT(inputResource.Get(), outputResource.Get(), commandList.Get());
+                if (i == m_axis || i == (m_axis + 1))
+                {
+                    reshapedIndex++;
+                }
+                reshapedInputSize[reshapedIndex] *= inputDims[i];
+                reshapedOutputSize[reshapedIndex] *= outputDims[i];
             }
-            else {
-                BluesteinZChirp(inputResource.Get(), outputResource.Get(), commandList.Get());
+
+            auto temporarySize = reshapedInputSize;
+            temporarySize.back() = reshapedOutputSize.back();
+            auto temporaryBufferByteSize = sizeof(float) * ComputeElementCountFromDimensions(temporarySize);
+
+            // Calculate elements and strides
+            std::array<uint32_t, 4> reshapedInputStrides = { 1, 1, 1, 1 };
+            std::array<uint32_t, 4> reshapedOutputStrides = { 1, 1, 1, 1 };
+            std::array<uint32_t, 4> temporaryStrides = { 1, 1, 1, 1 };
+            for (int i = static_cast<int>(reshapedInputSize.size()) - 2; i >= 0; i--)
+            {
+                reshapedInputStrides[i] = reshapedInputSize[i + 1] * reshapedInputStrides[i + 1];
+                reshapedOutputStrides[i] = reshapedOutputSize[i + 1] * reshapedOutputStrides[i + 1];
+                temporaryStrides[i] = temporarySize[i + 1] * temporaryStrides[i + 1];
             }
-            return S_OK;
+
+            // Calculate passes
+            params.StockhamParams.NumberOfPasses = static_cast<unsigned>(log2(params.DFTLength));
+            bool hasOnePass = params.StockhamParams.NumberOfPasses == 1;
+            bool hasOddPasses = params.StockhamParams.NumberOfPasses % 2;
+            bool hasEvenPasses = !hasOddPasses;
+
+            // write directly input buffer to output buffer, dont create temps
+            bool writeToOutput = hasOnePass;
+            // First and final are input/output buffers, but all else ocillate between 2 temp buffers
+            bool oscillateBetweenTwoTemporaries = !hasOnePass && m_isOnesided;
+            // First is input buffer, all else ocillate between temp and output, causing the final pass to write to the output buffer
+            bool oscillateFirstOutputThenTemporary = hasOddPasses && !m_isOnesided;
+            // First is input buffer, all else ocillate between output and temp, causing the final pass to write to the output buffer
+            bool oscillateFirstTemporaryThenOutput = hasEvenPasses && !m_isOnesided;
+
+            // Create the resource loop list
+            // Add the input resource to the loop list
+            params.StockhamParams.ResourceLoopList.push_back({});
+            params.StockhamParams.ResourceLoopList.back().Resource = inputResource;
+            params.StockhamParams.ResourceLoopList.back().Sizes = reshapedInputSize;
+            params.StockhamParams.ResourceLoopList.back().Strides = reshapedInputStrides;
+
+            // If 1 temporary should be placed first, or multiple temporaries, then
+            // Add a temp in the list
+            if (oscillateFirstTemporaryThenOutput || oscillateBetweenTwoTemporaries)
+            {
+                params.StockhamParams.ResourceLoopList.push_back({});
+                params.StockhamParams.ResourceLoopList.back().Sizes = temporarySize;
+                params.StockhamParams.ResourceLoopList.back().Strides = temporaryStrides;
+
+                auto& resource = params.StockhamParams.ResourceLoopList.back().Resource;
+                ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
+            }
+
+            // If 2 temps, add another
+            if (oscillateBetweenTwoTemporaries)
+            {
+                params.StockhamParams.ResourceLoopList.push_back({});
+                params.StockhamParams.ResourceLoopList.back().Sizes = temporarySize;
+                params.StockhamParams.ResourceLoopList.back().Strides = temporaryStrides;
+
+                auto& resource = params.StockhamParams.ResourceLoopList.back().Resource;
+                ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
+            }
+
+            // Add output resource
+            params.StockhamParams.ResourceLoopList.push_back({});
+            params.StockhamParams.ResourceLoopList.back().Resource = outputResource;
+            params.StockhamParams.ResourceLoopList.back().Sizes = reshapedOutputSize;
+            params.StockhamParams.ResourceLoopList.back().Strides = reshapedOutputStrides;
+            params.StockhamParams.OutputIndex = static_cast<uint32_t>(params.StockhamParams.ResourceLoopList.size() - 1);
+
+            // Add the temporary after output incase of odd number of passes
+            if (oscillateFirstOutputThenTemporary)
+            {
+                params.StockhamParams.ResourceLoopList.push_back({});
+                params.StockhamParams.ResourceLoopList.back().Sizes = temporarySize;
+                params.StockhamParams.ResourceLoopList.back().Strides = temporaryStrides;
+
+                auto& resource = params.StockhamParams.ResourceLoopList.back().Resource;
+                ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
+            }
+
+            // Define the loop range
+            if (writeToOutput) { params.StockhamParams.LoopRange = { 0, 1, params.StockhamParams.NumberOfPasses }; }
+            if (oscillateBetweenTwoTemporaries) { params.StockhamParams.LoopRange = { 1, 2, params.StockhamParams.NumberOfPasses }; }
+            if (oscillateFirstOutputThenTemporary) { params.StockhamParams.LoopRange = { 1, 2, params.StockhamParams.NumberOfPasses + 1 }; }
+            if (oscillateFirstTemporaryThenOutput) { params.StockhamParams.LoopRange = { 1, 2, params.StockhamParams.NumberOfPasses + 1 }; }
         }
-        catch (...)
-        {
-            return E_FAIL;
-        }
+
+        return params;
     }
 
-    void StockhamFFT(
-        ID3D12Resource* inputResource,
-        ID3D12Resource* outputResource,
-        ID3D12GraphicsCommandList* commandList)
+    void StockhamFFT(const DFTParameters& dftParams, ID3D12GraphicsCommandList* commandList)
     {
+        const auto& stockhamParams = dftParams.StockhamParams;
+
+        // Create resource loop list
+        const auto& loopList = stockhamParams.ResourceLoopList;
+
+        // Get input and output resources
+        auto inputResource = loopList[0].Resource.Get();
+        auto outputResource = loopList[stockhamParams.OutputIndex].Resource.Get();
+
         // Transition resources from common to UAV state
         D3D12_RESOURCE_BARRIER barriers[2];
 
@@ -429,29 +440,26 @@ public:
         // Each iteration of the below loop represents 1 level in the Stockham DFT
         // Dispatch in a loop
         DFTShaderConstants constants = {};
+        constants.DFTLength = dftParams.DFTLength;
         constants.DFTIteration = 0;
         constants.IsInverse = m_isInverse;
 
-        auto resourceLoopList = m_resourceLoopList;
-        resourceLoopList[0].Resource = inputResource;
-        resourceLoopList[m_outputIdx].Resource = outputResource;
-
-        for (unsigned index = 0; index < m_numPasses; index++)
+        for (unsigned index = 0; index < stockhamParams.NumberOfPasses; index++)
         {
-            auto inIdx = m_loopRange.CalculateIndex(index);
-            auto outIdx = m_loopRange.CalculateIndex(index + 1);
+            auto inIdx = stockhamParams.LoopRange.CalculateIndex(index);
+            auto outIdx = stockhamParams.LoopRange.CalculateIndex(index + 1);
 
-            auto in = resourceLoopList[inIdx].Resource.Get();
-            std::copy(resourceLoopList[inIdx].Sizes.begin(), resourceLoopList[inIdx].Sizes.end(), constants.InputSizes);
-            std::copy(resourceLoopList[inIdx].Strides.begin(), resourceLoopList[inIdx].Strides.end(), constants.InputStrides);
+            auto in = loopList[inIdx].Resource.Get();
+            std::copy(loopList[inIdx].Sizes.begin(), loopList[inIdx].Sizes.end(), constants.InputSizes);
+            std::copy(loopList[inIdx].Strides.begin(), loopList[inIdx].Strides.end(), constants.InputStrides);
 
-            auto out = resourceLoopList[outIdx].Resource.Get();
-            std::copy(resourceLoopList[outIdx].Sizes.begin(), resourceLoopList[outIdx].Sizes.end(), constants.OutputSizes);
-            std::copy(resourceLoopList[outIdx].Strides.begin(), resourceLoopList[outIdx].Strides.end(), constants.OutputStrides);
+            auto out = loopList[outIdx].Resource.Get();
+            std::copy(loopList[outIdx].Sizes.begin(), loopList[outIdx].Sizes.end(), constants.OutputSizes);
+            std::copy(loopList[outIdx].Strides.begin(), loopList[outIdx].Strides.end(), constants.OutputStrides);
 
-            auto isLastPass = (index == m_numPasses - 1);
+            auto isLastPass = (index == stockhamParams.NumberOfPasses - 1);
             auto isLastInversePass = isLastPass && m_isInverse;
-            auto dftLength = 1 << m_numPasses;
+            auto dftLength = 1 << stockhamParams.NumberOfPasses;
             constants.Scale = isLastInversePass ? (1.f / dftLength) : 1.f;
 
             auto totalElementCount =
@@ -478,6 +486,14 @@ public:
                 );
 
         commandList->ResourceBarrier(2, barriers);
+    }
+
+    std::vector<uint32_t> GetTensorDimensions(IMLOperatorTensor* tensor)
+    {
+        auto inputDimsSize = tensor->GetDimensionCount();
+        auto dims = std::vector<uint32_t>(inputDimsSize);
+        ORT_THROW_IF_FAILED(tensor->GetShape(static_cast<uint32_t>(dims.size()), dims.data()));
+        return dims;
     }
 
     void Dispatch(
@@ -521,7 +537,7 @@ public:
             // Set root constants
             commandList->SetComputeRoot32BitConstants(
                 2, // root parameter index
-                21, // Constant count
+                22, // Constant count
                 &constants,
                 0 // offset
             );
@@ -530,14 +546,6 @@ public:
         }
 
         commandList->ResourceBarrier(2, uav_barriers);
-    }
-
-    void BluesteinZChirp(
-        ID3D12Resource* /*inputResource*/,
-        ID3D12Resource* /*outputResource*/,
-        ID3D12GraphicsCommandList* /*commandList*/)
-    {
-        ORT_THROW_HR(E_NOTIMPL);
     }
 };
 
@@ -589,8 +597,8 @@ struct DFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
                 ComPtr<IMLOperatorTensor> dftLengthTensor;
                 ORT_THROW_IF_FAILED(contextPrivate->GetConstantInputTensor(1, &dftLengthTensor));
                 MLOperatorTensor tensor(dftLengthTensor.Get());
-                auto dft_length = gsl::narrow_cast<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
-                outputDims[axisIdx] = dft_length;
+                auto dftLength = gsl::narrow_cast<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
+                outputDims[axisIdx] = dftLength;
             }
 
             // When DFT is onesided, the output shape is half the size of the input shape
