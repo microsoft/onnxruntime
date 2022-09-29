@@ -232,6 +232,7 @@ constexpr const char* kMSDomain = "com.microsoft";
 constexpr const char* kPytorchAtenDomain = "org.pytorch.aten";
 constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
+constexpr const char* kCannExecutionProvider = "CANNExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
@@ -253,8 +254,7 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const c
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                   const std::string& provider_type,
-                                                   gsl::span<const KernelRegistry* const> kernel_registries,
+                                                   const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                    gsl::span<const NodeIndex> tentative_nodes);
 
 std::string GetEnvironmentVar(const std::string& var_name);
@@ -327,4 +327,3 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { r
 
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
-
