@@ -331,16 +331,15 @@ namespace Dml
 
             ORT_THROW_IF_FAILED(device->CreateBindingTable(&bindingTableDesc, IID_PPV_ARGS(&m_bindingTable)));
 
-            ComPtr<ID3D12CommandAllocator> allocator;
             ORT_THROW_IF_FAILED(d3dDevice->CreateCommandAllocator(
                 m_provider->GetCommandListTypeForQueue(),
-                IID_GRAPHICS_PPV_ARGS(allocator.ReleaseAndGetAddressOf())));
+                IID_GRAPHICS_PPV_ARGS(m_commandAllocator.ReleaseAndGetAddressOf())));
 
             ComPtr<ID3D12CommandList> commandList;
             ORT_THROW_IF_FAILED(d3dDevice->CreateCommandList(
                 0,
                 m_provider->GetCommandListTypeForQueue(),
-                allocator.Get(),
+                m_commandAllocator.Get(),
                 nullptr,
                 IID_GRAPHICS_PPV_ARGS(commandList.ReleaseAndGetAddressOf())));
             
@@ -496,6 +495,7 @@ namespace Dml
 
         // Re-usable command list, supporting descriptor heap, and DML binding table to update that heap.
         ComPtr<ID3D12GraphicsCommandList> m_graphicsCommandList;
+        ComPtr<ID3D12CommandAllocator> m_commandAllocator;
         ComPtr<ID3D12DescriptorHeap> m_heap;
         ComPtr<IDMLBindingTable> m_bindingTable;
         std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
