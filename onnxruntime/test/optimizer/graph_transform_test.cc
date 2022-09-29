@@ -5243,7 +5243,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_AddClip) {
         if (!add_initializer) {
           add_initializer = node.InputDefs()[1];
           const TensorShapeProto* s = add_initializer->Shape();
-          ASSERT_EQ(s->dim_size(), 0U);
+          ASSERT_EQ(s->dim_size(), 0);
         } else {
           ASSERT_EQ(add_initializer, node.InputDefs()[1]);
           CheckShapeEquality(add_initializer->Shape(), node.InputDefs()[1]->Shape());
@@ -5254,8 +5254,8 @@ TEST_F(GraphTransformationTests, ConstantSharing_AddClip) {
           clip_max_initializer = node.InputDefs()[2];
           const TensorShapeProto* s1 = clip_min_initializer->Shape();
           const TensorShapeProto* s2 = clip_max_initializer->Shape();
-          ASSERT_EQ(s1->dim_size(), 0U);
-          ASSERT_EQ(s2->dim_size(), 0U);
+          ASSERT_EQ(s1->dim_size(), 0);
+          ASSERT_EQ(s2->dim_size(), 0);
         } else {
           ASSERT_EQ(clip_min_initializer, node.InputDefs()[1]);
           ASSERT_EQ(clip_max_initializer, node.InputDefs()[2]);
@@ -5265,7 +5265,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_AddClip) {
       } else if (node.OpType().compare("Sub") == 0) {
         if (!sub_initializer) {
           sub_initializer = node.InputDefs()[1];
-          ASSERT_EQ(sub_initializer->Shape()->dim_size(), 0U);
+          ASSERT_EQ(sub_initializer->Shape()->dim_size(), 0);
         } else {
           ASSERT_EQ(sub_initializer, node.InputDefs()[1]);
           CheckShapeEquality(sub_initializer->Shape(), node.InputDefs()[1]->Shape());
@@ -5274,10 +5274,10 @@ TEST_F(GraphTransformationTests, ConstantSharing_AddClip) {
         if (!mul_initializer) {
           mul_initializer = node.InputDefs()[1];
           const TensorShapeProto* s = mul_initializer->Shape();
-          ASSERT_EQ(s->dim_size(), 1U);
+          ASSERT_EQ(s->dim_size(), 1);
           auto dim1 = s->dim(0);
           ASSERT_TRUE(s->dim(0).has_dim_value());
-          ASSERT_EQ(s->dim(0).dim_value(), 1U);
+          ASSERT_EQ(s->dim(0).dim_value(), 1);
         } else {
           ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
           CheckShapeEquality(mul_initializer->Shape(), node.InputDefs()[1]->Shape());
@@ -5398,7 +5398,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_DivMul) {
       if (node.OpType().compare("Mul") == 0) {
         if (!mul_initializer) {
           mul_initializer = node.InputDefs()[1];
-          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0U);
+          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
         } else {
           ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
         }
@@ -5410,7 +5410,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_DivMul) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         int32_t data_type = tensor_proto->data_type();
         onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
-        ASSERT_EQ(float_const.size(), 1U);
+        ASSERT_EQ(float_const.size(), 1);
         float float_const_value;
         if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
           float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
@@ -5475,14 +5475,14 @@ TEST_F(GraphTransformationTests, ConstantSharing_INTMAX_AND_Infinity) {
       if (node.OpType().compare("Mul") == 0) {
         if (!mul_initializer) {
           mul_initializer = node.InputDefs()[1];
-          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0U);
+          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
         } else {
           ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
         }
       } else if (node.OpType().compare("Sub") == 0) {
         if (!sub_initializer) {
           sub_initializer = node.InputDefs()[1];
-          ASSERT_EQ(sub_initializer->Shape()->dim_size(), 0U);
+          ASSERT_EQ(sub_initializer->Shape()->dim_size(), 0);
         } else {
           ASSERT_EQ(sub_initializer, node.InputDefs()[1]);
         }
@@ -5493,13 +5493,13 @@ TEST_F(GraphTransformationTests, ConstantSharing_INTMAX_AND_Infinity) {
       if (entry.first.compare(mul_initializer->Name()) == 0) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer int64_const{*tensor_proto, graph.ModelPath()};
-        ASSERT_EQ(int64_const.size(), 1U);
+        ASSERT_EQ(int64_const.size(), 1);
         int64_t int64_const_value = *(int64_const.data<int64_t>());
         ASSERT_EQ(int64_const_value, std::numeric_limits<int64_t>::max());
       } else if (entry.first.compare(sub_initializer->Name()) == 0) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
-        ASSERT_EQ(float_const.size(), 1U);
+        ASSERT_EQ(float_const.size(), 1);
         float float_const_value = *(float_const.data<float>());
         ASSERT_EQ(float_const_value, std::numeric_limits<float>::infinity());
       }
