@@ -125,12 +125,11 @@ def test_rocblas_gemm_all_cases(dtype, size, transab):
 # ck has various impls to be tested, use the full basic cases will result too many cases to test.
 # So we use a reduced combination here.
 reduced_basic_sizes = list(product([1, 4, 127, 133], [3, 16, 128], [3, 129, 1024]))
-no_transabs = [[False, False]]
 
 
 @pytest.mark.parametrize("dtype", dtypes)
 @pytest.mark.parametrize("size", reduced_basic_sizes + get_bert_sizes(full=False))
-@pytest.mark.parametrize("transab", no_transabs)
+@pytest.mark.parametrize("transab", all_transabs)
 def test_ck_gemm_bert_cases(dtype, size, transab):
     wrapper_name = "CKGemm_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix(transab))
     _test_gemm(getattr(ke, wrapper_name), dtype, *size, *transab)
@@ -139,7 +138,7 @@ def test_ck_gemm_bert_cases(dtype, size, transab):
 # Tunable is basically wrapped around of rocblas and ck gemm, so no need for full tests
 @pytest.mark.parametrize("dtype", dtypes)
 @pytest.mark.parametrize("size", reduced_basic_sizes + get_bert_sizes(full=False))
-@pytest.mark.parametrize("transab", no_transabs)
+@pytest.mark.parametrize("transab", all_transabs)
 def test_gemm_tunable_bert_cases(dtype, size, transab):
     wrapper_name = "GemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix(transab))
     _test_gemm(getattr(ke, wrapper_name), dtype, *size, *transab)
