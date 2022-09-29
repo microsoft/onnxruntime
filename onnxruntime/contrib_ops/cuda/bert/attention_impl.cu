@@ -132,8 +132,6 @@ Status QkvToContext(
   const int size_per_batch_v = sequence_length * v_head_size;
   const int total_size_qk = batches * size_per_batch_qk;
 
-  const int qkv_hidden_sizes[3] = {qk_head_size * num_heads, qk_head_size * num_heads, v_head_size * num_heads};
-
   T* scratch1;
   scratch1 = qkv + (batches * sequence_length * (qk_head_size + qk_head_size + v_head_size));
 

@@ -116,6 +116,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                            nullptr == present &&
                            nullptr == extra_add_qk &&
                            !is_unidirectional_ &&
+                           qkv_head_size[0] == qkv_head_size[1] &&
+                           qkv_head_size[1] == qkv_head_size[2] &&
                            HasFusedFp16Kernel(sm, qkv_head_size[0], sequence_length));
 
   MHARunner* fused_runner = nullptr;
