@@ -173,6 +173,12 @@ namespace Dml
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
 
+        bool IsNodeSupportedByDml(
+            const onnxruntime::Node& node,
+            const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+            uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
+        ) const;
+
         ComPtr<ID3D12Device> m_d3d12Device;
         ComPtr<IDMLDevice> m_dmlDevice;
         bool m_isMcdmDevice = false;
