@@ -132,5 +132,6 @@ def main():
     generate_softmax_dropout_test_case()
     generate_tile_test_case()
 
+
 if __name__ == "__main__":
     main()
