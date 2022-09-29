@@ -335,15 +335,12 @@ namespace Dml
                 m_provider->GetCommandListTypeForQueue(),
                 IID_GRAPHICS_PPV_ARGS(m_commandAllocator.ReleaseAndGetAddressOf())));
 
-            ComPtr<ID3D12CommandList> commandList;
             ORT_THROW_IF_FAILED(d3dDevice->CreateCommandList(
                 0,
                 m_provider->GetCommandListTypeForQueue(),
                 m_commandAllocator.Get(),
                 nullptr,
-                IID_GRAPHICS_PPV_ARGS(commandList.ReleaseAndGetAddressOf())));
-
-            ORT_THROW_IF_FAILED(commandList.As(&m_graphicsCommandList));
+                IID_GRAPHICS_PPV_ARGS(m_graphicsCommandList.ReleaseAndGetAddressOf())));
 
             if (m_persistentResource)
             {
@@ -358,7 +355,7 @@ namespace Dml
             ComPtr<IDMLCommandRecorder> recorder;
             ORT_THROW_IF_FAILED(device->CreateCommandRecorder(IID_PPV_ARGS(recorder.GetAddressOf())));
 
-            recorder->RecordDispatch(commandList.Get(), m_compiledExecutionPlanOperator.Get(), m_bindingTable.Get());
+            recorder->RecordDispatch(m_graphicsCommandList.Get(), m_compiledExecutionPlanOperator.Get(), m_bindingTable.Get());
 
             ORT_THROW_IF_FAILED(m_graphicsCommandList->Close());
         }
