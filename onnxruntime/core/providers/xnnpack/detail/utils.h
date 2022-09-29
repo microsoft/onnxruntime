@@ -78,9 +78,39 @@ struct XnnpackOperatorDeleter {
   }
 };
 
+struct XnnpackSubgraphDeleter {
+  void operator()(struct xnn_subgraph* p) const {
+    if (p != nullptr) {
+      // Ignore returned value because it fails only when xnnpack wasn't initialized
+      xnn_delete_subgraph(p);
+    }
+  }
+};
+
+struct XnnpackRuntimeDeleter {
+  void operator()(struct xnn_runtime* p) const {
+    if (p != nullptr) {
+      // Ignore returned value because it fails only when xnnpack wasn't initialized
+      xnn_delete_runtime(p);
+    }
+  }
+};
+
+struct XnnpackWorkspaceDeleter {
+  void operator()(struct xnn_workspace* p) const {
+    if (p != nullptr) {
+      // Ignore returned value because it fails only when xnnpack wasn't initialized
+      xnn_release_workspace(p);
+    }
+  }
+};
+
 bool IsPaddingTypeSupported(AutoPadType auto_pad);
 
 using XnnpackOperator = std::unique_ptr<struct xnn_operator, XnnpackOperatorDeleter>;
+using XnnpackSubgraph = std::unique_ptr<struct xnn_subgraph, XnnpackSubgraphDeleter>;
+using XnnpackRuntime = std::unique_ptr<struct xnn_runtime, XnnpackRuntimeDeleter>;
+using XnnpackWorkspace = std::unique_ptr<struct xnn_workspace, XnnpackWorkspaceDeleter>;
 
 std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& conv_unit, const NodeUnit& activation,
                                                          const GraphViewer& graph);

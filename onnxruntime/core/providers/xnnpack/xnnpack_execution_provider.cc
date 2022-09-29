@@ -57,6 +57,12 @@ class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnx
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Softmax);
 class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Transpose);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Transpose);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 4, 10, Concat);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Concat);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 2, 10, Split);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Split);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Concat);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Split);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, Add);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Add);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, Sub);
@@ -104,6 +110,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       // layout insensitive, use ONNX-domain directly
       KERNEL_CREATE_INFO_ONNX(13, Softmax),
       KERNEL_CREATE_INFO_ONNX(13, Transpose),
+      KERNEL_CREATE_INFO_ONNX(13, Split),
+      KERNEL_CREATE_INFO_ONNX(13, Concat),
       KERNEL_CREATE_INFO_ONNX(7, Add),
       KERNEL_CREATE_INFO_ONNX(13, Add),
       KERNEL_CREATE_INFO_ONNX(7, Sub),
@@ -126,7 +134,14 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
           ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax)>,
       BuildKernelCreateInfo<
           ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Transpose)>,
-
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 4, 10, Concat)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Concat)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 11, 12, Split)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 2, 10, Split)>,
       //  quantization op
       KERNEL_CREATE_INFO_TYPED(10, uint8_t, QLinearConv),
       KERNEL_CREATE_INFO_TYPED(10, int8_t, QLinearConv),

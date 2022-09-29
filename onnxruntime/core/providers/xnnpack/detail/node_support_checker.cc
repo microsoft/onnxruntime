@@ -24,6 +24,7 @@
 #include "core/providers/xnnpack/nn/softmax.h"
 #include "core/providers/xnnpack/nn/transpose.h"
 #include "core/providers/xnnpack/nn/channel_shuffle.h"
+#include "core/providers/xnnpack/nn/concat_and_split.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -116,6 +117,8 @@ bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
       {"Softmax", Softmax::IsSoftmaxOnnxNodeSupported},
       {"Transpose", Transpose::IsOnnxNodeSupported},
       {"DepthToSpace", DepthToSpace::IsOnnxNodeSupported},
+      {"Concat", Concat::IsOnnxNodeSupported},
+      {"Split", Split::IsOnnxNodeSupported},
       {"Add", ElementWiseOp::IsOnnxNodeSupported},
       {"Sub", ElementWiseOp::IsOnnxNodeSupported},
       {"Mul", ElementWiseOp::IsOnnxNodeSupported},

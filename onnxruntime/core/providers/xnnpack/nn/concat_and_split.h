@@ -3,27 +3,45 @@
 
 #pragma once
 
-#include "core/framework/op_kernel.h"
+#include "core/providers/xnnpack/xnnpack_kernel.h"
 #include "core/framework/allocator.h"
 #include "core/providers/xnnpack/detail/utils.h"
-#include "core/providers/cpu/tensor/transpose.h"
+#include "core/providers/cpu/tensor/concatbase.h"
+#include "core/providers/cpu/tensor/split.h"
 
 namespace onnxruntime {
 class GraphViewer;
 namespace xnnpack {
 
-
-class Transpose final : public OpKernel, public TransposeBase {
+class Concat final : public XnnpackKernel, public ConcatBase {
  public:
-  Transpose(const OpKernelInfo& info);
+  Concat(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* ctx) const override;
   static bool IsOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
 
  private:
-  InlinedVector<size_t> perm_;
   OpComputeType op_type_ = OpComputeType::op_compute_type_invalid;
-  XnnpackOperator op0_;
+  InlinedVector<uint32_t> external_tensors_;
+  XnnpackSubgraph subgraph_;
+  XnnpackRuntime runtime_;
+  XnnpackWorkspace workspace_;
 };
+
+class Split final : public XnnpackKernel, public SplitBase {
+ public:
+  Split(const OpKernelInfo& info);
+  static bool IsOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
+
+  Status Compute(OpKernelContext* context) const override;
+
+ public:
+  OpComputeType op_type_ = OpComputeType::op_compute_type_invalid;
+  InlinedVector<uint32_t> external_tensors_;
+  XnnpackSubgraph subgraph_;
+  XnnpackRuntime runtime_;
+  XnnpackWorkspace workspace_;
+};
+
 }  // namespace xnnpack
 }  // namespace onnxruntime
