@@ -13,6 +13,7 @@
 # -modernize-concat-nested-namespaces: We don't use it.
 # -modernize-use-trailing-return-type: Stylistic preference we do not enforce.
 # -readability-identifier-length: A lot of numerical code rely on short names to improve readability.
+# -readability-uppercase-literal-suffix: We accept lowercase suffixes
 
 Checks: >
   -*,
@@ -30,6 +31,7 @@ Checks: >
   -modernize-concat-nested-namespaces,
   -modernize-use-trailing-return-type,
   -readability-identifier-length,
+  -readability-uppercase-literal-suffix,
 WarningsAsErrors: ""
 HeaderFilterRegex: '.*onnxruntime\/core\/.*'
 AnalyzeTemporaryDtors: false
