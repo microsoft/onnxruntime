@@ -1125,7 +1125,7 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-            ML_CHECK_BOOL_MSG(operatorGraphDesc != nullptr, "OperatorGraphDesc can't be null while creating operator kernel for DML Graph");
+            assert(operatorGraphDesc != nullptr);
             // Either nodesAsOpDesc or nodesIDMLOperator can be present.
             assert(operatorGraphDesc->nodeCount == 0 || (!operatorGraphDesc->nodesAsOpDesc ^ !operatorGraphDesc->nodesAsIDMLOperator));
 
