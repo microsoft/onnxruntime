@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// For gradient ops, normally we can skip adding the shape and type inference because our gradient builder
+// will use the corresponding input's shape and type to set the output shape and type to the graph by default.
+// Since such Ops are used during gradient builder only, adding shape and type inference is not necessary,
+// and would require effort to maintain (e.g. if there is bug).
+
 #include "orttraining/core/graph/training_op_defs.h"
 
 #include <math.h>
