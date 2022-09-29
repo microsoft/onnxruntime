@@ -82,8 +82,8 @@ struct BrokenTest {
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ModelTest);
 #endif
 
-void SkipTest() {
-  GTEST_SKIP() << "Skipping single test";
+void SkipTest(const std::string& reason = "") {
+  GTEST_SKIP() << "Skipping single test " << reason;
 }
 
 TEST_P(ModelTest, Run) {
@@ -107,19 +107,19 @@ TEST_P(ModelTest, Run) {
     // them is enabled here to save CI build time.
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will
     // fail. That's one of reasons we skip those testcases and only test latest ONNX opsets.
-    SkipTest();
+    SkipTest(" tensorrt only support opset 14 or 15");
     return;
   }
   if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
     // DNNL can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
-    SkipTest();
+    SkipTest(" dnnl doesn't support opset 10");
     return;
   }
 #ifndef ENABLE_TRAINING
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
-    SkipTest();
+    SkipTest("It has training domain");
     return;
   }
 #endif
@@ -597,14 +597,14 @@ TEST_P(ModelTest, Run) {
     if (iter != broken_tests.end() && 
         (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
          iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end() )) {
-      SkipTest();
+      SkipTest("It's in broken_tests");
       return;
     }
 
     for (auto iter2 = broken_tests_keyword_set.begin(); iter2 != broken_tests_keyword_set.end(); ++iter2) {
       std::string keyword = *iter2;
       if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
-        SkipTest();
+        SkipTest("It's in broken_tests_keyword");
         return;
       }
     }
@@ -811,6 +811,7 @@ TEST_P(ModelTest, Run) {
 ::std::vector<::std::basic_string<ORTCHAR_T>> GetParameterStrings() {
   std::vector<const ORTCHAR_T*> provider_names;
   provider_names.push_back(ORT_TSTR("cpu"));
+
 #ifdef USE_TENSORRT
   provider_names.push_back(ORT_TSTR("tensorrt"));
 #endif
@@ -917,6 +918,8 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("cntk_simple_seg"),
       ORT_TSTR("GPT2_LM_HEAD"),
       ORT_TSTR("mlperf_ssd_mobilenet_300"),
+      ORT_TSTR("fp16_coreml_FNS-Candy"),
+      ORT_TSTR("fp16_test_tiny_yolov2"),
       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight"),
       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_mean_weight_expanded"),
       ORT_TSTR("negative_log_likelihood_loss_input_shape_is_NCd1d2d3d4d5_none_no_weight"),

@@ -49,15 +49,21 @@ bool MatchKernelDefTypes(const Node& node,
   const auto actual_input_arg_offsets = [&actual_input_arg_counts]() {
     InlinedVector<int> offsets{};
     offsets.reserve(actual_input_arg_counts.size());
-    std::exclusive_scan(actual_input_arg_counts.begin(), actual_input_arg_counts.end(),
-                        std::back_inserter(offsets), 0);
+    // std::exclusive_scan() is not supported until GCC 9.3
+    // std::exclusive_scan(actual_input_arg_counts.begin(), actual_input_arg_counts.end(),
+    //                     std::back_inserter(offsets), 0);
+    int current_offset = 0;
+    for (size_t i = 0; i < actual_input_arg_counts.size(); ++i) {
+      offsets.push_back(current_offset);
+      current_offset += actual_input_arg_counts[i];
+    }
     return offsets;
   }();
 
   // for each type constraint
   //   map type constraint to arg
   //   check arg type against type constraint enabled types
-  const auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
+  const auto& kernel_type_constraints = kernel_def.TypeConstraints();
   for (const auto& [kernel_type_str, enabled_types] : kernel_type_constraints) {
     gsl::span<const ArgTypeAndIndex> constraint_args{};
     ORT_THROW_IF_ERROR(kernel_type_str_resolver.ResolveKernelTypeStr(node, kernel_type_str,

@@ -56,6 +56,8 @@ class GenerateBase {
                          ->GetAllocator(0, OrtMemTypeDefault);
   }
 
+  virtual ~GenerateBase() = default;
+
   // Initialize by validating all the inputs, and allocating the output tensors.
   virtual Status Initialize() = 0;
 

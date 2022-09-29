@@ -17,8 +17,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     float, int64_t, int8_t, std::string);
 }
 
-using UniqueDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Unique, Input, 0);
 using EnabledUniqueDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Unique, Input, 0);
 
@@ -84,7 +82,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     Unique,
     11,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<UniqueDataTypes>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledUniqueDataTypes>()),
     Unique);
 

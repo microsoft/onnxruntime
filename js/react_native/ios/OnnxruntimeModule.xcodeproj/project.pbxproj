@@ -475,7 +475,8 @@
 					"$(SRCROOT)/../../../React/**",
 					"$(SRCROOT)/../../react-native/React/**",
 				);
-				"HEADER_SEARCH_PATHS[arch=*]" = "\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\"";
+                                /* Mobile build: "\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\""; */
+				"HEADER_SEARCH_PATHS[arch=*]" = "\"$(PODS_ROOT)/onnxruntime/onnxruntime.framework/Headers\"";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)",
@@ -499,7 +500,8 @@
 					"$(SRCROOT)/../../../React/**",
 					"$(SRCROOT)/../../react-native/React/**",
 				);
-				"HEADER_SEARCH_PATHS[arch=*]" = "\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\"";
+                                /* Mobile build: "\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\""; */
+				"HEADER_SEARCH_PATHS[arch=*]" = "\"$(PODS_ROOT)/onnxruntime/onnxruntime.framework/Headers\"";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)",
@@ -549,7 +551,8 @@
 					"\"${PODS_ROOT}/Headers/Public/Yoga\"",
 					"\"${PODS_ROOT}/Headers/Public/glog\"",
 					"\"$(PODS_ROOT)/Headers/Private/React-Core\"",
-					"\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\"",
+					/* Mobile build: "\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\"" */
+					"\"$(PODS_ROOT)/onnxruntime/onnxruntime.framework/Headers\"",
 					"$(PROJECT_DIR)",
 				);
 				"HEADER_SEARCH_PATHS[arch=*]" = (
@@ -623,7 +626,8 @@
 					"\"${PODS_ROOT}/Headers/Public/Yoga\"",
 					"\"${PODS_ROOT}/Headers/Public/glog\"",
 					"\"$(PODS_ROOT)/Headers/Private/React-Core\"",
-					"\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\"",
+					/* Mobile build: "\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\"" */
+					"\"$(PODS_ROOT)/onnxruntime/onnxruntime.framework/Headers\"",
 					"$(PROJECT_DIR)",
 				);
 				"HEADER_SEARCH_PATHS[arch=*]" = (

@@ -1,6 +1,6 @@
 # Add/remove 'ep:ACL' label if issue contains the word 'ACL'
 ep:ACL:
-  - '(ACL)'
+  - '/ACL/i'
 # Add/remove 'ep:ArmNN' label if issue contains the word 'ArmNN'
 ep:ArmNN:
   - '(ArmNN)'
@@ -42,13 +42,13 @@ api:CSharp:
   - '(C#)'
 # Add/remove 'api' label if issue contains the word 'Python', 'C++', 'C\b', 'Obj-C', or 'WinRT'
 api:
-  - '(Python|C++|C\b|Obj-C|WinRT)'
+  - '(Python|C\+\+|C\b|Obj-C)'
 # Add/remove 'platform:jetson' label if issue contains the word 'Jetson' or 'jetson'
 platform:jetson:
   - '(Jetson|jetson)'
 # Add/remove 'platform:windows' label if issue contains the word 'Windows'
 platform:windows:
-  - '(Windows)'
+  - '(Windows|WinRT)'
 # Add/remove 'model:transformer' label if issue contains the word 'BERT', 'Bert\b', 'bert\b', 'GPT2', 'gpt2', 'Hugging Face', 'HuggingFace', 'Hugging face', 'Huggingface', 'hugging face', 'huggingface', 'Longformer', 'Long former', 'longformer', 'long former', 'T5', or 't5'
 model:transformer:
   - '(BERT|Bert\b|bert\b|GPT2|gpt2|Hugging Face|HuggingFace|Hugging face|Huggingface|hugging face|huggingface|Longformer|Long former|longformer|long former|T5|t5)'
@@ -56,5 +56,3 @@ model:transformer:
 quantization:
   - '(Is this a quantized model\?\n\nYes|Quantization|quantization|Quantized|(?<!(Is this a ))quantized)'
 # Add/remove 'build' label if issue contains the word 'ACL', 'ArmNN', 'CUDA', 'DirectML', 'MIGraphX', 'oneDNN', 'OpenVINO', 'Rockchip NPU', 'TensorRT', 'TVM', 'Vitis AI', 'Java', 'Python', 'C++', 'C#', 'C\b', or 'Obj-C'
-build:
-  - '(ACL|ArmNN|CUDA|DirectML|MIGraphX|oneDNN|OpenVINO|Rockchip NPU|TensorRT|TVM|Vitis AI|Java|Python|C++|C#|C\b|Obj-C)'
