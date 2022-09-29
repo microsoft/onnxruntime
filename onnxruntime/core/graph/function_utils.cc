@@ -132,7 +132,7 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 
         std::string type_str;
         if (node_op_schema) {
-          type_str = node_op_schema->inputs().at(schema_idx).GetTypeStr() + "in" + std::to_string(schema_idx);
+          type_str = node_op_schema->inputs().at(schema_idx).GetTypeStr() + "in" + std::to_string(idx);
         } else {
           type_str = "Tin" + std::to_string(idx);
         }
@@ -177,7 +177,7 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 
         std::string type_str;
         if (node_op_schema) {
-          type_str = node_op_schema->outputs().at(schema_idx).GetTypeStr() + "out" + std::to_string(schema_idx);
+          type_str = node_op_schema->outputs().at(schema_idx).GetTypeStr() + "out" + std::to_string(idx);
         } else {
           type_str = "Tout" + std::to_string(idx);
         }
