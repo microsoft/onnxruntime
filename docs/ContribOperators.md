@@ -993,7 +993,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.DequantizeBFP"></a><a name="com.microsoft.dequantizebfp">**com.microsoft.DequantizeBFP**</a>
 
-  The BFP dequantization operator. It consumes the raw BFP data and some metadata such as the shape and strides of the original tensor and computes the dequantized tensor.
+  The BFP dequantization operator.
+  It consumes the raw BFP data and some metadata such as the shape and strides of the original tensor and computes the dequantized tensor.
+  More documentation on the BFP format can be found in this paper: https://www.microsoft.com/en-us/research/publication/pushing-the-limits-of-narrow-precision-inferencing-at-cloud-scale-with-microsoft-floating-point/
 
 #### Version
 
@@ -1005,7 +1007,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bfp_type</tt> : int (required)</dt>
 <dd>The type of BFP - must match with the BFPType enum</dd>
 <dt><tt>block_dim</tt> : int</dt>
-<dd>Each bounding box spans this dimension.Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that consumes the output of this operator.For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 1 and QuantizeBFP(W) would use block_dim 2.If the bounding box size is larger than the block dimension, then each bounding box will be partially full.If the bounding box size is smaller than the block dimension, then a subset of the dimension will be in each bounding box.As an example, consider a 2D tensor with shape [16, 8] and block_dim 1.If the bounding box size is 8, then each bounding box contains exactly the numbers from a specific row.If the bounding box size is 16, then each bounding box is partially full.If the bounding box is 4, then 2 bounding boxes correspond to each row.The default is the last dimension.</dd>
+<dd>Each bounding box spans this dimension.Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that consumes the output of this operator.For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 0 and QuantizeBFP(W) would use block_dim 1.The default is the last dimension.</dd>
 <dt><tt>dtype</tt> : int</dt>
 <dd>The datatype to dequantize to.</dd>
 </dl>
@@ -3314,6 +3316,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.QuantizeBFP"></a><a name="com.microsoft.quantizebfp">**com.microsoft.QuantizeBFP**</a>
 
   The BFP quantization operator. It consumes a full precision tensor and computes an BFP tensor.
+  More documentation on the BFP format can be found in this paper: https://www.microsoft.com/en-us/research/publication/pushing-the-limits-of-narrow-precision-inferencing-at-cloud-scale-with-microsoft-floating-point/
 
 #### Version
 
@@ -3325,7 +3328,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bfp_type</tt> : int (required)</dt>
 <dd>The type of BFP - must match with the BFPType enum</dd>
 <dt><tt>block_dim</tt> : int</dt>
-<dd>Each bounding box spans this dimension.Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that consumes the output of this operator.For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 1 and QuantizeBFP(W) would use block_dim 2.If the bounding box size is larger than the block dimension, then each bounding box will be partially full.If the bounding box size is smaller than the block dimension, then a subset of the dimension will be in each bounding box.As an example, consider a 2D tensor with shape [16, 8] and block_dim 1.If the bounding box size is 8, then each bounding box contains exactly the numbers from a specific row.If the bounding box size is 16, then each bounding box is partially full.If the bounding box is 4, then 2 bounding boxes correspond to each row.The default is the last dimension.</dd>
+<dd>Each bounding box spans this dimension.Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that consumes the output of this operator.For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 0 and QuantizeBFP(W) would use block_dim 1.The default is the last dimension.</dd>
 </dl>
 
 #### Inputs

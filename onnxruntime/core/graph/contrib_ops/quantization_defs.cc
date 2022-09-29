@@ -211,7 +211,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                 }));
 
 static const char* QuantizeBFP_ver1_doc = R"DOC(
-The BFP quantization operator. It consumes a full precision tensor and computes an BFP tensor.)DOC";
+The BFP quantization operator. It consumes a full precision tensor and computes an BFP tensor.
+More documentation on the BFP format can be found in this paper: https://www.microsoft.com/en-us/research/publication/pushing-the-limits-of-narrow-precision-inferencing-at-cloud-scale-with-microsoft-floating-point/)DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QuantizeBFP, 1,
@@ -221,16 +222,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Each bounding box spans this dimension."
               "Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that "
               "consumes the output of this operator."
-              "For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 1 and "
-              "QuantizeBFP(W) would use block_dim 2."
-              "If the bounding box size is larger than the block dimension, then each bounding box will be partially "
-              "full."
-              "If the bounding box size is smaller than the block dimension, then a subset of the dimension will be in "
-              "each bounding box."
-              "As an example, consider a 2D tensor with shape [16, 8] and block_dim 1."
-              "If the bounding box size is 8, then each bounding box contains exactly the numbers from a specific row."
-              "If the bounding box size is 16, then each bounding box is partially full."
-              "If the bounding box is 4, then 2 bounding boxes correspond to each row."
+              "For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 0 and "
+              "QuantizeBFP(W) would use block_dim 1."
               "The default is the last dimension.",
               AttributeProto::INT, static_cast<int64_t>(-1))
         .Input(0, "x", "N-D full precision input tensor to be quantized.", "T1")
@@ -263,7 +256,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 static const char* DequantizeBFP_ver1_doc = R"DOC(
-The BFP dequantization operator. It consumes the raw BFP data and some metadata such as the shape and strides of the original tensor and computes the dequantized tensor.)DOC";
+The BFP dequantization operator.
+It consumes the raw BFP data and some metadata such as the shape and strides of the original tensor and computes the dequantized tensor.
+More documentation on the BFP format can be found in this paper: https://www.microsoft.com/en-us/research/publication/pushing-the-limits-of-narrow-precision-inferencing-at-cloud-scale-with-microsoft-floating-point/)DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     DequantizeBFP, 1,
@@ -273,16 +268,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Each bounding box spans this dimension."
               "Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that "
               "consumes the output of this operator."
-              "For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 1 and "
-              "QuantizeBFP(W) would use block_dim 2."
-              "If the bounding box size is larger than the block dimension, then each bounding box will be partially "
-              "full."
-              "If the bounding box size is smaller than the block dimension, then a subset of the dimension will be in "
-              "each bounding box."
-              "As an example, consider a 2D tensor with shape [16, 8] and block_dim 1."
-              "If the bounding box size is 8, then each bounding box contains exactly the numbers from a specific row."
-              "If the bounding box size is 16, then each bounding box is partially full."
-              "If the bounding box is 4, then 2 bounding boxes correspond to each row."
+              "For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 0 and "
+              "QuantizeBFP(W) would use block_dim 1."
               "The default is the last dimension.",
               AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("dtype", "The datatype to dequantize to.", AttributeProto::INT,
