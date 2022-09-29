@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING
-
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -229,5 +227,3 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
 }
 
 }  // namespace onnxruntime
-
-#endif
