@@ -83,6 +83,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
+#include "test/util/include/test_utils.h"
 #ifdef ENABLE_TRAINING
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
@@ -5194,29 +5195,26 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
 
 #endif
 
-void CheckShapeEquality(const ONNX_NAMESPACE::TensorShapeProto* shape1,
-                        const ONNX_NAMESPACE::TensorShapeProto* shape2) {
-  EXPECT_NE(shape1, nullptr);
-  EXPECT_NE(shape2, nullptr);
-  if ((shape1 != nullptr) && (shape2 != nullptr)) {
-    EXPECT_EQ(shape1->dim_size(), shape2->dim_size()) << "Shapes do not have same rank";
-    auto min_dims = std::min(shape1->dim_size(), shape2->dim_size());
-    for (int i = 0; i < min_dims; ++i) {
-      auto dim1 = shape1->dim(i);
-      auto dim2 = shape2->dim(i);
-      EXPECT_EQ(dim1.has_dim_value(), dim2.has_dim_value());
-      if (dim1.has_dim_value()) {
-        EXPECT_EQ(dim1.dim_value(), dim2.dim_value());
-      }
-      EXPECT_EQ(dim1.has_dim_param(), dim2.has_dim_param());
-      if (dim1.has_dim_param()) {
-        EXPECT_EQ(dim1.dim_param(), dim2.dim_param());
-      }
-    }
-  }
-}
-
-TEST_F(GraphTransformationTests, ConstantSharing_AddClip) {
+// Test graph include multiple equivalent subgraphs as below.
+//            graph input [1, 1, 256, 256] (int64_t)
+//                  |
+//                 Neg
+//             /    |  \______________________________________________________
+//            /     |  256 (int64_t)                                       Cast
+//           / ...  | /                                    _________/     /   \      \_____________
+//         Add      Add                               ____/    __________/     \________           \
+//          |       |  0 (int64_t)  511 (int64_t)    /        /                         \          |
+//          |       |  __/    _____/                /        | 256 (int32_t)            |  256 [1] |
+//         Clip ... Clip                           /         | /                        |  /       |
+//          |        |                            Sub   ...  Sub                        Mul  ...  Mul
+//                                                 |         |                          |          |
+// graph out [1, 1, 256, 256] (int64_t)        graph out [1, 1, 256, 256] (int32_t)   graph out [1, 1, 256, 256] (int32_t)
+//
+// Be noted:
+//  the Add's input initializer 256 is a scalar int64_t;
+//  the Sub's input initializer 256 is a scalar int32_t;
+//  the Mul's input initializer 256 is a 1-D int32_t.
+TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
     ASSERT_EQ(op_count_pre.size(), 6U);
@@ -5381,7 +5379,20 @@ void BuildConstantSharingDivMulGraph(ModelTestBuilder& builder) {
   }
 }
 
-TEST_F(GraphTransformationTests, ConstantSharing_DivMul) {
+// Test graph include multiple equivalent subgraphs as below.
+//            graph input [1, 1, 256, 256] (float|MLFloat16)
+//                  |
+//                 Div
+//             /    |       \
+//            /     |  1.0   \
+//           / ...  |  / ...  \
+//         Mul      Mul      Mul
+//          |       |         |
+//  graph out [1, 1, 256, 256] (float|MLFloat16)
+//
+// Be noted:
+//  the Mul's input initializer 1.0f is a scalar float/MLFloat16.
+TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatTypedInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
     ASSERT_EQ(op_count_pre.size(), 2U);
@@ -5456,7 +5467,25 @@ TEST_F(GraphTransformationTests, ConstantSharing_DivMul) {
   }
 }
 
-TEST_F(GraphTransformationTests, ConstantSharing_INTMAX_AND_Infinity) {
+// Test graph include multiple equivalent subgraphs as below.
+//            graph input [1, 1, 256, 256] (float)
+//                  |
+//                 Div
+//             /    |  \______________________________________________________
+//            /     |  infinity (float)                                       Cast
+//           / ...  | /                                    _________/     /   \      \_____________
+//         Sub      Sub                               ____/    __________/     \________           \
+//          |       |                                /        /                         \          |
+//          |       |                               /        | int64_max (int64_t)      |          |
+//          |       |                              /         | /                        |          |
+//          |       |                             Mul   ...  Mul                        Mul  ...  Mul
+//                                                 |         |                          |          |
+// graph out [1, 1, 256, 256] (float)        graph out [1, 1, 256, 256] (int64_t)   graph out [1, 1, 256, 256] (int64_t)
+//
+// Be noted:
+//  the Sub's input initializer is a scalar std::numeric_limits<float>::infinity();
+//  the Mul's input initializer is a scalar std::numeric_limits<int64_t>::max().
+TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
     ASSERT_EQ(op_count_pre.size(), 4U);

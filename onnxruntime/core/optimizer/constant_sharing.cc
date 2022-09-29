@@ -43,19 +43,19 @@ bool IsSingleValueShape(const ONNX_NAMESPACE::TensorShapeProto* input_shape) {
 }
 
 static constexpr char SHARED_INITIALIZER_PREFIX[] = "ortshared_";
-bool IsSharedInitializer(const NodeArg* arg) {
-  return arg && (arg->Name().rfind(SHARED_INITIALIZER_PREFIX, 0) == 0);
+bool IsSharedInitializer(std::string_view initializer_name) {
+  return initializer_name.rfind(SHARED_INITIALIZER_PREFIX, 0) == 0;
 }
 
 // Replace all consumer nodes to use shared initializers.
 void ReplaceInputsToUseSharedInitializer(Graph& graph,
-                                         InlinedHashMap<const Node*, InlinedVector<int>>&
+                                         const InlinedHashMap<const Node*, InlinedVector<int>>&
                                              consumer_node_to_input_index_map,
                                          const NodeArg* origin_initializer_node_arg,
                                          NodeArg* shared_initializer_node_arg) {
-  for (auto it = consumer_node_to_input_index_map.begin(); it != consumer_node_to_input_index_map.end(); ++it) {
-    Node* node = const_cast<Node*>(it->first);
-    ORT_ENFORCE(node, "Node should not be nullptr.");
+  for (auto it = consumer_node_to_input_index_map.begin(), end = consumer_node_to_input_index_map.end();
+       it != end; ++it) {
+    Node* node = graph.GetNode(it->first->Index());
     // Iterate all input defs to replace those that are equal to origin_initializer_node_arg,
     // Then it would be safe to remove the consumer node.
     for (int input_index : it->second) {
@@ -92,10 +92,18 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
   InlinedVector<std::string> original_initializer_names;
   original_initializer_names.reserve(initialized_tensor_set.size());
-  std::transform(
-      initialized_tensor_set.begin(), initialized_tensor_set.end(),
-      std::back_inserter(original_initializer_names),
-      [](const auto& v) { return v.first; });
+  for (const auto& entry : initialized_tensor_set) {
+    // Ignore if the initializer already handled, or not a constant initializer.
+    if (IsSharedInitializer(entry.first) || !graph_utils::IsConstantInitializer(graph, entry.first)) {
+      continue;
+    }
+
+    if (excluded_initializers_.find(entry.first) != excluded_initializers_.end()) {
+      continue;
+    }
+
+    original_initializer_names.push_back(entry.first);
+  }
 
   // We avoid using the scalar value directly in pattern_key because the value for example INT_MAX can be super big
   // and it will be hard to read. Instead, we use a unique id for each scalar value, and a map from the value to
@@ -109,7 +117,7 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     NodeArg* origin_initializer_node_arg = graph.GetNodeArg(initializer_name);
 
     // Already handled, skip it.
-    if (origin_initializer_node_arg == nullptr || IsSharedInitializer(origin_initializer_node_arg)) {
+    if (origin_initializer_node_arg == nullptr) {
       continue;
     }
 
@@ -119,12 +127,8 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     }
 
     // Ignore if not constant initializers.
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = graph.GetConstantInitializer(
-        origin_initializer_node_arg->Name(), true);
-    if (!tensor_proto ||
-        excluded_initializers_.find(origin_initializer_node_arg->Name()) != excluded_initializers_.end()) {
-      continue;
-    }
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = graph.GetConstantInitializer(origin_initializer_node_arg->Name(),
+                                                                                   true);
 
     int32_t data_type = tensor_proto->data_type();
     if (!IsSupportedDataType(data_type)) {
@@ -199,19 +203,19 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
         value_id = int64_value_to_value_id_map[int64_val];
       } break;
       default:
-        ORT_THROW("Should not go here");
+        ORT_THROW("Unsupported data type [",
+                  std::to_string(data_type) + "] found: for initializer: " + initializer_name);
     }
 
     // Construct a string by data type, value, and rank. Used as a key in pattern_key_to_shared_arg_map.
-    std::ostringstream pattern_key_oss;
-    pattern_key_oss << value_id << "_" << data_type << "_" << origin_initializer_node_arg->Shape()->dim_size();
-    const std::string pattern_key = pattern_key_oss.str();
+    const std::string& pattern_key = MakeString(SHARED_INITIALIZER_PREFIX, value_id, "_", data_type, "_",
+                                                origin_initializer_node_arg->Shape()->dim_size());
 
     // If there is no such existing scalar pattern, add a new one.
     if (pattern_key_to_shared_arg_map.find(pattern_key) == pattern_key_to_shared_arg_map.end()) {
       // Do a copy and rename the TensorProto.
       ONNX_NAMESPACE::TensorProto constant_tensor_proto_as_replacement(*tensor_proto);
-      constant_tensor_proto_as_replacement.set_name(graph.GenerateNodeArgName(SHARED_INITIALIZER_PREFIX + pattern_key));
+      constant_tensor_proto_as_replacement.set_name(graph.GenerateNodeArgName(pattern_key));
       NodeArg& shared_scalar_initializer_node_arg = graph_utils::AddInitializer(graph,
                                                                                 constant_tensor_proto_as_replacement);
       pattern_key_to_shared_arg_map[pattern_key] = &shared_scalar_initializer_node_arg;

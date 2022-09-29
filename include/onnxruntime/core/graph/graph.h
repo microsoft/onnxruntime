@@ -1426,16 +1426,18 @@ class Graph {
 
     void Clear() {
       output_args.clear();
+
 #ifdef _MSC_VER
       // Problem:
-      //   Under some condition (e.g. some sequences of usage pattern), using .clear() on a
+      //   Under some condition (e.g. after some sequences of insert/clear usage pattern), using .clear() on a
       //   std::unordered_set<std::string_view> causes a memory access violation in
       //   "inputs_and_initializers.insert(initializer_pair.first);" in Graph::VerifyInputAndInitializerNames().
 
       // A possible explanation is there are some invalidated states even after calling .clear() on the
       // unordered_set, so afterwards when we insert new values into it, it finds a hash that is equal to the hash
       // of the new value, which is not expected. What's more, the found entry is an invalid one, which causes
-      // the memory access violation. Reproducible on both VS2019 and VS2022.
+      // the memory access violation. Reproducible on both VS2019 and VS2022 on faster_rcnn opset10 model
+      // faster_rcnn_R_50_FPN_1x.onnx in TestPreTrainedModels test case.
 
       // Workaround:
       //   Use a new allocation instead of .clear() can workaround the issue.

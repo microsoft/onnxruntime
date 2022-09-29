@@ -219,8 +219,9 @@ def optimize_model(
     if opt_level is None:
         opt_level = default_opt_level
 
-    # Disable constant sharing to avoid model proto str test mismatch. Ideally the optmizer should not
-    # affect other fusions. We can update the expected model_proto once the optimizer logic becomes stable.
+    # Disable constant sharing to avoid model proto str mismatch in test. Ideally the optimizer should not
+    # affect other fusions. We can update the expected model proto once the ConstantSharing optimizer logic becomes
+    # stable.
     disabled_optimizers = ["ConstantSharing"]
     temp_model_path = None
     if opt_level > 1:
