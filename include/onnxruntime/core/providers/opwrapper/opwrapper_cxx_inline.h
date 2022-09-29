@@ -8,26 +8,26 @@
 
 namespace Ort {
 namespace OpWrapper {
-inline OpWrapperProviderOptions::OpWrapperProviderOptions(OrtOpWrapperProviderOptions* options)
+inline ProviderOptions::ProviderOptions(OrtOpWrapperProviderOptions* options)
     : Base<OrtOpWrapperProviderOptions>{options} {
 }
 
-inline OpWrapperProviderOptions::OpWrapperProviderOptions() {
+inline ProviderOptions::ProviderOptions() {
   Ort::ThrowOnError(GetApi().CreateProviderOptions(&p_));
 }
 
-inline OpWrapperProviderOptions::OpWrapperProviderOptions(const std::unordered_map<std::string, std::string>& opts) {
+inline ProviderOptions::ProviderOptions(const std::unordered_map<std::string, std::string>& opts) {
   Ort::ThrowOnError(GetApi().CreateProviderOptions(&p_));
   UpdateOptions(opts);
 }
 
-inline size_t OpWrapperProviderOptions::HasOption(const char* key) const {
+inline size_t ProviderOptions::HasOption(const char* key) const {
   size_t size = 0;
   Ort::ThrowOnError(GetApi().ProviderOptions_HasOption(p_, key, &size));
   return size;
 }
 
-inline std::string OpWrapperProviderOptions::GetOption(const char* key, size_t value_size) const {
+inline std::string ProviderOptions::GetOption(const char* key, size_t value_size) const {
   std::string value;
 
   if (value_size == 0) {
@@ -41,7 +41,7 @@ inline std::string OpWrapperProviderOptions::GetOption(const char* key, size_t v
   return value;
 }
 
-inline void OpWrapperProviderOptions::UpdateOptions(const std::unordered_map<std::string, std::string>& options) {
+inline void ProviderOptions::UpdateOptions(const std::unordered_map<std::string, std::string>& options) {
   const size_t num_options = options.size();
   std::vector<const char*> keys;
   std::vector<const char*> vals;
@@ -57,7 +57,7 @@ inline void OpWrapperProviderOptions::UpdateOptions(const std::unordered_map<std
   Ort::ThrowOnError(GetApi().ProviderOptions_Update(p_, keys.data(), vals.data(), num_options));
 }
 
-inline std::unordered_map<std::string, std::string> OpWrapperProviderOptions::ToMap() const {
+inline std::unordered_map<std::string, std::string> ProviderOptions::ToMap() const {
   std::vector<char> all_keys;
   std::vector<char> all_vals;
   size_t num_options = 0;
@@ -91,30 +91,42 @@ inline std::unordered_map<std::string, std::string> OpWrapperProviderOptions::To
   return map;
 }
 
-inline OpWrapperProviderOptions OpWrapperProviderOptions::FromKernelInfo(Unowned<const KernelInfo>& kernel_info,
-                                                                  const char* op_name) {
+inline ProviderOptions ProviderOptions::FromKernelInfo(Unowned<const KernelInfo>& kernel_info,
+                                                       const char* op_name) {
   OrtOpWrapperProviderOptions* options = nullptr;
   Ort::ThrowOnError(GetApi().KernelInfo_GetProviderOptions(kernel_info, op_name, &options));
-  return OpWrapperProviderOptions(options);
+  return ProviderOptions(options);
 }
 
-inline SessionOptions& SessionOptions::AppendExecutionProvider_OpWrapper(const std::unordered_map<std::string, OpWrapperProviderOptions>& options) {
-  const size_t num_ops = options.size();
+inline Ort::SessionOptions& AppendExecutionProvider(Ort::SessionOptions& session_options,
+                                                    const std::unordered_map<std::string, ProviderOptions>& provider_options) {
+  const size_t num_ops = provider_options.size();
   std::vector<const char*> op_names;
   std::vector<const OrtOpWrapperProviderOptions*> op_options;
 
   op_names.reserve(num_ops);
   op_options.reserve(num_ops);
 
-  for (const auto& it : options) {
+  for (const auto& it : provider_options) {
     op_names.push_back(it.first.c_str());
     op_options.push_back(it.second);
   }
 
-  Ort::ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpWrapper(p_, op_names.data(),
+  Ort::ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpWrapper(session_options, op_names.data(),
                                                                              op_options.data(), num_ops));
 
-  return *this;
+  return session_options;
+}
+
+inline Ort::SessionOptions& AppendExecutionProvider(Ort::SessionOptions& session_options,
+                                                    const char* op_name,
+                                                    const ProviderOptions& op_options) {
+  constexpr size_t num_ops = 1;
+  const OrtOpWrapperProviderOptions* ops_options[num_ops] = {op_options};
+
+  Ort::ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpWrapper(session_options, &op_name,
+                                                                             ops_options, num_ops));
+  return session_options;
 }
 }  // namespace OpWrapper
 }  // namespace Ort
