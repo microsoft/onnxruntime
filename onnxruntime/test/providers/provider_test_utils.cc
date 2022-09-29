@@ -1234,7 +1234,7 @@ void OpTester::ExecuteModelForEps(
     const std::unordered_map<std::string, OrtValue>& feeds,
     const std::vector<std::string>& output_names,
     const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries,
-    bool assign_ep_for_nodes,
+    bool try_assign_ep_for_nodes,
     bool allow_released_onnx_opset_only,
     size_t* number_of_pre_packed_weights_counter,
     size_t* number_of_shared_pre_packed_weights_counter) {
@@ -1256,9 +1256,13 @@ void OpTester::ExecuteModelForEps(
     ASSERT_STATUS_OK(session_object.AddPrePackedWeightsContainer(&prepacked_weights_container_));
   }
   ASSERT_TRUE(!execution_providers.empty()) << "Empty execution providers vector.";
-  if (assign_ep_for_nodes) {
-    ASSERT_TRUE(SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries))
-        << "registered execution providers were unable to run the model.";
+  if (try_assign_ep_for_nodes && !SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries)) {
+    std::string providers;
+    for (const auto& ep: execution_providers) {
+      providers.append(ep->Type() + " ");
+    }
+    LOGS_DEFAULT(WARNING) << "registered execution providers " << providers << "were unable to run the model.";
+    return;
   }
 
   std::string provider_type;

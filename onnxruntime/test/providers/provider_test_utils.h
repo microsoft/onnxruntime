@@ -957,7 +957,7 @@ class OpTester {
       const std::unordered_map<std::string, OrtValue>& feeds,
       const std::vector<std::string>& output_names,
       const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries,
-      bool assign_ep_for_nodes,
+      bool try_assign_ep_for_nodes,
       bool allow_released_onnx_opset_only,
       size_t* number_of_pre_packed_weights_counter,
       size_t* number_of_shared_pre_packed_weights_counter);
