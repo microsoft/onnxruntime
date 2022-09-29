@@ -49,7 +49,7 @@ namespace Dml
         {
             MLOperatorGraphDesc operatorGraphDesc = {};
             operatorGraphDesc.nodeCount = 1;
-            const DML_OPERATOR_DESC *opDescs{&operatorDesc};
+            const DML_OPERATOR_DESC* opDescs{&operatorDesc};
             operatorGraphDesc.nodesAsOpDesc = &opDescs;
 
             std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
