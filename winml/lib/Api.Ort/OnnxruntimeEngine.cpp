@@ -1353,7 +1353,7 @@ STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ void* data, _In_ size_t 
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineFactory::CreateEmptyModel(int64_t opset, _Outptr_ _winml::IModel** out) {
+STDMETHODIMP OnnxruntimeEngineFactory::CreateEmptyModel(_In_ int64_t opset, _Outptr_ _winml::IModel** out) {
   RETURN_IF_FAILED(EnsureEnvironment());
   OrtModel* ort_model = nullptr;
   if (auto status = winml_adapter_api_->CreateModel(opset, &ort_model)) {
