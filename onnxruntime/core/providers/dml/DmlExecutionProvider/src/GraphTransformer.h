@@ -18,11 +18,9 @@ namespace Dml
     {
     public:
         GraphTransformer(
-            const std::string& name, 
-            const onnxruntime::InlinedHashSet<std::string_view>& compatible_execution_providers = {}
-        ) : onnxruntime::GraphTransformer(name, compatible_execution_providers)
+            const std::string& name
+        ) : onnxruntime::GraphTransformer(name)
         {
-
         }
 
     private:
