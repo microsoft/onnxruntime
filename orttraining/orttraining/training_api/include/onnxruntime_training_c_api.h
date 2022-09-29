@@ -4,7 +4,7 @@
 // This file contains the training c apis.
 
 #pragma once
-#include <onnxruntime_c_api.h>
+#include "onnxruntime_c_api.h"
 
 ORT_RUNTIME_CLASS(TrainingSession);  /// Type that enables performing training for the given user models.
 ORT_RUNTIME_CLASS(CheckpointState);  /// Type that holds the training states for the training session.
