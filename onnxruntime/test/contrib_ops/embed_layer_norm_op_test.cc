@@ -146,13 +146,13 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1) {
   RunTest(embedlayernorm::EmbedLayerNormBatch1());
 }
 
-TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_Float16) {
-#ifdef _WIN32
-  // it's always failed in P100 on Windows
-  GTEST_SKIP();
+#if defined(USE_CUDA) && defined(_WIN32)
+TEST(EmbedLayerNormTest, DISABLED_EmbedLayerNormBatch1_Float16) {
 #else
-  RunTest(embedlayernorm::EmbedLayerNormBatch1(), /*use_float16=*/true);
+TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_Float16) {
 #endif
+  RunTest(embedlayernorm::EmbedLayerNormBatch1(), /*use_float16=*/true);
+
 }
 
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_PositionIds) {
@@ -167,7 +167,11 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum) {
   RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum(), false, true);
 }
 
+#if defined(USE_CUDA) && defined(_WIN32)
+TEST(EmbedLayerNormTest, DISABLED_EmbedLayerNormBatch1_EmbeddingSum_Float16) {
+#else
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch1_EmbeddingSum_Float16) {
+#endif
   RunTest(embedlayernorm::EmbedLayerNormBatch1_EmbeddingSum(), true, true);
 }
 TEST(EmbedLayerNormTest, EmbedLayerNormBatch2) {

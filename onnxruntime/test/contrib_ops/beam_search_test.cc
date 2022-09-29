@@ -90,7 +90,11 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
   ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.cbegin(), result_span.cend()));
 }
 
+#if defined(USE_CUDA) && defined(_WIN32)
+TEST(BeamSearchTest, DISABLED_GptBeamSearchFp16) {
+#else
 TEST(BeamSearchTest, GptBeamSearchFp16) {
+#endif
   std::vector<int64_t> input_ids_shape{3, 12};
   std::vector<int32_t> input_ids{
       0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,

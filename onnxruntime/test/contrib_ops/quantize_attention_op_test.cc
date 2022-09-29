@@ -305,7 +305,12 @@ TEST(QAttentionTest, QAttentionDNNLBatch1) {
 }
 #endif  // USE_DNNL
 
+#if defined(USE_CUDA) && defined(_WIN32)
+TEST(QAttentionTest, DISABLED_QAttentionBatch1) {
+#else
 TEST(QAttentionTest, QAttentionBatch1) {
+#endif
+
   int batch_size = 1;
   int sequence_length = 2;
   int hidden_size = 4;
