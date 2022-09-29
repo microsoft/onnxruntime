@@ -232,7 +232,7 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
 }
 
 - (void)testCreateOutputTensorUInt8 {
-  std::array<int8_t, 5> outValues{std::numeric_limits<uint8_t>::min(), 1, 2, 3, std::numeric_limits<uint8_t>::max()};
+  std::array<uint8_t, 5> outValues{std::numeric_limits<uint8_t>::min(), 1, 2, 3, std::numeric_limits<uint8_t>::max()};
   std::function<NSNumber *(uint8_t value)> convert = [](uint8_t value) { return [NSNumber numberWithChar:value]; };
   testCreateOutputTensorT<uint8_t>(outValues, convert, JsTensorTypeUnsignedByte, @"test_types_uint8", @"ort");
 }
