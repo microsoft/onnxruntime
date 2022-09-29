@@ -75,7 +75,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   trainable_param_values.reserve(expected_trainable_param_names.size());
   std::vector<ONNX_NAMESPACE::TensorProto> non_trainable_param_values;
   const auto& initializer_tensors = graph.GetAllInitializedTensors();
-  for (const std::pair<std::string, const ONNX_NAMESPACE::TensorProto*>& pair : initializer_tensors) {
+  for (const auto& pair : initializer_tensors) {
     if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), pair.first) !=
         expected_trainable_param_names.end()) {
       trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
@@ -107,7 +107,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   std::set<PathString> expected_file_names{ORT_TSTR("paramfrozen_tensors.pbseq"), ORT_TSTR("paramtrain_tensors.pbseq")};
   std::set<PathString> valid_file_names;
   LoopDir(checkpoint_path,
-          [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
+          [&valid_file_names](const PathChar* filename, OrtFileType file_type) -> bool {
             PathString filename_str = filename;
             bool is_valid_ckpt_file_exts = HasExtensionOf(filename_str, ORT_TSTR("pbseq"));
             if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR || !is_valid_ckpt_file_exts) {
@@ -375,7 +375,7 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   std::set<PathString> valid_file_names;
   LoopDir(checkpoint_path,
-          [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
+          [&valid_file_names](const PathChar* filename, OrtFileType file_type) -> bool {
             PathString filename_str = filename;
             bool is_valid_ckpt_file_exts =
                 HasExtensionOf(filename_str, ORT_TSTR("pbseq")) || HasExtensionOf(filename_str, ORT_TSTR("bin"));
