@@ -1151,29 +1151,25 @@ namespace Windows::AI::MachineLearning::Adapter
                 }
             }
 
-            // Need to iterate on each edges to check for nullptr
-            assert(operatorGraphDesc->nodeCount == 0 || (operatorGraphDesc->inputEdgeCount > 0 && operatorGraphDesc->inputEdges != nullptr));
-            for (uint32_t inputEdgeIndex = 0; inputEdgeIndex < operatorGraphDesc->inputEdgeCount; inputEdgeIndex++) 
-            {
-                auto inputEdge = operatorGraphDesc->inputEdges[inputEdgeIndex];
-                m_graphNodeCreateInfo->inputEdges.push_back(inputEdge);
-            }
+            // There can be operators (or kernels) which don't require any input.
+            assert(operatorGraphDesc->inputEdgeCount == 0 || operatorGraphDesc->inputEdges != nullptr);
+            m_graphNodeCreateInfo->inputEdges.insert(
+                m_graphNodeCreateInfo->inputEdges.begin(),
+                operatorGraphDesc->inputEdges,
+                operatorGraphDesc->inputEdges + operatorGraphDesc->inputEdgeCount);
 
-            // Need to iterate on each edges to check for nullptr
+            // Operators (or kernels), which use single DML API, don't have any intermediate edge.
             assert(operatorGraphDesc->intermediateEdgeCount == 0 || operatorGraphDesc->intermediateEdges != nullptr);
-            for (uint32_t intermediateEdgeIndex = 0; intermediateEdgeIndex < operatorGraphDesc->intermediateEdgeCount; intermediateEdgeIndex++) 
-            {
-                auto intermediateEdge = operatorGraphDesc->intermediateEdges[intermediateEdgeIndex];
-                m_graphNodeCreateInfo->intermediateEdges.push_back(intermediateEdge);
-            }
+            m_graphNodeCreateInfo->intermediateEdges.insert(
+                m_graphNodeCreateInfo->intermediateEdges.begin(),
+                operatorGraphDesc->intermediateEdges,
+                operatorGraphDesc->intermediateEdges + operatorGraphDesc->intermediateEdgeCount);
 
-            // Need to iterate on each edges to check for nullptr
+            // There can't be any operator (or kernel) which doesn't has a output.
             assert(operatorGraphDesc->nodeCount == 0 || (operatorGraphDesc->outputEdgeCount > 0 && operatorGraphDesc->outputEdges != nullptr));
-            for (uint32_t outputEdgeIndex = 0; outputEdgeIndex < operatorGraphDesc->outputEdgeCount; outputEdgeIndex++) 
-            {
-                auto outputEdge = operatorGraphDesc->outputEdges[outputEdgeIndex];
-                m_graphNodeCreateInfo->outputEdges.push_back(outputEdge);
-            }
+            m_graphNodeCreateInfo->outputEdges.insert(m_graphNodeCreateInfo->outputEdges.begin(),
+                operatorGraphDesc->outputEdges,
+                operatorGraphDesc->outputEdges + operatorGraphDesc->outputEdgeCount);
 
             m_graphNodeCreateInfo->nodeCount = operatorGraphDesc->nodeCount;
             return S_OK;
