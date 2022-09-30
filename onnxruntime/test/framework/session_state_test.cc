@@ -100,7 +100,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateAddGetKernelTest, testing::Values(0, 1));
 
-namespace {
+namespace anon {
 class TestParam {
  public:
   int ir_version;
@@ -109,10 +109,10 @@ class TestParam {
 };
 TestParam param_list[] = {{3, true, 0}, {4, true, 0}, {3, false, 0}, {4, false, 0}, {3, true, 1}, {4, true, 1}, {3, false, 1}, {4, false, 1}};
 }  // namespace
-class SessionStateTestP : public testing::TestWithParam<TestParam> {};
+class SessionStateTestP : public testing::TestWithParam<anon::TestParam> {};
 // Test that we separate out constant and non-constant initializers correctly
 TEST_P(SessionStateTestP, TestInitializerProcessing) {
-  const TestParam& param = GetParam();
+  const anon::TestParam& param = GetParam();
   OrtThreadPoolParams to;
   to.thread_pool_size = to.thread_pool_size;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
@@ -286,7 +286,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
 #endif
 
-INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
+INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(anon::param_list));
 
 #ifndef ENABLE_TRAINING
 class PrePackingTestOpKernel : public OpKernel {
