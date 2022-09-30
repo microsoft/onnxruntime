@@ -75,7 +75,7 @@ static void testCreateInputTensorT(const std::array<T, 3> &outValues, std::funct
 
 - (void)testCreateInputTensorUInt8 {
   std::array<uint8_t, 3> outValues{std::numeric_limits<uint8_t>::min(), 2, std::numeric_limits<uint8_t>::max()};
-  std::function<NSNumber *(uint8_t value)> convert = [](uint8_t value) { return [NSNumber numberWithChar:value]; };
+  std::function<NSNumber *(uint8_t value)> convert = [](uint8_t value) { return [NSNumber numberWithUnsignedChar:value]; };
   testCreateInputTensorT<uint8_t>(outValues, convert, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, JsTensorTypeUnsignedByte);
 }
 
@@ -233,7 +233,7 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
 
 - (void)testCreateOutputTensorUInt8 {
   std::array<uint8_t, 5> outValues{std::numeric_limits<uint8_t>::min(), 1, 2, 3, std::numeric_limits<uint8_t>::max()};
-  std::function<NSNumber *(uint8_t value)> convert = [](uint8_t value) { return [NSNumber numberWithChar:value]; };
+  std::function<NSNumber *(uint8_t value)> convert = [](uint8_t value) { return [NSNumber numberWithUnsignedChar:value]; };
   testCreateOutputTensorT<uint8_t>(outValues, convert, JsTensorTypeUnsignedByte, @"test_types_uint8", @"ort");
 }
 
