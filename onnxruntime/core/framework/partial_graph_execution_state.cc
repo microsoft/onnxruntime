@@ -21,6 +21,7 @@ ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState&
   new_region.start_pc = program_counter_start_;
   new_region.end_pc = program_counter_end_;
 
+  new_region.stream_pc_range.reserve(plan->execution_plan.size());
   for (auto& stream : plan->execution_plan) {
     size_t cur = 0;
     while (cur < stream->step_pc.size() &&
@@ -57,7 +58,7 @@ DeviceStreamCollection& PartialGraphExecutionState::GetDeviceStreamCollection(co
 }
 
 ExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
-                                                                  gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
+                                                                  gsl::span<const int>& fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
                                                                   const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                                                   const SessionState& session_state,
                                                                   const logging::Logger& sess_logger,

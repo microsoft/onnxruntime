@@ -102,7 +102,7 @@ Status DeviceStreamCollection::CleanUp() {
 
 ExecutionContext::ExecutionContext(const SessionState& sess_state,
                                    int32_t num_streams,
-                                   std::vector<size_t> notification_owners,
+                                   gsl::span<const size_t> notification_owners,
                                    gsl::span<const int>& feed_mlvalue_idxs,
                                    gsl::span<const OrtValue>& feeds, gsl::span<const int>& fetch_mlvalue_idxs,
                                    gsl::span<const OrtValue> fetches,
