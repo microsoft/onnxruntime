@@ -27,7 +27,7 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
                            xnn_caches_t caches_t,
                            const OpQuantParam& quant_param,
                            OpComputeType conv_type,
-                           bool is_tranpose = false) {
+                           bool is_transpose = false) {
   struct xnn_operator* p = nullptr;
 
   uint32_t kernel_height = gsl::narrow<uint32_t>(kernel_shape[0]);
@@ -64,8 +64,8 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
   size_t group_output_channels = gsl::narrow<size_t>(M / group_count);  // either M or M/C
   if (conv_type == OpComputeType::op_compute_type_fp32) {
     auto* B_data = Bias ? Bias->Data<float>() : nullptr;
-    auto create_func = is_tranpose ? xnn_create_deconvolution2d_nhwc_f32
-                                   : xnn_create_convolution2d_nhwc_f32;
+    auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_f32
+                                    : xnn_create_convolution2d_nhwc_f32;
     status = create_func(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
@@ -84,8 +84,8 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
     const int8_t output_min = xnn_u8s8_quantize<int8_t>(foutput_min, output_scale, output_zero_point);
     const int8_t output_max = xnn_u8s8_quantize<int8_t>(foutput_max, output_scale, output_zero_point);
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
-    auto create_func = is_tranpose ? xnn_create_deconvolution2d_nhwc_qs8
-                                   : xnn_create_convolution2d_nhwc_qs8;
+    auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_qs8
+                                    : xnn_create_convolution2d_nhwc_qs8;
     status = create_func(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
@@ -127,13 +127,13 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
         caches_t,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qu8) {
-    auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
+    const auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
     const float output_scale = quant_param[2].first[0];
     const uint8_t output_zero_point = quant_param[2].second;
     const uint8_t output_min = xnn_u8s8_quantize<uint8_t>(foutput_min, output_scale, output_zero_point);
     const uint8_t output_max = xnn_u8s8_quantize<uint8_t>(foutput_max, output_scale, output_zero_point);
-    auto create_func = is_tranpose ? xnn_create_deconvolution2d_nhwc_qu8
-                                   : xnn_create_convolution2d_nhwc_qu8;
+    auto create_func = is_transpose ? xnn_create_deconvolution2d_nhwc_qu8
+                                    : xnn_create_convolution2d_nhwc_qu8;
     status = create_func(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
@@ -154,7 +154,8 @@ Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
   }
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Failed to create xnnpack kernel. xnn_create_convolution2d_nhwc_",
+                           "Failed to create xnnpack kernel. xnn_create_",
+                           is_transpose ? "deconvolution2d" : "convolution2d", "_nhwc_",
                            OpTypeToString(conv_type), " returned ", status);
   }
   op_uptr.reset(p);
@@ -692,6 +693,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 1, 10, k
 ONNX_OPERATOR_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         Conv);
+
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     QLinearConv,
     kMSInternalNHWCDomain,
