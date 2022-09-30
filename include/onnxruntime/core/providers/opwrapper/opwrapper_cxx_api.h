@@ -84,10 +84,10 @@ struct ProviderOptions : Ort::Base<OrtOpWrapperProviderOptions> {
   explicit ProviderOptions(const std::unordered_map<std::string, std::string>& options);
   explicit ProviderOptions(OrtOpWrapperProviderOptions* options);
 
-  size_t HasOption(const char* key) const;
-  std::string GetOption(const char* key, size_t value_size = 0) const;
+  bool HasOption(const char* key) const;
+  std::string_view GetOption(const char* key) const;
   void UpdateOptions(const std::unordered_map<std::string, std::string>& options);
-  std::unordered_map<std::string, std::string> ToMap() const;
+  std::unordered_map<std::string_view, std::string_view> ToMap(OrtAllocator* allocator) const;
 
   static ProviderOptions FromKernelInfo(Unowned<const KernelInfo>& kernel_info, const char* op_name);
 };

@@ -20,12 +20,12 @@ ORT_API_STATUS_IMPL(ProviderOptions_Update, _Inout_ OrtOpWrapperProviderOptions*
                   _In_reads_(num_options) const char* const* options_values,
                   _In_ size_t num_options);
 ORT_API_STATUS_IMPL(ProviderOptions_HasOption, _In_ const OrtOpWrapperProviderOptions* provider_options,
-                    _In_ const char* key, _Inout_ size_t* value_size);
+                    _In_ const char* key, _Out_ int* out);
 ORT_API_STATUS_IMPL(ProviderOptions_GetOption, _In_ const OrtOpWrapperProviderOptions* provider_options,
-                    _In_ const char* key, _Out_opt_ char* value, _Inout_ size_t* value_size);
+                    _In_ const char* key, _Out_ const char** value, _Out_opt_ size_t* length);
 ORT_API_STATUS_IMPL(ProviderOptions_Serialize, _In_ const OrtOpWrapperProviderOptions* provider_options,
-                    _Out_opt_ char* keys, _Inout_ size_t* keys_size,
-                    _Out_opt_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options);
+                    _In_ OrtAllocator* allocator, _Outptr_ const char*** keys, _Outptr_ size_t** key_lengths,
+                    _Outptr_ const char*** values, _Outptr_ size_t** value_lengths, _Out_ size_t* num_options);
 ORT_API(void, ReleaseOpWrapperProviderOptions, _Frees_ptr_opt_ OrtOpWrapperProviderOptions* provider_options);
 
 ORT_API_STATUS_IMPL(KernelInfo_GetProviderOptions, _In_ const OrtKernelInfo* info, _In_ const char* op_name,

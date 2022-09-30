@@ -21,24 +21,17 @@ inline ProviderOptions::ProviderOptions(const std::unordered_map<std::string, st
   UpdateOptions(opts);
 }
 
-inline size_t ProviderOptions::HasOption(const char* key) const {
-  size_t size = 0;
-  Ort::ThrowOnError(GetApi().ProviderOptions_HasOption(p_, key, &size));
-  return size;
+inline bool ProviderOptions::HasOption(const char* key) const {
+  int exists = 0;
+  Ort::ThrowOnError(GetApi().ProviderOptions_HasOption(p_, key, &exists));
+  return exists != 0;
 }
 
-inline std::string ProviderOptions::GetOption(const char* key, size_t value_size) const {
-  std::string value;
-
-  if (value_size == 0) {
-    Ort::ThrowOnError(GetApi().ProviderOptions_GetOption(p_, key, nullptr, &value_size));
-  }
-
-  value.resize(value_size);
-  Ort::ThrowOnError(GetApi().ProviderOptions_GetOption(p_, key, &value[0], &value_size));
-  value.resize(value_size - 1);  // remove the terminating character '\0'
-
-  return value;
+inline std::string_view ProviderOptions::GetOption(const char* key) const {
+  const char* out = nullptr;
+  size_t len = 0;
+  Ort::ThrowOnError(GetApi().ProviderOptions_GetOption(p_, key, &out, &len));
+  return std::string_view(out, len);
 }
 
 inline void ProviderOptions::UpdateOptions(const std::unordered_map<std::string, std::string>& options) {
@@ -57,36 +50,27 @@ inline void ProviderOptions::UpdateOptions(const std::unordered_map<std::string,
   Ort::ThrowOnError(GetApi().ProviderOptions_Update(p_, keys.data(), vals.data(), num_options));
 }
 
-inline std::unordered_map<std::string, std::string> ProviderOptions::ToMap() const {
-  std::vector<char> all_keys;
-  std::vector<char> all_vals;
+inline std::unordered_map<std::string_view, std::string_view> ProviderOptions::ToMap(OrtAllocator* allocator) const {
   size_t num_options = 0;
-  size_t keys_size = 0;
-  size_t vals_size = 0;
+  const char** keys = nullptr;
+  const char** vals = nullptr;
+  size_t* key_lens = nullptr;
+  size_t* val_lens = nullptr;
 
-  ThrowOnError(GetApi().ProviderOptions_Serialize(p_, nullptr, &keys_size, nullptr, &vals_size, &num_options));
+  ThrowOnError(GetApi().ProviderOptions_Serialize(p_, allocator, &keys, &key_lens, &vals, &val_lens, &num_options));
 
-  all_keys.resize(keys_size);
-  all_vals.resize(vals_size);
-
-  ThrowOnError(GetApi().ProviderOptions_Serialize(p_, all_keys.data(), &keys_size, all_vals.data(), &vals_size,
-                                                  nullptr));
-
-  std::unordered_map<std::string, std::string> map;
-  size_t k_i = 0;
-  size_t v_i = 0;
+  std::unordered_map<std::string_view, std::string_view> map;
 
   for (size_t i = 0; i < num_options; ++i) {
-    const char* k_cstr = &all_keys.at(k_i);  // If throws out-of-bounds exception, C API has a bug.
-    const char* v_cstr = &all_vals.at(v_i);
-
-    std::string key(k_cstr);
-    std::string val(v_cstr);
+    std::string_view key(keys[i], key_lens[i]);
+    std::string_view val(vals[i], val_lens[i]);
     map.emplace(key, val);
-
-    k_i += key.length() + 1;
-    v_i += val.length() + 1;
   }
+
+  allocator->Free(allocator, keys);
+  allocator->Free(allocator, vals);
+  allocator->Free(allocator, key_lens);
+  allocator->Free(allocator, val_lens);
 
   return map;
 }

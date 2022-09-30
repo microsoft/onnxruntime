@@ -77,24 +77,18 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_Update, _Inout_ OrtOpWrapp
 
 ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_HasOption,
                     _In_ const OrtOpWrapperProviderOptions* provider_options,
-                    _In_ const char* key, _Inout_ size_t* value_size) {
+                    _In_ const char* key, _Out_ int* out) {
   API_IMPL_BEGIN
   const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
   auto it = options->find(key);
-
-  if (it == options->end()) {
-    *value_size = 0;
-  } else {
-    *value_size = it->second.length() + 1;
-  }
-
+  *out = it != options->end();
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_GetOption,
                     _In_ const OrtOpWrapperProviderOptions* provider_options,
-                    _In_ const char* key, _Out_opt_ char* value, _Inout_ size_t* value_size) {
+                    _In_ const char* key, _Out_ const char** value, _Out_opt_ size_t* length) {
   API_IMPL_BEGIN
   const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
   auto it = options->find(key);
@@ -105,79 +99,57 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_GetOption,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.str().c_str());
   }
 
-  auto status = onnxruntime::utils::CopyStringToOutputArg(it->second, "Provider option's output buffer is too small",
-                                                          value, value_size);
+  *value = it->second.c_str();
 
-  return onnxruntime::ToOrtStatus(status);
+  if (length != nullptr) {
+    *length = it->second.length();
+  }
+
+  return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_Serialize,
                     _In_ const OrtOpWrapperProviderOptions* provider_options,
-                    _Out_opt_ char* keys, _Inout_ size_t* keys_size,
-                    _Out_opt_ char* values, _Inout_ size_t* values_size, _Out_opt_ size_t* num_options) {
+                    _In_ OrtAllocator* allocator, _Outptr_ const char*** keys, _Outptr_ size_t** key_lengths,
+                    _Outptr_ const char*** values, _Outptr_ size_t** value_lengths, _Out_ size_t* num_options) {
   API_IMPL_BEGIN
   const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
 
-  size_t k_size = 0;
-  size_t v_size = 0;
+  *num_options = options->size();
 
-  // Calculate total serialized sizes.
+  if (*num_options == 0) {
+    *keys = nullptr;
+    *key_lengths = nullptr;
+    *values = nullptr;
+    *value_lengths = nullptr;
+    return nullptr;
+  }
+
+  const size_t strs_array_size = *num_options * sizeof(const char*);
+  const size_t lens_array_size = *num_options * sizeof(size_t);
+
+  *keys = reinterpret_cast<const char**>(allocator->Alloc(allocator, strs_array_size));
+  *values = reinterpret_cast<const char**>(allocator->Alloc(allocator, strs_array_size));
+  *key_lengths = reinterpret_cast<size_t*>(allocator->Alloc(allocator, lens_array_size));
+  *value_lengths = reinterpret_cast<size_t*>(allocator->Alloc(allocator, lens_array_size));
+
+  size_t index = 0;
+
   for (const auto& it : *options) {
-    k_size += it.first.length() + 1;  // Include separating null-terminators
-    v_size += it.second.length() + 1;
+    const std::string& key = it.first;
+    const std::string& val = it.second;
+
+    (*keys)[index] = key.c_str();
+    (*key_lengths)[index] = key.length();
+
+    (*values)[index] = val.c_str();
+    (*value_lengths)[index] = val.length();
+
+    ++index;
   }
 
-  if (num_options) {  // Always set num_options if user pass a valid pointer.
-    *num_options = options->size();
-  }
-
-  if (keys == nullptr || values == nullptr) {  // User is querying buffer sizes.
-    *keys_size = k_size;
-    *values_size = v_size;
-    return nullptr;
-  }
-
-  const bool keys_fit = *keys_size >= k_size;
-  const bool vals_fit = *values_size >= v_size;
-
-  if (keys_fit && vals_fit) {  // User provided buffers that are large enough.
-    auto push_str = [](char* out, const std::string& str) {
-      const size_t len = str.length();
-
-      std::memcpy(out, str.data(), len);
-      out[len] = '\0';
-      out += len + 1;
-
-      return out;
-    };
-
-    // Copy all items to output buffers. Items are separated by null-terminators.
-    for (const auto& it : *options) {
-      keys = push_str(keys, it.first);
-      values = push_str(values, it.second);
-    }
-
-    *keys_size = k_size;
-    *values_size = v_size;
-    return nullptr;
-  }
-
-  // User has provided at least one buffer that is not large enough
-  *keys_size = k_size;
-  *values_size = v_size;
-
-  const char* err_msg = nullptr;
-
-  if (keys_fit && !vals_fit) {
-    err_msg = "Values buffer is not large enough";
-  } else if (!keys_fit && vals_fit) {
-    err_msg = "Keys buffer is not large enough";
-  } else {
-    err_msg = "Values and keys buffers are not large enough";
-  }
-
-  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg);
+  return nullptr;
   API_IMPL_END
 }
 
