@@ -142,8 +142,8 @@ size_t GetOrAddValueIntoConstantStore(const onnxruntime::Initializer& initialize
 Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                   const logging::Logger& /*logger*/) const {
   // Accumulated map from type/value/rank to initializer:
-  //   The key is a string representation of initializer's data type, value and rank.
-  //   The value is newly created initializer NodeArg* to be shared.
+  // > The key is a string representation of initializer's data type, value and rank.
+  // > The value is newly created initializer NodeArg* to be shared.
   InlinedHashMap<std::string, NodeArg*> pattern_key_to_shared_arg_map;
   const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
   InlinedVector<std::string> original_initializer_names;
@@ -159,9 +159,9 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     original_initializer_names.push_back(entry.first);
   }
 
-  // We avoid using the scalar value directly in pattern_key because the value for example INT_MAX can be super big
-  // and it will be hard to read. Instead, we use a unique id for each scalar value, and a map from the value to
-  // unique id.
+  // Avoid using the scalar value directly in pattern_key because the value for example INT_MAX can be super big
+  // and it will be hard to read. Instead, a constant value store is maintain, then the value index is used as the
+  // value unique id when construct pattern key.
   InlinedVector<std::variant<int32_t, int64_t, float, double>> const_value_store;
   for (const auto& initializer_name : original_initializer_names) {
     NodeArg* origin_initializer_node_arg = graph.GetNodeArg(initializer_name);
@@ -179,8 +179,8 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
     }
 
     // A map used to collect those consumers who has inputs using origin_initializer_node_arg.
-    //   The key is consumer Node pointer.
-    //   The value is a list of indices for the consumer Nodes' input (that used origin_initializer_node_arg).
+    // > The key is consumer Node pointer.
+    // > The value is a list of indices for the consumer Nodes' input (that used origin_initializer_node_arg).
     InlinedHashMap<const Node*, InlinedVector<int>> consumer_node_to_input_ports_map;
     bool found_subgraph_usage = PrepareInputPortsToReplace(graph, origin_initializer_node_arg,
                                                            consumer_node_to_input_ports_map);

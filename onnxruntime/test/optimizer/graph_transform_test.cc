@@ -5195,25 +5195,27 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
 
 #endif
 
-// Test graph include multiple equivalent subgraphs as below.
-//            graph input [1, 1, 256, 256] (int64_t)
-//                  |
-//                 Neg
-//             /    |  \______________________________________________________
-//            /     |  256 (int64_t)                                       Cast
-//           / ...  | /                                    _________/     /   \      \_____________
-//         Add      Add                               ____/    __________/     \________           \
-//          |       |  0 (int64_t)  511 (int64_t)    /        /                         \          |
-//          |       |  __/    _____/                /        | 256 (int32_t)            |  256 [1] |
-//         Clip ... Clip                           /         | /                        |  /       |
-//          |        |                            Sub   ...  Sub                        Mul  ...  Mul
-//                                                 |         |                          |          |
-// graph out [1, 1, 256, 256] (int64_t)        graph out [1, 1, 256, 256] (int32_t)   graph out [1, 1, 256, 256] (int32_t)
-//
-// Be noted:
-//  the Add's input initializer 256 is a scalar int64_t;
-//  the Sub's input initializer 256 is a scalar int32_t;
-//  the Mul's input initializer 256 is a 1-D int32_t.
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [1, 1, 256, 256] (int64_t)
+                 |
+                Neg
+            /    |  \______________________________________________________
+           /     |  256 (int64_t)                                       Cast
+          / ...  | /                                    _________/     /   \      \_____________
+        Add      Add                               ____/    __________/     \________           \
+         |       |  0 (int64_t)  511 (int64_t)    /        /                         \          |
+         |       |  __/    _____/                /        | 128 (int32_t)            |  64 [1] |
+        Clip ... Clip                           /         | /                        |  /       |
+         |        |                            Sub   ...  Sub                        Mul  ...  Mul
+                                                |         |                          |          |
+graph out [1, 1, 256, 256] (int64_t)        graph out [1, 1, 256, 256] (int32_t)   graph out [1, 1, 256, 256] (int32_t)
+
+Be noted:
+ the Add's input initializer 256 is a scalar int64_t;
+ the Sub's input initializer 256 is a scalar int32_t;
+ the Mul's input initializer 256 is a 1-D int32_t.
+*/
 TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
@@ -5299,10 +5301,10 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
         ASSERT_EQ(values[0], 511);
       } else if (entry.first.compare(sub_initializer->Name()) == 0) {
         ASSERT_EQ(values.size(), 1U);
-        ASSERT_EQ(values[0], 256);
+        ASSERT_EQ(values[0], 128);
       } else if (entry.first.compare(mul_initializer->Name()) == 0) {
         ASSERT_EQ(values.size(), 1U);
-        ASSERT_EQ(values[0], 256);
+        ASSERT_EQ(values[0], 64);
       }
     }
 
@@ -5337,14 +5339,14 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
 
     // test scalar int32_t values.
     for (size_t i = 0; i < 3; ++i) {
-      auto* sub_initializer = builder.MakeScalarInitializer<int32_t>(256);
+      auto* sub_initializer = builder.MakeScalarInitializer<int32_t>(128);
       auto* sub_out = builder.MakeOutput();
       builder.AddNode("Sub", {cast_out, sub_initializer}, {sub_out});
     }
 
     // test 1-D int32_t values.
     for (size_t i = 0; i < 3; ++i) {
-      auto* mul_initializer = builder.MakeInitializer<int32_t>({1}, {256});
+      auto* mul_initializer = builder.MakeInitializer<int32_t>({1}, {64});
       auto* mul_out = builder.MakeOutput();
       builder.AddNode("Mul", {cast_out, mul_initializer}, {mul_out});
     }
@@ -5379,19 +5381,21 @@ void BuildConstantSharingDivMulGraph(ModelTestBuilder& builder) {
   }
 }
 
-// Test graph include multiple equivalent subgraphs as below.
-//            graph input [1, 1, 256, 256] (float|MLFloat16)
-//                  |
-//                 Div
-//             /    |       \
-//            /     |  1.0   \
-//           / ...  |  / ...  \
-//         Mul      Mul      Mul
-//          |       |         |
-//  graph out [1, 1, 256, 256] (float|MLFloat16)
-//
-// Be noted:
-//  the Mul's input initializer 1.0f is a scalar float/MLFloat16.
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [1, 1, 256, 256] (float|MLFloat16)
+                 |
+                Div
+            /    |       \
+           /     |  1.0   \
+          / ...  |  / ...  \
+        Mul      Mul      Mul
+         |       |         |
+ graph out [1, 1, 256, 256] (float|MLFloat16)
+
+Be noted:
+ the Mul's input initializer 1.0f is a scalar float/MLFloat16.
+*/
 TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatTypedInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
@@ -5467,24 +5471,26 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatTypedInitializer) {
   }
 }
 
-// Test graph include multiple equivalent subgraphs as below.
-//            graph input [1, 1, 256, 256] (float)
-//                  |
-//                 Div
-//             /    |  \______________________________________________________
-//            /     |  infinity (float)                                       Cast
-//           / ...  | /                                    _________/     /   \      \_____________
-//         Sub      Sub                               ____/    __________/     \________           \
-//          |       |                                /        /                         \          |
-//          |       |                               /        | int64_max (int64_t)      |          |
-//          |       |                              /         | /                        |          |
-//          |       |                             Mul   ...  Mul                        Mul  ...  Mul
-//                                                 |         |                          |          |
-// graph out [1, 1, 256, 256] (float)        graph out [1, 1, 256, 256] (int64_t)   graph out [1, 1, 256, 256] (int64_t)
-//
-// Be noted:
-//  the Sub's input initializer is a scalar std::numeric_limits<float>::infinity();
-//  the Mul's input initializer is a scalar std::numeric_limits<int64_t>::max().
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [1, 1, 256, 256] (float)
+                 |
+                Div
+            /    |  \______________________________________________________
+           /     |  infinity (float)                                       Cast
+          / ...  | /                                    _________/     /   \      \_____________
+        Sub      Sub                               ____/    __________/     \________           |
+         |       |                                /        /                         \          |
+         |       |                               /        | int64_max (int64_t)      |          |
+         |       |                              /         | /                        |          |
+         |       |                             Mul   ...  Mul                        Mul  ...  Mul
+                                                |         |                          |          |
+graph out [1, 1, 256, 256] (float)        graph out [1, 1, 256, 256] (int64_t)   graph out [1, 1, 256, 256] (int64_t)
+
+Be noted:
+ the Sub's input initializer is a scalar std::numeric_limits<float>::infinity();
+ the Mul's input initializer is a scalar std::numeric_limits<int64_t>::max().
+*/
 TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
