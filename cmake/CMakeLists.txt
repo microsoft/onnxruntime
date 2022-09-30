@@ -1708,7 +1708,7 @@ if (onnxruntime_USE_OPENVINO)
     add_definitions(-DOPENVINO_CONFIG_GPU_FP16=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
   endif()
-  
+
   if (onnxruntime_USE_OPENVINO_CPU_FP32_NP)
     add_definitions(-DOPENVINO_CONFIG_CPU_FP32=1)
     add_definitions(-DOPENVINO_DISABLE_GRAPH_PARTITION=1)
@@ -1747,7 +1747,7 @@ if (onnxruntime_USE_OPENVINO)
   if($ENV{FIL_ENABLED})
     add_definitions(-DOPENVINO_FIL_ENABLED=1)
   endif()
-  
+
 endif()
 
 if (onnxruntime_USE_VITISAI)
@@ -1851,6 +1851,10 @@ if (onnxruntime_USE_ROCM)
     set(ROCM_PATH /opt/rocm)
   else()
     set(ROCM_PATH $ENV{ROCM_PATH})
+  endif()
+
+  if (NOT CMAKE_HIP_ARCHITECTURES)
+    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
   endif()
 
   # replicate strategy used by pytorch to get ROCM_VERSION
