@@ -206,7 +206,7 @@ IEngine : IUnknown {
 
 MIDL_INTERFACE("69fbc1d5-66ff-4c79-b14d-fad288dbf8ca")
 IThreading : IUnknown {
-    
+
 };
 
 MIDL_INTERFACE("8ac0b6b9-4561-492b-b63d-a07bdd8292c6")
@@ -234,7 +234,7 @@ IEngineBuilder : IUnknown {
 
   STDMETHOD(SetIntraOpThreadSpinning)
   (bool allow_spinning) PURE;
-  
+
   STDMETHOD(SetThreadPool)
   (IThreading* thread_pool) PURE;
 
@@ -249,7 +249,7 @@ IEngineFactory : IUnknown {
   (_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out) PURE;
 
   STDMETHOD(CreateModel)
-  (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) PURE;
+  (_In_opt_ void* data, _In_ size_t size, _Outptr_ IModel** out) PURE;
 
   STDMETHOD(CreateEmptyModel)
   (_In_ int64_t opset, _Outptr_ IModel * *out) PURE;

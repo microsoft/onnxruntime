@@ -38,6 +38,7 @@ jobs:
           --device=/dev/dri \
           --group-add $(video) \
           --group-add $(render) \
+          --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /onnxruntime_src \
@@ -71,6 +72,7 @@ jobs:
           --device=/dev/dri \
           --group-add $(video) \
           --group-add $(render) \
+          --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /build/RelWithDebInfo \
@@ -78,3 +80,5 @@ jobs:
             /onnxruntime_src/tools/ci_build/github/pai/migraphx_test_launcher.sh
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
+
+  - template: templates/clean-agent-build-directory-step.yml
