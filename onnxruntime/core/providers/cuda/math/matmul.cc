@@ -147,6 +147,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           workspace_memory.get(), workspace_size,
           Stream()));
     } else {
+      ORT_THROW("Un");
+      /*
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           Base::CublasHandle(),
           transB,
@@ -163,6 +165,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
           ldc,
           device_prop));
+          */
     }
 
     return Status::OK();
