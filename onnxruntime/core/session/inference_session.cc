@@ -290,6 +290,34 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
         to.dynamic_block_base_ = std::stoi(session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDynamicBlockBase, "0"));
         LOGS(*session_logger_, INFO) << "Dynamic block base set to " << to.dynamic_block_base_;
 
+        //////////////////////////// read and set affinity //////////////////////////////
+        auto affinity_string = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigThreadAffinities, "");
+        auto Split = [](const std::string& s) {
+          std::vector<std::string> ans;
+          std::string tmp;
+          std::stringstream ss;
+          ss << s;
+          while (getline(ss, tmp, ',')) {
+            ans.push_back(tmp);
+          }
+          return ans;
+        };
+        auto ReadAffinity = [&](const std::string& s) {
+          auto affinity_strings = Split(s);
+          std::vector<size_t> affinities;
+          for (const auto& iter : affinity_strings) {
+            affinities.push_back(stoi(iter));
+          }
+          return affinities;
+        };
+        auto affinities = ReadAffinity(affinity_string);
+        if (!affinities.empty()) {
+          ORT_ENFORCE(to.thread_pool_size - 1 == affinities.size(), "number of affinities must equal to thread_pool_size - 1");
+          auto bytes = affinities.size() * sizeof(size_t);
+          to.affinity_vec = (size_t*)malloc(bytes);
+          memcpy(to.affinity_vec, affinities.data(), bytes);
+          to.affinity_vec_len = affinities.size();
+        }
         // Set custom threading functions
         to.custom_create_thread_fn = session_options_.custom_create_thread_fn;
         to.custom_thread_creation_options = session_options.custom_thread_creation_options;

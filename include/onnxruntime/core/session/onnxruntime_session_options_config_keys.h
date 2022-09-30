@@ -126,3 +126,9 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // "0": in some cases warnings will be logged but processing will continue. The default.
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
+
+// string in form of "int,int,int...", each int is an index of the processor the sub-thread is expected to run on
+// Note:
+// 1. The number of int must equal to intra_op_thread minus one, since we need to skip the main thread.
+// 2. Each int must be between [1, num_of_total_logic_processors]
+static const char* const kOrtSessionOptionsConfigThreadAffinities = "session.thread_affinities";

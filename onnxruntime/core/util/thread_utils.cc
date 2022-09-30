@@ -56,10 +56,11 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
 #ifdef _WIN32
     to.group_affinities = GetGroupAffinities();
     options.thread_pool_size = static_cast<int>(to.group_affinities.size());
-    std::cout << "thread_pool size: " << options.thread_pool_size << std::endl;
-    int tid = 0;
-    for (const auto& affinity : to.group_affinities) {
-      std::cout << "thread " << tid++ << ", group " << affinity.first << ", core " << affinity.second << std::endl;
+    std::cout << "thread_pool size (including the main thread): " << options.thread_pool_size << std::endl;
+    for (int i = 0; i < options.thread_pool_size - 1; ++i) {
+      std::cout << "sub-thread " << i + 1 << " affnity set to: group "
+                << to.group_affinities[i].first << " with processor bitmask "
+                << to.group_affinities[i].second << std::endl;
     }
 #else
     cpu_list = Env::Default().GetThreadAffinityMasks();
@@ -69,6 +70,18 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
 #endif
+  } else if (options.affinity_vec_len != 0) {
+    auto group_affinities = GetGroupAffinities();
+    auto group_affinities_size = group_affinities.size();
+    to.group_affinities.resize(static_cast<size_t>(options.thread_pool_size)-1); //skip main thread
+    for (int i = 0; i < options.thread_pool_size-1; ++i) {
+      size_t ith_processor_from_zero = options.affinity_vec[i] - 1; 
+      ORT_ENFORCE(ith_processor_from_zero < group_affinities_size, "processor not exist: ", options.affinity_vec[i]);
+      to.group_affinities[i] = group_affinities[ith_processor_from_zero];
+      std::cout << "sub-thread " << i + 1 << " affnity set to: group "
+                << to.group_affinities[i].first << " with processor bitmask "
+                << to.group_affinities[i].second << std::endl;
+    }
   }
   to.set_denormal_as_zero = options.set_denormal_as_zero;
 
