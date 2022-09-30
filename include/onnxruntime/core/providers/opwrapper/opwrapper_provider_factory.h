@@ -8,6 +8,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+// Disable C++ linter in this file
+// NOLINTBEGIN
 
 struct OrtOpWrapperApi;
 typedef struct OrtOpWrapperApi OrtOpWrapperApi;
@@ -67,7 +69,7 @@ struct OrtOpWrapperApi {
   /** \brief Checks if the specified option exists in the ::OrtOpWrapperProviderOptions.
   *
   * \param[in]  provider_options An instance of ::OrtOpWrapperProviderOptions.
-  * \param[in]  key              The option whose existance to check.
+  * \param[in]  key              The option whose existence to check.
   * \param[out] out              Set to 1 if the option exists, and 0 otherwise.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -152,3 +154,4 @@ struct OrtOpWrapperApi {
 #ifdef __cplusplus
 }
 #endif
+// NOLINTEND
