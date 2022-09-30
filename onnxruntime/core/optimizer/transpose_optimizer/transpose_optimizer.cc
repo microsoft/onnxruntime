@@ -1700,7 +1700,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
 // See https://github.com/microsoft/onnxruntime/pull/10824 for
 // a similar fix applied to the CPU Resize kernel.
 // Per tests included in #10824, the ROCM EP also generates
-// incorrect results when this handler is used, so the Resize 
+// incorrect results when this handler is used, so the Resize
 // handler is not enabled even for those builds.
 #if !defined(USE_CUDA) && !defined(USE_ROCM)
     {"Resize", resize_handler},
@@ -2035,7 +2035,7 @@ const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
   static std::unordered_set<std::string_view> layout_sensitive_ops = {"Conv", "QLinearConv", "BatchNormalization",
                                                                       "AveragePool", "GlobalAveragePool", "MaxPool",
                                                                       "GlobalMaxPool", "LRN", "GridSample",
-                                                                      "DepthToSpace", "SpaceToDepth"};
+                                                                      "DepthToSpace", "SpaceToDepth", "ConvTranspose"};
 
   return layout_sensitive_ops;
 }

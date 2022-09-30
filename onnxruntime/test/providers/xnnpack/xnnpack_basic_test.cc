@@ -182,20 +182,26 @@ static void RunModelTest(
                             helper.feeds_, params);
 }
 
-static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* graph_name, float scale_factor = 1.0f) {
-  std::function<void(const Graph&)> verify = [](const Graph& graph) -> void {
-    ASSERT_EQ(graph.NumberOfNodes(), 5) << "Transpose*2 + dq +q +qlinearconv "
-                                           "leaving 5 nodes.";
-  };
+static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* graph_name,
+                                 std::function<void(const Graph&)> graph_verifier = nullptr,
+                                 float scale_factor = 1.0f) {
   EPVerificationParams params;
   params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
   // Xnnpack has higher precision than CPU_S8S8,
   // we can either give a higher tolerance,or disable Graph_Optimizations for cpu-ep
-  params.fp32_abs_err = 1.8f / scale_factor;
-  params.graph_verifier = &verify;
+  params.fp32_abs_err = 1.8f * scale_factor;
+  if (graph_verifier) {
+    params.graph_verifier = &graph_verifier;
+  }
+
+  // use to get model input shape
+  Ort::SessionOptions so;
+  Ort::Session session(*ort_env, ort_model_path, so);
+  auto input_shape = session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+  input_shape[0] = 1;
 
   RandomValueGenerator generator;
-  TensorShape input_shape_x{1, 3, 24, 24};
+  TensorShape input_shape_x{input_shape};
   std::vector<float> input_x = generator.Uniform<float>(input_shape_x.GetDims(),
                                                         -128 * scale_factor, 128 * scale_factor);
   OrtValue ml_value_x;
@@ -207,6 +213,11 @@ static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* gr
   RunAndVerifyOutputsWithEP(ort_model_path, graph_name, std::move(ep), feeds, params);
 }
 
+TEST(XnnpackEP, TestConvTranspose) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_conv_follow_convtrans.onnx";
+  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans", nullptr, 0.0001f);
+}
+
 TEST(XnnpackEP, TestQDQConvU8U8) {
   RunModelTest(BuildQDQConvTestCase<uint8_t /* InputType */,
                                     uint8_t /* WeightType */,
@@ -216,9 +227,12 @@ TEST(XnnpackEP, TestQDQConvU8U8) {
                    {1, 1, 3, 3} /* weights_shape */),
                "xnnpack_qdq_test_graph_conv_u8u8",
                {ExpectedEPNodeAssignment::Some});  // two transpose nodes would be added before and after
-
+  std::function<void(const Graph&)> graph_verify = [](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), 5) << "Transpose*2 + dq +q +qlinearconv "
+                                           "leaving 5 nodes.";
+  };
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_u8u8.onnx";
-  RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_u8u8");
+  RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_u8u8", graph_verify);
 }
 
 TEST(XnnpackEP, TestQDQConvS8S8) {
@@ -230,14 +244,21 @@ TEST(XnnpackEP, TestQDQConvS8S8) {
                    {1, 1, 3, 3} /* weights_shape */),
                "xnnpack_qdq_test_graph_conv_s8s8",
                {ExpectedEPNodeAssignment::Some, 0.2f});
-
+  std::function<void(const Graph&)> graph_verify = [](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), 5) << "Transpose*2 + dq +q +qlinearconv "
+                                           "leaving 5 nodes.";
+  };
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_s8s8.onnx";
-  RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8", 0.7f);
+  RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8", graph_verify, 0.7f);
 }
 
 TEST(XnnpackEP, TestQDQConvS8S8_per_channel) {
+  std::function<void(const Graph&)> graph_verify = [](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), 5) << "Transpose*2 + dq +q +qlinearconv "
+                                           "leaving 5 nodes.";
+  };
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_s8s8_perchannel.onnx";
-  RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8_perchannel", 0.2f);
+  RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8_perchannel", graph_verify, 0.2f);
 }
 
 TEST(XnnpackEP, TestAveragePool) {
