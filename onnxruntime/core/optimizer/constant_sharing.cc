@@ -38,8 +38,8 @@ bool IsSharedInitializer(std::string_view initializer_name) {
   return initializer_name.rfind(SHARED_INITIALIZER_PREFIX, 0) == 0;
 }
 
-bool GetInputPortToReplace(const NodeArg* origin_initializer_node_arg,
-                           InlinedHashMap<const Node*, InlinedVector<int>>& consumer_node_to_input_index_map) {
+bool PrepareInputPortsToReplace(Graph& graph, const NodeArg* origin_initializer_node_arg,
+                                InlinedHashMap<const Node*, InlinedVector<int>>& consumer_node_to_input_ports_map) {
   std::vector<const Node*> consumers = graph.GetConsumerNodes(origin_initializer_node_arg->Name());
 
   // If usage is from subgraph, skip it now, can be extended to support if there is a need.
@@ -60,7 +60,7 @@ bool GetInputPortToReplace(const NodeArg* origin_initializer_node_arg,
     // Then it would be safe to remove the consumer node aferwards.
     for (int i = 0; i < static_cast<int>(const_node->InputDefs().size()); ++i) {
       if (const_node->InputDefs()[i] == origin_initializer_node_arg) {
-        consumer_node_to_input_index_map[const_node].push_back(i);
+        consumer_node_to_input_ports_map[const_node].push_back(i);
       }
     }
   }
@@ -71,10 +71,10 @@ bool GetInputPortToReplace(const NodeArg* origin_initializer_node_arg,
 // Replace all consumer nodes to use shared initializers.
 void ReplaceInputsToUseSharedInitializer(Graph& graph,
                                          const InlinedHashMap<const Node*, InlinedVector<int>>&
-                                             consumer_node_to_input_index_map,
+                                             consumer_node_to_input_ports_map,
                                          const NodeArg* origin_initializer_node_arg,
                                          NodeArg* shared_initializer_node_arg) {
-  for (auto it = consumer_node_to_input_index_map.begin(), end = consumer_node_to_input_index_map.end();
+  for (auto it = consumer_node_to_input_ports_map.begin(), end = consumer_node_to_input_ports_map.end();
        it != end; ++it) {
     Node* node = graph.GetNode(it->first->Index());
     // Iterate all input defs to replace those that are equal to origin_initializer_node_arg,
@@ -97,9 +97,44 @@ void ReplaceInputsToUseSharedInitializer(Graph& graph,
   }
 }
 
-int32_t GenerateUniqueValueId() {
-  static int32_t value_key_generator = 1;
-  return value_key_generator++;
+#define DispatchOnONNXTensorProtoDataTypeWithReturn(data_type, retval, function, ...) \
+  switch (data_type) {                                                                \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:                                  \
+      retval = function<float>(__VA_ARGS__);                                          \
+      break;                                                                          \
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:                                 \
+      retval = function<double>(__VA_ARGS__);                                         \
+      break;                                                                          \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:                                  \
+      retval = function<int32_t>(__VA_ARGS__);                                        \
+      break;                                                                          \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:                                  \
+      retval = function<int64_t>(__VA_ARGS__);                                        \
+      break;                                                                          \
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:                                \
+      retval = function<MLFloat16>(__VA_ARGS__);                                      \
+      break;                                                                          \
+    default:                                                                          \
+      ORT_ENFORCE(false, "Unknown tensor type of ", data_type);                       \
+  }
+
+template <typename T>
+size_t GetOrAddValueIntoConstantStore(const onnxruntime::Initializer& initializer,
+                                      InlinedVector<std::variant<int32_t, int64_t, float, double>>&
+                                          const_value_store) {
+  std::variant<int32_t, int64_t, float, double> value;
+  if (std::is_same<T, MLFloat16>::value) {
+    value = math::halfToFloat(initializer.data<MLFloat16>()->val);
+  } else {
+    value = *initializer.data<T>();
+  }
+
+  auto it = std::find(const_value_store.begin(), const_value_store.end(), value);
+  if (it == const_value_store.end()) {
+    const_value_store.push_back(value);
+    return const_value_store.size() - 1;
+  }
+  return it - const_value_store.begin();
 }
 
 }  // namespace
@@ -127,11 +162,7 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   // We avoid using the scalar value directly in pattern_key because the value for example INT_MAX can be super big
   // and it will be hard to read. Instead, we use a unique id for each scalar value, and a map from the value to
   // unique id.
-  InlinedHashMap<int32_t, int32_t> int32_value_to_value_id_map;
-  InlinedHashMap<int64_t, int32_t> int64_value_to_value_id_map;
-  InlinedHashMap<float, int32_t> float_value_to_value_id_map;
-  InlinedHashMap<float, int32_t> half_value_to_value_id_map;
-  InlinedHashMap<double, int32_t> double_value_to_value_id_map;
+  InlinedVector<std::variant<int32_t, int64_t, float, double>> const_value_store;
   for (const auto& initializer_name : original_initializer_names) {
     NodeArg* origin_initializer_node_arg = graph.GetNodeArg(initializer_name);
 
@@ -147,54 +178,21 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
       continue;
     }
 
-    InlinedHashMap<const Node*, InlinedVector<int>> consumer_node_to_input_index_map;
-    bool found_subgraph_usage = GetInputPortToReplace(origin_initializer_node_arg, consumer_node_to_input_index_map);
-    if (found_subgraph_usage || consumer_node_to_input_index_map.size() == 0) {
+    // A map used to collect those consumers who has inputs using origin_initializer_node_arg.
+    //   The key is consumer Node pointer.
+    //   The value is a list of indices for the consumer Nodes' input (that used origin_initializer_node_arg).
+    InlinedHashMap<const Node*, InlinedVector<int>> consumer_node_to_input_ports_map;
+    bool found_subgraph_usage = PrepareInputPortsToReplace(graph, origin_initializer_node_arg,
+                                                           consumer_node_to_input_ports_map);
+    if (found_subgraph_usage || consumer_node_to_input_ports_map.size() == 0) {
       continue;
     }
 
+    size_t value_id = 0;
     onnxruntime::Initializer initializer{*tensor_proto, graph.ModelPath()};
-    std::int32_t value_id;
-    switch (tensor_proto->data_type()) {
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-        const float flt_val = *initializer.data<float>();
-        if (float_value_to_value_id_map.find(flt_val) == float_value_to_value_id_map.end()) {
-          float_value_to_value_id_map[flt_val] = GenerateUniqueValueId();
-        }
-        value_id = float_value_to_value_id_map[flt_val];
-      } break;
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
-        const float flt16_val = math::halfToFloat(initializer.data<MLFloat16>()->val);
-        if (half_value_to_value_id_map.find(flt16_val) == half_value_to_value_id_map.end()) {
-          half_value_to_value_id_map[flt16_val] = GenerateUniqueValueId();
-        }
-        value_id = half_value_to_value_id_map[flt16_val];
-      } break;
-      case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE: {
-        const double dbl_val = *initializer.data<double>();
-        if (double_value_to_value_id_map.find(dbl_val) == double_value_to_value_id_map.end()) {
-          double_value_to_value_id_map[dbl_val] = GenerateUniqueValueId();
-        }
-        value_id = double_value_to_value_id_map[dbl_val];
-      } break;
-      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
-        const int32_t int32_val = *initializer.data<int32_t>();
-        if (int32_value_to_value_id_map.find(int32_val) == int32_value_to_value_id_map.end()) {
-          int32_value_to_value_id_map[int32_val] = GenerateUniqueValueId();
-        }
-        value_id = int32_value_to_value_id_map[int32_val];
-      } break;
-      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-        const int64_t int64_val = *initializer.data<int64_t>();
-        if (int64_value_to_value_id_map.find(int64_val) == int64_value_to_value_id_map.end()) {
-          int64_value_to_value_id_map[int64_val] = GenerateUniqueValueId();
-        }
-        value_id = int64_value_to_value_id_map[int64_val];
-      } break;
-      default:
-        ORT_THROW("Unsupported data type [",
-                  std::to_string(data_type) + "] found: for initializer: " + initializer_name);
-    }
+    DispatchOnONNXTensorProtoDataTypeWithReturn(tensor_proto->data_type(), value_id,
+                                                GetOrAddValueIntoConstantStore,
+                                                initializer, const_value_store);
 
     // Construct a string by data type, value, and rank. Used as a key in pattern_key_to_shared_arg_map.
     const std::string pattern_key = MakeString(SHARED_INITIALIZER_PREFIX, value_id, "_", data_type, "_",
@@ -210,7 +208,7 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
       pattern_key_to_shared_arg_map[pattern_key] = &shared_scalar_initializer_node_arg;
     }
 
-    ReplaceInputsToUseSharedInitializer(graph, consumer_node_to_input_index_map, origin_initializer_node_arg,
+    ReplaceInputsToUseSharedInitializer(graph, consumer_node_to_input_ports_map, origin_initializer_node_arg,
                                         pattern_key_to_shared_arg_map[pattern_key]);
 
     modified = true;
