@@ -13,7 +13,7 @@
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
-
+#include "test/util/include/asserts.h"
 
 // Unit tests to check the implementation of functions, model-local functions,
 // function-inlining etc.
@@ -339,5 +339,18 @@ TEST(FunctionTest, NestedConstant) {
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 2.0, 3.0, 0.0, 0.0, 0.0});
 }
 
+// GH13121. Model with function body that has variadic inputs (or outputs) was not loading.
+// Add handling for variadics to IOTypeConstraintHelper. Test model has a Concat and Split to test both variadic
+// inputs and outputs.
+TEST(FunctionTest, Variadics) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/function_with_variadics.onnx");
+
+  SessionOptions so;
+  so.session_logid = "FunctionTest.Variadics";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());
+}
 }  // namespace test
 }  // namespace onnxruntime

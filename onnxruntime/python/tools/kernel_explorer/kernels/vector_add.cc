@@ -9,7 +9,7 @@
 
 #include <string>
 
-#include "contrib_ops/rocm/bert/tunable_op.h"
+#include "core/providers/rocm/tunable/tunable.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 #include "python/tools/kernel_explorer/kernels/vector_add_kernel.h"
 
@@ -24,7 +24,7 @@ namespace onnxruntime {
 
 // Extend the OpParams so that all specializations have the same parameter passing interface
 template <typename T>
-struct VectorAddParams : contrib::rocm::OpParams {
+struct VectorAddParams : rocm::tunable::OpParams {
   std::string Signature() const override { return std::to_string(n); }
 
   T* x;
@@ -54,7 +54,7 @@ Status VectorAddOp(const VectorAddParams<T>* params) {
 // A Tunable VectorAddOp is a collection of non-tunable VectorAddOps implementations that have variable performance
 // characteristics. Those implementations may be put into a C++ container for tuner to select.
 template <typename T>
-class VectorAddTunableOp : public contrib::rocm::TunableOp<VectorAddParams<T>> {
+class VectorAddTunableOp : public rocm::tunable::TunableOp<VectorAddParams<T>> {
  public:
   VectorAddTunableOp() {
     ADD_OP(64);

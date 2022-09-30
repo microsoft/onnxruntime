@@ -869,16 +869,26 @@ Status LongformerQkvToContext(
   //  Q, K, V, Global_K, Global_V, Global_Q (format 0)
   //  Q, K, V, Global_Q, Global_K, Global_V (format 1)
   if (format == 1 || max_num_global == 0 || nullptr == global_input) {
-    LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
-                           sequence_length, num_heads, head_size,
-                           input, bias, qkv,
-                           use_half4);
-
-    if (max_num_global > 0 && nullptr != global_input) {
+    if (bias == nullptr) {
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads,
+                                         max_threads_per_block, false, input, qkv));
+    } else {
       LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
                              sequence_length, num_heads, head_size,
-                             global_input, global_bias, qkv + 3 * elements,
+                             input, bias, qkv,
                              use_half4);
+    }
+
+    if (max_num_global > 0 && nullptr != global_input) {
+      if (global_bias == nullptr) {
+        ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads,
+                                           max_threads_per_block, false, global_input, qkv + 3 * elements));
+      } else {
+        LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
+                               sequence_length, num_heads, head_size,
+                               global_input, global_bias, qkv + 3 * elements,
+                               use_half4);
+      }
     }
   } else {
     LaunchAddBiasTranspose(stream, 5, format, max_threads_per_block, batch_size,
