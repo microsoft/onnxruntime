@@ -1204,6 +1204,20 @@ void OpTester::Run(
             number_of_pre_packed_weights_counter,
             number_of_shared_pre_packed_weights_counter);
 
+        if (provider_type == onnxruntime::kRocmExecutionProvider) {
+          execution_providers.clear();
+          execution_providers.emplace_back(DefaultRocmExecutionProvider(true));
+          ExecuteModelForEps(
+              std::move(execution_providers), *p_model, so,
+              expect_result, expected_failure_string,
+              run_options, feeds, output_names,
+              &custom_session_registries_,
+              /*assign_ep_for_nodes=*/true,
+              allow_released_onnx_opset_only,
+              number_of_pre_packed_weights_counter,
+              number_of_shared_pre_packed_weights_counter);
+        }
+
         has_run = true;
         cur_provider = "not set";
       }
