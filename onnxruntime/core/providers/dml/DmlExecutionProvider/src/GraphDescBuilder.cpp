@@ -37,6 +37,7 @@ namespace Dml::GraphDescBuilder
         const size_t isConstGpuGraphInputCount,
         std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
         const onnxruntime::Graph& graph,
+        const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
         const gsl::span<const std::string> fusedNodeOutputArgOriginalNames,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
@@ -80,8 +81,8 @@ namespace Dml::GraphDescBuilder
 
         // Get the topological sorting of Lotus nodes
         // paulm: breaking change from LOTUS that removed GetNodesInTopologicalOrder from Graph
-        onnxruntime::GraphViewer viewer(graph);
-        const std::vector<onnxruntime::NodeIndex>& orderedNodeIndices = viewer.GetNodesInTopologicalOrder();
+        /*onnxruntime::GraphViewer viewer(graph);
+        const std::vector<onnxruntime::NodeIndex>& orderedNodeIndices = viewer.GetNodesInTopologicalOrder();*/
 
         // Avoid using separate command lists for small graphs. This value can be reduced by tuning the 
         // flushing behavior of DmlCommandRecorder.  Its current behavior is to assume that graphs contain
@@ -89,7 +90,7 @@ namespace Dml::GraphDescBuilder
         const uint32_t minNodeCountToReuseCommandList = 5;
         bool reuseCommandList = false;
         
-        if (orderedNodeIndices.size() >= minNodeCountToReuseCommandList)
+        if (indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList)
         {
             reuseCommandList = true;
         }
@@ -113,7 +114,7 @@ namespace Dml::GraphDescBuilder
         };
 
         // Iterate through each node and create a corresponding node in the new graph
-        for (size_t sortedNodeIndex : orderedNodeIndices) 
+        for (size_t sortedNodeIndex : indexedSubGraph.nodes) 
         {
             const onnxruntime::Node& node = *graph.GetNode(sortedNodeIndex);
 
@@ -233,7 +234,7 @@ namespace Dml::GraphDescBuilder
             graphNodes.push_back(std::move(nodeInfo));
         }
 
-        assert(graphNodes.size() == orderedNodeIndices.size());
+        assert(graphNodes.size() == indexedSubGraph.nodes.size());
 
         // Add graph output nodes, which might be in a different order from the encapsulating node
         for (size_t outputIndex = 0; outputIndex < fusedNodeOutputArgOriginalNames.size(); ++outputIndex)

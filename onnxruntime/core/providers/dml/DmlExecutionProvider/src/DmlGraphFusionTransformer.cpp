@@ -130,6 +130,53 @@ namespace Dml
         ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     }
 
+    void ConvertGraphDesc(
+        const Dml::GraphDescBuilder::GraphDesc& graphDesc,
+        _Out_ DML_GRAPH_DESC& dmlGraphDesc,
+        const uint32_t inputCount,
+        const uint32_t outputCount,
+        _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
+        _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
+        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
+        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
+        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges)
+    {
+        const uint32_t graphInputCount = inputCount;
+
+        for (size_t i = 0; i < graphDesc.nodes.size(); ++i)
+        {
+            dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{graphDesc.nodes[i].op.Get()};
+            dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
+        }
+
+        for (size_t i = 0; i < graphDesc.inputEdges.size(); ++i)
+        {
+            dmlInputEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INPUT, &graphDesc.inputEdges[i]};
+        }
+
+        for (size_t i = 0; i < graphDesc.outputEdges.size(); ++i)
+        {
+            dmlOutputEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_OUTPUT, &graphDesc.outputEdges[i]};
+        }
+
+        for (size_t i = 0; i < graphDesc.intermediateEdges.size(); ++i)
+        {
+            dmlIntermediateEdges[i] =
+                DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INTERMEDIATE, &graphDesc.intermediateEdges[i]};
+        }
+
+        dmlGraphDesc.InputCount = graphInputCount;
+        dmlGraphDesc.OutputCount = outputCount;
+        dmlGraphDesc.NodeCount = gsl::narrow_cast<uint32_t>(dmlGraphNodes.size());
+        dmlGraphDesc.Nodes = dmlGraphNodes.data();
+        dmlGraphDesc.InputEdgeCount = gsl::narrow_cast<uint32_t>(dmlInputEdges.size());
+        dmlGraphDesc.InputEdges = dmlInputEdges.data();
+        dmlGraphDesc.OutputEdgeCount = gsl::narrow_cast<uint32_t>(dmlOutputEdges.size());
+        dmlGraphDesc.OutputEdges = dmlOutputEdges.data();
+        dmlGraphDesc.IntermediateEdgeCount = gsl::narrow_cast<uint32_t>(dmlIntermediateEdges.size());
+        dmlGraphDesc.IntermediateEdges = dmlIntermediateEdges.data();
+    }
+
     void CreateIDmlCompiledOperatorAndRegisterKernel(
         onnxruntime::Graph& graph, 
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
@@ -166,13 +213,15 @@ namespace Dml
         {
             inputsConstant[index] = GraphKernelHelper::GetGraphInputConstness(index, fusedNodeInputArgOriginalNames, *transferredInitializerMap);
         }
+
         ComPtr<IDMLDevice> device;
         ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
         GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
             inputsConstant.data(),
             inputsConstant.size(),
             *transferredInitializerMap,
-            partitionONNXGraph,
+            graph,
+            indexedSubGraph,
             fusedNodeInputArgOriginalNames,
             fusedNodeOutputArgOriginalNames,
             partitionNodePropsMap,
@@ -186,7 +235,7 @@ namespace Dml
         std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(graphDesc.inputEdges.size());
         std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(graphDesc.outputEdges.size());
         std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(graphDesc.intermediateEdges.size());
-        GraphKernelHelper::ConvertGraphDesc(
+        ConvertGraphDesc(
             graphDesc, 
             dmlGraphDesc, 
             graphInputCount,
@@ -202,11 +251,13 @@ namespace Dml
         {
             executionFlags |= DML_EXECUTION_FLAG_DESCRIPTORS_VOLATILE;
         }
+
         // Query DML execution provider to see if metacommands is enabled
         if (!providerImpl->MetacommandsEnabled())
         {
             executionFlags |= DML_EXECUTION_FLAG_DISABLE_META_COMMANDS;
         }
+
         ComPtr<IDMLDevice1> device1;
         ORT_THROW_IF_FAILED(device.As(&device1));
         ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator;
@@ -365,8 +416,7 @@ namespace Dml
 
                             continue;
                         }
-                        (*transferredInitializerMap)[input] = *tensor;
-                        graph.RemoveInitializedTensor(input);
+                        ORT_RETURN_IF_ERROR(graph.PopInitializedTensor(tensor->name(), (*transferredInitializerMap)[input]));
                     }
                 }
 
