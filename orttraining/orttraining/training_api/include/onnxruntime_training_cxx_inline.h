@@ -24,6 +24,7 @@ inline TrainingSession::TrainingSession(const SessionOptions& session_options,
 
 inline std::vector<Value> TrainingSession::TrainStep(const std::vector<Value>& input_values) {
   std::vector<Value> output_values;
+  output_values.reserve(training_model_output_count_);
   for (size_t i = 0; i < training_model_output_count_; i++) output_values.emplace_back(nullptr);
   auto ort_input_values = reinterpret_cast<const OrtValue**>(const_cast<Value*>(input_values.data()));
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values.data());
@@ -41,6 +42,7 @@ inline void TrainingSession::ResetGrad() {
 
 inline std::vector<Value> TrainingSession::EvalStep(const std::vector<Value>& input_values) {
   std::vector<Value> output_values;
+  output_values.reserve(eval_model_output_count_);
   for (size_t i = 0; i < eval_model_output_count_; i++) output_values.emplace_back(nullptr);
   auto ort_input_values = reinterpret_cast<const OrtValue**>(const_cast<Value*>(input_values.data()));
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values.data());
@@ -77,14 +79,15 @@ inline void TrainingSession::OptimizerStep() {
   ThrowOnError(GetTrainingApi().OptimizerStep(p_, run_options));
 }
 
-inline CheckpointState LoadCheckpoint(const std::basic_string<ORTCHAR_T>& path_to_checkpoint) {
+inline CheckpointState CheckpointState::LoadCheckpoint(const std::basic_string<ORTCHAR_T>& path_to_checkpoint) {
   OrtCheckpointState* checkpoint_state;
   ThrowOnError(GetTrainingApi().LoadCheckpoint(path_to_checkpoint.c_str(), &checkpoint_state));
   return CheckpointState(checkpoint_state);
 }
 
-inline void SaveCheckpoint(const TrainingSession& session, const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
-                           bool include_optimizer_states) {
+inline void CheckpointState::SaveCheckpoint(const TrainingSession& session,
+                                            const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
+                                            bool include_optimizer_states) {
   ThrowOnError(GetTrainingApi().SaveCheckpoint(path_to_checkpoint.c_str(), session, include_optimizer_states));
 }
 

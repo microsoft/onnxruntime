@@ -75,12 +75,12 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   trainable_param_values.reserve(expected_trainable_param_names.size());
   std::vector<ONNX_NAMESPACE::TensorProto> non_trainable_param_values;
   const auto& initializer_tensors = graph.GetAllInitializedTensors();
-  for (const auto& pair : initializer_tensors) {
-    if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), pair.first) !=
+  for (const auto& [initializer_name, tensor_proto] : initializer_tensors) {
+    if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), initializer_name) !=
         expected_trainable_param_names.end()) {
-      trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
+      trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
     } else {
-      non_trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
+      non_trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
     }
   }
 
@@ -306,9 +306,8 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
 
   for (auto it = param_named_optimizer_states.begin(); it != param_named_optimizer_states.end(); ++it) {
     ASSERT_TRUE(named_parameters.find(it->first) != named_parameters.end());
-    for (auto& state_pair : it->second.momentum_named_states) {
-      ASSERT_TRUE(state_pair.first == "momentum0" || state_pair.first == "momentum1");
-      const OrtValue& restored_ort_value = state_pair.second;
+    for (auto& [momentum_name, restored_ort_value] : it->second.momentum_named_states) {
+      ASSERT_TRUE(momentum_name == "momentum0" || momentum_name == "momentum1");
       const OrtValue& param_ort_value = name_to_ort_value[it->first];
       ASSERT_TRUE(restored_ort_value.IsTensor() && param_ort_value.IsTensor());
       const Tensor& restored_tensor = restored_ort_value.Get<Tensor>();

@@ -99,7 +99,7 @@ bool SyntheticSampleBatch::GetBatch(std::vector<Ort::Value>& batches) {
   for (size_t i = 0; i < data_vector_.size(); ++i) {
     SyntheticInput& input = data_vector_[i];
 
-    const bool ret = std::visit([&batches, &input, &memory_info](auto&& arg) -> bool {
+    std::visit([&batches, &input, &memory_info](auto&& arg) {
       ONNXTensorElementDataType elem_data_type;
       using T = std::decay_t<decltype(arg)>;
       if constexpr (std::is_same_v<typename T::value_type, uint8_t>) {
@@ -113,13 +113,8 @@ bool SyntheticSampleBatch::GetBatch(std::vector<Ort::Value>& batches) {
                                                     (input.NumOfElements() * sizeof(typename T::value_type)),
                                                     shape_vector.data(), shape_vector.size(),
                                                     elem_data_type));
-      return true;
     },
                                 input.GetData());
-
-    if (!ret) {
-      return false;
-    }
   }
 
   return true;

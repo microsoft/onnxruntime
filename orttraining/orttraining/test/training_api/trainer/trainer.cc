@@ -219,7 +219,7 @@ int RunTraining(const TestRunnerParameters& params) {
   g_ort_api->ReleaseThreadingOptions(threading_options);
 
   // Load Checkpoint State
-  Ort::CheckpointState checkpoint_state = Ort::LoadCheckpoint(params.checkpoint_to_load_path);
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(params.checkpoint_to_load_path);
 
   // Create TrainingSession
   Ort::SessionOptions soptions;
@@ -322,7 +322,7 @@ int RunTraining(const TestRunnerParameters& params) {
         std::ostringstream oss;
         oss << "ckpt_" << params.model_name << std::to_string(batch_idx);
         PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, ToPathString(oss.str()));
-        Ort::SaveCheckpoint(session, ckpt_file, true);
+        Ort::CheckpointState::SaveCheckpoint(session, ckpt_file, true);
 
         // TODO(baiju): enable adding more properties to checkpoint
         // state_to_save.property_bag.AddProperty<int64_t>(std::string("epoch"), epoch);
@@ -337,7 +337,7 @@ int RunTraining(const TestRunnerParameters& params) {
   std::ostringstream oss;
   oss << "ckpt_" << params.model_name;
   PathString ckpt_file = ConcatPathComponent<PathChar>(params.output_dir, ToPathString(oss.str()));
-  Ort::SaveCheckpoint(session, ckpt_file, true);
+  Ort::CheckpointState::SaveCheckpoint(session, ckpt_file, true);
 
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration_seconds = end - end_to_end_start;
