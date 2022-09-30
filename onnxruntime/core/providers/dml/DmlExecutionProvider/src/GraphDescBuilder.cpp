@@ -240,7 +240,8 @@ namespace Dml::GraphDescBuilder
                 {
                     nameToNodeAndIndexMap[arg->Name()] = NodeAndIndex { 
                         operatorGraphNodeIndexToMainGraphNodeIndexMap[operatorGraphOutputEdge.FromNodeIndex], 
-                        operatorGraphOutputEdge.FromNodeOutputIndex };
+                        operatorGraphOutputEdge.FromNodeOutputIndex
+                    };
                 }
             }
 
