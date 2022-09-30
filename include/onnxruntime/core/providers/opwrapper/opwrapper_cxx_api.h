@@ -2,11 +2,12 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "opwrapper_provider_factory.h"
-#include "onnxruntime_cxx_api.h"
+
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include "opwrapper_provider_factory.h"
+#include "onnxruntime_cxx_api.h"
 
 /** \brief All C++ ONNXRuntime APIs in onnxruntime_cxx_api.h are defined inside the Ort:: namespace.
  *
