@@ -1,6 +1,7 @@
 ---
 title: Deploy on AzureML
 descriptions: Deploy high performance question-answer model on AzureML with ONNX Runtime
+image: /images/azureml-deployment.png
 parent: Tutorials
 nav_order: 5
 ---
