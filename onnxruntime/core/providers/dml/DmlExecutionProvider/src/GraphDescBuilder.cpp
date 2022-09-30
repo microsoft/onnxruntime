@@ -261,11 +261,6 @@ namespace Dml::GraphDescBuilder
             }
         }
 
-<<<<<<< HEAD
-        assert(graphNodes.size() == indexedSubGraph.nodes.size());
-
-=======
->>>>>>> master
         // Add graph output nodes, which might be in a different order from the encapsulating node
         for (size_t outputIndex = 0; outputIndex < fusedNodeOutputArgOriginalNames.size(); ++outputIndex)
         {
