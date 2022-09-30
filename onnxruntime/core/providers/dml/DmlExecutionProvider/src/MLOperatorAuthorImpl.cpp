@@ -1165,8 +1165,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 operatorGraphDesc->intermediateEdges,
                 operatorGraphDesc->intermediateEdges + operatorGraphDesc->intermediateEdgeCount);
 
-            // There can't be any operator (or kernel) which doesn't has a output.
-            assert(operatorGraphDesc->nodeCount == 0 || (operatorGraphDesc->outputEdgeCount > 0 && operatorGraphDesc->outputEdges != nullptr));
+            assert(operatorGraphDesc->outputEdgeCount == 0 || operatorGraphDesc->outputEdges != nullptr);
             m_graphNodeCreateInfo->outputEdges.insert(m_graphNodeCreateInfo->outputEdges.begin(),
                 operatorGraphDesc->outputEdges,
                 operatorGraphDesc->outputEdges + operatorGraphDesc->outputEdgeCount);
