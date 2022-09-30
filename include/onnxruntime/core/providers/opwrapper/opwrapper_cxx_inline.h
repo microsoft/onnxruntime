@@ -51,6 +51,7 @@ inline void ProviderOptions::UpdateOptions(const std::unordered_map<std::string,
 }
 
 inline std::unordered_map<std::string_view, std::string_view> ProviderOptions::ToMap(OrtAllocator* allocator) const {
+  std::unordered_map<std::string_view, std::string_view> map;
   size_t num_options = 0;
   const char** keys = nullptr;
   const char** vals = nullptr;
@@ -59,18 +60,18 @@ inline std::unordered_map<std::string_view, std::string_view> ProviderOptions::T
 
   ThrowOnError(GetApi().ProviderOptions_Serialize(p_, allocator, &keys, &key_lens, &vals, &val_lens, &num_options));
 
-  std::unordered_map<std::string_view, std::string_view> map;
+  if (num_options != 0) {
+    for (size_t i = 0; i < num_options; ++i) {
+      std::string_view key(keys[i], key_lens[i]);
+      std::string_view val(vals[i], val_lens[i]);
+      map.emplace(key, val);
+    }
 
-  for (size_t i = 0; i < num_options; ++i) {
-    std::string_view key(keys[i], key_lens[i]);
-    std::string_view val(vals[i], val_lens[i]);
-    map.emplace(key, val);
+    allocator->Free(allocator, keys);
+    allocator->Free(allocator, vals);
+    allocator->Free(allocator, key_lens);
+    allocator->Free(allocator, val_lens);
   }
-
-  allocator->Free(allocator, keys);
-  allocator->Free(allocator, vals);
-  allocator->Free(allocator, key_lens);
-  allocator->Free(allocator, val_lens);
 
   return map;
 }
