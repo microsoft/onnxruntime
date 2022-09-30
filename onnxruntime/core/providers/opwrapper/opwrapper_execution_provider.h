@@ -10,8 +10,8 @@ namespace onnxruntime {
 
 class OpWrapperExecutionProvider : public IExecutionProvider {
  public:
-  explicit OpWrapperExecutionProvider(const ProviderOptionsMap& provider_options_map);
-  virtual ~OpWrapperExecutionProvider();
+  explicit OpWrapperExecutionProvider(ProviderOptionsMap provider_options_map);
+  ~OpWrapperExecutionProvider() override = default;
 
   ProviderOptions GetOpProviderOptions(const std::string& op_name) const;
 

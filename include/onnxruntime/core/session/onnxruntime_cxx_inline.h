@@ -1114,13 +1114,7 @@ inline TypeInfo Ort::NodeArg::GetTypeInfo() const {
   return TypeInfo(out);
 }
 
-inline KernelInfo::KernelInfo(OrtKernelInfo* info) : Base<OrtKernelInfo>{info} {}
-
-inline KernelInfo KernelInfo::Copy() const {
-  OrtKernelInfo* info_copy = nullptr;
-  Ort::ThrowOnError(GetApi().CopyKernelInfo(p_, &info_copy));
-  return KernelInfo{info_copy};
-}
+inline KernelInfo::KernelInfo(const OrtKernelInfo* info) : p_{info} {}
 
 template <>
 inline float KernelInfo::GetAttribute<float>(const char* name) const {

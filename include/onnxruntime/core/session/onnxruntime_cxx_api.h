@@ -1070,20 +1070,19 @@ struct NodeArg {
 
   // Returns the node's type and shape information.
   [[nodiscard]] TypeInfo GetTypeInfo() const;
+
+  constexpr operator const OrtNodeArg*() const noexcept { return p_; }
+
  private:
   const OrtNodeArg* p_;
 };
 
 /// <summary>
-/// This struct owns the OrtKernInfo* pointer when a copy is made.
-/// For convenient wrapping of OrtKernelInfo* passed to kernel constructor
-/// and query attributes, warp the pointer with Ort::Unowned<KernelInfo> instance
-/// so it does not destroy the pointer the kernel does not own.
+/// This struct wraps a const OrtKernelInfo*.
+/// TODO: Use Base<T> to implement OrtKernelInfoCopy()
 /// </summary>
-struct KernelInfo : Base<OrtKernelInfo> {
-  explicit KernelInfo(std::nullptr_t) {}     ///< Create an empty instance to initialize later
-  explicit KernelInfo(OrtKernelInfo* info);  ///< Take ownership of the instance
-  [[nodiscard]] KernelInfo Copy() const;
+struct KernelInfo {
+  explicit KernelInfo(const OrtKernelInfo* info);
 
   template <typename T>  // T is only implemented for float, int64_t, and string
   T GetAttribute(const char* name) const;
@@ -1096,6 +1095,11 @@ struct KernelInfo : Base<OrtKernelInfo> {
 
   [[nodiscard]] Ort::NodeArg GetInput(size_t index) const;
   [[nodiscard]] Ort::NodeArg GetOutput(size_t index) const;
+
+  constexpr operator const OrtKernelInfo*() const noexcept { return p_; }
+
+ private:
+  const OrtKernelInfo* p_;
 };
 
 struct CustomOpApi {

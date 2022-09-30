@@ -3,6 +3,7 @@
 
 #include "core/providers/opwrapper/opwrapper_provider_factory.h"
 
+#include <utility>
 #include <sstream>
 #include "core/providers/opwrapper/ort_opwrapper_apis.h"
 #include "core/providers/opwrapper/opwrapper_provider_factory_creator.h"
@@ -15,8 +16,8 @@
 namespace onnxruntime {
 
 struct OpWrapperProviderFactory : IExecutionProviderFactory {
-  explicit OpWrapperProviderFactory(const ProviderOptionsMap& provider_options_map)
-    : provider_options_map_(provider_options_map) {
+  explicit OpWrapperProviderFactory(ProviderOptionsMap provider_options_map)
+    : provider_options_map_(std::move(provider_options_map)) {
   }
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
@@ -27,8 +28,8 @@ struct OpWrapperProviderFactory : IExecutionProviderFactory {
 };
 
 std::shared_ptr<IExecutionProviderFactory>
-OpWrapperProviderFactoryCreator::Create(const ProviderOptionsMap& provider_options_map) {
-  return std::make_shared<onnxruntime::OpWrapperProviderFactory>(provider_options_map);
+OpWrapperProviderFactoryCreator::Create(ProviderOptionsMap provider_options_map) {
+  return std::make_shared<onnxruntime::OpWrapperProviderFactory>(std::move(provider_options_map));
 }
 
 }  // namespace onnxruntime
@@ -42,9 +43,12 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::SessionOptionsAppendExecutionProvider,
   onnxruntime::ProviderOptionsMap options_map;
   options_map.reserve(num_ops);
 
+  auto options_span = gsl::make_span(provider_options, num_ops);
+  auto names_span = gsl::make_span(op_names, num_ops);
+
   for (size_t i = 0; i < num_ops; ++i) {
-    const auto* op_options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options[i]);
-    options_map[op_names[i]] = *op_options;
+    const auto* op_options = reinterpret_cast<const onnxruntime::ProviderOptions*>(options_span[i]);
+    options_map[names_span[i]] = *op_options;
   }
 
   auto provider_factory = onnxruntime::OpWrapperProviderFactoryCreator::Create(options_map);
@@ -66,9 +70,11 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_Update, _Inout_ OrtOpWrapp
                     _In_ size_t num_options) {
   API_IMPL_BEGIN
   auto& options = *reinterpret_cast<onnxruntime::ProviderOptions*>(provider_options);
+  auto keys_span = gsl::make_span(options_keys, num_options);
+  auto vals_span = gsl::make_span(options_values, num_options);
 
   for (size_t i = 0; i < num_options; ++i) {
-    options[options_keys[i]] = options_values[i];
+    options[keys_span[i]] = vals_span[i];
   }
 
   return nullptr;
@@ -81,14 +87,14 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_HasOption,
   API_IMPL_BEGIN
   const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
   auto it = options->find(key);
-  *out = it != options->end();
+  *out = static_cast<int>(it != options->end());
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_GetOption,
                     _In_ const OrtOpWrapperProviderOptions* provider_options,
-                    _In_ const char* key, _Out_ const char** value, _Out_opt_ size_t* length) {
+                    _In_ const char* key, _Outptr_result_z_ const char** value, _Out_opt_ size_t* length) {
   API_IMPL_BEGIN
   const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
   auto it = options->find(key);
@@ -109,13 +115,19 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_GetOption,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_Serialize,
-                    _In_ const OrtOpWrapperProviderOptions* provider_options,
-                    _In_ OrtAllocator* allocator, _Outptr_ const char*** keys, _Outptr_ size_t** key_lengths,
-                    _Outptr_ const char*** values, _Outptr_ size_t** value_lengths, _Out_ size_t* num_options) {
+template <typename T>
+static gsl::span<T> AllocateArrayAndMakeSpan(T** data_ptr, size_t num_elems, OrtAllocator* allocator) {
+  *data_ptr = reinterpret_cast<T*>(allocator->Alloc(allocator, num_elems * sizeof(T)));
+  return gsl::make_span(*data_ptr, num_elems);
+}
+
+ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_Serialize, _In_ const OrtOpWrapperProviderOptions* provider_options,
+                    _In_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*num_options) const char*** keys,
+                    _Outptr_result_buffer_maybenull_(*num_options) size_t** key_lengths,
+                    _Outptr_result_buffer_maybenull_(*num_options) const char*** values,
+                    _Outptr_result_buffer_maybenull_(*num_options) size_t** value_lengths, _Out_ size_t* num_options) {
   API_IMPL_BEGIN
   const auto* options = reinterpret_cast<const onnxruntime::ProviderOptions*>(provider_options);
-
   *num_options = options->size();
 
   if (*num_options == 0) {
@@ -126,13 +138,10 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_Serialize,
     return nullptr;
   }
 
-  const size_t strs_array_size = *num_options * sizeof(const char*);
-  const size_t lens_array_size = *num_options * sizeof(size_t);
-
-  *keys = reinterpret_cast<const char**>(allocator->Alloc(allocator, strs_array_size));
-  *values = reinterpret_cast<const char**>(allocator->Alloc(allocator, strs_array_size));
-  *key_lengths = reinterpret_cast<size_t*>(allocator->Alloc(allocator, lens_array_size));
-  *value_lengths = reinterpret_cast<size_t*>(allocator->Alloc(allocator, lens_array_size));
+  auto keys_span = AllocateArrayAndMakeSpan(keys, *num_options, allocator);
+  auto key_lens_span = AllocateArrayAndMakeSpan(key_lengths, *num_options, allocator);
+  auto vals_span = AllocateArrayAndMakeSpan(values, *num_options, allocator);
+  auto val_lens_span = AllocateArrayAndMakeSpan(value_lengths, *num_options, allocator);
 
   size_t index = 0;
 
@@ -140,11 +149,11 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_Serialize,
     const std::string& key = it.first;
     const std::string& val = it.second;
 
-    (*keys)[index] = key.c_str();
-    (*key_lengths)[index] = key.length();
+    keys_span[index] = key.c_str();
+    key_lens_span[index] = key.length();
 
-    (*values)[index] = val.c_str();
-    (*value_lengths)[index] = val.length();
+    vals_span[index] = val.c_str();
+    val_lens_span[index] = val.length();
 
     ++index;
   }
@@ -155,7 +164,7 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::ProviderOptions_Serialize,
 
 ORT_API(void, OrtOpWrapperApis::ReleaseOpWrapperProviderOptions,
         _Frees_ptr_opt_ OrtOpWrapperProviderOptions* provider_options) {
-  if (provider_options) {
+  if (provider_options != nullptr) {
     delete reinterpret_cast<onnxruntime::ProviderOptions*>(provider_options);
   }
 }
@@ -167,7 +176,7 @@ ORT_API_STATUS_IMPL(OrtOpWrapperApis::KernelInfo_GetProviderOptions, _In_ const 
   const auto* ep = op_info->GetExecutionProvider();
   const std::string& ep_type = ep->Type();
 
-  if (ep_type.compare(onnxruntime::kOpWrapperExecutionProvider) != 0) {
+  if (ep_type != onnxruntime::kOpWrapperExecutionProvider) {
     std::ostringstream err_msg;
     err_msg << "Expected provider of type '" << onnxruntime::kOpWrapperExecutionProvider
             << "' but got type '" << ep_type << "'.";
@@ -197,6 +206,8 @@ ORT_API(const OrtOpWrapperApi*, GetOrtOpWrapperApi, uint32_t version) {
   if (version >= 13 && version <= ORT_API_VERSION) {
     return &ort_opwrapper_api_13_to_x;
   }
+#else
+  ONNX_UNUSED_PARAMETER(version);
 #endif
   return nullptr;
 }

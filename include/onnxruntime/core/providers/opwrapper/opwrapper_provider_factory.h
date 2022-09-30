@@ -95,7 +95,7 @@ struct OrtOpWrapperApi {
   * \since Version 1.13
   */
   ORT_API2_STATUS(ProviderOptions_GetOption, _In_ const OrtOpWrapperProviderOptions* provider_options,
-                  _In_ const char* key, _Out_ const char** value, _Out_opt_ size_t* length);
+                  _In_ const char* key, _Outptr_result_z_ const char** value, _Out_opt_ size_t* length);
 
   /** \brief Returns serialized provider options keys and values.
   *
@@ -121,8 +121,10 @@ struct OrtOpWrapperApi {
   * \since Version 1.13
   */
   ORT_API2_STATUS(ProviderOptions_Serialize, _In_ const OrtOpWrapperProviderOptions* provider_options,
-                  _In_ OrtAllocator* allocator, _Outptr_ const char*** keys, _Outptr_ size_t** key_lengths,
-                  _Outptr_ const char*** values, _Outptr_ size_t** value_lengths, _Out_ size_t* num_options);
+                  _In_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*num_options) const char*** keys,
+                  _Outptr_result_buffer_maybenull_(*num_options) size_t** key_lengths,
+                  _Outptr_result_buffer_maybenull_(*num_options) const char*** values,
+                  _Outptr_result_buffer_maybenull_(*num_options) size_t** value_lengths, _Out_ size_t* num_options);
 
   /* \brief: Release provider options
   *
