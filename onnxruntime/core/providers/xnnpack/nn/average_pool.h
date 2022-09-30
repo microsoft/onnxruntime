@@ -23,7 +23,7 @@ class AveragePool : public XnnpackKernel {
   explicit AveragePool(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
-  static bool IsAveragePoolOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
+  static bool IsOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
 
  private:
   const PoolAttributes pool_attrs_;

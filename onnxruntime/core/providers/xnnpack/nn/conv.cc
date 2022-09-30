@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "conv.h"
+
 #include "core/common/inlined_containers_fwd.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
@@ -10,24 +11,29 @@
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/xnnpack/xnnpack_kernel.h"
 #include "gsl/gsl-lite.hpp"
 
 namespace onnxruntime {
 namespace xnnpack {
 
 namespace {
-Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
+Status CreateXnnpackKernel(const ConvAttributes* conv_attrs_ptr,
                            int64_t C, int64_t M,
                            const TensorShapeVector& kernel_shape,
                            const std::optional<std::pair<float, float>>& clip_min_max,
                            const Tensor& Weight, const Tensor* Bias,
-                           struct xnn_operator*& p,
+                           XnnpackOperator& op_uptr,
                            xnn_caches_t caches_t,
                            const OpQuantParam& quant_param,
-                           OpComputeType conv_type) {
+                           OpComputeType conv_type,
+                           bool is_tranpose = false) {
+  struct xnn_operator* p = nullptr;
+
   uint32_t kernel_height = gsl::narrow<uint32_t>(kernel_shape[0]);
   uint32_t kernel_width = gsl::narrow<uint32_t>(kernel_shape[1]);
 
+  auto& conv_attrs = *conv_attrs_ptr;
   uint32_t input_padding_top = gsl::narrow<uint32_t>(conv_attrs.pads[0]);
   uint32_t input_padding_left = gsl::narrow<uint32_t>(conv_attrs.pads[1]);
   uint32_t input_padding_bottom = gsl::narrow<uint32_t>(conv_attrs.pads[2]);
@@ -58,7 +64,9 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
   size_t group_output_channels = gsl::narrow<size_t>(M / group_count);  // either M or M/C
   if (conv_type == OpComputeType::op_compute_type_fp32) {
     auto* B_data = Bias ? Bias->Data<float>() : nullptr;
-    status = xnn_create_convolution2d_nhwc_f32(
+    auto create_func = is_tranpose ? xnn_create_deconvolution2d_nhwc_f32
+                                   : xnn_create_convolution2d_nhwc_f32;
+    status = create_func(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
         subsampling_height, subsampling_width,
@@ -76,7 +84,9 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
     const int8_t output_min = xnn_u8s8_quantize<int8_t>(foutput_min, output_scale, output_zero_point);
     const int8_t output_max = xnn_u8s8_quantize<int8_t>(foutput_max, output_scale, output_zero_point);
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
-    status = xnn_create_convolution2d_nhwc_qs8(
+    auto create_func = is_tranpose ? xnn_create_deconvolution2d_nhwc_qs8
+                                   : xnn_create_convolution2d_nhwc_qs8;
+    status = create_func(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
         subsampling_height, subsampling_width,
@@ -122,8 +132,9 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
     const uint8_t output_zero_point = quant_param[2].second;
     const uint8_t output_min = xnn_u8s8_quantize<uint8_t>(foutput_min, output_scale, output_zero_point);
     const uint8_t output_max = xnn_u8s8_quantize<uint8_t>(foutput_max, output_scale, output_zero_point);
-
-    status = xnn_create_convolution2d_nhwc_qu8(
+    auto create_func = is_tranpose ? xnn_create_deconvolution2d_nhwc_qu8
+                                   : xnn_create_convolution2d_nhwc_qu8;
+    status = create_func(
         input_padding_top, input_padding_right, input_padding_bottom, input_padding_left,
         kernel_height, kernel_width,
         subsampling_height, subsampling_width,
@@ -146,7 +157,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
                            "Failed to create xnnpack kernel. xnn_create_convolution2d_nhwc_",
                            OpTypeToString(conv_type), " returned ", status);
   }
-
+  op_uptr.reset(p);
   return Status::OK();
 }
 
@@ -272,7 +283,7 @@ bool IsQuantizedConv(QuantizedOpType quant_op_type) {
 // helper to check whether an ONNX Conv node is supported by the NHWC version
 // if this returns true, the layout transformer will be run by GraphPartitioner to convert the first input/output to
 // NHWC format, and move the node to the internal NHWC domain.
-bool Conv::IsConvOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
+bool XnnConvBase::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
   bool supported = false;
   auto qtype = GetQuantizedOpType(node_unit);
   if (IsQuantizedConv(qtype) && IsValidQuantConv(node_unit, graph) == false) {
@@ -352,9 +363,9 @@ bool Conv::IsConvOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
   return supported;
 }
 
-Conv::Conv(const OpKernelInfo& info) : XnnpackKernel(info), conv_attrs_{info} {
+XnnConvBase::XnnConvBase(const OpKernelInfo& info) : XnnpackKernel(info), conv_transpose_attrs_(info) {
   // get values from any fusion with an activation
-  if (info.GetAttr<std::string>("activation", &conv_attrs_.activation).IsOK()) {
+  if (info.GetAttr<std::string>("activation", &conv_transpose_attrs_.activation).IsOK()) {
     std::vector<float> activation_params;
 
     // min/max could be from Clip or Relu
@@ -375,10 +386,11 @@ Conv::Conv(const OpKernelInfo& info) : XnnpackKernel(info), conv_attrs_{info} {
   xnn_caches_.weights_cache = &weights_cache_;
 #endif
   const auto& node{Node()};
-
+  is_transpose_ = node.Name() == "ConvTranspose";
   const auto& input_defs = node.InputDefs();
   const NodeArg& X = *input_defs[0];
-  C_ = X.Shape()->dim(3).dim_value();  // input is NHWC. op support checker made sure C dim was known
+  auto X_shape = utils::GetTensorShapeFromTensorShapeProto(*X.Shape());
+  C_ = X_shape[3];  // input is NHWC. op support checker made sure C dim was known
 
   // as the weight input is a constant initializer we can calculate all the sizes here instead of in Compute
   const Tensor* W = nullptr;
@@ -398,21 +410,25 @@ Conv::Conv(const OpKernelInfo& info) : XnnpackKernel(info), conv_attrs_{info} {
               "Weight input was not constant initializer. XNNPACK EP should not have asked for the node. Node name:",
               node.Name());
   // 'M' is first dim of weight. Prepacking will alter the layout of W later
-  M_ = W->Shape()[0];
+  M_ = is_transpose_ ? W->Shape()[1] * conv_transpose_attrs_.group : W->Shape()[0];
 
   // this happens before PrePack, so the W input is still in the ONNX spec format
-  ORT_THROW_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape_));
+  ORT_THROW_IF_ERROR(conv_transpose_attrs_.ComputeKernelShape(W->Shape(), kernel_shape_));
 
-  if (conv_attrs_.pads.empty()) {
-    conv_attrs_.pads.resize(kernel_shape_.size() * 2, 0);
+  if (conv_transpose_attrs_.pads.empty()) {
+    conv_transpose_attrs_.pads.resize(kernel_shape_.size() * 2, 0);
   }
 
-  if (conv_attrs_.dilations.empty()) {
-    conv_attrs_.dilations.resize(kernel_shape_.size(), 1);
+  if (conv_transpose_attrs_.dilations.empty()) {
+    conv_transpose_attrs_.dilations.resize(kernel_shape_.size(), 1);
   }
 
-  if (conv_attrs_.strides.empty()) {
-    conv_attrs_.strides.resize(kernel_shape_.size(), 1);
+  if (conv_transpose_attrs_.strides.empty()) {
+    conv_transpose_attrs_.strides.resize(kernel_shape_.size(), 1);
+  }
+
+  if (is_transpose_ && conv_transpose_attrs_.output_padding.empty()) {
+    conv_transpose_attrs_.output_padding.resize(kernel_shape_.size(), 0);
   }
 
   // we only take nodes with no bias, or a constant bias.
@@ -427,7 +443,15 @@ Conv::Conv(const OpKernelInfo& info) : XnnpackKernel(info), conv_attrs_{info} {
                 "Invalid Node with non-constant Bias input. XNNPACK EP should not have asked for the node. Node name:",
                 node.Name());
   }
+  if (is_transpose_) {
+    TensorShape input_shape{X_shape[1], X_shape[2]};
 
+    TensorShapeVector Y_dims;  // we don't care it for now
+    conv_transpose_attrs_.ComputePadsAndOutputShape(
+        input_shape, M_, kernel_shape_,
+        conv_transpose_attrs_.strides, conv_transpose_attrs_.dilations,
+        conv_transpose_attrs_.output_padding, 1, &conv_transpose_attrs_.pads, &Y_dims);
+  }
   // have to delay creating the xnnpack kernel until after the weights are pre-packed.
 }
 
@@ -455,9 +479,8 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     is_packed = true;
 
     // we can create the kernel now
-    struct xnn_operator* p = nullptr;
-    auto ret = CreateXnnpackKernel(conv_attrs_, C_, M_, kernel_shape_, clip_min_max_, packed_w_,
-                                   B_, p,
+    auto ret = CreateXnnpackKernel(&conv_attrs_, C_, M_, kernel_shape_, clip_min_max_, packed_w_,
+                                   B_, op0_,
 #ifdef XNN_CACHE_ENABLE
                                    &xnn_caches_,
 #else
@@ -465,7 +488,6 @@ Status Conv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 #endif
                                    quant_param_, conv_type_);
     ORT_RETURN_IF_ERROR(ret);
-    op0_.reset(p);
   }
 
   return Status::OK();
@@ -528,6 +550,144 @@ Status Conv::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
+
+// use PrePack to handle the weight layout change as that's not a simple NCHW -> NHWC transpose
+Status ConvTranspose::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                              /*out*/ bool& is_packed,
+                              /*out*/ PrePackedWeights* /*prepacked_weights*/) {
+  is_packed = false;
+  // only layout of weight input is adjusted via PrePack
+  if ((conv_type_ == OpComputeType::op_compute_type_fp32 && input_idx == 1) ||
+      (conv_type_ != OpComputeType::op_compute_type_fp32 && input_idx == 3)) {  // InputTensors::IN_W
+    if (conv_transpose_attrs_.group > 1) {
+      // Xnnpack [G, Oc, H, W Ic/G]
+      // (ref: https://github.com/google/XNNPACK/blob/ecd8311c8fd3d9ab47edbc3df5f2b5de7dabe75f/test/deconvolution-operator-tester.h#L678)
+      TensorShape orig_shape =
+          {conv_transpose_attrs_.group,
+           tensor.Shape()[0] / conv_transpose_attrs_.group,
+           tensor.Shape()[1],
+           tensor.Shape()[2],
+           tensor.Shape()[3]};
+
+      InlinedVector<size_t> perm{0, 2, 3, 4, 1};
+      TensorShapeVector new_dims{
+          orig_shape[0],
+          orig_shape[2],
+          orig_shape[3],
+          orig_shape[4],
+          orig_shape[1]};
+
+      packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+      // g I/g O H W --> g O H W I/g
+      SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 1, /*to*/ 4, &orig_shape);
+    } else {
+      // Transpose from {M, C/group, kH, kW} to {M, kH, kW, C/group}
+
+      auto orig_shape = tensor.Shape();
+      InlinedVector<size_t> perm{1, 2, 3, 0};
+      TensorShapeVector new_dims{orig_shape[1],
+                                 orig_shape[2],
+                                 orig_shape[3],
+                                 orig_shape[0]};
+
+      packed_w_ = Tensor(tensor.DataType(), TensorShape(new_dims), std::move(alloc));
+      // I O H W --> O H W I
+      SingleAxisTranspose(perm, tensor, packed_w_, /*from*/ 0, /*to*/ 3);
+    }
+    is_packed = true;
+
+    // we can create the kernel now
+    auto ret = CreateXnnpackKernel(static_cast<ConvAttributes*>(&conv_transpose_attrs_), C_, M_, kernel_shape_, clip_min_max_, packed_w_,
+                                   B_, op0_,
+#ifdef XNN_CACHE_ENABLE
+                                   &xnn_caches_,
+#else
+                                   0,
+#endif
+                                   quant_param_, conv_type_, true);
+    ORT_RETURN_IF_ERROR(ret);
+  }
+
+  return Status::OK();
+}
+
+Status ConvTranspose::Compute(OpKernelContext* context) const {
+  const Tensor& X = *context->Input<Tensor>(0);  // this is in NHWC format
+  const auto& X_shape = X.Shape();
+  const int64_t N = X_shape[0];  // input is NHWC
+  const int64_t H = X_shape[1];
+  const int64_t W = X_shape[2];
+
+  TensorShapeVector Y_dims;
+  TensorShape input_shape = {H, W};
+
+  ConvAttributes::ConvPadVector pads(conv_transpose_attrs_.pads);
+  conv_transpose_attrs_.ComputePadsAndOutputShape(
+      input_shape, M_, kernel_shape_,
+      conv_transpose_attrs_.strides,
+      conv_transpose_attrs_.dilations, conv_transpose_attrs_.output_padding,
+      N, &pads, &Y_dims);
+
+  // convert to nhwc
+  Y_dims[1] = Y_dims[2];
+  Y_dims[2] = Y_dims[3];
+  Y_dims[3] = M_;
+  Tensor* Y = context->Output(0, TensorShape(Y_dims));
+
+  // Bail out early if one of the dimensions is zero.
+  if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+  pthreadpool_t t_pool = GetThreadPool();
+
+  xnn_status status = xnn_status_invalid_state;
+  if (conv_type_ == OpComputeType::op_compute_type_fp32) {
+    status = xnn_setup_deconvolution2d_nhwc_f32(
+        op0_.get(), N, H, W,
+        conv_transpose_attrs_.output_padding[0],
+        conv_transpose_attrs_.output_padding[1], X.Data<float>(), Y->MutableData<float>(),
+        t_pool /*threadpool*/);
+  } else if (conv_type_ == OpComputeType::op_compute_type_qs8) {
+    status = xnn_setup_deconvolution2d_nhwc_qs8(
+        op0_.get(), N, H, W,
+        conv_transpose_attrs_.output_padding[0],
+        conv_transpose_attrs_.output_padding[1], X.Data<int8_t>(), Y->MutableData<int8_t>(),
+        t_pool /*threadpool*/);
+  } else if (conv_type_ == OpComputeType::op_compute_type_qu8) {
+    status = xnn_setup_deconvolution2d_nhwc_qu8(
+        op0_.get(), N, H, W,
+        conv_transpose_attrs_.output_padding[0],
+        conv_transpose_attrs_.output_padding[1], X.Data<uint8_t>(), Y->MutableData<uint8_t>(),
+        t_pool /*threadpool*/);
+  }
+
+  if (status != xnn_status_success) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_deconvolution2d_nhwc_",
+                           OpTypeToString(conv_type_), " returned ", status);
+  }
+
+  status = xnn_run_operator(op0_.get(), t_pool);
+  if (status != xnn_status_success) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
+  }
+
+  return Status::OK();
+}
+
+ONNX_OPERATOR_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
+                        KernelDefBuilder().TypeConstraint(
+                            "T",
+                            {DataTypeImpl::GetTensorType<float>(),
+                             DataTypeImpl::GetTensorType<uint8_t>(),
+                             DataTypeImpl::GetTensorType<int8_t>()}),
+                        ConvTranspose);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
+                                  KernelDefBuilder().TypeConstraint(
+                                      "T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<uint8_t>(),
+                                            DataTypeImpl::GetTensorType<int8_t>()}),
+                                  ConvTranspose);
 
 ONNX_OPERATOR_KERNEL_EX(Conv, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),

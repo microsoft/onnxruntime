@@ -31,8 +31,8 @@ bool IsValidQuantMaxPool(const NodeUnit& node_unit, const GraphViewer& graph) {
 }  // namespace
 
 // MaxPool doesn't have any quantization params
-bool MaxPool::IsMaxPoolOnnxNodeSupported(const NodeUnit& node_unit,
-                                         const GraphViewer& graph) {
+bool MaxPool::IsOnnxNodeSupported(const NodeUnit& node_unit,
+                                  const GraphViewer& graph) {
   bool supported = false;
   auto qtype = GetQuantizedOpType(node_unit);
   if (IsQuantizedMaxPool(qtype) && IsValidQuantMaxPool(node_unit, graph) == false) {

@@ -16,7 +16,6 @@
 
 // each operator provides a helper to check if supported
 #include "core/providers/xnnpack/nn/conv.h"
-#include "core/providers/xnnpack/nn/conv_transpose.h"
 #include "core/providers/xnnpack/nn/max_pool.h"
 #include "core/providers/xnnpack/nn/average_pool.h"
 #include "core/providers/xnnpack/nn/softmax.h"
@@ -86,14 +85,17 @@ const NodeUnit* ClipReluChecker(const NodeUnit& node_unit,
 
 }  // namespace
 
+#define NewChecker(Op) \
+  { "" #Op "", Op::IsOnnxNodeSupported }
+
 bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
   static std::unordered_map<std::string, CheckerFn> checkers{
-      {"Conv", Conv::IsConvOnnxNodeSupported},
-      {"ConvTranspose", ConvTranspose::IsOnnxNodeSupported},
-      {"QLinearConv", Conv::IsConvOnnxNodeSupported},
-      {"MaxPool", MaxPool::IsMaxPoolOnnxNodeSupported},
-      {"AveragePool", AveragePool::IsAveragePoolOnnxNodeSupported},
-      {"Softmax", Softmax::IsSoftmaxOnnxNodeSupported},
+      NewChecker(Conv),
+      NewChecker(ConvTranspose),
+      NewChecker(MaxPool),
+      NewChecker(AveragePool),
+      NewChecker(Softmax),
+      {"QLinearConv", Conv::IsOnnxNodeSupported},
   };
 
   bool supported = false;
