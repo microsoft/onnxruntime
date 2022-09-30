@@ -725,7 +725,7 @@ Status UpdateDecoderFeeds(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper) {
@@ -743,13 +743,12 @@ Status UpdateDecoderFeeds(
 
   // TODO(tianleiwu): Reuse buffer for input_ids to reduce memory allocation.
   OrtValue input_ids;
-  int sequence_length = has_hidden_state ? 1 : current_length;
+  int sequence_length = !use_sequence_as_input_ids ? 1 : current_length;
   int64_t dims[] = {batch_beam_size, sequence_length};
   TensorShape input_ids_shape(&dims[0], 2);
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
 
-  // TODO(wy): decouple has_hidden_state with full input_ids
-  if (has_hidden_state) {
+  if (!use_sequence_as_input_ids) {
     gsl::copy(beam_next_tokens, input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>());
   } else {
     int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
@@ -865,7 +864,7 @@ template Status UpdateDecoderFeeds<float>(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
