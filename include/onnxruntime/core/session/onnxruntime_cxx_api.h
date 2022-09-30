@@ -241,16 +241,9 @@ struct Base {
  */
 template <typename T>
 struct Unowned : T {
-  using Type = typename T::contained_type;
-  Unowned(Type* p) : T{p} {}
-  Unowned(const Type* p) : T{const_cast<Type*>(p)} {}
-  Unowned(Unowned&& v) : T{v.p_} { v.p_ = nullptr; }
-  Unowned& operator=(Unowned&&) = delete;
+  Unowned(typename T::contained_type* p) : T{p} {}
+  Unowned(Unowned&& v) : T{v.p_} {}
   ~Unowned() { this->release(); }
-  template <typename R = T>
-  std::enable_if_t<std::is_const<R>::value, R>& operator*() const { return *this; }
-  template <typename R = T>
-  std::enable_if_t<!std::is_const<R>::value, R>& operator*() { return *this; }
 };
 
 struct AllocatorWithDefaultOptions;
@@ -1062,7 +1055,7 @@ struct ArenaCfg : Base<OrtArenaCfg> {
 //
 
 /// <summary>
-/// This struct wraps a raw pointer OrtNodeArg* that is obtained from
+/// This struct wraps a raw pointer const OrtNodeArg* that is obtained from
 /// a KernelInfo object. Use it to access the name or type info of an input
 /// or output.
 /// </summary>
@@ -1076,7 +1069,7 @@ struct NodeArg {
   std::pair<AllocatedStringPtr, size_t> GetName(OrtAllocator* allocator) const;
 
   // Returns the node's type and shape information.
-  TypeInfo GetTypeInfo() const;
+  [[nodiscard]] TypeInfo GetTypeInfo() const;
  private:
   const OrtNodeArg* p_;
 };
@@ -1090,7 +1083,7 @@ struct NodeArg {
 struct KernelInfo : Base<OrtKernelInfo> {
   explicit KernelInfo(std::nullptr_t) {}     ///< Create an empty instance to initialize later
   explicit KernelInfo(OrtKernelInfo* info);  ///< Take ownership of the instance
-  KernelInfo Copy() const;
+  [[nodiscard]] KernelInfo Copy() const;
 
   template <typename T>  // T is only implemented for float, int64_t, and string
   T GetAttribute(const char* name) const;
@@ -1098,11 +1091,11 @@ struct KernelInfo : Base<OrtKernelInfo> {
   template <typename T>  // T is only implemented for std::vector<float>, std::vector<int64_t>
   std::vector<T> GetAttributes(const char* name) const;
 
-  size_t GetInputCount() const;
-  size_t GetOutputCount() const;
+  [[nodiscard]] size_t GetInputCount() const;
+  [[nodiscard]] size_t GetOutputCount() const;
 
-  Ort::NodeArg GetInput(size_t index) const;
-  Ort::NodeArg GetOutput(size_t index) const;
+  [[nodiscard]] Ort::NodeArg GetInput(size_t index) const;
+  [[nodiscard]] Ort::NodeArg GetOutput(size_t index) const;
 };
 
 struct CustomOpApi {

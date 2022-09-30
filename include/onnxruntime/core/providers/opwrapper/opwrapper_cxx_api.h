@@ -5,6 +5,7 @@
 
 #include <string>
 #include <vector>
+#include <array>
 #include <unordered_map>
 #include "opwrapper_provider_factory.h"
 #include "onnxruntime_cxx_api.h"
@@ -85,12 +86,12 @@ struct ProviderOptions : Ort::Base<OrtOpWrapperProviderOptions> {
   explicit ProviderOptions(const std::unordered_map<std::string, std::string>& options);
   explicit ProviderOptions(OrtOpWrapperProviderOptions* options);
 
-  bool HasOption(const char* key) const;
-  std::string_view GetOption(const char* key) const;
+  [[nodiscard]] bool HasOption(const char* key) const;
+  [[nodiscard]] std::string_view GetOption(const char* key) const;
   void UpdateOptions(const std::unordered_map<std::string, std::string>& options);
-  std::unordered_map<std::string_view, std::string_view> ToMap(OrtAllocator* allocator) const;
+  [[nodiscard]] std::unordered_map<std::string_view, std::string_view> ToMap(OrtAllocator* allocator) const;
 
-  static ProviderOptions FromKernelInfo(Unowned<const KernelInfo>& kernel_info, const char* op_name);
+  static ProviderOptions FromKernelInfo(const OrtKernelInfo* kernel_info, const char* op_name);
 };
 
 Ort::SessionOptions& AppendExecutionProvider(Ort::SessionOptions& session_options,
@@ -164,11 +165,15 @@ inline std::unordered_map<std::string_view, std::string_view> ProviderOptions::T
   ThrowOnError(GetApi().ProviderOptions_Serialize(p_, allocator, &keys, &key_lens, &vals, &val_lens, &num_options));
 
   if (num_options != 0) {
+
+    // TODO: Use std::span<> when C++20 is supported by ORT. For now, disable warning when indexing C-style arrays.
+    // NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic)
     for (size_t i = 0; i < num_options; ++i) {
       std::string_view key(keys[i], key_lens[i]);
       std::string_view val(vals[i], val_lens[i]);
       map.emplace(key, val);
     }
+    // NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 
     allocator->Free(allocator, keys);
     allocator->Free(allocator, vals);
@@ -179,8 +184,7 @@ inline std::unordered_map<std::string_view, std::string_view> ProviderOptions::T
   return map;
 }
 
-inline ProviderOptions ProviderOptions::FromKernelInfo(Unowned<const KernelInfo>& kernel_info,
-                                                       const char* op_name) {
+inline ProviderOptions ProviderOptions::FromKernelInfo(const OrtKernelInfo* kernel_info, const char* op_name) {
   OrtOpWrapperProviderOptions* options = nullptr;
   Ort::ThrowOnError(GetApi().KernelInfo_GetProviderOptions(kernel_info, op_name, &options));
   return ProviderOptions(options);
@@ -210,10 +214,10 @@ inline Ort::SessionOptions& AppendExecutionProvider(Ort::SessionOptions& session
                                                     const char* op_name,
                                                     const ProviderOptions& op_options) {
   constexpr size_t num_ops = 1;
-  const OrtOpWrapperProviderOptions* ops_options[num_ops] = {op_options};
+  std::array<const OrtOpWrapperProviderOptions*, num_ops> ops_options{op_options};
 
-  Ort::ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider(session_options, &op_name,
-                                                                   ops_options, num_ops));
+  Ort::ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider(session_options, &op_name, ops_options.data(),
+                                                                   num_ops));
   return session_options;
 }
 }  // namespace OpWrapper

@@ -1109,7 +1109,7 @@ inline std::pair<AllocatedStringPtr, size_t> Ort::NodeArg::GetName(OrtAllocator*
 }
 
 inline TypeInfo Ort::NodeArg::GetTypeInfo() const {
-  OrtTypeInfo* out;
+  OrtTypeInfo* out = nullptr;
   ThrowOnError(GetApi().NodeArg_GetTypeInfo(p_, &out));
   return TypeInfo(out);
 }
@@ -1117,21 +1117,21 @@ inline TypeInfo Ort::NodeArg::GetTypeInfo() const {
 inline KernelInfo::KernelInfo(OrtKernelInfo* info) : Base<OrtKernelInfo>{info} {}
 
 inline KernelInfo KernelInfo::Copy() const {
-  OrtKernelInfo* info_copy;
+  OrtKernelInfo* info_copy = nullptr;
   Ort::ThrowOnError(GetApi().CopyKernelInfo(p_, &info_copy));
   return KernelInfo{info_copy};
 }
 
 template <>
 inline float KernelInfo::GetAttribute<float>(const char* name) const {
-  float out;
+  float out = 0.0f;
   Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_float(p_, name, &out));
   return out;
 }
 
 template <>
 inline int64_t KernelInfo::GetAttribute<int64_t>(const char* name) const {
-  int64_t out;
+  int64_t out = 0;
   Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_int64(p_, name, &out));
   return out;
 }
@@ -1175,13 +1175,13 @@ inline std::vector<int64_t> KernelInfo::GetAttributes(const char* name) const {
 }
 
 inline size_t KernelInfo::GetInputCount() const {
-  size_t out;
+  size_t out = 0;
   ThrowOnError(GetApi().KernelInfo_GetInputCount(p_, &out));
   return out;
 }
 
 inline size_t KernelInfo::GetOutputCount() const {
-  size_t out;
+  size_t out = 0;
   ThrowOnError(GetApi().KernelInfo_GetOutputCount(p_, &out));
   return out;
 }
