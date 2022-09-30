@@ -11,7 +11,6 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_typeinfo.h"
-#include "core/framework/utils.h"
 #include "core/common/string_helper.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
