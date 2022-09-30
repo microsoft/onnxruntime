@@ -1007,7 +1007,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bfp_type</tt> : int (required)</dt>
 <dd>The type of BFP - must match with the BFPType enum</dd>
 <dt><tt>block_dim</tt> : int</dt>
-<dd>Each bounding box spans this dimension.Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that consumes the output of this operator.For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 0 and QuantizeBFP(W) would use block_dim 1.The default is the last dimension.</dd>
+<dd>Each bounding box spans this dimension.Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that consumes the output of this operator.For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 1 and QuantizeBFP(W) would use block_dim 0.The default is the last dimension.</dd>
 <dt><tt>dtype</tt> : int</dt>
 <dd>The datatype to dequantize to.</dd>
 </dl>
@@ -3328,7 +3328,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bfp_type</tt> : int (required)</dt>
 <dd>The type of BFP - must match with the BFPType enum</dd>
 <dt><tt>block_dim</tt> : int</dt>
-<dd>Each bounding box spans this dimension.Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that consumes the output of this operator.For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 0 and QuantizeBFP(W) would use block_dim 1.The default is the last dimension.</dd>
+<dd>Each bounding box spans this dimension.Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that consumes the output of this operator.For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 1 and QuantizeBFP(W) would use block_dim 0.The default is the last dimension.</dd>
 </dl>
 
 #### Inputs

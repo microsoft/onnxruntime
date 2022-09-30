@@ -222,8 +222,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Each bounding box spans this dimension."
               "Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that "
               "consumes the output of this operator."
-              "For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 0 and "
-              "QuantizeBFP(W) would use block_dim 1."
+              "For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 1 and "
+              "QuantizeBFP(W) would use block_dim 0."
               "The default is the last dimension.",
               AttributeProto::INT, static_cast<int64_t>(-1))
         .Input(0, "x", "N-D full precision input tensor to be quantized.", "T1")
@@ -268,8 +268,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Each bounding box spans this dimension."
               "Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that "
               "consumes the output of this operator."
-              "For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 0 and "
-              "QuantizeBFP(W) would use block_dim 1."
+              "For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 1 and "
+              "QuantizeBFP(W) would use block_dim 0."
               "The default is the last dimension.",
               AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("dtype", "The datatype to dequantize to.", AttributeProto::INT,
