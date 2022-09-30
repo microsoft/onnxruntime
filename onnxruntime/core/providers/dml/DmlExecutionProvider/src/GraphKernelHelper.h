@@ -57,17 +57,5 @@ namespace GraphKernelHelper
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
         _Inout_opt_ std::vector<std::vector<std::byte>>* inputRawData,
         _Inout_ std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap);
-
-    void ConvertGraphDesc(
-        const Dml::GraphDescBuilder::GraphDesc& graphDesc,
-        _Out_ DML_GRAPH_DESC& dmlGraphDesc,
-        const uint32_t inputCount,
-        const uint32_t outputCount,
-        _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
-        _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
-        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
-        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
-        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
-  
 }  // namespace GraphKernelHelper
 }  // namespace Dml

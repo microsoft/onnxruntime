@@ -2888,6 +2888,34 @@ Status Graph::ReplaceInitializedTensor(ONNX_NAMESPACE::TensorProto new_initializ
   return ReplaceInitializedTensorImpl(std::move(new_initializer), false);
 }
 
+Status Graph::PopInitializedTensor(const std::string& initializer_name, ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
+  // look up the const pointer by name, then find and modify the mutable
+  // pointed-to TensorProto in graph_proto_.
+  const auto name_to_initializer_it = name_to_initial_tensor_.find(initializer_name);
+  ORT_RETURN_IF_NOT(name_to_initializer_it != name_to_initial_tensor_.end(),
+                    "Failed to find existing initializer with name ", initializer_name, ".");
+
+  const ONNX_NAMESPACE::TensorProto& old_initializer = *(name_to_initializer_it->second);
+
+  ORT_RETURN_IF(utils::HasExternalData(old_initializer), "Trying to pop external initializer");
+
+  auto& mutable_initializers = *(graph_proto_->mutable_initializer());
+  auto proto_entry = std::find_if(mutable_initializers.begin(), mutable_initializers.end(),
+                                  [&initializer_name](const TensorProto& entry) { return entry.name() == initializer_name; });
+
+  // these should always be in sync as the pointer in name_to_initial_tensor_ is to memory owned by graph_proto_
+  ORT_ENFORCE(proto_entry != mutable_initializers.end(),
+              "graph_proto_ is not in sync with name_to_initial_tensor_");
+
+  //proto_entry->Swap(&tensor_proto);
+  tensor_proto = std::move(*proto_entry);
+  RemoveRepeatedFieldEntry(mutable_initializers, proto_entry);
+  name_to_initial_tensor_.erase(name_to_initializer_it);
+
+  return Status::OK();
+}
+
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
 Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers) {
   for (const auto& e : external_initializers) {

@@ -258,52 +258,5 @@ namespace GraphKernelHelper
         // All initializers should have been consumed and freed above
         assert(transferredInitializerMap.empty());
     }
-
-    void ConvertGraphDesc(
-        const Dml::GraphDescBuilder::GraphDesc& graphDesc,
-        _Out_ DML_GRAPH_DESC& dmlGraphDesc,
-        const uint32_t inputCount,
-        const uint32_t outputCount,
-        _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
-        _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
-        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
-        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
-        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges)
-    {
-        const uint32_t graphInputCount = inputCount;
-
-        for (size_t i = 0; i < graphDesc.nodes.size(); ++i)
-        {
-            dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{graphDesc.nodes[i].op.Get()};
-            dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
-        }
-
-        for (size_t i = 0; i < graphDesc.inputEdges.size(); ++i)
-        {
-            dmlInputEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INPUT, &graphDesc.inputEdges[i]};
-        }
-
-        for (size_t i = 0; i < graphDesc.outputEdges.size(); ++i)
-        {
-            dmlOutputEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_OUTPUT, &graphDesc.outputEdges[i]};
-        }
-
-        for (size_t i = 0; i < graphDesc.intermediateEdges.size(); ++i)
-        {
-            dmlIntermediateEdges[i] =
-                DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INTERMEDIATE, &graphDesc.intermediateEdges[i]};
-        }
-
-        dmlGraphDesc.InputCount = graphInputCount;
-        dmlGraphDesc.OutputCount = outputCount;
-        dmlGraphDesc.NodeCount = gsl::narrow_cast<uint32_t>(dmlGraphNodes.size());
-        dmlGraphDesc.Nodes = dmlGraphNodes.data();
-        dmlGraphDesc.InputEdgeCount = gsl::narrow_cast<uint32_t>(dmlInputEdges.size());
-        dmlGraphDesc.InputEdges = dmlInputEdges.data();
-        dmlGraphDesc.OutputEdgeCount = gsl::narrow_cast<uint32_t>(dmlOutputEdges.size());
-        dmlGraphDesc.OutputEdges = dmlOutputEdges.data();
-        dmlGraphDesc.IntermediateEdgeCount = gsl::narrow_cast<uint32_t>(dmlIntermediateEdges.size());
-        dmlGraphDesc.IntermediateEdges = dmlIntermediateEdges.data();
-    }
 }  // namespace GraphKernelHelper
 }  // namespace Dml

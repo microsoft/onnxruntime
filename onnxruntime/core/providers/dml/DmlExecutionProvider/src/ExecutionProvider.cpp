@@ -659,15 +659,13 @@ namespace Dml
         const onnxruntime::GraphViewer& graph,
         const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const
     {
-        std::string partitionKernelPrefix = std::to_string(m_partitionKernelPrefixVal++) + "_";
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask(); // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
 
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>> result;
         
-        // Get the list of node indices in toplogical order, so nodes are visited before.
+        // Get the list of node indices in toplogical order, so nodes are visited before
         // downstream nodes consuming them.
         const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
-
         for (size_t nodeIndex : toplogicalOrder) 
         {
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
