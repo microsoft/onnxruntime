@@ -102,9 +102,6 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
 
 bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
 
-common::Status CopyStringToOutputArg(const std::string& str, const char* error_msg,
-                                     char* out, size_t* size);
-
 template <typename T>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;

@@ -66,12 +66,23 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* 
 };
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
-                    _Out_opt_ char* out, _Inout_ size_t* size) {
+                    _Out_ char* out, _Inout_ size_t* size) {
   API_IMPL_BEGIN
   std::string value;
   auto status = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetAttr<std::string>(name, &value);
   if (status.IsOK()) {
-    status = onnxruntime::utils::CopyStringToOutputArg(value, "Result buffer is not large enough", out, size);
+    if (out == nullptr) {  // User is querying the true size of the attribute
+      *size = value.size() + 1;
+      return nullptr;
+    } else if (*size >= value.size() + 1) {
+      std::memcpy(out, value.data(), value.size());
+      out[value.size()] = '\0';
+      *size = value.size() + 1;
+      return nullptr;
+    } else {  // User has provided a buffer that is not large enough
+      *size = value.size() + 1;
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough");
+    }
   }
   return onnxruntime::ToOrtStatus(status);
   API_IMPL_END

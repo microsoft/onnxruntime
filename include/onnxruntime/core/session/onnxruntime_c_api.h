@@ -1681,8 +1681,8 @@ struct OrtApi {
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name,
-                  _Out_opt_ char* out, _Inout_ size_t* size);
+  ORT_API2_STATUS(KernelInfoGetAttribute_string, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ char* out,
+                  _Inout_ size_t* size);
 
   /// @}
   /// \name OrtKernelContext

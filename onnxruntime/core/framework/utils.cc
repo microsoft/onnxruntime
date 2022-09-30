@@ -686,28 +686,6 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
   return status;
 }
 
-common::Status CopyStringToOutputArg(const std::string& str, const char* error_msg,
-                                     char* out, size_t* size) {
-  const size_t str_len = str.length();
-  const size_t req_size = str_len + 1;
-
-  if (out == nullptr) {  // User is querying the total output buffer size
-    *size = req_size;
-    return Status::OK();
-  }
-
-  if (*size >= req_size) {  // User provided a buffer of sufficient size
-    std::memcpy(out, str.data(), str_len);
-    out[str_len] = '\0';
-    *size = req_size;
-    return Status::OK();
-  }
-
-  // User has provided a buffer that is not large enough
-  *size = req_size;
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, error_msg);
-}
-
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onnx_enum) {
   switch (onnx_enum) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
