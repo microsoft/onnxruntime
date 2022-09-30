@@ -19,6 +19,9 @@ struct OpWrapperProviderFactory : IExecutionProviderFactory {
   explicit OpWrapperProviderFactory(ProviderOptionsMap provider_options_map)
     : provider_options_map_(std::move(provider_options_map)) {
   }
+  OpWrapperProviderFactory(const OpWrapperProviderFactory& other) = default;
+  OpWrapperProviderFactory& operator=(const OpWrapperProviderFactory& other) = default;
+  ~OpWrapperProviderFactory() = default;
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     return std::make_unique<OpWrapperExecutionProvider>(provider_options_map_);

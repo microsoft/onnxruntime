@@ -59,6 +59,7 @@ extern "C" {
 #define _Out_writes_all_(X)
 #define _Success_(X)
 #define _Outptr_result_buffer_maybenull_(X)
+#define _Outptr_result_z_
 #define ORT_ALL_ARGS_NONNULL __attribute__((nonnull))
 #else
 #include <specstrings.h>

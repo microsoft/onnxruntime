@@ -1071,7 +1071,7 @@ struct NodeArg {
   // Returns the node's type and shape information.
   [[nodiscard]] TypeInfo GetTypeInfo() const;
 
-  constexpr operator const OrtNodeArg*() const noexcept { return p_; }
+  constexpr explicit operator const OrtNodeArg*() const noexcept { return p_; }
 
  private:
   const OrtNodeArg* p_;
@@ -1096,7 +1096,7 @@ struct KernelInfo {
   [[nodiscard]] Ort::NodeArg GetInput(size_t index) const;
   [[nodiscard]] Ort::NodeArg GetOutput(size_t index) const;
 
-  constexpr operator const OrtKernelInfo*() const noexcept { return p_; }
+  constexpr explicit operator const OrtKernelInfo*() const noexcept { return p_; }
 
  private:
   const OrtKernelInfo* p_;
