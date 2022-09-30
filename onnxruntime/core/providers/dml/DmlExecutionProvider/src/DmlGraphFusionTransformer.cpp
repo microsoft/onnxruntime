@@ -53,83 +53,6 @@ namespace Dml
         return initializerPartitionMap;
     }
 
-    void CreateONNXGraphForPartition(
-        onnxruntime::Graph& partitionGraph,
-        onnxruntime::Graph& mainGraph,
-        const onnxruntime::IndexedSubGraph& indexedSubGraph)
-    {
-        auto* metaDef = indexedSubGraph.GetMetaDef();
-
-        // Add partitionGraph input and output nodeArgs
-        std::vector<const onnxruntime::NodeArg*> partitionGraphInputs(metaDef->inputs.size());
-        for (int index = 0; index < metaDef->inputs.size(); index++) 
-        {
-            auto& input = metaDef->inputs[index];
-            auto inputArg = mainGraph.GetNodeArg(input);
-            auto& partitionGraphInputNodeArg = partitionGraph.GetOrCreateNodeArg(inputArg->Name(), inputArg->TypeAsProto());
-            partitionGraphInputs[index] = &partitionGraphInputNodeArg;
-        }
-
-        std::vector<const onnxruntime::NodeArg*> partitionGraphOutputs(metaDef->outputs.size());
-        for (int index = 0; index < metaDef->outputs.size(); index++) 
-        {
-            auto& output = metaDef->outputs[index];
-            auto outputArg = mainGraph.GetNodeArg(output);
-            auto& partitionGraphOutputNodeArg = partitionGraph.GetOrCreateNodeArg(outputArg->Name(), outputArg->TypeAsProto());
-            partitionGraphOutputs[index]= &partitionGraphOutputNodeArg;
-        }
-
-        partitionGraph.SetInputs(partitionGraphInputs);
-        partitionGraph.SetOutputs(partitionGraphOutputs);
-
-        // Add each node and node args to partitionGraph
-        for (auto& nodeIndex : indexedSubGraph.nodes) 
-        {
-            auto node = mainGraph.GetNode(nodeIndex);
-            std::vector<onnxruntime::NodeArg*> inputs;
-            std::vector<onnxruntime::NodeArg*> outputs;
-            for (auto input : node->InputDefs()) {
-                auto& inputArg = partitionGraph.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-                inputs.push_back(&inputArg);
-            }
-            for (auto output : node->OutputDefs()) {
-                auto& outputArg = partitionGraph.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-                outputs.push_back(&outputArg);
-            }
-            partitionGraph.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
-        }
-
-        // Add all those partitionGraph's inputs which are initializers to partitionGraph initializer list
-        for (const auto& input : metaDef->inputs) 
-        {
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (mainGraph.GetInitializedTensor(input, initializer)) 
-            {
-                // metaDef->inputs could have duplicates so make sure we only add once
-                const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-                if (!partitionGraph.GetInitializedTensor(input, subgraph_initializer)) 
-                {
-                    partitionGraph.AddInitializedTensor(*initializer);
-                }
-            }
-        }
-
-        for (const auto& constant_initializer : metaDef->constant_initializers) 
-        {
-            const ONNX_NAMESPACE::TensorProto* initializer = mainGraph.GetConstantInitializer(constant_initializer, true);
-            ORT_ENFORCE(initializer != nullptr, "Initializer " + constant_initializer + " is not found or is not constant initializer.");
-            // metaDef->constant_initializers could have duplicates so make sure we only add once
-            const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-            if (!partitionGraph.GetInitializedTensor(constant_initializer, subgraph_initializer)) 
-            {
-                partitionGraph.AddInitializedTensor(*initializer);
-            }
-        }
-
-        auto status = partitionGraph.Resolve();
-        ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
-    }
-
     void ConvertGraphDesc(
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
         _Out_ DML_GRAPH_DESC& dmlGraphDesc,
@@ -186,17 +109,6 @@ namespace Dml
         const ExecutionProviderImpl* providerImpl,
         onnxruntime::KernelRegistry* registryForPartitionKernels)
     {
-        // convert indexedSubGraph into an ONNX graph
-        ONNX_NAMESPACE::GraphProto functionStorageProto;
-        onnxruntime::Graph partitionONNXGraph(
-            graph.GetModel(), 
-            graph.GetSchemaRegistry(), 
-            functionStorageProto,
-            graph.DomainToVersionMap(),
-            graph.GetLogger(),
-            graph.StrictShapeTypeInference());
-        CreateONNXGraphForPartition(partitionONNXGraph, graph, indexedSubGraph);
-
         // These nodeArgNames will be used while creating DML Graph inside FusedGraphKernel.cpp
         // Ordering of input/output nodeArgs in below vector will be same as Node::Definitions::input_defs because
         // ORT is populating these args as it is while creating the FusedNode at Graph::CreateFusedSubGraphNode()
