@@ -2908,7 +2908,6 @@ Status Graph::PopInitializedTensor(const std::string& initializer_name, ONNX_NAM
   ORT_ENFORCE(proto_entry != mutable_initializers.end(),
               "graph_proto_ is not in sync with name_to_initial_tensor_");
 
-  //proto_entry->Swap(&tensor_proto);
   tensor_proto = std::move(*proto_entry);
   RemoveRepeatedFieldEntry(mutable_initializers, proto_entry);
   name_to_initial_tensor_.erase(name_to_initializer_it);

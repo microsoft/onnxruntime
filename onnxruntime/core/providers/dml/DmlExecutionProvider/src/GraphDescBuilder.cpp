@@ -79,11 +79,6 @@ namespace Dml::GraphDescBuilder
         std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> graphIntermediateEdges;
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> graphOutputEdges;
 
-        // Get the topological sorting of Lotus nodes
-        // paulm: breaking change from LOTUS that removed GetNodesInTopologicalOrder from Graph
-        /*onnxruntime::GraphViewer viewer(graph);
-        const std::vector<onnxruntime::NodeIndex>& orderedNodeIndices = viewer.GetNodesInTopologicalOrder();*/
-
         // Avoid using separate command lists for small graphs. This value can be reduced by tuning the 
         // flushing behavior of DmlCommandRecorder.  Its current behavior is to assume that graphs contain
         // enough GPU work to be worth flushing immediately.
@@ -114,6 +109,7 @@ namespace Dml::GraphDescBuilder
         };
 
         // Iterate through each node and create a corresponding node in the new graph
+        // We can iterate the nodes in any order because the edge connectivity will take care of the topological order
         for (size_t sortedNodeIndex : indexedSubGraph.nodes) 
         {
             const onnxruntime::Node& node = *graph.GetNode(sortedNodeIndex);
