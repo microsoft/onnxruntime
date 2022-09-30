@@ -714,7 +714,7 @@ Status UpdateDecoderFeeds(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences&,
     const transformers::IConsoleDumper* dumper) {
@@ -725,9 +725,9 @@ Status UpdateDecoderFeeds(
   //              past_key_cross_0, past_value_cross_0, ...
   // Only need copy beam next tokens to input_ids, and copy present_*_self_* to past_*_self_*,
 
-  if (!has_hidden_state) {
+  if (use_sequence_as_input_ids) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "BeamSearch CUDA Op does not support no hidden state senario in decoder input");
+                           "BeamSearch CUDA Op does not support using sequence as input_ids in decoder input");
   }
   ORT_UNUSED_PARAMETER(current_length);
 
@@ -941,7 +941,7 @@ template Status UpdateDecoderFeeds<float>(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
@@ -957,7 +957,7 @@ template Status UpdateDecoderFeeds<MLFloat16>(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);
