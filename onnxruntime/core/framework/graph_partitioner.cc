@@ -594,25 +594,18 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
   }
 
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // clang-format off
   const auto get_capability_params = GetCapabilityForEPParams{
       std::ref(graph),
       std::cref(kernel_registry_mgr),
       std::ref(current_ep),
       std::ref(capabilities),
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       GraphPartitioner::Mode::kOrtFormatLoad,
       partition_params.transform_layout_function,
-  };
-#else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  const auto get_capability_params = GetCapabilityForEPParams{
-      std::ref(graph),
-      std::cref(kernel_registry_mgr),
-      std::ref(current_ep),
-      std::ref(capabilities),
-  };
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
+  };
+  // clang-format on
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params));
   if (capabilities.empty()) {
     return Status::OK();
