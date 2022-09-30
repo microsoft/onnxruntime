@@ -5213,8 +5213,8 @@ graph out [1, 1, 256, 256] (int64_t)        graph out [1, 1, 256, 256] (int32_t)
 
 Be noted:
  the Add's input initializer 256 is a scalar int64_t;
- the Sub's input initializer 256 is a scalar int32_t;
- the Mul's input initializer 256 is a 1-D int32_t.
+ the Sub's input initializer 128 is a scalar int32_t;
+ the Mul's input initializer 64 is a 1-D int32_t.
 */
 TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
@@ -5589,23 +5589,23 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
     auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
     auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
     auto* gather_index_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(2)});
-    auto* gahter_out_1 = builder.MakeIntermediate();
-    auto* gahter_out_2 = builder.MakeIntermediate();
-    auto* gahter_out_3 = builder.MakeIntermediate();
+    auto* gather_out_1 = builder.MakeIntermediate();
+    auto* gather_out_2 = builder.MakeIntermediate();
+    auto* gather_out_3 = builder.MakeIntermediate();
     auto* transpose_out_1 = builder.MakeOutput();
     auto* transpose_out_2 = builder.MakeOutput();
     auto* transpose_out_3 = builder.MakeOutput();
 
     builder.AddNode("Reshape", {data_arg, shape_arg}, {reshape_out});
-    builder.AddNode("Gather", {reshape_out, gather_index_1}, {gahter_out_1})
+    builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
         .AddAttribute("axis", static_cast<int64_t>(2));
-    builder.AddNode("Gather", {reshape_out, gather_index_2}, {gahter_out_2})
+    builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
         .AddAttribute("axis", static_cast<int64_t>(-2));
-    builder.AddNode("Gather", {reshape_out, gather_index_3}, {gahter_out_3})
+    builder.AddNode("Gather", {reshape_out, gather_index_3}, {gather_out_3})
         .AddAttribute("axis", static_cast<int64_t>(2));
-    builder.AddNode("Transpose", {gahter_out_1}, {transpose_out_1}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
-    builder.AddNode("Transpose", {gahter_out_2}, {transpose_out_2}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
-    builder.AddNode("Transpose", {gahter_out_3}, {transpose_out_3}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
   };
 
   auto pre_graph_checker = [&](Graph& graph) { ASSERT_EQ(CountOpsInGraph(graph)["Gather"], 3); };
@@ -5680,25 +5680,25 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
       auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
       auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
       auto* gather_index_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(2)});
-      auto* gahter_out_1 = builder.MakeIntermediate();
-      auto* gahter_out_2 = builder.MakeIntermediate();
-      auto* gahter_out_3 = builder.MakeIntermediate();
+      auto* gather_out_1 = builder.MakeIntermediate();
+      auto* gather_out_2 = builder.MakeIntermediate();
+      auto* gather_out_3 = builder.MakeIntermediate();
       auto* transpose_out_1 = builder.MakeOutput();
       auto* transpose_out_2 = builder.MakeOutput();
       auto* transpose_out_3 = builder.MakeOutput();
 
       builder.AddNode("Reshape", {data_arg, shape_arg}, {reshape_out});
-      builder.AddNode("Gather", {reshape_out, gather_index_1}, {gahter_out_1})
+      builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
           .AddAttribute("axis", static_cast<int64_t>(2));
-      builder.AddNode("Gather", {reshape_out, gather_index_2}, {gahter_out_2})
+      builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
           .AddAttribute("axis", static_cast<int64_t>(2));
-      builder.AddNode("Gather", {reshape_out, gather_index_3}, {gahter_out_3})
+      builder.AddNode("Gather", {reshape_out, gather_index_3}, {gather_out_3})
           .AddAttribute("axis", static_cast<int64_t>(2));
-      builder.AddNode("Transpose", {gahter_out_1}, {transpose_out_1})
+      builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1})
           .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
-      builder.AddNode("Transpose", {gahter_out_2}, {transpose_out_2})
+      builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2})
           .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
-      builder.AddNode("Transpose", {gahter_out_3}, {transpose_out_3})
+      builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3})
           .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
     };
 
@@ -5716,25 +5716,25 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
       auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
       auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
       auto* gather_index_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
-      auto* gahter_out_1 = builder.MakeIntermediate();
-      auto* gahter_out_2 = builder.MakeIntermediate();
-      auto* gahter_out_3 = builder.MakeIntermediate();
+      auto* gather_out_1 = builder.MakeIntermediate();
+      auto* gather_out_2 = builder.MakeIntermediate();
+      auto* gather_out_3 = builder.MakeIntermediate();
       auto* transpose_out_1 = builder.MakeOutput();
       auto* transpose_out_2 = builder.MakeOutput();
       auto* transpose_out_3 = builder.MakeOutput();
 
       builder.AddNode("Reshape", {data_arg, shape_arg}, {reshape_out});
-      builder.AddNode("Gather", {reshape_out, gather_index_1}, {gahter_out_1})
+      builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
           .AddAttribute("axis", static_cast<int64_t>(2));
-      builder.AddNode("Gather", {reshape_out, gather_index_2}, {gahter_out_2})
+      builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
           .AddAttribute("axis", static_cast<int64_t>(2));
-      builder.AddNode("Gather", {reshape_out, gather_index_3}, {gahter_out_3})
+      builder.AddNode("Gather", {reshape_out, gather_index_3}, {gather_out_3})
           .AddAttribute("axis", static_cast<int64_t>(2));
-      builder.AddNode("Transpose", {gahter_out_1}, {transpose_out_1})
+      builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1})
           .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
-      builder.AddNode("Transpose", {gahter_out_2}, {transpose_out_2})
+      builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2})
           .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
-      builder.AddNode("Transpose", {gahter_out_3}, {transpose_out_3})
+      builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3})
           .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
     };
 
@@ -5752,25 +5752,25 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
       auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
       auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
       auto* gather_index_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(2)});
-      auto* gahter_out_1 = builder.MakeIntermediate();
-      auto* gahter_out_2 = builder.MakeIntermediate();
-      auto* gahter_out_3 = builder.MakeIntermediate();
+      auto* gather_out_1 = builder.MakeIntermediate();
+      auto* gather_out_2 = builder.MakeIntermediate();
+      auto* gather_out_3 = builder.MakeIntermediate();
       auto* transpose_out_1 = builder.MakeOutput();
       auto* transpose_out_2 = builder.MakeOutput();
       auto* transpose_out_3 = builder.MakeOutput();
 
       builder.AddNode("Reshape", {data_arg, shape_arg}, {reshape_out});
-      builder.AddNode("Gather", {reshape_out, gather_index_1}, {gahter_out_1})
+      builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
           .AddAttribute("axis", static_cast<int64_t>(1));
-      builder.AddNode("Gather", {reshape_out, gather_index_2}, {gahter_out_2})
+      builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
           .AddAttribute("axis", static_cast<int64_t>(2));
-      builder.AddNode("Gather", {reshape_out, gather_index_3}, {gahter_out_3})
+      builder.AddNode("Gather", {reshape_out, gather_index_3}, {gather_out_3})
           .AddAttribute("axis", static_cast<int64_t>(3));
-      builder.AddNode("Transpose", {gahter_out_1}, {transpose_out_1})
+      builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1})
           .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
-      builder.AddNode("Transpose", {gahter_out_2}, {transpose_out_2})
+      builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2})
           .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
-      builder.AddNode("Transpose", {gahter_out_3}, {transpose_out_3})
+      builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3})
           .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
     };
 
