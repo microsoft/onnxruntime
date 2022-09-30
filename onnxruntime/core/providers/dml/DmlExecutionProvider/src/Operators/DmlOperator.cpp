@@ -47,30 +47,43 @@ namespace Dml
 
         if (contextPrivate->IsDmlGraphNode())
         {
-            // Create an edge list using sentinels for unused edges, as required by the SetDmlOperator ABI
-            auto ReplaceUnusedEdgeIndicesWithSentinel = [](gsl::span<const std::optional<uint32_t>> indices)
+            MLOperatorGraphDesc operatorGraphDesc = {};
+            operatorGraphDesc.nodeCount = 1;
+            const DML_OPERATOR_DESC* opDescs{&operatorDesc};
+            operatorGraphDesc.nodesAsOpDesc = &opDescs;
+
+            std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+            for (uint32_t inputIndex = 0; inputIndex < m_kernelInputIndices.size(); inputIndex++)
             {
-                std::vector<uint32_t> ret;
-                ret.reserve(indices.size());
-                for (const std::optional<uint32_t>& index : indices)
+                if (m_kernelInputIndices[inputIndex].has_value()) 
                 {
-                    ret.push_back(index.has_value() ? index.value() : std::numeric_limits<uint32_t>::max());
+                    DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
+                    inputEdge.GraphInputIndex = *m_kernelInputIndices[inputIndex];
+                    inputEdge.ToNodeIndex = 0;
+                    inputEdge.ToNodeInputIndex = inputIndex;
+                    inputEdges.push_back(inputEdge);
                 }
+            }
+            operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
+            operatorGraphDesc.inputEdges = inputEdges.data();
 
-                return ret;
-            };
+            
+            std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
+            for (uint32_t outputIndex = 0; outputIndex < m_kernelOutputIndices.size(); outputIndex++)
+            {
+                if (m_kernelOutputIndices[outputIndex].has_value()) 
+                {
+                    DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
+                    outputEdge.FromNodeIndex = 0;
+                    outputEdge.FromNodeOutputIndex = outputIndex;
+                    outputEdge.GraphOutputIndex = (*m_kernelOutputIndices[outputIndex]);
+                    outputEdges.push_back(outputEdge);
+                }
+            }
+            operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
+            operatorGraphDesc.outputEdges = outputEdges.data();
 
-            MLOperatorKernelDmlProperties properties = {};
-            auto kernelInputIndices = ReplaceUnusedEdgeIndicesWithSentinel(m_kernelInputIndices);
-            properties.dmlInputCount = static_cast<uint32_t>(kernelInputIndices.size());
-            properties.kernelInputIndices = kernelInputIndices.data();
-
-            auto kernelOutputIndices = ReplaceUnusedEdgeIndicesWithSentinel(m_kernelOutputIndices);
-            properties.dmlOutputCount = static_cast<uint32_t>(kernelOutputIndices.size());
-            properties.kernelOutputIndices = kernelOutputIndices.data();
-            properties.allowHalfPrecisionComputation = AllowHalfPrecisionComputation();
-
-            ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(dmlOperator.Get(), &operatorDesc, &properties));
+            ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(&operatorGraphDesc));
         }
         else
         {

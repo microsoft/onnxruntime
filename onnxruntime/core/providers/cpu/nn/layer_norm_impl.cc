@@ -33,6 +33,15 @@ Status ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, boo
   auto norm_count = x_shape.SizeToDimension(axis);
   auto norm_size = x_shape.SizeFromDimension(axis);
 
+  const auto scale_size = scale->Shape().Size();
+  const auto bias_size = (bias_data) ? bias->Shape().Size() : 0;
+  if (scale_size != norm_size || (bias_data && bias_size != norm_size)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Size of X.shape()[axis:] == ", norm_size,
+                           ". Size of scale and bias (if provided) must match this. Got scale size of ",
+                           scale_size, " and bias size of ", bias_size);
+  }
+
   Tensor* Y = p_ctx->Output(0, x_shape);
   auto Y_data = Y->MutableData<T>();
 
