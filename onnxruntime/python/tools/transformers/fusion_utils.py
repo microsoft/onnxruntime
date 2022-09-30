@@ -61,6 +61,24 @@ class FusionUtils:
                     self.model.replace_input_of_all_nodes(output_name, input_name)
 
     @staticmethod
+    def remove_edge(input_name_to_nodes, input_name, node_to_remove):
+        assert node_to_remove
+        if input_name in input_name_to_nodes:
+            if node_to_remove in input_name_to_nodes[input_name]:
+                input_name_to_nodes[input_name].remove(node_to_remove)
+            if not input_name_to_nodes[input_name]:
+                del input_name_to_nodes[input_name]
+
+    @staticmethod
+    def add_edge(input_name_to_nodes, input_name, node_to_add):
+        assert node_to_add
+        if input_name in input_name_to_nodes:
+            if node_to_add not in input_name_to_nodes[input_name]:
+                input_name_to_nodes[input_name].append(node_to_add)
+        else:
+            input_name_to_nodes[input_name] = [node_to_add]
+
+    @staticmethod
     def check_node_attribute(node, attribute_name: str, expected_value, default_value=None):
         """Verify that a node has expected value for an attribute.
 
@@ -121,7 +139,7 @@ class FusionUtils:
         Returns:
             bool: whether the check is passed or not
         """
-        if not node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
+        if node.op_type not in {"QuantizeLinear", "DequantizeLinear"}:
             logger.debug(f"Provided node is not a Q/DQ node. Op Type: {node.op_type}")
 
         scale = model.get_constant_value(node.input[1])

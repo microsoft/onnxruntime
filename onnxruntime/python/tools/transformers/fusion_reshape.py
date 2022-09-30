@@ -7,6 +7,7 @@ from logging import getLogger
 
 import numpy as np
 from fusion_base import Fusion
+from fusion_utils import FusionUtils
 from onnx import TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
 
@@ -17,7 +18,7 @@ class FusionReshape(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "Reshape", "Reshape")
 
-    def replace_reshape_node(self, shape, reshape_node, concat_node):
+    def replace_reshape_node(self, shape, reshape_node):
         shape_value = np.asarray(shape, dtype=np.int64)
         constant_shape_name = self.model.create_node_name("Constant", "constant_shape")
         new_node = helper.make_node(
@@ -34,7 +35,6 @@ class FusionReshape(Fusion):
         )
         reshape_node.input[1] = constant_shape_name
         reshape_node.name = self.model.create_node_name("Reshape", "Reshape_Fuse")
-        self.nodes_to_remove.extend([concat_node])
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
@@ -168,9 +168,14 @@ class FusionReshape(Fusion):
         if not same_shape_input:
             return
 
-        self.replace_reshape_node(shape, reshape_node, concat_node)
+        self.replace_reshape_node(shape, reshape_node)
 
-        self.nodes_to_remove.extend(path0)
-        self.nodes_to_remove.extend(path1)
-        self.nodes_to_remove.extend(path2)
-        self.nodes_to_remove.extend(path3)
+        if len(self.model.get_children(concat_node, input_name_to_nodes)) == 1:
+            FusionUtils.remove_edge(input_name_to_nodes, concat_node.output[0], reshape_node)
+            nodes_to_remove = path0 + path1 + path2 + path3 + [concat_node]
+            if self.model.is_safe_to_fuse_nodes(nodes_to_remove, [], input_name_to_nodes, None):
+                self.nodes_to_remove.extend(nodes_to_remove)
+                return
+
+        # It is not safe to remove those nodes, fall back to prune. Note that subgraph will block the pruning.
+        self.prune_graph = True
