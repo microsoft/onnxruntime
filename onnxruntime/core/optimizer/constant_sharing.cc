@@ -15,17 +15,19 @@ namespace {
 
 // Supports limited data types.
 static constexpr std::array supported_data_types{
-    ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
     ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+    ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
     ONNX_NAMESPACE::TensorProto_DataType_DOUBLE,
     ONNX_NAMESPACE::TensorProto_DataType_INT32,
     ONNX_NAMESPACE::TensorProto_DataType_INT64,
 };
 
 bool IsSupportedDataType(int32_t data_type) {
-  return std::find(std::begin(supported_data_types), std::end(supported_data_types), data_type) !=
-         std::end(supported_data_types);
+  return std::find(supported_data_types.cbegin(), supported_data_types.cend(), data_type) !=
+         supported_data_types.cend();
 }
+
+using SupportedTypeList = boost::mp11::mp_list<MLFloat16, float, double, int32_t, int64_t>;
 
 bool IsValidSingleValueShape(const ONNX_NAMESPACE::TensorShapeProto* input_shape) {
   if (input_shape == nullptr) return false;
@@ -99,45 +101,34 @@ void ReplaceInputsToUseSharedInitializer(Graph& graph,
   }
 }
 
-#define DispatchOnONNXTensorProtoDataTypeWithReturn(data_type, retval, function, ...) \
-  switch (data_type) {                                                                \
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:                                  \
-      retval = function<float>(__VA_ARGS__);                                          \
-      break;                                                                          \
-    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:                                 \
-      retval = function<double>(__VA_ARGS__);                                         \
-      break;                                                                          \
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:                                  \
-      retval = function<int32_t>(__VA_ARGS__);                                        \
-      break;                                                                          \
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:                                  \
-      retval = function<int64_t>(__VA_ARGS__);                                        \
-      break;                                                                          \
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:                                \
-      retval = function<MLFloat16>(__VA_ARGS__);                                      \
-      break;                                                                          \
-    default:                                                                          \
-      ORT_ENFORCE(false, "Unknown tensor type of ", data_type);                       \
-  }
-
+/**
+ * @brief Get value unique id from constant store.
+ *
+ * @tparam T Type of value to parse value from initializer.
+ *
+ * If the value parsed from initializer exists in constant store, then return the index in the container;
+ * Otherwise, insert the value into container, return the last index.
+ */
 template <typename T>
-size_t GetOrAddValueIntoConstantStore(const onnxruntime::Initializer& initializer,
-                                      InlinedVector<std::variant<int32_t, int64_t, float, double>>&
-                                          const_value_store) {
-  std::variant<int32_t, int64_t, float, double> value;
-  if (std::is_same<T, MLFloat16>::value) {
-    value = math::halfToFloat(initializer.data<MLFloat16>()->val);
-  } else {
-    value = *initializer.data<T>();
-  }
+struct GetOrAddValueIntoConstantStoreDispatcher {
+  size_t operator()(const onnxruntime::Initializer& initializer,
+                    InlinedVector<std::variant<int32_t, int64_t, float, double>>&
+                        const_value_store) const {
+    std::variant<int32_t, int64_t, float, double> value;
+    if (std::is_same<T, MLFloat16>::value) {
+      value = math::halfToFloat(initializer.data<MLFloat16>()->val);
+    } else {
+      value = *initializer.data<T>();
+    }
 
-  auto it = std::find(const_value_store.begin(), const_value_store.end(), value);
-  if (it == const_value_store.end()) {
-    const_value_store.push_back(value);
-    return const_value_store.size() - 1;
+    auto it = std::find(const_value_store.begin(), const_value_store.end(), value);
+    if (it == const_value_store.end()) {
+      const_value_store.push_back(value);
+      return const_value_store.size() - 1;
+    }
+    return it - const_value_store.begin();
   }
-  return it - const_value_store.begin();
-}
+};
 
 }  // namespace
 
@@ -190,11 +181,10 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
       continue;
     }
 
-    size_t value_id = 0;
     onnxruntime::Initializer initializer{*tensor_proto, graph.ModelPath()};
-    DispatchOnONNXTensorProtoDataTypeWithReturn(tensor_proto->data_type(), value_id,
-                                                GetOrAddValueIntoConstantStore,
-                                                initializer, const_value_store);
+    utils::MLTypeCallDispatcherFromTypeList<SupportedTypeList> t_disp(tensor_proto->data_type());
+    size_t value_id =
+        t_disp.InvokeRet<size_t, GetOrAddValueIntoConstantStoreDispatcher>(initializer, const_value_store);
 
     // Construct a string by data type, value, and rank. Used as a key in pattern_key_to_shared_arg_map.
     const std::string pattern_key = MakeString(SHARED_INITIALIZER_PREFIX, value_id, "_", data_type, "_",
