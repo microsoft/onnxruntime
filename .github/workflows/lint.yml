@@ -11,8 +11,6 @@ jobs:
   lint-python:
     name: Lint Python
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
     steps:
       - uses: actions/checkout@v2
       - name: flake8
@@ -114,8 +112,6 @@ jobs:
   lint-js:
     name: Lint JavaScript
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
     steps:
       - uses: actions/checkout@v2
       - uses: reviewdog/action-eslint@v1
