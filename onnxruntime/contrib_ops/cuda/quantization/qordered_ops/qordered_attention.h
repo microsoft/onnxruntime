@@ -26,7 +26,7 @@ class QOrderedAttention final : public CudaKernel, public AttentionBase {
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
  private:
-  int64_t input_hidden_size_{0};
+  int64_t input_hidden_size_;
   int64_t qkv_total_hidden_size_;
   BufferUniquePtr merged_qkv_weight_;
   BufferUniquePtr merged_qkv_alpha_;

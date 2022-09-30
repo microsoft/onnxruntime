@@ -206,14 +206,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
     graph_outputs.insert(output_args.begin(), output_args.end());
     const auto graph_outputs_end = graph_outputs.end();
 
-    GraphViewer graph_viewer(graph);
-    const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-    for (auto node_index : node_topology_list) {
-      Node* p_node = graph.GetNode(node_index);
-      if (p_node == nullptr)
-        continue;  // node was removed.
-
-      Node& node = *p_node;
+    for (auto& node : graph.Nodes()) {
       bool removed = false;
       if (node.OpType() == "Cast") {
         InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
