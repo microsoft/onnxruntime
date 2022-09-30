@@ -137,6 +137,8 @@ Status QkvToContext(
     fused_fp16_runner->run(qkv, nullptr, sequence_offset, output, nullptr, stream);
 
     return Status::OK();
+  } else {
+    ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported");
   }
 
   const int all_sequence_length = past_sequence_length + sequence_length;
