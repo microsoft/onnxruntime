@@ -112,6 +112,38 @@ namespace Dml
     }
 
     void DmlOperator::SetDmlOperatorDesc(
+        const MLOperatorGraphDesc& operatorGraphDesc,
+        const MLOperatorKernelCreationContext& kernelInfo
+        )
+    {
+        // Initialize should only be called once.
+        assert(m_compiledOperator == nullptr);
+
+        // DML doesn't support empty tensors. If an operator is still executable with empty tensors, the empty tensors
+        // should be removed or massaged depending on the definition.
+        for (const TensorDesc& desc : m_inputTensorDescs)
+        {
+            if (OperatorHelper::ContainsEmptyDimensions(desc.GetSizes()))
+            {
+                return;
+            }
+        }
+
+        for (const TensorDesc& desc : m_outputTensorDescs)
+        {
+            if (OperatorHelper::ContainsEmptyDimensions(desc.GetSizes()))
+            {
+                return;
+            }
+        }
+
+        ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
+        ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
+        assert(contextPrivate->IsDmlGraphNode());
+        ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(&operatorGraphDesc));
+    }
+
+    void DmlOperator::SetDmlOperatorDesc(
         const DML_OPERATOR_DESC& operatorDesc,
         const MLOperatorKernelContext& kernelInfo
         )

@@ -225,7 +225,7 @@ namespace Dml
         {
             // For now, only QLinearSigmoid is handled
             if (node.Domain() == onnxruntime::kMSDomain &&
-                node.OpType() == "QLinearSigmoid")
+                node.OpType() == "QLinearSigmoidd")
             {
                 // Intermediate node arg type proto with floating point format
                 onnx::TypeProto floatTensorProto;
