@@ -12,7 +12,7 @@
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
-#include "core/framework/murmurhash3.h"
+//#include "core/framework/murmurhash3.h"
 #include "cuda_runtime_api.h"
 #include "gsl/gsl"
 #include <unordered_map>
@@ -593,7 +593,65 @@ bool TensorrtExecutionProvider::IsSubGraphFullySupported(SubGraphCollection_t su
   return number_of_trt_nodes == number_of_ort_nodes;
 }
 
-std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, const GraphViewer& graph) const {
+void TensorrtExecutionProvider::GetInputsToBeAddedToSubGraph(std::vector<size_t> graph_nodes_index, const GraphViewer* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map, std::vector<const NodeArg*>& added_inputs) const {
+  std::unordered_set<std::string> node_name_set;
+  if (graph_nodes_index.size() > 0) {
+    const std::vector<NodeIndex>& node_index = graph->GetNodesInTopologicalOrder();
+    for (const auto& index : graph_nodes_index) {
+      const auto& node = graph->GetNode(node_index[index]);
+      auto subgraph_map = node->GetAttributeNameToSubgraphMap();
+
+      for (auto& entry : subgraph_map) {
+        auto attr_name = entry.first;
+        const Graph* subgraph = entry.second;
+        std::vector<size_t> nodes_index;
+        GetInputsToBeAddedToSubGraph(nodes_index, subgraph->CreateGraphViewer().get(), subgraph_context_map, added_inputs);
+      }
+      node_name_set.insert(node->Name());
+    }   
+  } else {
+    for (int i = 0; i < graph->MaxNodeIndex(); ++i) {
+      auto node = graph->GetNode(i);
+
+      if (node == nullptr) {
+        continue;
+      }
+      auto subgraph_map = node->GetAttributeNameToSubgraphMap();
+
+      for (auto& entry : subgraph_map) {
+        auto attr_name = entry.first;
+        const Graph* subgraph = entry.second;
+        std::vector<size_t> nodes_index;
+        GetInputsToBeAddedToSubGraph(nodes_index, subgraph->CreateGraphViewer().get(), subgraph_context_map, added_inputs);
+      }
+      node_name_set.insert(node->Name());
+    }
+  }
+
+  for (const auto& entry : subgraph_context_map) {
+    if (node_name_set == entry.second->node_name_set) {
+      for (const auto& input : entry.second->manually_added_graph_inputs) {
+        added_inputs.push_back(input);
+      }
+    }
+  }
+}
+
+bool IsSebSet(std::unordered_set<std::string> a, std::unordered_set<std::string> b) {
+  if (a == b) {
+    return true;
+  }
+
+  for (auto entry : a) {
+    if (b.find(entry) == b.end()) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph_t graph_nodes_index, const GraphViewer& graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   std::unordered_set<size_t> node_set;
   node_set.reserve(graph_nodes_index.first.size());
@@ -615,6 +673,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   int output_order = 0;
 
   std::vector<std::string> initializers;
+  std::unordered_set<std::string> node_name_set;
   for (const auto& index : graph_nodes_index.first) {
     sub_graph->Nodes().push_back(node_index[index]);
     const auto& node = graph.GetNode(node_index[index]);
@@ -696,6 +755,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
         }
       }
     }
+    node_name_set.insert(node->Name());
   }
 
   fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
@@ -719,10 +779,23 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
   meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
 
+  std::cout << "\n" << std::endl;
+
   // Assign inputs and outputs to subgraph's meta_def
   for (const auto& input : inputs) {
     if (input.second->Exists()) {
+      std::cout << input.second->Name() << std::endl;
       meta_def->inputs().push_back(input.second->Name());
+    }
+  }
+
+  for (auto const& entry : subgraph_context_map) {
+    subgraph_context* context = entry.second.get();
+    if (IsSebSet(node_name_set, context->node_name_set)) {
+      for (auto& input : context->manually_added_graph_input_names) {
+        std::cout << "(v)" << input << std::endl;
+        meta_def->inputs().push_back(input);
+      }
     }
   }
 
@@ -743,23 +816,26 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   return sub_graph;
 }
 
-// If TRT EP manually set graph input in TensorrtExecutionProvider::SetGraphOuterScopeValues(), we have to manully set all the graph inputs in order to pass Graph::Resolve()
-void TensorrtExecutionProvider::SetGraphInputs(Graph* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const {
+// If TRT EP manually sets graph input in TensorrtExecutionProvider::SetGraphOuterScopeValues(), we have to manully set all the graph inputs in order to pass Graph::Resolve()
+void TensorrtExecutionProvider::SetAllGraphInputs(Graph* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const {
+
+  HashValue subgraph_hash = 0;
+  std::string subgraph_id = GetSubGraphIdByGraph(graph, subgraph_hash);
 
   // If TRT EP doesn't manully set graph input in TensorrtExecutionProvider::SetGraphOuterScopeValues(),
   // Graph::Resolve() will help set graph inputs in Graph::SetGraphInputsOutputs(), so no need to set graph inputs here.
-  if (!graph->IsGraphInputsManullySet()) {
+  if (subgraph_context_map.find(subgraph_id) == subgraph_context_map.end() || subgraph_context_map[subgraph_id].get()->manually_added_graph_inputs.size() == 0) {
     return;
   }
 
-  subgraph_context* context = subgraph_context_map[graph->Name()].get();
-  if (!context) {
-    return;
-  }
-
+  subgraph_context* context = subgraph_context_map[subgraph_id].get();
   std::vector<const NodeArg*> graph_inputs_including_initializers;
   for (const auto& entry : context->inputs_and_initializers) {
     graph_inputs_including_initializers.push_back(entry.second);
+  }
+
+  for (const auto& entry : context->manually_added_graph_inputs) {
+    graph_inputs_including_initializers.push_back(entry);
   }
 
   for (const auto& node_arg : graph->GetInputsIncludingInitializers()) {
@@ -786,43 +862,73 @@ bool TensorrtExecutionProvider::IsOuterScopeValue(Graph* graph, const std::strin
 // The newly built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsLocalValue() API.
 // We have to do it by ourselves.
 bool TensorrtExecutionProvider::IsLocalValue(Graph* graph, const std::string& name, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const {
-  if (subgraph_context_map.find(graph->Name()) == subgraph_context_map.end()) {
+  HashValue subgraph_hash = 0;
+  std::string subgraph_id = GetSubGraphIdByGraph(graph, subgraph_hash);
+
+  if (subgraph_context_map.find(subgraph_id) == subgraph_context_map.end()) {
     return false;
   }
-  subgraph_context* context = subgraph_context_map[graph->Name()].get();
+  subgraph_context* context = subgraph_context_map[subgraph_id].get();
   return context->output_args.find(name) != context->output_args.cend() ||
          context->inputs_and_initializers.find(name) != context->inputs_and_initializers.cend();
 
 }
 
+std::string TensorrtExecutionProvider::GetSubGraphIdByGraph(Graph* graph, HashValue& subgraph_hash) const {
+  std::unordered_set<std::string> node_name_set;
+  for (int i = 0; i < graph->MaxNodeIndex(); ++i) {
+    auto node = graph->GetNode(i);
+
+    if (node == nullptr) {
+      continue;
+    }
+    node_name_set.insert(node->Name());
+  }
+  subgraph_hash = 0;
+  SubGraphIdGenerator(node_name_set, subgraph_hash);
+  return std::to_string(subgraph_hash);
+}
+
+std::string TensorrtExecutionProvider::GetSubGraphIdByNodeNameSet(std::unordered_set<std::string>& node_name_set, HashValue& subgraph_hash) const {
+  subgraph_hash = 0;
+  SubGraphIdGenerator(node_name_set, subgraph_hash);
+  return std::to_string(subgraph_hash);
+}
+
 // Set inputs, initializers and outputs for all subgraphs and put those information in subgraph context data structure.
 // It's useful for building a valid graph and make Graph::Resolve() happy.
 void TensorrtExecutionProvider::SetSubGraphContext(Graph* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const {
+  std::unordered_set<std::string> node_name_set;
+
   // Iterate all the nodes and recurse into inner most subgraph first
   for (int i = 0; i < graph->MaxNodeIndex(); ++i) {
-    auto graph_build_node = graph->GetNode(i);
+    auto node = graph->GetNode(i);
 
-    if (graph_build_node == nullptr) {
+    if (node == nullptr) {
       continue;
     }
 
-    auto build_subgraph_map = graph_build_node->GetAttributeNameToMutableSubgraphMap();
-    const Node* graph_node = nullptr;
-    std::unordered_map<std::string, gsl::not_null<const Graph*>> subgraph_map;
-
-    for (auto& entry : build_subgraph_map) {
+    auto subgraph_map = node->GetAttributeNameToMutableSubgraphMap();
+    for (auto& entry : subgraph_map) {
       auto attr_name = entry.first;
       Graph* subgraph = entry.second;
       SetSubGraphContext(subgraph, subgraph_context_map);
     }
+
+    node_name_set.insert(node->Name());
   }
 
-  if (subgraph_context_map.find(graph->Name()) == subgraph_context_map.end()) {
-    subgraph_context_map.emplace(graph->Name(), std::make_unique<subgraph_context>());
-  }
-  subgraph_context* context = subgraph_context_map[graph->Name()].get();
+  HashValue subgraph_hash = 0;
+  std::string subgraph_id = GetSubGraphIdByNodeNameSet(node_name_set, subgraph_hash);
 
-  // Collect all nodes' outputs
+  if (subgraph_context_map.find(subgraph_id) == subgraph_context_map.end()) {
+    subgraph_context_map.emplace(subgraph_id, std::make_unique<subgraph_context>());
+  }
+  subgraph_context* context = subgraph_context_map[subgraph_id].get();
+
+  context->node_name_set = node_name_set;
+
+  // Collect all nodes' outputs and nodes' name
   for (int i = 0; i < graph->MaxNodeIndex(); ++i) {
     auto graph_build_node = graph->GetNode(i);
 
@@ -833,6 +939,8 @@ void TensorrtExecutionProvider::SetSubGraphContext(Graph* graph, std::unordered_
     for (const auto& input : graph_build_node->OutputDefs()) {
       context->output_args.insert(input->Name());
     }
+
+    context->node_name_set.insert(graph_build_node->Name());
   }
 
   // Go thru all node's inputs
@@ -853,7 +961,7 @@ void TensorrtExecutionProvider::SetSubGraphContext(Graph* graph, std::unordered_
   }
 }
 
-void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* graph_build, const Graph* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const {
+void TensorrtExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph* graph_build, const Graph* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const {
 
   // Iterate all the nodes and recurse into inner most subgraph first
   for (int i = 0; i < graph_build->MaxNodeIndex(); ++i) {
@@ -881,7 +989,7 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* graph_build, con
       if (subgraph_map.find(attr_name) != subgraph_map.end()) {
         // recurse into subgraph
         const Graph* graph_subgraph = subgraph_map.at(attr_name);
-        SetGraphOuterScopeValues(subgraph, graph_subgraph, subgraph_context_map);
+        SetGraphOuterScopeValuesAndInputs(subgraph, graph_subgraph, subgraph_context_map);
       }
     }
   }
@@ -890,6 +998,8 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* graph_build, con
 
     std::cout << "Parent Node: " << graph->ParentNode()->Name() << std::endl;
     std::cout << "\timplicit inputs:" << std::endl;
+
+    //std::vector<const onnxruntime::NodeArg*> manually_added_graph_inputs;
 
     // Iterate all the implict inputs to set outer scope value for the newly built subgraph
     for (const auto& input : graph->ParentNode()->ImplicitInputDefs()) {
@@ -918,9 +1028,18 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* graph_build, con
             auto type_proto = ONNX_NAMESPACE::TypeProto::Create();
             type_proto->copy_from(input->TypeAsProto());
             auto& n_input = top_level_graph->GetOrCreateNodeArg(input->Name(), type_proto.get());
-            top_level_graph->SetInput(&n_input);
+            //manually_added_graph_inputs.push_back(&n_input);
             std::cout << "\t(add explicit input)" << n_input.Name() << std::endl;
-            continue;
+            // update subgraph context
+            HashValue subgraph_hash = 0;
+            std::string subgraph_id = GetSubGraphIdByGraph(top_level_graph, subgraph_hash);
+            if (subgraph_context_map.find(subgraph_id) != subgraph_context_map.end()) {
+              subgraph_context* context = subgraph_context_map[subgraph_id].get();
+              if (context) {
+                context->manually_added_graph_inputs.insert(&n_input);
+                context->manually_added_graph_input_names.insert(n_input.Name());
+              }
+            }
           }
         }
       }
@@ -929,7 +1048,8 @@ void TensorrtExecutionProvider::SetGraphOuterScopeValues(Graph* graph_build, con
 }
 
 SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollection_t nodes_vector_input, int iterations, const int max_iterations,
-                                                                 const GraphViewer& graph, bool* early_termination) const {
+                                                                 const GraphViewer& graph, bool* early_termination, 
+                                                                 std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const {
   // Return if iterations are exceeding predefined number
   SubGraphCollection_t nodes_list_output;
   if (iterations > max_iterations) {
@@ -1015,10 +1135,10 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
         }
 
-        std::unordered_map<std::string, std::unique_ptr<subgraph_context>> subgraph_context_map;
+        //std::unordered_map<std::string, std::unique_ptr<subgraph_context>> subgraph_context_map;
         SetSubGraphContext(&graph_build, subgraph_context_map);
-        SetGraphOuterScopeValues(&graph_build, &graph.GetGraph(), subgraph_context_map);
-        SetGraphInputs(&graph_build, subgraph_context_map);
+        SetGraphOuterScopeValuesAndInputs(&graph_build, &graph.GetGraph(), subgraph_context_map);
+        SetAllGraphInputs(&graph_build, subgraph_context_map);
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
         // Add parent graph output to the subgraph
@@ -1091,7 +1211,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
-        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination);
+        next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination, subgraph_context_map);
         for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
           for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
             next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
@@ -1105,7 +1225,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 }
 
 // Detect and remove cycles from supported node list
-bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles) const {
+bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map, bool remove_cycles) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   bool trt_cycle = true, cycle_detected = false;
   while (trt_cycle) {
@@ -1118,7 +1238,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
     for (const auto& group : supported_nodes_vector) {
       if (!group.first.empty()) {
         // Construct subgraph from node list
-        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph);
+        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, subgraph_context_map);
 
         // Create node to inputs/outputs/index maps
         const auto& meta_def = sub_graph->GetMetaDef();
@@ -1269,8 +1389,9 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{filtered_nodes_vector, false}};
+  std::unordered_map<std::string, std::unique_ptr<subgraph_context>> subgraph_context_map;
   bool early_termination = false;
-  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination, subgraph_context_map);
   if (early_termination) {
     supported_nodes_vector.clear();
   }
@@ -1284,7 +1405,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   // Detect and remove cycles from supported node list
-  DetectTensorRTGraphCycles(supported_nodes_vector, graph);
+  DetectTensorRTGraphCycles(supported_nodes_vector, graph, subgraph_context_map);
 
   // Consolidate supported node list
   if (supported_nodes_vector.size() > 1) {
@@ -1295,7 +1416,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       }
     }
     SubGraphCollection_t consolidated_supported_nodes_vector = {{nodes_vector, true}};
-    if (DetectTensorRTGraphCycles(consolidated_supported_nodes_vector, graph, false)) {
+    if (DetectTensorRTGraphCycles(consolidated_supported_nodes_vector, graph, subgraph_context_map, false)) {
       LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes are not consolidated because graph will have cycles after consolidation";
     } else {
       LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes are consolidated into one subgraph";
@@ -1327,7 +1448,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           std::iota(std::begin(subgraph_nodes_vector), std::end(subgraph_nodes_vector), 0);
           SubGraphCollection_t parser_subgraph_nodes_vector = {{subgraph_nodes_vector, false}};
           bool subgraph_early_termination = false;
-          subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination);
+          subgraph_supported_nodes_vector = GetSupportedList(parser_subgraph_nodes_vector, 0, max_partition_iterations_, *sub_graph_veiwer, &subgraph_early_termination, subgraph_context_map);
           all_subgraphs_are_supported = IsSubGraphFullySupported(subgraph_supported_nodes_vector, number_of_ort_subgraph_nodes);
           break;
         }
@@ -1354,7 +1475,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   int number_of_trt_nodes = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
-      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph);
+      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, subgraph_context_map);
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       number_of_trt_nodes += static_cast<int>(group.first.size());
     }

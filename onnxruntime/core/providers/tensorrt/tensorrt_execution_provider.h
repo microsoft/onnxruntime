@@ -116,6 +116,9 @@ struct TensorrtFuncState {
 struct subgraph_context {
   std::unordered_set<std::string> output_args;
   std::unordered_map<std::string, const NodeArg*> inputs_and_initializers;
+  std::unordered_set<std::string> node_name_set;
+  std::unordered_set<const NodeArg*> manually_added_graph_inputs;
+  std::unordered_set<std::string> manually_added_graph_input_names;
 };
 
 // Logical device representation.
@@ -192,7 +195,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
-                                               const GraphViewer& graph) const;
+                                               const GraphViewer& graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
 
   /**
   Get TensorRT supported node lists by calling Onnx-TensorRT parser recursively. Since each time the parser
@@ -202,9 +205,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   other execution provider.
   */
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
-                                        const GraphViewer& graph, bool* early_termination) const;
+                                        const GraphViewer& graph, bool* early_termination, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
 
-  bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles = true) const;
+  bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map, bool remove_cycles = true) const;
 
   /** 
   Get a unique_lock object to control the concurrency behavior. 
@@ -222,11 +225,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   /**Check whether all the nodes of subgraph are supported*/
   bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
 
-  void SetGraphOuterScopeValues(Graph* build_graph, const Graph* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
+  void SetGraphOuterScopeValuesAndInputs(Graph* build_graph, const Graph* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
 
   void GetAllNodesOutputName(Graph* build_graph, std::unordered_set<std::string>& all_node_output_names_for_all_scope) const;
 
-  void SetGraphInputs(Graph* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
+  void SetAllGraphInputs(Graph* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
 
   // The newly built graph has not yet being resolved by Graph::Resolve(), so we can't leverage ORT Graph IsInputInitializerOrOutput() API.
   // We have to do it by ourselves.
@@ -241,6 +244,12 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool IsLocalValue(Graph* graph, const std::string& name, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
 
   void SetSubGraphContext(Graph* build_graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map) const;
+
+  void GetInputsToBeAddedToSubGraph(std::vector<size_t> graph_nodes_index, const GraphViewer* graph, std::unordered_map<std::string, std::unique_ptr<subgraph_context>>& subgraph_context_map, std::vector<const NodeArg*>& added_inputs) const;
+
+  std::string GetSubGraphIdByGraph(Graph* graph, HashValue& subgraph_hash) const;
+
+  std::string GetSubGraphIdByNodeNameSet(std::unordered_set<std::string>& node_name_set, HashValue& subgraph_hash) const;
 
 };
 }  // namespace onnxruntime

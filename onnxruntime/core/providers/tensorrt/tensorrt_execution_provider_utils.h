@@ -8,6 +8,7 @@
 #include <experimental/filesystem>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
+#include "murmurhash3.h"
 
 namespace fs = std::experimental::filesystem;
 
@@ -193,5 +194,39 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
   for (const auto & entry : cache_files) {
     fs::remove(entry);
   }
+}
+
+// Helper class to generate hash value for specific subgraph during GetCapability.
+class TRTSubGraphIdGenerator {
+ public:
+  void GenerateId(std::unordered_set<std::string>& node_name_set, HashValue& subgraph_hash) {
+    subgraph_hash = 0;
+    uint32_t hash[4] = {0, 0, 0, 0};
+
+    auto hash_str = [&hash](const std::string& str) {
+      MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+    };
+
+    for (auto entry : node_name_set) {
+      hash_str(entry);
+    }
+
+    subgraph_hash = hash[0] | (uint64_t(hash[1]) << 32);
+  }
+
+ private:
+  std::unordered_map<HashValue, HashValue> instance_hash_;  // instance hash to subgraph hash
+  std::unordered_map<HashValue, int> subgraph_id_;       // current unique id for subgraph
+};
+
+std::unique_ptr<TRTSubGraphIdGenerator> trt_subgraph_id_generator_ = std::make_unique<TRTSubGraphIdGenerator>();
+
+// Calll TRTGenerateMetaDefId to generate hash id for TRT engine cache
+void SubGraphIdGenerator(std::unordered_set<std::string>& node_name_set, HashValue& model_hash) {
+  // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
+  // use a lock when generating an id to be paranoid
+  static OrtMutex mutex;
+  std::lock_guard<OrtMutex> lock(mutex);
+  trt_subgraph_id_generator_->GenerateId(node_name_set, model_hash);
 }
 }
