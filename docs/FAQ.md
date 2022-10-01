@@ -28,13 +28,13 @@ std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, inpu
 ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
 ```
 
-## How do I force single threaded execution mode in ORT? By default, session.run() uses all the computer's cores.
+## How do I force single threaded execution mode in ORT? By default, session.run() uses all the computer's cores. 
 
 To limit use to a single thread only:
-* If built with OpenMP, set the environment variable OMP_NUM_THREADS to 1. The default inter_op_num_threads in session options is already 1.
+* If built with OpenMP, set the environment variable OMP_NUM_THREADS to 1. The default inter_op_num_threads in session options is already 1.  
 * If not built with OpenMP, set the session options intra_op_num_threads to 1. Do not change the default inter_op_num_threads (1).
 
-It's recommended to build onnxruntime without openmp if you only need single threaded execution.
+It's recommended to build onnxruntime without openmp if you only need single threaded execution. 
 
 This is supported in ONNX Runtime v1.3.0+
 
