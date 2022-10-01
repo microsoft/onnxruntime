@@ -12,8 +12,10 @@ class OpWrapperExecutionProvider : public IExecutionProvider {
  public:
   explicit OpWrapperExecutionProvider(ProviderOptionsMap provider_options_map);
 
-  OpWrapperExecutionProvider(const OpWrapperExecutionProvider& other) = delete;
-  OpWrapperExecutionProvider& operator=(const OpWrapperExecutionProvider& other) = delete;
+  OpWrapperExecutionProvider(const OpWrapperExecutionProvider& other) = default;
+  OpWrapperExecutionProvider& operator=(const OpWrapperExecutionProvider& other) = default;
+  OpWrapperExecutionProvider(OpWrapperExecutionProvider&& other) = default;
+  OpWrapperExecutionProvider& operator=(OpWrapperExecutionProvider&& other) = default;
 
   ~OpWrapperExecutionProvider() override = default;
 
