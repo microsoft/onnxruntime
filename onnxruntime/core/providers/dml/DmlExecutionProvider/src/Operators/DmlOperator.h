@@ -24,6 +24,11 @@ namespace Dml
         std::vector<TensorDesc> m_inputTensorDescs;
         std::vector<TensorDesc> m_outputTensorDescs;
 
+        // For each input or output of the DML kernel, the corresponding input or output of the original
+        // kernel.  Entries for unused DML inputs are nullopt.
+        std::vector<std::optional<uint32_t>> m_kernelInputIndices;
+        std::vector<std::optional<uint32_t>> m_kernelOutputIndices;
+
         ComPtr<IDMLCompiledOperator> m_compiledOperator;
         ComPtr<ID3D12Resource> m_persistentResource;
         ComPtr<IUnknown> m_persistentResourcePoolingUnk; // Controls when the persistent resource is returned to the pool
@@ -60,6 +65,11 @@ namespace Dml
 
         void SetDmlOperatorDesc(
             const DML_OPERATOR_DESC& operatorDesc,
+            const MLOperatorKernelCreationContext& kernelInfo
+            );
+
+        void SetDmlOperatorDesc(
+            const MLOperatorGraphDesc& operatorGraphDesc,
             const MLOperatorKernelCreationContext& kernelInfo
             );
 
@@ -116,12 +126,7 @@ namespace Dml
             std::optional<gsl::span<const uint32_t>> tensorShape = std::nullopt,
             uint32_t minDimensionCount = NchwDimensionCount
             ) const;
-
-    private:
-        // For each input or output of the DML kernel, the corresponding input or output of the original
-        // kernel.  Entries for unused DML inputs are nullopt.
-        std::vector<std::optional<uint32_t>> m_kernelInputIndices;
-        std::vector<std::optional<uint32_t>> m_kernelOutputIndices;
+        
     };
 
 } // namespace Dml
