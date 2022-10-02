@@ -28,7 +28,6 @@ namespace Dml
 
     private:
         void PerformOperatorFusion(onnxruntime::Graph* graph, bool* modified) const;
-        void PerformQuantizedOperatorDecomposition(onnxruntime::Graph* graph, bool* modified) const;
     };
 
 } // namespace Dml
