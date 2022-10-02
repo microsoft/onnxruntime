@@ -45,6 +45,9 @@ jobs:
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
             python tools/ci_build/build.py \
               --config RelWithDebInfo \
+              --cmake_extra_defines \
+                CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
+                onnxruntime_DEV_MODE=OFF \
               --mpi_home /opt/ompi \
               --use_migraphx \
               --rocm_version=5.2.3 \
