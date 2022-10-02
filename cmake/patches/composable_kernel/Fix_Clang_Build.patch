@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 3e1174ec..1c6d25a7 100644
+index 3e1174ec..65648cb7 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -1,7 +1,7 @@
@@ -11,7 +11,35 @@ index 3e1174ec..1c6d25a7 100644
  
  list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
  
-@@ -245,9 +245,6 @@ rocm_package_setup_component(tests
+@@ -36,27 +36,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ set(CMAKE_CXX_EXTENSIONS OFF)
+ message("CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
+ 
+-## OpenMP
+-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+-	# workaround issue hipcc in rocm3.5 cannot find openmp
+-	set(OpenMP_CXX "${CMAKE_CXX_COMPILER}")
+-	set(OpenMP_CXX_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
+-	set(OpenMP_CXX_LIB_NAMES "libomp" "libgomp" "libiomp5")
+-	set(OpenMP_libomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+-	set(OpenMP_libgomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+-	set(OpenMP_libiomp5_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+-else()
+-	find_package(OpenMP REQUIRED)
+-endif()
+-
+-message("OpenMP_CXX_LIB_NAMES: ${OpenMP_CXX_LIB_NAMES}")
+-message("OpenMP_gomp_LIBRARY: ${OpenMP_gomp_LIBRARY}")
+-message("OpenMP_pthread_LIBRARY: ${OpenMP_pthread_LIBRARY}")
+-message("OpenMP_CXX_FLAGS: ${OpenMP_CXX_FLAGS}")
+-
+-link_libraries(${OpenMP_gomp_LIBRARY})
+-link_libraries(${OpenMP_pthread_LIBRARY})
+-
+ ## HIP
+ find_package(HIP REQUIRED)
+ # Override HIP version in config.h, if necessary.
+@@ -245,9 +224,6 @@ rocm_package_setup_component(tests
  )
  
  add_subdirectory(library)
@@ -21,7 +49,7 @@ index 3e1174ec..1c6d25a7 100644
  
  #Create an interface target for the include only files and call it "composablekernels"
  include(CMakePackageConfigHelpers)
-@@ -273,11 +270,3 @@ rocm_install(FILES
+@@ -273,11 +249,3 @@ rocm_install(FILES
  
  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
