@@ -5,7 +5,8 @@
 
 namespace Dml
 {
-
+// QLinearSigmoid = Dequantize + Sigmoid + Quantize
+// This kernel is the first usage of graph based implmentation
 class DmlOperatorQLinearSigmoid : public DmlOperator
 {
     // This order matches the ONNX schema.
@@ -22,9 +23,10 @@ public:
     DmlOperatorQLinearSigmoid(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
-        // Right now the contract is if optional input tensors (like x_zero_point, y_zero_point) are
-        // not present, then 
-        DmlOperator::Initialize(kernelCreationContext);
+        // 0th index corresponds to the intermediate edge in the graph
+        // 1st index corresponds to the actual operator output index
+        std::vector<std::optional<uint32_t>> kernelOutputIndices = {std::nullopt, 0};
+        DmlOperator::Initialize(kernelCreationContext, std::nullopt, kernelOutputIndices);
 
         std::vector<uint32_t> outputShape = kernelCreationContext.GetTensorShapeDescription().GetOutputTensorShape(0);
         const uint32_t outputShapeDimCount = gsl::narrow_cast<uint32_t>(outputShape.size());
@@ -67,14 +69,29 @@ public:
             );
         }
 
+        // Overwrite the 0th output tensor desc which will be used as
+        //  1. output edge between Dequantize and Sigmoid node
+        //  2. input edge between Sigmoid and Quantize node
+        m_outputTensorDescs[0] = TensorDesc(
+                MLOperatorTensorDataType::Float,
+                gsl::make_span(outputShape),
+                gsl::make_span(outputShape),
+                TensorAxis::DoNotCoerce,
+                TensorAxis::W,
+                TensorAxis::RightAligned,
+                NchwDimensionCount, // minDimensionCount
+                0 // guaranteedBaseOffsetAlignment
+            );
+
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC dequantizeOperatorDesc = {};
-        dequantizeOperatorDesc.InputTensor = &inputDescs[0];
-        dequantizeOperatorDesc.ScaleTensor = &inputDescs[1];
-        dequantizeOperatorDesc.ZeroPointTensor = &inputDescs[2];
-        dequantizeOperatorDesc.OutputTensor = &outputDescs[0];
+        dequantizeOperatorDesc.InputTensor = &inputDescs[OnnxInputIndex::X];
+        dequantizeOperatorDesc.ScaleTensor = &inputDescs[OnnxInputIndex::X_scale];
+        dequantizeOperatorDesc.ZeroPointTensor = &inputDescs[OnnxInputIndex::X_zero_point];
+        dequantizeOperatorDesc.OutputTensor = &outputDescs[1];
+        
         const DML_OPERATOR_DESC opDesc1{DML_OPERATOR_ELEMENT_WISE_DEQUANTIZE_LINEAR, &dequantizeOperatorDesc};
 
         DML_ACTIVATION_SIGMOID_OPERATOR_DESC sigmoidOperatorDesc = {};
@@ -84,8 +101,8 @@ public:
 
         DML_ELEMENT_WISE_QUANTIZE_LINEAR_OPERATOR_DESC quantizeOperatorDesc = {};
         quantizeOperatorDesc.InputTensor = sigmoidOperatorDesc.OutputTensor;
-        quantizeOperatorDesc.ScaleTensor = &inputDescs[3];
-        quantizeOperatorDesc.ZeroPointTensor = &inputDescs[4];
+        quantizeOperatorDesc.ScaleTensor = &inputDescs[OnnxInputIndex::Y_scale];
+        quantizeOperatorDesc.ZeroPointTensor = &inputDescs[OnnxInputIndex::Y_zero_point];
         quantizeOperatorDesc.OutputTensor = &outputDescs[0];
         const DML_OPERATOR_DESC opDesc3{DML_OPERATOR_ELEMENT_WISE_QUANTIZE_LINEAR, &quantizeOperatorDesc};
 
@@ -125,10 +142,10 @@ public:
         intermediateEdges.push_back(dequantizeToSigmoidEdge);
 
         DML_INTERMEDIATE_GRAPH_EDGE_DESC sigmoidToQuantizeEdge = {};
-        dequantizeToSigmoidEdge.FromNodeIndex = 1;
-        dequantizeToSigmoidEdge.FromNodeOutputIndex = 0;
-        dequantizeToSigmoidEdge.ToNodeIndex = 2;
-        dequantizeToSigmoidEdge.ToNodeInputIndex = 0;
+        sigmoidToQuantizeEdge.FromNodeIndex = 1;
+        sigmoidToQuantizeEdge.FromNodeOutputIndex = 0;
+        sigmoidToQuantizeEdge.ToNodeIndex = 2;
+        sigmoidToQuantizeEdge.ToNodeInputIndex = 0;
         intermediateEdges.push_back(sigmoidToQuantizeEdge);
 
         operatorGraphDesc.intermediateEdgeCount = gsl::narrow_cast<uint32_t>(intermediateEdges.size());
