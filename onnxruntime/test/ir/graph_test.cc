@@ -1750,7 +1750,7 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
   }
 }
 
-TEST_F(GraphTest, PopInitializedTensor) {
+TEST_F(GraphTest, ExtractInitializedTensor) {
   Model model{"GraphUpdateTest", false, *logger_};
   auto& graph = model.MainGraph();
   const std::string initializer_name = "initializer";
@@ -1772,7 +1772,7 @@ TEST_F(GraphTest, PopInitializedTensor) {
   {
     ONNX_NAMESPACE::TensorProto popped_tensor;
 
-    status = graph.PopInitializedTensor(initializer_name, popped_tensor);
+    status = graph.ExtractInitializedTensor(initializer_name, popped_tensor);
     ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
     auto tensor_data_matches = [](const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
