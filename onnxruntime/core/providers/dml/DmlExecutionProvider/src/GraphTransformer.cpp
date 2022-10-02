@@ -30,10 +30,6 @@ namespace Dml
         PerformOperatorFusion(&graph, &transformModifiedGraph);
         modified |= transformModifiedGraph;
 
-        transformModifiedGraph = false;
-        PerformQuantizedOperatorDecomposition(&graph, &transformModifiedGraph);
-        modified |= transformModifiedGraph;
-
         if (modified)
         {
             ORT_RETURN_IF_ERROR(graph.Resolve());
