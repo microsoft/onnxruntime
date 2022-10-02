@@ -1847,15 +1847,20 @@ if (onnxruntime_USE_ROCM)
     message(FATAL_ERROR "ROCM does not support build with CUDA!")
   endif()
 
-  if (NOT DEFINED ENV{ROCM_PATH})
-    set(ROCM_PATH /opt/rocm)
-  else()
-    set(ROCM_PATH $ENV{ROCM_PATH})
+  set(ROCM_PATH ${onnxruntime_ROCM_HOME})
+
+  if (NOT CMAKE_HIP_COMPILER)
+    set(CMAKE_HIP_COMPILER "${ROCM_PATH}/llvm/bin/clang++")
   endif()
 
   if (NOT CMAKE_HIP_ARCHITECTURES)
     set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
   endif()
+
+  # NOTE: HIP language is added in 3.21 and there are bugs before 3.23.1
+  cmake_minimum_required(VERSION 3.23.1 FATAL_ERROR)
+  find_package(HIP)
+  enable_language(HIP)
 
   # replicate strategy used by pytorch to get ROCM_VERSION
   # https://github.com/pytorch/pytorch/blob/8eb21488fdcdb8b0e6fa2e46179b5fa6c42e75af/cmake/public/LoadHIP.cmake#L153-L173
@@ -1874,6 +1879,12 @@ if (onnxruntime_USE_ROCM)
   message("ROCM_VERSION_DEV_MINOR: ${ROCM_VERSION_DEV_MINOR}")
   message("ROCM_VERSION_DEV_PATCH: ${ROCM_VERSION_DEV_PATCH}")
   message("ROCM_VERSION_DEV_INT:   ${ROCM_VERSION_DEV_INT}")
+  message("\n***** HIP LANGUAGE CONFIG INFO ****\n")
+  message("CMAKE_HIP_COMPILER:      ${CMAKE_HIP_COMPILER}")
+  message("CMAKE_HIP_ARCHITECTURES: ${CMAKE_HIP_ARCHITECTURES}")
+  message("CMAKE_HIP_FLAGS:         ${CMAKE_HIP_FLAGS}")
+  string(TOUPPER ${CMAKE_BUILD_TYPE} BUILD_TYPE)
+  message("CMAKE_HIP_FLAGS_${BUILD_TYPE}: ${CMAKE_HIP_FLAGS_${BUILD_TYPE}}")
   add_definitions(-DROCM_VERSION=${ROCM_VERSION_DEV_INT})
 endif()
 
