@@ -4,7 +4,7 @@ name: 'linux_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 jobs:
 - job: AMDMIGraphX_CI
   pool: 'AMD-GPU'
-  timeoutInMinutes: 60
+  timeoutInMinutes: 180
 
   # gid of video and render group on gcr-openpai-35 and -36
   variables:
