@@ -695,7 +695,7 @@ class Graph {
   /** Swap (or move) the initializer whose name is <initializer_name> with method input <tensor_proto>
   *   This only pops non-external initializer
   */
-  common::Status PopInitializedTensor(const std::string& initializer_name, ONNX_NAMESPACE::TensorProto& tensor_proto);
+  common::Status ExtractInitializedTensor(const std::string& initializer_name, ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
   /** This function takes externally provided data for initializers with external data

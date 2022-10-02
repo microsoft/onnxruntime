@@ -2888,7 +2888,7 @@ Status Graph::ReplaceInitializedTensor(ONNX_NAMESPACE::TensorProto new_initializ
   return ReplaceInitializedTensorImpl(std::move(new_initializer), false);
 }
 
-Status Graph::PopInitializedTensor(const std::string& initializer_name, ONNX_NAMESPACE::TensorProto& tensor_proto) {
+Status Graph::ExtractInitializedTensor(const std::string& initializer_name, ONNX_NAMESPACE::TensorProto& tensor_proto) {
   // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
   // look up the const pointer by name, then find and modify the mutable
   // pointed-to TensorProto in graph_proto_.
