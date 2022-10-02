@@ -57,7 +57,16 @@ void GraphViewerToProto(const GraphViewer& graph_view,
     if (include_outer_scope_args) {
       for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
         const auto& node = graph_view.GetNode(node_idx);
+        
+        std::vector<const NodeArg*> inputs;
         for (const auto& input : node->InputDefs()) {
+          inputs.push_back(input);
+        }
+        for (const auto& input : node->ImplicitInputDefs()) {
+          inputs.push_back(input);
+        }
+
+        for (const auto& input : inputs) {
           if (current_scope_initializer_set.find(input->Name()) != current_scope_initializer_set.end()) {
             continue;
           }
@@ -65,7 +74,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
             auto* p_initializer = graph_proto.add_initializer();
             *p_initializer = *(graph_view.GetConstantInitializer(input->Name(), true));
             current_scope_initializer_set.insert(input->Name());
-          }
+          }       
         }
       }
     }
