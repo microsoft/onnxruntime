@@ -328,7 +328,7 @@ namespace Dml
 
                             continue;
                         }
-                        ORT_RETURN_IF_ERROR(graph.PopInitializedTensor(tensor->name(), (*transferredInitializerMap)[input]));
+                        ORT_RETURN_IF_ERROR(graph.ExtractInitializedTensor(tensor->name(), (*transferredInitializerMap)[input]));
                     }
                 }
 

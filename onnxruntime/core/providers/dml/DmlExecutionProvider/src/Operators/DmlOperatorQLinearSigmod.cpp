@@ -90,7 +90,7 @@ public:
         dequantizeOperatorDesc.InputTensor = &inputDescs[OnnxInputIndex::X];
         dequantizeOperatorDesc.ScaleTensor = &inputDescs[OnnxInputIndex::X_scale];
         dequantizeOperatorDesc.ZeroPointTensor = &inputDescs[OnnxInputIndex::X_zero_point];
-        dequantizeOperatorDesc.OutputTensor = &outputDescs[1];
+        dequantizeOperatorDesc.OutputTensor = &outputDescs[0];
         
         const DML_OPERATOR_DESC opDesc1{DML_OPERATOR_ELEMENT_WISE_DEQUANTIZE_LINEAR, &dequantizeOperatorDesc};
 
@@ -103,7 +103,7 @@ public:
         quantizeOperatorDesc.InputTensor = sigmoidOperatorDesc.OutputTensor;
         quantizeOperatorDesc.ScaleTensor = &inputDescs[OnnxInputIndex::Y_scale];
         quantizeOperatorDesc.ZeroPointTensor = &inputDescs[OnnxInputIndex::Y_zero_point];
-        quantizeOperatorDesc.OutputTensor = &outputDescs[0];
+        quantizeOperatorDesc.OutputTensor = &outputDescs[1];
         const DML_OPERATOR_DESC opDesc3{DML_OPERATOR_ELEMENT_WISE_QUANTIZE_LINEAR, &quantizeOperatorDesc};
 
         MLOperatorGraphDesc operatorGraphDesc = {};
@@ -156,7 +156,7 @@ public:
         DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
         outputEdge.FromNodeIndex = 2;
         outputEdge.FromNodeOutputIndex = 0;
-        outputEdge.GraphOutputIndex = *m_kernelOutputIndices[0];
+        outputEdge.GraphOutputIndex = *m_kernelOutputIndices[1];
         outputEdges.push_back(outputEdge);
         operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
         operatorGraphDesc.outputEdges = outputEdges.data();
