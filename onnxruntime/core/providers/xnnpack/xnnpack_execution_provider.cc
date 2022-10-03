@@ -77,12 +77,10 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       KERNEL_CREATE_INFO(1, QLinearAveragePool),
       BuildKernelCreateInfo<
           ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kDynamicDomainByCreate, 1, QLinearSoftmax)>,
-
-      KERNEL_CREATE_INFO_VERSIONED(kOnnxDomain, 7, 12, Gemm),
-      KERNEL_CREATE_INFO(kOnnxDomain, 13, Gemm),
-
-      KERNEL_CREATE_INFO_VERSIONED(kOnnxDomain, 7, 12, MatMul),
-      KERNEL_CREATE_INFO(kOnnxDomain, 13, MatMul)
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm)>,
+      BuildKernelCreateInfo<
+          ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, MatMul)>,
   };
 
   for (auto& function_table_entry : function_table) {
