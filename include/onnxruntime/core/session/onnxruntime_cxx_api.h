@@ -1432,13 +1432,13 @@ struct Op : detail::Base<OrtOp> {
 
   explicit Op(OrtOp*);  ///< Take ownership of the OrtOp
 
-  static [[nodiscard]] Op Create(const OrtKernelInfo* info, const char* op_name, const char* domain,
-                                 int version, const char** type_constraint_names,
-                                 const ONNXTensorElementDataType* type_constraint_values,
-                                 size_t type_constraint_count,
-                                 const OpAttr* attr_values,
-                                 size_t attr_count,
-                                 size_t input_count, size_t output_count);
+  static Op Create(const OrtKernelInfo* info, const char* op_name, const char* domain,
+                   int version, const char** type_constraint_names,
+                   const ONNXTensorElementDataType* type_constraint_values,
+                   size_t type_constraint_count,
+                   const OpAttr* attr_values,
+                   size_t attr_count,
+                   size_t input_count, size_t output_count);
 
   void Invoke(const OrtKernelContext* context,
               const Value* input_values,
