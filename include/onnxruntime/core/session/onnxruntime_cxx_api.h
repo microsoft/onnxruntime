@@ -232,7 +232,7 @@ struct Base {
   using contained_type = T;
 
   constexpr Base() = default;
-  constexpr Base(contained_type* p) noexcept : p_{p} {}
+  constexpr explicit Base(contained_type* p) noexcept : p_{p} {}
   ~Base() { OrtRelease(p_); }
 
   /// \brief Relinquishes ownership of the contained C object pointer
@@ -269,7 +269,7 @@ struct Base<const T> {
   using contained_type = const T;
 
   constexpr Base() = default;
-  constexpr Base(contained_type* p) noexcept : p_{p} {}
+  constexpr explicit Base(contained_type* p) noexcept : p_{p} {}
 
   ~Base() = default;
 

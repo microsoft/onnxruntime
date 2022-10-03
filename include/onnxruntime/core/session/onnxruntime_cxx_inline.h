@@ -242,7 +242,7 @@ inline void IoBindingImpl<T>::BindInput(const char* name, const Value& value) {
 
 template <typename T>
 inline void IoBindingImpl<T>::BindOutput(const char* name, const Value& value) {
-  ThrowOnError(GetApi().BindOutput(p_, name, value));
+  ThrowOnError(GetApi().BindOutput(this->p_, name, value));
 }
 
 template <typename T>
@@ -765,7 +765,7 @@ inline TypeInfo ConstSessionImpl<T>::GetOverridableInitializerTypeInfo(size_t in
 
 template <typename T>
 inline std::vector<Value> SessionImpl<T>::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-                                              const char* const* output_names, size_t output_names_count) {
+                                              const char* const* output_names, size_t output_count) {
   std::vector<Ort::Value> output_values;
   for (size_t i = 0; i < output_names_count; i++)
     output_values.emplace_back(nullptr);
