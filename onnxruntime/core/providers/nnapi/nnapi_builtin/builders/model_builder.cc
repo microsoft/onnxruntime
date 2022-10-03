@@ -12,12 +12,11 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/optimizer/initializer.h"
-
-#include "helper.h"
-#include "op_builder.h"
-#include "op_support_checker.h"
 
 using namespace android::nn::wrapper;
 
@@ -25,7 +24,7 @@ namespace onnxruntime {
 namespace nnapi {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
-    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {}
+    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer), shaper_{graph_viewer} {}
 
 int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
   return nnapi_ ? static_cast<int32_t>(nnapi_->nnapi_runtime_feature_level) : 0;
@@ -34,7 +33,7 @@ int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
 // Scalar operand is copied into the model, no need to persist
 #define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)                      \
   Status ModelBuilder::AddOperandFromScalar(scalar_type value, uint32_t& index) { \
-    OperandType operandType(Type::op_type, std::vector<uint32_t>{});              \
+    OperandType operandType(Type::op_type, InlinedVector<uint32_t>{});            \
     ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operandType, index));                  \
     RETURN_STATUS_ON_ERROR_WITH_NOTE(                                             \
         nnapi_->ANeuralNetworksModel_setOperandValue(                             \
@@ -54,7 +53,6 @@ void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
 }
 
 Status ModelBuilder::Prepare() {
-  nnapi_model_ = std::unique_ptr<Model>(new Model());
   RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
   ORT_RETURN_IF_ERROR(GetTargetDevices());
   PreprocessNodeUnits();
@@ -65,7 +63,6 @@ Status ModelBuilder::Prepare() {
   ORT_RETURN_IF_ERROR(RegisterModelInputs());
   ORT_RETURN_IF_ERROR(AddOperations());
   ORT_RETURN_IF_ERROR(RegisterModelOutputs());
-  RegisterModelShaper();
 
   return Status::OK();
 }
@@ -388,10 +385,6 @@ Status ModelBuilder::RegisterModelOutputs() {
   return Status::OK();
 }
 
-void ModelBuilder::RegisterModelShaper() {
-  nnapi_model_->SetShaper(shaper_);
-}
-
 Status ModelBuilder::AddNewOperand(const std::string& name,
                                    const OperandType& operand_type,
                                    uint32_t& index) {
@@ -512,10 +505,10 @@ Status ModelBuilder::AddOperations() {
   return Status::OK();
 }
 
-Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indices,
+Status ModelBuilder::AddOperation(int op, const InlinedVector<uint32_t>& input_indices,
                                   const std::vector<std::string>& output_names,
                                   const std::vector<OperandType>& output_types) {
-  std::vector<uint32_t> output_indices;
+  InlinedVector<uint32_t> output_indices;
   for (size_t i = 0; i < output_types.size(); i++) {
     uint32_t index = 0;
     ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], output_types[i], index));

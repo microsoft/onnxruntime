@@ -26,8 +26,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 #endif
 }  // namespace op_kernel_type_control
 
-using IndexTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                  Gather, Input, 1);
 using EnabledIndexTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                          Gather, Input, 1);
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -36,7 +34,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     10,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndexTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
     Gather);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -45,7 +43,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndexTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
     Gather);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -53,7 +51,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndexTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
     Gather);
 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {

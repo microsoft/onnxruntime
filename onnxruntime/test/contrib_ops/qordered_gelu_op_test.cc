@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qordered_test_utils.h"
+#include "test/contrib_ops/qordered_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
 
-// Only the CUDA EP supports ordered quantized ops for now
-#ifdef USE_CUDA
+#if defined(USE_CUDA)
 
 static void
 RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_x,

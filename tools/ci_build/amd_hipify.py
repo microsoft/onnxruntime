@@ -12,9 +12,15 @@ from logger import get_logger
 
 log = get_logger("amd_hipify")
 
-contrib_ops_path = "onnxruntime/contrib_ops"
-providers_path = "onnxruntime/core/providers"
-training_ops_path = "orttraining/orttraining/training_ops"
+
+def path_in_repo(path):
+    repo_root = os.path.relpath(os.path.join(os.path.dirname(__file__), "../.."))
+    return os.path.join(repo_root, path)
+
+
+contrib_ops_path = path_in_repo("onnxruntime/contrib_ops")
+providers_path = path_in_repo("onnxruntime/core/providers")
+training_ops_path = path_in_repo("orttraining/orttraining/training_ops")
 
 
 def is_excluded(f, excluded_patterns):
@@ -55,15 +61,26 @@ contrib_ops_excluded_files = [
     "quantization/attention_quantization_impl.cu",
     "quantization/attention_quantization_impl.cuh",
     "quantization/quantize_dequantize_linear.cc",
+    "quantization/qordered_ops/qordered_attention_impl.cu",
+    "quantization/qordered_ops/qordered_attention_impl.h",
+    "quantization/qordered_ops/qordered_attention_input_enum.h",
+    "quantization/qordered_ops/qordered_attention.cc",
+    "quantization/qordered_ops/qordered_attention.h",
     "quantization/qordered_ops/qordered_common.cuh",
     "quantization/qordered_ops/qordered_layer_norm.h",
     "quantization/qordered_ops/qordered_layer_norm.cc",
     "quantization/qordered_ops/qordered_layer_norm_impl.h",
     "quantization/qordered_ops/qordered_layer_norm_impl.cu",
+    "quantization/qordered_ops/qordered_longformer_attention.cc",
+    "quantization/qordered_ops/qordered_longformer_attention.h",
     "quantization/qordered_ops/qordered_matmul.h",
     "quantization/qordered_ops/qordered_matmul.cc",
     "quantization/qordered_ops/qordered_matmul_utils.h",
     "quantization/qordered_ops/qordered_matmul_utils.cc",
+    "quantization/qordered_ops/qordered_qdq_impl.cu",
+    "quantization/qordered_ops/qordered_qdq_impl.h",
+    "quantization/qordered_ops/qordered_qdq.cc",
+    "quantization/qordered_ops/qordered_qdq.h",
     "quantization/qordered_ops/qordered_unary_ops.h",
     "quantization/qordered_ops/qordered_unary_ops.cc",
     "quantization/qordered_ops/qordered_unary_ops_impl.h",
