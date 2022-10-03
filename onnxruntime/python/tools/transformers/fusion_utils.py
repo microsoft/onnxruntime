@@ -5,8 +5,10 @@
 from logging import getLogger
 from typing import Tuple
 
+import numpy
 from numpy import array_equal, ndarray
-from onnx import TensorProto, helper, numpy_helper
+from onnx import NodeProto, TensorProto, helper, numpy_helper
+from onnx import onnx_pb as onnx_proto
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -82,6 +84,73 @@ class FusionUtils:
             )
         else:
             return value == expected_value
+
+    @staticmethod
+    def transpose_2d_int8_tensor(tensor: onnx_proto.TensorProto):
+        """Transpose a 2-D INT8 TensorProto
+        Args:
+            tensor (TensorProto): tensor to be transposed
+        Returns:
+            tensor (TensorProto): transposed tensor
+        """
+        if not isinstance(tensor, onnx_proto.TensorProto):
+            raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
+
+        if len(tensor.dims) != 2 or tensor.data_type != onnx_proto.TensorProto.INT8:
+            raise ValueError("Only INT8 2-D tensors can be transposed")
+
+        if tensor.raw_data:
+            int32_data = numpy.reshape(numpy.frombuffer(tensor.raw_data, dtype="int8"), tensor.dims)
+            int32_transposed_data = numpy.transpose(int32_data, [1, 0])
+            tensor.raw_data = int32_transposed_data.tobytes()
+
+        else:
+            raise ValueError("only raw buffer supported")
+
+        return tensor
+
+    @staticmethod
+    def check_qdq_node_for_fusion(node: NodeProto, model: OnnxModel, allow_per_tensor_quantization_only=True):
+        """Verify if a provided QuantizeLinear (Q) / DequantizeLinear (DQ) node is a good candidate for fusion.
+           It is a good candidate for fusion if:
+           (1) The Q/DQ node is for per-tensor quantization if allow_per_tensor_quantization_only is `True`
+           (2) The Q/DQ node should have constant scale
+           (3) The Q/DQ node should have a zero point of 0
+        Args:
+            node (NodeProto): a Q/DQ node to check
+        Returns:
+            bool: whether the check is passed or not
+        """
+        if not node.op_type in {"QuantizeLinear", "DequantizeLinear"}:
+            logger.debug(f"Provided node is not a Q/DQ node. Op Type: {node.op_type}")
+
+        scale = model.get_constant_value(node.input[1])
+
+        # Scale is not constant
+        if scale is None:
+            return False
+
+        # Not per-tensor quantization
+        scale_has_single_element = scale.ndim == 0 or (scale.ndim == 1 and scale.shape[0] == 1)
+        if allow_per_tensor_quantization_only and not scale_has_single_element:
+            return False
+
+        # If the Q/DQ node has no zero point input, it is assumed to be 0 (per ONNX spec)
+        if len(node.input) == 2:
+            return True
+
+        # Zero point should be constant and should have a value of 0
+        zero_point = model.get_constant_value(node.input[2])
+
+        # Zero point and scale should have same number of dims
+        if scale.ndim != zero_point.ndim:
+            return False
+
+        # Zero point is not constant or zero point is not zero
+        if zero_point is None:
+            return False
+
+        return numpy.all(zero_point == 0)
 
     def check_node_input_value(self, node, input_index: int, expected_value):
         """Verify that a node has expected input value

@@ -81,9 +81,7 @@ if [ "$OS_VERSION" = "20.04" ]; then
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
 else
-    exit 1   
+    exit 1
 fi
 
 rm -rf /var/lib/apt/lists/*
-
-
