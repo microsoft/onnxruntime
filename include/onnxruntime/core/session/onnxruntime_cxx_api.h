@@ -1135,7 +1135,7 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \param shape_len The number of tensor shape dimensions.
    */
   template <typename T>
-  static [[nodiscard]] Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
+  static Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
 
   /** \brief Creates a tensor with a user supplied buffer. Wraps OrtApi::CreateTensorWithDataAsOrtValue.
    * \param info Memory description of where the p_data buffer resides (CPU vs GPU etc).
@@ -1145,8 +1145,8 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \param shape_len The number of tensor shape dimensions.
    * \param type The data type.
    */
-  static [[nodiscard]] Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
-                                          ONNXTensorElementDataType type);
+  static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
+                            ONNXTensorElementDataType type);
 
   /** \brief Creates a tensor using a supplied OrtAllocator. Wraps OrtApi::CreateTensorAsOrtValue.
    * \tparam T The numeric datatype. This API is not suitable for strings.
@@ -1155,7 +1155,7 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \param shape_len The number of tensor shape dimensions.
    */
   template <typename T>
-  static [[nodiscard]] Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
+  static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
 
   /** \brief Creates a tensor using a supplied OrtAllocator. Wraps OrtApi::CreateTensorAsOrtValue.
    * \param allocator The allocator to use.
@@ -1163,13 +1163,13 @@ struct Value : detail::ValueImpl<OrtValue> {
    * \param shape_len The number of tensor shape dimensions.
    * \param type The data type.
    */
-  static [[nodiscard]] Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
+  static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
 
-  static [[nodiscard]] Value CreateMap(Value& keys, Value& values);       ///< Wraps OrtApi::CreateValue
-  static [[nodiscard]] Value CreateSequence(std::vector<Value>& values);  ///< Wraps OrtApi::CreateValue
+  static Value CreateMap(Value& keys, Value& values);       ///< Wraps OrtApi::CreateValue
+  static Value CreateSequence(std::vector<Value>& values);  ///< Wraps OrtApi::CreateValue
 
   template <typename T>
-  static [[nodiscard]] Value CreateOpaque(const char* domain, const char* type_name, const T&);  ///< Wraps OrtApi::CreateOpaqueValue
+  static Value CreateOpaque(const char* domain, const char* type_name, const T&);  ///< Wraps OrtApi::CreateOpaqueValue
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
@@ -1183,8 +1183,8 @@ struct Value : detail::ValueImpl<OrtValue> {
   /// <param name="values_shape">non zero values shape. Use a single 0 shape for fully sparse tensors.</param>
   /// <returns></returns>
   template <typename T>
-  static [[nodiscard]] Value CreateSparseTensor(const OrtMemoryInfo* info, T* p_data, const Shape& dense_shape,
-                                                const Shape& values_shape);
+  static Value CreateSparseTensor(const OrtMemoryInfo* info, T* p_data, const Shape& dense_shape,
+                                  const Shape& values_shape);
 
   /// <summary>
   /// Creates an OrtValue instance containing SparseTensor. This constructs
@@ -1202,8 +1202,8 @@ struct Value : detail::ValueImpl<OrtValue> {
   /// <param name="values_shape">non zero values shape. Use a single 0 shape for fully sparse tensors.</param>
   /// <param name="type">data type</param>
   /// <returns>Ort::Value instance containing SparseTensor</returns>
-  static [[nodiscard]] Value CreateSparseTensor(const OrtMemoryInfo* info, void* p_data, const Shape& dense_shape,
-                                                const Shape& values_shape, ONNXTensorElementDataType type);
+  static Value CreateSparseTensor(const OrtMemoryInfo* info, void* p_data, const Shape& dense_shape,
+                                  const Shape& values_shape, ONNXTensorElementDataType type);
 
   /// <summary>
   /// This is a simple forwarding method the below CreateSparseTensor.
@@ -1215,7 +1215,7 @@ struct Value : detail::ValueImpl<OrtValue> {
   /// <param name="dense_shape">a would be dense shape of the tensor</param>
   /// <returns>Ort::Value</returns>
   template <typename T>
-  static [[nodiscard]] Value CreateSparseTensor(OrtAllocator* allocator, const Shape& dense_shape);
+  static Value CreateSparseTensor(OrtAllocator* allocator, const Shape& dense_shape);
 
   /// <summary>
   /// Creates an instance of OrtValue containing sparse tensor. The created instance has no data.
@@ -1228,7 +1228,7 @@ struct Value : detail::ValueImpl<OrtValue> {
   /// <param name="dense_shape">a would be dense shape of the tensor</param>
   /// <param name="type">data type</param>
   /// <returns>an instance of Ort::Value</returns>
-  static [[nodiscard]] Value CreateSparseTensor(OrtAllocator* allocator, const Shape& dense_shape, ONNXTensorElementDataType type);
+  static Value CreateSparseTensor(OrtAllocator* allocator, const Shape& dense_shape, ONNXTensorElementDataType type);
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 };
