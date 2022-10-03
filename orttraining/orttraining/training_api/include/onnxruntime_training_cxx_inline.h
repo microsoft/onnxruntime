@@ -58,14 +58,14 @@ inline void TrainingSession::SetLearningRate(float learning_rate) {
   ThrowOnError(GetTrainingApi().SetLearningRate(p_, learning_rate));
 }
 
-inline float TrainingSession::GetLearningRate() {
+inline float TrainingSession::GetLearningRate() const {
   float learning_rate = 0;
   ThrowOnError(GetTrainingApi().GetLearningRate(p_, &learning_rate));
   return learning_rate;
 }
 
-inline void TrainingSession::RegisterLinearLRScheduler(const int64_t warmup_step_count, const int64_t total_step_count,
-                                                       const float initial_lr) {
+inline void TrainingSession::RegisterLinearLRScheduler(int64_t warmup_step_count, int64_t total_step_count,
+                                                       float initial_lr) {
   ThrowOnError(GetTrainingApi().RegisterLinearLRScheduler(p_, warmup_step_count, total_step_count,
                                                           initial_lr));
 }

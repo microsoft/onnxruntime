@@ -114,7 +114,7 @@ class TrainingSession : public Base<OrtTrainingSession> {
    *
    * \return float representing the current learning rate.
    */
-  float GetLearningRate();
+  float GetLearningRate() const;
 
   /** \brief Register the linear learning rate scheduler for the training session.
    *
@@ -124,8 +124,8 @@ class TrainingSession : public Base<OrtTrainingSession> {
    * \param[in] total_step_count Total number of training steps.
    * \param[in] initial_lr Initial learning rate to use.
    */
-  void RegisterLinearLRScheduler(const int64_t warmup_step_count, const int64_t total_step_count,
-                                 const float initial_lr);
+  void RegisterLinearLRScheduler(int64_t warmup_step_count, int64_t total_step_count,
+                                 float initial_lr);
 
   /** \brief Updates the learning rate based on the lr scheduler.
    *
