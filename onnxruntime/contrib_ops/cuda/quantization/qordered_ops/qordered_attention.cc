@@ -244,7 +244,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   int64_t size_of_attention_scores = ((int64_t)batch_size) * num_heads_ * sequence_length * sequence_length;
 
   // transposed qkv_layer,  union(stacked, attention probs + attention scores)
-  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>(m * n + std::max((int64_t)m * n, 2 * size_of_attention_scores));
+  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>((int64_t)m * n + std::max((int64_t)m * n, 2 * size_of_attention_scores));
 
   int8_t* stacked_qkv_layers = gemm_buffer_quantized.get() + ((int64_t)m * n);
   int8_t* tranposed_qkv_layers = gemm_buffer_quantized.get();
