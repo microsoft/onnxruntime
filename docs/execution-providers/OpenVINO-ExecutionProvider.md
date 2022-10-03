@@ -20,8 +20,8 @@ Accelerate ONNX models on Intel CPUs, GPUs and VPUs with Intel OpenVINO™ Execu
 ## Install
 
 Pre-built packages and Docker images are published for OpenVINO™ Execution Provider for ONNX Runtime by Intel for each release.
-* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v4.0 Release](https://github.com/intel/onnxruntime/releases) 
-* Python wheels Ubuntu/Windows: [onnxruntime-openvino](https://pypi.org/project/onnxruntime-openvino/1.11.0/)
+* OpenVINO™ Execution Provider for ONNX Runtime Release page: [Latest v4.2 Release](https://github.com/intel/onnxruntime/releases)
+* Python wheels Ubuntu/Windows: [onnxruntime-openvino](https://pypi.org/project/onnxruntime-openvino/)
 * Docker image: [openvino/onnxruntime_ep_ubuntu18](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18)
 
 ## Requirements
@@ -30,6 +30,7 @@ ONNX Runtime OpenVINO™ Execution Provider is compatible with three lastest rel
 
 |ONNX Runtime|OpenVINO™|Notes|
 |---|---|---|
+|1.13.0|2022.2|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.2)|
 |1.11.0|2022.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.0)|
 |1.10.0|2021.4.2|[Details](https://github.com/intel/onnxruntime/releases/tag/v3.4)|
 |1.9.0|2021.4.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v3.1)|
@@ -55,12 +56,12 @@ OpenVINO™ 2022.1.
 
 Please download onnxruntime-openvino python packages from PyPi.org:
 ```
-pip install onnxruntime-openvino==1.11.0
+pip install onnxruntime-openvino==1.13.0
 ```
 
 To enable OpenVINO™ Execution Provider with ONNX Runtime on Windows we must install OpenVINO™ separately:
 ```
-pip install openvino==2022.1
+pip install openvino==2022.2
 ```
 Code to be added in ONNX Runtime Windows Samples:
 ```
@@ -98,12 +99,12 @@ Initialize the OpenVINO™ environment by running the setupvars script as shown 
    ```
       C:\ <openvino_install_directory>\setupvars.bat
    ```
-   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile].(https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino)
+   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino).
 
 
 **C#**
 
-To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../build/inferencing.md#build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../build/eps.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino. 
+To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../build/inferencing.md#build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino execution provider](../build/eps.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
 
 ### Multi-threading for OpenVINO™ Execution Provider
 
@@ -145,10 +146,7 @@ The model caching setting enables blobs with Myriadx(VPU) and as cl_cache files 
 
 Enables [OpenCL queue throttling](https://docs.openvino.ai/latest/groupov_runtime_ocl_gpu_prop_cpp_api.html?highlight=throttling) for GPU devices. Reduces CPU utilization when using GPUs with OpenVINO EP.
 
-#### Save/Load blob capability for Myriadx(VPU) with OpenVINO™ 2021.3 version
-This feature enables users to save and load the blobs directly. These pre-compiled blobs can be directly loaded on to the specific hardware device target and inferencing can be done. This feature is only supported on MyriadX(VPU) hardware device target.
-
-#### Model caching
+### Model caching
 
 Starting from version 2021.4, OpenVINO™ supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html). With OpenVINO™  2021.4, it is supported on Myriadx(VPU)
 and iGPU.
@@ -259,7 +257,7 @@ Key-Value pairs for config options can be set using InferenceSession API as foll
 ```
 session = onnxruntime.InferenceSession(<path_to_model_file>, providers=['OpenVINOExecutionProvider'], provider_options=[{Key1 : Value1, Key2 : Value2, ...}])
 ```
-*Note that the next release (ORT 1.10) will require explicitly setting the providers parameter if you want to use execution providers other than the default CPU provider (as opposed to the current behavior of providers getting set/registered by default based on the build flags) when instantiating InferenceSession.*
+*Note that the releases from (ORT 1.10) will require explicitly setting the providers parameter if you want to use execution providers other than the default CPU provider (as opposed to the current behavior of providers getting set/registered by default based on the build flags) when instantiating InferenceSession.*
 
 ### C/C++ API
 All the options shown below are passed to SessionOptionsAppendExecutionProvider_OpenVINO() API and populated in the struct OrtOpenVINOProviderOptions in an example shown below, for example for CPU device type:
@@ -283,7 +281,7 @@ The following table lists all the available configuration options and the Key-Va
 
 | **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
 | --- | --- | --- | --- | --- |
-| device_type | string | CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16, VAD-F_FP32, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
+| device_type | string | CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16, VAD-F_FP32, GPU.0_FP16, GPU.1_FP16, GPU.0_FP16, GPU.0_FP32 based on the avaialable GPUs, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
 | device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvino.ai/latest/classInferenceEngine_1_1Core.html). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
 | enable_vpu_fast_compile | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices. During initialization of the VPU device with compiled model, Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format. This in-turn speeds up model initialization time. However, enabling this option may slowdown inference due to some of the optimizations not being fully applied, so caution is to be exercised while enabling this option. |
 | num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time. |
@@ -368,6 +366,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | BatchNormalization | Yes | Yes | Yes |
 | BitShift | Yes | No | No |
 | Ceil | Yes | Yes | Yes |
+| Celu | Yes | Yes | Yes |
 | Cast | Yes | Yes | Yes |
 | Clip | Yes | Yes | Yes |
 | Concat | Yes | Yes | Yes |
@@ -388,6 +387,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Erf | Yes | Yes | Yes |
 | Exp | Yes | Yes | Yes |
 | Expand | Yes | Yes | Yes |
+| EyeLike | Yes | No | No |
 | Flatten | Yes | Yes | Yes |
 | Floor | Yes | Yes | Yes |
 | Gather | Yes | Yes | Yes |
@@ -473,6 +473,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Sum | Yes | Yes | Yes |
 | Tan | Yes | Yes | No |
 | Tanh | Yes | Yes | Yes |
+| ThresholdedRelu | Yes | Yes | Yes |
 | Tile | Yes | Yes | Yes |
 | TopK | Yes | Yes | Yes |
 | Transpose | Yes | Yes | Yes |
@@ -528,12 +529,14 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO™ Exe
 | **MODEL NAME** | **CPU** | **GPU** | **VPU** |
 | --- | --- | --- | --- |
 | tiny_yolov2 | Yes | Yes | Yes |
-| yolov3 | Yes | Yes | Yes |
-| tiny_yolov3 | Yes | Yes | Yes |
-| mask_rcnn | Yes | Yes | Yes |
-| faster_rcnn | Yes | Yes | Yes |
+| yolov3 | Yes | Yes | No |
+| tiny_yolov3 | Yes | Yes | No |
+| mask_rcnn | Yes | Yes | No |
+| faster_rcnn | Yes | Yes | No |
 | yolov4 | Yes | Yes | Yes |
 | yolov5 | Yes | Yes | Yes |
+| yolov7 | Yes | Yes | No |
+| tiny_yolov7 | Yes | Yes | No |
 
 ### Image Manipulation Networks
 
@@ -545,6 +548,27 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO™ Exe
 | rain_princess | Yes | yes | Yes |
 | pointilism | Yes | Yes | Yes |
 | udnie | Yes | Yes | Yes |
+
+### Natural Language Processing Networks
+
+| **MODEL NAME** | **CPU** | **GPU** | **VPU** |
+| --- | --- | --- | --- |
+| bert-squad | Yes | Yes | Yes |
+| bert-base-cased | Yes | Yes | Yes |
+| bert-base-chinese | Yes | Yes | Yes |
+| bert-base-japanese-char | Yes | Yes | Yes |
+| bert-base-multilingual-cased | Yes | yes | Yes |
+| bert-base-uncased | Yes | Yes | Yes |
+| distilbert-base-cased | Yes | Yes | No |
+| distilbert-base-multilingual-cased | Yes | Yes | No |
+| distilbert-base-uncased | Yes | Yes | No |
+| distilbert-base-uncased-finetuned-sst-2-english | Yes | Yes | No |
+| gpt2 | Yes | Yes | Yes |
+| roberta-base | Yes | Yes | Yes |
+| roberta-base-squad2 | Yes | Yes | Yes |
+| t5-base | Yes | Yes | Yes |
+| twitter-roberta-base-sentiment | Yes | Yes | Yes |
+| xlm-roberta-base | Yes | Yes | Yes |
 
 ## OpenVINO™ Execution Provider Samples Tutorials
 
