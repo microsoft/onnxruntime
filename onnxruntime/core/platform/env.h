@@ -40,7 +40,8 @@ class ThreadPoolInterface;
 }
 namespace onnxruntime {
 
-using GroupAffinities = std::vector<std::pair<int64_t,int64_t>>;
+using GroupAffinity = std::pair<uint64_t,uint64_t>;
+using GroupAffinities = std::vector<GroupAffinity>;
 
 #ifdef _WIN32
 using PIDType = unsigned long;

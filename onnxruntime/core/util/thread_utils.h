@@ -36,6 +36,8 @@ struct OrtThreadPoolParams {
   OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;
   void* custom_thread_creation_options = nullptr;
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
+
+  onnxruntime::GroupAffinities group_affinities;
 };
 
 struct OrtThreadingOptions {

@@ -70,14 +70,11 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
 #endif
-  } else if (options.affinity_vec_len != 0) {
-    auto group_affinities = GetGroupAffinities();
-    auto group_affinities_size = group_affinities.size();
-    to.group_affinities.resize(static_cast<size_t>(options.thread_pool_size)-1); //skip main thread
+  } else if (!options.group_affinities.empty()) {
+    ORT_ENFORCE(static_cast<int>(options.group_affinities.size()) == options.thread_pool_size - 1,
+        "Invalid thread options, number of group affinities must equal to options.thread_pool_size - 1");
+    to.group_affinities = options.group_affinities;
     for (int i = 0; i < options.thread_pool_size-1; ++i) {
-      size_t ith_processor_from_zero = options.affinity_vec[i] - 1; 
-      ORT_ENFORCE(ith_processor_from_zero < group_affinities_size, "processor not exist: ", options.affinity_vec[i]);
-      to.group_affinities[i] = group_affinities[ith_processor_from_zero];
       std::cout << "sub-thread " << i + 1 << " affnity set to: group "
                 << to.group_affinities[i].first << " with processor bitmask "
                 << to.group_affinities[i].second << std::endl;
