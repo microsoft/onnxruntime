@@ -27,11 +27,11 @@ jobs:
     matrix:
       AndroidMinimalBaseline:
         ConfigId: minimal-baseline
-        BuildConfigFile: "/onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/minimal_baseline.config"
+        BuildConfigFile: "/onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_baseline.config"
         BinarySizeThresholdInBytes: 1306224
-      AndroidMinimalMobileOps:
-        ConfigId: minimal-basic-with-some-ops
-        BuildConfigFile: "/onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/minimal_basic_with_some_ops.config"
+      AndroidMinimalBasicWithOps:
+        ConfigId: android-minimal-basic-with-some-ops
+        BuildConfigFile: "/onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_basic_with_some_ops.config"
         BinarySizeThresholdInBytes: 1306224
 
   steps:

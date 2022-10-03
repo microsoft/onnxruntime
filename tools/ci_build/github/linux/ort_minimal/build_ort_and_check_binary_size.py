@@ -41,7 +41,7 @@ def main():
     build_command = (
         [sys.executable, str(REPO_ROOT / "tools/ci_build/build.py")]
         + build_params
-        + (["--cmake_extra_defines", "ADD_DEBUG_INFO_TO_MINIMAL_BUILD=ON"] if args.debug else [])
+        + (["--cmake_extra_defines", "ADD_DEBUG_INFO_TO_MINIMAL_BUILD=ON"] if args.with_debug_info else [])
         # put the following options last so they don't get overridden by build_params
         + [
             f"--build_dir={args.build_dir}",
