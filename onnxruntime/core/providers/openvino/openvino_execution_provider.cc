@@ -13,6 +13,9 @@ namespace onnxruntime {
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
+  
+  InitProviderOrtApi();
+  
   openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;

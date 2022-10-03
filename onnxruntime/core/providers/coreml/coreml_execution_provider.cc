@@ -166,7 +166,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 
         // CoreML MLMultiArray API expect input to be non-const
         // https://developer.apple.com/documentation/coreml/mlmultiarray/2881219-initwithdatapointer?language=objc
-        void* inputBuffer = input_tensor.GetTensorMutableRawData();
+        void* inputBuffer = const_cast<void*>(input_tensor.GetTensorRawData());
         inputs.emplace(
             input_name,
             coreml::OnnxTensorData{

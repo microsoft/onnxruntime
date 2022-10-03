@@ -129,7 +129,7 @@ template <typename T>
 inline MemoryAllocation AllocatorImpl<T>::GetAllocation(size_t size) {
   void* out;
   ThrowOnError(GetApi().AllocatorAlloc(this->p_, size, &out));
-  MemoryAllocation result(p_, out, size);
+  MemoryAllocation result(this->p_, out, size);
   return result;
 }
 
@@ -209,10 +209,32 @@ inline MemoryInfo MemoryInfo::CreateCpu(OrtAllocatorType type, OrtMemType mem_ty
 }
 
 inline MemoryInfo::MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
-  ThrowOnError(GetApi().CreateMemoryInfo(name, type, id, mem_type, &p_));
+  ThrowOnError(GetApi().CreateMemoryInfo(name, type, id, mem_type, &this->p_));
 }
 
 namespace detail {
+template <typename T>
+inline std::vector<std::string> ConstIoBindingImpl<T>::GetOutputNames() const {
+  AllocatorWithDefaultOptions allocator;
+  return binding_utils::GetOutputNamesHelper(this->p_, allocator);
+}
+
+template <typename T>
+inline std::vector<std::string> ConstIoBindingImpl<T>::GetOutputNames(OrtAllocator* allocator) const {
+  return binding_utils::GetOutputNamesHelper(this->p_, allocator);
+}
+
+template <typename T>
+inline std::vector<Value> ConstIoBindingImpl<T>::GetOutputValues() const {
+  AllocatorWithDefaultOptions allocator;
+  return binding_utils::GetOutputValuesHelper(this->p_, allocator);
+}
+
+template <typename T>
+inline std::vector<Value> ConstIoBindingImpl<T>::GetOutputValues(OrtAllocator* allocator) const {
+  return binding_utils::GetOutputValuesHelper(this->p_, allocator);
+}
+  
 template <typename T>
 inline void IoBindingImpl<T>::BindInput(const char* name, const Value& value) {
   ThrowOnError(GetApi().BindInput(this->p_, name, value));
@@ -220,34 +242,12 @@ inline void IoBindingImpl<T>::BindInput(const char* name, const Value& value) {
 
 template <typename T>
 inline void IoBindingImpl<T>::BindOutput(const char* name, const Value& value) {
-  ThrowOnError(GetApi().BindOutput(p_, name, value));
+  ThrowOnError(GetApi().BindOutput(this->p_, name, value));
 }
 
 template <typename T>
 inline void IoBindingImpl<T>::BindOutput(const char* name, const OrtMemoryInfo* mem_info) {
   ThrowOnError(GetApi().BindOutputToDevice(this->p_, name, mem_info));
-}
-
-template <typename T>
-inline std::vector<std::string> IoBindingImpl<T>::GetOutputNames() const {
-  AllocatorWithDefaultOptions allocator;
-  return binding_utils::GetOutputNamesHelper(this->p_, allocator);
-}
-
-template <typename T>
-inline std::vector<std::string> IoBindingImpl<T>::GetOutputNames(OrtAllocator* allocator) const {
-  return binding_utils::GetOutputNamesHelper(this->p_, allocator);
-}
-
-template <typename T>
-inline std::vector<Value> IoBindingImpl<T>::GetOutputValues() const {
-  AllocatorWithDefaultOptions allocator;
-  return binding_utils::GetOutputValuesHelper(this->p_, allocator);
-}
-
-template <typename T>
-inline std::vector<Value> IoBindingImpl<T>::GetOutputValues(OrtAllocator*) const {
-  return binding_utils::GetOutputValuesHelper(this->p_, allocator);
 }
 
 template <typename T>
@@ -257,7 +257,7 @@ inline void IoBindingImpl<T>::ClearBoundInputs() {
 
 template <typename T>
 inline void IoBindingImpl<T>::ClearBoundOutputs() {
-  GetApi().ClearBoundOutputs(p_);
+  GetApi().ClearBoundOutputs(this->p_);
 }
 
 template <typename T>
@@ -335,7 +335,7 @@ inline std::vector<Value> GetOutputValuesHelper(const OrtIoBinding* binding, Ort
 }  // namespace detail
 
 inline IoBinding::IoBinding(Session& session) {
-  ThrowOnError(GetApi().CreateIoBinding(session, &p_));
+  ThrowOnError(GetApi().CreateIoBinding(session, &this->p_));
 }
 
 inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
@@ -452,10 +452,6 @@ inline RunOptions& RunOptions::SetTerminate() {
 inline RunOptions& RunOptions::UnsetTerminate() {
   ThrowOnError(GetApi().RunOptionsUnsetTerminate(p_));
   return *this;
-}
-
-inline SessionOptions::SessionOptions() {
-  ThrowOnError(GetApi().CreateSessionOptions(&p_));
 }
 
 namespace detail {
@@ -638,7 +634,6 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_CAN
 
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider(
-
     const std::string& provider_name,
     const std::unordered_map<std::string, std::string>& provider_options) {
   auto num_entries = provider_options.size();
@@ -683,13 +678,99 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Ope
   return *this;
 }
 
+/// Session
+template <typename T>
+inline size_t ConstSessionImpl<T>::GetInputCount() const {
+  size_t out;
+  ThrowOnError(GetApi().SessionGetInputCount(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline size_t ConstSessionImpl<T>::GetOutputCount() const {
+  size_t out;
+  ThrowOnError(GetApi().SessionGetOutputCount(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline size_t ConstSessionImpl<T>::GetOverridableInitializerCount() const {
+  size_t out;
+  ThrowOnError(GetApi().SessionGetOverridableInitializerCount(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline AllocatedStringPtr ConstSessionImpl<T>::GetInputNameAllocated(size_t index, OrtAllocator* allocator) const {
+  char* out;
+  ThrowOnError(GetApi().SessionGetInputName(this->p_, index, allocator, &out));
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
+}
+
+template <typename T>
+inline AllocatedStringPtr ConstSessionImpl<T>::GetOutputNameAllocated(size_t index, OrtAllocator* allocator) const {
+  char* out;
+  ThrowOnError(GetApi().SessionGetOutputName(this->p_, index, allocator, &out));
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
+}
+
+template <typename T>
+inline AllocatedStringPtr ConstSessionImpl<T>::GetOverridableInitializerNameAllocated(size_t index, OrtAllocator* allocator) const {
+  char* out;
+  ThrowOnError(GetApi().SessionGetOverridableInitializerName(this->p_, index, allocator, &out));
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
+}
+
+template <typename T>
+inline AllocatedStringPtr ConstSessionImpl<T>::EndProfilingAllocated(OrtAllocator* allocator) const {
+  char* out;
+  ThrowOnError(GetApi().SessionEndProfiling(this->p_, allocator, &out));
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
+}
+
+template <typename T>
+inline uint64_t ConstSessionImpl<T>::GetProfilingStartTimeNs() const {
+  uint64_t out;
+  ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(this->p_, &out));
+  return out;
+}
+
+template <typename T>
+inline ModelMetadata ConstSessionImpl<T>::GetModelMetadata() const {
+  OrtModelMetadata* out;
+  ThrowOnError(GetApi().SessionGetModelMetadata(this->p_, &out));
+  return ModelMetadata{out};
+}
+
+template <typename T>
+inline TypeInfo ConstSessionImpl<T>::GetInputTypeInfo(size_t index) const {
+  OrtTypeInfo* out;
+  ThrowOnError(GetApi().SessionGetInputTypeInfo(this->p_, index, &out));
+  return TypeInfo{out};
+}
+
+template <typename T>
+inline TypeInfo ConstSessionImpl<T>::GetOutputTypeInfo(size_t index) const {
+  OrtTypeInfo* out;
+  ThrowOnError(GetApi().SessionGetOutputTypeInfo(this->p_, index, &out));
+  return TypeInfo{out};
+}
+
+template <typename T>
+inline TypeInfo ConstSessionImpl<T>::GetOverridableInitializerTypeInfo(size_t index) const {
+  OrtTypeInfo* out;
+  ThrowOnError(GetApi().SessionGetOverridableInitializerTypeInfo(this->p_, index, &out));
+  return TypeInfo{out};
+}
+
 template <typename T>
 inline std::vector<Value> SessionImpl<T>::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-                                              const char* const* output_names, size_t output_names_count) {
+                                              const char* const* output_names, size_t output_count) {
   std::vector<Ort::Value> output_values;
-  for (size_t i = 0; i < output_names_count; i++)
+  output_values.reserve(output_count);
+  for (size_t i = 0; i < output_count; i++)
     output_values.emplace_back(nullptr);
-  Run(run_options, input_names, input_values, input_count, output_names, output_values.data(), output_names_count);
+  Run(run_options, input_names, input_values, input_count, output_names, output_values.data(), output_count);
   return output_values;
 }
 
@@ -707,109 +788,29 @@ inline void SessionImpl<T>::Run(const RunOptions& run_options, const IoBinding& 
   ThrowOnError(GetApi().RunWithBinding(this->p_, run_options, io_binding));
 }
 
-template <typename T>
-inline size_t SessionImpl<T>::GetInputCount() const {
-  size_t out;
-  ThrowOnError(GetApi().SessionGetInputCount(this->p_, &out));
-  return out;
-}
-
-template <typename T>
-inline size_t SessionImpl<T>::GetOutputCount() const {
-  size_t out;
-  ThrowOnError(GetApi().SessionGetOutputCount(this->p_, &out));
-  return out;
-}
-
-template <typename T>
-inline size_t SessionImpl<T>::GetOverridableInitializerCount() const {
-  size_t out;
-  ThrowOnError(GetApi().SessionGetOverridableInitializerCount(this->p_, &out));
-  return out;
-}
-
-template <typename T>
-inline AllocatedStringPtr SessionImpl<T>::GetInputNameAllocated(size_t index, OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().SessionGetInputName(this->p_, index, allocator, &out));
-  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
-}
-
-template <typename T>
-inline AllocatedStringPtr SessionImpl<T>::GetOutputNameAllocated(size_t index, OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().SessionGetOutputName(this->p_, index, allocator, &out));
-  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
-}
-
-template <typename T>
-inline AllocatedStringPtr SessionImpl<T>::GetOverridableInitializerNameAllocated(size_t index, OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().SessionGetOverridableInitializerName(this->p_, index, allocator, &out));
-  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
-}
-
-template <typename T>
-inline AllocatedStringPtr SessionImpl<T>::EndProfilingAllocated(OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().SessionEndProfiling(this->p_, allocator, &out));
-  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
-}
-
-template <typename T>
-inline uint64_t SessionImpl<T>::GetProfilingStartTimeNs() const {
-  uint64_t out;
-  ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(this->p_, &out));
-  return out;
-}
-
-template <typename T>
-inline ModelMetadata SessionImpl<T>::GetModelMetadata() const {
-  OrtModelMetadata* out;
-  ThrowOnError(GetApi().SessionGetModelMetadata(this->p_, &out));
-  return ModelMetadata{out};
-}
-
-template <typename T>
-inline TypeInfo SessionImpl<T>::GetInputTypeInfo(size_t index) const {
-  OrtTypeInfo* out;
-  ThrowOnError(GetApi().SessionGetInputTypeInfo(this->p_, index, &out));
-  return TypeInfo{out};
-}
-
-template <typename T>
-inline TypeInfo SessionImpl<T>::GetOutputTypeInfo(size_t index) const {
-  OrtTypeInfo* out;
-  ThrowOnError(GetApi().SessionGetOutputTypeInfo(this->p_, index, &out));
-  return TypeInfo{out};
-}
-
-template <typename T>
-inline TypeInfo SessionImpl<T>::GetOverridableInitializerTypeInfo(size_t index) const {
-  OrtTypeInfo* out;
-  ThrowOnError(GetApi().SessionGetOverridableInitializerTypeInfo(this->p_, index, &out));
-  return TypeInfo{out};
-}
-
 }  // namespace detail
 
+inline SessionOptions::SessionOptions() {
+  ThrowOnError(GetApi().CreateSessionOptions(&this->p_));
+}
+
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
-  ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
+  ThrowOnError(GetApi().CreateSession(env, model_path, options, &this->p_));
 }
 
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options,
                         OrtPrepackedWeightsContainer* prepacked_weights_container) {
-  ThrowOnError(GetApi().CreateSessionWithPrepackedWeightsContainer(env, model_path, options, prepacked_weights_container, &p_));
+  ThrowOnError(GetApi().CreateSessionWithPrepackedWeightsContainer(env, model_path, options, prepacked_weights_container, &this->p_));
 }
 
 inline Session::Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options) {
-  ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &p_));
+  ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &this->p_));
 }
 
 inline Session::Session(Env& env, const void* model_data, size_t model_data_length,
                         const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container) {
   ThrowOnError(GetApi().CreateSessionFromArrayWithPrepackedWeightsContainer(env, model_data, model_data_length, options,
-                                                                            prepacked_weights_container, &p_));
+                                                                            prepacked_weights_container, &this->p_));
 }
 
 inline AllocatedStringPtr ModelMetadata::GetProducerNameAllocated(OrtAllocator* allocator) const {
@@ -975,55 +976,160 @@ namespace detail {
 
 template <typename T>
 template <typename R>
-inline void ValueImpl<T>::GetOpaqueData(const char* domain, const char* type_name, R& out) const {
+inline void ConstValueImpl<T>::GetOpaqueData(const char* domain, const char* type_name, R& out) const {
   ThrowOnError(GetApi().GetOpaqueValue(domain, type_name, this->p_, &out, sizeof(R)));
 }
 
 template <typename T>
-inline bool ValueImpl<T>::IsTensor() const {
+inline bool ConstValueImpl<T>::IsTensor() const {
   int out;
   ThrowOnError(GetApi().IsTensor(this->p_, &out));
   return out != 0;
 }
 
 template <typename T>
-inline bool ValueImpl<T>::HasValue() const {
+inline bool ConstValueImpl<T>::HasValue() const {
   int out;
   ThrowOnError(GetApi().HasValue(this->p_, &out));
   return out != 0;
 }
 
 template <typename T>
-inline size_t ValueImpl<T>::GetCount() const {
+inline size_t ConstValueImpl<T>::GetCount() const {
   size_t out;
   ThrowOnError(GetApi().GetValueCount(this->p_, &out));
   return out;
 }
 
 template <typename T>
-inline Value ValueImpl<T>::GetValue(int index, OrtAllocator* allocator) const {
+inline Value ConstValueImpl<T>::GetValue(int index, OrtAllocator* allocator) const {
   OrtValue* out;
   ThrowOnError(GetApi().GetValue(this->p_, index, allocator, &out));
   return Value{out};
 }
 
 template <typename T>
-inline size_t ValueImpl<T>::GetStringTensorDataLength() const {
+inline size_t ConstValueImpl<T>::GetStringTensorDataLength() const {
   size_t out;
   ThrowOnError(GetApi().GetStringTensorDataLength(this->p_, &out));
   return out;
 }
 
 template <typename T>
-inline size_t ValueImpl<T>::GetStringTensorElementLength(size_t element_index) const {
+inline size_t ConstValueImpl<T>::GetStringTensorElementLength(size_t element_index) const {
   size_t out;
   ThrowOnError(GetApi().GetStringTensorElementLength(this->p_, element_index, &out));
   return out;
 }
 
 template <typename T>
-inline void ValueImpl<T>::GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const {
+template <typename R>
+inline const R* ConstValueImpl<T>::GetTensorData() const {
+  R* out;
+  ThrowOnError(GetApi().GetTensorMutableData(const_cast<OrtValue*>(this->p_), (void**)&out));
+  return out;
+}
+
+template <typename T>
+inline const void* ConstValueImpl<T>::GetTensorRawData() const {
+  void* out;
+  ThrowOnError(GetApi().GetTensorMutableData(const_cast<OrtValue*>(this->p_), &out));
+  return out;
+}
+
+template <typename T>
+inline TypeInfo ConstValueImpl<T>::GetTypeInfo() const {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().GetTypeInfo(this->p_, &output));
+  return TypeInfo{output};
+}
+
+template <typename T>
+inline TensorTypeAndShapeInfo ConstValueImpl<T>::GetTensorTypeAndShapeInfo() const {
+  OrtTensorTypeAndShapeInfo* output;
+  ThrowOnError(GetApi().GetTensorTypeAndShape(this->p_, &output));
+  return TensorTypeAndShapeInfo{output};
+}
+
+template <typename T>
+inline ConstMemoryInfo ConstValueImpl<T>::GetTensorMemoryInfo() const {
+  const OrtMemoryInfo* mem_info;
+  ThrowOnError(GetApi().GetTensorMemoryInfo(this->p_, &mem_info));
+  return ConstMemoryInfo(mem_info);
+}
+
+template <typename T>
+inline void ConstValueImpl<T>::GetStringTensorElement(size_t buffer_length, size_t element_index, void* buffer) const {
+  ThrowOnError(GetApi().GetStringTensorElement(this->p_, buffer_length, element_index, buffer));
+}
+
+template <typename T>
+inline void ConstValueImpl<T>::GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const {
   ThrowOnError(GetApi().GetStringTensorContent(this->p_, buffer, buffer_length, offsets, offsets_count));
+}
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+template <typename T>
+inline OrtSparseFormat ConstValueImpl<T>::GetSparseFormat() const {
+  OrtSparseFormat format;
+  ThrowOnError(GetApi().GetSparseTensorFormat(this->p_, &format));
+  return format;
+}
+
+template <typename T>
+inline TensorTypeAndShapeInfo ConstValueImpl<T>::GetSparseTensorValuesTypeAndShapeInfo() const {
+  OrtTensorTypeAndShapeInfo* output;
+  ThrowOnError(GetApi().GetSparseTensorValuesTypeAndShape(this->p_, &output));
+  return TensorTypeAndShapeInfo{output};
+}
+
+template <typename T>
+inline TensorTypeAndShapeInfo ConstValueImpl<T>::GetSparseTensorIndicesTypeShapeInfo(OrtSparseIndicesFormat indices_format) const {
+  OrtTensorTypeAndShapeInfo* output;
+  ThrowOnError(GetApi().GetSparseTensorIndicesTypeShape(this->p_, indices_format, &output));
+  return TensorTypeAndShapeInfo{output};
+}
+
+template <typename T>
+template <typename R>
+inline const R* ConstValueImpl<T>::GetSparseTensorIndicesData(OrtSparseIndicesFormat indices_format, size_t& num_indices) const {
+  const void* out;
+  ThrowOnError(GetApi().GetSparseTensorIndices(this->p_, indices_format, &num_indices, &out));
+  return reinterpret_cast<const R*>(out);
+}
+
+template <typename T>
+inline bool ConstValueImpl<T>::IsSparseTensor() const {
+  int out;
+  ThrowOnError(GetApi().IsSparseTensor(this->p_, &out));
+  return out != 0;
+}
+
+template <typename T>
+template <typename R>
+inline const R* ConstValueImpl<T>::GetSparseTensorValues() const {
+  const void* out;
+  ThrowOnError(GetApi().GetSparseTensorValues(this->p_, &out));
+  return reinterpret_cast<const R*>(out);
+}
+
+#endif
+
+template <typename T>
+void ValueImpl<T>::FillStringTensor(const char* const* s, size_t s_len) {
+  ThrowOnError(GetApi().FillStringTensor(this->p_, s, s_len));
+}
+
+template <typename T>
+void ValueImpl<T>::FillStringTensorElement(const char* s, size_t index) {
+  ThrowOnError(GetApi().FillStringTensorElement(this->p_, s, index));
+}
+
+template <typename T>
+void* ValueImpl<T>::GetTensorMutableRawData() {
+  void* out;
+  ThrowOnError(GetApi().GetTensorMutableData(this->p_, &out));
+  return out;
 }
 
 template <typename T>
@@ -1036,28 +1142,6 @@ R* ValueImpl<T>::GetTensorMutableData() {
 
 template <typename T>
 template <typename R>
-inline const R* ValueImpl<T>::GetTensorData() const {
-  R* out;
-  ThrowOnError(GetApi().GetTensorMutableData(const_cast<OrtValue*>(this->p_), (void**)&out));
-  return out;
-}
-
-template <typename T>
-void* ValueImpl<T>::GetTensorMutableRawData() {
-  void* out;
-  ThrowOnError(GetApi().GetTensorMutableData(this->p_, &out));
-  return out;
-}
-
-template <typename T>
-inline const void* ValueImpl<T>::GetTensorRawData() const {
-  void* out;
-  ThrowOnError(GetApi().GetTensorMutableData(const_cast<OrtValue*>(this->p_), &out));
-  return out;
-}
-
-template <typename T>
-template <typename R>
 R& ValueImpl<T>::At(const std::vector<int64_t>& location) {
   static_assert(!std::is_same<T, std::string>::value, "this api does not support std::string");
   R* out;
@@ -1065,87 +1149,7 @@ R& ValueImpl<T>::At(const std::vector<int64_t>& location) {
   return *out;
 }
 
-template <typename T>
-inline TypeInfo ValueImpl<T>::GetTypeInfo() const {
-  OrtTypeInfo* output;
-  ThrowOnError(GetApi().GetTypeInfo(this->p_, &output));
-  return TypeInfo{output};
-}
-
-template <typename T>
-inline TensorTypeAndShapeInfo ValueImpl<T>::GetTensorTypeAndShapeInfo() const {
-  OrtTensorTypeAndShapeInfo* output;
-  ThrowOnError(GetApi().GetTensorTypeAndShape(this->p_, &output));
-  return TensorTypeAndShapeInfo{output};
-}
-
-template <typename T>
-inline ConstMemoryInfo ValueImpl<T>::GetTensorMemoryInfo() const {
-  const OrtMemoryInfo* mem_info;
-  ThrowOnError(GetApi().GetTensorMemoryInfo(this->p_, &mem_info));
-  return ConstMemoryInfo(mem_info);
-}
-
-template <typename T>
-inline void ValueImpl<T>::GetStringTensorElement(size_t buffer_length, size_t element_index, void* buffer) const {
-  ThrowOnError(GetApi().GetStringTensorElement(this->p_, buffer_length, element_index, buffer));
-}
-
-template <typename T>
-void ValueImpl<T>::FillStringTensor(const char* const* s, size_t s_len) {
-  ThrowOnError(GetApi().FillStringTensor(this->p_, s, s_len));
-}
-
-template <typename T>
-void ValueImpl<T>::FillStringTensorElement(const char* s, size_t index) {
-  ThrowOnError(GetApi().FillStringTensorElement(this->p_, s, index));
-}
-
 #if !defined(DISABLE_SPARSE_TENSORS)
-template <typename T>
-inline OrtSparseFormat ValueImpl<T>::GetSparseFormat() const {
-  OrtSparseFormat format;
-  ThrowOnError(GetApi().GetSparseTensorFormat(this->p_, &format));
-  return format;
-}
-
-template <typename T>
-inline TensorTypeAndShapeInfo ValueImpl<T>::GetSparseTensorValuesTypeAndShapeInfo() const {
-  OrtTensorTypeAndShapeInfo* output;
-  ThrowOnError(GetApi().GetSparseTensorValuesTypeAndShape(this->p_, &output));
-  return TensorTypeAndShapeInfo{output};
-}
-
-template <typename T>
-inline TensorTypeAndShapeInfo ValueImpl<T>::GetSparseTensorIndicesTypeShapeInfo(OrtSparseIndicesFormat indices_format) const {
-  OrtTensorTypeAndShapeInfo* output;
-  ThrowOnError(GetApi().GetSparseTensorIndicesTypeShape(this->p_, indices_format, &output));
-  return TensorTypeAndShapeInfo{output};
-}
-
-template <typename T>
-template <typename R>
-inline const R* ValueImpl<T>::GetSparseTensorIndicesData(OrtSparseIndicesFormat indices_format, size_t& num_indices) const {
-  const void* out;
-  ThrowOnError(GetApi().GetSparseTensorIndices(this->p_, indices_format, &num_indices, &out));
-  return reinterpret_cast<const R*>(out);
-}
-
-template <typename T>
-inline bool ValueImpl<T>::IsSparseTensor() const {
-  int out;
-  ThrowOnError(GetApi().IsSparseTensor(this->p_, &out));
-  return out != 0;
-}
-
-template <typename T>
-template <typename R>
-inline const R* ValueImpl<T>::GetSparseTensorValues() const {
-  const void* out;
-  ThrowOnError(GetApi().GetSparseTensorValues(this->p_, &out));
-  return reinterpret_cast<const R*>(out);
-}
-
 template <typename T>
 void ValueImpl<T>::UseCooIndices(int64_t* indices_data, size_t indices_num) {
   ThrowOnError(GetApi().UseCooIndices(this->p_, indices_data, indices_num));
@@ -1316,7 +1320,7 @@ namespace detail {
 template<typename T>
 inline KernelInfo KernelInfoImpl<T>::Copy() const {
   OrtKernelInfo* info_copy;
-  Ort::ThrowOnError(GetApi().CopyKernelInfo(p_, &info_copy));
+  Ort::ThrowOnError(GetApi().CopyKernelInfo(this->p_, &info_copy));
   return KernelInfo{info_copy};
 }
 

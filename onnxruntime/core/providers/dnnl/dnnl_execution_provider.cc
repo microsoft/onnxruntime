@@ -25,6 +25,9 @@ constexpr const char* DNNL_CPU = "DnnlCpu";
 
 DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kDnnlExecutionProvider, true} {
+  
+  InitProviderOrtApi();
+  
   AllocatorCreationInfo default_memory_info(
       {[](int) {
         return onnxruntime::CreateCPUAllocator(OrtMemoryInfo(DNNL, OrtAllocatorType::OrtDeviceAllocator));
