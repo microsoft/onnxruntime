@@ -1038,7 +1038,7 @@ if (onnxruntime_USE_CUDA)
       #TODO: combine onnxruntime_CUDNN_HOME and onnxruntime_CUDA_HOME, assume they are the same
       if (WIN32)
         if(onnxruntime_CUDNN_HOME)
-          list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib/x64)
+          list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDNN_HOME}/lib ${onnxruntime_CUDNN_HOME}/lib/x64)
         endif()
         list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/x64/lib64)
       else()
@@ -1162,6 +1162,10 @@ else()
 
   if (HAS_ENUM_CONSTEXPR_CONVERSION)
     target_compile_options(${PROTOBUF_LIB} PRIVATE "-Wno-enum-constexpr-conversion")
+  endif()
+  if (onnxruntime_USE_ROCM)
+    # float16.h:90:12: error: ‘tmp’ is used uninitialized
+    list(APPEND ORT_WARNING_FLAGS -Wno-uninitialized)
   endif()
 endif()
 
