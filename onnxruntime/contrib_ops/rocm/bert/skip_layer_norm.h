@@ -19,6 +19,7 @@ class SkipLayerNorm final : public RocmKernel {
 
  private:
   float epsilon_;
+  bool tuning_;
 };
 
 }  // namespace rocm

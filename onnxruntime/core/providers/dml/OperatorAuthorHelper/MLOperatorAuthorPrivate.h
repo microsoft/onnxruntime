@@ -6,16 +6,30 @@
 interface IDMLOperation;
 interface IDMLOperator;
 struct DML_OPERATOR_DESC;
+struct DML_INPUT_GRAPH_EDGE_DESC;
+struct DML_OUTPUT_GRAPH_EDGE_DESC;
+struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
 
-struct MLOperatorKernelDmlProperties
+// Either nodesAsOpDesc or nodesAsIDMLOperator is present.
+//  1) Operator kernels which implement operators using only a single DML operator will pass a DML_OPERATOR_DESC. 
+//     These kernels pass DML_OPERATOR_DESC, because while building Dml graph (inside FusedGraphKernel.cpp) we can change the 
+//     the flag of constant inputs to DML_TENSOR_FLAG_OWNED_BY_DML.
+//  2) Operator kernels which implement operators using DMLX graph, they will pass IDMLOperator and won't be able
+//     to use DML_TENSOR_FLAG_OWNED_BY_DML.
+struct MLOperatorGraphDesc
 {
-    uint32_t dmlInputCount;
-    _Field_size_opt_(dmlInputCount) const uint32_t* kernelInputIndices;
+    uint32_t nodeCount;
+    _Field_size_opt_(nodeCount) const DML_OPERATOR_DESC** nodesAsOpDesc;
+    _Field_size_opt_(nodeCount) IDMLOperator** nodesAsIDMLOperator;
 
-    uint32_t dmlOutputCount;
-    _Field_size_opt_(dmlOutputCount) const uint32_t* kernelOutputIndices;
+    uint32_t inputEdgeCount;
+    _Field_size_(inputEdgeCount) const DML_INPUT_GRAPH_EDGE_DESC* inputEdges;
 
-    bool allowHalfPrecisionComputation = false;
+    uint32_t intermediateEdgeCount;
+    _Field_size_(intermediateEdgeCount) const DML_INTERMEDIATE_GRAPH_EDGE_DESC* intermediateEdges;
+
+    uint32_t outputEdgeCount;
+    _Field_size_(outputEdgeCount) const DML_OUTPUT_GRAPH_EDGE_DESC* outputEdges;
 };
 
 
@@ -39,9 +53,7 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
     STDMETHOD_(bool, IsDmlGraphNode)() const noexcept PURE;
 
     STDMETHOD(SetDmlOperator)(
-        IDMLOperator* op,
-        _In_ const DML_OPERATOR_DESC* desc,
-        _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties
+        _In_ const MLOperatorGraphDesc* operatorGraphDesc
     ) const noexcept PURE;
 };
 
