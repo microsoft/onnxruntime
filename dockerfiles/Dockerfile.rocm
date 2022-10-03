@@ -10,6 +10,15 @@ FROM rocm/pytorch:rocm5.4_ubuntu20.04_py3.7_pytorch_1.12.1
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=main
 
+RUN apt-get update &&\
+    apt-get install -y aria2
+
+RUN aria2c -q -d /tmp -o cmake-3.24.2-linux-x86_64.tar.gz \
+    https://github.com/Kitware/CMake/releases/download/v3.24.2/cmake-3.24.2-linux-x86_64.tar.gz &&\
+    tar -zxf /tmp/cmake-3.24.2-linux-x86_64.tar.gz -C /usr/local
+
+ENV PATH /usr/local/cmake-3.24.2-linux-x86_64/bin:${PATH}
+
 WORKDIR /code
 
 ENV PATH /opt/miniconda/bin:/code/cmake-3.24.3-linux-x86_64/bin:${PATH}
