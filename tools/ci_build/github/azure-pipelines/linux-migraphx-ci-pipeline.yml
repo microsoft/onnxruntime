@@ -28,6 +28,11 @@ jobs:
 
   - task: CmdLine@2
     inputs:
+      script: rm -rf $(Build.BinariesDirectory)/*
+    displayName: 'Clean Build.BinariesDirectory'
+
+  - task: CmdLine@2
+    inputs:
       script: |
         docker run --rm \
           -e HIP_VISIBLE_DEVICES \
