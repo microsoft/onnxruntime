@@ -1,8 +1,9 @@
 {
   "notificationAliases": ["chasun@microsoft.com"],
   "areaPath": "ONNX Runtime\\Engineering Systems",
-  "codebaseName": "onnxruntime_github",
+  "codebaseName": "onnxruntime",
   "instanceUrl": "https://aiinfra.visualstudio.com/",
   "projectName": "ONNX Runtime",
-  "ignoreBranchName": true
+  "ignoreBranchName": true,
+  "template": "AIINFRA_TSA"
 }
