@@ -59,10 +59,10 @@ void CALLBACK QueryLayerNormalization(IMLOperatorSupportQueryContextPrivate* con
     // Mean and InvStdDev are not supported outputs.
     // If only Scale tensor is present then fall back to CPU. This is temporary until 
     // DML1.9.2 or DML1.10 gets released.
-    if (context->GetInputCount() < 3 || context->GetOutputCount() > 1) 
+    /*if (context->GetInputCount() < 3 || context->GetOutputCount() > 1) 
     {
         return;
-    }
+    }*/
 
     *isSupported = true;
 }
