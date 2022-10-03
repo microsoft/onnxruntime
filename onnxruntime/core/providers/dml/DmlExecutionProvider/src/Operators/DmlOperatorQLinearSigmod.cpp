@@ -108,9 +108,6 @@ public:
 
         MLOperatorGraphDesc operatorGraphDesc = {};
         operatorGraphDesc.nodeCount = 3;
-        //const DML_OPERATOR_DESC* opDescs[3] = {&opDesc1, &opDesc2, &opDesc3};
-        //operatorGraphDesc.nodesAsOpDesc = &opDescs;
-
         std::vector<const DML_OPERATOR_DESC*> opDescs{&opDesc1, &opDesc2, &opDesc3};
         operatorGraphDesc.nodesAsOpDesc = opDescs.data();
 

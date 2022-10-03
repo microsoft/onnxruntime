@@ -68,6 +68,10 @@ namespace Dml
             const MLOperatorKernelCreationContext& kernelInfo
             );
 
+        // This method only works with DML_GRAPH.
+        // To make it work without DML_GRAPH, we need to add new functionality 
+        // in DMLX i.e. DMLX should also give access to DML_OPERATOR_DESC 
+        // rather than IDMLOperator.
         void SetDmlOperatorDesc(
             const MLOperatorGraphDesc& operatorGraphDesc,
             const MLOperatorKernelCreationContext& kernelInfo
