@@ -766,7 +766,10 @@ inline TypeInfo ConstSessionImpl<T>::GetOverridableInitializerTypeInfo(size_t in
 template <typename T>
 inline std::vector<Value> SessionImpl<T>::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
                                               const char* const* output_names, size_t output_count) {
-  std::vector<Ort::Value> output_values(output_count, nullptr);
+  std::vector<Ort::Value> output_values;
+  output_values.reserve(output_count);
+  for (size_t i = 0; i < output_count; i++)
+    output_values.emplace_back(nullptr);
   Run(run_options, input_names, input_values, input_count, output_names, output_values.data(), output_count);
   return output_values;
 }
