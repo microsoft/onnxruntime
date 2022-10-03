@@ -129,7 +129,7 @@ template <typename T>
 inline MemoryAllocation AllocatorImpl<T>::GetAllocation(size_t size) {
   void* out;
   ThrowOnError(GetApi().AllocatorAlloc(this->p_, size, &out));
-  MemoryAllocation result(p_, out, size);
+  MemoryAllocation result(this->p_, out, size);
   return result;
 }
 
@@ -231,7 +231,7 @@ inline std::vector<Value> ConstIoBindingImpl<T>::GetOutputValues() const {
 }
 
 template <typename T>
-inline std::vector<Value> ConstIoBindingImpl<T>::GetOutputValues(OrtAllocator*) const {
+inline std::vector<Value> ConstIoBindingImpl<T>::GetOutputValues(OrtAllocator* allocator) const {
   return binding_utils::GetOutputValuesHelper(this->p_, allocator);
 }
   
@@ -257,7 +257,7 @@ inline void IoBindingImpl<T>::ClearBoundInputs() {
 
 template <typename T>
 inline void IoBindingImpl<T>::ClearBoundOutputs() {
-  GetApi().ClearBoundOutputs(p_);
+  GetApi().ClearBoundOutputs(this->p_);
 }
 
 template <typename T>
@@ -1319,7 +1319,7 @@ namespace detail {
 template<typename T>
 inline KernelInfo KernelInfoImpl<T>::Copy() const {
   OrtKernelInfo* info_copy;
-  Ort::ThrowOnError(GetApi().CopyKernelInfo(p_, &info_copy));
+  Ort::ThrowOnError(GetApi().CopyKernelInfo(this->p_, &info_copy));
   return KernelInfo{info_copy};
 }
 

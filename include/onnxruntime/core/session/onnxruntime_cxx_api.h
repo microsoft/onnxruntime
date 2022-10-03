@@ -1390,8 +1390,8 @@ void GetAttrs(const OrtKernelInfo* p, const char* name, std::vector<int64_t>&);
 
 template <typename T>
 struct KernelInfoImpl : Base<T> {
-  using Base = Base<T>;
-  using Base::Base;
+  using B = Base<T>;
+  using B::B;
 
   KernelInfo Copy() const;
 
@@ -1412,6 +1412,8 @@ struct KernelInfoImpl : Base<T> {
 
 }  // namespace detail
 
+using ConstKernelInfo = detail::KernelInfoImpl<const OrtKernelInfo>;
+
 /// <summary>
 /// This struct owns the OrtKernInfo* pointer when a copy is made.
 /// For convenient wrapping of OrtKernelInfo* passed to kernel constructor
@@ -1421,10 +1423,8 @@ struct KernelInfoImpl : Base<T> {
 struct KernelInfo : detail::KernelInfoImpl<OrtKernelInfo> {
   explicit KernelInfo(std::nullptr_t) {}     ///< Create an empty instance to initialize later
   explicit KernelInfo(OrtKernelInfo* info);  ///< Take ownership of the instance
+  ConstKernelInfo GetConst() const { return ConstKernelInfo{this->p_}; }
 };
-
-using ConstKernelInfo = detail::KernelInfoImpl<const OrtKernelInfo>;
-using UnownedKernelInfo = detail::KernelInfoImpl<detail::Unowned<OrtKernelInfo>>;
 
 /// <summary>
 /// Create and own custom defined operation.
