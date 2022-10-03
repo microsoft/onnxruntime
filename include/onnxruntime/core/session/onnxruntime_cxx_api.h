@@ -502,7 +502,7 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   explicit SessionOptions(std::nullptr_t) {}                                                   ///< Create an empty SessionOptions object, must be assigned a valid one to be used
   SessionOptions();                                                                            ///< Wraps OrtApi::CreateSessionOptions
   explicit SessionOptions(OrtSessionOptions* p) : SessionOptionsImpl<OrtSessionOptions>{p} {}  ///< Used for interop with the C API
-  UnownedSessionOptions GetUnowned() const { return UnownedSessionOptions{this->p_}; }
+  [[nodiscard]] UnownedSessionOptions GetUnowned() const { return UnownedSessionOptions{this->p_}; }
 };
 
 /** \brief Wrapper around ::OrtModelMetadata
@@ -681,8 +681,8 @@ struct Session : detail::SessionImpl<OrtSession> {
   Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options,
           OrtPrepackedWeightsContainer* prepacked_weights_container);  ///< Wraps OrtApi::CreateSessionFromArrayWithPrepackedWeightsContainer
 
-  ConstSession GetConst() const { return ConstSession{this->p_}; }
-  UnownedSession GetUnowned() const { return UnownedSession{this->p_}; }
+  [[nodiscard]] ConstSession GetConst() const { return ConstSession{this->p_}; }
+  [[nodiscard]] UnownedSession GetUnowned() const { return UnownedSession{this->p_}; }
 };
 
 /// <summary>
@@ -715,7 +715,7 @@ struct MemoryInfo : detail::MemoryInfoImpl<OrtMemoryInfo> {
   explicit MemoryInfo(std::nullptr_t) {}                                       ///< No instance is created
   explicit MemoryInfo(OrtMemoryInfo* p) : MemoryInfoImpl<OrtMemoryInfo>{p} {}  ///< Take ownership of a pointer created by C Api
   MemoryInfo(const char* name, OrtAllocatorType type, int id, OrtMemType mem_type);
-  ConstMemoryInfo GetConst() const { return ConstMemoryInfo{this->p_}; }
+  [[nodiscard]] ConstMemoryInfo GetConst() const { return ConstMemoryInfo{this->p_}; }
 };
 
 /** \brief Wrapper around ::OrtTensorTypeAndShapeInfo
@@ -750,7 +750,7 @@ using ConstTensorTypeAndShapeInfo = detail::TensorTypeAndShapeInfoImpl<const Ort
 struct TensorTypeAndShapeInfo : detail::TensorTypeAndShapeInfoImpl<OrtTensorTypeAndShapeInfo> {
   explicit TensorTypeAndShapeInfo(std::nullptr_t) {}                                                ///< Create an empty TensorTypeAndShapeInfo object, must be assigned a valid one to be used
   explicit TensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* p) : TensorTypeAndShapeInfoImpl{p} {}  ///< Used for interop with the C API
-  ConstTensorTypeAndShapeInfo GetConst() const {  return ConstTensorTypeAndShapeInfo{this->p_}; }
+  [[nodiscard]] ConstTensorTypeAndShapeInfo GetConst() const { return ConstTensorTypeAndShapeInfo{this->p_}; }
 };
 
 /** \brief Wrapper around ::OrtSequenceTypeInfo
@@ -793,7 +793,7 @@ using ConstMapTypeInfo = detail::MapTypeInfoImpl<const OrtMapTypeInfo>;
 struct MapTypeInfo : detail::MapTypeInfoImpl<OrtMapTypeInfo> {
   explicit MapTypeInfo(std::nullptr_t) {}                                          ///< Create an empty MapTypeInfo object, must be assigned a valid one to be used
   explicit MapTypeInfo(OrtMapTypeInfo* p) : MapTypeInfoImpl<OrtMapTypeInfo>{p} {}  ///< Used for interop with the C API
-  ConstMapTypeInfo GetConst() const { return ConstMapTypeInfo{this->p_}; }
+  [[nodiscard]] ConstMapTypeInfo GetConst() const { return ConstMapTypeInfo{this->p_}; }
 };
 
 /// <summary>
@@ -1125,8 +1125,8 @@ struct Value : detail::ValueImpl<OrtValue> {
   Value(Value&&) = default;
   Value& operator=(Value&&) = default;
 
-  ConstValue GetConst() const { return ConstValue{this->p_}; }
-  UnownedValue GetUnowned() const { return UnownedValue{this->p_}; }
+  [[nodiscard]] ConstValue GetConst() const { return ConstValue{this->p_}; }
+  [[nodiscard]] UnownedValue GetUnowned() const { return UnownedValue{this->p_}; }
 
   /** \brief Creates a tensor with a user supplied buffer. Wraps OrtApi::CreateTensorWithDataAsOrtValue.
    * \tparam T The numeric datatype. This API is not suitable for strings.
@@ -1325,8 +1325,8 @@ using UnownedIoBinding = detail::IoBindingImpl<detail::Unowned<OrtIoBinding>>;
 struct IoBinding : detail::IoBindingImpl<OrtIoBinding> {
   explicit IoBinding(std::nullptr_t) {}  ///< Create an empty object for convenience. Sometimes, we want to initialize members later.
   explicit IoBinding(Session& session);
-  ConstIoBinding GetConst() const { return ConstIoBinding{this->p_}; }
-  UnownedIoBinding GetUnwoned() const { return UnownedIoBinding{this->p_}; }
+  [[nodiscard]] ConstIoBinding GetConst() const { return ConstIoBinding{this->p_}; }
+  [[nodiscard]] UnownedIoBinding GetUnowned() const { return UnownedIoBinding{this->p_}; }
 };
 
 /*! \struct Ort::ArenaCfg
@@ -1423,7 +1423,7 @@ using ConstKernelInfo = detail::KernelInfoImpl<const OrtKernelInfo>;
 struct KernelInfo : detail::KernelInfoImpl<OrtKernelInfo> {
   explicit KernelInfo(std::nullptr_t) {}     ///< Create an empty instance to initialize later
   explicit KernelInfo(OrtKernelInfo* info);  ///< Take ownership of the instance
-  ConstKernelInfo GetConst() const { return ConstKernelInfo{this->p_}; }
+  [[nodiscard]] ConstKernelInfo GetConst() const { return ConstKernelInfo{this->p_}; }
 };
 
 /// <summary>
