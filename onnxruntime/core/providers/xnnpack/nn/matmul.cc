@@ -9,69 +9,27 @@
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
 #include "core/framework/tensorprotoutils.h"
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/XNNpack_Gemm_Op
 #include "core/providers/cpu/math/matmul_helper.h"
 
 namespace onnxruntime {
 namespace xnnpack {
 
-<<<<<<< HEAD
-bool MatMul::IsOnnxNodeSupported(const onnxruntime::Node& node, const GraphViewer& graph) {
-
-  bool supported = false;
-=======
 bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph) {
 
   bool supported = false;
   const onnxruntime::Node& node = node_unit.GetNode();
->>>>>>> origin/XNNpack_Gemm_Op
 
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
     auto input_defs = node.InputDefs();
 
     if (input_defs.size() != 2) {
-<<<<<<< HEAD
-      printf("MatMul XNNPACK not supported - Only A & B must be provided\n");
-=======
->>>>>>> origin/XNNpack_Gemm_Op
       break;
     }
 
     const auto& A_arg = *input_defs[0];
     const auto& B_arg = *input_defs[1];
 
-<<<<<<< HEAD
-    // we only support float currently
-    const auto* A_type = A_arg.TypeAsProto();
-    const auto* B_type = B_arg.TypeAsProto();
-
-    if (A_type == nullptr || B_type == nullptr ||  
-        A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
-        B_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ) {
-        printf("MatMul XNNPACK not supported - currently only float Gemm is supported\n");
-        break;
-    }
-    
-    // B matrix must be constant
-    if (B_arg.Exists() && graph.GetConstantInitializer(B_arg.Name(), true) == nullptr) {
-        //printf("MatMul XNNPACK not supported - B must be a const\n");
-        break;
-    }    
-
-    // making sure we are dealing with MatMul
-    const auto* B_shape = B_arg.Shape();  
-
-    if (!B_shape || B_shape->dim_size() > 3) {
-        printf("MatMul XNNPACK not supported - only up to 2D opps are supported\n");
-        break;
-    }    
-    
-    supported = true;
-=======
     // Support only float
     const auto* A_type = A_arg.TypeAsProto();
     const auto* B_type = B_arg.TypeAsProto();
@@ -94,8 +52,7 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
         break;
     }
 
-    supported = false;
->>>>>>> origin/XNNpack_Gemm_Op
+    supported = true;
 
   } while (false);
 
@@ -115,14 +72,8 @@ MatMul::MatMul(const OpKernelInfo& info) : OpKernel(info){
 
 Status MatMul::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
                      /*out*/ bool& is_packed,
-<<<<<<< HEAD
-                     /*out*/ PrePackedWeights* prepacked_weights) {
-
-  prepacked_weights = nullptr;
-=======
                      /*out*/ PrePackedWeights*) {
 
->>>>>>> origin/XNNpack_Gemm_Op
   is_packed = false;
 
   if (input_idx == 0) {

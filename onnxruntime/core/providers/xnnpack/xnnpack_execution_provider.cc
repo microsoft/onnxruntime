@@ -24,13 +24,13 @@ KernelCreateInfo BuildKernelCreateInfo<void>() {
   return info;
 }
 
-#define KERNEL_CREATE_INFO_VERSIONED(Domain, Start, End, Op) \
+#define KERNEL_CREATE_INFO_VERSIONED(Start, End, Op) \
   BuildKernelCreateInfo<                             \
-      ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, End, Op)>
+      ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, End, Op)>
 
-#define KERNEL_CREATE_INFO(Domain, Start, Op) \
+#define KERNEL_CREATE_INFO(Start, Op) \
   BuildKernelCreateInfo<              \
-      ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, Domain, Start, Op)>
+      ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kMSInternalNHWCDomain, Start, Op)>
 
 #define KERNEL_CREATE_INFO_TYPED(Start, type, Op) \
   BuildKernelCreateInfo<                          \
