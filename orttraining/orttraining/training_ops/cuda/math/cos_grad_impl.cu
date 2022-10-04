@@ -10,7 +10,7 @@ namespace cuda {
 template <typename T>
 __global__ void _CosGradImpl(const T* dy, const T* Y, T* output, CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  output[id] = -1 * dy[id] * sin(Y[id]);
+  output[id] = -1 * dy[id] * sin<T>(Y[id]);
 }
 
 template <typename T>
