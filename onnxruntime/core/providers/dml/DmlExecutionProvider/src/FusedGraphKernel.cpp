@@ -5,7 +5,7 @@
 
 #include "MLOperatorAuthorImpl.h"
 #include "FusedGraphKernel.h"
-#include "GraphKernelHelper.h"
+#include "DmlGraphFusionHelper.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
@@ -20,15 +20,23 @@ namespace Dml
             const onnxruntime::OpKernelInfo& kernelInfo,
             ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
             Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
-            std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges,
             bool reuseCommandList,
+            std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
+            std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
             std::vector<uint8_t>& inputsConstant,
-            std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
-            const gsl::span<const std::string> fusedNodeInputArgOriginalNames) :
-            OpKernel(kernelInfo), 
-            m_compiledExecutionPlanOperator(compiledExecutionPlanOperator),
-            m_outputShapes(outputShapes),
-            m_inputsConstant(inputsConstant)
+            std::vector<bool>& inputsUsed,
+            ComPtr<ID3D12Resource> persistentResource,
+            ComPtr<IUnknown> persistentResourceAllocatorUnk,
+            std::optional<DML_BUFFER_BINDING> persistentResourceBinding) :
+        OpKernel(kernelInfo), 
+        m_compiledExecutionPlanOperator(compiledExecutionPlanOperator),
+        m_inputsUsed(inputsUsed),
+        m_outputShapes(outputShapes),
+        m_persistentResourceBinding(persistentResourceBinding),
+        m_persistentResource(persistentResource),
+        m_persistentResourceAllocatorUnk(persistentResourceAllocatorUnk),
+        m_inputsConstant(inputsConstant),
+        m_nonOwnedGraphInputsFromInitializers(nonOwnedGraphInputsFromInitializers)
         {       
             // Get the execution provider interfaces
             m_executionHandle = kernelInfo.GetExecutionProvider()->GetExecutionHandle();
@@ -42,62 +50,6 @@ namespace Dml
                 ORT_THROW_IF_FAILED(providerExecutionObject.As(&m_winmlProvider));
             }
 
-            TranslateAndCompileGraph(
-                kernelInfo,
-                fusedNodeInputArgOriginalNames,
-                transferredInitializerMap,
-                inputEdges,
-                reuseCommandList);
-        }
-
-        void TranslateAndCompileGraph(
-            const onnxruntime::OpKernelInfo& kernelInfo,
-            const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
-            std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
-            std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges,
-            bool reuseCommandList
-        )
-        {
-            const uint32_t graphInputCount = kernelInfo.GetInputCount();
-            // Populate input bindings for operator initialization
-            std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initInputResources;  // For lifetime control
-            std::vector<DML_BUFFER_BINDING> initInputBindings(graphInputCount);
-            m_nonOwnedGraphInputsFromInitializers.resize(graphInputCount);
-            std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initializeResourceRefs;
-            
-            GraphKernelHelper::ProcessInputData(
-                m_provider.Get(),
-                m_winmlProvider.Get(),
-                m_inputsConstant,
-                kernelInfo,
-                inputEdges,
-                fusedNodeInputArgOriginalNames,
-                m_inputsUsed,
-                initInputBindings,
-                initInputResources,
-                m_nonOwnedGraphInputsFromInitializers,
-                initializeResourceRefs,
-                nullptr,
-                transferredInitializerMap);
-            
-            // Allocate a persistent resource and initialize the operator
-            UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
-            if (persistentResourceSize > 0)
-            {
-                ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Disabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourceAllocatorUnk.GetAddressOf()));
-
-                m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
-            }
-
-            ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
-                m_compiledExecutionPlanOperator.Get(),
-                m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
-                gsl::make_span(initInputBindings)));
-
             // Queue references to objects which must be kept alive until resulting GPU work completes
             m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
             m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
@@ -106,7 +58,7 @@ namespace Dml
                 initializeResourceRefs.begin(), 
                 initializeResourceRefs.end(), 
                 [&](ComPtr<ID3D12Resource>& resource){ m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(resource).Get()); }
-            );  
+            );
 
             if (reuseCommandList)
             {
@@ -330,10 +282,10 @@ namespace Dml
                         const onnxruntime::Tensor* tensor = kernelContext->Input<onnxruntime::Tensor>(i);
 
                         uint64_t allocId;
-                        GraphKernelHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &inputBindings[i].Buffer, &allocId);
+                        DmlGraphFusionHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &inputBindings[i].Buffer, &allocId);
                         inputBindingsChanged = inputBindingsChanged || (!allocId || m_inputBindingAllocIds[i] != allocId);
                         inputBindings[i].Buffer->Release(); // Avoid holding an additional reference
-                        inputBindings[i].SizeInBytes = GraphKernelHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
+                        inputBindings[i].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
                         inputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &inputBindings[i]};
                         m_inputBindingAllocIds[i] = allocId;
                     }
@@ -367,10 +319,10 @@ namespace Dml
                     );
 
                 uint64_t allocId;
-                GraphKernelHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &outputBindings[i].Buffer, &allocId);
+                DmlGraphFusionHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &outputBindings[i].Buffer, &allocId);
                 outputBindingsChanged = outputBindingsChanged || (!allocId || m_outputBindingAllocIds[i] != allocId);
                 outputBindings[i].Buffer->Release(); // Avoid holding an additional reference
-                outputBindings[i].SizeInBytes = GraphKernelHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
+                outputBindings[i].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
                 outputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &outputBindings[i]};
                 m_outputBindingAllocIds[i] = allocId;
             }
@@ -453,21 +405,28 @@ namespace Dml
         const onnxruntime::OpKernelInfo& info,
         ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
         Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
-        std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges,
         bool reuseCommandList,
+        std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
+        std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
         std::vector<uint8_t>& inputsConstant,
-        std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
-        const gsl::span<const std::string> fusedNodeInputArgOriginalNames
+        std::vector<bool>& inputsUsed,
+        ComPtr<ID3D12Resource> persistentResource,
+        ComPtr<IUnknown> persistentResourceAllocatorUnk,
+        std::optional<DML_BUFFER_BINDING> persistentResourceBinding
         )
     {
         return new FusedGraphKernel(
             info, 
             compiledExecutionPlanOperator,
             outputShapes,
-            inputEdges,
             reuseCommandList,
+            nonOwnedGraphInputsFromInitializers,
+            initializeResourceRefs,
             inputsConstant,
-            transferredInitializerMap, 
-            fusedNodeInputArgOriginalNames);
+            inputsUsed,
+            persistentResource,
+            persistentResourceAllocatorUnk,
+            persistentResourceBinding
+        );
     }
 } // namespace Dml

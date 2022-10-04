@@ -45,8 +45,6 @@ namespace Dml
             std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
             const onnxruntime::Graph& graph,
             const onnxruntime::IndexedSubGraph& indexedSubGraph,
-            const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
-            const gsl::span<const std::string> fusedNodeOutputArgOriginalNames,
             const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
             IDMLDevice* device,
             const void* executionHandle);

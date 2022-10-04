@@ -9,7 +9,7 @@ namespace Dml
 {
 namespace GraphKernelHelper 
 {
-    using namespace Windows::AI::MachineLearning::Adapter;
+    /*using namespace Windows::AI::MachineLearning::Adapter;
 
     template <typename T>
     static T AlignToPow2(T offset, T alignment)
@@ -56,6 +56,6 @@ namespace GraphKernelHelper
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
         _Inout_opt_ std::vector<std::vector<std::byte>>* inputRawData,
-        _Inout_ std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap);
+        _Inout_ std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap);*/
 }  // namespace GraphKernelHelper
 }  // namespace Dml
