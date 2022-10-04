@@ -10,7 +10,7 @@ from collections import deque
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
+from float16 import convert_float_to_float16
 from onnx import AttributeProto, GraphProto, ModelProto, NodeProto, TensorProto, helper, numpy_helper, save_model
 from shape_infer_helper import SymbolicShapeInferenceHelper
 
@@ -509,10 +509,11 @@ class OnnxModel:
         For example, float -> int -> float could get different value than the original float value.
         So, it is recommended to used only in post-processing of mixed precision conversion.
         """
+        output_name_to_node = self.output_name_to_node()
         removed_count = 0
         for node in self.nodes():
             if node.op_type == "Cast":
-                parent = self.get_parent(node, 0)
+                parent = self.get_parent(node, 0, output_name_to_node=output_name_to_node)
                 if parent and parent.op_type == "Cast":
                     node.input[0] = parent.input[0]
                     removed_count += 1
@@ -585,13 +586,6 @@ class OnnxModel:
         """
         if "keep_io_types" not in kwargs:
             kwargs["keep_io_types"] = True
-
-        def float_to_float16_func():
-            from float16 import convert_float_to_float16
-
-            return convert_float_to_float16
-
-        convert_float_to_float16 = float_to_float16_func()
 
         model = self.model
         if use_symbolic_shape_infer:
@@ -898,7 +892,11 @@ class OnnxModel:
                             end = end + 1
             start = start + 1
 
-        assert end == len(graph.node), "Graph is not a DAG"
+        if end != len(graph.node):
+            raise RuntimeError(
+                f"Graph is not a DAG: end={end}, len(graph.node)={len(graph.node)}, graph.node[end]={graph.node[end]}"
+            )
+
         graph.ClearField("node")
         graph.node.extend(sorted_nodes)
 

@@ -1017,10 +1017,9 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 
   // Note about the ORT format version 5 breaking change.
   // TODO This change was introduced in 1.13. Remove this note a few releases later, e.g., 1.15.
-  // TODO(edgchen1) update link to point to 1.13 release branch
   constexpr auto* kOrtFormatVersion5BreakingChangeNote =
       "This build doesn't support ORT format models older than version 5. "
-      "See: https://github.com/microsoft/onnxruntime/blob/main/docs/ORT_Format_Update_in_1.13.md";
+      "See: https://github.com/microsoft/onnxruntime/blob/rel-1.13.0/docs/ORT_Format_Update_in_1.13.md";
 
   ORT_RETURN_IF_NOT(IsOrtModelVersionSupported(fbs_ort_model_version->string_view()),
                     "The ORT format model version [", fbs_ort_model_version->string_view(),

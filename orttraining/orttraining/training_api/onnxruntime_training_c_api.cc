@@ -297,7 +297,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CopyParametersToBuffer, _Inout_ OrtTraining
   }
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
   ORT_API_RETURN_IF_STATUS_NOT_OK(session->CopyParametersToBuffer(*parameters_buffer, trainable_only));
-  
+
   return nullptr;
   API_IMPL_END
 }
@@ -324,6 +324,9 @@ ORT_API(void, OrtTrainingApis::ReleaseCheckpointState, _Frees_ptr_opt_ OrtCheckp
 }
 
 static constexpr OrtTrainingApi ort_training_api = {
+    // NOTE: The C# bindings depend on the API order within this struct. Since Training APIs are not officially
+    // released, it is OK to change the order here, however a corresponding matching change should also be done in the
+    // "OrtTrainingApi" struct in NativeTrainingMethods.shared.cs
     &OrtTrainingApis::LoadCheckpoint,
     &OrtTrainingApis::SaveCheckpoint,
     &OrtTrainingApis::CreateTrainingSession,

@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
                                                   -1};
 
   std::unique_ptr<Environment> env;
-  ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Enviroment creation fails.");
+  ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Environment creation fails.");
   ORT_ENFORCE(parse_arguments(argc, argv, params) == Status::OK(), "Parsing command-line argument fails");
 
   // Set up MPI.

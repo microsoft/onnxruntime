@@ -1353,7 +1353,7 @@ STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_opt_ void* data, _In_ siz
   return S_OK;
 }
 
-STDMETHODIMP OnnxruntimeEngineFactory::CreateEmptyModel(int64_t opset, _Outptr_ _winml::IModel** out) {
+STDMETHODIMP OnnxruntimeEngineFactory::CreateEmptyModel(_In_ int64_t opset, _Outptr_ _winml::IModel** out) {
   RETURN_IF_FAILED(EnsureEnvironment());
   OrtModel* ort_model = nullptr;
   if (auto status = winml_adapter_api_->CreateModel(opset, &ort_model)) {
@@ -1429,8 +1429,8 @@ struct OrtDescriptorInfo : public Microsoft::WRL::RuntimeClass<
   UniqueOrtTypeInfo info_;
 };
 
-HRESULT OnnxruntimeEngineFactory::CreateTensorDescriptorInfo(winml::TensorKind kind, int64_t* dims,
-                                                             size_t num_dims, IDescriptorInfo** tensor_info) {
+HRESULT OnnxruntimeEngineFactory::CreateTensorDescriptorInfo(_In_ winml::TensorKind kind, _In_ int64_t* dims,
+                                                             _In_ size_t num_dims, _Out_ IDescriptorInfo** tensor_info) {
   OrtTypeInfo* tensor_type_info = nullptr;
   winml_adapter_api_->CreateTensorTypeInfo(dims, num_dims, ONNXTensorElementDataTypeFromTensorKind(kind), &tensor_type_info);
   UniqueOrtTypeInfo info(tensor_type_info, ort_api_->ReleaseTypeInfo);
@@ -1441,7 +1441,7 @@ HRESULT OnnxruntimeEngineFactory::CreateTensorDescriptorInfo(winml::TensorKind k
   return S_OK;
 }
 
-HRESULT OnnxruntimeEngineFactory::CreateSequenceDescriptorInfo(IDescriptorInfo** seq_info) {
+HRESULT OnnxruntimeEngineFactory::CreateSequenceDescriptorInfo(_Out_ IDescriptorInfo** seq_info) {
   OrtTypeInfo* sequence_type_info = nullptr;
   winml_adapter_api_->CreateSequenceTypeInfo(&sequence_type_info);
   UniqueOrtTypeInfo info(sequence_type_info, ort_api_->ReleaseTypeInfo);
@@ -1452,7 +1452,7 @@ HRESULT OnnxruntimeEngineFactory::CreateSequenceDescriptorInfo(IDescriptorInfo**
   return S_OK;
 }
 
-HRESULT OnnxruntimeEngineFactory::CreateMapDescriptorInfo(IDescriptorInfo** desc_info) {
+HRESULT OnnxruntimeEngineFactory::CreateMapDescriptorInfo(_Out_ IDescriptorInfo** desc_info) {
   OrtTypeInfo* map_type_info = nullptr;
   winml_adapter_api_->CreateMapTypeInfo(&map_type_info);
   UniqueOrtTypeInfo info(map_type_info, ort_api_->ReleaseTypeInfo);
@@ -1463,7 +1463,7 @@ HRESULT OnnxruntimeEngineFactory::CreateMapDescriptorInfo(IDescriptorInfo** desc
   return S_OK;
 }
 
-HRESULT OnnxruntimeEngineFactory::CreateThreadPool(bool allow_spinning, uint32_t num_intra_op_threads, IThreading** thread_pool) {
+HRESULT OnnxruntimeEngineFactory::CreateThreadPool(_In_ bool allow_spinning, _In_ uint32_t num_intra_op_threads, _Out_ IThreading** thread_pool) {
   Microsoft::WRL::ComPtr<OnnxruntimeThreading> threading;
   RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeThreading>(&threading, this));
 
