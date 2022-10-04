@@ -14,10 +14,8 @@ namespace Dml
         bool reuseCommandList,
         std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
+        std::vector<DML_BUFFER_BINDING> initInputBindings,
         std::vector<uint8_t>& inputsConstant,
-        std::vector<bool>& inputsUsed,
-        ComPtr<ID3D12Resource> persistentResource,
-        ComPtr<IUnknown> persistentResourceAllocatorUnk,
-        std::optional<DML_BUFFER_BINDING> persistentResourceBinding
+        std::vector<bool>& inputsUsed
     );
 } // namespace Dml

@@ -403,31 +403,8 @@ namespace DmlGraphFusionHelper
             initializeResourceRefs,
             nullptr,
             *transferredInitializerMap);
-            
-        // Allocate a persistent resource and initialize the operator
-        ComPtr<ID3D12Resource> persistentResource;
-        ComPtr<IUnknown> persistentResourceAllocatorUnk; // Controls when the persistent resource is returned to the allocator
-        std::optional<DML_BUFFER_BINDING> persistentResourceBinding;
-        UINT64 persistentResourceSize = compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
-        if (persistentResourceSize > 0)
-        {
-            ORT_THROW_IF_FAILED(providerImpl->AllocatePooledResource(
-                static_cast<size_t>(persistentResourceSize),
-                AllocatorRoundingMode::Disabled,
-                persistentResource.GetAddressOf(),
-                persistentResourceAllocatorUnk.GetAddressOf()));
-
-            persistentResourceBinding = DML_BUFFER_BINDING { persistentResource.Get(), 0, persistentResourceSize };
-        }
-
-        ORT_THROW_IF_FAILED(providerImpl->InitializeOperator(
-            compiledExecutionPlanOperator.Get(),
-            persistentResourceBinding ? &*persistentResourceBinding : nullptr,
-            gsl::make_span(initInputBindings)));
-
 
         // lamda captures for the kernel registration
-        // m_inputUsed
         Windows::AI::MachineLearning::Adapter::EdgeShapes outputShapes;
         ORT_THROW_HR_IF(E_UNEXPECTED, !TryGetStaticOutputShapes(fusedNode, outputShapes));
         bool resuableCommandList = graphDesc.reuseCommandList;
@@ -436,11 +413,9 @@ namespace DmlGraphFusionHelper
                                   resuableCommandList,
                                   nonOwnedGraphInputsFromInitializers,
                                   initializeResourceRefs,
+                                  initInputBindings,
                                   inputsConstant,
-                                  inputsUsed,
-                                  persistentResource,
-                                  persistentResourceAllocatorUnk,
-                                  persistentResourceBinding]
+                                  inputsUsed]
                     (onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
         {
             out.reset(CreateFusedGraphKernel(info, 
@@ -449,11 +424,9 @@ namespace DmlGraphFusionHelper
                                              resuableCommandList,
                                              nonOwnedGraphInputsFromInitializers,
                                              initializeResourceRefs,
+                                             initInputBindings,
                                              inputsConstant,
-                                             inputsUsed,
-                                             persistentResource,
-                                             persistentResourceAllocatorUnk,
-                                             persistentResourceBinding));
+                                             inputsUsed));
             return Status::OK();
         };
 

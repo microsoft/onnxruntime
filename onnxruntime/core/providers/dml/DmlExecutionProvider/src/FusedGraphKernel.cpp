@@ -23,21 +23,16 @@ namespace Dml
             bool reuseCommandList,
             std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
             std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
+            std::vector<DML_BUFFER_BINDING> initInputBindings,
             std::vector<uint8_t>& inputsConstant,
-            std::vector<bool>& inputsUsed,
-            ComPtr<ID3D12Resource> persistentResource,
-            ComPtr<IUnknown> persistentResourceAllocatorUnk,
-            std::optional<DML_BUFFER_BINDING> persistentResourceBinding) :
+            std::vector<bool>& inputsUsed) :
         OpKernel(kernelInfo), 
         m_compiledExecutionPlanOperator(compiledExecutionPlanOperator),
         m_inputsUsed(inputsUsed),
         m_outputShapes(outputShapes),
-        m_persistentResourceBinding(persistentResourceBinding),
-        m_persistentResource(persistentResource),
-        m_persistentResourceAllocatorUnk(persistentResourceAllocatorUnk),
         m_inputsConstant(inputsConstant),
         m_nonOwnedGraphInputsFromInitializers(nonOwnedGraphInputsFromInitializers)
-        {       
+        {
             // Get the execution provider interfaces
             m_executionHandle = kernelInfo.GetExecutionProvider()->GetExecutionHandle();
             if (m_executionHandle)
@@ -50,6 +45,38 @@ namespace Dml
                 ORT_THROW_IF_FAILED(providerExecutionObject.As(&m_winmlProvider));
             }
 
+            TranslateAndCompileGraph(
+                kernelInfo,
+                initializeResourceRefs,
+                initInputBindings,
+                reuseCommandList);
+        }
+
+        void TranslateAndCompileGraph(
+            const onnxruntime::OpKernelInfo& kernelInfo,
+            std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
+            std::vector<DML_BUFFER_BINDING> initInputBindings,
+            bool reuseCommandList
+        )
+        {
+            // Allocate a persistent resource and initialize the operator
+            UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
+            if (persistentResourceSize > 0)
+            {
+                ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
+                    static_cast<size_t>(persistentResourceSize),
+                    AllocatorRoundingMode::Disabled,
+                    m_persistentResource.GetAddressOf(),
+                    m_persistentResourceAllocatorUnk.GetAddressOf()));
+
+                m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
+            }
+
+            ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
+                m_compiledExecutionPlanOperator.Get(),
+                m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
+                gsl::make_span(initInputBindings)));
+
             // Queue references to objects which must be kept alive until resulting GPU work completes
             m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
             m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
@@ -58,7 +85,7 @@ namespace Dml
                 initializeResourceRefs.begin(), 
                 initializeResourceRefs.end(), 
                 [&](ComPtr<ID3D12Resource>& resource){ m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(resource).Get()); }
-            );
+            );  
 
             if (reuseCommandList)
             {
@@ -408,11 +435,9 @@ namespace Dml
         bool reuseCommandList,
         std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
+        std::vector<DML_BUFFER_BINDING> initInputBindings,
         std::vector<uint8_t>& inputsConstant,
-        std::vector<bool>& inputsUsed,
-        ComPtr<ID3D12Resource> persistentResource,
-        ComPtr<IUnknown> persistentResourceAllocatorUnk,
-        std::optional<DML_BUFFER_BINDING> persistentResourceBinding
+        std::vector<bool>& inputsUsed
         )
     {
         return new FusedGraphKernel(
@@ -422,11 +447,9 @@ namespace Dml
             reuseCommandList,
             nonOwnedGraphInputsFromInitializers,
             initializeResourceRefs,
+            initInputBindings,
             inputsConstant,
-            inputsUsed,
-            persistentResource,
-            persistentResourceAllocatorUnk,
-            persistentResourceBinding
+            inputsUsed
         );
     }
 } // namespace Dml
