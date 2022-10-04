@@ -570,6 +570,8 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO™ Exe
 | twitter-roberta-base-sentiment | Yes | Yes | Yes |
 | xlm-roberta-base | Yes | Yes | Yes |
 
+**Note:** We have added support for INT8 models, quantized with Neural Network Compression Framework (NNCF). To know more about NNCF refer [here](https://github.com/openvinotoolkit/nncf).
+
 ## OpenVINO™ Execution Provider Samples Tutorials
 
 In order to showcase what you can do with the OpenVINO™ Execution Provider for ONNX Runtime, we have created a few samples that shows how you can get that performance boost you’re looking for with just one additional line of code. 
