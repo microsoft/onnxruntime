@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/math/cos_grad.h"
-#include "orttraining/training_ops/cuda/math/cos_grad.h"
+#include "orttraining/training_ops/cuda/math/cos_grad_impl.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
