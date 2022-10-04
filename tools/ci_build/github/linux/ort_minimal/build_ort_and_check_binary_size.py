@@ -16,7 +16,6 @@ def parse_args():
 
     parser.add_argument("build_check_binsize_config", type=pathlib.Path, help="Path to configuration file.")
     parser.add_argument("--build_dir", type=pathlib.Path, required=True, help="Path to build directory.")
-    parser.add_argument("--config_id", type=str, required=True, help="The ORT build configuration ID.")
     parser.add_argument("--threshold_size_in_bytes", type=int, help="Binary size limit in bytes.")
     parser.add_argument(
         "--with_debug_info", action="store_true", help="Whether to include debug information in the build."
@@ -31,7 +30,7 @@ def main():
     with open(args.build_check_binsize_config, mode="r") as config_file:
         config = json.load(config_file)
 
-    config_id = args.config_id
+    config_type = config["type"]
     os = config["os"]
     arch = config["arch"]
     build_params = config["build_params"]
@@ -62,7 +61,7 @@ def main():
             str(REPO_ROOT / "tools/ci_build/github/linux/ort_minimal/check_build_binary_size.py"),
             f"--os={os}",
             f"--arch={arch}",
-            f"--build_config={config_id}",
+            f"--build_config={config_type}",
         ]
         + ([f"--threshold={args.threshold_size_in_bytes}"] if args.threshold_size_in_bytes else [])
         + [str(args.build_dir / build_config / "libonnxruntime.so")]

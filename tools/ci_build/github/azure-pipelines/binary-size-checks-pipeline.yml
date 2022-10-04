@@ -8,6 +8,11 @@ parameters:
   type: boolean
   default: false
 
+- name: BuildAllConfigurations
+  displayName: Build all binary size check configurations instead of just the required ones?
+  type: boolean
+  default: false
+
 resources:
   repositories:
   - repository: manylinux
@@ -24,20 +29,42 @@ jobs:
   pool: Linux-CPU-2019
 
   strategy:
+    # Notes:
+    # - BuildConfigFile path is relative to repository root.
+    # - BinarySizeThresholdInBytes is optional - if unspecified it is not checked.
     matrix:
+      # required configurations
       AndroidMinimalBaseline:
-        ConfigId: minimal-baseline
-        BuildConfigFile: "/onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_baseline.config"
+        BuildConfigFile: "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_baseline.config"
         BinarySizeThresholdInBytes: 1306224
-      AndroidMinimalBasicWithSomeOps:
-        ConfigId: android-minimal-basic-with-some-ops
-        BuildConfigFile: "/onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_basic_with_some_ops.config"
-        BinarySizeThresholdInBytes: 2658304
+      # additional configurations
+      ${{ if or(eq(parameters.BuildAllConfigurations, true), and(in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))) }}:
+        AndroidMinimalWithMobilePackageOps:
+          BuildConfigFile: "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_with_mobile_package_ops.config"
 
   steps:
   - checkout: self
     clean: true
     submodules: recursive
+
+  - task: PythonScript@0
+    displayName: 'Set variables from config file "$(BuildConfigFile)"'
+    inputs:
+      scriptSource: inline
+      script: |
+        import json
+
+        config_file_path = "$(BuildConfigFile)"
+        with open(config_file, mode="r") as config_file:
+            config = json.load(config_file)
+
+        def set_var(name, value):
+            print("Setting variable: {} = '{}'".format(name, value))
+            print("##vso[task.setvariable variable={}]{}".format(name, value))
+
+        set_var("BuildConfigType", config["type"])
+        set_var("BuildConfigOs", config["os"])
+      workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/get-docker-image-steps.yml
     parameters:
@@ -46,10 +73,16 @@ jobs:
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
 
-  - task: CmdLine@2
+  - task: Bash@3
     displayName: 1a. Build onnxruntime
     inputs:
+      targetType: inline
       script: |
+        BINARY_SIZE_THRESHOLD_ARGS=""
+        if [[ ! -z "$(BinarySizeThresholdInBytes)" ]]; then
+          echo "Binary size threshold in bytes: $(BinarySizeThresholdInBytes)"
+          BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes $(BinarySizeThresholdInBytes)"
+        fi
         NDK_HOME=$(realpath $ANDROID_NDK_HOME)
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -66,9 +99,8 @@ jobs:
           onnxruntimecpubuild \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_ort_and_check_binary_size.py \
               --build_dir /build/1a \
-              --config_id $(ConfigId) \
-              --threshold_size_in_bytes $(BinarySizeThresholdInBytes) \
-              $(BuildConfigFile)
+              ${BINARY_SIZE_THRESHOLD_ARGS} \
+              "/onnxruntime_src/$(BuildConfigFile)"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: AzureCLI@2
@@ -97,12 +129,13 @@ jobs:
     displayName: 1a. Publish binary artifact
     inputs:
       targetPath: $(Build.BinariesDirectory)/1a/MinSizeRel/libonnxruntime.so
-      artifactName: $(ConfigId)-binary
+      artifactName: $(BuildConfigOs)-$(BuildConfigType)-binary
 
   - ${{ if parameters.DoBuildWithDebugInfo }}:
-    - task: CmdLine@2
+    - task: Bash@3
       displayName: 1b. Build onnxruntime with debug info
       inputs:
+        targetType: inline
         script: |
           NDK_HOME=$(realpath $ANDROID_NDK_HOME)
           docker run --rm \
@@ -120,15 +153,14 @@ jobs:
             onnxruntimecpubuild \
               /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_ort_and_check_binary_size.py \
                 --build_dir /build/1b \
-                --config_id $(ConfigId) \
                 --with_debug_info \
-                $(BuildConfigFile)
+                "/onnxruntime_src/$(BuildConfigFile)"
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: PublishPipelineArtifact@1
       displayName: 1b. Publish binary artifact with debug info
       inputs:
         targetPath: $(Build.BinariesDirectory)/1b/MinSizeRel/libonnxruntime.so
-        artifactName: $(ConfigId)-binary-with-debug-info
+        artifactName: $(BuildConfigOs)-$(BuildConfigType)-binary-with-debug-info
 
   - template: templates/clean-agent-build-directory-step.yml
