@@ -4,6 +4,7 @@
 #include "cos_grad_impl.h"
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cuda_common.h"
 
 
 namespace onnxruntime {
