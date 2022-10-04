@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include <cuda_runtime.h>
 
 namespace onnxruntime {
 namespace cuda {
