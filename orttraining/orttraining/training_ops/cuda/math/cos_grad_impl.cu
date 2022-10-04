@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-__global__ void _CosGrad(const T* dy, const T* Y, T* output, CUDA_LONG N) {
+__global__ void _CosGradImpl(const T* dy, const T* Y, T* output, CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
   output[id] = -1 * dy[id] * sin(Y[id]);
 }
@@ -20,11 +20,11 @@ template <typename TSrc>
 void CosGradImpl(cudaStream_t stream, const T* dy, const T* Y, T* output, size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _CosGrad<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(dy, Y, output, N);
+  _CosGradImpl<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(dy, Y, output, N);
 }
 
 #define SPECIALIZE_COSGRAD_IMPL(T) \
-  template void CosGrad(cudaStream_t stream, const T* dy, const T* Y, T* output);
+  template void CosGradImpl(cudaStream_t stream, const T* dy, const T* Y, T* output);
 
 SPECIALIZE_COSGRAD_IMPL(half)
 SPECIALIZE_COSGRAD_IMPL(float)
