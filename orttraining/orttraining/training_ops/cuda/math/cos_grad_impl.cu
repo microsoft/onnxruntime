@@ -7,10 +7,17 @@
 namespace onnxruntime {
 namespace cuda {
 
+template <class T>
+struct OP_CosGrad {
+  __device__ __inline__ T operator()(T dy, T Y) const {
+    return -1 * dy * sin(Y);
+  }
+};
+
 template <typename T>
 __global__ void _CosGradImpl(const T* dy, const T* Y, T* output, CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  output[id] = -1 * dy[id] * sin(Y[id]);
+  output[id] = OP_CosGrad<T>()(dy[id], Y[id]);
 }
 
 template <typename T>
