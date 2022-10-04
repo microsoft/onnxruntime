@@ -28,7 +28,7 @@ Status CosGrad<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor& dy = *context->Input<Tensor>(0);
   const Tensor& Y = *context->Input<Tensor>(1);
   Tensor& output = *context->Output(0, dy.Shape());
-  CosGrad(
+  CosGradImpl(
       Stream(),
       reinterpret_cast<const CudaT*>(dy.Data<T>()),
       reinterpret_cast<const CudaT*>(Y.Data<T>()),
