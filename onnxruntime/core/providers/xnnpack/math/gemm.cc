@@ -53,15 +53,15 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
     const auto* B_shape = B_arg.Shape();
     const auto* C_shape = C_arg.Shape();
 
-    if (!A_shape || A_shape->dim_size() > 3) {
+    if ((A_shape == nullptr) || A_shape->dim_size() > 3) {
         break;
     }
 
-    if (!B_shape || B_shape->dim_size() > 3) {
+    if ((B_shape == nullptr) || B_shape->dim_size() > 3) {
         break;
     }
 
-    if (!C_shape || C_shape->dim_size() > 3) {
+    if ((C_shape == nullptr) || C_shape->dim_size() > 3) {
         break;
     }
 
@@ -100,7 +100,7 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), OpKernel(info){
 
 Status Gemm::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
                      /*out*/ bool& is_packed,
-                     /*out*/ PrePackedWeights*) {
+                     /*out*/ PrePackedWeights* /*unused*/) {
   is_packed = false;
 
   if (input_idx == 0) {

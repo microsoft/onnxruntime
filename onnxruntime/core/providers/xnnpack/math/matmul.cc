@@ -90,7 +90,7 @@ Status MatMul::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
   xnn_status status = xnn_status::xnn_status_uninitialized;
 
   struct xnn_operator* p = nullptr;
-  this->b_shape_ = tensor.Shape();
+  b_shape_ = tensor.Shape();
   status = xnn_create_fully_connected_nc_f32(
       tensor.Shape()[0],          // size_t input_channels,
       tensor.Shape()[1],          // size_t output_channels,
