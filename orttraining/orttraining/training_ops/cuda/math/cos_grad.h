@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename TSrc>
+template <typename T>
 class CosGrad final : public CudaKernel {
  public:
   CosGrad(const OpKernelInfo& info) : CudaKernel(info) {
