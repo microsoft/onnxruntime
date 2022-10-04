@@ -331,21 +331,17 @@ namespace Dml
 
             ORT_THROW_IF_FAILED(device->CreateBindingTable(&bindingTableDesc, IID_PPV_ARGS(&m_bindingTable)));
 
-            ComPtr<ID3D12CommandAllocator> allocator;
             ORT_THROW_IF_FAILED(d3dDevice->CreateCommandAllocator(
                 m_provider->GetCommandListTypeForQueue(),
-                IID_GRAPHICS_PPV_ARGS(allocator.ReleaseAndGetAddressOf())));
+                IID_GRAPHICS_PPV_ARGS(m_commandAllocator.ReleaseAndGetAddressOf())));
 
-            ComPtr<ID3D12CommandList> commandList;
             ORT_THROW_IF_FAILED(d3dDevice->CreateCommandList(
                 0,
                 m_provider->GetCommandListTypeForQueue(),
-                allocator.Get(),
+                m_commandAllocator.Get(),
                 nullptr,
-                IID_GRAPHICS_PPV_ARGS(commandList.ReleaseAndGetAddressOf())));
+                IID_GRAPHICS_PPV_ARGS(m_graphicsCommandList.ReleaseAndGetAddressOf())));
             
-            ORT_THROW_IF_FAILED(commandList.As(&m_graphicsCommandList));
-
             if (m_persistentResource)
             {
                 DML_BINDING_DESC persistentResourceBindingDesc =
@@ -359,7 +355,7 @@ namespace Dml
             ComPtr<IDMLCommandRecorder> recorder;
             ORT_THROW_IF_FAILED(device->CreateCommandRecorder(IID_PPV_ARGS(recorder.GetAddressOf())));
 
-            recorder->RecordDispatch(commandList.Get(), m_compiledExecutionPlanOperator.Get(), m_bindingTable.Get());
+            recorder->RecordDispatch(m_graphicsCommandList.Get(), m_compiledExecutionPlanOperator.Get(), m_bindingTable.Get());
 
             ORT_THROW_IF_FAILED(m_graphicsCommandList->Close());
         }
@@ -496,6 +492,7 @@ namespace Dml
 
         // Re-usable command list, supporting descriptor heap, and DML binding table to update that heap.
         ComPtr<ID3D12GraphicsCommandList> m_graphicsCommandList;
+        ComPtr<ID3D12CommandAllocator> m_commandAllocator;
         ComPtr<ID3D12DescriptorHeap> m_heap;
         ComPtr<IDMLBindingTable> m_bindingTable;
         std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;

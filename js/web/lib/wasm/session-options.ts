@@ -47,6 +47,31 @@ const appendDefaultOptions = (options: InferenceSession.SessionOptions): void =>
   }
 };
 
+const setExecutionProviders =
+    (sessionOptionsHandle: number, executionProviders: readonly InferenceSession.ExecutionProviderConfig[],
+     allocs: number[]): void => {
+      for (const ep of executionProviders) {
+        let epName = typeof ep === 'string' ? ep : ep.name;
+
+        // check EP name
+        switch (epName) {
+          case 'xnnpack':
+            epName = 'XNNPACK';
+            break;
+          case 'wasm':
+          case 'cpu':
+            continue;
+          default:
+            throw new Error(`not supported EP: ${epName}`);
+        }
+
+        const epNameDataOffset = allocWasmString(epName, allocs);
+        if (getInstance()._OrtAppendExecutionProvider(sessionOptionsHandle, epNameDataOffset) !== 0) {
+          throw new Error(`Can't append execution provider: ${epName}`);
+        }
+      }
+    };
+
 export const setSessionOptions = (options?: InferenceSession.SessionOptions): [number, number[]] => {
   const wasm = getInstance();
   let sessionOptionsHandle = 0;
@@ -103,6 +128,10 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
         sessionOptions.logVerbosityLevel!);
     if (sessionOptionsHandle === 0) {
       throw new Error('Can\'t create session options');
+    }
+
+    if (options?.executionProviders) {
+      setExecutionProviders(sessionOptionsHandle, options.executionProviders, allocs);
     }
 
     if (options?.extra !== undefined) {
