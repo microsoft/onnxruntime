@@ -157,7 +157,7 @@ CMAKE_HOST_SYSTEM_PROCESSOR is the one you should use.
 
 What are the valid values:
 - macOS: it can be x86_64 or arm64. (maybe it could also be arm64e but cmake forgot to document that)
-- Linux: i686, x86_64, aarch64, armv7l, ... The possible values for `uname -m` command. They sightly differ from what you can get from GCC. This sometimes confuses people: `cmake` and `uname` sit in one boat, GCC is in another boat but GCC is closer to your C/C++ source code.
+- Linux: i686, x86_64, aarch64, armv7l, ... The possible values for `uname -m` command. They slightly differ from what you can get from GCC. This sometimes confuses people: `cmake` and `uname` sit in one boat, GCC is in another boat but GCC is closer to your C/C++ source code.
 - Windows: AMD64, ...
 - Android/iOS/...: we don't care. We don't use them as a development environment.
 
