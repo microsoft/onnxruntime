@@ -5,6 +5,7 @@
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 
 namespace onnxruntime {
