@@ -236,8 +236,8 @@ int RunTraining(const TestRunnerParameters& params) {
   Ort::TrainingSession session(soptions, checkpoint_state, params.model_training_graph_path,
                                params.model_evaluation_graph_path,
                                params.optimizer_training_graph_path.size() > 0
-                                   ? params.optimizer_training_graph_path
-                                   : std::optional<PathString>());
+                                   ? std::optional<PathString>(params.optimizer_training_graph_path)
+                                   : std::nullopt);
 
   int64_t sample_batch_count_per_epoch = params.train_batch_size;
   if (sample_batch_count_per_epoch < params.train_batch_size ||

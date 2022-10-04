@@ -61,7 +61,7 @@ struct SyntheticSampleBatch {
   void AddFloatInput(gsl::span<const int64_t> shape);
   void AddBoolInput(gsl::span<const int64_t> shape);
 
-  bool GetBatch(std::vector<Ort::Value>& batches);
+  void GetBatch(std::vector<Ort::Value>& batches);
 
  private:
   template <typename T>

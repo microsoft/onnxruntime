@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 #include "onnxruntime_training_c_api.h"
 #include "onnxruntime_cxx_api.h"
@@ -26,7 +29,7 @@ inline std::vector<Value> TrainingSession::TrainStep(const std::vector<Value>& i
   std::vector<Value> output_values;
   output_values.reserve(training_model_output_count_);
   for (size_t i = 0; i < training_model_output_count_; i++) output_values.emplace_back(nullptr);
-  auto ort_input_values = reinterpret_cast<const OrtValue**>(const_cast<Value*>(input_values.data()));
+  auto ort_input_values = reinterpret_cast<const OrtValue* const*>(input_values.data());
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values.data());
   RunOptions run_options;
   ThrowOnError(GetTrainingApi().TrainStep(
@@ -44,7 +47,7 @@ inline std::vector<Value> TrainingSession::EvalStep(const std::vector<Value>& in
   std::vector<Value> output_values;
   output_values.reserve(eval_model_output_count_);
   for (size_t i = 0; i < eval_model_output_count_; i++) output_values.emplace_back(nullptr);
-  auto ort_input_values = reinterpret_cast<const OrtValue**>(const_cast<Value*>(input_values.data()));
+  auto ort_input_values = reinterpret_cast<const OrtValue* const*>(input_values.data());
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values.data());
   RunOptions run_options;
   ThrowOnError(GetTrainingApi().EvalStep(

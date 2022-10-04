@@ -93,7 +93,7 @@ void SyntheticSampleBatch::AddFloatInput(gsl::span<const int64_t> shape) {
   data = values;
 }
 
-bool SyntheticSampleBatch::GetBatch(std::vector<Ort::Value>& batches) {
+void SyntheticSampleBatch::GetBatch(std::vector<Ort::Value>& batches) {
   batches.clear();
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   for (size_t i = 0; i < data_vector_.size(); ++i) {
@@ -114,10 +114,8 @@ bool SyntheticSampleBatch::GetBatch(std::vector<Ort::Value>& batches) {
                                                     shape_vector.data(), shape_vector.size(),
                                                     elem_data_type));
     },
-                                input.GetData());
+               input.GetData());
   }
-
-  return true;
 }
 
 bool SyntheticDataLoader::GetNextSampleBatch(std::vector<Ort::Value>& batches) {
