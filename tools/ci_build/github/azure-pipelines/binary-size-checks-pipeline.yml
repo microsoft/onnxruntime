@@ -78,6 +78,7 @@ jobs:
     inputs:
       targetType: inline
       script: |
+        set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
         if [[ ! -z "$(BinarySizeThresholdInBytes)" ]]; then
           echo "Binary size threshold in bytes: $(BinarySizeThresholdInBytes)"
@@ -112,6 +113,7 @@ jobs:
       scriptLocation: inlineScript
       scriptType: bash
       inlineScript: |
+        set -e -x
         BINARY_SIZE_DATA_FILE="$(Build.BinariesDirectory)/1a/MinSizeRel/binary_size_data.txt"
         if [[ ! -f "${BINARY_SIZE_DATA_FILE}" ]]; then
           echo "File not found: ${BINARY_SIZE_DATA_FILE}"
@@ -137,6 +139,7 @@ jobs:
       inputs:
         targetType: inline
         script: |
+          set -e -x
           NDK_HOME=$(realpath $ANDROID_NDK_HOME)
           docker run --rm \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
