@@ -21,7 +21,7 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
 
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
-    auto input_defs = node.InputDefs();
+    const auto& input_defs = node.InputDefs();
 
     if (input_defs.size()<2) {
       break;
@@ -63,13 +63,6 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
 
     if (!C_shape || C_shape->dim_size() > 3) {
         break;
-    }
-
-    // if there's a bias input it must be constant
-    if (input_defs.size() == 3) {
-      if (C_arg.Exists() && !graph.IsConstantInitializer(C_arg.Name(), true)) {
-        break;
-      }
     }
 
     ProtoHelperNodeContext nc(node_unit.GetNode());

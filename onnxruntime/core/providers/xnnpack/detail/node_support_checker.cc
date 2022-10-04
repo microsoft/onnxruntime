@@ -17,12 +17,10 @@
 // each operator provides a helper to check if supported
 #include "core/providers/xnnpack/nn/conv.h"
 #include "core/providers/xnnpack/nn/max_pool.h"
-#include "core/providers/xnnpack/nn/gemm.h"
-#include "core/providers/xnnpack/nn/matmul.h"
+#include "core/providers/xnnpack/math/gemm.h"
+#include "core/providers/xnnpack/math/matmul.h"
 #include "core/providers/xnnpack/nn/average_pool.h"
 #include "core/providers/xnnpack/nn/softmax.h"
-#include "core/providers/xnnpack/nn/gemm.h"
-#include "core/providers/xnnpack/nn/matmul.h"
 
 
 namespace onnxruntime {
