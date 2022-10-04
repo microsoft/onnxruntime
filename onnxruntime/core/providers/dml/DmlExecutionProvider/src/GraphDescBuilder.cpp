@@ -38,12 +38,13 @@ namespace Dml::GraphDescBuilder
         std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
         const onnxruntime::Graph& graph,
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
-        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
-        const gsl::span<const std::string> fusedNodeOutputArgOriginalNames,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
         const void* executionHandle)
     {
+        
+        const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph.GetMetaDef()->inputs;
+        const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph.GetMetaDef()->outputs;
         struct NodeAndIndex
         {
             uint32_t nodeIndex; // The index of the node itself
@@ -56,9 +57,9 @@ namespace Dml::GraphDescBuilder
         // Map from Lotus node argument names to input indices of the fused kernel node.
         std::unordered_map<std::string, uint32_t> nameToDmlFusedNodeInputIndex;
 
-        for (size_t inputIndex = 0; inputIndex < fusedNodeInputArgOriginalNames.size(); ++inputIndex)
+        for (size_t inputIndex = 0; inputIndex < subGraphInputArgNames.size(); ++inputIndex)
         {
-            const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(fusedNodeInputArgOriginalNames[inputIndex]);
+            const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(subGraphInputArgNames[inputIndex]);
 
             if (!graphInput)
             {
@@ -258,9 +259,9 @@ namespace Dml::GraphDescBuilder
         }
 
         // Add graph output nodes, which might be in a different order from the encapsulating node
-        for (size_t outputIndex = 0; outputIndex < fusedNodeOutputArgOriginalNames.size(); ++outputIndex)
+        for (size_t outputIndex = 0; outputIndex < subGraphOutputArgNames.size(); ++outputIndex)
         {
-            const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(fusedNodeOutputArgOriginalNames[outputIndex]);
+            const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(subGraphOutputArgNames[outputIndex]);
 
             ORT_THROW_HR_IF_NULL_MSG(E_POINTER, graphOutput, "FusedNode's nodeArgList does not contain one of the nodeArg");
             const auto& outputNodeAndIndex = nameToNodeAndIndexMap.at(graphOutput->Name());

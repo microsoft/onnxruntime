@@ -6,7 +6,7 @@ namespace Dml
 {
 namespace GraphKernelHelper 
 {
-    Microsoft::WRL::ComPtr<ID3D12Resource>
+    /*Microsoft::WRL::ComPtr<ID3D12Resource>
     CreateResource(
         Dml::IExecutionProvider* provider,
         const std::byte* tensorPtr,
@@ -257,6 +257,6 @@ namespace GraphKernelHelper
 
         // All initializers should have been consumed and freed above
         assert(transferredInitializerMap.empty());
-    }
+    }*/
 }  // namespace GraphKernelHelper
 }  // namespace Dml
