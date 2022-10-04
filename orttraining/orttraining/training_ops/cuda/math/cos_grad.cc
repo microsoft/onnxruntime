@@ -31,7 +31,7 @@ Status CosGrad<T>::ComputeInternal(OpKernelContext* context) const {
       Stream(),
       reinterpret_cast<const CudaT*>(dy.Data<T>()),
       reinterpret_cast<const CudaT*>(Y.Data<T>()),
-      output.MutableData<bool>(), dy.Shape().Size());
+      output.MutableData<const CudaT*>(), dy.Shape().Size());
 
   return Status::OK();
 }
