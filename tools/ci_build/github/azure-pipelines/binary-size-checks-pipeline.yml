@@ -13,11 +13,6 @@ parameters:
   type: boolean
   default: false
 
-variables:
-- {{ if and(in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/main')) }}:
-  - name: IsMainBranchCI
-    value: "true"
-
 resources:
   repositories:
   - repository: manylinux
@@ -43,7 +38,7 @@ jobs:
         BuildConfigFile: "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_baseline.config"
         BinarySizeThresholdInBytes: 1306224
       # additional configurations
-      ${{ if or(eq(parameters.BuildAllConfigurations, true), eq(variables.IsMainBranchCI, "true")) }}:
+      ${{ if or(eq(parameters.BuildAllConfigurations, true), and(in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))) }}:
         AndroidMinimalWithMobilePackageOps:
           BuildConfigFile: "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_with_mobile_package_ops.config"
 
