@@ -1,6 +1,6 @@
 # steps in this build:
-# 1a. Android minimal baseline build (arm64-v8a, including no kernels, with exceptions disabled)
-# 1b. Android minimal baseline build with debug info
+# 1a. ORT build
+# 1b. ORT build with debug info
 
 parameters:
 - name: DoBuildWithDebugInfo
@@ -55,7 +55,7 @@ jobs:
         import json
 
         config_file_path = "$(BuildConfigFile)"
-        with open(config_file, mode="r") as config_file:
+        with open(config_file_path, mode="r") as config_file:
             config = json.load(config_file)
 
         def set_var(name, value):
