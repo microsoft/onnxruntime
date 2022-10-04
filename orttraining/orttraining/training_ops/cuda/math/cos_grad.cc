@@ -17,9 +17,9 @@ namespace cuda {
       T,                                                              \
       kCudaExecutionProvider,                                         \
       (*KernelDefBuilder::Create())                                   \
-          .TypeConstraint("dy", DataTypeImpl::GetTensorType<T>())      \
-          .TypeConstraint("Y", DataTypeImpl::GetTensorType<T>())      \
-          .TypeConstraint("output", DataTypeImpl::GetTensorType<T>()), \
+          .TypeConstraint("dy", DataTypeImpl::GetTensorType<T*>())      \
+          .TypeConstraint("Y", DataTypeImpl::GetTensorType<T*>())      \
+          .TypeConstraint("output", DataTypeImpl::GetTensorType<T*>()), \
       CosGrad<T>);
 
 template <typename T>
