@@ -147,7 +147,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
         reduction_buffer.get(),
         buffer_size));
   } else {
-    const TBuf normalize_factor = static_cast<TBuf>(1.0f);
+    constexpr TBuf normalize_factor = static_cast<TBuf>(1.0f);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(TBuf), cudaMemcpyHostToDevice, Stream()));
   }
 
