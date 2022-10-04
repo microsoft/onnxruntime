@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "cos_grad_impl.h"
-#include "core/providers/cuda/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace cuda {
