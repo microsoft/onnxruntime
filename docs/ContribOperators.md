@@ -2670,7 +2670,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
-<dd>Constrain input and output types to singed/unsigned int8 tensors.</dd>
+<dd>Constrain input and output types to signed/unsigned int8 tensors.</dd>
 </dl>
 
 
@@ -2912,7 +2912,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
-<dd>Constrain input and output types to singed/unsigned int8 tensors.</dd>
+<dd>Constrain input and output types to signed/unsigned int8 tensors.</dd>
 </dl>
 
 
