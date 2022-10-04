@@ -424,8 +424,6 @@ TEST(GradientCheckerTest, MatMulGrad) {
 
 TEST(GradientCheckerTest, SinGrad) { UnaryOpGradientTest("Sin"); }
 
-TEST(GradientCheckerTest, CosGrad) { UnaryOpGradientTest("Cos"); }
-
 TEST(GradientCheckerTest, NegGrad) { UnaryOpGradientTest("Neg"); }
 
 TEST(GradientCheckerTest, AbsGrad) {
