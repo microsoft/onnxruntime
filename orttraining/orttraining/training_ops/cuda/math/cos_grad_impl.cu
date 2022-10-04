@@ -16,7 +16,7 @@ __global__ void _CosGrad(const T* dy, const T* Y, T* output, CUDA_LONG N) {
 }
 
 template <typename TSrc>
-void CosGrad(cudaStream_t stream, const T* dy, const T* Y, T* output, size_t count) {
+void CosGradImpl(cudaStream_t stream, const T* dy, const T* Y, T* output, size_t count) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(count) / GridDim::maxThreadsPerBlock));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   _CosGrad<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(dy, Y, output, N);
