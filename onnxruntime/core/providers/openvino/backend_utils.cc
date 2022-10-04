@@ -355,7 +355,7 @@ int GetFirstAvailableDevice(GlobalContext& global_context) {
   return i;
 }
 
-void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::Value& out_tensor) {
+void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::UnownedValue& out_tensor) {
   switch (node->get_element_type()) {
     case ngraph::element::Type_t::f32: {
       FillOutputHelper<float>(out_tensor, node);
@@ -383,7 +383,7 @@ void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::Value&
 }
 
 template <typename T>
-void FillOutputHelper(Ort::Value& out_tensor, std::shared_ptr<ngraph::Node> node) {
+void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ngraph::Node> node) {
   auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>(node);
   auto res = const_node->cast_vector<T>();
   T* tensor_data = out_tensor.GetTensorMutableData<T>();

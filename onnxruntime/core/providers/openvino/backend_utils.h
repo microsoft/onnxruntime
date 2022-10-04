@@ -49,10 +49,10 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
 
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
-void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::Value& out_tensor);
+void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::UnownedValue& out_tensor);
 
 template <typename T>
-void FillOutputHelper(Ort::Value& out_tensor, std::shared_ptr<ngraph::Node> node);
+void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ngraph::Node> node);
 
 Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context,

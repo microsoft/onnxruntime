@@ -193,7 +193,7 @@ void VADMBackend::CompleteAsyncInference(Ort::KernelContext& context,
       auto out_name = item.first;
       auto node = item.second;
       auto output_tensor = GetOutputTensor(context, out_name, subgraph_context_.output_names, node);
-      FillOutputsWithConstantData(node, *output_tensor);
+      FillOutputsWithConstantData(node, output_tensor);
     }
   }
 }
@@ -243,7 +243,7 @@ void VADMBackend::Infer(OrtKernelContext* context) {
       auto out_name = item.first;
       auto node = item.second;
       auto output_tensor = GetOutputTensor(ctx, out_name, subgraph_context_.output_names, node);
-      FillOutputsWithConstantData(node, *output_tensor);
+      FillOutputsWithConstantData(node, output_tensor);
     }
   } else {
     // Distribute the batched inputs among available Infer Requests

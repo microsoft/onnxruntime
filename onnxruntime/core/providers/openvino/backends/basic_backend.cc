@@ -445,7 +445,7 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
       if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
         ORT_THROW(log_tag + "IO Buffering is not supported for constant subgraphs");
       } else {
-        FillOutputsWithConstantData(node, *output_tensor);
+        FillOutputsWithConstantData(node, output_tensor);
       }
     }
   }
@@ -464,7 +464,7 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
       auto out_name = item.first;
       auto node = item.second;
       auto output_tensor = GetOutputTensor(context, out_name, subgraph_context_.output_names, node);
-      FillOutputsWithConstantData(node, *output_tensor);
+      FillOutputsWithConstantData(node, output_tensor);
     }
     // Get Output tensors
     LOGS_DEFAULT(INFO) << log_tag << "Inference successful";
