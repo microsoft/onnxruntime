@@ -1,5 +1,6 @@
 #include "thread_utils.h"
 #include <algorithm>
+#include <iostream>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -8,6 +9,35 @@
 #include "core/session/ort_apis.h"
 
 namespace onnxruntime {
+
+#ifdef _WIN32
+GroupAffinities GetGroupAffinities() {
+  GroupAffinities group_affinities;
+  LOGICAL_PROCESSOR_RELATIONSHIP relation = RelationGroup;
+  constexpr static const size_t num_information = 128;
+  constexpr static const size_t size_information = sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
+  SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX processorInfos[num_information];
+  DWORD returnLength = num_information * size_information;
+  WORD group_id = 0;
+  ORT_ENFORCE(GetLogicalProcessorInformationEx(relation, processorInfos, &returnLength),
+              "Failed to fetch processor info, error code: ", GetLastError());
+  auto numGroups = returnLength / size_information;
+  for (int64_t i = 0; i < static_cast<int64_t>(numGroups); ++i) {
+    ORT_ENFORCE(processorInfos[i].Relationship == RelationGroup, "Returned processors not belong to same group");
+    for (int64_t j = 0; j < static_cast<int>(processorInfos[i].Group.ActiveGroupCount); ++j) {
+      const auto& groupInfo = processorInfos[i].Group.GroupInfo[j];
+      KAFFINITY processor_affinity = 1UL;
+      for (int64_t k = 0; k < groupInfo.ActiveProcessorCount; ++k) {
+        group_affinities.push_back({static_cast<int64_t>(group_id), static_cast<int64_t>(processor_affinity)});
+        processor_affinity <<= 1;
+      }
+      group_id++;
+    }
+  }
+  return std::move(group_affinities);
+}
+#endif
+
 namespace concurrency {
 static std::unique_ptr<ThreadPool>
 CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
@@ -19,12 +49,32 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     to.affinity.assign(options.affinity_vec, options.affinity_vec + options.affinity_vec_len);
   }
   if (options.thread_pool_size <= 0) {  // default
+#ifdef _WIN32
+    to.group_affinities = GetGroupAffinities();
+    options.thread_pool_size = static_cast<int>(to.group_affinities.size());
+    std::cout << "thread_pool size (including the main thread): " << options.thread_pool_size << std::endl;
+    for (int i = 0; i < options.thread_pool_size - 1; ++i) {
+      std::cout << "sub-thread " << i + 1 << " affnity set to: group "
+                << to.group_affinities[i].first << " with processor bitmask "
+                << to.group_affinities[i].second << std::endl;
+    }
+#else
     cpu_list = Env::Default().GetThreadAffinityMasks();
     if (cpu_list.empty() || cpu_list.size() == 1)
       return nullptr;
     options.thread_pool_size = static_cast<int>(cpu_list.size());
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
+#endif
+  } else if (!options.group_affinities.empty()) {
+    ORT_ENFORCE(static_cast<int>(options.group_affinities.size()) == options.thread_pool_size - 1,
+                "Invalid thread options, number of group affinities must equal to options.thread_pool_size - 1");
+    to.group_affinities = options.group_affinities;
+    for (int i = 0; i < options.thread_pool_size - 1; ++i) {
+      std::cout << "sub-thread " << i + 1 << " affnity set to: group "
+                << to.group_affinities[i].first << " with processor bitmask "
+                << to.group_affinities[i].second << std::endl;
+    }
   }
   to.set_denormal_as_zero = options.set_denormal_as_zero;
 

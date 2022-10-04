@@ -39,6 +39,8 @@ class ThreadPoolInterface;
 namespace onnxruntime {
 
 #ifdef _WIN32
+using GroupAffinity = std::pair<uint64_t,uint64_t>;
+using GroupAffinities = std::vector<GroupAffinity>;
 using PIDType = unsigned long;
 using FileOffsetType = int64_t;
 #else
@@ -67,6 +69,11 @@ struct ThreadOptions {
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
+
+#ifdef _WIN32
+  // group affinity setting for each thread except main
+  GroupAffinities group_affinities;
+#endif
 };
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.

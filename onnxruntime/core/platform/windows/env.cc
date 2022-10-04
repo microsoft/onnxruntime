@@ -19,6 +19,7 @@ limitations under the License.
 #include <Shlwapi.h>
 #include <Windows.h>
 
+#include <iostream>
 #include <fstream>
 #include <string>
 #include <thread>
@@ -74,8 +75,22 @@ class WindowsThread : public EnvThread {
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
     // TODO: should I try to use SetThreadSelectedCpuSets?
-    if (!p->thread_options.affinity.empty())
-      SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
+    /*if (!p->thread_options.affinity.empty())
+      SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);*/
+
+    if (p->index < p->thread_options.group_affinities.size()) {
+      GROUP_AFFINITY group_affinity;
+      memset(&group_affinity, 0x0, sizeof(GROUP_AFFINITY));
+      group_affinity.Group = static_cast<WORD>(p->thread_options.group_affinities[p->index].first);
+      group_affinity.Mask = p->thread_options.group_affinities[p->index].second;
+      if (!SetThreadGroupAffinity(GetCurrentThread(), &group_affinity, nullptr)) {
+        std::cout << "Failed to set group affinity for thread " << p->index << std::endl;
+        std::cout << "Group: " << group_affinity.Group << std::endl;
+        std::cout << "Mask: " << group_affinity.Mask << std::endl;
+        std::cout << "Error code: " << GetLastError() << std::endl;
+      }
+    }
+
 #if WINVER >= _WIN32_WINNT_WIN10
     constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
