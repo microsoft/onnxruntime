@@ -82,16 +82,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
               {GI(0)})};
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetCosGradient) {
+IMPLEMENT_GRADIENT_BUILDER(GetLogGradient) {
   return std::vector<NodeDef>{
-      NodeDef("CosGrad",
+      NodeDef("Div",
               {GO(0), I(0)},
               {GI(0)})};
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetLogGradient) {
+IMPLEMENT_GRADIENT_BUILDER(GetCosGradient) {
   return std::vector<NodeDef>{
-      NodeDef("Div",
+      NodeDef(OpDef{"CosGrad", kMSDomain, 1},
               {GO(0), I(0)},
               {GI(0)})};
 }

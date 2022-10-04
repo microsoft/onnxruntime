@@ -30,21 +30,6 @@ Status SinGrad<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_CPU_OPERATOR_KERNEL(
-    CosGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    CosGrad<float>);
-
-template <typename T>
-Status CosGrad<T>::Compute(OpKernelContext* context) const {
-  auto& dY = *context->Input<Tensor>(0);
-  auto& X = *context->Input<Tensor>(1);
-  auto& dX = *context->Output(0, X.Shape());
-  MakeEigenArrayMap<float>(dX) = -1 * MakeEigenArrayMap<float>(dY) * MakeEigenArrayMap<float>(X).sin();
-  return Status::OK();
-}
-
 ONNX_OPERATOR_KERNEL_EX(
     ReluGrad,
     kMSDomain,

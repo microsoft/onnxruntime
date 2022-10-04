@@ -494,6 +494,8 @@ TEST(GradientCheckerTest, FlattenGrad) {
   }
 }
 
+TEST(GradientCheckerTest, CosGrad) { UnaryOpGradientTest("Cos"); }
+
 TEST(GradientCheckerTest, TanhGrad) { UnaryOpGradientTest("Tanh"); }
 
 // TODO fix flaky test

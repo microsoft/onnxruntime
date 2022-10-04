@@ -2499,24 +2499,6 @@ Example 4:
            {{"X_1"}, "Cos", {"X"}},
            {{"dX"}, "Mul", {"X_1", "dY"}}}));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(CosGrad)
-    .SetDomain(kOnnxDomain)
-    .SinceVersion(9)
-    .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-    .SetDoc("Gradient function for Cos")
-    .AllowUncheckedAttributes()
-    .Input(0, "dY", "Cos output's grad", "T")
-    .Input(1, "X", "Input tensor", "T")
-    .Output(0, "dX", "Cos input's grad", "T")
-    .TypeConstraint(
-        "T",
-        {"tensor(float16)", "tensor(float)", "tensor(double)"},
-        "Constrain input and output types to all numeric tensors.")
-    .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-        {// nodes: {outputs, op, inputs, attributes}
-          {{"X_1"}, "Sin", {"X"}},
-          {{"dX"}, "Mul", {"X_1", "dY"}}}));
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryScalar)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2674,6 +2656,34 @@ Example 4:
 
             return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
           });
+
+    ONNX_CONTRIB_OPERATOR_SCHEMA(CosGrad)
+    .SetDomain(kMSDomain)
+    .SinceVersion(1)
+    .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+    .SetDoc("Gradient function for Cos")
+    .AllowUncheckedAttributes()
+    .Input(0, "dY", "Cos output's grad", "T")
+    .Input(1, "Y", "Input tensor", "T")
+    .Output(0, "dX", "Cos input's grad", "T")
+    .TypeConstraint(
+        "T",
+        {"tensor(float16)", "tensor(float)", "tensor(double)"},
+        "Constrain input and output types to all numeric tensors.")
+    .SetContextDependentFunctionBodyBuilder(
+        [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+          auto* tp = ctx.getInputType(0);
+          if ((tp == nullptr) || (!tp->has_tensor_type()))
+            return false;
+          auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+          std::vector<FunctionBodyHelper::NodeDef> body{
+              ONNX_NAMESPACE::Const("C_MinusOne", -1.0f, elem_type),
+              {{"SinX"}, "Sin", {"Y"}},
+              {{"dCosX"}, "Mul", {"C_MinusOne", "SinX"}},
+              {{"dX"}, "Mul", {"dY", "dCosX"}}};
+
+          return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {});
+        });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TanhGrad)
       .SetDomain(kMSDomain)

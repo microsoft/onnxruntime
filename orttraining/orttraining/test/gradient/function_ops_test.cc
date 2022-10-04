@@ -146,7 +146,7 @@ void CheckDropoutGradWithoutRatio(bool inline_call) {
   FunctionTestCase testCase("DropoutGrad");
   testCase.AddOpset(kOnnxDomain, DropoutGradOpset<T>());
   testCase.AddOpset(kMSDomain, 1);
-  
+
   std::vector<int64_t> shape{16, 4, 4};
   testCase.AddInput<T, false>("dY", shape);
   testCase.AddInput<bool, false>("mask", shape);
@@ -247,6 +247,10 @@ TEST_F(FunExpansionTest, LayerNormalizationGrad) {
 
 TEST_F(FunExpansionTest, SigmoidGrad_float) {
   TestUnaryOpGrad<float, true>("SigmoidGrad");
+}
+
+TEST_F(FunExpansionTest, CosGrad_float) {
+  TestUnaryOpGrad<float, true>("CosGrad");
 }
 
 TEST_F(FunExpansionTest, TanhGrad_float) {
