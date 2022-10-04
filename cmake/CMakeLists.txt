@@ -357,6 +357,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     # (2) "-flto=thin" does not work correctly for wasm-ld.
     #     we don't set onnxruntime_ENABLE_LTO because it appends flag "-flto=thin"
     #     instead, we manually set CMAKE_CXX_FLAGS "-flto"
+    string(APPEND CMAKE_C_FLAGS " -flto")
     string(APPEND CMAKE_CXX_FLAGS " -flto")
   endif()
 
@@ -369,9 +370,22 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     set(CMAKE_CXX_FLAGS_DEBUG "-g0")
   endif()
 
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    string(APPEND CMAKE_C_FLAGS " -msimd128")
+    string(APPEND CMAKE_CXX_FLAGS " -msimd128")
+  endif()
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
+    string(APPEND CMAKE_C_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
+    string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
+  endif()
+
   # Build WebAssembly with multi-threads support.
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    string(APPEND CMAKE_C_FLAGS " -pthread")
     string(APPEND CMAKE_CXX_FLAGS " -pthread")
+    string(APPEND CMAKE_C_FLAGS " -s USE_PTHREADS=1 -Wno-pthreads-mem-growth")
+    string(APPEND CMAKE_CXX_FLAGS " -s USE_PTHREADS=1 -Wno-pthreads-mem-growth")
   endif()
 endif()
 
@@ -2136,18 +2150,6 @@ if (onnxruntime_BUILD_CSHARP)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-    string(APPEND CMAKE_CXX_FLAGS " -msimd128")
-  endif()
-
-  if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
-    string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
-  endif()
-
-  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    string(APPEND CMAKE_CXX_FLAGS " -s USE_PTHREADS=1 -Wno-pthreads-mem-growth")
-  endif()
-
   message(STATUS "WebAssembly Build is enabled")
   include(onnxruntime_webassembly.cmake)
 endif()
