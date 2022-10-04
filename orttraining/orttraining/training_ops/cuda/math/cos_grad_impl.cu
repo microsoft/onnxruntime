@@ -24,7 +24,7 @@ void CosGradImpl(cudaStream_t stream, const T* dy, const T* Y, T* output, size_t
 }
 
 #define SPECIALIZE_COSGRAD_IMPL(T) \
-  template void CosGradImpl(cudaStream_t stream, const T* dy, const T* Y, T* output);
+  template void CosGradImpl(cudaStream_t stream, const T* dy, const T* Y, T* output, size_t count);
 
 SPECIALIZE_COSGRAD_IMPL(half)
 SPECIALIZE_COSGRAD_IMPL(float)
