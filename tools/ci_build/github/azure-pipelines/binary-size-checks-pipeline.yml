@@ -47,6 +47,13 @@ jobs:
     clean: true
     submodules: recursive
 
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuild
+
   - task: PythonScript@0
     displayName: 'Set variables from config file "$(BuildConfigFile)"'
     inputs:
@@ -65,13 +72,6 @@ jobs:
         set_var("BuildConfigType", config["type"])
         set_var("BuildConfigOs", config["os"])
       workingDirectory: $(Build.SourcesDirectory)
-
-  - template: templates/get-docker-image-steps.yml
-    parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
-      Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecpubuild
 
   - task: Bash@3
     displayName: 1a. Build onnxruntime
