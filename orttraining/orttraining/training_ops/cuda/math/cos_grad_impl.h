@@ -9,7 +9,7 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-Status ImplCosGrad(cudaStream_t stream, const T* dy, const T* Y, T* output, size_t N);
+Status CosGrad(cudaStream_t stream, const T* dy, const T* Y, T* output, size_t N);
 
 }
 }  // namespace onnxruntime
