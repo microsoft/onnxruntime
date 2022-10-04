@@ -430,7 +430,6 @@ namespace DmlGraphFusionHelper
         // m_inputUsed
         Windows::AI::MachineLearning::Adapter::EdgeShapes outputShapes;
         ORT_THROW_HR_IF(E_UNEXPECTED, !TryGetStaticOutputShapes(fusedNode, outputShapes));
-        std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges = graphDesc.inputEdges;
         bool resuableCommandList = graphDesc.reuseCommandList;
         auto fused_kernel_func = [compiledExecutionPlanOperator,
                                   outputShapes,
