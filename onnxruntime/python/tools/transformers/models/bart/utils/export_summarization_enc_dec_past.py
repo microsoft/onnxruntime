@@ -164,7 +164,7 @@ def _decoder_forward_wrapper(model: BartForConditionalGeneration, decoder_config
         hidden_size = str(decoder_config.d_model)
 
         dynamic_axes = {
-            "input_ids": {0: "batch", 1: "sequence"},
+            "input_ids": {0: "batch", 1: sequence_length},
             "encoder_attention_mask": {0: "batch", 1: "sequence"},
             "encoder_hidden_states": {0: "batch", 1: "sequence", 2: hidden_size},
             "logits": {0: "batch", 1: sequence_length},
