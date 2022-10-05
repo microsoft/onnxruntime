@@ -1750,53 +1750,6 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
   }
 }
 
-TEST_F(GraphTest, ExtractInitializedTensor) {
-  Model model{"GraphUpdateTest", false, *logger_};
-  auto& graph = model.MainGraph();
-  const std::string initializer_name = "initializer";
-  const std::string empty_name;
-
-  ONNX_NAMESPACE::TensorProto original{};
-  original.set_data_type(TensorProto_DataType_INT32);
-  original.add_dims(2);
-  original.add_int32_data(1);
-  original.add_int32_data(2);
-  original.set_name(initializer_name);
-
-  ONNX_NAMESPACE::TensorProto originalCopy = original;
-
-  graph.AddInitializedTensor(original);
-
-  Status status;
-
-  {
-    ONNX_NAMESPACE::TensorProto popped_tensor;
-
-    status = graph.ExtractInitializedTensor(initializer_name, popped_tensor);
-    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
-
-    auto tensor_data_matches = [](const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
-      if (a.int32_data_size() != b.int32_data_size()) return false;
-      for (int i = 0; i < a.int32_data_size(); ++i) {
-        if (a.int32_data(i) != b.int32_data(i)) return false;
-      }
-      return true;
-    };
-
-    // check popped tensor
-    ASSERT_TRUE(tensor_data_matches(originalCopy, popped_tensor));
-
-    // check retrieved tensor
-    const ONNX_NAMESPACE::TensorProto* result;
-    ASSERT_FALSE(graph.GetInitializedTensor(initializer_name, result));
-    ASSERT_FALSE(graph.GetInitializedTensor(empty_name, result));
-    
-    // check GraphProto content
-    const ONNX_NAMESPACE::GraphProto graph_proto = graph.ToGraphProto();
-    ASSERT_EQ(graph_proto.initializer_size(), 0);
-  }
-}
-
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 namespace {

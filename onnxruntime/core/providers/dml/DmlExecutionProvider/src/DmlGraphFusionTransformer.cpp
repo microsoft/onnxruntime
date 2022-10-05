@@ -62,12 +62,16 @@ namespace Dml
                 continue;
             }
 
-            // Create a map which will store by name each initializer which should be transferred to the 
-            // partition.  This prevents OnnxRuntime from allocating GPU resources and uploading those initializers,
-            // so the partiton's kernel can do so.  In the process, it will pre-process weights while consuming a CPU
-            // backed resource, avoiding an extra set of GPU resources in memory.
-            // A shared pointer is used so the functor and contained initializer captures can be cheaply copied within ORT.
-            //auto transferredInitializerMap = std::make_shared<std::unordered_map<std::string, onnx::TensorProto>>();
+            // This map will tell which initializer can be removed from onnxruntime::Graph (, and it's contained field 
+            // onnx::GraphProto) while we upload the initializer to GPU. 
+            // Why we want to remove the initializer from GPU?
+            //  1. To keep the peak memory usage as low as possible. That's why we are doing incremental upload to GPU.
+            // What is initializer?
+            //  An initializer is a input tensor to an operator or the graph itself, which is contant and will never change.
+            // Why are we uploading the initialzer now?
+            //  This prevents OnnxRuntime from allocating GPU resources and uploading those initializers,
+            //  so the partiton's kernel can do so. In the process, it will pre-process weights while consuming a CPU
+            //  backed resource, avoiding an extra set of GPU resources in memory.
             std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> isInitializerTransferable;
 
             
@@ -89,13 +93,11 @@ namespace Dml
                                 // The kernel relies on this input to be initialized, and it should be small enough to copy
                                 // cheaply. FusedGraphKernel only handles constant CPU inputs through transferred initializers,
                                 // rather than ORT, to avoid mismatches in policy or implementation causing failures.
-                                //(*transferredInitializerMap)[input] = *tensor;
                                 isInitializerTransferable[input] = {tensor, false};
                             }
 
                             continue;
                         }
-                        //ORT_RETURN_IF_ERROR(graph.ExtractInitializedTensor(tensor->name(), (*transferredInitializerMap)[input]));
                         isInitializerTransferable[input] = {tensor, true};
                     }
                 }

@@ -692,11 +692,6 @@ class Graph {
   */
   common::Status ReplaceInitializedTensor(ONNX_NAMESPACE::TensorProto new_initializer);
 
-  /** Swap (or move) the initializer whose name is <initializer_name> with method input <tensor_proto>
-  *   This only pops non-external initializer
-  */
-  common::Status ExtractInitializedTensor(const std::string& initializer_name, ONNX_NAMESPACE::TensorProto& tensor_proto);
-
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
   /** This function takes externally provided data for initializers with external data
    *    and replaces graph initializers with its content.

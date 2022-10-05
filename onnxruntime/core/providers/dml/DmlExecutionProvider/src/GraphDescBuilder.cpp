@@ -103,6 +103,11 @@ namespace Dml::GraphDescBuilder
             auto iter = isInitializerTransferable.find(argName);
             if (iter != isInitializerTransferable.end())
             {
+                // Either the TensorProto is Input tensor or Output Tensor.
+                //  1. No one will write into the TensorProto when it is input.
+                //  2. When it is output, then it doesn't matter if any one is writing 
+                //      into this TensorProto, like ExecutionProviderImpl::CopyTensor.
+                // Thus, it is safe to use const_cast
                 tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<ONNX_NAMESPACE::TensorProto*>(iter->second.first));
             }
 

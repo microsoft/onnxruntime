@@ -34,11 +34,6 @@ namespace DmlGraphFusionHelper
         const std::byte* tensorPtr,
         size_t tensorByteSize);
 
-    bool GetGraphInputConstness(
-        uint32_t index,
-        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
-        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable);
-
     void UnwrapTensor(
         Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider* winmlProvider,
         const onnxruntime::Tensor* tensor,

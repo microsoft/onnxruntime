@@ -88,21 +88,6 @@ namespace DmlGraphFusionHelper
         return buffer;
     }
 
-    bool GetGraphInputConstness(
-        uint32_t index,
-        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
-        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable) 
-    {
-        // Transferred initializers are uploaded to GPU memory
-        auto iter = isInitializerTransferable.find(fusedNodeInputArgOriginalNames[index]);
-        if (iter != isInitializerTransferable.end())
-        {
-            return true;
-        }
-
-        return false;
-    }
-
     void UnwrapTensor(
         Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider* winmlProvider,
         const onnxruntime::Tensor* tensor,
@@ -246,9 +231,6 @@ namespace DmlGraphFusionHelper
                 inputRawData->push_back(std::vector<std::byte>());
             }
         }
-
-        // All initializers should have been consumed and freed above
-        //assert(transferredInitializerMap.empty());
     }
 
     std::unordered_map<const onnx::TensorProto*, std::vector<uint32_t>>
@@ -342,7 +324,8 @@ namespace DmlGraphFusionHelper
         std::vector<uint8_t> inputsConstant(fusedNodeInputCount);
         for (uint32_t index = 0; index < fusedNodeInputCount; ++index)
         {
-            inputsConstant[index] = GetGraphInputConstness(index, indexedSubGraph.GetMetaDef()->inputs, isInitializerTransferable);
+            auto iter = isInitializerTransferable.find(indexedSubGraph.GetMetaDef()->inputs[index]);
+            inputsConstant[index] = iter != isInitializerTransferable.end() ? true : false;
         }
 
         ComPtr<IDMLDevice> device;
