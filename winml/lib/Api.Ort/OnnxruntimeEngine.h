@@ -142,7 +142,7 @@ class OnnxruntimeEngineFactory : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(CreateModel)
   (_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out) override;
   STDMETHOD(CreateModel)
-  (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) override;
+  (_In_opt_ void* data, _In_ size_t size, _Outptr_ IModel** out) override;
   STDMETHOD(CreateEmptyModel)
   (_In_ int64_t opset, _Outptr_ IModel** out) override;
   STDMETHOD(CreateEngineBuilder)
@@ -184,7 +184,7 @@ public:
   ~OnnxruntimeThreading();
 
   HRESULT RuntimeClassInitialize(OnnxruntimeEngineFactory* engine_factory);
-  
+
   HRESULT SetIntraOpThreadPool(UniqueOrtThreadPool&& intra_op_ort_pool);
   HRESULT SetInterOpThreadPool(UniqueOrtThreadPool&& inter_op_ort_pool);
   OrtThreadPool* UseIntraOpThreadPool();
@@ -194,7 +194,7 @@ private:
   Microsoft::WRL::ComPtr<OnnxruntimeEngineFactory> engine_factory_ = nullptr;
   UniqueOrtThreadPool inter_op_ort_pool_;
   UniqueOrtThreadPool intra_op_ort_pool_;
-  
+
 };
 
 }  // namespace _winml

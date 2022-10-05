@@ -85,7 +85,7 @@ stages:
         ExtraBuildArgs: '$(ExtraBuildArgs)'
         PoolName: ${{ parameters.PoolName }}
         SkipPublish: true
-        TimeoutInMinutes: 150
+        TimeoutInMinutes: 180
 
 - stage: Build_web_Release
   dependsOn: Build_wasm_Release
