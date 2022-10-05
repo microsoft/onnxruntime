@@ -859,24 +859,14 @@ class Graph {
 
   /** Gets the mutable NodeArg with the provided name.
   @returns Pointer to NodeArg if found, nullptr if not. */
-  NodeArg* GetNodeArg(const std::string& name) {
+  NodeArg* GetNodeArg(const std::string& name, bool check_ancestors = false) {
     auto iter = node_args_.find(name);
     if (iter != node_args_.end()) {
       return iter->second.get();
     }
-    return nullptr;
-  }
-
-  NodeArg* GetNodeArg(const std::string& name, bool check_ancestors) {
-    auto iter = node_args_.find(name);
-    if (iter != node_args_.end()) {
-      return iter->second.get();
-    }
-    
     if (parent_graph_ != nullptr) {
       return parent_graph_->GetNodeArg(name, check_ancestors);
     }
-
     return nullptr;
   }
 
@@ -1159,8 +1149,6 @@ class Graph {
     ORT_IGNORE_RETURN_VALUE(outer_scope_node_arg_names_.insert(name));
   }
 
-  void SetInput(const NodeArg* const input);
-
   /** Explicitly set graph inputs.
   @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
   @remarks Note that the input order matters for subgraphs.
@@ -1170,8 +1158,6 @@ class Graph {
   void SetInputs(std::initializer_list<const NodeArg*> inputs) {
     SetInputs(gsl::make_span(inputs));
   }
-
-  bool IsGraphInputsManullySet() const { return graph_inputs_manually_set_; }
 
   const Model& GetModel() const {
     return owning_model_;

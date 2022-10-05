@@ -659,8 +659,6 @@ struct ProviderHost {
   virtual NodeArg& Graph__GetOrCreateNodeArg(Graph* p, const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) = 0;
   virtual void Graph__AddOuterScopeNodeArg(Graph* p, const std::string& name) = 0;
   virtual void Graph__SetInputs(Graph* p, gsl::span<const NodeArg* const> inputs) = 0;
-  virtual void Graph__SetInput(Graph* p, const NodeArg* const input) = 0;
-  virtual bool Graph__IsGraphInputsManullySet(const Graph* p) const = 0;
   virtual const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept = 0;
 
   virtual Status Graph__Resolve(Graph* p) = 0;

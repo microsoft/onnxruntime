@@ -688,8 +688,6 @@ struct Graph final {
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) { return g_host->Graph__GetOrCreateNodeArg(this, name, p_arg_type); }
   void AddOuterScopeNodeArg(const std::string& name) { g_host->Graph__AddOuterScopeNodeArg(this, name); }
   void SetInputs(gsl::span<const NodeArg* const> inputs) { g_host->Graph__SetInputs(this, inputs); }
-  void SetInput(const NodeArg* const input) { g_host->Graph__SetInput(this, input); }
-  bool IsGraphInputsManullySet() const { return g_host->Graph__IsGraphInputsManullySet(this); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->Graph__GetInputsIncludingInitializers(this); }
 
   Status Resolve() { return g_host->Graph__Resolve(this); }
