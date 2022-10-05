@@ -61,9 +61,9 @@ namespace Dml
                 continue;
             }
 
-            // This map will tell which initializer can be removed from onnxruntime::Graph (, and it's contained field 
+            // This map will tell which initializer can be removed from onnxruntime::Graph (and from it's field 
             // onnx::GraphProto) while we upload the initializer to GPU. 
-            // Why we want to remove the initializer from GPU?
+            // Why we want to remove the initializer from ORT?
             //  1. To keep the peak memory usage as low as possible. That's why we are doing incremental upload to GPU.
             // What is initializer?
             //  An initializer is a input tensor to an operator or the graph itself, which is contant and will never change.
