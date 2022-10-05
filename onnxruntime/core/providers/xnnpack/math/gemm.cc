@@ -43,9 +43,13 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
         break;
     }
 
-    // B matrix must be constant
-    if (B_arg.Exists() && graph.GetConstantInitializer(B_arg.Name(), true) == nullptr) {
+    // B & C matrices must be constant
+    if (!graph.IsConstantInitializer(B_arg.Name(), true)) {
         break;
+    }
+    
+    if (!graph.IsConstantInitializer(C_arg.Name(), true)) {
+      break;
     }
 
     // making sure we are dealing with MatMul
@@ -53,15 +57,15 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
     const auto* B_shape = B_arg.Shape();
     const auto* C_shape = C_arg.Shape();
 
-    if ((A_shape == nullptr) || A_shape->dim_size() > 3) {
+    if (!A_shape || A_shape->dim_size() > 3) {
         break;
     }
 
-    if ((B_shape == nullptr) || B_shape->dim_size() > 3) {
+    if (!B_shape || B_shape->dim_size() > 3) {
         break;
     }
 
-    if ((C_shape == nullptr) || C_shape->dim_size() > 3) {
+    if (!C_shape || C_shape->dim_size() > 3) {
         break;
     }
 
@@ -100,7 +104,7 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), OpKernel(info){
 
 Status Gemm::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
                      /*out*/ bool& is_packed,
-                     /*out*/ PrePackedWeights* /*unused*/) {
+                     /*out*/ PrePackedWeights*) {
   is_packed = false;
 
   if (input_idx == 0) {
@@ -153,11 +157,12 @@ Status Gemm::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
 Status Gemm::Compute(OpKernelContext* context) const {
   //concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
   const auto* A = context->Input<Tensor>(0);
+  auto Y = context->Output(0, {M, N});
+
   // if input is empty tensor, return as nothing need to be calculated and we've set the shape for the output
   if (M == 0 || N == 0)
     return Status::OK();
 
-  auto Y = context->Output(0, {M, N});
   xnn_status status = xnn_setup_fully_connected_nc_f32(
         op0_.get(),
         trans_A_ != CblasNoTrans ? K : M,

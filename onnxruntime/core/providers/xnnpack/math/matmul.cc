@@ -23,10 +23,6 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
   do {
     auto input_defs = node.InputDefs();
 
-    if (input_defs.size() != 2) {
-      break;
-    }
-
     const auto& A_arg = *input_defs[0];
     const auto& B_arg = *input_defs[1];
 
@@ -34,14 +30,13 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
     const auto* A_type = A_arg.TypeAsProto();
     const auto* B_type = B_arg.TypeAsProto();
 
-    if (A_type == nullptr || B_type == nullptr ||
-        A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+    if (A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
         B_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ) {
         break;
     }
 
     // B matrix must be constant
-    if (B_arg.Exists() && graph.GetConstantInitializer(B_arg.Name(), true) == nullptr) {
+    if (!graph.IsConstantInitializer(B_arg.Name(), true)) {
         break;
     }
 
@@ -120,12 +115,11 @@ Status MatMul::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
 Status MatMul::Compute(OpKernelContext* ctx) const {
 
   const Tensor* a = ctx->Input<Tensor>(0);
-  const auto& b_shape = b_shape_;
   const bool trans_a = trans_a_attr_ && a->Shape().NumDimensions() != 1;
-  const bool trans_b = trans_b_attr_ && b_shape.NumDimensions() != 1;
+  const bool trans_b = trans_b_attr_ && b_shape_.NumDimensions() != 1;
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b, trans_batch_a_, trans_batch_b_));
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_, trans_a, trans_b, trans_batch_a_, trans_batch_b_));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
@@ -133,7 +127,7 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
     return Status::OK();
 
   auto* y_data = y->MutableData<float>();
-  std::unique_ptr<Tensor> packed_w_;
+  //std::unique_ptr<Tensor> packed_w_;
 
   const size_t max_len = a->Shape().NumDimensions() > 2 ? a->Shape()[1] : 1;
 

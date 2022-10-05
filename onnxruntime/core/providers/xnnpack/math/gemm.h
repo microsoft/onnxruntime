@@ -28,21 +28,10 @@ class Gemm : protected GemmBase, public OpKernel {
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
-  Status CreateXnnpackOpp(
-      size_t input_channels,
-      size_t output_channels,
-      size_t input_stride,
-      size_t output_stride,
-      const float* kernel,
-      const float* bias,
-      float output_min,
-      float output_max,
-      uint32_t flags);
-
  private:
 
   TensorShape b_shape_;
-  BufferUniquePtr packed_b_=nullptr;
+  BufferUniquePtr packed_b_;
   Tensor B_;
 
   int64_t M=-1;
