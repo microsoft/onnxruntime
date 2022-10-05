@@ -70,8 +70,11 @@ fn generate_bindings(include_dir: &Path) {
         ),
     ];
 
-    // Tell cargo to invalidate the built crate whenever the wrapper changes
-    println!("cargo:rerun-if-changed=wrapper.h");
+    let path = include_dir
+        .join("onnxruntime")
+        .join("core")
+        .join("session")
+        .join("onnxruntime_c_api.h");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
@@ -79,7 +82,7 @@ fn generate_bindings(include_dir: &Path) {
     let bindings = bindgen::Builder::default()
         // The input header we would like to generate
         // bindings for.
-        .header("wrapper.h")
+        .header(path.to_string_lossy().to_string())
         // The current working directory is 'onnxruntime-sys'
         .clang_args(clang_args)
         // Tell cargo to invalidate the built crate whenever any of the
