@@ -166,7 +166,7 @@ common::Status OpenVINOExecutionProvider::Compile(
           *state = static_cast<FunctionState>(p);
           return 0;
         };
-    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
       auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
       try {
         function_state->backend_manager->Compute(context);
