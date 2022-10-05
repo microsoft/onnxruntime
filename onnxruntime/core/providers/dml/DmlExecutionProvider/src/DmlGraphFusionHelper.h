@@ -6,7 +6,6 @@
 #include "GraphPartitioner.h"
 #include "FusedGraphKernel.h"
 #include "MLOperatorAuthorImpl.h"
-#include "GraphKernelHelper.h"
 
 
 namespace Dml
