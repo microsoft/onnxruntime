@@ -35,7 +35,7 @@ namespace Dml::GraphDescBuilder
     GraphDesc BuildGraphDesc(
         const uint8_t* isConstGpuGraphInput,
         const size_t isConstGpuGraphInputCount,
-        std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
+        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
         const onnxruntime::Graph& graph,
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
@@ -96,14 +96,14 @@ namespace Dml::GraphDescBuilder
         reuseCommandList = false;
 #endif
 
-        auto constantCpuGraphInputGetter = [&transferredInitializerMap](const std::string& argName)
+        auto constantCpuGraphInputGetter = [&isInitializerTransferable](const std::string& argName)
         {
             ComPtr<OnnxTensorWrapper> tensorWrapper;
 
-            auto iter = transferredInitializerMap.find(argName);
-            if (iter != transferredInitializerMap.end())
+            auto iter = isInitializerTransferable.find(argName);
+            if (iter != isInitializerTransferable.end())
             {
-                tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(&iter->second);
+                tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<ONNX_NAMESPACE::TensorProto*>(iter->second.first));
             }
 
             return tensorWrapper;
