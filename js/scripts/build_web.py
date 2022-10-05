@@ -69,7 +69,6 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-
 CONFIGURATION = args.config
 
 for entry in BUILDS:
