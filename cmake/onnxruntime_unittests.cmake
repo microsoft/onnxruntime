@@ -223,12 +223,13 @@ else()  # minimal and/or reduced ops build
     "${TEST_SRC_DIR}/platform/*.cc"
     )
 
-  if (onnxruntime_MINIMAL_BUILD)
+  if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     list(APPEND onnxruntime_test_framework_src_patterns
       "${TEST_SRC_DIR}/framework/ort_model_only_test.cc"
     )
+  endif()
 
-  else() # reduced ops build
+  if (NOT onnxruntime_MINIMAL_BUILD)
     file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
       "${TEST_SRC_DIR}/ir/*.cc"
       "${TEST_SRC_DIR}/ir/*.h"
