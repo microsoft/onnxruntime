@@ -9,7 +9,6 @@
 #include "core/framework/kernel_lookup.h"
 #include "FusedGraphKernel.h"
 #include "MLOperatorAuthorImpl.h"
-#include "GraphKernelHelper.h"
 #include "DmlGraphFusionHelper.h"
 
 

@@ -3,7 +3,6 @@
 
 #include "precomp.h"
 #include "GraphDescBuilder.h"
-#include "GraphKernelHelper.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
