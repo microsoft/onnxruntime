@@ -197,7 +197,7 @@ void VADMBackend::CompleteAsyncInference(Ort::KernelContext& context,
     }
   }
 }
-size_t DeduceBatchSize(const Ort::Value& input_tensor,
+size_t DeduceBatchSize(const Ort::ConstValue& input_tensor,
                        InferenceEngine::SizeVector graph_dims) {
   size_t batch_size = 1;
 
@@ -229,9 +229,9 @@ void VADMBackend::Infer(OrtKernelContext* context) {
     // Calculate the batch_size from the input tensor shape.
     auto tensor = ctx.GetInput(subgraph_context_.input_indexes[0]);
     #if defined (OV_API_20)
-    batch_size = DeduceBatchSize(*tensor, ie_cnn_network_->get_result()->get_shape());
+    batch_size = DeduceBatchSize(tensor, ie_cnn_network_->get_result()->get_shape());
     #else
-    batch_size = DeduceBatchSize(*tensor, ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
+    batch_size = DeduceBatchSize(tensor, ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());
     #endif                             
   }
 

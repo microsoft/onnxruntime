@@ -350,9 +350,9 @@ typedef enum OrtMemType {
 /** \brief This mimics OrtDevice type constants so they can be returned in the API
  */
 typedef enum OrtMemoryInfoDeviceType {
-  CPU = 0,
-  GPU = 1,
-  FPGA = 2
+  OrtMemoryInfoDeviceType_CPU = 0,
+  OrtMemoryInfoDeviceType_GPU = 1,
+  OrtMemoryInfoDeviceType_FPGA = 2
 } OrtMemoryInfoDeviceType;
 
 /** \brief Algorithm to use for cuDNN Convolution Op
