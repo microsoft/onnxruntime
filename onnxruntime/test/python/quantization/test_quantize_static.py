@@ -15,7 +15,7 @@ import onnx
 from onnx import TensorProto, helper
 from op_test_utils import InputFeedsNegOneZeroOne, check_model_correctness, generate_random_initializer
 
-from onnxruntime.quantization import QuantType, quantize_static
+from onnxruntime.quantization import QuantType, StaticQuantConfig, quantize, quantize_static
 
 
 def construct_test_model(test_model_path, channel_size):
@@ -88,6 +88,16 @@ class TestStaticQuantization(unittest.TestCase):
             data_reader.rewind()
             check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
             data_reader.rewind()
+
+    def test_static_quant_config(self):
+        data_reader = InputFeedsNegOneZeroOne(10, {"input": [1, self._channel_size, 1, 3]})
+        quant_config = StaticQuantConfig(data_reader)
+        quant_model_path = str(Path(self._tmp_model_dir.name) / "quant.config.onnx")
+        quantize(self._model_fp32_path, quant_model_path, quant_config)
+
+        data_reader.rewind()
+        check_model_correctness(self, self._model_fp32_path, quant_model_path, data_reader.get_next())
+        data_reader.rewind()
 
 
 if __name__ == "__main__":
