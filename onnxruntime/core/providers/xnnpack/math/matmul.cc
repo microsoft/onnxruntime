@@ -58,16 +58,11 @@ MatMul::MatMul(const OpKernelInfo& info) : OpKernel(info){
   info.GetAttrOrDefault<int64_t>("transA", &trans_a_attr_, 0);
   info.GetAttrOrDefault<int64_t>("transB", &trans_b_attr_, 0);
   info.GetAttrOrDefault<float>("alpha", &alpha_attr_, 1.0);
-  int64_t trans_batch_a_attr, trans_batch_b_attr;
-  info.GetAttrOrDefault<int64_t>("transBatchA", &trans_batch_a_attr, 0);
-  info.GetAttrOrDefault<int64_t>("transBatchB", &trans_batch_b_attr, 0);
-  trans_batch_a_ = trans_batch_a_attr != 0;
-  trans_batch_b_ = trans_batch_b_attr != 0;
 }
 
 Status MatMul::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
                      /*out*/ bool& is_packed,
-                     /*out*/ PrePackedWeights*) {
+                     /*out*/ PrePackedWeights* /*Not used*/) {
 
   is_packed = false;
 
@@ -115,11 +110,9 @@ Status MatMul::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
 Status MatMul::Compute(OpKernelContext* ctx) const {
 
   const Tensor* a = ctx->Input<Tensor>(0);
-  const bool trans_a = trans_a_attr_ && a->Shape().NumDimensions() != 1;
-  const bool trans_b = trans_b_attr_ && b_shape_.NumDimensions() != 1;
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_, trans_a, trans_b, trans_batch_a_, trans_batch_b_));
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
@@ -127,7 +120,6 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
     return Status::OK();
 
   auto* y_data = y->MutableData<float>();
-  //std::unique_ptr<Tensor> packed_w_;
 
   const size_t max_len = a->Shape().NumDimensions() > 2 ? a->Shape()[1] : 1;
 

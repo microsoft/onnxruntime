@@ -28,17 +28,6 @@ class MatMul : public OpKernel {
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
-  Status CreateXnnpackOpp(
-      size_t input_channels,
-      size_t output_channels,
-      size_t input_stride,
-      size_t output_stride,
-      const float* kernel,
-      const float* bias,
-      float output_min,
-      float output_max,
-      uint32_t flags);
-
 private:
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;
@@ -46,8 +35,6 @@ private:
   float alpha_attr_;
   int64_t trans_a_attr_;
   int64_t trans_b_attr_;
-  bool trans_batch_a_;
-  bool trans_batch_b_;
 
   std::optional<std::pair<float, float>> clip_min_max_;
   XnnpackOperator op0_ = nullptr;
