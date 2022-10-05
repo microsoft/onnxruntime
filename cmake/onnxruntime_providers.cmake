@@ -1368,15 +1368,15 @@ if (onnxruntime_USE_ROCM)
   endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
   list(APPEND HIP_CLANG_FLAGS ${HIP_CXX_FLAGS})
+  list(APPEND HIP_CLANG_FLAGS ${CMAKE_HIP_FLAGS})
 
   # Generate GPU code during compilation
   list(APPEND HIP_CLANG_FLAGS -fno-gpu-rdc)
 
-  # Generate GPU code for GFX9 Generation
-  list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx906 --amdgpu-target=gfx908)
-  if (ROCM_VERSION_DEV_INT GREATER_EQUAL 50000)
-    list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx90a --amdgpu-target=gfx1030)
-  endif()
+  # Generate GPU code
+  foreach(HIP_ARCH ${CMAKE_HIP_ARCHITECTURES})
+    list(APPEND HIP_CLANG_FLAGS --offload-arch=${HIP_ARCH})
+  endforeach()
 
   #onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
   hip_add_library(onnxruntime_providers_rocm MODULE ${onnxruntime_providers_rocm_src})
