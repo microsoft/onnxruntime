@@ -229,7 +229,7 @@ class BaseOpBuilder : public IOpBuilder {
     }
   }
 
-  Status ProcessAxisAttribute(QnnModelWrapper* qnn_model_wrapper,
+  Status ProcessAxisAttribute(const QnnModelWrapper* qnn_model_wrapper,
                               const NodeUnit& node_unit,
                               std::vector<QnnParamWrapper>& node_params,
                               int32_t& default_axis_value) const;

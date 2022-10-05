@@ -241,7 +241,7 @@ Status BaseOpBuilder::TransposeInitializer(const onnx::TensorProto& initializer,
   return Status::OK();
 }
 
-Status BaseOpBuilder::ProcessAxisAttribute(QnnModelWrapper* qnn_model_wrapper,
+Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper* qnn_model_wrapper,
                                            const NodeUnit& node_unit,
                                            std::vector<QnnParamWrapper>& node_params,
                                            int32_t& default_axis_value) const {

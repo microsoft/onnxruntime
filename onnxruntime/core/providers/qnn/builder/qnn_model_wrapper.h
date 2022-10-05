@@ -130,7 +130,7 @@ class QnnModelWrapper {
     return true;
   }
 
-  onnxruntime::AllocatorPtr GetAllocator() {
+  onnxruntime::AllocatorPtr GetAllocator() const {
     if (cpu_allocator_ == nullptr) {
       LOGS_DEFAULT(ERROR) << "cpu_allocator is null!";
     }

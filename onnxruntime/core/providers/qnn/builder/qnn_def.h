@@ -125,7 +125,7 @@ class QnnTensorWrapper {
 
 class QnnParamWrapper {
  public:
-  QnnParamWrapper(onnxruntime::AllocatorPtr cpu_allocator,
+  QnnParamWrapper(const onnxruntime::AllocatorPtr cpu_allocator,
                   const std::string& name,
                   Qnn_Scalar_t scalarParam) : cpu_allocator_(cpu_allocator) {
     qnn_param_.paramType = QNN_PARAMTYPE_SCALAR;
@@ -133,7 +133,7 @@ class QnnParamWrapper {
     qnn_param_.scalarParam = scalarParam;
   }
 
-  QnnParamWrapper(onnxruntime::AllocatorPtr cpu_allocator,
+  QnnParamWrapper(const onnxruntime::AllocatorPtr cpu_allocator,
                   NodeIndex node_index,
                   const std::string& node_name,
                   const std::string& name,

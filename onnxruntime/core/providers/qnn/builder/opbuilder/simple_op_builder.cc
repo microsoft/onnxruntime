@@ -28,7 +28,7 @@ class SimpleOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ExplictOpCheck(const NodeUnit& node_unit) const;
+  Status ExplictOpCheck(const QnnModelWrapper* qnn_model_wrapper, const NodeUnit& node_unit) const;
   Status ProcessPermAttribute(QnnModelWrapper* qnn_model_wrapper,
                               const NodeUnit& node_unit, std::vector<QnnParamWrapper>& node_params) const;
   Status ProcessAxesAttribute(QnnModelWrapper* qnn_model_wrapper,
@@ -38,7 +38,7 @@ class SimpleOpBuilder : public BaseOpBuilder {
                                const std::string input_name) const;
 };
 
-Status SimpleOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
+Status SimpleOpBuilder::ExplictOpCheck(const QnnModelWrapper* qnn_model_wrapper, const NodeUnit& node_unit) const {
   if (node_unit.OpType() == "ReduceSum") {
     // TODO: still can handle it if axes input is initializer
     if (node_unit.Inputs().size() > 1) {
@@ -47,7 +47,18 @@ Status SimpleOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
   }
 
   if (node_unit.OpType() == "Softmax" && node_unit.SinceVersion() < 13) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Softmax only support opset 13.");
+    int32_t default_axis = -1;
+    std::vector<QnnParamWrapper> node_params;
+    ORT_RETURN_IF_ERROR(ProcessAxisAttribute(qnn_model_wrapper, node_unit, node_params, default_axis));
+    std::vector<uint32_t> input_shape;
+    ORT_RETURN_IF_NOT(qnn_model_wrapper->GetOnnxShape(node_unit.Inputs()[0].node_arg, input_shape),
+                     "Cannot get shape");
+    // For Softmax opset < 13, it's still supported if axis=rank-1
+    if (default_axis == static_cast<int32_t>(input_shape.size() - 1)) {
+      return Status::OK();
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Softmax only supports opset >= 13 or axis=input_rank-1.");
   }
 
   return Status::OK();
@@ -147,7 +158,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper* qnn_model_w
   }
 
   if (do_op_validation) {
-    ORT_RETURN_IF_ERROR(ExplictOpCheck(node_unit));
+    ORT_RETURN_IF_ERROR(ExplictOpCheck(qnn_model_wrapper, node_unit));
   }
 
   std::vector<QnnParamWrapper> node_params;
