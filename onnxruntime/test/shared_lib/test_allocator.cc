@@ -11,8 +11,8 @@ TEST(CApiTest, allocation_info) {
   auto cpu_mem_info_2 = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   ASSERT_EQ(cpu_mem_info_1, cpu_mem_info_2);
   
-  ASSERT_EQ(OrtMemoryInfoDeviceType::CPU, cpu_mem_info_1.GetDeviceType());
-  ASSERT_EQ(OrtMemoryInfoDeviceType::CPU, cpu_mem_info_2.GetDeviceType());
+  ASSERT_EQ(OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_CPU, cpu_mem_info_1.GetDeviceType());
+  ASSERT_EQ(OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_CPU, cpu_mem_info_2.GetDeviceType());
   
   ASSERT_EQ("Cpu", cpu_mem_info_1.GetAllocatorName());
   ASSERT_EQ(OrtArenaAllocator, cpu_mem_info_1.GetAllocatorType());
@@ -24,7 +24,7 @@ TEST(CApiTest, DefaultAllocator) {
   auto cpu_info = default_allocator.GetInfo();
   
   ASSERT_EQ("Cpu", cpu_info.GetAllocatorName());
-  ASSERT_EQ(OrtMemoryInfoDeviceType::CPU, cpu_info.GetDeviceType());
+  ASSERT_EQ(OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_CPU, cpu_info.GetDeviceType());
   ASSERT_EQ(OrtDeviceAllocator, cpu_info.GetAllocatorType());
   ASSERT_EQ(OrtMemTypeDefault, cpu_info.GetMemoryType());
 
