@@ -51,7 +51,7 @@ public:
     set_input(context);
     connect_output_tensors2ort(context);
     run();
-    get_output();
+    get_outputs();
 
     return Status::OK();
   }
@@ -60,7 +60,7 @@ public:
   virtual void connect_output_tensors2ort(Ort::KernelContext& context) = 0;
   virtual void set_output_zero_copy() = 0;
   virtual void run() = 0;
-  virtual void get_output() = 0;
+  virtual void get_outputs() = 0;
 
 protected:
   void convert_input_tensors2dl_tensors(Ort::KernelContext& context,
@@ -91,7 +91,7 @@ public:
   void connect_output_tensors2ort(Ort::KernelContext& context) final;
   void set_output_zero_copy() final;
   void run() final;
-  void get_output() final;
+  void get_outputs() final;
 };
 
 
@@ -109,7 +109,7 @@ public:
   void connect_output_tensors2ort(Ort::KernelContext& context) final;
   void set_output_zero_copy() final;
   void run() final;
-  void get_output() final;
+  void get_outputs() final;
 
 private:
     void infer_once_to_get_output_shapes();

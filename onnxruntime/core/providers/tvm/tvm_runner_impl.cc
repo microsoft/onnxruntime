@@ -117,7 +117,7 @@ void GERunnerImpl::run() {
   tvm::TVMRun(*mod_);
 }
 
-void GERunnerImpl::get_output() {
+void GERunnerImpl::get_outputs() {
   tvm::TVMGetOutputs(*mod_, output_tensors_);
 }
 
@@ -156,7 +156,7 @@ void VMRunnerImpl::run() {
   tvm::TVM_VM_Run(*mod_);
 }
 
-void VMRunnerImpl::get_output() {
+void VMRunnerImpl::get_outputs() {
   tvm::TVM_VM_GetOutputs(*mod_, output_tensors_);
 }
 
