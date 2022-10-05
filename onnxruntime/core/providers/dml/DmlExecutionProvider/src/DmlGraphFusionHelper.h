@@ -37,7 +37,7 @@ namespace DmlGraphFusionHelper
     bool GetGraphInputConstness(
         uint32_t index,
         const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
-        const std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap);
+        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable);
 
     void UnwrapTensor(
         Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider* winmlProvider,
@@ -50,13 +50,14 @@ namespace DmlGraphFusionHelper
         const std::vector<uint8_t>& inputsConstant,
         std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges,
         const gsl::span<const std::string> subGraphInputArgNames,
+        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
+        onnxruntime::Graph& graph,
         _Out_ std::vector<bool>& inputsUsed,
         _Inout_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
-        _Inout_opt_ std::vector<std::vector<std::byte>>* inputRawData,
-        _Inout_ std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap);
+        _Inout_opt_ std::vector<std::vector<std::byte>>* inputRawData);
 
     std::unordered_map<const onnx::TensorProto*, std::vector<uint32_t>>
     GetInitializerToPartitionMap(
@@ -80,7 +81,7 @@ namespace DmlGraphFusionHelper
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const onnxruntime::Node& fusedNode,
         const std::unordered_map<std::string, GraphNodeProperties>& partitionNodePropsMap,
-        std::shared_ptr<std::unordered_map<std::string, onnx::TensorProto>> transferredInitializerMap,
+        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
         const ExecutionProviderImpl* providerImpl,
         onnxruntime::KernelRegistry* registryForPartitionKernels);
 
@@ -91,7 +92,7 @@ namespace DmlGraphFusionHelper
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const std::string& partitionKernelPrefix,
-        std::shared_ptr<std::unordered_map<std::string, onnx::TensorProto>> transferredInitializerMap,
+        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
         const ExecutionProviderImpl* providerImpl);
 }
 }

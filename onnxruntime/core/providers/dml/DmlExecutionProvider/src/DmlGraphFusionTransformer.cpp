@@ -67,7 +67,9 @@ namespace Dml
             // so the partiton's kernel can do so.  In the process, it will pre-process weights while consuming a CPU
             // backed resource, avoiding an extra set of GPU resources in memory.
             // A shared pointer is used so the functor and contained initializer captures can be cheaply copied within ORT.
-            auto transferredInitializerMap = std::make_shared<std::unordered_map<std::string, onnx::TensorProto>>();
+            //auto transferredInitializerMap = std::make_shared<std::unordered_map<std::string, onnx::TensorProto>>();
+            std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>> isInitializerTransferable;
+
             
             if (partition->IsDmlGraphPartition())
             {
@@ -87,12 +89,14 @@ namespace Dml
                                 // The kernel relies on this input to be initialized, and it should be small enough to copy
                                 // cheaply. FusedGraphKernel only handles constant CPU inputs through transferred initializers,
                                 // rather than ORT, to avoid mismatches in policy or implementation causing failures.
-                                (*transferredInitializerMap)[input] = *tensor;
+                                //(*transferredInitializerMap)[input] = *tensor;
+                                isInitializerTransferable[input] = {tensor, false};
                             }
 
                             continue;
                         }
-                        ORT_RETURN_IF_ERROR(graph.ExtractInitializedTensor(tensor->name(), (*transferredInitializerMap)[input]));
+                        //ORT_RETURN_IF_ERROR(graph.ExtractInitializedTensor(tensor->name(), (*transferredInitializerMap)[input]));
+                        isInitializerTransferable[input] = {tensor, true};
                     }
                 }
 
@@ -106,7 +110,7 @@ namespace Dml
                     graphNodePropertyMap,
                     m_providerImpl->GetKernelRegistry().get(),
                     partitionKernelPrefix,
-                    transferredInitializerMap,
+                    isInitializerTransferable,
                     m_providerImpl
                 );
             }
