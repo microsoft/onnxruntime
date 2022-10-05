@@ -12,17 +12,17 @@
 namespace onnxruntime {
 namespace test {
 
-static const int64_t batch_size = 1;
-static const int64_t sequence_len = 16;
-static const int64_t input_hidden_size = 32;
-static const int64_t num_heads = 2;
-static const int64_t head_size = 16;
-static const int64_t hidden_size = num_heads * head_size;
+static constexpr int64_t batch_size = 1;
+static constexpr int64_t sequence_len = 16;
+static constexpr int64_t input_hidden_size = 32;
+static constexpr int64_t num_heads = 2;
+static constexpr int64_t head_size = 16;
+static constexpr int64_t hidden_size = num_heads * head_size;
 
 static std::vector<int32_t> input_mask = {  // [1, 16]
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0};
 
-static float input_scale = 0.025f;
+static constexpr float input_scale = 0.025f;
 
 static std::vector<int8_t> inputq = {  // [1, 16, 32]
     -33, 7, -54, 29, 14, 6, 14, 16, 1, 16, 22, 0, 16, 49, -14, -15, 68, 11, -18, -9, -42, 6, 6, 58, 22, 31, 0, -13, 42, 40, 4, 0,
@@ -180,13 +180,13 @@ static std::vector<float> v_bias = {
     -1.5637541858090884f, 0.053171526292804416f, -1.5821961194911058f, -1.2062417346542489f, 0.23029741928149683f, -0.8920457050782132f, -0.06220760650838387f, 0.2942590084687021f,
     -0.4362228349183151f, -0.2344379226413643f, -0.586149329261036f, -1.5243876669794532f, 0.22378084867382358f, -1.715499198175354f, -1.3795418183607775f, -1.2237706022285266f};
 
-static float qlayer_scale = 0.250f;
-static float klayer_scale = 0.250f;
-static float vlayer_scale = 0.125f;
+static constexpr float qlayer_scale = 0.250f;
+static constexpr float klayer_scale = 0.250f;
+static constexpr float vlayer_scale = 0.125f;
 
-static float qk_scale = 0.5f;
-static float probs_scale = 0.0078125f;
-static float attn_out_scale = 0.05f;
+static constexpr float qk_scale = 0.5f;
+static constexpr float probs_scale = 0.0078125f;
+static constexpr float attn_out_scale = 0.05f;
 
 static std::vector<int8_t> attn_out_q8 = {
     -39, 8, -75, 2, -69, -31, -42, -29, 44, 6, 0, -61, -102, 61, 28, 76,
