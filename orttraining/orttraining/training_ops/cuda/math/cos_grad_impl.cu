@@ -24,7 +24,7 @@ struct OP_CosGrad : public CtxCosGrad {
   }
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL(T) \
-  template void Impl_CosGrad<T>(cudaStream_t stream, const T* lhs_data, const T* rhs_data, T* output_data, const CtxCosGrad* func_ctx, size_t count);
+  template void CosGradImpl<T>(cudaStream_t stream, const T* lhs_data, const T* rhs_data, T* output_data, const CtxCosGrad* func_ctx, size_t count);
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(x) \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, half)     \

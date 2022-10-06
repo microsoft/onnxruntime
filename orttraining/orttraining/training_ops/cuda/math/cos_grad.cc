@@ -28,7 +28,7 @@ namespace cuda {
     BinaryElementwisePreparation prepare;                                                                        \
     ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
     CtxCosGrad func_ctx = MakeFuncCtx();                                                                             \
-    Impl_CosGrad<typename ToCudaType<T>::MappedType>(                                                                \
+    CosGradImpl<typename ToCudaType<T>::MappedType>(                                                                \
         Stream(),                                                                                                \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
