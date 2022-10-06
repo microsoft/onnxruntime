@@ -249,10 +249,6 @@ TEST_F(FunExpansionTest, SigmoidGrad_float) {
   TestUnaryOpGrad<float, true>("SigmoidGrad");
 }
 
-TEST_F(FunExpansionTest, CosGrad_float) {
-  TestUnaryOpGrad<float, true>("CosGrad");
-}
-
 TEST_F(FunExpansionTest, TanhGrad_float) {
   TestUnaryOpGrad<float, true>("TanhGrad");
 }
