@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cuda_runtime.h>
 #include "cos_grad_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/binary_elementwise_impl.cuh"
 
 namespace onnxruntime {
 namespace cuda {
