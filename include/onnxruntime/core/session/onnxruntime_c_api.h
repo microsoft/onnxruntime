@@ -3571,7 +3571,7 @@ struct OrtApi {
   
  /*  \brief Get OrtDevice type from MemoryInfo
   * 
-  *  \since Version 1.13
+  *  \since Version 1.14
   */
   void(ORT_API_CALL* MemoryInfoGetDeviceType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
   

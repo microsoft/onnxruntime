@@ -205,7 +205,7 @@ ORT_DEFINE_RELEASE(KernelInfo);
 #undef ORT_DEFINE_RELEASE
 
 /** \brief This is a tagging template type. Use it with Base<T> to indicate that the C++ interface object
- *   has no ownership of the underlying C object even though it is not being const.
+ *   has no ownership of the underlying C object.
  */
 template <typename T>
 struct Unowned {
@@ -215,10 +215,16 @@ struct Unowned {
 /** \brief Used internally by the C++ API. C++ wrapper types inherit from this.
  *   This is a zero cost abstraction to wrap the C API objects and delete them on destruction.
  *
- * All of the C++ classes function as
- *  a) smart pointers that own objects that are created by the underlying C API. Their size is just
- *  a pointer size, no need to dynamically allocate them. Use them by value.
- *  b) convenient interfaces that return C++ objects and further enhance exception and type safety.
+ * All of the C++ classes
+ *  a) serve as containers for pointers to objects that are created by the underlying C API.
+ *     Their size is just a pointer size, no need to dynamically allocate them. Use them by value.
+ *  b) Each of struct XXXX, XXX instances function as smart pointers to the underlying C API objects.
+ *     they would release objects owned automatically when going out of scope, they are move-only.
+ *  c) ConstXXXX and UnownedXXX structs function as non-owning, copyable containers for the above pointers.
+ *     ConstXXXX allow calling const interfaces only. They give access to objects that are owned by somebody else
+ *     such as Onnxruntime or instances of XXXX classes.
+ *  d) serve convenient interfaces that return C++ objects and further enhance exception and type safety so they can be used
+ *     in C++ code.
  *
  */
 
@@ -233,14 +239,6 @@ struct Base {
   constexpr explicit Base(contained_type* p) noexcept : p_{p} {}
   ~Base() { OrtRelease(p_); }
 
-  /// \brief Relinquishes ownership of the contained C object pointer
-  /// The underlying object is not destroyed
-  contained_type* release() {
-    T* p = p_;
-    p_ = nullptr;
-    return p;
-  }
-
   Base(const Base&) = delete;
   Base& operator=(const Base&) = delete;
 
@@ -254,6 +252,15 @@ struct Base {
   constexpr operator contained_type*() const noexcept { return p_; }
 
  protected:
+
+  /// \brief Relinquishes ownership of the contained C object pointer
+  /// The underlying object is not destroyed
+  contained_type* release() {
+    T* p = p_;
+    p_ = nullptr;
+    return p;
+  }
+
   contained_type* p_{};
 };
 
@@ -322,6 +329,10 @@ using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
  *  constructors to construct an instance of a Status object from exceptions.
  */
 struct Status : detail::Base<OrtStatus> {
+  using B = Base<OrtStatus>;
+  // Special case when we want to return raw ptr through the C API boundary.
+  using B::release;
+  
   explicit Status(std::nullptr_t) {}       ///< Create an empty object, must be assigned a valid one to be used
   explicit Status(OrtStatus* status);      ///< Takes ownership of OrtStatus instance returned from the C API. Must be non-null
   explicit Status(const Exception&);       ///< Creates status instance out of exception
@@ -373,6 +384,9 @@ struct CustomOpDomain : detail::Base<OrtCustomOpDomain> {
   void Add(const OrtCustomOp* op);  ///< Wraps CustomOpDomain_Add
 };
 
+/** \brief RunOptions
+ *
+ */
 struct RunOptions : detail::Base<OrtRunOptions> {
   explicit RunOptions(std::nullptr_t) {}  ///< Create an empty RunOptions object, must be assigned a valid one to be used
   RunOptions();                           ///< Wraps OrtApi::CreateRunOptions
@@ -411,7 +425,7 @@ struct SessionOptions;
 
 namespace detail {
 template <typename T>
-struct SessionOptionsImpl : detail::Base<T> {
+struct SessionOptionsImpl : Base<T> {
   using B = Base<T>;
   using B::B;
 
@@ -469,6 +483,9 @@ struct SessionOptionsImpl : detail::Base<T> {
 // No const version required
 using UnownedSessionOptions = detail::SessionOptionsImpl<detail::Unowned<OrtSessionOptions>>;
 
+/** \brief Wrapper around ::OrtSessionOptions
+ *
+ */
 struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   explicit SessionOptions(std::nullptr_t) {}                                                   ///< Create an empty SessionOptions object, must be assigned a valid one to be used
   SessionOptions();                                                                            ///< Wraps OrtApi::CreateSessionOptions
@@ -547,9 +564,6 @@ struct ModelMetadata : detail::Base<OrtModelMetadata> {
 
 struct IoBinding;
 
-/** \brief Wrapper around ::OrtSession
- *
- */
 namespace detail {
 
 // we separate const-only methods because passing const ptr to non-const methods
@@ -625,7 +639,7 @@ struct SessionImpl : ConstSessionImpl<T> {
    * \param[in] input_count Number of inputs (the size of the input_names & input_values arrays)
    * \param[in] output_names Array of C style strings of length output_count that is the list of output names
    * \param[in] output_count Number of outputs (the size of the output_names array)
-   * \return A std::vector of Value objects that directly maps to the output_count (eg. output_name[0] is the first entry of the returned vector)
+   * \return A std::vector of Value objects that directly maps to the output_names array (eg. output_name[0] is the first entry of the returned vector)
    */
   std::vector<Value> Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
                                        const char* const* output_names, size_t output_count);
@@ -644,6 +658,9 @@ struct SessionImpl : ConstSessionImpl<T> {
 using ConstSession = detail::ConstSessionImpl<detail::Unowned<const OrtSession>>;
 using UnownedSession = detail::SessionImpl<detail::Unowned<OrtSession>>;
 
+/** \brief Wrapper around ::OrtSession
+ *
+ */
 struct Session : detail::SessionImpl<OrtSession> {
   explicit Session(std::nullptr_t) {}                                                                                                        ///< Create an empty Session object, must be assigned a valid one to be used
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);                                                             ///< Wraps OrtApi::CreateSession
@@ -676,7 +693,9 @@ struct MemoryInfoImpl : Base<T> {
 // Const object holder that does not own the underlying object
 using ConstMemoryInfo = detail::MemoryInfoImpl<detail::Unowned<const OrtMemoryInfo>>;
 
-// Class that owns the underlying Ort object
+/** \brief Wrapper around ::OrtMemoryInfo
+ *
+ */
 struct MemoryInfo : detail::MemoryInfoImpl<OrtMemoryInfo> {
   static MemoryInfo CreateCpu(OrtAllocatorType type, OrtMemType mem_type1);
   explicit MemoryInfo(std::nullptr_t) {}                                       ///< No instance is created
@@ -685,9 +704,6 @@ struct MemoryInfo : detail::MemoryInfoImpl<OrtMemoryInfo> {
   ConstMemoryInfo GetConst() const { return ConstMemoryInfo{this->p_}; }
 };
 
-/** \brief Wrapper around ::OrtTensorTypeAndShapeInfo
- *
- */
 namespace detail {
 template <typename T>
 struct TensorTypeAndShapeInfoImpl : Base<T> {
@@ -714,15 +730,14 @@ struct TensorTypeAndShapeInfoImpl : Base<T> {
 
 using ConstTensorTypeAndShapeInfo = detail::TensorTypeAndShapeInfoImpl<detail::Unowned<const OrtTensorTypeAndShapeInfo>>;
 
+/** \brief Wrapper around ::OrtTensorTypeAndShapeInfo
+ *
+ */
 struct TensorTypeAndShapeInfo : detail::TensorTypeAndShapeInfoImpl<OrtTensorTypeAndShapeInfo> {
   explicit TensorTypeAndShapeInfo(std::nullptr_t) {}                                                ///< Create an empty TensorTypeAndShapeInfo object, must be assigned a valid one to be used
   explicit TensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* p) : TensorTypeAndShapeInfoImpl{p} {}  ///< Used for interop with the C API
   ConstTensorTypeAndShapeInfo GetConst() const { return ConstTensorTypeAndShapeInfo{this->p_}; }
 };
-
-/** \brief Wrapper around ::OrtSequenceTypeInfo
- *
- */
 
 namespace detail {
 template <typename T>
@@ -736,15 +751,16 @@ struct SequenceTypeInfoImpl : Base<T> {
 
 using ConstSequenceTypeInfo = detail::SequenceTypeInfoImpl<detail::Unowned<const OrtSequenceTypeInfo>>;
 
+/** \brief Wrapper around ::OrtSequenceTypeInfo
+ *
+ */
 struct SequenceTypeInfo : detail::SequenceTypeInfoImpl<OrtSequenceTypeInfo> {
   explicit SequenceTypeInfo(std::nullptr_t) {}                                                         ///< Create an empty SequenceTypeInfo object, must be assigned a valid one to be used
   explicit SequenceTypeInfo(OrtSequenceTypeInfo* p) : SequenceTypeInfoImpl<OrtSequenceTypeInfo>{p} {}  ///< Used for interop with the C API
+  ConstSequenceTypeInfo GetConst() const { return ConstSequenceTypeInfo{this->p_}; }
 };
 
 namespace detail {
-/** \brief Wrapper around ::OrtMapTypeInfo
- *
- */
 template <typename T>
 struct MapTypeInfoImpl : detail::Base<T> {
   using B = Base<T>;
@@ -757,6 +773,9 @@ struct MapTypeInfoImpl : detail::Base<T> {
 
 using ConstMapTypeInfo = detail::MapTypeInfoImpl<detail::Unowned<const OrtMapTypeInfo>>;
 
+/** \brief Wrapper around ::OrtMapTypeInfo
+ *
+ */
 struct MapTypeInfo : detail::MapTypeInfoImpl<OrtMapTypeInfo> {
   explicit MapTypeInfo(std::nullptr_t) {}                                          ///< Create an empty MapTypeInfo object, must be assigned a valid one to be used
   explicit MapTypeInfo(OrtMapTypeInfo* p) : MapTypeInfoImpl<OrtMapTypeInfo>{p} {}  ///< Used for interop with the C API
@@ -765,8 +784,7 @@ struct MapTypeInfo : detail::MapTypeInfoImpl<OrtMapTypeInfo> {
 
 /// <summary>
 /// Type information that may contain either TensorTypeAndShapeInfo or
-/// or the information about contained sequence or map depending on the ONNXType
-/// contained.
+/// the information about contained sequence or map depending on the ONNXType.
 /// </summary>
 struct TypeInfo : detail::Base<OrtTypeInfo> {
   explicit TypeInfo(std::nullptr_t) {}                         ///< Create an empty TypeInfo object, must be assigned a valid one to be used
@@ -780,7 +798,6 @@ struct TypeInfo : detail::Base<OrtTypeInfo> {
 };
 
 namespace detail {
-
 // This structure is used to feed  sparse tensor values
 // information for use with FillSparseTensor<Format>() API
 // if the data type for the sparse tensor values is numeric
@@ -972,7 +989,7 @@ struct ValueImpl : ConstValueImpl<T> {
   R* GetTensorMutableData();
 
   /// <summary>
-  /// Returns a non-typed con-const pointer to a tensor contained data.
+  /// Returns a non-typed non-const pointer to a tensor contained data.
   /// </summary>
   /// <returns>pointer to data, no copies made</returns>
   void* GetTensorMutableRawData();
@@ -1081,6 +1098,9 @@ struct ValueImpl : ConstValueImpl<T> {
 using ConstValue = detail::ConstValueImpl<detail::Unowned<const OrtValue>>;
 using UnownedValue = detail::ValueImpl<detail::Unowned<OrtValue>>;
 
+/** \brief Wrapper around ::OrtValue
+ *
+ */
 struct Value : detail::ValueImpl<OrtValue> {
   using Base = detail::ValueImpl<OrtValue>;
   using OrtSparseValuesParam = detail::OrtSparseValuesParam;
@@ -1174,7 +1194,7 @@ struct Value : detail::ValueImpl<OrtValue> {
                                   const Shape& values_shape, ONNXTensorElementDataType type);
 
   /// <summary>
-  /// This is a simple forwarding method the below CreateSparseTensor.
+  /// This is a simple forwarding method to the below CreateSparseTensor.
   /// This helps to specify data type enum in terms of C++ data type.
   /// Use CreateSparseTensor<T>
   /// </summary>
@@ -1238,11 +1258,17 @@ struct AllocatorImpl : Base<T> {
 
 }  // namespace detail
 
+/** \brief Wrapper around ::OrtAllocator default instance that is owned by Onnxruntime
+ *
+ */
 struct AllocatorWithDefaultOptions : detail::AllocatorImpl<detail::Unowned<OrtAllocator>> {
   explicit AllocatorWithDefaultOptions(std::nullptr_t) {}  ///< Convenience to create a class member and then replace with an instance
   AllocatorWithDefaultOptions();
 };
 
+/** \brief Wrapper around ::OrtAllocator
+ *
+ */
 struct Allocator : detail::AllocatorImpl<OrtAllocator> {
   explicit Allocator(std::nullptr_t) {}  ///< Convenience to create a class member and then replace with an instance
   Allocator(const Session& session, const OrtMemoryInfo*);
@@ -1251,7 +1277,6 @@ struct Allocator : detail::AllocatorImpl<OrtAllocator> {
 using UnownedAllocator = detail::AllocatorImpl<detail::Unowned<OrtAllocator>>;
 
 namespace detail {
-
 namespace binding_utils {
 // Bring these out of template
 std::vector<std::string> GetOutputNamesHelper(const OrtIoBinding* binding, OrtAllocator*);
@@ -1288,6 +1313,9 @@ struct IoBindingImpl : ConstIoBindingImpl<T> {
 using ConstIoBinding = detail::ConstIoBindingImpl<detail::Unowned<const OrtIoBinding>>;
 using UnownedIoBinding = detail::IoBindingImpl<detail::Unowned<OrtIoBinding>>;
 
+/** \brief Wrapper around ::OrtIoBinding
+ *
+ */
 struct IoBinding : detail::IoBindingImpl<OrtIoBinding> {
   explicit IoBinding(std::nullptr_t) {}  ///< Create an empty object for convenience. Sometimes, we want to initialize members later.
   explicit IoBinding(Session& session);
