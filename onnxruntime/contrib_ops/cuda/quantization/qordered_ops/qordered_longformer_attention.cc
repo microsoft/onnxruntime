@@ -119,7 +119,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   // TODO: only calculate once per model.
   // Build Global Index
-  auto global_index_buffer = GetScratchBuffer<int>(batch_size * sequence_length);
+  auto global_index_buffer = GetScratchBuffer<int>(static_cast<size_t>(batch_size) * static_cast<size_t>(sequence_length));
   auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size);
 
   size_t global_scratch_bytes = GetGlobalScratchSize(sequence_length);
