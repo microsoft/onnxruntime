@@ -82,6 +82,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetCosGradient) {
+  std::vector<NodeDef> result;
+  NodeDef minus_one_constant_node = MinusOneConstantNode(IElemType(0));
+  ArgDef minus_one = minus_one_constant_node.output_args[0];
+  result.push_back(minus_one_constant_node);
+  result.push_back(NodeDef("Sin", {O(0)}, {IA("Sin_O0")}));
+  result.push_back(NodeDef("Mul", {minus_one, IA("Sin_O0")}, {GI(0)}));
+  return result;
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetLogGradient) {
   return std::vector<NodeDef>{
       NodeDef("Div",
