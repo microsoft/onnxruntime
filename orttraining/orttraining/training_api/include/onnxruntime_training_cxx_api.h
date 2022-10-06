@@ -5,7 +5,7 @@
 #include "onnxruntime_training_c_api.h"
 #include <optional>
 
-namespace Ort {
+namespace Ort::detail {
 
 #define ORT_DECLARE_TRAINING_RELEASE(NAME) \
   void OrtRelease(Ort##NAME* ptr);
@@ -15,13 +15,15 @@ namespace Ort {
 ORT_DECLARE_TRAINING_RELEASE(CheckpointState);
 ORT_DECLARE_TRAINING_RELEASE(TrainingSession);
 
-}  // namespace Ort
+}  // namespace Ort::detail
 
 #include "onnxruntime_cxx_api.h"
 
 namespace Ort {
 
 inline const OrtTrainingApi& GetTrainingApi() { return *GetApi().GetTrainingApi(ORT_API_VERSION); }
+
+namespace detail {
 
 #define ORT_DEFINE_TRAINING_RELEASE(NAME) \
   inline void OrtRelease(Ort##NAME* ptr) { GetTrainingApi().Release##NAME(ptr); }
@@ -32,10 +34,12 @@ ORT_DEFINE_TRAINING_RELEASE(TrainingSession);
 #undef ORT_DECLARE_TRAINING_RELEASE
 #undef ORT_DEFINE_TRAINING_RELEASE
 
+}  // namespace detail
+
 // TODO(bmeswani): remove forward declaration when the SaveCheckpoint no longer depends on TrainingSession
 class TrainingSession;
 
-class CheckpointState : public Base<OrtCheckpointState> {
+class CheckpointState : public detail::Base<OrtCheckpointState> {
  private:
   CheckpointState(OrtCheckpointState* checkpoint_state) { p_ = checkpoint_state; }
 
@@ -64,7 +68,7 @@ class CheckpointState : public Base<OrtCheckpointState> {
  * Wraps OrtTrainingSession
  *
  */
-class TrainingSession : public Base<OrtTrainingSession> {
+class TrainingSession : public detail::Base<OrtTrainingSession> {
  private:
   size_t training_model_output_count_, eval_model_output_count_;
 
