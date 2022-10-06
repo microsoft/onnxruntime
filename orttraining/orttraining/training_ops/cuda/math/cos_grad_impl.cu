@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-struct OP_CosGrad : public CtxCosGrad {
+struct OP_CosGrad {
   __device__ __inline__ T operator()(const T& dy, const T& y) const {
     return dy * ((T)-1 * sin(y));
   }
@@ -26,7 +26,7 @@ struct OP_CosGrad : public CtxCosGrad {
   }
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL(T) \
-  template void CosGradImpl<T>(cudaStream_t stream, const T* lhs_data, const T* rhs_data, T* output_data, const CtxCosGrad* func_ctx, size_t count);
+  template void CosGradImpl<T>(cudaStream_t stream, const T* lhs_data, const T* rhs_data, T* output_data, const OP_CosGrad* func_ctx, size_t count);
 
 #define SPECIALIZED_BINARY_ELEMENTWISE_IMPL_HFD(x) \
   SPECIALIZED_BINARY_ELEMENTWISE_IMPL(x, half)     \

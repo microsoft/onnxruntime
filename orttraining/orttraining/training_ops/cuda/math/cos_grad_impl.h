@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-typedef onnxruntime::cuda::CtxNull CtxCosGrad;
+typedef onnxruntime::cuda OP_CosGrad;
 
 #define BINARY_ELEMENTWISE_IMPL_DECLARATION() \
   template <typename T>                           \
@@ -17,7 +17,7 @@ typedef onnxruntime::cuda::CtxNull CtxCosGrad;
                    const T* lhs_data,             \
                    const T* rhs_data,             \
                    T* output_data,                \
-                   const CtxCosGrad* func_ctx,     \
+                   const OP_CosGrad* func_ctx,     \
                    size_t count)
 
 BINARY_ELEMENTWISE_IMPL_DECLARATION();
