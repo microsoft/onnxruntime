@@ -2663,9 +2663,9 @@ Example 4:
     .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
     .SetDoc("Gradient function for Cos")
     .AllowUncheckedAttributes()
-    .Input(0, "dY", "Cos output's grad", "T")
-    .Input(1, "Y", "Input tensor", "T")
-    .Output(0, "dX", "Cos input's grad", "T")
+    .Input(0, "dY", "The gradient tensor from output.", "T")
+    .Input(1, "Y", "The input tensor. ", "T")
+    .Output(0, "dX", "Gradient of the input.", "T")
     .TypeConstraint(
         "T",
         {"tensor(float16)", "tensor(float)", "tensor(double)"},
