@@ -34,11 +34,11 @@ TEST(QuantizeBFPTest, CreateQuantizeGraph) {
   bfp_type.set_i(static_cast<int64_t>(onnxruntime::contrib::BFPType::BFP_1_8_8_16));
   bfp_type.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
   attributes["bfp_type"] = bfp_type;
-  ONNX_NAMESPACE::AttributeProto block_dims;
-  block_dims.set_name("block_dims");
-  block_dims.add_ints(1);  // bounding box is over dimension 1
-  block_dims.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
-  attributes["block_dims"] = block_dims;
+  ONNX_NAMESPACE::AttributeProto block_dim;
+  block_dim.set_name("block_dim");
+  block_dim.set_i(1);  // bounding box is over dimension 1
+  block_dim.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+  attributes["block_dim"] = block_dim;
 
   std::vector<onnxruntime::NodeArg*> output_defs;
   ONNX_NAMESPACE::TypeProto y_byte;
@@ -91,11 +91,11 @@ TEST(DequantizeBFPTest, CreateDequantizeGraph) {
   bfp_type.set_i(static_cast<int64_t>(onnxruntime::contrib::BFPType::BFP_1_8_8_16));
   bfp_type.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
   attributes["bfp_type"] = bfp_type;
-  ONNX_NAMESPACE::AttributeProto block_dims;
-  block_dims.set_name("block_dims");
-  block_dims.add_ints(1);  // bounding box is over dimension 1
-  block_dims.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
-  attributes["block_dims"] = block_dims;
+  ONNX_NAMESPACE::AttributeProto block_dim;
+  block_dim.set_name("block_dim");
+  block_dim.set_i(1);  // bounding box is over dimension 1
+  block_dim.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+  attributes["block_dim"] = block_dim;
   ONNX_NAMESPACE::AttributeProto dtype;
   dtype.set_name("dtype");
   dtype.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
