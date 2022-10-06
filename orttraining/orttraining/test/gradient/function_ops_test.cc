@@ -146,6 +146,7 @@ void CheckDropoutGradWithoutRatio(bool inline_call) {
   FunctionTestCase testCase("DropoutGrad");
   testCase.AddOpset(kOnnxDomain, DropoutGradOpset<T>());
   testCase.AddOpset(kMSDomain, 1);
+  
   std::vector<int64_t> shape{16, 4, 4};
   testCase.AddInput<T, false>("dY", shape);
   testCase.AddInput<bool, false>("mask", shape);
