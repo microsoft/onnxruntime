@@ -15,7 +15,7 @@ namespace cuda {
                    const T* lhs_data,             \
                    const T* rhs_data,             \
                    T* output_data,                \
-                   const CosGrad<T>* func_ctx,     \
+                   const OP_CosGrad<T>* func_ctx,     \
                    size_t count)
 
 BINARY_ELEMENTWISE_IMPL_DECLARATION();
