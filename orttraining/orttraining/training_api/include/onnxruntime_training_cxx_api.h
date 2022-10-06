@@ -66,10 +66,6 @@ class CheckpointState : public Base<OrtCheckpointState> {
  */
 class TrainingSession : public Base<OrtTrainingSession> {
  private:
-  friend void CheckpointState::SaveCheckpoint(const TrainingSession& session,
-                                              const std::basic_string<ORTCHAR_T>& path_to_checkpoint,
-                                              bool include_optimizer_states);
-
   size_t training_model_output_count_, eval_model_output_count_;
 
  public:
