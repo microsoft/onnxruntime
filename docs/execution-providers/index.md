@@ -1,627 +1,95 @@
-<!DOCTYPE html>
-<html lang="en">
+---
+title: Execution Providers
+has_children: true
+nav_order: 6
+redirect_from: /docs/reference/execution-provider
+---
 
-<head>
-    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-156955408-1"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'UA-156955408-1');
-    </script>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <title>ONNX Runtime | Home</title>
-    <link rel="icon" href="./images/ONNXRuntime-Favicon.png" type="image/gif" sizes="16x16">
-    <link rel="stylesheet" href="css/fonts.css">
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    <link rel="stylesheet" href="css/custom.css?v1.6">
-    <link rel="stylesheet" href="css/responsive.css?v1.6">
-</head>
+# ONNX Runtime Execution Providers
+{: .no_toc }
 
-<body>
+ONNX Runtime works with different hardware acceleration libraries through its extensible **Execution Providers** (EP) framework to optimally execute the ONNX models on the hardware platform. This interface enables flexibility for the AP application developer to deploy their ONNX models in different environments in the cloud and the edge and optimize the execution by taking advantage of the compute capabilities of the platform.
 
-    <a class="skip-main" id="topContent" href="#skipMain">Skip to main content</a>
-    <div class="main-wrapper">
-        <div class="top-banner-bg">
+<p align="center"><img width="50%" src="https://www.onnxruntime.ai/images/ONNX_Runtime_EP1.png" alt="Executing ONNX models across different HW environments"/></p>
 
-            <header class="fixed-top header-content">
-                <nav class="navbar navbar-expand-md navbar-custom" aria-label="Main menu">
-                    <a id="ONNXLogo" class="navbar-brand" href="./index.html">
-                        <img src="images/svg/ONNX-Runtime-logo.svg" class="d-inline-block align-top onnx-logo" alt="ONNX Runtime Home" />
-                    </a>
-                    <button class="navbar-toggler p-0" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                        <span class="navbar-toggler-icon"></span>
-                    </button>
-                    <div class="collapse navbar-collapse border-md-top mt-md-0 mt-2" id="navbarNav">
-                        <div class="mr-auto"></div>
-                        <div class="my-md-2 mb-0 mt-2 my-lg-0 pl-3 pl-md-0">
-                            <ul class="navbar-nav navbar-nav mr-auto text-uppercase" id="navigation">
-                                <li class="nav-item">
-                                    <a class="nav-link pr-3 btn-getStarted" href="JavaScript:void(0);">Get Started</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link pr-3 btn-getStarted" href="./docs">Docs</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link pr-3" target="_blank" href="./news.html">News</a>
-                                </li>
-								<li class="nav-item">
-                                    <a class="nav-link pr-3" href="./community.html">Community</a>
-                                </li>
-								<li class="nav-item">
-                                    <a class="nav-link pr-3" href="./about.html">About</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link" target="_blank" href="http://github.com/microsoft/onnxruntime">GitHub</a>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                </nav>
-            </header>
+ONNX Runtime works with the execution provider(s) using the `GetCapability()` interface to allocate specific nodes or sub-graphs for execution by the EP library in supported hardware. The EP libraries that are pre-installed in the execution environment process and execute the ONNX sub-graph on the hardware. This architecture abstracts out the details of the hardware specific libraries that are essential to optimize the execution of deep neural networks across hardware platforms like CPU, GPU, FPGA or specialized NPUs.
 
-			<div role="main" id="skipMain">
-			
-	            <div class="container px-md-4 px-lg-5 pt-5 mx-auto text-center">
-					<h1 class="pt-3 pb-3 pt-md-5 pb-lg-3 px-md-4 px-lg-5 mt-5 mb-0">Optimize and Accelerate Machine Learning Inferencing and Training</h1>
-				</div>
+<p align="center"><img width="50%" src="https://www.onnxruntime.ai/images/ONNX_Runtime_EP3.png" alt="ONNX Runtime GetCapability()"/></p>
 
-				
-	            <div class="outer-container mx-auto pt-md-5 pt-3">
+ONNX Runtime supports many different execution providers today. Some of the EPs are in production for live service, while others are released in preview to enable developers to develop and customize their application using the different options.
 
-	                <section class="py-md-5 pt-3 pb-4 blue-title-columns">
-	                    <div class="container-fluid">
-	                        <div class="row equalHeight">
-	                            <div class="col-12 col-md-4 mb-2 mb-md-0">
-	                                <div class="row">
-	                                    <div class="col-2 col-md-3 col-xl-2">
-	                                        <div class="icon-container">
-	                                            <img src="images/svg/icon-4.svg" alt="" />
-	                                        </div>
-	                                    </div>
-	                                    <div class="col-10 col-sm-9 col-xl-10 pl-sm-0 pl-md-3 pl-lg-0 pl-xl-3">
-	                                        <h2 class="mr-xl-5 blue-text">Speed up machine learning process</h2>
-	                                        <p class="mr-xl-5 mb-md-0">Built-in optimizations that deliver up to 17X faster inferencing and up to 1.4X faster training
-	                                        </p>
-	                                    </div>
-	                                </div>
-	                            </div>
-	                            <div class="col-12 col-md-4 mb-2 mb-md-0">
-	                                <div class="row">
-	                                    <div class="col-2 col-md-3 col-xl-2">
-	                                        <div class="icon-container">
-	                                            <img src="images/svg/icon-2.svg" alt="" />
-	                                        </div>
-	                                    </div>
-	                                    <div class="col-10 col-sm-9 col-xl-10 pl-sm-0 pl-md-3 pl-lg-0 pl-xl-3">
-	                                        <h2 class="mr-xl-5 blue-text">Plug into your existing technology stack</h2>
-	                                        <p class="mr-xl-5 mb-md-0">Support for a variety of frameworks, operating systems and hardware platforms</p>
-	                                    </div>
-	                                </div>
-	                            </div>
-	                            <div class="col-12 col-md-4">
-	                                <div class="row">
-	                                    <div class="col-2 col-md-3 col-xl-2">
-	                                        <div class="icon-container">
-	                                            <img src="images/svg/icon-3.svg" alt="" />
-	                                        </div>
-	                                    </div>
-	                                    <div class="col-10 col-sm-9 col-xl-10 pl-sm-0 pl-md-3 pl-lg-0 pl-xl-3">
-	                                        <h2 class="mr-xl-5 blue-text">Build using proven technology</h2>
-	                                        <p class="mr-xl-5 mb-0">Used in Office 365, Visual Studio and Bing, delivering half Trillion inferences every day</p>
-	                                    </div> 
-	                                </div>
-	                            </div>
-	                        </div>
-	                    </div>
+## Contents
+{: .no_toc }
 
-						<div class="pt-1 pb-1 pt-md-3 pb-lg-3 px-5 mt-5 mb-0 alert alert-dark alert-dismissible fade show" role="alert">
-							Please help us improve ONNX Runtime by participating in our <a href="https://ncv.microsoft.com/UySXuzobM9">customer survey.</a>
-							<button type="button" class="close" data-dismiss="alert" aria-label="Close">
-							  <span aria-hidden="true">&times;</span>
-							</button>
-						  </div>
-						  
-	                </section>
-	
-					
+* TOC placeholder
+{:toc}
 
-	                <section class="py-md-5 pb-4 pt-4 get-started-section border-top" id="getStartedTable">
-	                    <div class="container-fluid">
-							<noscript>
-								<div class="javascript-is-disabled row">
-								<div class="col">
-										<div class="ns-callout">
-											<h2>Please enable JavaScript to use the interactive installation guide.</h2>
-										<p class="mb-0">Need help enabling JavaScript? Follow the instructions <a href="https://www.whatismybrowser.com/guides/how-to-enable-javascript/auto" target="_blank">here</a>.</p>
-										</div>
-								</div>
-								</div>
-							</noscript>
-							<div class="row ml-0">
-	                            <div class="col mb-4">
-	                                <div class="text-center pb-3">
-	                                    <h2 class="section-heading">Get Started Easily</h2>
-	                                </div>
-								</div>
-							</div>
+### Summary of supported Execution Providers 
 
-							<div>
-						
-								<ul class="tbl_tablist" role="tablist">
-									<li id="OI_tab" class="tbl_tab" aria-controls="panel1" aria-selected="true" role="tab"
-										tabindex="0">
-										Optimize Inferencing
-									</li>
-									<li id="OT_tab" class="tbl_tab" aria-controls="panel2" role="tab" aria-selected="false"
-										tabindex="0">
-										Optimize Training
-										​</li>
-								</ul>
-		
-								<div id="panel1" class="tbl_panel" aria-labelledby="tab1" role="tabpanel" aria-hidden="false">
-									<div class="row ml-0">
-										<div class="col">
-											
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="selectOS">Platform</h3>
-													<p id="decriptionOS" class="sr-only">Platform list contains six items</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-1" aria-labelledby="selectOS" aria-describedby="decriptionOS">
-													<div class="row os">
-														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="0" aria-selected="false" id="windows">
-															<span>Windows</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="linux">
-															<span>Linux</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="mac">
-															<span>Mac</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="android">
-															<span>Android</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="ios">
-															<span>iOS</span>
-														</div>
-														<div class="col-lg-2dot4 col r-option version" role="option" tabindex="-1" aria-selected="false" id="web">
-															<span>Web Browser (Preview)</span>
-														</div>
-								
-													</div>
-												</div>
-											</div>
-			
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="selectLanguage">API</h3>
-													<p id="decriptionLanguage" class="sr-only">API list contains eight items</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-2" aria-labelledby="selectLanguage" aria-describedby="decriptionLanguage">
-													<div class="row language">
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="0" aria-selected="false" id="Python"><span>Python</span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="C++"><span>C++</span></div>
-														<div class="col-lg-2dot4 col r-option" aria-selected="false" role="option" tabindex="-1" id="C#"><span><abbr>C#</abbr></span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="C-API"><span>C</span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="Java"><span>Java</span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="JS"><span>JS</span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="objectivec"><span>Obj-C</span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="WinRT"><span>WinRT</span></div>
-														
-			
-													</div>
-												</div>
-											</div>
-			
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading ">
-													<h3 id="selectArchitecture" class="align-self-center">Architecture</h3>
-													<p id="decriptionArchitecture" class="sr-only">Architecture list contains five items</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-3" aria-labelledby="selectArchitecture" aria-describedby="decriptionArchitecture">
-													<div class="row architecture">
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="0" aria-selected="false" id="X64">
-															<span><abbr>X64</abbr></span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="X86">
-															<span><abbr>X86</abbr></span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="ARM64">
-															<span><abbr>ARM64</abbr></span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="ARM32">
-															<span><abbr>ARM32</abbr></span></div>
-														<div class="col-lg-2dot4 col r-option" role="option" tabindex="-1" aria-selected="false" id="Power">
-															<span><abbr>IBM Power</abbr></span></div>
-													</div>
-												</div>
-											</div>
-			
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="selectHardwareAcceleration">Hardware Acceleration</h3>
-													<p id="decriptionHardwareAcceleration" class="sr-only">Hardware Acceleration list contains seventeen items</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="listbox-4" aria-labelledby="selectHardwareAcceleration" aria-describedby="decriptionHardwareAcceleration">
-													<div class="row hardwareAcceleration">
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="0" aria-selected="false" id="DefaultCPU">
-															<span>Default&nbsp; <abbr>CPU</abbr></span></div>														
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="CoreML">
-															<span>CoreML </span></div>	
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="CUDA">
-															<span><abbr>CUDA</abbr></span></div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="DirectML">
-															<span>Direct<abbr>ML</abbr></span></div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="NNAPI">
-															<span>NNAPI </span></div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="DNNL">
-															<span><abbr>oneDNN</abbr></span></div>															
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="OpenVINO">
-															<span>OpenVINO</span></div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="SNPE">
-															<span>SNPE</span></div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="TensorRT">
-															<span>Tensor<abbr>RT</abbr></span></div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ACL">
-															<span>ACL (Preview)</span></div>	
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ArmNN">
-															<span>ArmNN (Preview)</span></div>												
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="MIGraphX">
-															<span>MIGraphX (Preview)</span></div>	
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="ROCm">
-															<span>ROCm (Preview)</span></div>		
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="RockchipNPU">
-																<span>Rockchip NPU (Preview)</span></div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="TVM">
-															<span>TVM (Preview)</span></div>		
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="VitisAI">
-															<span>Vitis AI (Preview)</span></div>
-														<div class="col-lg-3 col-md-3 r-option version" role="option" tabindex="-1" aria-selected="false" id="XNNPACK">
-															<span>XNNPACK (Preview)</span></div>
-														</div>
-												</div>
-											</div>
-			
-											<div class="row r-wrap command-block row-eq-height mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="selectRunCommand">Installation Instructions</h3>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4">
-													<div class="row">
-														<div class="col r-option command-container" id="command" role="status">
-															<span>
-																Please select a combination of resources
-															</span>
-														</div>
-													</div>
-												</div>
-											</div>
-			
-										</div>
-										
-									</div>
-								</div>
-		
-								<div id="panel2" class="tbl_panel" aria-labelledby="tab2" role="tabpanel" aria-hidden="true">
-									<div class="row ml-0">
-										<div class="col">
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="ot_selectOS">Platform</h3>
-													<p id="ot_decriptionOS" class="sr-only">Platform list contains one item</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-1" aria-labelledby="ot_selectOS" aria-describedby="ot_decriptionOS">
-													<div class="row ot_os">
-														<div class="col r-option selected" role="option" tabindex="0" aria-selected="true" id="ot_linux"><span>Linux</span></div>
-													</div>
-												</div>
-											</div>
-											
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="ot_selectLanguage">API</h3>
-													<p id="ot_decriptionLanguage" class="sr-only">API list contains one item</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-2" aria-labelledby="ot_selectLanguage" aria-describedby="ot_decriptionLanguage">
-													<div class="row ot_language">
-														<div class="col r-option selected" role="option" tabindex="0" aria-selected="true" id="ot_ORTModule"><span>ORTModule for Pytorch</span></div>
-													</div>
-												</div>
-											</div>
-			
-											
-											<div class="row r-wrap mb-1 mb-md-0 mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="ot_selectHardwareAcceleration">Hardware Acceleration</h3>
-													<p id="ot_decriptionHardwareAcceleration" class="sr-only">Hardware Acceleration list contains two items</p>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4" role="listbox" id="ot_listbox-4" aria-labelledby="ot_selectHardwareAcceleration" aria-describedby="ot_decriptionHardwareAcceleration">
-													<div class="row ot_hardwareAcceleration">
-														<div class="col r-option version selected" role="option" tabindex="0" aria-selected="true" id="ot_CUDA"><span><abbr>CUDA</abbr></span></div>
-														<div class="col r-option version" role="option" tabindex="-1" aria-selected="false" id="ot_ROCm"><span><abbr>ROCm</abbr></span></div>
-													</div>
-												</div>
-											</div>
-			
-											<div class="row r-wrap command-block row-eq-height mr-0">
-												<div class="col-md-3 r-heading">
-													<h3 id="ot_selectRunCommand">Installation Instructions</h3>
-												</div>
-												<div class="col-md-9 r-content pr-0 pl-md-4">
-													<div class="row">
-														<div class="col r-option command-container" id="ot_command" role="status">
-															<span>
-																Please select a combination of resources
-															</span>
-														</div>
-													</div>
-												</div>
-											</div>
-										</div>
-									</div>
-								</div>
+|CPU|GPU|IoT/Edge/Mobile|Other|
+---|---|---|---
+|Default CPU|[NVIDIA CUDA](../execution-providers/CUDA-ExecutionProvider.md)|[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)|[Rockchip NPU](../execution-providers/RKNPU-ExecutionProvider.md) (*preview*)|
+|[Intel DNNL](../execution-providers/oneDNN-ExecutionProvider.md)|[NVIDIA TensorRT](../execution-providers/TensorRT-ExecutionProvider.md)|[ARM Compute Library](../execution-providers/ACL-ExecutionProvider.md) (*preview*)|[Xilinx Vitis-AI](../execution-providers/Vitis-AI-ExecutionProvider.md) (*preview*)|
+|[TVM](../execution-providers/TVM-ExecutionProvider.md) (*preview*)|[DirectML](../execution-providers/DirectML-ExecutionProvider.md)|[Android Neural Networks API](../execution-providers/NNAPI-ExecutionProvider.md)||
+|[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)|[AMD MIGraphX](../execution-providers/MIGraphX-ExecutionProvider.md) (*preview*)|[ARM-NN](../execution-providers/ArmNN-ExecutionProvider.md) (*preview*)|
+||[AMD ROCm](../execution-providers/ROCm-ExecutionProvider.md) (*preview*)|[CoreML](../execution-providers/CoreML-ExecutionProvider.md) (*preview*)|
+||[TVM](../execution-providers/TVM-ExecutionProvider.md) (*preview*)|[TVM](../execution-providers/TVM-ExecutionProvider.md) (*preview*)|
+||[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)|[Qualcomm SNPE](../execution-providers/SNPE-ExecutionProvider.md)|
+|[XNNPACK](../execution-providers/Xnnpack-ExecutionProvider.md)||[XNNPACK](../execution-providers/Xnnpack-ExecutionProvider.md)|
 
-							</div>
+### Add an Execution Provider
 
-	                    </div>
-	                </section>
-	
-					<section class="py-md-5 pb-4 pt-4 border-top" id="logos">
-						<div class="container-fluid">
-							<div class="row ml-0">
-								<div class="col mb-4">
-									<div class="text-center pb-3">
-										<h2 class="section-heading">Organizations and products using ONNX Runtime​​</h2>
-									</div>
-								</div>
-							</div>
+Developers of specialized HW acceleration solutions can integrate with ONNX Runtime to execute ONNX models on their stack. To create an EP to interface with ONNX Runtime you must first identify a unique name for the EP. See: [Add a new execution provider](add-execution-provider.md) for detailed instructions.
 
-							<div class="row equalHeight-1 blue-title-columns">
-								
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#adobe"><img src="./images/logos/adobe-logo.png" alt="Adobe logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#amd"><img src="./images/logos/amd-logo.png" alt="AMD logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#ant-group"><img src="./images/logos/antgroup-logo.png" alt="Ant Group logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#atlas-experiment"><img src="./images/logos/ATLAS-logo.png" alt="ATLAS logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#bazaarvoice"><img src="./images/logos/bazaarvoice-logo.png" alt="Bazaarvoice logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#clearblade"><img src="./images/logos/clearblade-logo.png" alt="Clearblade logo"></a>
-									</div>
-								</div>
-																									
-							</div>	
+### Build ONNX Runtime package with EPs
 
-								
-							<div class="row equalHeight-3 blue-title-columns">	
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#ghostwriter-ai"><img src="./images/logos/ghostwriter-logo.png" alt="GhostWriter.ai logo"></a>
-									</div>
-								</div>				
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#hugging-face"><img src="./images/logos/huggingface-logo.png" alt="Hugging Face logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#hypefactors"><img src="./images/logos/hypefactors-logo.png" alt="Hypefactors logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#infarm"><img src="./images/logos/infarm-logo.png" alt="InFarm logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#intel"><img src="./images/logos/intel-logo.png" alt="Intel logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#visual-studio"><img src="./images/logos/visual-studio-logo.png" alt="Visual Studio logo"></a>
-									</div>
-								</div>		
-								
-																							
-							</div>
-							
-							<div class="row equalHeight-3 blue-title-columns">
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#navitaire"><img src="./images/logos/navitaire-amadeus-logo.png" alt="Navitaire Amadeus logo"></a>									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#nvidia"><img src="./images/logos/nvidia.png" alt="NVIDIA logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#openNLP"><img src="./images/logos/opennlp-logo.png" alt="Apache OpenNLP logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#oracle"><img src="./images/logos/oracle-logo.png" alt="Oracle Logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#peakspeed"><img src="./images/logos/PeakSpeed_logo.png" alt="PeakSpeed logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#ptw"><img src="./images/logos/ptw-logo.png" alt="PTW logo"></a>
-									</div>
-								</div>
-																															
-							</div>
-							
-							
-							<div class="row equalHeight-3 blue-title-columns">
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#rockchip"><img src="./images/logos/Rockchip-logo.png" alt="Rockchip logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#samtec"><img src="./images/logos/samtec-logo.png" alt="Samtec logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#sas"><img src="./images/logos/sas-logo.png" alt="SAS logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#teradata"><img src="./images/logos/teradata-logo.png" alt="Teradata logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#topaz-labs"><img src="./images/logos/topazlabs-logo.png" alt="Topaz Labs logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#unrealengine"><img src="./images/logos/ue-logo.png" alt="Unreal Engine logo"></a>
-									</div>
-								</div>
-														
-							</div>
+The ONNX Runtime package can be built with any combination of the EPs along with the default CPU execution provider. **Note** that if multiple EPs are combined into the same ONNX Runtime package then all the dependent libraries must be present in the execution environment. The steps for producing the ONNX Runtime package with different EPs is documented [here](../build/inferencing.md).
 
-							<div class="row equalHeight-3 blue-title-columns">
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#usda"><img src="./images/logos/usda-logo.png" alt="USDA logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#vespa"><img src="./images/logos/vespa-logo.png" alt="Vespa logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#writer"><img src="./images/logos/writer-logo.png" alt="Writer logo"></a>
-									</div>
-								</div>
-								<div class="col-4 col-md-2 mb-4 mb-md-0">
-									<div class="customer-logo text-center">
-										<a href="community.html#xilinx"><img src="./images/logos/xilinx-logo.png" alt="Xilinx logo"></a>
-									</div>
-								</div>
-								
-							</div>
-						
-						</div>
-					</section>
+### APIs for Execution Provider
 
-					
-					<section class="py-md-5 pb-4 pt-4 border-top">
-						<div class="container-fluid">
-							<div class="row ml-0">
-								<div class="col mb-4">
-									<div class="text-center pb-3">
-										<h2 class="section-heading">Resources​​</h2>
-									</div>
-								</div>
-							</div>
-							<div class="row blue-title-columns">
-								
-								<div class="col-12 col-md-3 mb-4 mb-md-0">
-									<button class="resources-img text-center p-0 border-0" data-src="WDww8ce12Mc" aria-label="Faster and Lighter Model Inference with ONNX Runtime from Cloud to Client">
-										<img class="btn-trigger" src="./images/video-model-inference-cloud-to-client.jpg" alt="Tech Community" />
-									</button>
+The same ONNX Runtime API is used across all EPs. This provides the consistent interface for applications to run with different HW acceleration platforms. The APIs to set EP options are available across Python, C/C++/C#, Java and node.js.
 
-								</div>
-								<div class="col-12 col-md-3 mb-4 mb-md-0">
-									<button class="resources-img text-center p-0 border-0" data-src="pmb6cjngbcA" aria-label="ONNX Runtime speeds up Image Embedding model in Bing Semantic Precise Image Search">
-										<img class="btn-trigger" src="./images/video-bing-semantic-precise.jpg" alt="Tech Community" />
-									</button>
+**Note** we are updating our API support to get parity across all language binding and will update specifics here.
 
-								</div>
-								<div class="col-12 col-md-3 mb-4 mb-md-0">
-									<button class="resources-img text-center p-0 border-0" data-src="nRlnSy4Vbnc" aria-label="Scalable ML acceleration with ONNX Runtime">
-										<img class="btn-trigger" src="./images/video-scalable-ml.jpg" alt="Tech Community" />
-									</button>
-								</div>
+    `get_providers`: Return list of registered execution providers.
+    `get_provider_options`: Return the registered execution providers' configurations.
+    `set_providers`: Register the given list of execution providers. The underlying session is re-created. 
+        The list of providers is ordered by Priority. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
 
-								<div class="col-12 col-md-3">
-									<button class="resources-img text-center p-0 border-0" data-src="Ij5MoUnLQ0E" aria-label="ONNX and ONNX Runtime">
-										<img class="btn-trigger" src="./images/video-research-prod.png" alt="Open Source" />
-									</button>
-								
-								</div>
-							</div>
-						</div>
-					</section>
-					
-					
+### Use Execution Providers
 
-	            </div>
-			
-			</div>
-			<button type="button" class="btn btn-primary btn-modal d-none" data-toggle="modal" data-target="#myModal">
-				Open modal
-			  </button>
-			<!-- The Modal -->
-			<div class="modal" id="myModal" tabindex="-1" role="dialog" aria-labelledby="decriptionModal" aria-hidden="true">
-				<p id="decriptionModal" class="sr-only">Resource popup modal</p>
-				<div class="modal-dialog modal-lg">
-				<div class="modal-content">
-					<!-- Modal Header -->
-					<div class="modal-header p-0 border-0">
-						<button type="button" class="close" data-dismiss="modal" aria-label="close popup">&times;</button>
-					</div>
-					<!-- Modal body -->
-					<div class="modal-body pt-4 pb-2 px-2">
+``` python
+import onnxruntime as rt
 
-					</div>
-				</div>
-				</div>
-			</div>
-        </div>
-    </div>
-    <!-- Partial footer.html Start-->
-    <div w3-include-html="footer.html"></div>
-    <!-- Partial footer.html End-->
+#define the priority order for the execution providers
+# prefer CUDA Execution Provider over CPU Execution Provider
+EP_list = ['CUDAExecutionProvider', 'CPUExecutionProvider']
 
-    <a id="back-to-top" href="JavaScript:void(0);" class="btn btn-lg back-to-top" role="button" aria-label="Back to top"><span class="fa fa-angle-up"></span></a>
+# initialize the model.onnx
+sess = rt.InferenceSession("model.onnx", providers=EP_list)
 
-    <script src="https://www.w3schools.com/lib/w3.js"></script>
-    <script>w3.includeHTML();</script>
-    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
-    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
-    <script src="./js/custom.js?v1.6"></script>
-    <script src="./js/script.js?v1.6"></script>
+# get the outputs metadata as a list of :class:`onnxruntime.NodeArg`
+output_name = sess.get_outputs()[0].name
 
-</body>
+# get the inputs metadata as a list of :class:`onnxruntime.NodeArg`
+input_name = sess.get_inputs()[0].name
 
-</html>
+# inference run using image_data as the input to the model 
+detections = sess.run([output_name], {input_name: image_data})[0]
+
+print("Output shape:", detections.shape)
+
+# Process the image to mark the inference points 
+image = post.image_postprocess(original_image, input_size, detections)
+image = Image.fromarray(image)
+image.save("kite-with-objects.jpg")
+
+# Update EP priority to only CPUExecutionProvider
+sess.set_providers(['CPUExecutionProvider'])
+
+cpu_detection = sess.run(...)
+
+```
+
+
