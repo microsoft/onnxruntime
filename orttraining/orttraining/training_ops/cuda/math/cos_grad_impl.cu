@@ -44,7 +44,7 @@ struct OP_CosGrad : public CtxCosGrad {
 //   _CosGradImpl<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(dy, Y, output, N);
 // }
 
-// #define SPECIALIZE_COSGRAD_IMPL(T) \
+// #define SPECIALIZE_COSGRAD_IMPL(T) /
 //   template void CosGradImpl(cudaStream_t stream, const T* dy, const T* Y, T* output, size_t count);
 
 // SPECIALIZE_COSGRAD_IMPL(half)
