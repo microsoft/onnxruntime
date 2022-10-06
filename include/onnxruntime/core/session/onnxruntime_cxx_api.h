@@ -19,7 +19,7 @@
 //
 // UnownedXXXX are similar to ConstXXXX but also allow non-const interfaces.
 //
-// The life span of Const/UnownedXXX types must eclipse the lifespan of the owning C++ wrapper object. They exists so you do not
+// The lifetime of the corresponding owning object must eclipse the lifetimes of the ConstXXXX/UnownedXXXX types. They exists so you do not
 // have to fallback to C types and the API with the usual pitfalls. In general, do not use C API from your C++ code.
 
 #pragma once
@@ -251,8 +251,6 @@ struct Base {
 
   constexpr operator contained_type*() const noexcept { return p_; }
 
- protected:
-
   /// \brief Relinquishes ownership of the contained C object pointer
   /// The underlying object is not destroyed
   contained_type* release() {
@@ -261,6 +259,7 @@ struct Base {
     return p;
   }
 
+ protected:
   contained_type* p_{};
 };
 
@@ -329,9 +328,6 @@ using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
  *  constructors to construct an instance of a Status object from exceptions.
  */
 struct Status : detail::Base<OrtStatus> {
-  using B = Base<OrtStatus>;
-  // Special case when we want to return raw ptr through the C API boundary.
-  using B::release;
   
   explicit Status(std::nullptr_t) {}       ///< Create an empty object, must be assigned a valid one to be used
   explicit Status(OrtStatus* status);      ///< Takes ownership of OrtStatus instance returned from the C API. Must be non-null

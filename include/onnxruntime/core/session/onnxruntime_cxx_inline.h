@@ -1380,7 +1380,7 @@ inline Op Op::Create(const OrtKernelInfo* info, const char* op_name, const char*
                      size_t input_count, size_t output_count) {
   static_assert(sizeof(OpAttr) == sizeof(OrtOpAttr*),
                 "OpAttr's is expected to be just an array of OrtOpAttr in memory so we can reinterpret safely");
-  auto attr_input_values = reinterpret_cast<const OrtOpAttr**>(const_cast<OpAttr*>(attr_values));
+  auto attr_input_values = reinterpret_cast<const OrtOpAttr* const*>(attr_values);
   OrtOp* op;
   Ort::ThrowOnError(GetApi().CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values,
                                       static_cast<int>(type_constraint_count),
@@ -1398,7 +1398,7 @@ inline void Op::Invoke(const OrtKernelContext* context,
                        size_t output_count) {
   static_assert(sizeof(Value) == sizeof(OrtValue*),
                 "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
-  auto ort_input_values = reinterpret_cast<const OrtValue**>(const_cast<Value*>(input_values));
+  auto ort_input_values = reinterpret_cast<const OrtValue* const *>(input_values);
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
   Ort::ThrowOnError(GetApi().InvokeOp(context, p_, ort_input_values, static_cast<int>(input_count),
                                       ort_output_values, static_cast<int>(output_count)));
