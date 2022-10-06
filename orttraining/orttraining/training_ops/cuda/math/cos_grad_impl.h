@@ -9,15 +9,13 @@
 namespace onnxruntime {
 namespace cuda {
 
-typedef onnxruntime::cuda OP_CosGrad;
-
 #define BINARY_ELEMENTWISE_IMPL_DECLARATION() \
   template <typename T>                           \
   void Impl_CosGrad(cudaStream_t stream,           \
                    const T* lhs_data,             \
                    const T* rhs_data,             \
                    T* output_data,                \
-                   const OP_CosGrad* func_ctx,     \
+                   const CosGrad* func_ctx,     \
                    size_t count)
 
 BINARY_ELEMENTWISE_IMPL_DECLARATION();
