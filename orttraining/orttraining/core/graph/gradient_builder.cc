@@ -87,7 +87,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetCosGradient) {
   NodeDef minus_one_constant_node = MinusOneConstantNode(IElemType(0));
   ArgDef minus_one = minus_one_constant_node.output_args[0];
   result.push_back(minus_one_constant_node);
-  result.push_back(NodeDef("Sin", {GO(0), O(0)}, {IA("Sin_O0")}));
+  result.push_back(NodeDef("Sin", {I(0)}, {IA("Sin_O0")}));
   result.push_back(NodeDef("Mul", {minus_one, IA("Sin_O0")}, {GI(0)}));
   return result;
 }
