@@ -1507,7 +1507,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 
       void* cuda_stream;
       Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
-      cudaStream_t stream = static_cast<cudaStream_t>(stream);
+      cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
 
       // Load serialized engine
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
