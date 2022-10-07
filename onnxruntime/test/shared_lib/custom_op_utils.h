@@ -189,7 +189,7 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
 };
 
 struct StandaloneCustomKernel {
-  StandaloneCustomKernel(const OrtApi& ort, const OrtKernelInfo* info);
+  StandaloneCustomKernel(const OrtKernelInfo* info);
   ~StandaloneCustomKernel();
   void Compute(OrtKernelContext* context);
 
@@ -206,13 +206,12 @@ struct StandaloneCustomKernel {
   Ort::Op op_add_{nullptr};
   Ort::Op op_topk_{nullptr};
   Ort::Op op_gru_{nullptr};
-  const OrtApi& ort_;
 };
 
 struct StandaloneCustomOp : Ort::CustomOpBase<StandaloneCustomOp, StandaloneCustomKernel> {
   explicit StandaloneCustomOp(const char* provider) : provider_(provider) {}
 
-  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const { return new StandaloneCustomKernel(api, info); };
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new StandaloneCustomKernel(info); };
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
