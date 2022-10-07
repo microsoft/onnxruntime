@@ -281,9 +281,8 @@ auto const placeholder = tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>(nvinfe
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider, true}, info_(info), device_id_(info.device_id) {
-
   InitProviderOrtApi();
-  
+
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
   if (info.has_user_compute_stream) {
     external_stream_ = true;
@@ -1484,9 +1483,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     };
 
     // Create compute function
-    compute_info.compute_func = [this](FunctionState state, const OrtApi* /*api*/, OrtKernelContext* context) {
+    compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
-      
+
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
       const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
@@ -1506,7 +1505,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::unordered_set<std::string> input_names;
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
 
-      cudaStream_t stream = static_cast<cudaStream_t>(ort.KernelContext_GetGPUComputeStream(context));
+      void* cuda_stream;
+      Ort::ThrowOnError(api.KernelContext_GetGPUComputeStream(context, &cuda_stream));
+      cudaStream_t stream = static_cast<cudaStream_t>(stream);
 
       // Load serialized engine
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
