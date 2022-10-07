@@ -617,7 +617,7 @@ The output tensor has the same shape.
                 "tensor. The output tensor has the same rank as the input. ",
                 "T")
         .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"},
-                        "Constrain input and output types to singed/unsigned int8 tensors.")
+                        "Constrain input and output types to signed/unsigned int8 tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           // Type inference
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
