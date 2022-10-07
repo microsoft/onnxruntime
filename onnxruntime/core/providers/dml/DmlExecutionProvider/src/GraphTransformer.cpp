@@ -92,8 +92,7 @@ namespace Dml
 
             const auto& outputNode = *node.OutputNodesBegin();
 
-            // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
-            // which occurs in IExecutionProvider::GetCapability.
+            // Can't fuse if outputNode was not assigned to the DML by ORT during IExecutionProvider::GetCapability()
             if (!onnxruntime::graph_utils::IsSupportedProvider(outputNode, GetCompatibleExecutionProviders()))
             {
                 // Can't fuse nodes that don't belong to this execution provider

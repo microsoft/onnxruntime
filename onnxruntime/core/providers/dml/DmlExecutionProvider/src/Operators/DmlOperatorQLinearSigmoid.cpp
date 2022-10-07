@@ -6,7 +6,7 @@
 namespace Dml
 {
 // QLinearSigmoid = Dequantize + Sigmoid + Quantize
-// This kernel is the first usage of graph based implmentation
+// This kernel is the first usage of graph based implementation
 class DmlOperatorQLinearSigmoid : public DmlOperator
 {
     // This order matches the ONNX schema.
@@ -17,24 +17,21 @@ class DmlOperatorQLinearSigmoid : public DmlOperator
         X_zero_point,
         Y_scale,
         Y_zero_point,
+        Count,
     };
 
 public:
     DmlOperatorQLinearSigmoid(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
-        // 0th index corresponds to the intermediate edge in the graph
-        // 1st index corresponds to the actual operator output index
-        std::vector<std::optional<uint32_t>> kernelOutputIndices = {std::nullopt, 0};
-        DmlOperator::Initialize(kernelCreationContext, std::nullopt, kernelOutputIndices);
+        DmlOperator::Initialize(kernelCreationContext);
 
         std::vector<uint32_t> outputShape = kernelCreationContext.GetTensorShapeDescription().GetOutputTensorShape(0);
         const uint32_t outputShapeDimCount = gsl::narrow_cast<uint32_t>(outputShape.size());
 
         uint32_t axis = 0;
-
         // Explicitly reshape each of the inputs after the first input (scale and zero point tensors).
-        for (uint32_t index = 1, inputCount = gsl::narrow_cast<uint32_t>(m_inputTensorDescs.size()); index < inputCount; ++index)
+        for (uint32_t index = OnnxInputIndex::X_scale, inputCount = gsl::narrow_cast<uint32_t>(OnnxInputIndex::Count); index < inputCount; ++index)
         {
             auto edgeDesc = kernelCreationContext.GetInputEdgeDescription(index);
             assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
@@ -69,10 +66,9 @@ public:
             );
         }
 
-        // Overwrite the 0th output tensor desc which will be used as
         //  1. output edge between Dequantize and Sigmoid node
         //  2. input edge between Sigmoid and Quantize node
-        m_outputTensorDescs[0] = TensorDesc(
+        TensorDesc intermediateOutputTensorDesc = TensorDesc(
                 MLOperatorTensorDataType::Float,
                 gsl::make_span(outputShape),
                 gsl::make_span(outputShape),
@@ -90,7 +86,7 @@ public:
         dequantizeOperatorDesc.InputTensor = &inputDescs[OnnxInputIndex::X];
         dequantizeOperatorDesc.ScaleTensor = &inputDescs[OnnxInputIndex::X_scale];
         dequantizeOperatorDesc.ZeroPointTensor = &inputDescs[OnnxInputIndex::X_zero_point];
-        dequantizeOperatorDesc.OutputTensor = &outputDescs[0];
+        dequantizeOperatorDesc.OutputTensor = &intermediateOutputTensorDesc.GetDmlDesc();
         
         const DML_OPERATOR_DESC opDesc1{DML_OPERATOR_ELEMENT_WISE_DEQUANTIZE_LINEAR, &dequantizeOperatorDesc};
 
@@ -103,7 +99,7 @@ public:
         quantizeOperatorDesc.InputTensor = sigmoidOperatorDesc.OutputTensor;
         quantizeOperatorDesc.ScaleTensor = &inputDescs[OnnxInputIndex::Y_scale];
         quantizeOperatorDesc.ZeroPointTensor = &inputDescs[OnnxInputIndex::Y_zero_point];
-        quantizeOperatorDesc.OutputTensor = &outputDescs[1];
+        quantizeOperatorDesc.OutputTensor = &outputDescs[0];
         const DML_OPERATOR_DESC opDesc3{DML_OPERATOR_ELEMENT_WISE_QUANTIZE_LINEAR, &quantizeOperatorDesc};
 
         MLOperatorGraphDesc operatorGraphDesc = {};
@@ -113,17 +109,14 @@ public:
 
         // set input edges
         std::pair<uint32_t, uint32_t> nodeToNodeInputIndex[5] {{0, 0}, {0, 1}, {0, 2}, {2, 1}, {2, 2}};
-        std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
-        for (uint32_t inputIndex = 0; inputIndex < m_kernelInputIndices.size(); inputIndex++)
+        std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges(OnnxInputIndex::Count);
+        for (uint32_t inputIndex = 0; inputIndex < OnnxInputIndex::Count; inputIndex++)
         {
-            if (m_kernelInputIndices[inputIndex].has_value()) 
-            {
-                DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
-                inputEdge.GraphInputIndex = *m_kernelInputIndices[inputIndex];
-                inputEdge.ToNodeIndex = nodeToNodeInputIndex[inputIndex].first;
-                inputEdge.ToNodeInputIndex = nodeToNodeInputIndex[inputIndex].second;
-                inputEdges.push_back(inputEdge);
-            }
+            DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
+            inputEdge.GraphInputIndex = inputIndex; // OnnxInputIndex and DmlInputIndex are identity for QLinearSigmoid
+            inputEdge.ToNodeIndex = nodeToNodeInputIndex[inputIndex].first;
+            inputEdge.ToNodeInputIndex = nodeToNodeInputIndex[inputIndex].second;
+            inputEdges[inputIndex] = inputEdge;
         }
         operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
         operatorGraphDesc.inputEdges = inputEdges.data();
@@ -153,12 +146,12 @@ public:
         DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
         outputEdge.FromNodeIndex = 2;
         outputEdge.FromNodeOutputIndex = 0;
-        outputEdge.GraphOutputIndex = *m_kernelOutputIndices[1];
+        outputEdge.GraphOutputIndex = 0;
         outputEdges.push_back(outputEdge);
         operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
         operatorGraphDesc.outputEdges = outputEdges.data();
 
-        SetDmlOperatorDesc(operatorGraphDesc, kernelCreationContext);
+        SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
     }
 };
 

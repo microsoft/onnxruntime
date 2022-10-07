@@ -105,7 +105,7 @@ namespace DmlGraphFusionHelper
 
     void ProcessInputData(
         const ExecutionProviderImpl* providerImpl,
-        const std::vector<uint8_t>& inputsConstant,
+        const std::vector<uint8_t>& isInputsConstant,
         std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges,
         const gsl::span<const std::string> subGraphInputArgNames,
         const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
@@ -143,7 +143,6 @@ namespace DmlGraphFusionHelper
             // initialization or execution). So just throw away the transferred initializer and skip this input.
             if (!inputsUsed[i])
             {
-                //transferredInitializerMap.erase(subGraphInputArgNames[i]);
                 auto iter = isInitializerTransferable.find(subGraphInputArgNames[i]);
                 if(iter != isInitializerTransferable.end() && iter->second.second)
                 {
@@ -178,7 +177,16 @@ namespace DmlGraphFusionHelper
                 else
                 {
                     std::tie(unpackedTensor, tensorByteSize) = Windows::AI::MachineLearning::Adapter::UnpackTensor(*initializer);
-                    tensorPtr = unpackedTensor.get(); 
+                    tensorPtr = unpackedTensor.get();
+
+                    // Free the initializer if this is the last usage of it.
+                    if (initializerToLastInputIndexMap[initializer] == i)
+                    {
+                        if (iter->second.second)
+                        {
+                            graph.RemoveInitializedTensor(subGraphInputArgNames[i]);
+                        }
+                    }
                 }
 
                 // Tensor sizes in DML must be a multiple of 4 bytes large.
@@ -189,7 +197,7 @@ namespace DmlGraphFusionHelper
                     inputRawData->push_back(std::vector<std::byte>(tensorPtr, tensorPtr + tensorByteSize));
                 }
 
-                if (!inputsConstant[i])
+                if (!isInputsConstant[i])
                 {
                     // Store the resource to use during execution
                     ComPtr<ID3D12Resource> defaultBuffer = CreateResource(providerImpl, tensorPtr, tensorByteSize);
@@ -219,7 +227,6 @@ namespace DmlGraphFusionHelper
                 // Free the initializer if this is the last usage of it.
                 if (initializerToLastInputIndexMap[initializer] == i)
                 {
-                    //transferredInitializerMap.erase(iter);
                     if (iter->second.second)
                     {
                         graph.RemoveInitializedTensor(subGraphInputArgNames[i]);
@@ -321,18 +328,18 @@ namespace DmlGraphFusionHelper
         const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->inputs.size());
         const uint32_t fusedNodeOutputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->outputs.size());
 
-        std::vector<uint8_t> inputsConstant(fusedNodeInputCount);
+        std::vector<uint8_t> isInputsConstant(fusedNodeInputCount);
         for (uint32_t index = 0; index < fusedNodeInputCount; ++index)
         {
             auto iter = isInitializerTransferable.find(indexedSubGraph.GetMetaDef()->inputs[index]);
-            inputsConstant[index] = iter != isInitializerTransferable.end() ? true : false;
+            isInputsConstant[index] = iter != isInitializerTransferable.end() ? true : false;
         }
 
         ComPtr<IDMLDevice> device;
         ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
         GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
-            inputsConstant.data(),
-            inputsConstant.size(),
+            isInputsConstant.data(),
+            isInputsConstant.size(),
             isInitializerTransferable,
             graph,
             indexedSubGraph,
@@ -387,7 +394,7 @@ namespace DmlGraphFusionHelper
         std::vector<bool> inputsUsed;
         ProcessInputData(
             providerImpl,
-            inputsConstant,
+            isInputsConstant,
             graphDesc.inputEdges,
             indexedSubGraph.GetMetaDef()->inputs,
             isInitializerTransferable,
@@ -409,7 +416,7 @@ namespace DmlGraphFusionHelper
                                   nonOwnedGraphInputsFromInitializers,
                                   initializeResourceRefs,
                                   initInputBindings,
-                                  inputsConstant,
+                                  isInputsConstant,
                                   inputsUsed]
                     (onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
         {
@@ -420,7 +427,7 @@ namespace DmlGraphFusionHelper
                                              nonOwnedGraphInputsFromInitializers,
                                              initializeResourceRefs,
                                              initInputBindings,
-                                             inputsConstant,
+                                             isInputsConstant,
                                              inputsUsed));
             return Status::OK();
         };

@@ -24,11 +24,6 @@ namespace Dml
         std::vector<TensorDesc> m_inputTensorDescs;
         std::vector<TensorDesc> m_outputTensorDescs;
 
-        // For each input or output of the DML kernel, the corresponding input or output of the original
-        // kernel.  Entries for unused DML inputs are nullopt.
-        std::vector<std::optional<uint32_t>> m_kernelInputIndices;
-        std::vector<std::optional<uint32_t>> m_kernelOutputIndices;
-
         ComPtr<IDMLCompiledOperator> m_compiledOperator;
         ComPtr<ID3D12Resource> m_persistentResource;
         ComPtr<IUnknown> m_persistentResourcePoolingUnk; // Controls when the persistent resource is returned to the pool
@@ -72,8 +67,8 @@ namespace Dml
         // To make it work without DML_GRAPH, we need to add new functionality 
         // in DMLX i.e. DMLX should also give access to DML_OPERATOR_DESC 
         // rather than IDMLOperator.
-        void SetDmlOperatorDesc(
-            const MLOperatorGraphDesc& operatorGraphDesc,
+        void SetDmlOperatorGraphDesc(
+            const MLOperatorGraphDesc&& operatorGraphDesc,
             const MLOperatorKernelCreationContext& kernelInfo
             );
 
@@ -130,6 +125,21 @@ namespace Dml
             std::optional<gsl::span<const uint32_t>> tensorShape = std::nullopt,
             uint32_t minDimensionCount = NchwDimensionCount
             ) const;
+
+    private:
+        // For each input or output of the DML kernel, the corresponding input or output of the original
+        // kernel.  Entries for unused DML inputs are nullopt.
+        std::vector<std::optional<uint32_t>> m_kernelInputIndices;
+        std::vector<std::optional<uint32_t>> m_kernelOutputIndices;
+
+        void ConvertToDmlGraphDesc(const MLOperatorGraphDesc& operatorGraphDesc,
+                                   _Out_ DML_GRAPH_DESC& graphDesc,
+                                   _Inout_ std::vector<ComPtr<IDMLOperator>>& dmlOperators,
+                                   _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
+                                   _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
+                                   _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
+                                   _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
+                                   _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
         
     };
 

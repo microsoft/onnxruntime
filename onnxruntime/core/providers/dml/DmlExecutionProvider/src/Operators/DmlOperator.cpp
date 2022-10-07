@@ -111,8 +111,8 @@ namespace Dml
         }
     }
 
-    void DmlOperator::SetDmlOperatorDesc(
-        const MLOperatorGraphDesc& operatorGraphDesc,
+    void DmlOperator::SetDmlOperatorGraphDesc(
+        const MLOperatorGraphDesc&& operatorGraphDesc,
         const MLOperatorKernelCreationContext& kernelInfo
         )
     {
@@ -139,8 +139,55 @@ namespace Dml
 
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
         ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
-        assert(contextPrivate->IsDmlGraphNode());
-        ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(&operatorGraphDesc));
+        if (contextPrivate->IsDmlGraphNode())
+        {
+            ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(&operatorGraphDesc));
+        }
+        else
+        {
+            DML_GRAPH_DESC graphDesc = {};
+            std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes(operatorGraphDesc.nodeCount);
+            std::vector<ComPtr<IDMLOperator>> dmlOperators(operatorGraphDesc.nodeCount);
+            std::vector<DML_OPERATOR_GRAPH_NODE_DESC> dmlOperatorGraphNodes(operatorGraphDesc.nodeCount);
+            std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(operatorGraphDesc.inputEdgeCount);
+            std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(operatorGraphDesc.outputEdgeCount);
+            std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(operatorGraphDesc.intermediateEdgeCount);
+            
+            // DML Graph validator will check the validity of the graph. No need to check here.
+            ConvertToDmlGraphDesc(operatorGraphDesc,
+                                  graphDesc,
+                                  dmlOperators,
+                                  dmlOperatorGraphNodes,
+                                  dmlGraphNodes,
+                                  dmlInputEdges,
+                                  dmlOutputEdges,
+                                  dmlIntermediateEdges);
+
+            // compile the graph and create IDMLCompiledOperator
+            Microsoft::WRL::ComPtr<IDMLDevice1> dmlDevice1;
+            DMLX_THROW_IF_FAILED(m_dmlDevice->QueryInterface(IID_PPV_ARGS(&dmlDevice1)));
+            DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
+            ORT_THROW_IF_FAILED(dmlDevice1->CompileGraph(&graphDesc, executionFlags, IID_PPV_ARGS(&m_compiledOperator)));
+
+            UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
+            if (persistentResourceSize > 0)
+            {
+                ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
+                    static_cast<size_t>(persistentResourceSize),
+                    AllocatorRoundingMode::Enabled,
+                    m_persistentResource.GetAddressOf(),
+                    m_persistentResourcePoolingUnk.GetAddressOf()));
+
+                m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
+            }
+
+            std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
+
+            ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
+                m_compiledOperator.Get(),
+                m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
+                gsl::make_span(initializationInputBindings)));
+        }
     }
 
     void DmlOperator::SetDmlOperatorDesc(
@@ -626,6 +673,54 @@ namespace Dml
             minDimensionCount,
             0
             );
+    }
+
+    void DmlOperator::ConvertToDmlGraphDesc(const MLOperatorGraphDesc& operatorGraphDesc,
+                                            _Out_ DML_GRAPH_DESC& graphDesc,
+                                            _Inout_ std::vector<ComPtr<IDMLOperator>>& dmlOperators,
+                                            _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
+                                            _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
+                                            _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
+                                            _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
+                                            _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges)
+    {
+        graphDesc.InputCount = gsl::narrow_cast<uint32_t>(m_kernelInputIndices.size());
+        graphDesc.OutputCount = gsl::narrow_cast<uint32_t>(m_kernelOutputIndices.size());
+
+        // set the graph nodes
+        graphDesc.NodeCount = operatorGraphDesc.nodeCount;
+        for (size_t i = 0; i < graphDesc.NodeCount; ++i)
+        {
+            // Create the operator.
+            ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(operatorGraphDesc.nodesAsOpDesc[i], IID_PPV_ARGS(&dmlOperators[i])));
+            dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{dmlOperators[i].Get()};
+            dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
+        }
+        graphDesc.Nodes = dmlGraphNodes.data();
+
+        // set the input edges
+        graphDesc.InputEdgeCount = operatorGraphDesc.inputEdgeCount;
+        for (size_t i = 0; i < operatorGraphDesc.inputEdgeCount; ++i)
+        {
+            dmlInputEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INPUT, &operatorGraphDesc.inputEdges[i]};
+        }
+        graphDesc.InputEdges = dmlInputEdges.data();
+
+        // set the output edges
+        graphDesc.OutputEdgeCount = operatorGraphDesc.outputEdgeCount;
+        for (size_t i = 0; i < operatorGraphDesc.outputEdgeCount; ++i)
+        {
+            dmlOutputEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_OUTPUT, &operatorGraphDesc.outputEdges[i]};
+        }
+        graphDesc.OutputEdges = dmlOutputEdges.data();
+            
+        // set the intermediate edges
+        graphDesc.IntermediateEdgeCount = operatorGraphDesc.intermediateEdgeCount;
+        for (size_t i = 0; i < operatorGraphDesc.intermediateEdgeCount; ++i)
+        {
+            dmlIntermediateEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INTERMEDIATE, &operatorGraphDesc.intermediateEdges[i]};
+        }
+        graphDesc.IntermediateEdges = dmlIntermediateEdges.data();
     }
 
 } // namespace Dml
