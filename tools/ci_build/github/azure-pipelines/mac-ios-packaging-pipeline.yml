@@ -1,6 +1,6 @@
 parameters:
 - name: BuildType
-  displayName: |
+  displayName: |-
     Type of build.
     "release": A release build to be published for an official ONNX Runtime release.
     "prerelease": A pre-release build to be published for validation prior to release.
