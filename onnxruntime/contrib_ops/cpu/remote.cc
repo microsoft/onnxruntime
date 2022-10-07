@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "curl/curl.h"
+//#include "curl/curl.h"
 #include "remote.h"
 #include "core/framework/tensorprotoutils.h"
 
@@ -16,6 +16,7 @@ ONNX_OPERATOR_KERNEL_EX(
     KernelDefBuilder(),
     RemoteCall);
 
+/*
 struct RecvData {
   char* recv_data = {};
   size_t recv_size = {};
@@ -27,7 +28,7 @@ static size_t RecvCallback(void* data, size_t size, size_t nmemb, void* userp) {
 
   char* ptr = (char*)realloc(recv_data->recv_data, recv_data->recv_size + realsize + 1);
   if (ptr == NULL) {
-    return 0; /* out of memory! */
+    return 0;
   }
 
   recv_data->recv_data = ptr;
@@ -60,7 +61,7 @@ static size_t SendCallback(char* dest, size_t size, size_t nmemb, void* userp) {
   return 0;
 }
 
-void InvokeHttpEndPoint(const char* uri, const char* /*key*/, const char* input, size_t input_len, void** output, size_t& output_len) {
+void InvokeHttpEndPoint(const char* uri, const char*, const char* input, size_t input_len, void** output, size_t& output_len) {
   CURL* curl = {};
   CURLcode res = {};
   SendData sd;
@@ -94,46 +95,6 @@ void InvokeHttpEndPoint(const char* uri, const char* /*key*/, const char* input,
   }
 }
 
-/*
-void InvokeHttpEndPoint(const char* uri, const char* key, const char* input, size_t input_len, void** output, size_t& output_len) {
-  CURL* curl = {};
-  CURLcode res = {};
-  curl_mime* form = {};
-  curl_mimepart* field = {};
-  curl = curl_easy_init();
-  if (curl) {
-    curl_easy_setopt(curl, CURLOPT_VERBOSE, 0L);
-    curl_easy_setopt(curl, CURLOPT_URL, uri);
-    curl_easy_setopt(curl, CURLOPT_XOAUTH2_BEARER, key);
-    curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_BEARER);
-
-    form = curl_mime_init(curl);
-
-    // Fill in the file upload field 
-    field = curl_mime_addpart(form);
-    curl_mime_name(field, "data");
-    curl_mime_filename(field, "data");
-    curl_mime_data(field, input, input_len);
-    curl_mime_type(field, "application/octet-stream");
-
-    curl_easy_setopt(curl, CURLOPT_MIMEPOST, form);
-
-    struct memory chunk;
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, cb);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&chunk);
-    res = curl_easy_perform(curl);
-    if (res != CURLE_OK) {
-      throw std::runtime_error(curl_easy_strerror(res));
-    } else {
-      *output = chunk.response;
-      output_len = chunk.size;
-    }
-    curl_easy_cleanup(curl);
-  } else {
-    throw std::runtime_error("Failed to initialize http client for AML EP.");
-  }
-}*/
-
 common::Status RemoteCall::Compute(OpKernelContext* context) const {
   std::string input_string;
   for (int i = 0; i < context->InputCount(); i++) {
@@ -163,6 +124,10 @@ common::Status RemoteCall::Compute(OpKernelContext* context) const {
   }
   output_len = 0;
   free(output);
+  return common::Status::OK();
+}*/
+
+common::Status RemoteCall::Compute(OpKernelContext*) const {
   return common::Status::OK();
 }
 

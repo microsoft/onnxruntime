@@ -1,10 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "curl/curl.h"
+//#include "curl/curl.h"
 #include "remote_call.h"
 #include "core/framework/tensorprotoutils.h"
 #include "azure_execution_provider.h"
+#include "http_client.h"
+
+namespace tc = triton::client;
 
 namespace onnxruntime {
 
@@ -18,6 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 namespace azure {
 
+/*
 struct RecvData {
   char* recv_data = {};
   size_t recv_size = {};
@@ -29,7 +33,7 @@ static size_t RecvCallback(void* data, size_t size, size_t nmemb, void* userp) {
 
   char* ptr = (char*)realloc(recv_data->recv_data, recv_data->recv_size + realsize + 1);
   if (ptr == NULL) {
-    return 0; /* out of memory! */
+    return 0;
   }
 
   recv_data->recv_data = ptr;
@@ -62,7 +66,7 @@ static size_t SendCallback(char* dest, size_t size, size_t nmemb, void* userp) {
   return 0;
 }
 
-void InvokeHttpEndPoint(const char* uri, const char* /*key*/, const char* input, size_t input_len, void** output, size_t& output_len) {
+void InvokeHttpEndPoint(const char* uri, const char*, const char* input, size_t input_len, void** output, size_t& output_len) {
   CURL* curl = {};
   CURLcode res = {};
   SendData sd;
@@ -134,6 +138,76 @@ common::Status RemoteCall::Compute(OpKernelContext* context) const {
   }
   output_len = 0;
   free(output);
+  return common::Status::OK();
+}*/
+
+common::Status RemoteCall::Compute(OpKernelContext* context) const {
+  std::vector<std::unique_ptr<tc::InferInput>> triton_inputs;
+  std::vector<tc::InferInput*> triton_raw_inputs;
+  for (int i = 0; i < context->InputCount(); i++) {
+    //todo - replace ORT_ENFORCE to allow for failures here?
+    ORT_ENFORCE(i < input_names_.size(), "Invalid input index");
+    const auto* input_value = context->GetInputOrtValue(i);
+    ORT_ENFORCE(input_value->IsTensor(), "Remote call only support tensor for now");
+    const auto& input_tensor = input_value->Get<Tensor>();
+    const auto& input_dims = input_tensor.Shape().GetDims();
+    tc::InferInput* triton_input = {};
+    ORT_ENFORCE(tc::InferInput::Create(&triton_input, input_names_[i], {input_dims.begin(), input_dims.end()}, "FLOAT32").IsOk(),
+                "Failed to construct triton input for tenstor: ", input_names_[i]);
+    triton_inputs.emplace_back(triton_input);
+    triton_raw_inputs.emplace_back(triton_input);
+    triton_input->AppendRaw(static_cast<const uint8_t*>(input_tensor.DataRaw()), input_tensor.SizeInBytes());
+  }
+
+  tc::HttpSslOptions ssl_options;
+ /* ssl_options.verify_peer = verify_peer;
+  ssl_options.verify_host = verify_host;
+  ssl_options.ca_info = cacerts;
+  ssl_options.cert = certfile;
+  ssl_options.key = keyfile;*/
+  // Create a InferenceServerHttpClient instance to communicate with the
+  // server using HTTP protocol.
+  auto azure_ep = static_cast<const AzureExecutionProvider*>(this->Info().GetExecutionProvider());
+  std::unique_ptr<tc::InferenceServerHttpClient> client;
+  ORT_ENFORCE(tc::InferenceServerHttpClient::Create(&client,
+                                                    azure_ep->info.end_point,
+                                                    /*verbose*/ false,
+                                                    ssl_options)
+                  .IsOk(),
+              "unable to create triton http client");
+
+  tc::Headers http_headers;
+  http_headers["Authorization"] = std::string{"Bearer "} + azure_ep->info.access_token;
+  std::vector<const tc::InferRequestedOutput*> outputs = {};
+  tc::InferResult* results;
+  tc::InferOptions options("model7"); //todo - this has to be configurable
+  options.model_version_ = "1";//todo - this has to be configurable
+  options.client_timeout_ = 8192;
+  auto request_compression_algorithm = tc::InferenceServerHttpClient::CompressionType::NONE;
+  auto response_compression_algorithm = tc::InferenceServerHttpClient::CompressionType::NONE;
+
+  ORT_ENFORCE(client->Infer(&results, options, triton_raw_inputs, outputs, http_headers, tc::Parameters(),
+                            request_compression_algorithm, response_compression_algorithm)
+                  .IsOk(),
+              "unable to call triton server");
+
+  std::unique_ptr<tc::InferResult> results_ptr{results};
+  int output_index = 0;
+  for (const auto& output_name : output_names_) {
+    std::vector<int64_t> output_shape;
+    ORT_ENFORCE(results_ptr->Shape(output_name, &output_shape).IsOk(), "failed to fetch output shape for: ", output_name);
+    auto* output_tensor = context->Output(output_index++, output_shape);
+    uint8_t* output_raw_data{};
+    size_t output_raw_data_byte_size{};
+    ORT_ENFORCE(
+        results_ptr->RawData(
+                       output_name.c_str(),
+                       (const uint8_t**)(&output_raw_data),
+                       &output_raw_data_byte_size)
+            .IsOk(),
+        "unable to get result data for: ", output_name);
+    memcpy(output_tensor->MutableDataRaw(), output_raw_data, output_raw_data_byte_size);
+  }
   return common::Status::OK();
 }
 

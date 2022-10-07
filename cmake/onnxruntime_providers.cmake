@@ -250,9 +250,26 @@ endif()
 
 onnxruntime_add_static_library(onnxruntime_providers ${onnxruntime_providers_src})
 
-add_subdirectory(external/curl)
-target_include_directories(onnxruntime_providers PRIVATE external/curl/include)
-target_link_libraries(onnxruntime_providers PRIVATE libcurl)
+#add_subdirectory(external/curl)
+#target_include_directories(onnxruntime_providers PRIVATE external/curl/include)
+#target_link_libraries(onnxruntime_providers PRIVATE libcurl)
+
+#add_dependencies(onnxruntime_providers tritonclient)
+#include_directories(${PROJECT_SOURCE_DIR}/external/triton_client)
+#target_include_directories(onnxruntime_providers PRIVATE external/triton_client)
+#target_link_libraries(onnxruntime_providers PRIVATE tritonclient)
+
+option(RAPIDJSON_BUILD_DOC OFF)
+option(RAPIDJSON_BUILD_EXAMPLES OFF)
+option(RAPIDJSON_BUILD_TESTS OFF)
+option(RAPIDJSON_BUILD_THIRDPARTY_GTEST OFF)
+option(RAPIDJSON_ENABLE_INSTRUMENTATION_OPT OFF)
+add_subdirectory(external/rapidjson)
+
+option(TRITON_ENABLE_CC_HTTP ON)
+add_subdirectory(external/triton_client)
+target_include_directories(onnxruntime_providers PRIVATE external/triton_client/src/c++/library)
+#target_link_libraries(onnxruntime_providers PRIVATE httpclient_static)
 
 if (onnxruntime_REDUCED_OPS_BUILD)
   add_op_reduction_include_dirs(onnxruntime_providers)

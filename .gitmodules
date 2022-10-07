@@ -81,3 +81,9 @@
 [submodule "cmake/external/curl"]
 	path = cmake/external/curl
 	url = https://github.com/curl/curl.git
+[submodule "cmake/external/triton_client"]
+	path = cmake/external/triton_client
+	url = https://github.com/triton-inference-server/client.git
+[submodule "cmake/external/rapidjson"]
+	path = cmake/external/rapidjson
+	url = https://github.com/Tencent/rapidjson/
