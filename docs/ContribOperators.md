@@ -1839,7 +1839,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.LongformerAttention"></a><a name="com.microsoft.longformerattention">**com.microsoft.LongformerAttention**</a>
 
   Longformer Self Attention with a local context and a global context. Tokens attend locally: Each token
-  attends to its W previous tokens and W succeding tokens with W being the window length. A selected few tokens
+  attends to its W previous tokens and W succeeding tokens with W being the window length. A selected few tokens
   attend globally to all other tokens.
   
   The attention mask is of shape (batch_size, sequence_length), where sequence_length is a multiple of 2W after padding.
@@ -2723,7 +2723,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
-<dd>Constrain input and output types to singed/unsigned int8 tensors.</dd>
+<dd>Constrain input and output types to signed/unsigned int8 tensors.</dd>
 </dl>
 
 
@@ -2965,7 +2965,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
-<dd>Constrain input and output types to singed/unsigned int8 tensors.</dd>
+<dd>Constrain input and output types to signed/unsigned int8 tensors.</dd>
 </dl>
 
 
@@ -4002,9 +4002,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>char_embedding_size</tt> : int</dt>
 <dd>Integer representing the embedding vector size for each char.If not provide, use the char embedding size of embedding vector.</dd>
 <dt><tt>conv_window_size</tt> : int</dt>
-<dd>This operator applies convolution to word from left to right with window equal to conv_window_size and stride to 1.Take word 'example' for example, with conv_window_size equal to 2, conv is applied to [ex],[xa], [am], [mp]...If not provide, use the first dimension of conv kernal shape.</dd>
+<dd>This operator applies convolution to word from left to right with window equal to conv_window_size and stride to 1.Take word 'example' for example, with conv_window_size equal to 2, conv is applied to [ex],[xa], [am], [mp]...If not provide, use the first dimension of conv kernel shape.</dd>
 <dt><tt>embedding_size</tt> : int</dt>
-<dd>Integer representing the embedding vector size for each word.If not provide, use the fileter size of conv weight</dd>
+<dd>Integer representing the embedding vector size for each word.If not provide, use the filter size of conv weight</dd>
 </dl>
 
 #### Inputs

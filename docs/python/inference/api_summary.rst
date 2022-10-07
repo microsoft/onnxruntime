@@ -265,7 +265,7 @@ Internal classes
 ----------------
 
 These classes cannot be instantiated by users but they are returned
-by methods or functions of this libary.
+by methods or functions of this library.
 
 ModelMetadata
 ^^^^^^^^^^^^^
