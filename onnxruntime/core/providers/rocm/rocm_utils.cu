@@ -39,13 +39,13 @@ class ConstantBufferImpl : public IConstantBuffer<T> {
   }
   ~ConstantBufferImpl() {
     if (buffer_)
-      hipFree(buffer_);
+      HIP_CALL_THROW(hipFree(buffer_));
   }
 
   virtual const T* GetBuffer(hipStream_t stream, size_t count) {
     if (count > count_) {
       if (buffer_) {
-        hipFree(buffer_);
+        HIP_CALL_THROW(hipFree(buffer_));
         buffer_ = nullptr;
       }
       HIP_CALL_THROW(hipMalloc(&buffer_, count * sizeof(T)));
