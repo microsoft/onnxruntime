@@ -1,5 +1,5 @@
 #pragma once
-#include "core/common/inlined_containers.h"
+#include "core/common/inlined_containers_fwd.h"
 
 namespace onnxruntime {
 
