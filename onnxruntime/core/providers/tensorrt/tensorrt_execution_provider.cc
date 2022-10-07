@@ -1506,7 +1506,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
 
       void* cuda_stream;
-      Ort::ThrowOnError(api.KernelContext_GetGPUComputeStream(context, &cuda_stream));
+      Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
       cudaStream_t stream = static_cast<cudaStream_t>(stream);
 
       // Load serialized engine
