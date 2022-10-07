@@ -279,16 +279,8 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
     // Re-organize optimizer_state_ort_values mapping
     // Firstly indexed by momentum names; Secondly indexed by parameter names.
     InlinedHashMap<std::string, std::unordered_map<std::string, OrtValue>> optimizer_state_ort_values;
-    for (const std::pair<std::string, ParameterOptimizerState>&
-             param_named_optimizer_state : group_optimizer_state_ptr->param_named_optimizer_states) {
-      const std::string& param_name = param_named_optimizer_state.first;
-      const auto& param_optimizer_state = param_named_optimizer_state.second;
-
-      for (const std::pair<std::string, OrtValue>&
-               momentum_named_state : param_optimizer_state.momentum_named_states) {
-        const std::string& momentum_name = momentum_named_state.first;
-        const OrtValue& m_state_val = momentum_named_state.second;
-
+    for (const auto& [param_name, param_optimizer_state] : group_optimizer_state_ptr->param_named_optimizer_states) {
+      for (const auto& [momentum_name, m_state_val] : param_optimizer_state.momentum_named_states) {
         if (optimizer_state_ort_values.find(momentum_name) == optimizer_state_ort_values.end()) {
           std::unordered_map<std::string, OrtValue> param_name_to_ortvalue{{param_name, m_state_val}};
           optimizer_state_ort_values.insert({momentum_name, param_name_to_ortvalue});

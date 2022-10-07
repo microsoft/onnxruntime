@@ -38,9 +38,9 @@ inline DLDataType GetDataTypeFromProto() {
   return {kDLFloat, 32, 1};
 }
 
-inline DLDevice GetDLDevice(const OrtDevice& device) {
+inline DLDevice GetDLDevice(OrtMemoryInfoDeviceType device_type) {
   DLDevice context;
-  switch (device.Type()) {
+  switch (device_type) {
     case OrtDevice::CPU:
       context = {kDLCPU, 0};
       break;
