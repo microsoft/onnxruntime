@@ -4,7 +4,7 @@
 // This file contains the training c apis.
 
 #pragma once
-#include "core/session/onnxruntime_c_api.h"
+#include "onnxruntime_c_api.h"
 
 ORT_RUNTIME_CLASS(TrainingSession);  /// Type that enables performing training for the given user models.
 ORT_RUNTIME_CLASS(CheckpointState);  /// Type that holds the training states for the training session.
@@ -267,7 +267,7 @@ struct OrtTrainingApi {
   * The parameters_buffer has to be of the size given by GetParametersSize api call,
   * with matching setting for 'trainable_only'. All the target parameters must be of the same
   * datatype. This is a complementary function to 'CopyBufferToParameters'
-  * and can be used to load updated buffer values onto the parameters. 
+  * and can be used to load updated buffer values onto the parameters.
   * Parameter ordering is preserved.
   * User is responsible for allocating/freeing the 'parameters_buffer'.
   *
