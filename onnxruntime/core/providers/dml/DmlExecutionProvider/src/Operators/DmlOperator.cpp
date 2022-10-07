@@ -55,7 +55,7 @@ namespace Dml
             std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
             for (uint32_t inputIndex = 0; inputIndex < m_kernelInputIndices.size(); inputIndex++)
             {
-                if (m_kernelInputIndices[inputIndex].has_value()) 
+                if (m_kernelInputIndices[inputIndex].has_value())
                 {
                     DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
                     inputEdge.GraphInputIndex = *m_kernelInputIndices[inputIndex];
@@ -67,11 +67,11 @@ namespace Dml
             operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
             operatorGraphDesc.inputEdges = inputEdges.data();
 
-            
+
             std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
             for (uint32_t outputIndex = 0; outputIndex < m_kernelOutputIndices.size(); outputIndex++)
             {
-                if (m_kernelOutputIndices[outputIndex].has_value()) 
+                if (m_kernelOutputIndices[outputIndex].has_value())
                 {
                     DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
                     outputEdge.FromNodeIndex = 0;
@@ -137,6 +137,26 @@ namespace Dml
             }
         }
 
+        // graphInputIndices and m_kernelInputIndices should be identity
+        for (uint32_t idx = 0; idx < operatorGraphDesc.inputEdgeCount; idx++)
+        {
+            if (m_kernelInputIndices[idx] == std::nullopt || !kernelInfo.IsInputValid(*m_kernelInputIndices[idx]))
+            {
+                continue;
+            }
+            assert(m_kernelInputIndices[idx] == operatorGraphDesc.inputEdges[idx].GraphInputIndex);
+        }
+
+        // graphOutputIndices and m_kernelOutputIndices should be identity
+        for (uint32_t idx = 0; idx < operatorGraphDesc.outputEdgeCount; idx++)
+        {
+            if (m_kernelOutputIndices[idx] == std::nullopt || !kernelInfo.IsOutputValid(*m_kernelOutputIndices[idx]))
+            {
+                continue;
+            }
+            assert(m_kernelOutputIndices[idx] == operatorGraphDesc.outputEdges[idx].GraphOutputIndex);
+        }
+
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
         ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
         if (contextPrivate->IsDmlGraphNode())
@@ -152,7 +172,7 @@ namespace Dml
             std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(operatorGraphDesc.inputEdgeCount);
             std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(operatorGraphDesc.outputEdgeCount);
             std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(operatorGraphDesc.intermediateEdgeCount);
-            
+
             // DML Graph validator will check the validity of the graph. No need to check here.
             ConvertToDmlGraphDesc(operatorGraphDesc,
                                   graphDesc,
@@ -713,7 +733,7 @@ namespace Dml
             dmlOutputEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_OUTPUT, &operatorGraphDesc.outputEdges[i]};
         }
         graphDesc.OutputEdges = dmlOutputEdges.data();
-            
+
         // set the intermediate edges
         graphDesc.IntermediateEdgeCount = operatorGraphDesc.intermediateEdgeCount;
         for (size_t i = 0; i < operatorGraphDesc.intermediateEdgeCount; ++i)

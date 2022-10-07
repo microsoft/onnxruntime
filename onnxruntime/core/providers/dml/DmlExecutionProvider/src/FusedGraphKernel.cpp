@@ -24,13 +24,13 @@ namespace Dml
             std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
             std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
             std::vector<DML_BUFFER_BINDING> initInputBindings,
-            std::vector<uint8_t>& isInputsConstant,
+            std::vector<uint8_t>& isInputsUploadedByDMLEP,
             std::vector<bool>& inputsUsed) :
         OpKernel(kernelInfo), 
         m_compiledExecutionPlanOperator(compiledExecutionPlanOperator),
         m_inputsUsed(inputsUsed),
         m_outputShapes(outputShapes),
-        m_isInputsConstant(isInputsConstant),
+        m_isInputsUploadedByDMLEP(isInputsUploadedByDMLEP),
         m_nonOwnedGraphInputsFromInitializers(nonOwnedGraphInputsFromInitializers)
         {
             // Get the execution provider interfaces
@@ -125,7 +125,7 @@ namespace Dml
                     {
                         inputPtrs[i] = m_nonOwnedGraphInputsFromInitializers[i].Get();
                     }
-                    else if (!m_isInputsConstant[i])
+                    else if (!m_isInputsUploadedByDMLEP[i])
                     {
                         ORT_THROW_IF_FAILED(contextWrapper.GetInputTensor(i, inputTensors[i].GetAddressOf()));
                         inputPtrs[i] = m_provider->DecodeResource(MLOperatorTensor(inputTensors[i].Get()).GetDataInterface().Get());
@@ -292,7 +292,7 @@ namespace Dml
 
             for (uint32_t i = 0; i < inputBindings.size(); ++i)
             {
-                if (!m_isInputsConstant[i] && m_inputsUsed[i])
+                if (!m_isInputsUploadedByDMLEP[i] && m_inputsUsed[i])
                 {
                     if (m_nonOwnedGraphInputsFromInitializers[i])
                     {
@@ -421,7 +421,7 @@ namespace Dml
         mutable ComPtr<ID3D12Fence> m_fence;
         mutable uint64_t m_completionValue = 0;
 
-        std::vector<uint8_t> m_isInputsConstant;
+        std::vector<uint8_t> m_isInputsUploadedByDMLEP;
         std::vector<ComPtr<ID3D12Resource>> m_nonOwnedGraphInputsFromInitializers;
     };
 
@@ -433,7 +433,7 @@ namespace Dml
         std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
         std::vector<DML_BUFFER_BINDING> initInputBindings,
-        std::vector<uint8_t>& isInputsConstant,
+        std::vector<uint8_t>& isInputsUploadedByDMLEP,
         std::vector<bool>& inputsUsed
         )
     {
@@ -445,7 +445,7 @@ namespace Dml
             nonOwnedGraphInputsFromInitializers,
             initializeResourceRefs,
             initInputBindings,
-            isInputsConstant,
+            isInputsUploadedByDMLEP,
             inputsUsed
         );
     }

@@ -92,7 +92,7 @@ namespace DmlGraphFusionHelper
         Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider* winmlProvider,
         const onnxruntime::Tensor* tensor,
         ID3D12Resource** resource,
-        uint64_t* allocId) 
+        uint64_t* allocId)
     {
         IUnknown* allocationUnk = static_cast<IUnknown*>(const_cast<void*>(tensor->DataRaw()));
         Microsoft::WRL::ComPtr<IUnknown> resourceUnk;
@@ -105,10 +105,10 @@ namespace DmlGraphFusionHelper
 
     void ProcessInputData(
         const ExecutionProviderImpl* providerImpl,
-        const std::vector<uint8_t>& isInputsConstant,
+        const std::vector<uint8_t>& isInputsUploadedByDMLEP,
         std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges,
         const gsl::span<const std::string> subGraphInputArgNames,
-        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
+        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& initializerNameToInitializerMap,
         onnxruntime::Graph& graph,
         _Out_ std::vector<bool>& inputsUsed,
         _Inout_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
@@ -117,16 +117,16 @@ namespace DmlGraphFusionHelper
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
         _Inout_opt_ std::vector<std::vector<std::byte>>* inputRawData)
     {
-        
+
         const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(subGraphInputArgNames.size());
-        
+
         // Determine the last input which uses an initializer, so initializers can be freed incrementally
         // while processing each input in order.
         std::map<const onnx::TensorProto*, uint32_t> initializerToLastInputIndexMap;
-        for (uint32_t i = 0; i < fusedNodeInputCount; i++) 
+        for (uint32_t i = 0; i < fusedNodeInputCount; i++)
         {
-            auto iter = isInitializerTransferable.find(subGraphInputArgNames[i]);
-            if (iter != isInitializerTransferable.end()) {
+            auto iter = initializerNameToInitializerMap.find(subGraphInputArgNames[i]);
+            if (iter != initializerNameToInitializerMap.end()) {
                 initializerToLastInputIndexMap[iter->second.first] = i;
             }
         }
@@ -137,14 +137,17 @@ namespace DmlGraphFusionHelper
             inputsUsed[edge.GraphInputIndex] = true;
         }
 
+        bool isInitializerAlreadyRemoved = false;
+
         for (uint32_t i = 0; i < initInputBindings.size(); i++)
         {
+            isInitializerAlreadyRemoved = false;
             // If the input isn't actually used by the graph, nothing ever needs to be bound (either for
             // initialization or execution). So just throw away the transferred initializer and skip this input.
             if (!inputsUsed[i])
             {
-                auto iter = isInitializerTransferable.find(subGraphInputArgNames[i]);
-                if(iter != isInitializerTransferable.end() && iter->second.second)
+                auto iter = initializerNameToInitializerMap.find(subGraphInputArgNames[i]);
+                if(iter != initializerNameToInitializerMap.end() && iter->second.second)
                 {
                     graph.RemoveInitializedTensor(subGraphInputArgNames[i]);
                 }
@@ -158,8 +161,8 @@ namespace DmlGraphFusionHelper
             }
 
             // Look for the initializer among those transferred from the graph during partitioning
-            auto iter = isInitializerTransferable.find(subGraphInputArgNames[i]);
-            if (iter != isInitializerTransferable.end())
+            auto iter = initializerNameToInitializerMap.find(subGraphInputArgNames[i]);
+            if (iter != initializerNameToInitializerMap.end())
             {
                 std::byte* tensorPtr = nullptr;
                 size_t tensorByteSize = 0;
@@ -167,7 +170,7 @@ namespace DmlGraphFusionHelper
 
                 //auto& initializer = iter->second;
                 auto* initializer = iter->second.first;
-                
+
                 // The tensor may be stored as raw data or in typed fields.
                 if (initializer->has_raw_data())
                 {
@@ -185,6 +188,7 @@ namespace DmlGraphFusionHelper
                         if (iter->second.second)
                         {
                             graph.RemoveInitializedTensor(subGraphInputArgNames[i]);
+                            isInitializerAlreadyRemoved = true;
                         }
                     }
                 }
@@ -197,7 +201,7 @@ namespace DmlGraphFusionHelper
                     inputRawData->push_back(std::vector<std::byte>(tensorPtr, tensorPtr + tensorByteSize));
                 }
 
-                if (!isInputsConstant[i])
+                if (!isInputsUploadedByDMLEP[i])
                 {
                     // Store the resource to use during execution
                     ComPtr<ID3D12Resource> defaultBuffer = CreateResource(providerImpl, tensorPtr, tensorByteSize);
@@ -225,7 +229,7 @@ namespace DmlGraphFusionHelper
                 }
 
                 // Free the initializer if this is the last usage of it.
-                if (initializerToLastInputIndexMap[initializer] == i)
+                if (!isInitializerAlreadyRemoved && initializerToLastInputIndexMap[initializer] == i)
                 {
                     if (iter->second.second)
                     {
@@ -316,11 +320,11 @@ namespace DmlGraphFusionHelper
     }
 
     void CreateIDmlCompiledOperatorAndRegisterKernel(
-        onnxruntime::Graph& graph, 
+        onnxruntime::Graph& graph,
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const onnxruntime::Node& fusedNode,
         const std::unordered_map<std::string, GraphNodeProperties>& partitionNodePropsMap,
-        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
+        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& initializerNameToInitializerMap,
         const ExecutionProviderImpl* providerImpl,
         onnxruntime::KernelRegistry* registryForPartitionKernels)
     {
@@ -328,19 +332,19 @@ namespace DmlGraphFusionHelper
         const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->inputs.size());
         const uint32_t fusedNodeOutputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->outputs.size());
 
-        std::vector<uint8_t> isInputsConstant(fusedNodeInputCount);
+        std::vector<uint8_t> isInputsUploadedByDMLEP(fusedNodeInputCount);
         for (uint32_t index = 0; index < fusedNodeInputCount; ++index)
         {
-            auto iter = isInitializerTransferable.find(indexedSubGraph.GetMetaDef()->inputs[index]);
-            isInputsConstant[index] = iter != isInitializerTransferable.end() ? true : false;
+            auto iter = initializerNameToInitializerMap.find(indexedSubGraph.GetMetaDef()->inputs[index]);
+            isInputsUploadedByDMLEP[index] = iter != initializerNameToInitializerMap.end() ? true : false;
         }
 
         ComPtr<IDMLDevice> device;
         ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
         GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
-            isInputsConstant.data(),
-            isInputsConstant.size(),
-            isInitializerTransferable,
+            isInputsUploadedByDMLEP.data(),
+            isInputsUploadedByDMLEP.size(),
+            initializerNameToInitializerMap,
             graph,
             indexedSubGraph,
             partitionNodePropsMap,
@@ -355,8 +359,8 @@ namespace DmlGraphFusionHelper
         std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(graphDesc.outputEdges.size());
         std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(graphDesc.intermediateEdges.size());
         ConvertGraphDesc(
-            graphDesc, 
-            dmlGraphDesc, 
+            graphDesc,
+            dmlGraphDesc,
             fusedNodeInputCount,
             fusedNodeOutputCount,
             dmlOperatorGraphNodes,
@@ -390,14 +394,14 @@ namespace DmlGraphFusionHelper
         std::vector<DML_BUFFER_BINDING> initInputBindings(fusedNodeInputCount);
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initInputResources;  // For lifetime control
         std::vector<ComPtr<ID3D12Resource>> nonOwnedGraphInputsFromInitializers(fusedNodeInputCount);
-        
+
         std::vector<bool> inputsUsed;
         ProcessInputData(
             providerImpl,
-            isInputsConstant,
+            isInputsUploadedByDMLEP,
             graphDesc.inputEdges,
             indexedSubGraph.GetMetaDef()->inputs,
-            isInitializerTransferable,
+            initializerNameToInitializerMap,
             graph,
             inputsUsed,
             initInputBindings,
@@ -416,18 +420,18 @@ namespace DmlGraphFusionHelper
                                   nonOwnedGraphInputsFromInitializers,
                                   initializeResourceRefs,
                                   initInputBindings,
-                                  isInputsConstant,
+                                  isInputsUploadedByDMLEP,
                                   inputsUsed]
                     (onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
         {
-            out.reset(CreateFusedGraphKernel(info, 
+            out.reset(CreateFusedGraphKernel(info,
                                              compiledExecutionPlanOperator,
                                              outputShapes,
                                              resuableCommandList,
                                              nonOwnedGraphInputsFromInitializers,
                                              initializeResourceRefs,
                                              initInputBindings,
-                                             isInputsConstant,
+                                             isInputsUploadedByDMLEP,
                                              inputsUsed));
             return Status::OK();
         };
@@ -448,7 +452,7 @@ namespace DmlGraphFusionHelper
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const std::string& partitionKernelPrefix,
-        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
+        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& initializerNameToInitializerMap,
         const ExecutionProviderImpl* providerImpl)
     {
         assert(partition->IsDmlGraphPartition());
@@ -466,7 +470,7 @@ namespace DmlGraphFusionHelper
         indexedSubGraph.nodes = std::move(partition->GetNodeIndices());
         auto& fusedNode = graph.BeginFuseSubGraph(indexedSubGraph, indexedSubGraph.GetMetaDef()->name);
         fusedNode.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);
-        
+
         // Populate properties which will be passed to OpKernel for this graph via the function below
         std::unordered_map<std::string, GraphNodeProperties> partitionNodePropsMap;
         for (auto nodeIndex : indexedSubGraph.nodes)
@@ -484,11 +488,11 @@ namespace DmlGraphFusionHelper
         printf("\n");
 #endif
         CreateIDmlCompiledOperatorAndRegisterKernel(
-            graph, 
+            graph,
             indexedSubGraph,
             fusedNode,
-            partitionNodePropsMap, 
-            isInitializerTransferable, 
+            partitionNodePropsMap,
+            initializerNameToInitializerMap,
             providerImpl,
             registryForPartitionKernels);
         graph.FinalizeFuseSubGraph(indexedSubGraph, fusedNode);

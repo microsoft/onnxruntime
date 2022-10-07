@@ -41,7 +41,7 @@ namespace DmlGraphFusionHelper
 
     void ProcessInputData(
         const ExecutionProviderImpl* providerImpl,
-        const std::vector<uint8_t>& isInputsConstant,
+        const std::vector<uint8_t>& isInputsUploadedByDMLEP,
         std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges,
         const gsl::span<const std::string> subGraphInputArgNames,
         const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
