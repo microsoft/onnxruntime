@@ -33,7 +33,7 @@ Status SessionOptions::AddConfigEntry(_In_z_ const char* config_key, _In_z_ cons
 
   std::string val(config_value);
   if (val.length() > 10240)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config value is longer than maximum length 1024");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config value is longer than maximum length 10240");
 
   auto iter = session_configurations.find(config_key);
   if (iter != session_configurations.cend()) {
