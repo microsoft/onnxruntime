@@ -3,6 +3,8 @@ trigger: none
 name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 jobs:
 - job: AMD_CI
+  workspace:
+    clean: all
   pool: 'AMD-GPU'
   timeoutInMinutes: 150
 
@@ -17,24 +19,16 @@ jobs:
     - name: RocmVersion
       value: 5.3
 
-  # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
-  container:
-    image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env:rocm$(RocmVersion)
-    endpoint: onnxruntimecibuildenvironmentforamd
-    options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --shm-size=1024m --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
-
   steps:
   - checkout: self
     clean: true
+    submodules: recursive
 
-  - script: |-
-      echo "Selecting GPU based on HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES"
-    displayName: 'Initialize environment'
-
-  #- script: |-
-  #    sed -i 's|session_options.use_deterministic_compute = False|session_options.use_deterministic_compute = True|g' \
-  #       orttraining/orttraining/python/training/ortmodule/_graph_execution_manager.py
-  #  displayName: 'Toggle ON deterministic compute mode for ORTModule'
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
+      Context: tools/ci_build/github/pai
+      Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
     displayName: 'Check ROCm Environment'
@@ -42,107 +36,158 @@ jobs:
       script: |-
         echo $(Agent.Name)
         bash ./tools/ci_build/github/pai/pai_get_thread.sh $(Agent.Name)
-    target: host
 
   - task: CmdLine@2
     inputs:
-      script: |-
-        export ROCM_HOME=/opt/rocm
-        python tools/ci_build/build.py \
-          --config RelWithDebInfo \
-          --enable_training \
-          --enable_training_torch_interop \
-          --mpi_home /opt/ompi \
-          --cmake_extra_defines \
-              CMAKE_HIP_COMPILER=${ROCM_HOME}/llvm/bin/clang++ \
-          --use_rocm \
-          --rocm_version=$(RocmVersion) \
-          --rocm_home ${ROCM_HOME} \
-          --nccl_home ${ROCM_HOME}\
-          --update \
-          --build_dir ./build \
-          --build \
-          --parallel 8 \
-          --build_wheel \
-          --skip_tests
+      script: |
+        docker run --rm \
+          -e HIP_VISIBLE_DEVICES \
+          --privileged \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user $UID:$(id -g $USER) \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /onnxruntime_src \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+            python tools/ci_build/build.py \
+              --config RelWithDebInfo \
+              --enable_training \
+              --enable_training_torch_interop \
+              --mpi_home /opt/ompi \
+              --cmake_extra_defines \
+                  CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
+              --use_rocm \
+              --rocm_version=$(RocmVersion) \
+              --rocm_home /opt/rocm \
+              --nccl_home /opt/rocm \
+              --update \
+              --build_dir /build \
+              --build \
+              --parallel 8 \
+              --build_wheel \
+              --skip_tests
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime'
 
   - bash: |-
       echo "##vso[task.setvariable variable=onnxruntimeBuildSucceeded]true"
     displayName: 'Set Onnxruntime Build Succeeded'
 
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        cd ./build/RelWithDebInfo &&\
-        ../../tools/ci_build/github/pai/pai_test_launcher.sh
-    displayName: 'Run onnxruntime unit tests'
+  # - task: CmdLine@2
+  #   inputs:
+  #     script: |
+  #       docker run --rm \
+  #         -e HIP_VISIBLE_DEVICES \
+  #         --privileged \
+  #         --security-opt seccomp=unconfined \
+  #         --shm-size=1024m \
+  #         --device=/dev/kfd \
+  #         --device=/dev/dri \
+  #         --group-add $(video) \
+  #         --group-add $(render) \
+  #         --user $UID:$(id -g $USER) \
+  #         --volume $(Build.SourcesDirectory):/onnxruntime_src \
+  #         --volume $(Build.BinariesDirectory):/build \
+  #         --workdir /build/RelWithDebInfo \
+  #         --entrypoint /bin/bash \
+  #         onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+  #           /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh
+  #     workingDirectory: $(Build.SourcesDirectory)
+  #   displayName: 'Run onnxruntime unit tests'
+
 
   - task: CmdLine@2
     inputs:
-      script: |-
-        cd ./build/RelWithDebInfo
-        export PYTHONPATH=$PWD
-        python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
-    displayName: 'Compile torch extensions into build directory'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
-
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        cd ./build/RelWithDebInfo
-        export PYTHONPATH=$PWD
-        export ORTMODULE_ONNX_OPSET_VERSION=14
-        python \
-          /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
-          --model_name_or_path bert-large-uncased \
-          --dataset_name wikitext \
-          --dataset_config_name wikitext-2-raw-v1 \
-          --do_train \
-          --max_steps 260 \
-          --logging_steps 20 \
-          --output_dir ./test-mlm-bbu \
-          --overwrite_output_dir \
-          --per_device_train_batch_size 8 \
-          --fp16 \
-          --dataloader_num_workers 1 \
-          --ort \
-          --skip_memory_metrics
-        python ../../orttraining/tools/ci_test/compare_huggingface.py \
-          ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm$(RocmVersion).json
+      script: |
+        docker run --rm \
+          -e HIP_VISIBLE_DEVICES \
+          --privileged \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user $UID:$(id -g $USER) \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /build/RelWithDebInfo \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+          sh -c \
+            "export PYTHONPATH=$PWD &&
+             python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install &&
+             python \
+              /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
+              --model_name_or_path bert-large-uncased \
+              --dataset_name wikitext \
+              --dataset_config_name wikitext-2-raw-v1 \
+              --do_train \
+              --max_steps 260 \
+              --logging_steps 20 \
+              --output_dir ./test-mlm-bbu \
+              --overwrite_output_dir \
+              --per_device_train_batch_size 8 \
+              --fp16 \
+              --dataloader_num_workers 1 \
+              --ort \
+              --skip_memory_metrics &&
+             python /onnxruntime_src/orttraining/tools/ci_test/compare_huggingface.py \
+              ci-pipeline-actual.json \
+              /onnxruntime_src/orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm$(RocmVersion).json"
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run Python Hugging-Face BERT-L test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
 
   - task: CmdLine@2
     inputs:
-      script: |-
-        cd ./build/RelWithDebInfo
-        export PYTHONPATH=$PWD
-        export ORTMODULE_ONNX_OPSET_VERSION=14
-        python \
-          /stage/huggingface-transformers/examples/pytorch/language-modeling/run_clm.py \
-          --model_name_or_path gpt2 \
-          --dataset_name wikitext \
-          --dataset_config_name wikitext-2-raw-v1 \
-          --do_train \
-          --label_smoothing 0.1 \
-          --max_steps 260 \
-          --logging_steps 20 \
-          --overwrite_output_dir \
-          --output_dir ./test-clm \
-          --per_device_train_batch_size 8 \
-          --fp16 \
-          --dataloader_num_workers 1 \
-          --ort \
-          --skip_memory_metrics
-        python ../../orttraining/tools/ci_test/compare_huggingface.py \
-          ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm$(RocmVersion).json
+      script: |
+        docker run --rm \
+          -e HIP_VISIBLE_DEVICES \
+          --privileged \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user $UID:$(id -g $USER) \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /build/RelWithDebInfo \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+          sh -c \
+            "export PYTHONPATH=$PWD &&
+             python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install &&
+             python \
+              /stage/huggingface-transformers/examples/pytorch/language-modeling/run_clm.py \
+              --model_name_or_path gpt2 \
+              --dataset_name wikitext \
+              --dataset_config_name wikitext-2-raw-v1 \
+              --do_train \
+              --label_smoothing 0.1 \
+              --max_steps 260 \
+              --logging_steps 20 \
+              --overwrite_output_dir \
+              --output_dir ./test-clm \
+              --per_device_train_batch_size 8 \
+              --fp16 \
+              --dataloader_num_workers 1 \
+              --ort \
+              --skip_memory_metrics &&
+             python /onnxruntime_src/orttraining/tools/ci_test/compare_huggingface.py \
+              ci-pipeline-actual.json \
+              /onnxruntime_src/orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm$(RocmVersion).json"
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run Python Hugging-Face GPT2 test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+
 
 #  - script: |-
 #      cd ./build/RelWithDebInfo
@@ -201,31 +246,47 @@ jobs:
 
   - task: CmdLine@2
     inputs:
-      script: |-
-        cd ./build/RelWithDebInfo
-        export PYTHONPATH=$PWD
-        export ORTMODULE_ONNX_OPSET_VERSION=14
-        python \
-          /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
-          --model_name_or_path distilbert-base-uncased \
-          --dataset_name wikitext \
-          --dataset_config_name wikitext-2-raw-v1 \
-          --do_train \
-          --max_steps 260 \
-          --logging_steps 20 \
-          --output_dir ./test-mlm-bbu \
-          --overwrite_output_dir \
-          --per_device_train_batch_size 32 \
-          --fp16 \
-          --dataloader_num_workers 1 \
-          --ort \
-          --skip_memory_metrics
-        python ../../orttraining/tools/ci_test/compare_huggingface.py \
-          ci-pipeline-actual.json \
-          ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base-rocm$(RocmVersion).json
+      script: |
+        docker run --rm \
+          -e HIP_VISIBLE_DEVICES \
+          --privileged \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user $UID:$(id -g $USER) \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /build/RelWithDebInfo \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+          sh -c \
+            "export PYTHONPATH=$PWD &&
+             python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install &&
+             python \
+              /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
+              --model_name_or_path distilbert-base-uncased \
+              --dataset_name wikitext \
+              --dataset_config_name wikitext-2-raw-v1 \
+              --do_train \
+              --max_steps 260 \
+              --logging_steps 20 \
+              --output_dir ./test-mlm-bbu \
+              --overwrite_output_dir \
+              --per_device_train_batch_size 32 \
+              --fp16 \
+              --dataloader_num_workers 1 \
+              --ort \
+              --skip_memory_metrics &&
+             python /onnxruntime_src/orttraining/tools/ci_test/compare_huggingface.py \
+              ci-pipeline-actual.json \
+              /onnxruntime_src/orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base-rocm$(RocmVersion).json"
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run Python Hugging-Face DistilBERT test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+
 
   #- script: |-
   #    cd ./build/RelWithDebInfo
@@ -279,23 +340,37 @@ jobs:
   #  displayName: 'Run Python Hugging-Face T5-L test'
   #  condition: succeededOrFailed() # ensure all tests are run
 
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        python orttraining/tools/ci_test/download_azure_blob_archive.py \
-          --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
-          --target_dir training_e2e_test_data \
-          --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+  - script: |-
+      python3 orttraining/tools/ci_test/download_azure_blob_archive.py \
+            --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
+            --target_dir $(Build.SourcesDirectory)/training_e2e_test_data \
+            --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
     displayName: 'Download onnxruntime_training_data.zip data'
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+
 
   - task: CmdLine@2
     inputs:
       script: |-
-        python orttraining/tools/ci_test/run_batch_size_test.py \
-          --binary_dir build/RelWithDebInfo \
-          --model_root training_e2e_test_data/models \
-          --gpu_sku MI100_32G
+        docker run --rm \
+          -e HIP_VISIBLE_DEVICES \
+          --privileged \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user $UID:$(id -g $USER) \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /onnxruntime_src \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+            python orttraining/tools/ci_test/run_batch_size_test.py \
+              --binary_dir /build/RelWithDebInfo \
+              --model_root /onnxruntime_src/training_e2e_test_data/models \
+              --gpu_sku MI100_32G
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run C++ BERT-L batch size test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
@@ -303,11 +378,26 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |-
-        python orttraining/tools/ci_test/run_bert_perf_test.py \
-          --binary_dir build/RelWithDebInfo \
-          --model_root training_e2e_test_data/models \
-          --training_data_root training_e2e_test_data/data \
-          --gpu_sku MI100_32G
+        docker run --rm \
+          -e HIP_VISIBLE_DEVICES \
+          --privileged \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user $UID:$(id -g $USER) \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /onnxruntime_src \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+            python orttraining/tools/ci_test/run_bert_perf_test.py \
+              --binary_dir /build/RelWithDebInfo \
+              --model_root /onnxruntime_src/training_e2e_test_data/models \
+              --training_data_root /onnxruntime_src/training_e2e_test_data/data \
+              --gpu_sku MI100_32G
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run C++ BERT-L performance test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
@@ -315,11 +405,26 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |-
-        python orttraining/tools/ci_test/run_convergence_test.py \
-          --binary_dir build/RelWithDebInfo \
-          --model_root training_e2e_test_data/models \
-          --training_data_root training_e2e_test_data/data \
-          --gpu_sku MI100_32G
+        docker run --rm \
+          -e HIP_VISIBLE_DEVICES \
+          --privileged \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user $UID:$(id -g $USER) \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /onnxruntime_src \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+          python orttraining/tools/ci_test/run_convergence_test.py \
+            --binary_dir /build/RelWithDebInfo \
+            --model_root /onnxruntime_src/training_e2e_test_data/models \
+            --training_data_root /onnxruntime_src/training_e2e_test_data/data \
+            --gpu_sku MI100_32G
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run C++ BERT-L convergence test'
     retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
@@ -329,15 +434,15 @@ jobs:
       sudo apt install -y cifs-utils
     displayName: 'Install filesystems util'
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "$(Build.SourcesDirectory)/mnist"
     displayName: 'Mount MNIST'
     condition: succeededOrFailed()
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "$(Build.SourcesDirectory)/bert_data"
     displayName: 'Mount bert-data'
     condition: succeededOrFailed()
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "$(Build.SourcesDirectory)/hf_models_cache"
     displayName: 'Mount hf-models-cache'
     condition: succeededOrFailed()
 
@@ -354,14 +459,32 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |-
-        cd ./build/RelWithDebInfo
-        unset PYTHONPATH
-        rm -rf onnxruntime
-        pip install ./dist/onnxruntime*.whl
-        python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
-        python orttraining_ortmodule_tests.py \
-          --mnist /mnist \
-          --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
-          --transformers_cache /hf_models_cache/huggingface/transformers
+        docker run --rm \
+          -e HIP_VISIBLE_DEVICES \
+          --privileged \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user $UID:$(id -g $USER) \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /build/RelWithDebInfo \
+          --entrypoint /bin/bash \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+          sh -c \
+            "unset PYTHONPATH &&
+            rm -rf onnxruntime &&
+            pip install ./dist/onnxruntime*.whl &&
+            python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install &&
+            python orttraining_ortmodule_tests.py
+              --mnist /onnxruntime_src/mnist
+              --bert_data /onnxruntime_src/bert_data/hf_data/glue_data/CoLA/original/raw
+              --transformers_cache /onnxruntime_src/hf_models_cache/huggingface/transformers"
+      workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run orttraining_ortmodule_tests.py'
     condition: succeededOrFailed()
+
+  - template: templates/clean-agent-build-directory-step.yml
