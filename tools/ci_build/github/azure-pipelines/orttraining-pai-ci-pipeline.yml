@@ -19,7 +19,7 @@ jobs:
 
   # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
   container:
-    image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env:${RocmVersion}
+    image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env:rocm${RocmVersion}
     endpoint: onnxruntimecibuildenvironmentforamd
     options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --shm-size=1024m --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
 
