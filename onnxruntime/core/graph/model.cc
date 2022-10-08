@@ -828,6 +828,14 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   ORT_RETURN_IF(nullptr == fbs_graph, "Graph is null. Invalid ORT format model.");
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // add the opset imports to the model_proto in case we're updating an ORT format model and need those to be
+  // included when SaveToOrtFormat is called later
+  for (const auto& domain : domain_to_version) {
+    const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model->model_proto_.add_opset_import()};
+    opset_id_proto->set_domain(domain.first);
+    opset_id_proto->set_version(domain.second);
+  }
+
   ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, schema_registry,
                                                can_use_flatbuffer_for_initializers, logger, model->graph_));
 #else

@@ -1024,16 +1024,21 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   const auto* fbs_ort_model_version = fbs_session->ort_version();
   ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
 
+  // if this is a full build we can update an old format model.
+  bool model_needs_update = IsOrtModelVersionSupported(fbs_ort_model_version->string_view()) == false;
+
+#if defined(ORT_MINIMAL_BUILD)
   // Note about the ORT format version 5 breaking change.
   // TODO This change was introduced in 1.13. Remove this note a few releases later, e.g., 1.15.
   constexpr auto* kOrtFormatVersion5BreakingChangeNote =
       "This build doesn't support ORT format models older than version 5. "
       "See: https://github.com/microsoft/onnxruntime/blob/rel-1.13.0/docs/ORT_Format_Update_in_1.13.md";
 
-  ORT_RETURN_IF_NOT(IsOrtModelVersionSupported(fbs_ort_model_version->string_view()),
-                    "The ORT format model version [", fbs_ort_model_version->string_view(),
-                    "] is not supported in this build ", ORT_VERSION, ". ",
-                    kOrtFormatVersion5BreakingChangeNote);
+  ORT_RETURN_IF(model_needs_update,
+                "The ORT format model version [", fbs_ort_model_version->string_view(),
+                "] is not supported in this build ", ORT_VERSION, ". ",
+                kOrtFormatVersion5BreakingChangeNote);
+#endif
 
   const auto* fbs_model = fbs_session->model();
   ORT_RETURN_IF(nullptr == fbs_model, "Missing Model. Invalid ORT format model.");
@@ -1066,7 +1071,14 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   if (const auto* fbs_kernel_type_str_resolver = fbs_session->kernel_type_str_resolver();
       fbs_kernel_type_str_resolver != nullptr) {
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.LoadFromOrtFormat(*fbs_kernel_type_str_resolver));
+  } else {
+#if !defined(ORT_MINIMAL_BUILD)
+    if (model_needs_update) {
+      ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
+    }
+#endif
   }
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   ORT_RETURN_IF_ERROR(
       kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(
