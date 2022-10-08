@@ -137,24 +137,24 @@ namespace Dml
             }
         }
 
-        // graphInputIndices and m_kernelInputIndices should be identity
-        for (uint32_t idx = 0; idx < operatorGraphDesc.inputEdgeCount; idx++)
+        // m_kernelInputIndices should be identity
+        for (uint32_t idx = 0; idx < m_kernelInputIndices.size(); idx++)
         {
             if (m_kernelInputIndices[idx] == std::nullopt || !kernelInfo.IsInputValid(*m_kernelInputIndices[idx]))
             {
                 continue;
             }
-            assert(m_kernelInputIndices[idx] == operatorGraphDesc.inputEdges[idx].GraphInputIndex);
+            assert(m_kernelInputIndices[idx] == idx);
         }
 
-        // graphOutputIndices and m_kernelOutputIndices should be identity
-        for (uint32_t idx = 0; idx < operatorGraphDesc.outputEdgeCount; idx++)
+        // m_kernelOutputIndices should be identity
+        for (uint32_t idx = 0; idx < m_kernelOutputIndices.size(); idx++)
         {
             if (m_kernelOutputIndices[idx] == std::nullopt || !kernelInfo.IsOutputValid(*m_kernelOutputIndices[idx]))
             {
                 continue;
             }
-            assert(m_kernelOutputIndices[idx] == operatorGraphDesc.outputEdges[idx].GraphOutputIndex);
+            assert(m_kernelOutputIndices[idx] == idx);
         }
 
         ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;

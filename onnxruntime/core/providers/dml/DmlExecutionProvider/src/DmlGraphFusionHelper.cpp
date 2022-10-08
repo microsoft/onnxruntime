@@ -105,7 +105,7 @@ namespace DmlGraphFusionHelper
 
     void ProcessInputData(
         const ExecutionProviderImpl* providerImpl,
-        const std::vector<uint8_t>& isInputsUploadedByDMLEP,
+        const std::vector<uint8_t>& isInputsUploadedByDmlEP,
         std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges,
         const gsl::span<const std::string> subGraphInputArgNames,
         const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& initializerNameToInitializerMap,
@@ -201,7 +201,7 @@ namespace DmlGraphFusionHelper
                     inputRawData->push_back(std::vector<std::byte>(tensorPtr, tensorPtr + tensorByteSize));
                 }
 
-                if (!isInputsUploadedByDMLEP[i])
+                if (!isInputsUploadedByDmlEP[i])
                 {
                     // Store the resource to use during execution
                     ComPtr<ID3D12Resource> defaultBuffer = CreateResource(providerImpl, tensorPtr, tensorByteSize);
@@ -332,18 +332,18 @@ namespace DmlGraphFusionHelper
         const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->inputs.size());
         const uint32_t fusedNodeOutputCount = gsl::narrow_cast<uint32_t>(indexedSubGraph.GetMetaDef()->outputs.size());
 
-        std::vector<uint8_t> isInputsUploadedByDMLEP(fusedNodeInputCount);
+        std::vector<uint8_t> isInputsUploadedByDmlEP(fusedNodeInputCount);
         for (uint32_t index = 0; index < fusedNodeInputCount; ++index)
         {
             auto iter = initializerNameToInitializerMap.find(indexedSubGraph.GetMetaDef()->inputs[index]);
-            isInputsUploadedByDMLEP[index] = iter != initializerNameToInitializerMap.end() ? true : false;
+            isInputsUploadedByDmlEP[index] = iter != initializerNameToInitializerMap.end() ? true : false;
         }
 
         ComPtr<IDMLDevice> device;
         ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
         GraphDescBuilder::GraphDesc graphDesc = GraphDescBuilder::BuildGraphDesc(
-            isInputsUploadedByDMLEP.data(),
-            isInputsUploadedByDMLEP.size(),
+            isInputsUploadedByDmlEP.data(),
+            isInputsUploadedByDmlEP.size(),
             initializerNameToInitializerMap,
             graph,
             indexedSubGraph,
@@ -398,7 +398,7 @@ namespace DmlGraphFusionHelper
         std::vector<bool> inputsUsed;
         ProcessInputData(
             providerImpl,
-            isInputsUploadedByDMLEP,
+            isInputsUploadedByDmlEP,
             graphDesc.inputEdges,
             indexedSubGraph.GetMetaDef()->inputs,
             initializerNameToInitializerMap,
@@ -420,7 +420,7 @@ namespace DmlGraphFusionHelper
                                   nonOwnedGraphInputsFromInitializers,
                                   initializeResourceRefs,
                                   initInputBindings,
-                                  isInputsUploadedByDMLEP,
+                                  isInputsUploadedByDmlEP,
                                   inputsUsed]
                     (onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
         {
@@ -431,7 +431,7 @@ namespace DmlGraphFusionHelper
                                              nonOwnedGraphInputsFromInitializers,
                                              initializeResourceRefs,
                                              initInputBindings,
-                                             isInputsUploadedByDMLEP,
+                                             isInputsUploadedByDmlEP,
                                              inputsUsed));
             return Status::OK();
         };
