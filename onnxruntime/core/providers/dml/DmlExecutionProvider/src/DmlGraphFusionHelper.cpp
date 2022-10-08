@@ -137,11 +137,9 @@ namespace DmlGraphFusionHelper
             inputsUsed[edge.GraphInputIndex] = true;
         }
 
-        bool isInitializerAlreadyRemoved = false;
-
         for (uint32_t i = 0; i < initInputBindings.size(); i++)
         {
-            isInitializerAlreadyRemoved = false;
+            bool isInitializerAlreadyRemoved = false;
             // If the input isn't actually used by the graph, nothing ever needs to be bound (either for
             // initialization or execution). So just throw away the transferred initializer and skip this input.
             if (!inputsUsed[i])
