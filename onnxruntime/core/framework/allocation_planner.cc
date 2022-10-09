@@ -300,7 +300,7 @@ class PlannerImpl {
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
 
   size_t num_logic_streams_{0};
-  InlinedVector<InlinedVector<NodeIndex>> stream_nodes_;
+  std::vector<InlinedVector<NodeIndex>> stream_nodes_;
   InlinedVector<size_t> node_stream_map_;
 
   // dependence_graph_ keeps the dependencies combining model graph and logic streams
@@ -1174,7 +1174,7 @@ class PlannerImpl {
     auto& allocation_plan = plan_.allocation_plan;
 
     // build the consumer list for each value
-    InlinedVector<InlinedVector<NodeIndex>> value_consumers;
+    std::vector<InlinedVector<NodeIndex>> value_consumers;
     int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
     value_consumers.resize(num_ml_values);
 
@@ -1802,7 +1802,7 @@ class PlannerImpl {
   // Convert information in execution plan and memory reuse plan into release plan
   Status GenerateDeallocationPlan() {
     // 1. build the consumer list for each value
-    InlinedVector<InlinedVector<NodeIndex>> value_consumers;
+    std::vector<InlinedVector<NodeIndex>> value_consumers;
     int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
     value_consumers.resize(num_ml_values);
 
@@ -2337,7 +2337,7 @@ class DummyPartitioner : public INodePartitioner {
     }
   }
   void DumpPartition() const;
-  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, InlinedVector<InlinedVector<NodeIndex>>& stream_nodes) override;
+  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) override;
   virtual const std::string& Name() const override {
     return name;
   }
@@ -2346,7 +2346,7 @@ class DummyPartitioner : public INodePartitioner {
   void Initialize();
   int num_streams_{};
   std::map<OrtDevice::DeviceType, int> max_streams_;
-  InlinedVector<InlinedVector<std::string>> node_names_by_stream_;
+  std::vector<InlinedVector<std::string>> node_names_by_stream_;
   bool need_dump_ = false;
   static const std::string name;
 };
@@ -2443,7 +2443,7 @@ void DummyPartitioner::DumpPartition() const {
 
 void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_viewer,
                                       const ExecutionProviders& execution_providers,
-                                      InlinedVector<InlinedVector<NodeIndex>>& stream_nodes) {
+                                      std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
   if (!status_.IsOK()) {
     return;  // input configuration has errors, do nothing
   }

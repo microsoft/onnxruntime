@@ -88,7 +88,7 @@ class INodePartitioner {
   };
   virtual ~INodePartitioner() {};
   static std::unique_ptr<INodePartitioner> CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file = "");
-  virtual void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, InlinedVector<InlinedVector<NodeIndex>>& stream_nodes) = 0;
+  virtual void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) = 0;
   Status GetStatus() const { return status_; }
   virtual const std::string& Name() const = 0;
 
