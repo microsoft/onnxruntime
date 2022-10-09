@@ -1,0 +1,10 @@
+name: Windows GPU CI Pipeline
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required"'

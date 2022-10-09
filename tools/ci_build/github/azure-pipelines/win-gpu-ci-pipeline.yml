@@ -1,3 +1,8 @@
+trigger:
+  paths:
+  exclude:
+    - docs/**
+
 parameters:
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
