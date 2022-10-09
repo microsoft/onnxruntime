@@ -64,7 +64,7 @@ common::Status TrainingAgent::RunForward(const std::vector<OrtValue>& feeds, std
   state.SetProgramCounterStart(0);
   state.SetProgramCounterEnd(fw_program_counter_end_);
 
-  const int32_t partial_graph_index = 0;
+  constexpr int32_t partial_graph_index = 0;
   return RunCore(feeds, fetches, state, *fw_feeds_fetches_manager_, cache, partial_graph_index);
 }
 
@@ -72,7 +72,7 @@ common::Status TrainingAgent::RunBackward(const std::vector<OrtValue>& feeds, st
                                           PartialGraphExecutionState& state) {
   state.SetProgramCounterStart(fw_program_counter_end_);
   state.SetProgramCounterEnd(bw_program_counter_end_);
-  const int32_t partial_graph_index = 1;
+  constexpr int32_t partial_graph_index = 1;
   return RunCore(feeds, fetches, state, *bw_feeds_fetches_manager_, nullptr, partial_graph_index);
 }
 

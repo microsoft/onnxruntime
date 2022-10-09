@@ -194,21 +194,21 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
   return model_proto;
 }
 
-std::vector<std::vector<int64_t>> GetInputTensorShapes(Ort::CustomOpApi& api,
-                                                       OrtKernelContext* context) {
+std::vector<std::vector<int64_t>> GetInputTensorShapes(Ort::KernelContext& context) {
+  
+  const auto input_count = context.GetInputCount();
   std::vector<std::vector<int64_t>> input_shapes;
-  for (size_t i = 0; i < api.KernelContext_GetInputCount(context); i++) {
-    auto input_tensor = api.KernelContext_GetInput(context, i);
-    auto tensor_info = api.GetTensorTypeAndShape(input_tensor);
-    auto tensor_shape = api.GetTensorShape(tensor_info);
-    input_shapes.push_back(tensor_shape);
-    api.ReleaseTensorTypeAndShapeInfo(tensor_info);
+  input_shapes.reserve(input_count);
+  for (size_t i = 0; i < input_count; i++) {
+    auto input_tensor = context.GetInput(i);
+    auto tensor_shape = input_tensor.GetTensorTypeAndShapeInfo().GetShape();
+    input_shapes.push_back(std::move(tensor_shape));
   }
   return input_shapes;
 }
 
-std::string MakeMapKeyString(std::vector<std::vector<int64_t>>& shapes,
-                             std::string& device_type) {
+std::string MakeMapKeyString(const std::vector<std::vector<int64_t>>& shapes,
+                             const std::string& device_type) {
   std::string key;
   key += device_type;
   key += "|";  //separator
@@ -226,18 +226,18 @@ std::string MakeMapKeyString(std::vector<std::vector<int64_t>>& shapes,
 
 std::shared_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
-                                      std::vector<std::vector<int64_t>> input_shapes) {
+                                      const std::vector<std::vector<int64_t>>& input_shapes) {
   auto model_copy = std::shared_ptr<ONNX_NAMESPACE::ModelProto>(ONNX_NAMESPACE::ModelProto::Create());
   std::string proto_str;
   model_proto.SerializeToString(proto_str);
   model_copy->ParseFromString(proto_str);
   auto graph_proto = model_copy->mutable_graph();
 
-  for (size_t i = 0; i < input_shapes.size(); i++) {
+  for (size_t i = 0, limit = input_shapes.size(); i < limit; i++) {
     auto g_in_shape = graph_proto->mutable_input((int)i)->mutable_type()->mutable_tensor_type()->mutable_shape();
     g_in_shape->clear_dim();
-    auto shape = input_shapes[i];
-    for (size_t dim = 0; dim < shape.size(); dim++) {
+    const auto& shape = input_shapes[i];
+    for (size_t dim = 0, end = shape.size(); dim < end; dim++) {
       g_in_shape->add_dim()->set_dim_value(shape[dim]);
     }
   }
@@ -260,7 +260,8 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
   return model_copy;
 }
 
-void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
+void BackendManager::Compute(OrtKernelContext* context) {
+  Ort::KernelContext ctx(context);
   std::chrono::high_resolution_clock::time_point start_compute, end_compute;
   #ifdef OPENVINO_FIL_ENABLED
     static bool fil_enabled = true;
@@ -273,12 +274,12 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
   if (GetGlobalContext().enable_dynamic_shapes && subgraph_context_.has_dynamic_input_shape &&
       GetGlobalContext().device_type.find("CPU") != std::string::npos) {
     #if (defined OV_API_20)
-      concrete_backend_->Infer(api, context);
+      concrete_backend_->Infer(context);
       use_dynamic_backend = false;
     #endif
   }
   else if (use_dynamic_backend && subgraph_context_.has_dynamic_input_shape) {
-    std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(api, context);
+    std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(ctx);
     auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
 
     if (GetGlobalContext().device_type.find("MYRIAD") != std::string::npos) {
@@ -303,9 +304,9 @@ void BackendManager::Compute(Ort::CustomOpApi api, OrtKernelContext* context) {
       dynamic_backend = search->second;
     }
 
-    dynamic_backend->Infer(api, context);
+    dynamic_backend->Infer(context);
   } else {
-    concrete_backend_->Infer(api, context);
+    concrete_backend_->Infer(context);
   }
   #ifdef OPENVINO_FIL_ENABLED
     if (fil_enabled) {

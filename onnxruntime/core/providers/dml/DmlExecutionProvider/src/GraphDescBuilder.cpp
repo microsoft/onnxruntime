@@ -95,11 +95,6 @@ namespace Dml::GraphDescBuilder
             reuseCommandList = true;
         }
 
-#ifdef _GAMING_XBOX
-        // #40265989
-        reuseCommandList = false;
-#endif
-
         auto constantCpuGraphInputGetter = [&transferredInitializerMap](const std::string& argName)
         {
             ComPtr<OnnxTensorWrapper> tensorWrapper;

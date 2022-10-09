@@ -36,7 +36,7 @@ class VitisAICustomOp {
                   const std::string& load_runtime_module,
                   const logging::Logger* logger);
 
-  Status Compute(const OrtApi* api, OrtKernelContext* context) const;
+  Status Compute(OrtKernelContext* context) const;
 
   ~VitisAICustomOp();
 

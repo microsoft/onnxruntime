@@ -529,7 +529,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
 // Custom Op support
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-common::Status InferenceSession::AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& op_domains) {
+common::Status InferenceSession::AddCustomOpDomains(gsl::span<OrtCustomOpDomain* const> op_domains) {
   std::shared_ptr<CustomRegistry> custom_registry;
   ORT_RETURN_IF_ERROR_SESSIONID_(CreateCustomRegistry(op_domains, custom_registry));
   ORT_RETURN_IF_ERROR_SESSIONID_(RegisterCustomRegistry(custom_registry));
@@ -667,9 +667,10 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
   auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadInterOp(model_location_, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
-    for (const auto& domain : interop_domains_) {
-      ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
-    }
+    InlinedVector<OrtCustomOpDomain*> domain_ptrs;
+    domain_ptrs.reserve(interop_domains_.size());
+    std::copy(std::begin(interop_domains_), std::end(interop_domains_), std::back_inserter(domain_ptrs));
+    ORT_RETURN_IF_ERROR(AddCustomOpDomains(domain_ptrs));
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
@@ -751,9 +752,10 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     }
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
-    for (const auto& domain : interop_domains_) {
-      ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
-    }
+    InlinedVector<OrtCustomOpDomain*> domain_ptrs;
+    domain_ptrs.reserve(interop_domains_.size());
+    std::copy(std::begin(interop_domains_), std::end(interop_domains_), std::back_inserter(domain_ptrs));
+    ORT_RETURN_IF_ERROR(AddCustomOpDomains(domain_ptrs));
 #endif
 
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
@@ -781,9 +783,10 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
   auto loader = [this, &model_proto](std::shared_ptr<onnxruntime::Model>& model) {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
-    for (const auto& domain : interop_domains_) {
-      ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
-    }
+    InlinedVector<OrtCustomOpDomain*> domain_ptrs;
+    domain_ptrs.reserve(interop_domains_.size());
+    std::copy(std::begin(interop_domains_), std::end(interop_domains_), std::back_inserter(domain_ptrs));
+    ORT_RETURN_IF_ERROR(AddCustomOpDomains(domain_ptrs));
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
@@ -815,9 +818,10 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
     }
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadInterOp(model_proto, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
-    for (const auto& domain : interop_domains_) {
-      ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
-    }
+    InlinedVector<OrtCustomOpDomain*> domain_ptrs;
+    domain_ptrs.reserve(interop_domains_.size());
+    std::copy(std::begin(interop_domains_), std::end(interop_domains_), std::back_inserter(domain_ptrs));
+    ORT_RETURN_IF_ERROR(AddCustomOpDomains(domain_ptrs));
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
@@ -841,9 +845,10 @@ common::Status InferenceSession::Load() {
   auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadInterOp(this->model_proto_, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
-    for (const auto& domain : interop_domains_) {
-      ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
-    }
+    InlinedVector<OrtCustomOpDomain*> domain_ptrs;
+    domain_ptrs.reserve(interop_domains_.size());
+    std::copy(std::begin(interop_domains_), std::end(interop_domains_), std::back_inserter(domain_ptrs));
+    ORT_RETURN_IF_ERROR(AddCustomOpDomains(domain_ptrs));
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
@@ -1017,10 +1022,9 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 
   // Note about the ORT format version 5 breaking change.
   // TODO This change was introduced in 1.13. Remove this note a few releases later, e.g., 1.15.
-  // TODO(edgchen1) update link to point to 1.13 release branch
   constexpr auto* kOrtFormatVersion5BreakingChangeNote =
       "This build doesn't support ORT format models older than version 5. "
-      "See: https://github.com/microsoft/onnxruntime/blob/main/docs/ORT_Format_Update_in_1.13.md";
+      "See: https://github.com/microsoft/onnxruntime/blob/rel-1.13.0/docs/ORT_Format_Update_in_1.13.md";
 
   ORT_RETURN_IF_NOT(IsOrtModelVersionSupported(fbs_ort_model_version->string_view()),
                     "The ORT format model version [", fbs_ort_model_version->string_view(),
