@@ -1006,6 +1006,37 @@ bool SetEpsForAllNodes(
   return true;
 }
 
+OpTester& OpTester::Config(const SessionOptions& sess_options) {
+  ctx_.session_options = sess_options;
+  return *this;
+}
+
+OpTester& OpTester::Config(ExpectResult expect_result, const std::string& expected_failure_string) {
+  ctx_.expect_result = expect_result;
+  ctx_.expected_failure_string = expected_failure_string;
+  return *this;
+}
+
+OpTester& OpTester::ConfigExcludeEps(const std::unordered_set<std::string>& excluded_provider_types) {
+  ctx_.excluded_provider_types = excluded_provider_types;
+  return *this;
+}
+
+OpTester& OpTester::Config(const RunOptions* run_options) {
+  ctx_.run_options = run_options;
+  return *this;
+}
+
+OpTester& OpTester::ConfigEps(std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
+  ctx_.execution_providers = execution_providers;
+  return *this;
+}
+
+OpTester& OpTester::Config(const Graph::ResolveOptions& resolve_options) {
+  ctx_.resolve_options = resolve_options;
+  return *this;
+}
+
 void OpTester::Run(
     ExpectResult expect_result, const std::string& expected_failure_string,
     const std::unordered_set<std::string>& excluded_provider_types,
@@ -1040,6 +1071,18 @@ void OpTester::Run(
     const Graph::ResolveOptions& options,
     /*out*/ size_t* number_of_pre_packed_weights_counter,
     /*out*/ size_t* number_of_shared_pre_packed_weights_counter) {
+  (*this)
+      .Config(so)
+      .Config(expect_result, expected_failure_string)
+      .ConfigExcludeEps(excluded_provider_types)
+      .Config(run_options)
+      .ConfigEps(execution_providers)
+      .Config(options)
+      .RunWithConfig(number_of_pre_packed_weights_counter, number_of_shared_pre_packed_weights_counter);
+}
+
+void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
+                             size_t* number_of_shared_pre_packed_weights_counter) {
   std::string cur_provider = "not set";
   ORT_TRY {
 #ifndef NDEBUG
@@ -1068,7 +1111,7 @@ void OpTester::Run(
 
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
-    const bool strict_shape_type_inference = so.config_options.GetConfigOrDefault(
+    const bool strict_shape_type_inference = ctx_.session_options.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "1") == "1";
     const ModelOptions model_options(allow_released_onnx_opset_only,
                                      strict_shape_type_inference);
@@ -1078,10 +1121,10 @@ void OpTester::Run(
     Status status = Status::OK();
     if (!cache_enabled) {
       if (add_shape_to_tensor_data_ &&
-          expect_result == ExpectResult::kExpectFailure) {
+          ctx_.expect_result == ExpectResult::kExpectFailure) {
         // capture possible exceptions from shape inference for invalid testcase
         ORT_TRY {
-          status = graph.Resolve(options);
+          status = graph.Resolve(ctx_.resolve_options);
         }
         ORT_CATCH(const std::exception& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
@@ -1089,14 +1132,14 @@ void OpTester::Run(
           });
         }
       } else {
-        status = graph.Resolve(options);
+        status = graph.Resolve(ctx_.resolve_options);
       }
 
       if (!status.IsOK()) {
-        if (expect_result == ExpectResult::kExpectFailure) {
+        if (ctx_.expect_result == ExpectResult::kExpectFailure) {
           EXPECT_TRUE(!status.IsOK());
           EXPECT_THAT(status.ErrorMessage(),
-                      testing::HasSubstr(expected_failure_string));
+                      testing::HasSubstr(ctx_.expected_failure_string));
         } else {
           LOGS_DEFAULT(ERROR) << "Resolve failed with status: "
                               << status.ErrorMessage();
@@ -1115,11 +1158,11 @@ void OpTester::Run(
     FillFeedsAndOutputNames(feeds, output_names);
 
     // Run the model
-    if (execution_providers) {
+    if (ctx_.execution_providers != nullptr) {
       ExecuteModelForEps(
-          std::move(*execution_providers), *p_model, so,
-          expect_result, expected_failure_string,
-          run_options, feeds, output_names,
+          std::move(*ctx_.execution_providers), *p_model, ctx_.session_options,
+          ctx_.expect_result, ctx_.expected_failure_string,
+          ctx_.run_options, feeds, output_names,
           /*custom_registries=*/nullptr,
           /*assign_ep_for_nodes=*/false,
           allow_released_onnx_opset_only,
@@ -1152,7 +1195,7 @@ void OpTester::Run(
       bool has_run = false;
 
       for (const std::string& provider_type : all_provider_types) {
-        if (excluded_provider_types.count(provider_type) > 0)
+        if (ctx_.excluded_provider_types.count(provider_type) > 0)
           continue;
 
         cur_provider = provider_type;
@@ -1195,9 +1238,9 @@ void OpTester::Run(
               ret.emplace_back(std::move(execution_provider));
               return ret;
             }(),
-            *p_model, so,
-            expect_result, expected_failure_string,
-            run_options, feeds, output_names,
+            *p_model, ctx_.session_options,
+            ctx_.expect_result, ctx_.expected_failure_string,
+            ctx_.run_options, feeds, output_names,
             &custom_session_registries_,
             /*try_assign_ep_for_nodes=*/true,
             allow_released_onnx_opset_only,
@@ -1205,12 +1248,15 @@ void OpTester::Run(
             number_of_shared_pre_packed_weights_counter);
 
         if (provider_type == onnxruntime::kRocmExecutionProvider) {
-          execution_providers.clear();
-          execution_providers.emplace_back(DefaultRocmExecutionProvider(true));
           ExecuteModelForEps(
-              std::move(execution_providers), *p_model, so,
-              expect_result, expected_failure_string,
-              run_options, feeds, output_names,
+              []() {
+                std::vector<std::unique_ptr<IExecutionProvider>> ret;
+                ret.emplace_back(DefaultRocmExecutionProvider(true));
+                return ret;
+              }(),
+              *p_model, ctx_.session_options,
+              ctx_.expect_result, ctx_.expected_failure_string,
+              ctx_.run_options, feeds, output_names,
               &custom_session_registries_,
               /*assign_ep_for_nodes=*/true,
               allow_released_onnx_opset_only,
