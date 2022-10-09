@@ -138,7 +138,7 @@ class IExecutionProvider {
   /**
      Get the device id of current execution provider
   */
-  virtual int GetDeviceId() const { return -1; };
+  virtual int GetDeviceId() const { return 0; };
 
   /**
      Get execution provider's configuration options.

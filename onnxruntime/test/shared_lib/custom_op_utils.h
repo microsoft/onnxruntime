@@ -14,29 +14,20 @@ struct Input {
   std::vector<float> values;
 };
 
-struct OrtTensorDimensions : std::vector<int64_t> {
-  OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
-    OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
-    std::vector<int64_t>::operator=(ort.GetTensorShape(info));
-    ort.ReleaseTensorTypeAndShapeInfo(info);
-  }
-};
-
 struct MyCustomKernel {
-  MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/)
-      : ort_(ort) {
+  MyCustomKernel(const OrtApi& ort_api, const OrtKernelInfo* /*info*/)
+      : ort_(ort_api) {
   }
 
   void Compute(OrtKernelContext* context);
 
  private:
-  Ort::CustomOpApi ort_;
+  const OrtApi& ort_;
 };
 
 struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
   explicit MyCustomOp(const char* provider) : provider_(provider) {}
-
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernel(api, info); };
+  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const { return new MyCustomKernel(api, info); };
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -50,24 +41,25 @@ struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
  private:
-  const char* provider_;
+  const char* provider_{"CPUExecutionProvider"};
 };
 
 struct MyCustomKernelMultipleDynamicInputs {
-  MyCustomKernelMultipleDynamicInputs(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/)
-      : ort_(ort) {
+  MyCustomKernelMultipleDynamicInputs(const OrtApi& ort_api, const OrtKernelInfo* /*info*/)
+      : ort_(ort_api) {
   }
 
   void Compute(OrtKernelContext* context);
 
  private:
-  Ort::CustomOpApi ort_;
+  const OrtApi& ort_;
 };
 
 struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDynamicInputs, MyCustomKernelMultipleDynamicInputs> {
   explicit MyCustomOpMultipleDynamicInputs(const char* provider) : provider_(provider) {}
-
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernelMultipleDynamicInputs(api, info); };
+  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const {
+    return new MyCustomKernelMultipleDynamicInputs(api, info);
+  };
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -86,18 +78,15 @@ struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDyn
 };
 
 struct MyCustomKernelWithOptionalInput {
-  MyCustomKernelWithOptionalInput(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/) : ort_(ort) {
+  MyCustomKernelWithOptionalInput(const OrtKernelInfo* /*info*/) {
   }
   void Compute(OrtKernelContext* context);
-
- private:
-  Ort::CustomOpApi ort_;
 };
 
 struct MyCustomOpWithOptionalInput : Ort::CustomOpBase<MyCustomOpWithOptionalInput, MyCustomKernelWithOptionalInput> {
   explicit MyCustomOpWithOptionalInput(const char* provider) : provider_(provider) {}
 
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernelWithOptionalInput(api, info); };
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyCustomKernelWithOptionalInput(info); };
   const char* GetName() const { return "FooBar"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -122,21 +111,20 @@ struct MyCustomOpWithOptionalInput : Ort::CustomOpBase<MyCustomOpWithOptionalInp
 };
 
 struct MyCustomKernelWithAttributes {
-  MyCustomKernelWithAttributes(Ort::CustomOpApi ort, const OrtKernelInfo* info) : ort_(ort) {
-    int_attr_ = ort_.KernelInfoGetAttribute<int64_t>(info, "int_attr");
-    float_attr_ = ort_.KernelInfoGetAttribute<float>(info, "float_attr");
+  MyCustomKernelWithAttributes(const OrtKernelInfo* kernel_info) {
+    Ort::ConstKernelInfo info{kernel_info};
+    int_attr_ = info.GetAttribute<int64_t>("int_attr");
+    float_attr_ = info.GetAttribute<float>("float_attr");
 
-    ints_attr_ = ort_.KernelInfoGetAttribute<std::vector<int64_t>>(info, "ints_attr");
-    floats_attr_ = ort_.KernelInfoGetAttribute<std::vector<float>>(info, "floats_attr");
+    ints_attr_ = info.GetAttributes<int64_t>("ints_attr");
+    floats_attr_ = info.GetAttributes<float>("floats_attr");
 
-    string_arr_ = ort_.KernelInfoGetAttribute<std::string>(info, "string_attr");
+    string_arr_ = info.GetAttribute<std::string>("string_attr");
   }
 
   void Compute(OrtKernelContext* context);
 
  private:
-  Ort::CustomOpApi ort_;
-
   int64_t int_attr_;
   float float_attr_;
 
@@ -149,7 +137,7 @@ struct MyCustomKernelWithAttributes {
 struct MyCustomOpWithAttributes : Ort::CustomOpBase<MyCustomOpWithAttributes, MyCustomKernelWithAttributes> {
   explicit MyCustomOpWithAttributes(const char* provider) : provider_(provider) {}
 
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new MyCustomKernelWithAttributes(api, info); };
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new MyCustomKernelWithAttributes(info); };
   const char* GetName() const { return "FooBar_Attr"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -163,22 +151,18 @@ struct MyCustomOpWithAttributes : Ort::CustomOpBase<MyCustomOpWithAttributes, My
   const char* provider_;
 };
 
-//Slice array of floats or doubles between [from, to) and save to output
+// Slice array of floats or doubles between [from, to) and save to output
 struct SliceCustomOpKernel {
-  SliceCustomOpKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/)
-      : ort_(ort) {
+  SliceCustomOpKernel(const OrtKernelInfo* /*info*/) {
   }
 
   void Compute(OrtKernelContext* context);
-
- private:
-  Ort::CustomOpApi ort_;
 };
 
 struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
   explicit SliceCustomOp(const char* provider) : provider_(provider) {}
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const {
-    return new SliceCustomOpKernel(api, info);
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const {
+    return new SliceCustomOpKernel(info);
   };
 
   const char* GetName() const { return "Slice"; };
@@ -205,30 +189,29 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
 };
 
 struct StandaloneCustomKernel {
-  StandaloneCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info);
+  StandaloneCustomKernel(const OrtKernelInfo* info);
   ~StandaloneCustomKernel();
   void Compute(OrtKernelContext* context);
 
  private:
-  void InitTopK(Ort::CustomOpApi ort);
+  void InitTopK();
   void InvokeTopK(OrtKernelContext* context);
 
-  void InitGru(Ort::CustomOpApi ort);
+  void InitGru();
   void InvokeGru(OrtKernelContext* context);
 
   void InitInvokeConv(OrtKernelContext* context);  // create Conv and invoke in Compute(...)
 
-  Ort::CustomOpApi ort_;
-  OrtKernelInfo* info_copy_{};
-  OrtOp* op_add_{};
-  OrtOp* op_topk_{};
-  OrtOp* op_gru_{};
+  Ort::KernelInfo info_copy_{nullptr};
+  Ort::Op op_add_{nullptr};
+  Ort::Op op_topk_{nullptr};
+  Ort::Op op_gru_{nullptr};
 };
 
 struct StandaloneCustomOp : Ort::CustomOpBase<StandaloneCustomOp, StandaloneCustomKernel> {
   explicit StandaloneCustomOp(const char* provider) : provider_(provider) {}
 
-  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new StandaloneCustomKernel(api, info); };
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new StandaloneCustomKernel(info); };
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
 

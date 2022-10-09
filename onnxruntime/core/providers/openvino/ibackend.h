@@ -12,7 +12,7 @@ namespace openvino_ep {
 
 class IBackend {
  public:
-  virtual void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
+  virtual void Infer(OrtKernelContext* context) = 0;
 };
 
 class BackendFactory {

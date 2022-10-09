@@ -4,7 +4,7 @@
 #pragma once
 
 #include <hip/hip_fp16.h>
-#include <rocblas.h>
+#include <rocblas/rocblas.h>
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 
 namespace onnxruntime {
