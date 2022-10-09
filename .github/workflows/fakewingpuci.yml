@@ -2,6 +2,7 @@ name: Windows GPU CI Pipeline
 on:
   pull_request:
     paths-ignore:
+      - '**'
       - '!docs/**'
 jobs:
   x64_RelWithDebInfo:
