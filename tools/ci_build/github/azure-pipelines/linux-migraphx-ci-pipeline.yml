@@ -3,6 +3,8 @@ trigger: none
 name: 'linux_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 jobs:
 - job: AMDMIGraphX_CI
+  workspace:
+    clean: all
   pool: 'AMD-GPU'
   timeoutInMinutes: 180
 
@@ -25,11 +27,6 @@ jobs:
       Dockerfile: tools/ci_build/github/pai/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/pai
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
-
-  - task: CmdLine@2
-    inputs:
-      script: rm -rf $(Build.BinariesDirectory)/*
-    displayName: 'Clean Build.BinariesDirectory'
 
   - task: CmdLine@2
     inputs:

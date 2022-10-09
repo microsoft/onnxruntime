@@ -3,6 +3,8 @@ trigger: none
 name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 jobs:
 - job: AMD_CI
+  workspace:
+    clean: all
   pool: 'AMD-GPU'
   timeoutInMinutes: 150
 
@@ -92,7 +94,7 @@ jobs:
       script: |-
         cd ./build/RelWithDebInfo
         export PYTHONPATH=$PWD
-        export ORTMODULE_ONNX_OPSET_VERSION=14
+        export ORTMODULE_ONNX_OPSET_VERSION=15
         python \
           /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
           --model_name_or_path bert-large-uncased \
@@ -120,7 +122,7 @@ jobs:
       script: |-
         cd ./build/RelWithDebInfo
         export PYTHONPATH=$PWD
-        export ORTMODULE_ONNX_OPSET_VERSION=14
+        export ORTMODULE_ONNX_OPSET_VERSION=15
         python \
           /stage/huggingface-transformers/examples/pytorch/language-modeling/run_clm.py \
           --model_name_or_path gpt2 \
@@ -204,7 +206,7 @@ jobs:
       script: |-
         cd ./build/RelWithDebInfo
         export PYTHONPATH=$PWD
-        export ORTMODULE_ONNX_OPSET_VERSION=14
+        export ORTMODULE_ONNX_OPSET_VERSION=15
         python \
           /stage/huggingface-transformers/examples/pytorch/language-modeling/run_mlm.py \
           --model_name_or_path distilbert-base-uncased \
@@ -328,18 +330,19 @@ jobs:
       sudo apt-get update
       sudo apt install -y cifs-utils
     displayName: 'Install filesystems util'
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
 
   - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
     displayName: 'Mount MNIST'
-    condition: succeededOrFailed()
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
 
   - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
     displayName: 'Mount bert-data'
-    condition: succeededOrFailed()
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
 
   - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
     displayName: 'Mount hf-models-cache'
-    condition: succeededOrFailed()
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
 
 
   # Entry point for all ORTModule tests
@@ -364,4 +367,4 @@ jobs:
           --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
           --transformers_cache /hf_models_cache/huggingface/transformers
     displayName: 'Run orttraining_ortmodule_tests.py'
-    condition: succeededOrFailed()
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
