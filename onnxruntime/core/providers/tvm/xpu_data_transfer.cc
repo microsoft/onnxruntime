@@ -26,10 +26,10 @@ common::Status XPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int _
   size_t bytes = src.SizeInBytes();
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
-  const OrtDevice& src_device = src.Location().device;
-  const OrtDevice& dst_device = dst.Location().device;
+  const auto src_device_type = src.Location().device.Type();
+  const auto dst_device_type = dst.Location().device.Type();
 
-  if ((src_device.Type() == OrtDevice::CPU) && (dst_device.Type() == OrtDevice::CPU)) {
+  if ((src_device_type == OrtDevice::CPU) && (dst_device_type == OrtDevice::CPU)) {
     if (src_data == dst_data) {
       // no need copying as both pointers are referring to same piece of memory.
       return Status::OK();
@@ -40,7 +40,7 @@ common::Status XPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int _
     DLDataType dl_type{kDLInt, 8, 1};
     std::vector<int64_t> shape{int64_t(bytes)};
     // Construct source DLTensor
-    tvm_src.device = GetDLDevice(src_device);
+    tvm_src.device = GetDLDevice(static_cast<OrtMemoryInfoDeviceType>(src_device_type));
     tvm_src.dtype = dl_type;
     tvm_src.strides = nullptr;
     tvm_src.byte_offset = 0;
@@ -48,7 +48,7 @@ common::Status XPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int _
     tvm_src.ndim = 1;
     tvm_src.shape = shape.data();
     // Construct destination DLTensor
-    tvm_dst.device = GetDLDevice(dst_device);
+    tvm_dst.device = GetDLDevice(static_cast<OrtMemoryInfoDeviceType>(dst_device_type));
     tvm_dst.dtype = dl_type;
     tvm_dst.strides = nullptr;
     tvm_dst.byte_offset = 0;
@@ -63,7 +63,7 @@ common::Status XPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int _
 
 DLDevice XPUDataTransfer::get_context(const OrtDevice& device) const
 {
-  return GetDLDevice(device);
+  return GetDLDevice(static_cast<OrtMemoryInfoDeviceType>(device.Type()));
 }
 
 bool TvmCPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
