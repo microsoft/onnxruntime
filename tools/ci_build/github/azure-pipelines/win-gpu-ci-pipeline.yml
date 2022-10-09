@@ -2,14 +2,15 @@ trigger:
   paths:
     exclude:
     - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
 
 parameters:
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
   type: boolean
   default: true
-
-# It' a comment for test
 
 stages:
 - stage: cuda

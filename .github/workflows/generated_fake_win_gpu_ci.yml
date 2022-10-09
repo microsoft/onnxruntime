@@ -1,0 +1,32 @@
+# Don't edit this file manully.
+# Run generate_fake_workflows.py to generate it.
+
+name: Windows GU CI Pipeline
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - README.md
+      - CONTRIBUTING.md
+      - BUILD.md
+
+jobs:
+  cuda build_x64_RelWithDebInfo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required, only documentation changed"'
+
+  dml build_x64_RelWithDebInfo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required, only documentation changed"'
+
+  training build_x64_RelWithDebInfo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required, only documentation changed"'
+
+  kernelDocumentation build_x64_RelWithDebInfo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required, only documentation changed"'

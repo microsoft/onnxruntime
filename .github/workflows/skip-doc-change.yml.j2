@@ -1,0 +1,19 @@
+# Don't edit this file manully.
+# Run generate_fake_workflows.py to generate it.
+
+name: {{ ci_workflow_name }}
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - README.md
+      - CONTRIBUTING.md
+      - BUILD.md
+
+jobs:
+{%- for name in job_names %}
+  {{ name }}:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'echo "No build required, only documentation changed"'
+{% endfor %}
