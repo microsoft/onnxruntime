@@ -1,9 +1,8 @@
 name: Windows GPU CI Pipeline
 on:
   pull_request:
-    paths-ignore:
-      - '**'
-      - '!docs/**'
+    paths:
+      - 'docs/**'
 jobs:
   cuda build_x64_RelWithDebInfo:
     runs-on: ubuntu-latest
