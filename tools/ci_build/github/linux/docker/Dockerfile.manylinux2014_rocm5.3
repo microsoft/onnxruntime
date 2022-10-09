@@ -1,13 +1,14 @@
-# rocm/dev-centos-7:5.3 is what we want to use as base image, but ROCm team hasn't provided it yet.
-# We build ROCm5.3 dev centos docker image manually(stage base_image, line3~line99).
-# It's same as https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-centos-7
-FROM centos:7 AS base_image
+ARG BASEIMAGE=centos:7
 ARG POLICY=manylinux2014
 ARG PLATFORM=x86_64
 ARG DEVTOOLSET_ROOTPATH=
 ARG LD_LIBRARY_PATH_ARG=
 ARG PREPEND_PATH=
 
+# rocm/dev-centos-7:5.3 is what we want to use as base image, but ROCm team hasn't provided it yet.
+# We build ROCm5.3 dev centos docker image manually(stage base_image, line11~line102).
+# It's same as https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-centos-7
+FROM $BASEIMAGE AS base_image
 ARG ROCM_VERSION=5.3
 ARG AMDGPU_VERSION=22.10.3
 # Base
