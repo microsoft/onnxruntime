@@ -9,6 +9,8 @@ parameters:
   type: boolean
   default: true
 
+# It' a comment for test
+
 stages:
 - stage: cuda
   dependsOn: []
