@@ -31,7 +31,7 @@ struct PartialGraphExecutionState {
   ProgramRegion& GetProgramRegions(const SessionState& session_state);
 
   ExecutionContext& GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
-                                        gsl::span<const int>& fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
+                                        gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
                                         const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                         const SessionState& session_state,
                                         const logging::Logger& sess_logger,
