@@ -110,7 +110,7 @@ void ReplaceInputsToUseSharedInitializer(Graph& graph,
  * Otherwise, insert the value into container, return the last index.
  */
 template <typename T>
-struct GetOrAddValueIntoConstantStoreDispatcher {
+struct GetOrAddValueInConstantStoreDispatcher {
   size_t operator()(const onnxruntime::Initializer& initializer,
                     InlinedVector<std::variant<int32_t, int64_t, float, double>>&
                         const_value_store) const {
@@ -153,12 +153,11 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   }
 
   // Avoid using the scalar value directly in pattern_key because the value for example INT_MAX can be super big
-  // and it will be hard to read. Instead, a constant value store is maintain, then the value index is used as the
+  // and it will be hard to read. Instead, a constant value store is maintained, then the value index is used as the
   // value unique id when construct pattern key.
   InlinedVector<std::variant<int32_t, int64_t, float, double>> const_value_store;
   for (const auto& initializer_name : original_initializer_names) {
     NodeArg* origin_initializer_node_arg = graph.GetNodeArg(initializer_name);
-
     if (origin_initializer_node_arg == nullptr || !IsValidSingleValueShape(origin_initializer_node_arg->Shape())) {
       continue;
     }
@@ -171,7 +170,7 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
       continue;
     }
 
-    // A map used to collect those consumers who has inputs using origin_initializer_node_arg.
+    // A map used to collect those consumers who have inputs use origin_initializer_node_arg.
     // > The key is consumer Node pointer.
     // > The value is a list of indices for the consumer Nodes' input (that used origin_initializer_node_arg).
     InlinedHashMap<const Node*, InlinedVector<int>> consumer_node_to_input_ports_map;
@@ -183,8 +182,7 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
 
     onnxruntime::Initializer initializer{*tensor_proto, graph.ModelPath()};
     utils::MLTypeCallDispatcherFromTypeList<SupportedTypeList> t_disp(tensor_proto->data_type());
-    size_t value_id =
-        t_disp.InvokeRet<size_t, GetOrAddValueIntoConstantStoreDispatcher>(initializer, const_value_store);
+    size_t value_id = t_disp.InvokeRet<size_t, GetOrAddValueInConstantStoreDispatcher>(initializer, const_value_store);
 
     // Construct a string by data type, value, and rank. Used as a key in pattern_key_to_shared_arg_map.
     const std::string pattern_key = MakeString(SHARED_INITIALIZER_PREFIX, value_id, "_", data_type, "_",
