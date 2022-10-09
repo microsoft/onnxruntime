@@ -8,6 +8,11 @@ set(FP16_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
 set(CLOG_SOURCE_DIR "${PYTORCH_CPUINFO_DIR}/deps/clog")
 set(CPUINFO_SOURCE_DIR ${PYTORCH_CPUINFO_DIR})
 
+# BF16 instructions cause ICE in Android NDK compiler
+if(CMAKE_ANDROID_ARCH_ABI STREQUAL armeabi-v7a)
+  set(XNNPACK_ENABLE_ARM_BF16 OFF)
+ENDIF()
+
 if(onnxruntime_BUILD_WEBASSEMBLY)
   execute_process(COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenSupport.patch WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/${XNNPACK_DIR})
 endif()
