@@ -354,17 +354,17 @@ jobs:
   # TODO - we may consider to cherry pick subset of the UTs to reduce the CI time.
   # We can re-enable this part again when it's done.
 
-  - task: CmdLine@2
-    inputs:
-      script: |-
-        cd ./build/RelWithDebInfo
-        unset PYTHONPATH
-        rm -rf onnxruntime
-        pip install ./dist/onnxruntime*.whl
-        python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
-        python orttraining_ortmodule_tests.py \
-          --mnist /mnist \
-          --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
-          --transformers_cache /hf_models_cache/huggingface/transformers
-    displayName: 'Run orttraining_ortmodule_tests.py'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+  # - task: CmdLine@2
+  #   inputs:
+  #     script: |-
+  #       cd ./build/RelWithDebInfo
+  #       unset PYTHONPATH
+  #       rm -rf onnxruntime
+  #       pip install ./dist/onnxruntime*.whl
+  #       python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
+  #       python orttraining_ortmodule_tests.py \
+  #         --mnist /mnist \
+  #         --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
+  #         --transformers_cache /hf_models_cache/huggingface/transformers
+  #   displayName: 'Run orttraining_ortmodule_tests.py'
+  #   condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
