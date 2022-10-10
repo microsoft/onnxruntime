@@ -12,6 +12,7 @@ import {registerBackend} from 'onnxruntime-common';
 if (!BUILD_DEFS.DISABLE_WEBGL) {
   const onnxjsBackend = require('./backend-onnxjs').onnxjsBackend;
   registerBackend('webgl', onnxjsBackend, -10);
+  registerBackend('webgpu', onnxjsBackend, 999);  // set to 999 as the highest priority
 }
 if (!BUILD_DEFS.DISABLE_WASM) {
   const wasmBackend = require('./backend-wasm').wasmBackend;

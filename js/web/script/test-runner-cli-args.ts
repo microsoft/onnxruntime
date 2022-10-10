@@ -34,6 +34,7 @@ Options:
  -b=<...>, --backend=<...>     Specify one or more backend(s) to run the test upon.
                                  Backends can be one or more of the following, splitted by comma:
                                    webgl
+                                   webgpu
                                    wasm
                                    xnnpack
                                    js
@@ -99,7 +100,7 @@ Examples:
 
 export declare namespace TestRunnerCliArgs {
   type Mode = 'suite0'|'suite1'|'model'|'unittest'|'op';
-  type Backend = 'cpu'|'webgl'|'wasm'|'onnxruntime'|'xnnpack'|'js';
+  type Backend = 'cpu'|'webgl'|'webgpu'|'wasm'|'onnxruntime'|'xnnpack'|'js';
   type Environment = 'chrome'|'edge'|'firefox'|'electron'|'safari'|'node'|'bs';
   type BundleMode = 'prod'|'dev'|'perf';
 }
@@ -335,7 +336,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   }
 
   // Option: -b=<...>, --backend=<...>
-  const browserBackends = ['webgl', 'wasm', 'xnnpack', 'js'];
+  const browserBackends = ['webgl', 'webgpu', 'wasm', 'xnnpack', 'js'];
   const nodejsBackends = ['cpu', 'wasm'];
   const backendArgs = args.backend || args.b;
   const backend =

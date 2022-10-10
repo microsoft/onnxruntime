@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import {Graph} from './graph';
-import {OperatorImplementation, OperatorInitialization} from './operators';
+import {OperatorAsyncImplementation, OperatorImplementation, OperatorInitialization} from './operators';
 
 export interface OpSet {
   domain: string;
@@ -19,9 +19,11 @@ export declare namespace OpSet {
    * A resolve rule consists of 4 or 5 items: opType, opSetDomain, versionSelector, operatorImplementation and
    * operatorInitialization (optional)
    */
-  type ResolveRule = [
-    string, Domain, string, OperatorImplementation<Graph.Node>
-  ]|[string, Domain, string, OperatorImplementation<unknown>, OperatorInitialization<unknown>];
+  type ResolveRule =
+      [
+        string, Domain, string, OperatorImplementation<Graph.Node>| OperatorAsyncImplementation<Graph.Node>
+      ]|[string, Domain, string, OperatorImplementation<unknown>| OperatorAsyncImplementation<unknown>,
+         OperatorInitialization<unknown>];
 }
 
 export function resolveOperator(node: Graph.Node, opsets: readonly OpSet[], rules: readonly OpSet.ResolveRule[]) {

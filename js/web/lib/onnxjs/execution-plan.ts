@@ -1,7 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {env} from 'onnxruntime-common';
+
 import {SessionHandler} from './backend';
+import {WebGpuBackend} from './backends/backend-webgpu';
 import {Graph} from './graph';
 import {Logger, Profiler} from './instrument';
 import {Operator} from './operators';
@@ -57,6 +60,7 @@ export class ExecutionPlan {
 
       // create inference handler
       const inferenceHandler = sessionHandler.createInferenceHandler();
+      const IS_WEBGPU = sessionHandler.backend instanceof WebGpuBackend;
 
       // populate inputs value
       const graphInputs = this.graph.getInputIndices();
@@ -103,6 +107,17 @@ export class ExecutionPlan {
           throw new Error('the size of output does not match model definition.');
         }
 
+        if (env.debug) {
+          for (let i = 0; i < outputList.length; i++) {
+            if (IS_WEBGPU) {
+              await outputList[i].getData();
+            } else {
+              // eslint-disable-next-line no-unused-expressions
+              outputList[i].data;
+            }
+          }
+        }
+
         // fill value
         outputList.forEach((output, i) => {
           const j = thisOp.node.outputs[i];
@@ -110,6 +125,10 @@ export class ExecutionPlan {
             throw new Error(`output [${j}] already has value: op:${thisOp.node.name}`);
           }
           this._values[j] = output;
+
+          if (env.debug) {
+            Logger.verbose('ExecPlanDataDump', `output${i}[${output.dims}]:${output.data}`);
+          }
         });
 
         // resolve downstream nodes
@@ -140,7 +159,8 @@ export class ExecutionPlan {
         if (outputTensor === undefined) {
           throw new Error(`required output [${outputIndex}] does not have value`);
         }
-        if (outputIndex === 0) {
+
+        if (IS_WEBGPU) {
           await outputTensor.getData();
         } else {
           // eslint-disable-next-line no-unused-expressions

@@ -25,6 +25,8 @@ const WEBGL_THRESHOLD_ABSOLUTE_ERROR = 1.0e-3;
 const WEBGL_THRESHOLD_RELATIVE_ERROR = 1.00001;
 const WEBGL_HALF_FLOAT_THRESHOLD_ABSOLUTE_ERROR = 0.1;
 const WEBGL_HALF_FLOAT_THRESHOLD_RELATIVE_ERROR = 1.02;
+const WEBGPU_THRESHOLD_ABSOLUTE_ERROR = 1.0e-3;
+const WEBGPU_THRESHOLD_RELATIVE_ERROR = 1.00001;
 const WASM_THRESHOLD_ABSOLUTE_ERROR = 1.0e-4;
 const WASM_THRESHOLD_RELATIVE_ERROR = 1.000001;
 const ONNXRUNTIME_THRESHOLD_ABSOLUTE_ERROR = 1.0e-3;
@@ -274,6 +276,9 @@ export class TensorResultValidator {
         this.absoluteThreshold = WEBGL_THRESHOLD_ABSOLUTE_ERROR;
         this.relativeThreshold = WEBGL_THRESHOLD_RELATIVE_ERROR;
       }
+    } else if (backend === 'webgpu') {
+      this.absoluteThreshold = WEBGPU_THRESHOLD_ABSOLUTE_ERROR;
+      this.relativeThreshold = WEBGPU_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'wasm' || backend === 'xnnpack') {
       this.absoluteThreshold = WASM_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = WASM_THRESHOLD_RELATIVE_ERROR;
@@ -518,7 +523,7 @@ export class OpTestContext {
   inferenceHandler: InferenceHandler;
 
   constructor(protected opTest: Test.OperatorTest) {
-    this.backendHint = opTest.backend === 'webgl' ? 'webgl' : 'cpu';
+    this.backendHint = opTest.backend ?? 'cpu';
   }
   createOperator(): Operator {
     return initializeOperator(
@@ -556,10 +561,15 @@ async function runOpTestcase(
   const inputTensors =
       testcase.inputs.map(input => createTensor(input.dims, input.type as Tensor.DataType, input.data));
 
-  const results = operator.impl(inferenceHandler, inputTensors, operator.context);
-  // if ('then' in results) {
-  //   results = await results;
-  // }
+  const results = await operator.impl(inferenceHandler, inputTensors, operator.context);
+
+  // try async data read.
+  for (const result of results) {
+    try {
+      await result.getData();
+    } catch {
+    }
+  }
 
   results.forEach((output, i) => {
     Logger.verbose('TestOpRunner', `  Result'${i}': ${output.type}[${output.dims.join(',')}]`);

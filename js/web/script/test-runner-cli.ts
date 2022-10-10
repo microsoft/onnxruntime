@@ -50,7 +50,7 @@ if (shouldLoadSuiteTestData) {
 
 // The default backends and opset version lists. Those will be used in suite tests.
 const DEFAULT_BACKENDS: readonly TestRunnerCliArgs.Backend[] =
-    args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl'];
+    args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl', 'webgpu'];
 const DEFAULT_OPSET_VERSIONS: readonly number[] = [13, 12, 11, 10, 9, 8, 7];
 
 const FILE_CACHE_ENABLED = args.fileCache;         // whether to enable file cache
@@ -454,11 +454,13 @@ function run(config: Test.Config) {
     // STEP 5. use Karma to run test
     npmlog.info('TestRunnerCli.Run', '(5/5) Running karma to start test runner...');
     const karmaCommand = path.join(npmBin, 'karma');
+    const webgpu = args.backends.indexOf('webgpu') > -1;
     const browser = getBrowserNameFromEnv(
         args.env,
         args.bundleMode === 'perf' ? 'perf' :
             args.debug             ? 'debug' :
-                                     'test');
+                                     'test',
+        webgpu);
     const karmaArgs = ['start', `--browsers ${browser}`];
     if (args.debug) {
       karmaArgs.push('--log-level info --timeout-mocha 9999999');
@@ -467,6 +469,9 @@ function run(config: Test.Config) {
     }
     if (args.noSandbox) {
       karmaArgs.push('--no-sandbox');
+    }
+    if (webgpu) {
+      karmaArgs.push('--force-localhost');
     }
     karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
     if (browser === 'Edge') {
@@ -559,10 +564,11 @@ function saveConfig(config: Test.Config) {
   fs.writeJSONSync(path.join(TEST_ROOT, './testdata-config.json'), config);
 }
 
-function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test') {
+
+function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean) {
   switch (env) {
     case 'chrome':
-      return selectChromeBrowser(mode);
+      return selectChromeBrowser(mode, webgpu);
     case 'edge':
       return 'Edge';
     case 'firefox':
@@ -578,13 +584,22 @@ function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], mode: 'debug'|'per
   }
 }
 
-function selectChromeBrowser(mode: 'debug'|'perf'|'test') {
-  switch (mode) {
-    case 'debug':
-      return 'ChromeDebug';
-    case 'perf':
-      return 'ChromePerf';
-    default:
-      return 'ChromeTest';
+function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean) {
+  if (webgpu) {
+    switch (mode) {
+      case 'debug':
+        return 'ChromeCanaryDebug';
+      default:
+        return 'ChromeCanaryTest';
+    }
+  } else {
+    switch (mode) {
+      case 'debug':
+        return 'ChromeDebug';
+      case 'perf':
+        return 'ChromePerf';
+      default:
+        return 'ChromeTest';
+    }
   }
 }
