@@ -5357,3 +5357,32 @@ def test_eval_model_mode():
                 assert model.training == new_mode
                 assert model._torch_module.is_training() == new_mode
                 assert model._torch_module._flattened_module.training == new_mode
+
+
+def test_eval_onnx_models():
+    class NeuralNetBatchNorm(torch.nn.Module):
+        def __init__(self, num_features):
+            super(NeuralNetBatchNorm, self).__init__()
+            self.bn = torch.nn.BatchNorm1d(num_features)
+
+        def forward(self, input):
+            return self.bn(input)
+
+    device = "cuda"
+
+    N, H = 64, 128
+    model = ORTModule(NeuralNetBatchNorm(H).to(device))
+
+    x1 = torch.randn(N, H, device=device, requires_grad=True)
+    output = model(x1)
+    output.sum().backward()
+
+    x2 = torch.randn(N, H, device=device)
+    model.eval()
+    model(x2)
+
+    training_model = model._torch_module._execution_manager(True)._onnx_models.optimized_model
+    eval_model = model._torch_module._execution_manager(False)._onnx_models.optimized_model
+    # BatchNormInternal is for training, while BatchNormalization is for inference.
+    assert "BatchNormInternal" in [node.op_type for node in training_model.graph.node]
+    assert "BatchNormalization" in [node.op_type for node in eval_model.graph.node]
