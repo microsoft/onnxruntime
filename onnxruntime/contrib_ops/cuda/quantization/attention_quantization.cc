@@ -119,6 +119,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
 
   const auto& bias_shape = bias->Shape();
   const int hidden_size = SafeInt<int>(bias_shape.GetDims()[0]) / 3;
+  // Note: Scenario where q_hidden_size == k_hidden_size != v_hidden_size is not supported in quantization
   const int qkv_head_size[3] = {hidden_size / num_heads_, hidden_size / num_heads_, hidden_size / num_heads_};
 
   TensorShapeVector output_shape(3);
