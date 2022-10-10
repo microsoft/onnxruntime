@@ -1,0 +1,36 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <emscripten.h>
+
+#include "core/framework/session_state.h"
+#include "core/providers/js/allocator.h"
+
+namespace onnxruntime {
+namespace js {
+
+void* JsCustomAllocator::Alloc(size_t size) {
+  printf("JsCustomAllocator::Alloc(%zu)\n", size);
+  void* p = EM_ASM_PTR({return Module.jsepAlloc($0);}, size);
+  stats_.num_allocs++;
+  stats_.bytes_in_use += size;
+  stats_.max_bytes_in_use =std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
+  stats_.max_alloc_size = std::max<int64_t>(stats_.max_alloc_size, static_cast<int64_t>(size));
+  stats_.num_arena_extensions++;
+  stats_.num_arena_shrinkages = std::max(stats_.num_arena_shrinkages, stats_.num_arena_extensions);
+  stats_.total_allocated_bytes += size;
+  return p;
+}
+
+void JsCustomAllocator::Free(void* p) {
+  size_t size = (size_t)(void*)EM_ASM_PTR({return Module.jsepFree($0);}, p);
+  stats_.num_arena_extensions--;
+  stats_.bytes_in_use -= size;
+}
+
+void JsCustomAllocator::GetStats(AllocatorStats* stats) {
+  *stats = stats_;
+}
+
+}  // namespace js
+}  // namespace onnxruntime

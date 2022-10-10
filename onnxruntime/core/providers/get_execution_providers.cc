@@ -93,6 +93,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kJsExecutionProvider,
+#ifdef USE_JS
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kCoreMLExecutionProvider,
 #ifdef USE_COREML
             true,
