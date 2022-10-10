@@ -1,6 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+declare namespace JSEP {
+  type BackendType = unknown;
+  type AllocFunction = (size: number) => number;
+  type FreeFunction = (size: number) => number;
+  type UploadFunction = (size: number) => number;
+  type DownloadFunction = (size: number) => number;
+  type RunFunction = (size: number) => number;
+}
+
 export interface OrtWasmModule extends EmscriptenModule {
   // #region emscripten functions
   stackSave(): number;
@@ -50,6 +59,12 @@ export interface OrtWasmModule extends EmscriptenModule {
 
   // #region config
   mainScriptUrlOrBlob?: string|Blob;
+  // #endregion
+
+  // #region JSEP
+  jsepInit?
+      (backend: JSEP.BackendType, alloc: JSEP.AllocFunction, free: JSEP.FreeFunction, upload: JSEP.UploadFunction,
+       download: JSEP.DownloadFunction, run: JSEP.RunFunction): void;
   // #endregion
 }
 

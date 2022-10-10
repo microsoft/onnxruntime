@@ -15,6 +15,7 @@ if (!BUILD_DEFS.DISABLE_WEBGL) {
 }
 if (!BUILD_DEFS.DISABLE_WASM) {
   const wasmBackend = require('./backend-wasm').wasmBackend;
+  registerBackend('js', wasmBackend, 11);
   registerBackend('cpu', wasmBackend, 10);
   registerBackend('wasm', wasmBackend, 10);
   registerBackend('xnnpack', wasmBackend, 9);
