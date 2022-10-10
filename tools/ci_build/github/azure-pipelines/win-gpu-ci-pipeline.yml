@@ -1,6 +1,6 @@
 trigger:
   paths:
-    include
+    include:
     - /
     exclude:
     - docs/**
