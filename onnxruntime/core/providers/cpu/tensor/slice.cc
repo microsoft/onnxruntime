@@ -223,15 +223,19 @@ static Status SliceImpl(OpKernelContext* ctx,
   const auto* output_end = output + output_tensor.Shape().Size();
 
   auto create_output = [&output, &output_end](SliceIterator<T>& slice_input_iterator) {
-    if (slice_input_iterator.SolitaryInnerStep()) {
-      while (output < output_end) {
-        output = slice_input_iterator.CopyInnermostAxisSolitaryInnerStep(output);
-      }
-    } else {
-      while (output < output_end) {
-        output = slice_input_iterator.CopyInnermostAxisNonSolitaryInnerStep(output);
-      }
+    while (output < output_end) {
+      output = slice_input_iterator.CopyMaxDataInOneStep(output);
     }
+
+    //if (slice_input_iterator.SolitaryInnerStep()) {
+    //  while (output < output_end) {
+    //    output = slice_input_iterator.CopyInnermostAxisSolitaryInnerStep(output);
+    //  }
+    //} else {
+    //  while (output < output_end) {
+    //    output = slice_input_iterator.CopyInnermostAxisNonSolitaryInnerStep(output);
+    //  }
+    //}
 
     ORT_ENFORCE(output == output_end);
   };
