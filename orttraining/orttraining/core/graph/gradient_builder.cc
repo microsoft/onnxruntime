@@ -76,13 +76,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetCastGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("SinGrad",
-              {GO(0), I(0)},
-              {GI(0)})};
-}
-
-IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
   std::vector<NodeDef> result;
   result.push_back(NodeDef("Cos", {I(0)}, {IA("Sin_O0")}));
   result.push_back(NodeDef("Mul", {GO(0), IA("Sin_O0")}, {GI(0)}));
