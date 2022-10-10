@@ -42,7 +42,7 @@ bool IsSharedInitializer(std::string_view initializer_name) {
   return initializer_name.rfind(SHARED_INITIALIZER_PREFIX, 0) == 0;
 }
 
-// Return true when initializer node arg is not consumed by any node conaining sub graphs;
+// Return true when initializer node arg is consumed by any node conaining sub graphs;
 // Otherwise, return false.
 bool PrepareInputPortsToReplace(Graph& graph, const NodeArg* origin_initializer_node_arg,
                                 InlinedHashMap<const Node*, InlinedVector<int>>& consumer_node_to_input_ports_map) {
