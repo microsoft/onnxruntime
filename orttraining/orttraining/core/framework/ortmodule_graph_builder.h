@@ -109,7 +109,7 @@ class OrtModuleGraphBuilder {
   void SetConcreteInputShapes(const std::vector<std::vector<int64_t>>& input_shapes);
 
   // Apply graph transformers
-  Status OptimizeInferenceGraph(std::unordered_set<std::string>& x_node_arg_names);
+  Status OptimizeInferenceGraph(std::unordered_set<std::string>& x_node_arg_names, bool tmp_flag_for_inf_bn = true);
 
   // Build gradient graph.
   Status BuildGradientGraph(const std::unordered_set<std::string>& x_node_arg_names);

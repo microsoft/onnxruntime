@@ -80,7 +80,8 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
 
   // Optimize the inference graph, and if needed, build the gradient graph.
   std::unordered_set<std::string> x_node_arg_names;
-  ORT_RETURN_IF_ERROR(OptimizeInferenceGraph(x_node_arg_names));
+  bool tmp_flag_for_inf_bn = config_.build_gradient_graph;
+  ORT_RETURN_IF_ERROR(OptimizeInferenceGraph(x_node_arg_names, tmp_flag_for_inf_bn));
   if (!config_.build_gradient_graph) {
     // This graph will be used only for inferencing, so stop right here.
     // No need to build a gradient graph.
@@ -148,7 +149,7 @@ void OrtModuleGraphBuilder::SetConcreteInputShapes(const std::vector<std::vector
   gradient_graph.SetInputs(input_args);
 }
 
-Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::string>& x_node_arg_names) {
+Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::string>& x_node_arg_names, bool tmp_flag_for_inf_bn) {
   // Resolve original graph, register and apply transformers for pre-training.
   Graph& gradient_graph = gradient_model_->MainGraph();
   ORT_RETURN_IF_ERROR(gradient_graph.Resolve());
@@ -162,7 +163,7 @@ Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::str
                  std::inserter(x_node_arg_names, x_node_arg_names.begin()));
   auto add_transformers = [&](TransformerLevel level) {
     auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
-        level, x_node_arg_names, config_.graph_transformer_config, *cpu_execution_provider);
+        level, x_node_arg_names, config_.graph_transformer_config, *cpu_execution_provider, {}, tmp_flag_for_inf_bn);
     for (auto& entry : transformers_to_register) {
       ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(entry), level));
     }

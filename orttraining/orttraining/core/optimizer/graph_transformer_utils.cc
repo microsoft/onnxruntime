@@ -65,7 +65,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     const std::unordered_set<std::string>& weights_to_train,
     const TrainingGraphTransformerConfiguration& config,
     const IExecutionProvider& execution_provider,
-    const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
+    const std::unordered_set<std::string>& rules_and_transformers_to_disable,
+    bool tmp_flag_for_inf_bn) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
 
@@ -79,7 +80,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
           std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
                                                       compatible_eps);
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertMaxPoolOutput>()));
-      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<BatchNormReplacement>()));
+      if (tmp_flag_for_inf_bn) {
+        ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<BatchNormReplacement>()));
+      }
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<UnsqueezeElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<ExpandElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<CastElimination>()));
