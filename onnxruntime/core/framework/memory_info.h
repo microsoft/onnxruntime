@@ -10,6 +10,7 @@
 #include "core/framework/mem_pattern.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value_name_idx_map.h"
+#include "core/common/inlined_containers_fwd.h"
 
 #include <iomanip>
 #include <string>
@@ -134,7 +135,7 @@ class MemoryInfo {
             const OrtValueNameIdxMap& value_name_idx_map);
   void RecordPatternInfo(const MemoryPatternGroup& mem_patterns, const MapType& type);
 
-  void RecordInitializerAllocInfo(const std::unordered_map<int, OrtValue>& tensor_map);
+  void RecordInitializerAllocInfo(const InlinedHashMap<int, OrtValue>& tensor_map);
   void RecordActivationAllocInfo(const OrtValueIndex idx, const OrtValue& value);
   void SetDynamicAllocation(const OrtValueIndex idx);
   void SetLocalRank(const int rank) { local_rank_ = rank; }
