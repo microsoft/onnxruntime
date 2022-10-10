@@ -18,6 +18,7 @@
 #include "core/providers/xnnpack/nn/conv.h"
 #include "core/providers/xnnpack/nn/max_pool.h"
 #include "core/providers/xnnpack/nn/average_pool.h"
+#include "core/providers/xnnpack/nn/resize.h"
 #include "core/providers/xnnpack/nn/softmax.h"
 
 namespace onnxruntime {
@@ -95,6 +96,7 @@ bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
       NewChecker(MaxPool),
       NewChecker(AveragePool),
       NewChecker(Softmax),
+      NewChecker(Resize),
       {"QLinearConv", Conv::IsOnnxNodeSupported},
   };
 
