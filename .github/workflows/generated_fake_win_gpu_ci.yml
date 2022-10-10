@@ -4,8 +4,8 @@
 name: Windows GPU CI Pipeline
 on:
   pull_request:
-    paths:
-      - 'docs/**'
+    paths-ignore:
+      - docs/**
       - README.md
       - CONTRIBUTING.md
       - BUILD.md
