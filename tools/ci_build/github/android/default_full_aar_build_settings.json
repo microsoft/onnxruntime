@@ -15,7 +15,6 @@
         "--build_shared_lib",
         "--use_nnapi",
         "--use_xnnpack",
-        "--skip_tests",
-        "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
+        "--skip_tests"
     ]
 }

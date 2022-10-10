@@ -20,7 +20,6 @@
         "--disable_exceptions",
         "--enable_reduced_operator_type_support",
         "--use_nnapi",
-        "--skip_tests",
-        "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
+        "--skip_tests"
     ]
 }
