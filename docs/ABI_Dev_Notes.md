@@ -40,4 +40,4 @@ Therefore, our DLLEXPORT macro is like:
 ## static initialization order problem
 It's well known C++ has [static initialization order problem](https://isocpp.org/wiki/faq/ctors#static-init-order). Dynamic linking can ensure that onnxruntime's static variables are already initialized before any onnxruntime's C API get called. The same thing applies to their destructors. It's good. But on the other side, static linking may have more usage restrictions on some of the APIs.
 
-## test commit 1
+## test commit 2
