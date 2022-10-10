@@ -832,7 +832,7 @@ function webglConv(
   if (biasTensor) {
     inputs.push(biasTensor);
   }
-  return (op.impl(webglInferenceHandler!, inputs, op.context))[0];
+  return (op.impl(webglInferenceHandler!, inputs, op.context) as Tensor[])[0];
 }
 function cpuConv(
     inputTensor: Tensor, kernelTensor: Tensor, biasTensor: Tensor|null, autoPad: string|undefined, dilations: number[],

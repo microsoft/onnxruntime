@@ -6,6 +6,7 @@
 const bundleMode = require('minimist')(process.argv)['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
 const karmaPlugins = require('minimist')(process.argv)['karma-plugins'] || undefined;
 const timeoutMocha = require('minimist')(process.argv)['timeout-mocha'] || 60000;
+const forceLocalHost = !!require('minimist')(process.argv)['force-localhost'];
 const commonFile = bundleMode === 'dev' ? '../common/dist/ort-common.js' : '../common/dist/ort-common.min.js'
 const mainFile = bundleMode === 'dev' ? 'test/ort.dev.js' : 'test/ort.perf.js';
 
@@ -16,18 +17,20 @@ const mainFile = bundleMode === 'dev' ? 'test/ort.dev.js' : 'test/ort.perf.js';
 // https://stackoverflow.com/a/8440736
 //
 function getMachineIpAddress() {
-  var os = require('os');
-  var ifaces = os.networkInterfaces();
+  if (!forceLocalHost) {
+    var os = require('os');
+    var ifaces = os.networkInterfaces();
 
-  for (const ifname in ifaces) {
-    for (const iface of ifaces[ifname]) {
-      if ('IPv4' !== iface.family || iface.internal !== false) {
-        // skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses
-        continue;
+    for (const ifname in ifaces) {
+      for (const iface of ifaces[ifname]) {
+        if ('IPv4' !== iface.family || iface.internal !== false) {
+          // skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses
+          continue;
+        }
+
+        // returns the first available IP address
+        return iface.address;
       }
-
-      // returns the first available IP address
-      return iface.address;
     }
   }
 
@@ -80,6 +83,8 @@ module.exports = function (config) {
       ChromeTest: { base: 'ChromeHeadless', flags: ['--enable-features=SharedArrayBuffer'] },
       ChromePerf: { base: 'Chrome', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer'] },
       ChromeDebug: { debug: true, base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer'] },
+      ChromeCanaryTest: { base: 'ChromeCanary', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer', '--enable-unsafe-webgpu'] },
+      ChromeCanaryDebug: { debug: true, base: 'ChromeCanary', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer', '--enable-unsafe-webgpu'] },
 
       //
       // ==== BrowserStack browsers ====

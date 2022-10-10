@@ -131,7 +131,15 @@ export class Tensor {
    */
   async getData(): Promise<TensorData> {
     if (this.cache === undefined) {
-      this.cache = await this.asyncDataProvider!(this.dataId);
+      if (this.asyncDataProvider) {
+        const data = await this.asyncDataProvider(this.dataId);
+        if (data.length !== this.size) {
+          throw new Error('Length of data provided by the Data Provider is inconsistent with the dims of this Tensor.');
+        }
+        this.cache = data;
+      } else {
+        return this.data;
+      }
     }
     return this.cache;
   }
@@ -348,7 +356,7 @@ export class Tensor {
   }
 }
 
-function sizeof(type: Tensor.DataType): number {
+export function sizeof(type: Tensor.DataType): number {
   switch (type) {
     case 'bool':
     case 'int8':
@@ -390,7 +398,7 @@ function sizeofProto(type: onnx.TensorProto.DataType|ortFbs.TensorDataType): num
   }
 }
 
-function createView(dataBuffer: ArrayBuffer, type: Tensor.DataType) {
+export function createView(dataBuffer: ArrayBuffer, type: Tensor.DataType) {
   return new (dataviewConstructor(type))(dataBuffer);
 }
 

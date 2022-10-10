@@ -5,11 +5,13 @@ import {InferenceHandler} from './backend';
 import {Graph} from './graph';
 import {Tensor} from './tensor';
 
-export type OperatorImplementation<T> = (inferenceHandler: InferenceHandler, inputs: Tensor[], context: T) => Tensor[];
+export type OperatorImplementation<ContextType, ReturnType extends Tensor[]|Promise<Tensor[]> = Tensor[]> =
+    (inferenceHandler: InferenceHandler, inputs: Tensor[], context: ContextType) => ReturnType;
+export type OperatorAsyncImplementation<T> = OperatorImplementation<T, Promise<Tensor[]>>;
 export type OperatorInitialization<T> = (node: Graph.Node, graph: Graph) => T;
 
 export interface Operator {
-  readonly impl: OperatorImplementation<unknown>;
+  readonly impl: OperatorImplementation<unknown>|OperatorAsyncImplementation<unknown>;
   readonly context: Graph.Node|unknown;
 }
 
