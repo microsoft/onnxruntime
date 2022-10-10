@@ -11,22 +11,26 @@ on:
       - BUILD.md
 
 jobs:
-  cuda build_x64_RelWithDebInfo:
+  job1:
+    name: cuda build_x64_RelWithDebInfo
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required, only documentation changed"'
 
-  dml build_x64_RelWithDebInfo:
+  job2:
+    name: dml build_x64_RelWithDebInfo
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required, only documentation changed"'
 
-  training build_x64_RelWithDebInfo:
+  job3:
+    name: training build_x64_RelWithDebInfo
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required, only documentation changed"'
 
-  kernelDocumentation build_x64_RelWithDebInfo:
+  job4:
+    name: kernelDocumentation build_x64_RelWithDebInfo
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required, only documentation changed"'

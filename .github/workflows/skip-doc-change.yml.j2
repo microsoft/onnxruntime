@@ -12,7 +12,8 @@ on:
 
 jobs:
 {%- for name in job_names %}
-  {{ name }}:
+  job{{ loop.index }}:
+    name: {{ name }}
     runs-on: ubuntu-latest
     steps:
       - run: 'echo "No build required, only documentation changed"'
