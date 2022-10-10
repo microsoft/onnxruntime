@@ -14,7 +14,7 @@ namespace openvino_ep {
 class BackendManager {
  public:
   BackendManager(const onnxruntime::Node& fused_node, const onnxruntime::GraphViewer& subgraph, const logging::Logger& logger);
-  void Compute(Ort::CustomOpApi api, OrtKernelContext* context);
+  void Compute(OrtKernelContext* context);
   void ShutdownBackendManager();
   static GlobalContext& GetGlobalContext();
   static void ReleaseGlobalContext();
@@ -30,7 +30,7 @@ class BackendManager {
 
   std::shared_ptr<ONNX_NAMESPACE::ModelProto>
   ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
-                        std::vector<std::vector<int64_t>> input_shapes);
+                        const std::vector<std::vector<int64_t>>& input_shapes);
 
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
   std::shared_ptr<IBackend> concrete_backend_;

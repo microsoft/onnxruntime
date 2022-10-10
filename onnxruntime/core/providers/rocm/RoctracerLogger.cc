@@ -14,8 +14,6 @@ static timestamp_t timespec_to_ns(const timespec& time) {
 
 //using namespace std::chrono;
 
-constexpr size_t kBufSize(2 * 1024 * 1024);
-
 RoctracerLogger& RoctracerLogger::singleton() {
   static RoctracerLogger instance;
   return instance;
@@ -348,4 +346,3 @@ bool ApiIdList::contains(uint32_t apiId)
 {
   return (filter_.find(apiId) != filter_.end()) ? !invert_ : invert_;  // XOR
 }
-

@@ -16,7 +16,7 @@ NS_ASSUME_NONNULL_BEGIN
 namespace {
 
 ORTTensorTypeAndShapeInfo* CXXAPIToPublicTensorTypeAndShapeInfo(
-    const Ort::TensorTypeAndShapeInfo& CXXAPITensorTypeAndShapeInfo) {
+    const Ort::ConstTensorTypeAndShapeInfo& CXXAPITensorTypeAndShapeInfo) {
   auto* result = [[ORTTensorTypeAndShapeInfo alloc] init];
   const auto elementType = CXXAPITensorTypeAndShapeInfo.GetElementType();
   const std::vector<int64_t> shape = CXXAPITensorTypeAndShapeInfo.GetShape();
