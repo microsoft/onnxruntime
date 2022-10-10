@@ -5,9 +5,9 @@
 #include <chrono>
 #include <time.h>
 
-#include "rocm_profiler.h"
-#include "RoctracerLogger.h"
 #include "core/common/profiler_common.h"
+#include "core/providers/rocm/rocm_profiler.h"
+#include "core/providers/rocm/RoctracerLogger.h"
 
 #define BSIZE 4096
 
@@ -29,7 +29,7 @@ RocmProfiler::~RocmProfiler()
 {
 }
 
-bool RocmProfiler::StartProfiling() 
+bool RocmProfiler::StartProfiling()
 {
     d->clearLogs();
     d->startLogging();
@@ -43,7 +43,7 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
   std::map<uint64_t, std::vector<EventRecord>> event_map;
   std::map<uint64_t, kernelRow*> kernelLaunches;   // correlation id -> kernel info
   std::map<uint64_t, copyRow*> copyLaunches;     // correlation id -> copy info
-    
+
   // Generate EventRecords
   int64_t profiling_start = std::chrono::duration_cast<std::chrono::nanoseconds>(start_time.time_since_epoch()).count();
 
@@ -132,12 +132,12 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
         auto &item = *(*kit).second;
         snprintf(buff, BSIZE, "%p", item.stream);
         args["stream"] = std::string(buff);
-        args["grid_x"] = std::to_string(item.gridX); 
-        args["grid_y"] = std::to_string(item.gridY); 
-        args["grid_z"] = std::to_string(item.gridZ); 
-        args["block_x"] = std::to_string(item.workgroupX); 
-        args["block_y"] = std::to_string(item.workgroupY); 
-        args["block_z"] = std::to_string(item.workgroupZ); 
+        args["grid_x"] = std::to_string(item.gridX);
+        args["grid_y"] = std::to_string(item.gridY);
+        args["grid_z"] = std::to_string(item.gridZ);
+        args["block_x"] = std::to_string(item.workgroupX);
+        args["block_y"] = std::to_string(item.workgroupY);
+        args["block_z"] = std::to_string(item.workgroupZ);
         if (item.functionAddr != nullptr) {
           name = demangle(hipKernelNameRefByPtr(item.functionAddr, item.stream)).c_str();
         }
@@ -182,7 +182,7 @@ void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)
     }
   }
 
-  // General 
+  // General
   auto insert_iter = events.begin();
   for (auto& map_iter : event_map) {
     auto ts = static_cast<long long>(map_iter.first);

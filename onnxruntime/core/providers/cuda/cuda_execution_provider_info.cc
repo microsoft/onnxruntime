@@ -27,18 +27,16 @@ constexpr const char* kCudnnConv1dPadToNc1d = "cudnn_conv1d_pad_to_nc1d";
 }  // namespace provider_option_names
 }  // namespace cuda
 
-namespace {
-const DeleteOnUnloadPtr<EnumNameMapping<OrtCudnnConvAlgoSearch>> ort_cudnn_conv_algo_search_mapping = new EnumNameMapping<OrtCudnnConvAlgoSearch>{
+const EnumNameMapping<OrtCudnnConvAlgoSearch> ort_cudnn_conv_algo_search_mapping{
     {OrtCudnnConvAlgoSearchExhaustive, "EXHAUSTIVE"},
     {OrtCudnnConvAlgoSearchHeuristic, "HEURISTIC"},
     {OrtCudnnConvAlgoSearchDefault, "DEFAULT"},
 };
 
-const DeleteOnUnloadPtr<EnumNameMapping<ArenaExtendStrategy>> arena_extend_strategy_mapping = new EnumNameMapping<ArenaExtendStrategy>{
+const EnumNameMapping<ArenaExtendStrategy> arena_extend_strategy_mapping{
     {ArenaExtendStrategy::kNextPowerOfTwo, "kNextPowerOfTwo"},
     {ArenaExtendStrategy::kSameAsRequested, "kSameAsRequested"},
 };
-}  // namespace
 
 CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   CUDAExecutionProviderInfo info{};
@@ -86,10 +84,10 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(cuda::provider_option_names::kMemLimit, info.gpu_mem_limit)
           .AddAssignmentToEnumReference(
               cuda::provider_option_names::kArenaExtendStrategy,
-              *arena_extend_strategy_mapping, info.arena_extend_strategy)
+              arena_extend_strategy_mapping, info.arena_extend_strategy)
           .AddAssignmentToEnumReference(
               cuda::provider_option_names::kCudnnConvAlgoSearch,
-              *ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)
+              ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)
           .AddAssignmentToReference(cuda::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .AddAssignmentToReference(cuda::provider_option_names::kCudnnConvUseMaxWorkspace, info.cudnn_conv_use_max_workspace)
           .AddAssignmentToReference(cuda::provider_option_names::kEnableCudaGraph, info.enable_cuda_graph)
@@ -109,9 +107,9 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kGpuExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
       {cuda::provider_option_names::kGpuExternalEmptyCache, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.empty_cache))},
       {cuda::provider_option_names::kArenaExtendStrategy,
-       EnumToName(*arena_extend_strategy_mapping, info.arena_extend_strategy)},
+       EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
       {cuda::provider_option_names::kCudnnConvAlgoSearch,
-       EnumToName(*ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
+       EnumToName(ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
       {cuda::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
       {cuda::provider_option_names::kCudnnConvUseMaxWorkspace, MakeStringWithClassicLocale(info.cudnn_conv_use_max_workspace)},
       {cuda::provider_option_names::kEnableCudaGraph, MakeStringWithClassicLocale(info.enable_cuda_graph)},
@@ -125,8 +123,8 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
   const ProviderOptions options{
       {cuda::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {cuda::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.gpu_mem_limit)},
-      {cuda::provider_option_names::kArenaExtendStrategy, EnumToName(*arena_extend_strategy_mapping, info.arena_extend_strategy)},
-      {cuda::provider_option_names::kCudnnConvAlgoSearch, EnumToName(*ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
+      {cuda::provider_option_names::kArenaExtendStrategy, EnumToName(arena_extend_strategy_mapping, info.arena_extend_strategy)},
+      {cuda::provider_option_names::kCudnnConvAlgoSearch, EnumToName(ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
       {cuda::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
       {cuda::provider_option_names::kCudnnConvUseMaxWorkspace, MakeStringWithClassicLocale(info.cudnn_conv_use_max_workspace)},
       {cuda::provider_option_names::kCudnnConv1dPadToNc1d, MakeStringWithClassicLocale(info.cudnn_conv1d_pad_to_nc1d)}

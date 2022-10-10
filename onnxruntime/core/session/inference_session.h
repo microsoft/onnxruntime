@@ -233,7 +233,7 @@ class InferenceSession {
   /**
    * Add custom ops. This API is not thread safe.
    */
-  common::Status AddCustomOpDomains(const std::vector<OrtCustomOpDomain*>& ops) ORT_MUST_USE_RESULT;
+  common::Status AddCustomOpDomains(gsl::span<OrtCustomOpDomain* const> ops) ORT_MUST_USE_RESULT;
 
   /**
    * Register a custom registry for operator schema and kernels.  If you've one to register,

@@ -139,7 +139,7 @@ struct CustomOpKernel : OpKernel {
   void* op_kernel_;
 };
 
-common::Status CreateCustomRegistry(const std::vector<OrtCustomOpDomain*>& op_domains,
+common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domains,
                                     std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
 
