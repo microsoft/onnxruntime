@@ -302,19 +302,43 @@ struct SliceIteratorBase {
     return out_bytes;
   }
 
+  template<typename T>
+  void* copy_block(const void* input, void* output) {
+    const auto* inp_T = static_cast<const T*>(input);
+    auto* out_T = static_cast<T*>(output);
+    return std::copy(inp_T, inp_T + max_copying_elements_block_, out_T);
+  }
+
   void* CopyMaxDataInOneStep(void* output) {
     byte* out_bytes = nullptr;
     if (SolitaryInnerStep()) {
-      out_bytes = reinterpret_cast<byte*>(output);
-      auto bytes_to_copy = max_copying_elements_block_ * element_size_;
       if (!is_string_tensor_) {
-        memcpy(out_bytes, input_, bytes_to_copy);
+        //memcpy(out_bytes, input_, bytes_to_copy);
+        // switch on element size so copy is efficient
+        switch (element_size_) {
+          case sizeof(uint8_t):
+            copy_block<uint8_t>(input_, output);
+            break;
+          case sizeof(uint16_t):
+            copy_block<uint16_t>(input_, output);
+            break;
+          case sizeof(uint32_t):
+            copy_block<uint32_t>(input_, output);
+            break;
+          case sizeof(uint64_t):
+            copy_block<uint64_t>(input_, output);
+            break;
+          default:
+            ORT_THROW("Unexpected element size of ", element_size_);
+        }
       } else {
         const std::string* input = reinterpret_cast<const std::string*>(input_);
         std::string* out = reinterpret_cast<std::string*>(output);
         std::copy(input, input + max_copying_elements_block_, out);
       }
+      const auto bytes_to_copy = max_copying_elements_block_ * element_size_;
       input_ += bytes_to_copy;
+      out_bytes = reinterpret_cast<byte*>(output);
       out_bytes += bytes_to_copy;
       AdvanceOverExtent(last_batching_axis_);
     } else {
