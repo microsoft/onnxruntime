@@ -295,10 +295,6 @@ class GradientBuilderBase {
     return ConstantScalarNode(1.0f, "OneConstant_Type" + std::to_string(elem_type), elem_type);
   }
 
-  static NodeDef MinusOneConstantNode(int elem_type) {
-    return ConstantScalarNode(-1.0f, "MinusOneConstant_Type" + std::to_string(elem_type), elem_type);
-  }
-
   void AddReduceSumNode(const ArgDef& input_arg_def,
                         const ArgDef& output_arg_def,
                         const std::vector<int64_t>& reduce_axes,
