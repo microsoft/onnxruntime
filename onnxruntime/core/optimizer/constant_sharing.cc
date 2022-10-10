@@ -42,22 +42,18 @@ bool IsSharedInitializer(std::string_view initializer_name) {
   return initializer_name.rfind(SHARED_INITIALIZER_PREFIX, 0) == 0;
 }
 
+// Return true when initializer node arg is not consumed by any node conaining sub graphs;
+// Otherwise, return false.
 bool PrepareInputPortsToReplace(Graph& graph, const NodeArg* origin_initializer_node_arg,
                                 InlinedHashMap<const Node*, InlinedVector<int>>& consumer_node_to_input_ports_map) {
   std::vector<const Node*> consumers = graph.GetConsumerNodes(origin_initializer_node_arg->Name());
 
-  // If usage is from subgraph, skip it now, can be extended to support if there is a need.
-  bool found_subgraph_usage = false;
   for (const Node* const_node : consumers) {
+    // If usage is from subgraph, skip it now, can be extended to support if there is a need.
     for (int i = 0; i < static_cast<int>(const_node->ImplicitInputDefs().size()); ++i) {
       if (const_node->ImplicitInputDefs()[i] == origin_initializer_node_arg) {
-        found_subgraph_usage = true;
-        break;
+        return true /* found subgraph usage */;
       }
-    }
-
-    if (found_subgraph_usage) {
-      break;
     }
 
     // Iterate all input defs to replace those that are equal to origin_initializer_node_arg,
@@ -69,7 +65,7 @@ bool PrepareInputPortsToReplace(Graph& graph, const NodeArg* origin_initializer_
     }
   }
 
-  return found_subgraph_usage;
+  return false /* found subgraph usage */;
 }
 
 // Replace all consumer nodes to use shared initializers.
