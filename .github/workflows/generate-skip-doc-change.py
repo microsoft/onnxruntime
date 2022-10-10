@@ -15,7 +15,7 @@ class Skipped_Workflow:
 
 
 WIN_GPU_CI_WORKFLOW = Skipped_Workflow(
-    workflow_name="Windows GU CI Pipeline",
+    workflow_name="Windows GPU CI Pipeline",
     job_names=[
         "cuda build_x64_RelWithDebInfo",
         "dml build_x64_RelWithDebInfo",
