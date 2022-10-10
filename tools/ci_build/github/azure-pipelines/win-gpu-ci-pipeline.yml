@@ -1,7 +1,5 @@
 trigger:
   paths:
-    include:
-    - /
     exclude:
     - docs/**
     - README.md
