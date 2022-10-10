@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "max_unpool.h"
+#include <algorithm>
 
 #include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
@@ -12,6 +13,7 @@
 
 // to sanity check output shape
 #include "core/framework/tensorprotoutils.h"
+#include "gsl/gsl-lite.hpp"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -208,11 +210,22 @@ Status MaxUnPool::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+  // allocate memory for indice
+  size_t indice_size = indice.Shape().Size();
+  auto u32_indice_ptr = IAllocator::MakeUniquePtr<uint32_t>(alloc, indice_size);
+  auto u32_indice_span = gsl::make_span(u32_indice_ptr.get(), indice_size);
+  std::transform(indice.DataAsSpan<int64_t>().cbegin(), indice.DataAsSpan<int64_t>().cend(),
+                 u32_indice_span.begin(),
+                 [](int64_t i64_d) { return gsl::narrow_cast<uint32_t>(i64_d); });
+
   pthreadpool_t t_pool = GetThreadPool();
   xnn_status status = xnn_status_invalid_state;
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_unpooling2d_nhwc_x32(op0_.get(), N, H, W,
-                                            X.Data<float>(), indice.Data<uint32_t>(), Y->MutableData<float>(),
+                                            X.Data<float>(), u32_indice_span.data(), Y->MutableData<float>(),
                                             t_pool /*threadpool */);
   }
 

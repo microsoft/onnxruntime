@@ -218,6 +218,12 @@ TEST(XnnpackEP, TestConvTranspose) {
   RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans", nullptr, 0.0001f);
 }
 
+// unfortunately, ONNX doesn't support the QLinearConvTranspose op yet
+TEST(XnnpackEP, TestConvTranspose_s8) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_conv_follow_convtrans_s8.onnx";
+  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans_s8", nullptr, 0.0001f);
+}
+
 TEST(XnnpackEP, TestQDQConvU8U8) {
   RunModelTest(BuildQDQConvTestCase<uint8_t /* InputType */,
                                     uint8_t /* WeightType */,

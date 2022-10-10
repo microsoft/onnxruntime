@@ -23,6 +23,8 @@ class Resize : public UpsampleBase, public XnnpackKernel {
   explicit Resize(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
+  Status ComputeInternal(OpKernelContext* ctx, const Tensor* input,
+                         const TensorShapeVector& output_dims) const;
   static bool IsOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
 
  private:
