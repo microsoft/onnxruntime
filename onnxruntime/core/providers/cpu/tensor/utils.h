@@ -223,9 +223,6 @@ struct SliceIteratorBase {
       }
     }
     max_copying_elements_block_ = max_copyable_elements;
-#ifdef _DEBUG
-    std::cout << "Last batching Axis: " << last_batching_axis_ << " Max Copyable Elements: " << max_copying_elements_block_ << std::endl;
-#endif
   }
 
  protected:
