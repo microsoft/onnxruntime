@@ -279,8 +279,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
 #ifdef ENABLE_TRAINING
       const std::string enable_memory_alleviation =
-          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableMemoryAlleviation, "");
-      transformers.emplace_back(std::make_unique<MemoryAlleviation>(enable_memory_alleviation));
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryAlleviationEnabler, "");
+      const std::string probe_level =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsMemoryAlleviationProbeLevel, "0");
+      transformers.emplace_back(std::make_unique<MemoryAlleviation>(enable_memory_alleviation, probe_level));
 #endif
 
 #ifdef MLAS_TARGET_AMD64_IX86

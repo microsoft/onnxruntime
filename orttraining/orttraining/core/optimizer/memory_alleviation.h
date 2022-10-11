@@ -14,6 +14,16 @@ namespace onnxruntime {
 namespace memory_alleviation {
 
 /**
+ * @brief Level of allowed operations.
+ * Level 0: only allow cheap-to-compute operations.
+ * Level 1: allow more expensive operations.
+ */
+enum ProbeLevel {
+  Basic = 0,
+  Advanced = 1,
+};
+
+/**
  * @brief Type of memory reduction techniques.
  */
 enum AlleviationType {
@@ -21,10 +31,7 @@ enum AlleviationType {
   Recompute = 1,
 };
 
-constexpr int32_t MAXIMUM_RECOMPUTE_COUNT = 3;
-constexpr char UserConfig_OpTypeDropout[] = "Dropout";
-constexpr char UserConfig_OpTypeGelu[] = "Gelu";
-constexpr char UserConfig_OpTypeTile[] = "Tile";
+constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = 10;
 
 using NodeOutputPort = std::pair<const Node*, int>;
 using OpCrawlerFunctionType = std::function<bool(const Graph&, const Node&, InlinedVector<NodeOutputPort>&)>;
@@ -32,7 +39,6 @@ using ActivationUsedMap = InlinedHashMap<std::string, std::pair<bool, bool>>;
 
 struct EntryOperatorConfig {
   InlinedVector<int> input_arg_indices;  // input index to iterate further (bottom up)
-  AlleviationType type;
 };
 
 }  // namespace memory_alleviation
@@ -45,22 +51,48 @@ Find and recompute/offload activations for ops like Dropout/Gelu/Tile.
 
 class MemoryAlleviation : public GraphTransformer {
  public:
-  MemoryAlleviation(const std::string& enable_memory_alleviation) : GraphTransformer("MemoryAlleviation") {
+  MemoryAlleviation(const std::string& enable_memory_alleviation, const std::string& level)
+      : GraphTransformer("MemoryAlleviation") {
     // Parse user defined alleviation configs.
     ORT_ENFORCE(ParseAlleviationConfigFromString(enable_memory_alleviation).IsOK());
-    entry_op_type_to_input_arg_index_map_.insert(
-        {{"Gelu", memory_alleviation::EntryOperatorConfig{{0}, gelu_alleviation_type_}},
-         {"FastGelu", memory_alleviation::EntryOperatorConfig{{0}, gelu_alleviation_type_}},
-         {"BiasGelu", memory_alleviation::EntryOperatorConfig{{0}, gelu_alleviation_type_}}});
+    ORT_ENFORCE(ParseAlleviationLevelFromString(level).IsOK());
 
-    entry_op_type_to_input_arg_index_map_.insert(
-        {{"Dropout", memory_alleviation::EntryOperatorConfig{{0}, dropout_alleviation_type_}},
-         {"BitmaskDropout", memory_alleviation::EntryOperatorConfig{{0}, dropout_alleviation_type_}}});
+    if (static_cast<int>(level_) >= static_cast<int>(memory_alleviation::ProbeLevel::Basic)) {
+      entry_op_type_to_input_arg_index_map_.insert({
+          // Binary elementwise
+          {"Add", memory_alleviation::EntryOperatorConfig{{0, 1}}},
+          {"Div", memory_alleviation::EntryOperatorConfig{{0, 1}}},
+          {"Mul", memory_alleviation::EntryOperatorConfig{{0, 1}}},
+          {"Sub", memory_alleviation::EntryOperatorConfig{{0, 1}}},
 
-    entry_op_type_to_input_arg_index_map_.insert(
-        {{"Tile", memory_alleviation::EntryOperatorConfig{{0}, tile_alleviation_type_}}});
+          // Data layout
+          {"Unsqueeze", memory_alleviation::EntryOperatorConfig{{0}}},
+          {"Squeeze", memory_alleviation::EntryOperatorConfig{{0}}},
 
-    ORT_ENFORCE(RegisterRecomputableIntermediateOps().IsOK());
+          // Unary elementwise
+          {"Dropout", memory_alleviation::EntryOperatorConfig{{0}}},
+          {"BitmaskDropout", memory_alleviation::EntryOperatorConfig{{0}}},
+          {"Gelu", memory_alleviation::EntryOperatorConfig{{0}}},
+          {"FastGelu", memory_alleviation::EntryOperatorConfig{{0}}},
+          {"BiasGelu", memory_alleviation::EntryOperatorConfig{{0, 1}}},
+
+          // Tenary elementwise
+          {"Where", memory_alleviation::EntryOperatorConfig{{0, 1, 2}}},
+
+          // Data copy
+          {"Tile", memory_alleviation::EntryOperatorConfig{{0}}},
+          {"Cast", memory_alleviation::EntryOperatorConfig{{0}}},
+      });
+    }
+
+    if (static_cast<int>(level_) >= static_cast<int>(memory_alleviation::ProbeLevel::Advanced)) {
+      entry_op_type_to_input_arg_index_map_.insert({
+          {"MatMul", memory_alleviation::EntryOperatorConfig{{0, 1}}},
+          {"FusedMatMul", memory_alleviation::EntryOperatorConfig{{0, 1}}},
+          {"Softmax", memory_alleviation::EntryOperatorConfig{{0}}},
+          {"BiasSoftmax", memory_alleviation::EntryOperatorConfig{{0, 1}}},
+      });
+    }
   }
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
@@ -70,7 +102,7 @@ class MemoryAlleviation : public GraphTransformer {
  private:
   Status ParseAlleviationConfigFromString(const std::string& enable_memory_alleviation);
 
-  Status RegisterRecomputableIntermediateOps();
+  Status ParseAlleviationLevelFromString(const std::string& level);
 
   /**
    * @brief Prepare info including activation usage, node usage in fw and bw.
@@ -101,7 +133,7 @@ class MemoryAlleviation : public GraphTransformer {
       InlinedHashMap<const Node*, InlinedVector<size_t>>& candidate_output_args_map) const;
 
   /**
-   * @brief Find recomputable subgraphs (has at least one nodes, at most MAXIMUM_RECOMPUTE_COUNT nodes).
+   * @brief Find recomputable subgraphs (has at least one nodes, at most MAXIMUM_RECOMPUTE_NODE_COUNT nodes).
    *
    * @param graph Graph to iterate.
    * @param node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
@@ -109,15 +141,13 @@ class MemoryAlleviation : public GraphTransformer {
    * @param nodes_in_topological_order Collected vector of nodes of found subgraph, in the order of the topological sorted.
    * @param oss string stream to output information to users.
    * @param node_type_in_topological_order string stream for the subgraph node optype sequence, used to info users.
-   * @param alleviation_type return the alleviation type of the passed-in node.
    * @return Status
    */
-  Status SelectSubgraph(const Graph& graph, const Node& node,
-                        const memory_alleviation::ActivationUsedMap& fw_op_output_arg_used_map,
-                        InlinedVector<const Node*>& nodes_in_topological_order,
-                        std::ostringstream& oss,
-                        std::ostringstream& node_type_in_topological_order,
-                        memory_alleviation::AlleviationType& alleviation_type) const;
+  Status SelectRecomputeSubgraph(const Graph& graph, const Node& node,
+                                 const memory_alleviation::ActivationUsedMap& fw_op_output_arg_used_map,
+                                 InlinedVector<const Node*>& nodes_in_topological_order,
+                                 std::ostringstream& oss,
+                                 std::ostringstream& node_type_in_topological_order) const;
 
   /**
    * @brief Duplicate node to create a recompute subgraph.
@@ -143,15 +173,13 @@ class MemoryAlleviation : public GraphTransformer {
                         subgraph_str_to_alleviation_type,
                     const logging::Logger& logger) const;
 
-  // For some computational cheap operator, register whether/how to extend recompute subgraph into its input nodes.
-  InlinedHashMap<std::string, memory_alleviation::OpCrawlerFunctionType> recomputable_intermediate_op_crawler_map_;
-
-  // The op type that used as an ending node (or entry node) to find a recompute subgraph or find an offload activation.
+  // The op type that are supported.
   InlinedHashMap<std::string, memory_alleviation::EntryOperatorConfig> entry_op_type_to_input_arg_index_map_;
 
-  memory_alleviation::AlleviationType gelu_alleviation_type_{memory_alleviation::AlleviationType::None};
-  memory_alleviation::AlleviationType dropout_alleviation_type_{memory_alleviation::AlleviationType::None};
-  memory_alleviation::AlleviationType tile_alleviation_type_{memory_alleviation::AlleviationType::None};
+  InlinedHashMap<std::string, memory_alleviation::AlleviationType> pattern_subgraph_to_alleviation_type_map_;
+
+  std::string memory_alleviation_config_;
+  memory_alleviation::ProbeLevel level_;
 };
 
 }  // namespace onnxruntime

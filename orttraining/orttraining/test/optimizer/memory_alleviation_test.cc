@@ -59,9 +59,10 @@ TEST(MemoryAlleviationTests, GeluRecompute) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
 
-  const std::string alleviation_config("Gelu:1");
+  const std::string alleviation_config("Gelu+:1");
+  const std::string alleviation_level("1");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryAlleviation>(alleviation_config), TransformerLevel::Level2));
+      std::make_unique<MemoryAlleviation>(alleviation_config, alleviation_level), TransformerLevel::Level2));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
 
@@ -108,9 +109,10 @@ TEST(MemoryAlleviationTests, DropoutRecompute) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
 
-  const std::string alleviation_config("Dropout:1");
+  const std::string alleviation_config("Dropout+:1");
+  const std::string alleviation_level("1");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryAlleviation>(alleviation_config), TransformerLevel::Level2));
+      std::make_unique<MemoryAlleviation>(alleviation_config, alleviation_level), TransformerLevel::Level2));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
 
@@ -184,9 +186,10 @@ TEST(MemoryAlleviationTests, TileRecompute) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
 
-  const std::string alleviation_config("Tile:1");
+  const std::string alleviation_config("Tile+:1");
+  const std::string alleviation_level("1");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryAlleviation>(alleviation_config), TransformerLevel::Level2));
+      std::make_unique<MemoryAlleviation>(alleviation_config, alleviation_level), TransformerLevel::Level2));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
 
