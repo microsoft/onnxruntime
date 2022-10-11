@@ -109,7 +109,7 @@ Status UpdateDecoderFeeds(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);

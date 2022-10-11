@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/test_utils.h"
 #include "onnx/shape_inference/implementation.h"
 #include "onnx/checker.h"
 
@@ -11,26 +12,7 @@ namespace test {
 
 static auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
 
-inline void CheckShapeEquality(ONNX_NAMESPACE::TensorShapeProto* shape1, ONNX_NAMESPACE::TensorShapeProto* shape2) {
-  EXPECT_NE(shape1, nullptr);
-  EXPECT_NE(shape2, nullptr);
-  if ((shape1 != nullptr) && (shape2 != nullptr)) {
-    EXPECT_EQ(shape1->dim_size(), shape2->dim_size()) << "Shapes do not have same rank";
-    auto min_dims = std::min(shape1->dim_size(), shape2->dim_size());
-    for (int i = 0; i < min_dims; ++i) {
-      auto dim1 = shape1->dim(i);
-      auto dim2 = shape2->dim(i);
-      EXPECT_EQ(dim1.has_dim_value(), dim2.has_dim_value());
-      if (dim1.has_dim_value()) {
-        EXPECT_EQ(dim1.dim_value(), dim2.dim_value());
-      }
-      EXPECT_EQ(dim1.has_dim_param(), dim2.has_dim_param());
-      if (dim1.has_dim_param()) {
-        EXPECT_EQ(dim1.dim_param(), dim2.dim_param());
-      }
-    }
-  }
-}
+
 
 inline void CreateValueInfo(
     ONNX_NAMESPACE::ValueInfoProto& value_info,
@@ -74,13 +56,13 @@ inline void TestShapeInference(const std::string& op_type,
   node->set_name("test_node");
 
   // Add node inputs and graph inputs
-	for (auto const& n_ : inputs) {
-	  node->add_input(n_.name());
-	  auto in = graph->add_input();
-	  *in = n_;
-	  auto v_ = graph->add_value_info();
-	  *v_ = n_;
-	}
+  for (auto const& n_ : inputs) {
+    node->add_input(n_.name());
+    auto in = graph->add_input();
+    *in = n_;
+    auto v_ = graph->add_value_info();
+    *v_ = n_;
+  }
 
   // Add node attributes
   for (auto const& attr : attributes) {

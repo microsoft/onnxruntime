@@ -22,8 +22,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Sign, Input, 0, element_type_lists::AllNumeric);
 }
 
-using SignDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Sign, Input, 0);
 using EnabledSignDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Sign, Input, 0);
 
@@ -39,7 +37,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     9,
     12,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SignDataTypes>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledSignDataTypes>()),
     Sign);
 
@@ -47,7 +44,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     Sign,
     13,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SignDataTypes>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledSignDataTypes>()),
     Sign);
 

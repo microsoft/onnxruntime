@@ -11,7 +11,7 @@
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
-#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/providers/partitioning_utils.h"
@@ -204,8 +204,7 @@ DataLayout NnapiExecutionProvider::GetPreferredLayout() const {
 }
 
 #ifdef __ANDROID__
-static Status GetOutputBuffer(Ort::CustomOpApi& ort,
-                              OrtKernelContext* context,
+static Status GetOutputBuffer(Ort::KernelContext& context,
                               const nnapi::Model& model,
                               const std::string& output_name,
                               const InlinedVector<uint32_t>& output_shape,
@@ -215,19 +214,19 @@ static Status GetOutputBuffer(Ort::CustomOpApi& ort,
   std::vector<int64_t> int64_output_shape(output_shape.begin(),
                                           output_shape.end());
   auto output_idx = model.GetMappedOutputIdx(output_name);
-  auto* output_tensor = ort.KernelContext_GetOutput(context, output_idx,
-                                                    int64_output_shape.data(),
-                                                    int64_output_shape.size());
+  auto output_tensor = context.GetOutput(output_idx,
+                                         int64_output_shape.data(),
+                                         int64_output_shape.size());
 
   switch (output_type) {
     case Type::TENSOR_FLOAT32:
-      *output_buffer = ort.GetTensorMutableData<float>(output_tensor);
+      *output_buffer = output_tensor.GetTensorMutableData<float>();
       break;
     case Type::TENSOR_INT32:
-      *output_buffer = ort.GetTensorMutableData<int32_t>(output_tensor);
+      *output_buffer = output_tensor.GetTensorMutableData<int32_t>();
       break;
     case Type::TENSOR_QUANT8_ASYMM:
-      *output_buffer = ort.GetTensorMutableData<uint8_t>(output_tensor);
+      *output_buffer = output_tensor.GetTensorMutableData<uint8_t>();
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported output type: ", TypeToStr(output_type));
@@ -297,11 +296,12 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       ORT_UNUSED_PARAMETER(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-      Ort::CustomOpApi ort{*api};
+    compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+      Ort::KernelContext ctx(context);
+      
       nnapi::Model* model = reinterpret_cast<nnapi::Model*>(state);
-      const size_t num_inputs = ort.KernelContext_GetInputCount(context);
-      const size_t num_outputs = ort.KernelContext_GetOutputCount(context);
+      const size_t num_inputs = ctx.GetInputCount();
+      const size_t num_outputs = ctx.GetOutputCount();
       const auto& model_inputs = model->GetInputs();
       const auto& model_outputs = model->GetOutputs();
 
@@ -315,10 +315,10 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
         const auto& model_input_type = model->GetInputType(input_name);
 
         auto input_idx = model->GetMappedInputIdx(input_name);
-        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_idx);
-        auto* tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+        auto input_tensor = ctx.GetInput(input_idx);
+        auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
         InlinedVector<uint32_t> dimensions;
-        for (const auto& dim : ort.GetTensorShape(tensor_info))
+        for (const auto& dim : tensor_info.GetShape())
           dimensions.push_back(static_cast<uint32_t>(dim));
 
         // If we have an empty shape, this is a scalar input,
@@ -347,11 +347,10 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
                                  "dimensions, or model input dimension has 0 (dynamic)");
         }
 
-        const void* inputBuffer = ort.GetTensorData<void>(input_tensor);
+        const void* inputBuffer = input_tensor.GetTensorRawData();
         inputs.push_back({input_name, inputBuffer, std::move(input_type)});
 
-        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
-      }
+     }
 
 #ifdef __ANDROID__
       // From this point we will need to take the exclusive lock on the model until the Predict is
@@ -393,7 +392,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
             if (model->IsScalarOutput(output_name))
               output_shape.clear();
 
-            ORT_RETURN_IF_ERROR(GetOutputBuffer(ort, context,
+            ORT_RETURN_IF_ERROR(GetOutputBuffer(ctx,
                                                 *model,
                                                 output_name, output_shape, model_output_type.type,
                                                 &output_buffer));
@@ -429,7 +428,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
 
           void* model_output_buffer = dynamic_shape_output_buffers[i].get();
           void* onnx_output_buffer = nullptr;
-          ORT_RETURN_IF_ERROR(GetOutputBuffer(ort, context,
+          ORT_RETURN_IF_ERROR(GetOutputBuffer(ctx,
                                               *model,
                                               output_name, output_shape, model_output_type.type,
                                               &onnx_output_buffer));

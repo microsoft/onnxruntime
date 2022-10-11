@@ -46,10 +46,6 @@
 #include "core/providers/nnapi/nnapi_provider_factory_creator.h"
 #endif
 
-#if defined(USE_NUPHAR)
-#include "core/providers/nuphar/nuphar_provider_factory_creator.h"
-#endif
-
 #if defined(USE_OPENVINO)
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 #endif

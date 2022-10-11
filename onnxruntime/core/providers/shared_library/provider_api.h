@@ -312,6 +312,10 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { r
 
 }  // namespace utils
 
+// This is a replacement for Ort::InitApi() to be called before any other onnxruntime API calls.
+// So the C API (and C++) becomes available when ORT_API_MANUAL_INIT is used.
+void InitProviderOrtApi();
+
 }  // namespace onnxruntime
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \
