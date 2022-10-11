@@ -31,8 +31,13 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     //'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1 or
     // 4-D input with outermost and innermost scales as 1
     // but we just support 4-d tensor for now
-    if (!x_shape || x_shape->dim_size() != 4) {
+    if (!x_shape || x_shape->dim_size() != 4 || x_shape->dim(1).dim_value() <= 0) {
       break;
+    }
+    const auto* output_shape = node_unit.Outputs()[0].node_arg.Shape();
+    bool length_resized_compatiable_pytorch_half_pixel = true;
+    if (output_shape->dim(2).dim_value() <= 1 || output_shape->dim(1).dim_value() <= 1) {
+      length_resized_compatiable_pytorch_half_pixel = false;
     }
 
     // Refer to onnxruntime/core/providers/cpu/tensor/upsamplebase.h,
@@ -62,11 +67,12 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
             : "asymmetric";
     if (coordinate_transform_mode_name != "asymmetric" &&
         coordinate_transform_mode_name != "half_pixel" &&
-        coordinate_transform_mode_name != "align_corners") {
+        coordinate_transform_mode_name != "align_corners" &&
+        (coordinate_transform_mode_name != "pytorch_half_pixel" || !length_resized_compatiable_pytorch_half_pixel)) {
       break;
     }
     auto exclude_outside = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
-    if (!exclude_outside) {
+    if (exclude_outside) {
       break;
     }
 
@@ -95,11 +101,17 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
   const auto* x_shape = input_defs[0]->Shape();
   auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
   int64_t channels = input_shape[3];
+  if (channels <= 0) {
+    // TODO Fix it, Resize ShapeInfer for NHWC.
+    channels = node.OutputDefs()[0]->Shape()->dim(3).dim_value();
+    ORT_ENFORCE(channels > 0, "can retrieve channel from input_shape");
+  }
   uint32_t flags = 0;
   ORT_ENFORCE(mode_ == UpsampleMode::LINEAR, "only support bilinear resize");
   if (coordinate_transform_mode_ == ResizeCoordinateTransformationMode::ALIGN_CORNERS) {
     flags |= XNN_FLAG_ALIGN_CORNERS;
-  } else if (coordinate_transform_mode_ == ResizeCoordinateTransformationMode::HALF_PIXEL) {
+  } else if (!(coordinate_transform_mode_ == ResizeCoordinateTransformationMode::HALF_PIXEL ||
+               coordinate_transform_mode_ == ResizeCoordinateTransformationMode::PYTORCH_HALF_PIXEL)) {
     flags |= XNN_FLAG_TENSORFLOW_LEGACY_MODE;
   }
 
@@ -223,16 +235,16 @@ Status Resize::Compute(OpKernelContext* ctx) const {
 }
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 1, 9, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
                                   Resize);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 10, 10, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
                                   Resize);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 11, 12, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
                                   Resize);
 ONNX_OPERATOR_KERNEL_EX(Resize, kMSInternalNHWCDomain, 13, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
                         Resize);
 
 }  // namespace xnnpack

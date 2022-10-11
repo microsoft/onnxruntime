@@ -189,7 +189,7 @@ static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* gr
   params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
   // Xnnpack has higher precision than CPU_S8S8,
   // we can either give a higher tolerance,or disable Graph_Optimizations for cpu-ep
-  params.fp32_abs_err = 1.8f * scale_factor;
+  params.fp32_abs_err = 1.8f / scale_factor;
   if (graph_verifier) {
     params.graph_verifier = &graph_verifier;
   }
@@ -215,13 +215,19 @@ static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* gr
 
 TEST(XnnpackEP, TestConvTranspose) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_conv_follow_convtrans.onnx";
-  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans", nullptr, 0.0001f);
+  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans", nullptr);
 }
 
 // unfortunately, ONNX doesn't support the QLinearConvTranspose op yet
 TEST(XnnpackEP, TestConvTranspose_s8) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_conv_follow_convtrans_s8.onnx";
-  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans_s8", nullptr, 0.0001f);
+  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans_s8", nullptr, 0.5f);
+}
+
+TEST(XnnpackEP, Resize) {
+  // two different coordinate_transform_mode in this model, so we can test both
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_resize.onnx";
+  RunModelTestWithPath(ort_model_path, "test_resize", nullptr);
 }
 
 TEST(XnnpackEP, TestQDQConvU8U8) {
@@ -264,7 +270,7 @@ TEST(XnnpackEP, TestQDQConvS8S8_per_channel) {
                                            "leaving 5 nodes.";
   };
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_qdq_s8s8_perchannel.onnx";
-  RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8_perchannel", graph_verify, 0.2f);
+  RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8_perchannel", graph_verify, 0.5f);
 }
 
 TEST(XnnpackEP, TestAveragePool) {
