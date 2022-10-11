@@ -436,13 +436,13 @@ def permute_and_reshape_tensor(
 
 @register_symbolic("einsum", torch_version_end="1.13.0")
 @parse_args("s", "v")
-def einsum(g, equation, tensor_list):
+def einsum_pre_troch_113(g, equation, tensor_list):
     return einsum_internal(g, equation, tensor_list)
 
 
 @register_symbolic("einsum", torch_version_start="1.13.0")
 @parse_args("s", "v", "is")
-def einsum(g, equation, tensor_list, path=None):
+def einsum_torch_113(g, equation, tensor_list, path=None):
     return einsum_internal(g, equation, tensor_list)
 
 
