@@ -1189,14 +1189,17 @@ void OpTester::Run(
         if (execution_provider == nullptr)
           continue;
 
-        std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-        execution_providers.emplace_back(std::move(execution_provider));
         ExecuteModelForEps(
-            std::move(execution_providers), *p_model, so,
+            [&execution_provider]() {
+              std::vector<std::unique_ptr<IExecutionProvider>> ret;
+              ret.emplace_back(std::move(execution_provider));
+              return ret;
+            }(),
+            *p_model, so,
             expect_result, expected_failure_string,
             run_options, feeds, output_names,
             &custom_session_registries_,
-            /*assign_ep_for_nodes=*/true,
+            /*try_assign_ep_for_nodes=*/true,
             allow_released_onnx_opset_only,
             number_of_pre_packed_weights_counter,
             number_of_shared_pre_packed_weights_counter);
