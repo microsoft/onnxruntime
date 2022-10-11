@@ -730,8 +730,8 @@ class OpTester {
   OpTester& Config(const SessionOptions& sess_options);
   OpTester& Config(ExpectResult expect_result, const std::string& expected_failure_string);
   OpTester& ConfigExcludeEps(const std::unordered_set<std::string>& excluded_provider_types);
-  OpTester& Config(const RunOptions* run_options);
-  OpTester& ConfigEps(std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers);
+  OpTester& Config(const RunOptions& run_options);
+  OpTester& ConfigEps(std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers);
   OpTester& Config(const Graph::ResolveOptions& resolve_options);
 
   void RunWithConfig(size_t* number_of_pre_packed_weights_counter = nullptr,
@@ -851,8 +851,9 @@ class OpTester {
     ExpectResult expect_result{ExpectResult::kExpectSuccess};
     std::string expected_failure_string{};
     std::unordered_set<std::string> excluded_provider_types = {};
-    const RunOptions* run_options{};
-    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers{};
+    RunOptions run_options{};
+    bool run_with_specified_eps{false};
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers{};
     Graph::ResolveOptions resolve_options{};
   };
 

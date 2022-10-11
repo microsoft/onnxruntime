@@ -13,13 +13,11 @@ namespace test {
 
 namespace {
 
-const onnxruntime::RunOptions run_options = []() {
+const onnxruntime::RunOptions run_with_tunable_op = []() {
   onnxruntime::RunOptions options{};
   ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOpTesterRunOptionsConfigTestTunableOp, "true"));
   return options;
 }();
-
-const onnxruntime::RunOptions* const run_with_tunable_op = &run_options;
 
 }  // namespace
 
@@ -259,13 +257,13 @@ TEST(MathOpTest, MatMul_BFloat16) {
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.emplace_back(DefaultRocmExecutionProvider(/*use_tunable_op=*/true));
-  test.ConfigEps(&execution_providers)
+  test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 
   execution_providers.clear();
   execution_providers.emplace_back(DefaultRocmExecutionProvider(/*use_tunable_op=*/false));
 #endif
-  test.ConfigEps(&execution_providers)
+  test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
 #endif
@@ -309,10 +307,9 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights) {
 
   // Session 1
   {
-    auto ep_vec = cpu_ep();
     test.Config(so)
         .Config(run_with_tunable_op)
-        .ConfigEps(&ep_vec)
+        .ConfigEps(cpu_ep())
         .RunWithConfig(&number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
     // Assert that no pre-packed weights have been shared thus far
     ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
@@ -333,10 +330,9 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights) {
   // Session 2
   {
     size_t number_of_pre_packed_weights_counter_session_2 = 0;
-    auto ep_vec = cpu_ep();
     test.Config(so)
         .Config(run_with_tunable_op)
-        .ConfigEps(&ep_vec)
+        .ConfigEps(cpu_ep())
         .RunWithConfig(&number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
 
     // Assert that the same number of weights were pre-packed in both sessions

@@ -1023,13 +1023,15 @@ OpTester& OpTester::ConfigExcludeEps(const std::unordered_set<std::string>& excl
   return *this;
 }
 
-OpTester& OpTester::Config(const RunOptions* run_options) {
+OpTester& OpTester::Config(const RunOptions& run_options) {
   ctx_.run_options = run_options;
   return *this;
 }
 
-OpTester& OpTester::ConfigEps(std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
-  ctx_.execution_providers = execution_providers;
+OpTester& OpTester::ConfigEps(std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers) {
+  ORT_ENFORCE(execution_providers.size() > 0);
+  ctx_.run_with_specified_eps = true;
+  ctx_.execution_providers = std::move(execution_providers);
   return *this;
 }
 
@@ -1072,12 +1074,33 @@ void OpTester::Run(
     const Graph::ResolveOptions& options,
     /*out*/ size_t* number_of_pre_packed_weights_counter,
     /*out*/ size_t* number_of_shared_pre_packed_weights_counter) {
+  if (execution_providers == nullptr) {
+    ctx_.run_with_specified_eps = false;
+    ctx_.execution_providers.clear();
+  } else {
+    this->ConfigEps(std::move(*execution_providers));
+    // NOTE: some callsites do the following:
+    //
+    //   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    //   execution_providers.push_back(DefaultCPUExecutionProvider());
+    //   test.run(..., &execution_providers, ...);
+    //   execution_providers[0] =  DefaultCUDAExecutionProvider();     //  <-- std::move cause segfault here.
+    //   test.run(..., &execution_providers, ...);
+    //
+    // So we need to restore the old vector's size.
+    execution_providers->resize(ctx_.execution_providers.size());
+  }
+
+  if (run_options == nullptr) {
+    this->Config(RunOptions{});
+  } else {
+    this->Config(*run_options);
+  }
+
   (*this)
       .Config(so)
       .Config(expect_result, expected_failure_string)
       .ConfigExcludeEps(excluded_provider_types)
-      .Config(run_options)
-      .ConfigEps(execution_providers)
       .Config(options)
       .RunWithConfig(number_of_pre_packed_weights_counter, number_of_shared_pre_packed_weights_counter);
 }
@@ -1159,11 +1182,11 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
     FillFeedsAndOutputNames(feeds, output_names);
 
     // Run the model
-    if (ctx_.execution_providers != nullptr) {
+    if (ctx_.run_with_specified_eps) {
       ExecuteModelForEps(
-          std::move(*ctx_.execution_providers), *p_model, ctx_.session_options,
+          std::move(ctx_.execution_providers), *p_model, ctx_.session_options,
           ctx_.expect_result, ctx_.expected_failure_string,
-          ctx_.run_options, feeds, output_names,
+          &ctx_.run_options, feeds, output_names,
           /*custom_registries=*/nullptr,
           /*assign_ep_for_nodes=*/false,
           allow_released_onnx_opset_only,
@@ -1241,7 +1264,7 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
             }(),
             *p_model, ctx_.session_options,
             ctx_.expect_result, ctx_.expected_failure_string,
-            ctx_.run_options, feeds, output_names,
+            &ctx_.run_options, feeds, output_names,
             &custom_session_registries_,
             /*try_assign_ep_for_nodes=*/true,
             allow_released_onnx_opset_only,
@@ -1249,25 +1272,23 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
             number_of_shared_pre_packed_weights_counter);
 
         // Run Models with subscribed run_options->config_options
-        if (ctx_.run_options) {
-          if (auto cfg = ctx_.run_options->config_options.GetConfigEntry(kOpTesterRunOptionsConfigTestTunableOp);
-              *cfg == "true") {
-            std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-            if (provider_type == onnxruntime::kRocmExecutionProvider) {
-              execution_providers.emplace_back(DefaultRocmExecutionProvider(/*use_tunable_op=*/true));
-            }
+        if (auto cfg = ctx_.run_options.config_options.GetConfigEntry(kOpTesterRunOptionsConfigTestTunableOp);
+            *cfg == "true") {
+          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+          if (provider_type == onnxruntime::kRocmExecutionProvider) {
+            execution_providers.emplace_back(DefaultRocmExecutionProvider(/*use_tunable_op=*/true));
+          }
 
-            if (!execution_providers.empty()) {
-              ExecuteModelForEps(
-                  std::move(execution_providers), *p_model, ctx_.session_options,
-                  ctx_.expect_result, ctx_.expected_failure_string,
-                  ctx_.run_options, feeds, output_names,
-                  &custom_session_registries_,
-                  /*assign_ep_for_nodes=*/true,
-                  allow_released_onnx_opset_only,
-                  number_of_pre_packed_weights_counter,
-                  number_of_shared_pre_packed_weights_counter);
-            }
+          if (!execution_providers.empty()) {
+            ExecuteModelForEps(
+                std::move(execution_providers), *p_model, ctx_.session_options,
+                ctx_.expect_result, ctx_.expected_failure_string,
+                &ctx_.run_options, feeds, output_names,
+                &custom_session_registries_,
+                /*assign_ep_for_nodes=*/true,
+                allow_released_onnx_opset_only,
+                number_of_pre_packed_weights_counter,
+                number_of_shared_pre_packed_weights_counter);
           }
         }
 
