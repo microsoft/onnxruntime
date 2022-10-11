@@ -8,11 +8,12 @@
 #include "orttraining/core/graph/recompute_graph_utils.h"
 #include "orttraining/core/optimizer/memory_alleviation.h"
 
-using onnxruntime::memory_alleviation::ActivationUsedMap;
-
 namespace onnxruntime {
 
 namespace {
+
+constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = 15;
+
 std::string TensorShapeProtoToString(const ONNX_NAMESPACE::TensorShapeProto* shape) {
   std::ostringstream shape_oss;
   if (shape != nullptr) {
@@ -29,20 +30,6 @@ std::string TensorShapeProtoToString(const ONNX_NAMESPACE::TensorShapeProto* sha
   }
 
   return shape_oss.str();
-}
-
-std::string AlleviationTypeToString(const memory_alleviation::AlleviationType& type) {
-  switch (type) {
-    case memory_alleviation::AlleviationType::None: {
-      return "Disabled";
-    } break;
-    case memory_alleviation::AlleviationType::Recompute: {
-      return "Recompute";
-    } break;
-    default: {
-      return "Unknown";
-    } break;
-  }
 }
 
 }  // namespace
@@ -63,8 +50,8 @@ Status MemoryAlleviation::ParseAlleviationConfigFromString(const std::string& en
       ORT_RETURN_IF(result.ec == std::errc::invalid_argument, "Fail to convert alleviation type from string.");
       ORT_RETURN_IF_NOT(alleviation_type_int < 2 && alleviation_type_int >= 0,
                         "Invalid alleviation type specified for op ", subgraph_string_representation);
-      memory_alleviation::AlleviationType alleviation_type =
-          static_cast<memory_alleviation::AlleviationType>(alleviation_type_int);
+      AlleviationType alleviation_type =
+          static_cast<AlleviationType>(alleviation_type_int);
 
       // At this point, subgraph_string_representation is a pattern graph string representation.
       pattern_subgraph_to_alleviation_type_map_[subgraph_string_representation] = alleviation_type;
@@ -76,7 +63,7 @@ Status MemoryAlleviation::ParseAlleviationConfigFromString(const std::string& en
 
 Status MemoryAlleviation::ParseAlleviationLevelFromString(const std::string& level) {
   if (level.compare("1") == 0) {
-    level_ = memory_alleviation::ProbeLevel::Advanced;
+    level_ = ProbeLevel::Advanced;
   }
 
   return Status::OK();
@@ -147,8 +134,8 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Graph& graph,
     return Status::OK();
   }
 
-  std::deque<memory_alleviation::NodeOutputPort> q;
-  std::set<memory_alleviation::NodeOutputPort> visited_output_args_map;
+  std::deque<NodeOutputPort> q;
+  std::set<NodeOutputPort> visited_output_args_map;
 
   // Start entry node handling.
   // Iterate all input nodes according to allowed input arg index of the entry node.
@@ -165,7 +152,7 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Graph& graph,
     // For entry node, we only trace back from the specified output port.
     if (std::find(input_arg_indices.begin(), input_arg_indices.end(), current_node_input_index) !=
         input_arg_indices.end()) {
-      memory_alleviation::NodeOutputPort p = std::make_pair(&parent_node, parent_node_output_index);
+      NodeOutputPort p = std::make_pair(&parent_node, parent_node_output_index);
 
       LOGS_DEFAULT(VERBOSE) << "Node " << p.first->Name() << "(" << p.first->OpType() << ")'s " << p.second << "th output ["
                             << p.first->OutputDefs()[p.second]->Name() << "] is added in recompute search list  ";
@@ -175,12 +162,12 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Graph& graph,
   }
 
   bool early_stop = false;
-  while (nodes.size() < memory_alleviation::MAXIMUM_RECOMPUTE_NODE_COUNT && !q.empty() && !early_stop) {
-    std::deque<memory_alleviation::NodeOutputPort> next_q;
+  while (nodes.size() < MAXIMUM_RECOMPUTE_NODE_COUNT && !q.empty() && !early_stop) {
+    std::deque<NodeOutputPort> next_q;
 
     // Loop all candidate NodeOutputPort, and find the next layer of input nodes.
     while (!q.empty()) {
-      memory_alleviation::NodeOutputPort p = q.front();
+      NodeOutputPort p = q.front();
       q.pop_front();
 
       if (std::find(visited_output_args_map.begin(), visited_output_args_map.end(), p) !=
@@ -234,7 +221,7 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Graph& graph,
         // For entry node, we only trace back from the specified output port.
         if (std::find(input_arg_indices.begin(), input_arg_indices.end(), current_node_input_index) !=
             input_arg_indices.end()) {
-          memory_alleviation::NodeOutputPort p = std::make_pair(&parent_node, parent_node_output_index);
+          NodeOutputPort p = std::make_pair(&parent_node, parent_node_output_index);
           LOGS_DEFAULT(VERBOSE) << "Node " << p.first->Name() << "(" << p.first->OpType() << ")'s " << p.second
                                 << "th output [" << p.first->OutputDefs()[p.second]->Name()
                                 << "] is added in recompute search list";
@@ -369,7 +356,7 @@ Status MemoryAlleviation::CreateRecomputeGraph(Graph& graph,
 Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                     const logging::Logger& logger) const {
   LOGS(logger, INFO) << "Memory alleviation config: " << memory_alleviation_config_ << "probe level: "
-   << static_cast<int>(level_);
+                     << static_cast<int>(level_);
 
   InlinedHashMap<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
   InlinedHashMap<NodeIndex, bool> is_forward_op_map;
@@ -384,7 +371,7 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
   ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph, fw_op_output_arg_used_map, candidate_output_args_map));
 
   InlinedHashMap<std::string, InlinedHashMap<std::string, int>> stashed_activation_statistics;
-  InlinedHashMap<std::string, memory_alleviation::AlleviationType> subgraph_str_to_alleviation_type;
+  InlinedHashMap<std::string, AlleviationType> subgraph_str_to_alleviation_type;
   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -420,13 +407,13 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
 
     Node* replacement_node = nullptr;
 
-    auto alleviation_type = memory_alleviation::AlleviationType::None;
+    auto alleviation_type = AlleviationType::None;
     std::string node_type_in_topological_order_str = node_type_in_topological_order.str();
     if (pattern_subgraph_to_alleviation_type_map_.find(node_type_in_topological_order_str) !=
         pattern_subgraph_to_alleviation_type_map_.end()) {
       alleviation_type = pattern_subgraph_to_alleviation_type_map_.at(node_type_in_topological_order_str);
     }
-    bool modify_graph = (alleviation_type != memory_alleviation::AlleviationType::None);
+    bool modify_graph = (alleviation_type != AlleviationType::None);
     if (modify_graph) {
       ORT_RETURN_IF_ERROR(CreateRecomputeGraph(graph, nodes_in_topological_order, replacement_node));
       ORT_ENFORCE(replacement_node);
@@ -478,9 +465,23 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
   return Status::OK();
 }
 
+std::string MemoryAlleviation::AlleviationTypeToString(const AlleviationType& type) const {
+  switch (type) {
+    case AlleviationType::None: {
+      return "Disabled";
+    } break;
+    case AlleviationType::Recompute: {
+      return "Recompute";
+    } break;
+    default: {
+      return "Unknown";
+    } break;
+  }
+}
+
 void MemoryAlleviation::PrintSummary(const InlinedHashMap<std::string, InlinedHashMap<std::string, int>>&
                                          stashed_activation_statistics,
-                                     const InlinedHashMap<std::string, memory_alleviation::AlleviationType>&
+                                     const InlinedHashMap<std::string, AlleviationType>&
                                          subgraph_str_to_alleviation_type,
                                      const logging::Logger& logger) const {
   if (stashed_activation_statistics.size() == 0) {
