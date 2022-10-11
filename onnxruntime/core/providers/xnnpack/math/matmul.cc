@@ -47,7 +47,7 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
         break;
     }
 
-    supported = true;
+    supported = false;
 
   } while (false);
 
@@ -66,7 +66,7 @@ Status MatMul::PrePack(const Tensor& tensor,int input_idx, AllocatorPtr alloc,
 
   is_packed = false;
 
-  if (input_idx == 0) {
+  if (input_idx == 0||input_idx == 2) {
     return Status::OK();
   }
 
@@ -115,17 +115,14 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
-  // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0)
     return Status::OK();
 
   auto* y_data = y->MutableData<float>();
 
-  const size_t max_len = a->Shape().NumDimensions() > 2 ? a->Shape()[1] : 1;
-
   xnn_status status = xnn_setup_fully_connected_nc_f32(
       op0_.get(),
-      max_len,
+      a->Shape()[0],
       a->Data<float>(),
       y_data,
       nullptr);
@@ -137,7 +134,7 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(MatMul, kOnnxDomain, 7, 12, kXnnpackExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(MatMul, kOnnxDomain, 1, 12, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                   MatMul);
 
