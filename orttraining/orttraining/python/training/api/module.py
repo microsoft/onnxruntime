@@ -84,7 +84,7 @@ class Module:
         # TODO : move this out of Module Class.
         self._model.save_checkpoint(ckpt_uri)
 
-    def get_contagious_parameters(self, trainable_only: bool = False):
+    def get_contiguous_parameters(self, trainable_only: bool = False):
         """
         Returns contiguous parameters object.
         """

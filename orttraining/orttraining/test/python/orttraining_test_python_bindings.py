@@ -191,7 +191,7 @@ def test_get_parameters_difference():
         optimizer = Optimizer(optimizer_file_path, model)
 
         # Save initial parameters.
-        old_output_params = model.get_contagious_parameters()
+        old_output_params = model.get_contiguous_parameters()
 
         # Run a Training step.
         model.train()
@@ -199,7 +199,7 @@ def test_get_parameters_difference():
         optimizer.step()
 
         # Save parameters after training step.
-        output_params = model.get_contagious_parameters()
+        output_params = model.get_contiguous_parameters()
 
         # calculate difference between parameters.
         delta = get_parameters_difference(output_params, old_output_params)
@@ -232,7 +232,7 @@ def test_copy_buffer_to_parameters():
         optimizer = Optimizer(optimizer_file_path, model)
 
         # Keep a copy of the parameters.
-        old_output_params = model.get_contagious_parameters()
+        old_output_params = model.get_contiguous_parameters()
 
         # Run a Training Step.
         model.train()
@@ -240,7 +240,7 @@ def test_copy_buffer_to_parameters():
         optimizer.step()
 
         # Get the new parameters.
-        output_params = model.get_contagious_parameters()
+        output_params = model.get_contiguous_parameters()
         # Make sure old params are different from new params.
         assert not np.array_equal(old_output_params.numpy(), output_params.numpy())
 
@@ -248,7 +248,7 @@ def test_copy_buffer_to_parameters():
         model.copy_buffer_to_parameters(old_output_params)
 
         # Get the saved parameters.
-        saved_params = model.get_contagious_parameters()
+        saved_params = model.get_contiguous_parameters()
 
         # Make sure the saved parameters are the same as the old parameters.
         assert np.array_equal(old_output_params.numpy(), saved_params.numpy())
