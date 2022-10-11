@@ -87,3 +87,6 @@
 [submodule "cmake/external/rapidjson"]
 	path = cmake/external/rapidjson
 	url = https://github.com/Tencent/rapidjson/
+[submodule "cmake/external/zlib"]
+	path = cmake/external/zlib
+	url = https://github.com/madler/zlib
