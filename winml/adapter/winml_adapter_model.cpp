@@ -127,7 +127,7 @@ static OrtStatus* CreateModelProto(const char* path, std::unique_ptr<ONNX_NAMESP
 
   auto path_str = std::string(path);
   auto wide_path = onnxruntime::ToWideString(path_str);
-  
+
   _set_errno(0);  // clear errno
   _wsopen_s(
       &file_descriptor,
@@ -235,7 +235,7 @@ ORT_API_STATUS_IMPL(winmla::CreateModelFromPath, _In_ const char* model_path, _I
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::CreateModelFromData, _In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out) {
+ORT_API_STATUS_IMPL(winmla::CreateModelFromData, _In_opt_ void* data, _In_ size_t size, _Outptr_ OrtModel** out) {
   API_IMPL_BEGIN
   if (auto status = OrtModel::CreateOrtModelFromData(data, size, out)) {
     return status;
@@ -254,7 +254,7 @@ ORT_API_STATUS_IMPL(winmla::CloneModel, _In_ const OrtModel* in, _Outptr_ OrtMod
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::SaveModel, const OrtModel* in, const wchar_t* const file_name, size_t len) {
+ORT_API_STATUS_IMPL(winmla::SaveModel, _In_ const OrtModel* in, _In_ const wchar_t* const file_name, _In_ size_t len) {
   API_IMPL_BEGIN
   int fd;
   std::wstring file_path = file_name;
@@ -485,7 +485,7 @@ ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, _In_ const OrtModel* model) {
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::CreateModel, int64_t opset, OrtModel** out) {
+ORT_API_STATUS_IMPL(winmla::CreateModel, _In_ int64_t opset, _Outptr_ OrtModel** out) {
   API_IMPL_BEGIN
   return OrtModel::CreateEmptyModel(opset, out);
   API_IMPL_END
@@ -617,7 +617,7 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
                     _In_ OrtModel* model,
                     _In_ const char* const op_type,
                     _In_ const char* const op_name,
-                    _In_ int64_t opset, 
+                    _In_ int64_t opset,
                     _In_ const char* const op_domain,
                     _In_ const char* const* input_names, _In_ size_t num_inputs,
                     _In_ const char* const* output_names, _In_ size_t num_outputs,
@@ -635,7 +635,7 @@ ORT_API_STATUS_IMPL(winmla::ModelAddOperator,
 
   for (size_t i = 0; i < num_attributes; i++) {
     auto tensor = attribute_values[i]->GetMutable<onnxruntime::Tensor>();
-      
+
     auto attr = node.add_attribute();
     attr->set_name(attribute_names[i]);
     auto& schema_attribute_definition = all_attributes.at(attribute_names[i]);
@@ -822,7 +822,7 @@ ORT_API_STATUS_IMPL(winmla::CreateThreadPool,
   params.set_denormal_as_zero = options->set_denormal_as_zero;
 
   auto unique_tp = onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(), params, (onnxruntime::concurrency::ThreadPoolType)type);
-  *out = reinterpret_cast<OrtThreadPool*>(unique_tp.release()); 
+  *out = reinterpret_cast<OrtThreadPool*>(unique_tp.release());
   return nullptr;
   API_IMPL_END
 }
@@ -849,7 +849,7 @@ ORT_API_STATUS_IMPL(winmla::JoinModels,
   if (promote_unlinked_outputs) {
     // Copy the output of the first model
     auto first_outputs = first_model_proto->graph().output();
-    
+
     // Clear all outputs
     first_model_proto->mutable_graph()->mutable_output()->Clear();
 
@@ -929,7 +929,7 @@ ORT_API_STATUS_IMPL(winmla::JoinModels,
     // does the domain exist in the first model?
     auto found_it = std::find_if(first_model_proto->mutable_opset_import()->begin(), first_model_proto->mutable_opset_import()->end(),
                                  [&domain](auto& mutable_opset_import) {
-                                    
+
                                     auto first_model_domain = mutable_opset_import.has_domain() ? mutable_opset_import.domain() : std::string("");
                                     return 0 == strcmp(first_model_domain.c_str(), domain.c_str());
                                  });
@@ -942,7 +942,7 @@ ORT_API_STATUS_IMPL(winmla::JoinModels,
   }
 
   // add identity ops to rename all of the first model outputs to secondmodel inputs with prefix for each linkage
-  for (int i = 0; i < num_linkages; i++) {    
+  for (int i = 0; i < num_linkages; i++) {
     auto op_output_name = second_model_prefix + *(input_names + i);
     const char* const op_output_name_const_str = op_output_name.c_str();
     std::string name = "IdentityTo";

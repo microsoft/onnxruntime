@@ -71,7 +71,7 @@ equal to the spatial dimension of input tensor. Input is of type uint8_t or int8
                                         "dimensions are all 1.",
                                         "T")
                                 .TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"},
-                                                "Constrain input and output types to singed/unsigned int8 tensors.")
+                                                "Constrain input and output types to signed/unsigned int8 tensors.")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   propagateElemTypeFromInputToOutput(ctx, 0, 0);
 

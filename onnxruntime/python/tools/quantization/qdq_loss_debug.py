@@ -167,7 +167,7 @@ def _add_pre_post_qdq_pair(
     pre_qdq_tensors: Optional[Sequence[numpy.ndarray]],
     post_qdq_tensors: Optional[Sequence[numpy.ndarray]],
 ) -> None:
-    if post_qdq_tensors and pre_qdq_tensors:
+    if post_qdq_tensors is not None and pre_qdq_tensors is not None:
         qdq_cmp[activation_name] = {}
         qdq_cmp[activation_name]["pre_qdq"] = pre_qdq_tensors
         qdq_cmp[activation_name]["post_qdq"] = post_qdq_tensors
@@ -229,7 +229,7 @@ def create_activation_matching(
 
     for act_name, act_values in qdq_cmp.items():
         float_acts = float_activations.get(act_name)
-        if float_acts:
+        if float_acts is not None:
             act_values["float"] = float_acts
 
     return qdq_cmp
@@ -343,9 +343,11 @@ def compute_signal_to_quantization_noice_ratio(
     left = numpy.concatenate(xlist).flatten()
     right = numpy.concatenate(ylist).flatten()
 
-    Ps = numpy.linalg.norm(left)
-    Pn = numpy.linalg.norm(left - right) + numpy.finfo("float").eps
-    return 20 * math.log10(Ps / Pn)
+    epsilon = numpy.finfo("float").eps
+    tensor_norm = max(numpy.linalg.norm(left), epsilon)
+    diff_norm = max(numpy.linalg.norm(left - right), epsilon)
+    res = tensor_norm / diff_norm
+    return 20 * math.log10(res)
 
 
 def compute_weight_error(

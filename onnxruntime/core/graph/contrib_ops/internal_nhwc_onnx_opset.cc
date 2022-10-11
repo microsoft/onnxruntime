@@ -80,12 +80,15 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearAveragePool, 1);
 
   // TODO: Add other layout sensitive ops when needed. Those are:
-  //   QLinearConv,
   //   BatchNormalization,
   //   AveragePool, GlobalAveragePool, GlobalMaxPool,
   //   LRN,
   //   GridSample
   //   DepthToSpace, SpaceToDepth
+
+  // not all schema are registered here. For part of layout insensitive ops
+  // we will use onnx schema directly, for others, like fused-node/qdq-group
+  // we may leverage internal schema or create on the fly.
 }
 
 }  // namespace internal_nhwc_onnx

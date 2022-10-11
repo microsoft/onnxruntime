@@ -21,7 +21,7 @@ ORT_API_STATUS(EnvConfigureCustomLoggerAndProfiler, _In_ OrtEnv* env, OrtLogging
 
 // OrtModel methods
 ORT_API_STATUS(CreateModelFromPath, _In_ const char* model_path, _In_ size_t size, _Outptr_ OrtModel** out);
-ORT_API_STATUS(CreateModelFromData, _In_ void* data, _In_ size_t size, _Outptr_ OrtModel** out);
+ORT_API_STATUS(CreateModelFromData, _In_opt_ void* data, _In_ size_t size, _Outptr_ OrtModel** out);
 ORT_API_STATUS(CloneModel, _In_ const OrtModel* in, _Outptr_ OrtModel** out);
 ORT_API_STATUS(ModelGetAuthor, _In_ const OrtModel* model, _Out_ const char** const author, _Out_ size_t* len);
 ORT_API_STATUS(ModelGetName, _In_ const OrtModel* model, _Out_ const char** const name, _Out_ size_t* len);
@@ -88,7 +88,7 @@ ORT_API_STATUS(CreateModel, _In_ int64_t opset, _Outptr_ OrtModel** out);
 ORT_API_STATUS(ModelAddInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info);
 ORT_API_STATUS(ModelAddConstantInput, _In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ OrtValue* value);
 ORT_API_STATUS(ModelAddOutput, _In_ OrtModel* model, _In_ const char* const output_name, _In_ OrtTypeInfo* info);
-ORT_API_STATUS(ModelAddOperator, 
+ORT_API_STATUS(ModelAddOperator,
     _In_ OrtModel* model,
     _In_ const char* const op_type,
     _In_ const char* const op_name,
@@ -103,7 +103,7 @@ ORT_API_STATUS(ModelGetOpsetVersion, _In_ OrtModel* model, _In_ const char* cons
 ORT_API_STATUS(OperatorGetNumInputs,
       _In_ const char* const op_type,
       _In_ int64_t opset,
-      _In_ const char* const op_domain, 
+      _In_ const char* const op_domain,
       _Out_ size_t* num_inputs);
 
 ORT_API_STATUS(OperatorGetInputName,
@@ -136,8 +136,8 @@ ORT_API_STATUS(JoinModels,
                _In_ const char* const join_node_prefix);
 
 ORT_API_STATUS(CreateThreadPool,
-               ThreadPoolType type,
-               OrtThreadPoolOptions* params,
+               _In_ ThreadPoolType type,
+               _In_ OrtThreadPoolOptions* params,
                _Outptr_ OrtThreadPool** out);
 
 // maps and sequences???

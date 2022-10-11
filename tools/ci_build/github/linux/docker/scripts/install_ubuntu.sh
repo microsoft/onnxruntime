@@ -59,35 +59,14 @@ if [ $DEVICE_TYPE = "Normal" ]; then
     PACKAGE_LIST="$PACKAGE_LIST libedit-dev libxml2-dev python3-packaging"
 fi
 
-if [ "$OS_VERSION" = "18.04" ]; then
-    PACKAGE_LIST="$PACKAGE_LIST libicu60"
-else
-    PACKAGE_LIST="$PACKAGE_LIST libicu66"
-fi
+PACKAGE_LIST="$PACKAGE_LIST libicu66"
 
 apt-get install -y --no-install-recommends $PACKAGE_LIST
 
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
-if [ "$OS_VERSION" = "16.04" ]; then
-    exit 1
-elif [ "$OS_VERSION" = "18.04" ]; then
-    if [ "$PYTHON_VER" != "3.6" ]; then
-	    add-apt-repository -y ppa:deadsnakes/ppa
-        apt-get update
-        apt-get install -y --no-install-recommends \
-                python${PYTHON_VER} \
-                python${PYTHON_VER}-dev
-        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
-        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 2
-        update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
-        #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
-        #put at /usr/local/. Then there will be two pips.
-        /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
-    fi
-
-else # ubuntu20.04
+if [ "$OS_VERSION" = "20.04" ]; then
     if [ "$PYTHON_VER" != "3.8" ]; then
 	    add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
@@ -101,17 +80,8 @@ else # ubuntu20.04
         #put at /usr/local/. Then there will be two pips.
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
+else
+    exit 1
 fi
 
 rm -rf /var/lib/apt/lists/*
-
-if [ "$SYS_LONG_BIT" = "64" ]; then
-    if [ "$DEVICE_TYPE" = "Normal" ]; then
-	    if [ "$OS_VERSION" = "20.04" ]; then
-	        #llvm 9.0 doesn't have a release for 20.04, but the binaries for 18.04 should work well.
-            OS_VERSION="18.04"
-	    fi
-        aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-${OS_VERSION}.tar.xz
-	    tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr
-    fi
-fi

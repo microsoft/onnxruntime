@@ -55,12 +55,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
-  } else if (provider_name == onnxruntime::kNupharExecutionProvider) {
-#ifdef USE_NUPHAR
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options, /*allow_unaligned_buffers*/ 1, ""));
-#else
-    ORT_THROW("Nuphar is not supported in this build\n");
-#endif
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     int device_id = 0;
@@ -291,7 +285,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       auto value = token.substr(pos + 1);
 
       if (key == "device_type") {
-        std::set<std::string> ov_supported_device_types = {"CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"};
+        std::set<std::string> ov_supported_device_types = {"CPU_FP32", "CPU_FP16", "GPU_FP32",
+                                                           "GPU.0_FP32", "GPU.1_FP32", "GPU_FP16",
+                                                           "GPU.0_FP16", "GPU.1_FP16", "VAD-M_FP16",
+                                                           "MYRIAD_FP16", "VAD-F_FP32"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           device_type = value;
         } else if (value.find("HETERO:") == 0) {
@@ -301,7 +298,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else if (value.find("AUTO:") == 0) {
           device_type = value;
         } else {
-          ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. select from 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from HETERO/MULTI/AUTO options available. \n");
+          ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. "
+                    "Select from 'CPU_FP32', 'CPU_FP16', 'GPU_FP32', 'GPU.0_FP32', 'GPU.1_FP32', 'GPU_FP16', "
+                    "'GPU.0_FP16', 'GPU.1_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from"
+                    " HETERO/MULTI/AUTO options available. \n");
         }
       } else if (key == "device_id") {
         device_id = value;
@@ -488,7 +488,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   } else if (provider_name == onnxruntime::kXnnpackExecutionProvider) {
 #ifdef USE_XNNPACK
-    session_options.AppendExecutionProvider("XNNPACK", {});
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
+    session_options.AppendExecutionProvider(
+        "XNNPACK", {{"intra_op_num_threads", std::to_string(performance_test_config.run_config.intra_op_num_threads)}});
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
 #endif
@@ -655,8 +657,8 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
           dim = 1;
         }
       }
-      // default allocator doesn't have to be freed by user
-      auto allocator = static_cast<OrtAllocator*>(Ort::AllocatorWithDefaultOptions());
+
+      auto allocator = Ort::AllocatorWithDefaultOptions();
       Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
                                                          input_node_dim.size(), tensor_info.GetElementType());
       InitializeTensorWithSeed(seed, input_tensor);

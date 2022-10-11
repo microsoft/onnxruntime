@@ -1,14 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING
-
 #pragma once
 
-#include <map>
 #include <string>
 
 #include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
 
@@ -16,8 +14,8 @@ namespace onnxruntime {
 @class ConstantSharing
 
 Transformer that traverses the graph top-down and performs constant sharing, i.e.,
-For constant initializers that share same values and shapes, share one single initializer, and remove others.
-Currently, only handle those scalar valued initializers.
+constant initializers having same dtype, value and shape, will be replaced by one single (newly created) initializer.
+Currently, only scalar valued initializers are handled.
 */
 class ConstantSharing : public GraphTransformer {
  public:
@@ -32,16 +30,9 @@ class ConstantSharing : public GraphTransformer {
   }
 
  private:
-  template <typename T>
-  bool ShareInitializer(Graph& graph, Node* node, int input_index,
-                        std::map<std::string, NodeArg*>& type_value_plus_rank_to_shared_arg_map,
-                        int32_t data_type) const;
-
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
   const InlinedHashSet<std::string> excluded_initializers_;
 };
 
 }  // namespace onnxruntime
-
-#endif

@@ -144,7 +144,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     Node& ln_node = *p_layernorm;
     ORT_RETURN_IF_ERROR(Recurse(ln_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(ln_node, "LayerNormalization", {1}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(ln_node, "LayerNormalization", {1, 17}) ||
         !graph_utils::IsSupportedProvider(ln_node, GetCompatibleExecutionProviders()) ||
         !IsSupportedDataType(ln_node)) {
       continue;
@@ -163,8 +163,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     // Format 1
     std::vector<graph_utils::EdgeEndToMatch> format1_parent_path{
-        {0, 0, "Add", {7, 13}, kOnnxDomain},
-        {0, 0, "Add", {7, 13}, kOnnxDomain}};
+        {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
+        {0, 0, "Add", {7, 13, 14}, kOnnxDomain}};
 
     std::vector<const Node::EdgeEnd*> edges;
     if (graph_utils::FindPath(ln_node, true, format1_parent_path, edges, logger)) {
@@ -182,8 +182,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (matched_format == Format::None) {
       // Format 2
       std::vector<graph_utils::EdgeEndToMatch> format2_parent_path{
-          {0, 0, "Add", {7, 13}, kOnnxDomain},
-          {0, 1, "Add", {7, 13}, kOnnxDomain}};
+          {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
+          {0, 1, "Add", {7, 13, 14}, kOnnxDomain}};
 
       if (graph_utils::FindPath(ln_node, true, format2_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
@@ -201,7 +201,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     if (matched_format == Format::None) {
       // Format 3
       std::vector<graph_utils::EdgeEndToMatch> format3_parent_path{
-          {0, 0, "Add", {7, 13}, kOnnxDomain}};
+          {0, 0, "Add", {7, 13, 14}, kOnnxDomain}};
 
       if (graph_utils::FindPath(ln_node, true, format3_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());

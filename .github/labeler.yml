@@ -1,0 +1,34 @@
+ep:ACL: '/\bacl\b/i'
+ep:ArmNN: '/\barmnn\b/i'
+ep:CUDA: '/\bcuda\b/i'
+ep:DML:
+  - '/\bdirectml\b/i'
+  - '/\bdml\b/i'
+ep:MIGraphX: '/\bmigraphx\b/i'
+ep:oneDNN: '/\bonednn\b/i'
+ep:OpenVINO: '/\bopen\s*vino\b/i'
+ep:RockchipNPU: '/\brockchip\b/i'
+ep:TensorRT:
+  - '/\btensor\s*rt\b/i'
+  - '/\btrt\b/i'
+ep:tvm: '/\btvm\b/i'
+ep:VitisAI: '/\bvitis(?:ai)?\b/i'
+platform:jetson: '/\bjetson\b/i'
+platform:mobile:
+  - '/\bobj(?:ective)?-?c\b/i'
+  - '/\bnnapi\b/i'
+  - '/\bcore-?ml\b/i'
+  - '/\bmobile\b/i'
+platform:windows:
+  - '/\bwindows\b/i'
+  - '/\bwinrt\b/i'
+  - '/\bwinml\b/i'
+model:transformer:
+  - '/\bbert\b/i'
+  - '/\bgpt-?2\b/i'
+  - '/\bhugging-?face\b/i'
+  - '/\blong-?former\b/i'
+  - '/\bt5\b/i'
+quantization:
+  - '/is this a quantized model\?\n\nYes/i'
+  - '/\bquantization\b/i'
