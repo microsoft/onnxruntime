@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="gsl::span&lt;*&gt;">
+    <Intrinsic Name="_size" Expression="(last_ - first_)"/>
+    <DisplayString>{{ size={ _size() }}}</DisplayString>
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple">_size()</Item>
+      <IndexListItems Condition="_size() &gt; 0">
+        <Size>_size()</Size>
+        <ValueNode>first_[$i]</ValueNode>
+      </IndexListItems>
+    </Expand>
+  </Type>
+</AutoVisualizer>
