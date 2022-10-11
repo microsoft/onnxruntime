@@ -123,10 +123,12 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/dgemm.cpp
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
+      ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+      ${MLAS_SRC_DIR}/amd64/QgemmU8S8KernelAmx.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8S8KernelAvx2.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8U8KernelAvx2.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8X8KernelAvx2.asm
@@ -409,6 +411,8 @@ else()
         # not including the logic to set this flag for the assembler.
         set(CMAKE_ASM${ASM_DIALECT}_OSX_DEPLOYMENT_TARGET_FLAG "${CMAKE_C_OSX_DEPLOYMENT_TARGET_FLAG}")
 
+        set_source_files_properties(${MLAS_SRC_DIR}/platform.cpp PROPERTIES COMPILE_FLAGS "-mamx-tile")
+
         # The LLVM assembler does not support the .arch directive to enable instruction
         # set extensions and also doesn't support AVX-512F instructions without
         # turning on support via command-line option. Group the sources by the
@@ -438,6 +442,7 @@ else()
         set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
 
         set(mlas_platform_srcs_avx2
+          ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAmx.S
           ${MLAS_SRC_DIR}/x86_64/QgemmU8S8KernelAvx2.S
           ${MLAS_SRC_DIR}/x86_64/QgemvU8S8KernelAvx2.S
           ${MLAS_SRC_DIR}/x86_64/QgemmU8U8KernelAvx2.S
@@ -474,9 +479,12 @@ else()
         )
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
 
+        set_source_files_properties(${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp PROPERTIES COMPILE_FLAGS "-mamx-tile -mamx-int8 -mavx2 -mavx512bw -mavx512dq -mavx512vl")
+
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/dgemm.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
+          ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
           ${mlas_platform_srcs_avx2}

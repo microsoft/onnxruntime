@@ -125,7 +125,42 @@ MlasReadExtendedControlRegister(
 #endif
 }
 
+#if defined(__linux__)
+#include <sys/syscall.h>
 #endif
+
+bool
+MlasInitAMX()
+{
+#if defined(__linux__)
+#define XFEATURE_XTILECFG 17
+#define XFEATURE_XTILEDATA 18
+#define XFEATURE_MASK_XTILECFG (1 << XFEATURE_XTILECFG)
+#define XFEATURE_MASK_XTILEDATA (1 << XFEATURE_XTILEDATA)
+#define XFEATURE_MASK_XTILE (XFEATURE_MASK_XTILECFG | XFEATURE_MASK_XTILEDATA)
+
+#define ARCH_GET_XCOMP_PERM 0x1022
+#define ARCH_REQ_XCOMP_PERM 0x1023
+
+    unsigned long bitmask = 0;
+    long rc = syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_PERM, XFEATURE_XTILEDATA);
+    if (rc) {
+        return false;
+    }
+    rc = syscall(SYS_arch_prctl, ARCH_GET_XCOMP_PERM, &bitmask);
+    if (rc) {
+        return false;
+    }
+    if (bitmask & XFEATURE_MASK_XTILE) {
+        return true;
+    }
+    return false;
+#else
+    return true;
+#endif
+}
+
+#endif // MLAS_TARGET_AMD64_IX86
 
 MLAS_PLATFORM::MLAS_PLATFORM(
     void
@@ -361,6 +396,17 @@ Return Value:
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
                         }
+                    }
+                }
+
+                //
+                // Check if the processor supports AMX-TILE and AMX-INT8
+                // features.
+                //
+                if ((Cpuid7[3] & 0b1 << 24) != 0 && (Cpuid7[3] & 0b1 << 25) != 0) {
+                    if (MlasInitAMX()) {
+                        this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAmx;
+                        this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
                     }
                 }
 
