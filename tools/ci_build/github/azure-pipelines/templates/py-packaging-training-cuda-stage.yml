@@ -53,11 +53,11 @@ parameters:
   default: false
 
 stages:
-- stage: Cuda_Python_Packaging
+- stage: "Cuda_Python_Packaging_debug_${{ parameters.debug_build }}"
 
   variables:
     - name: isMain
-      value: ${{ eq(variables['Build.SourceBranch'], 'refs/heads/main') }}
+      value: ${{ or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')) }}
     - name: finalStorage
       ${{ if eq(variables['isMain'], 'true') }}:
         value: '--final_storage'
@@ -68,6 +68,8 @@ stages:
         value: 'Debug'
       ${{ else }}:
         value: 'Release'
+
+  dependsOn: []
 
   jobs:
     - job: Linux_py_Training_Cuda_Wheels
@@ -202,7 +204,7 @@ stages:
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
         inputs:
-          ArtifactName: onnxruntime_gpu
+          ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}"
 
       - task: CmdLine@2
         displayName: 'Upload wheel'

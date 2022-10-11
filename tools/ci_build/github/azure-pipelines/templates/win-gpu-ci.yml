@@ -119,7 +119,7 @@ jobs:
 
       - ${{ if eq(parameters.isTraining, true) }}:
           - script: |
-             python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\ortmodule\stage1\requirements_torch1.11.0_cu11.3\requirements.txt
+             python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\ortmodule\stage1\requirements_torch1.11.0_cu11.6\requirements.txt
              python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\requirements.txt
             workingDirectory: '$(Build.BinariesDirectory)'
             displayName: 'Install python modules'

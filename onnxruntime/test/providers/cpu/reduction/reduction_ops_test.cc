@@ -2729,7 +2729,7 @@ TEST(ReductionOpTest, ReduceInfLogSum) {
                         {FLOAT_INF, FLOAT_INF,
                          -std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(),
                          std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDnnlExecutionProvider});
+  test.Run();
 }
 
 TEST(ReductionOpTest, ReduceInfLogSumExp) {

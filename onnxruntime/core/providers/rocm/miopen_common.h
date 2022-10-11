@@ -54,26 +54,26 @@ class MiopenTensorDescriptor final {
 
 template <typename ElemType>
 struct Consts {
-  static const ElemType Zero;
-  static const ElemType One;
+  static const constexpr ElemType Zero{0};
+  static const constexpr ElemType One{1};
 };
 
 template <>
 struct Consts<half> {
-  static const float Zero;
-  static const float One;
+  static const constexpr float Zero{0};
+  static const constexpr float One{1};
 };
 
 template <>
 struct Consts<BFloat16> {
-  static const float Zero;
-  static const float One;
+  static const constexpr float Zero{0};
+  static const constexpr float One{1};
 };
 
 template <typename ElemType>
 struct ReduceConsts {
-  static const ElemType Zero;
-  static const ElemType One;
+  static const constexpr ElemType Zero{0};
+  static const constexpr ElemType One{1};
 };
 
 #if ROCM_VERSION >= 40300
@@ -82,14 +82,14 @@ struct ReduceConsts {
 // MIOpen/cuDNN APIs where alpha/beta are float when input type is half (float16).
 template <>
 struct ReduceConsts<half> {
-  static const float Zero;
-  static const float One;
+  static const constexpr float Zero{0};
+  static const constexpr float One{1};
 };
 
 template <>
 struct ReduceConsts<BFloat16> {
-  static const float Zero;
-  static const float One;
+  static const constexpr float Zero{0};
+  static const constexpr float One{1};
 };
 #endif
 

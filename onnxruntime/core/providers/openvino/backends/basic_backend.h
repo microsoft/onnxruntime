@@ -26,7 +26,7 @@ class BasicBackend : public IBackend {
                GlobalContext& global_context,
                const SubGraphContext& subgraph_context);
 
-  void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) override;
+  void Infer(OrtKernelContext* context) override;
 
  private:
   bool ImportBlob(std::string hw_target, bool vpu_status);
@@ -37,13 +37,13 @@ class BasicBackend : public IBackend {
   #if defined(OV_API_20)
   void EnableGPUThrottling(OVConfig& config);
   #endif 
-  void StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<OVInferRequest> infer_request);
+  void StartAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
 #ifdef IO_BUFFER_ENABLED
-  void StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<OVInferRequest> infer_request);
+  void StartRemoteAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 #endif
 
-  void CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<OVInferRequest> infer_request);
+  void CompleteAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
   GlobalContext& global_context_;
   SubGraphContext subgraph_context_;
