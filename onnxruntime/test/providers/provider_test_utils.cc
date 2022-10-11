@@ -12,6 +12,7 @@
 #include "core/graph/model_load_utils.h"
 #include "gmock/gmock.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/providers/run_options_config_keys.h"
 #include "test/util/include/default_providers.h"
 #include "test/framework/test_utils.h"
 #include <csignal>
@@ -1247,21 +1248,27 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
             number_of_pre_packed_weights_counter,
             number_of_shared_pre_packed_weights_counter);
 
-        if (provider_type == onnxruntime::kRocmExecutionProvider) {
-          ExecuteModelForEps(
-              []() {
-                std::vector<std::unique_ptr<IExecutionProvider>> ret;
-                ret.emplace_back(DefaultRocmExecutionProvider(true));
-                return ret;
-              }(),
-              *p_model, ctx_.session_options,
-              ctx_.expect_result, ctx_.expected_failure_string,
-              ctx_.run_options, feeds, output_names,
-              &custom_session_registries_,
-              /*assign_ep_for_nodes=*/true,
-              allow_released_onnx_opset_only,
-              number_of_pre_packed_weights_counter,
-              number_of_shared_pre_packed_weights_counter);
+        // Run Models with subscribed run_options->config_options
+        if (ctx_.run_options) {
+          if (auto cfg = ctx_.run_options->config_options.GetConfigEntry(kOpTesterRunOptionsConfigTestTunableOp);
+              *cfg == "true") {
+            std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+            if (provider_type == onnxruntime::kRocmExecutionProvider) {
+              execution_providers.emplace_back(DefaultRocmExecutionProvider(/*use_tunable_op=*/true));
+            }
+
+            if (!execution_providers.empty()) {
+              ExecuteModelForEps(
+                  std::move(execution_providers), *p_model, ctx_.session_options,
+                  ctx_.expect_result, ctx_.expected_failure_string,
+                  ctx_.run_options, feeds, output_names,
+                  &custom_session_registries_,
+                  /*assign_ep_for_nodes=*/true,
+                  allow_released_onnx_opset_only,
+                  number_of_pre_packed_weights_counter,
+                  number_of_shared_pre_packed_weights_counter);
+            }
+          }
         }
 
         has_run = true;
