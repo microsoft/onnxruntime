@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 import re
+import sys
 from itertools import product
 
 import kernel_explorer as ke
@@ -11,9 +12,16 @@ import numpy as np
 import pytest
 
 
-def get_bert_sizes():
-    batch_sizes = [1, 8, 64, 128]
-    seq_lens = [64, 128, 256, 384, 512]
+def get_bert_sizes_test():
+    batch_sizes = [1, 8, 128]
+    seq_lens = [64, 256]
+    hidden_sizes = [1, 2, 3, 4, 5, 7, 8, 9, 13, 32, 63, 64, 65, 127, 128, 129, 177, 256, 1023, 1024]
+    return product(batch_sizes, seq_lens, hidden_sizes)
+
+
+def get_bert_sizes_profile():
+    batch_sizes = [1, 8, 128, 256]
+    seq_lens = [64, 128, 256, 384]
     hidden_sizes = [768, 1024]
     return product(batch_sizes, seq_lens, hidden_sizes)
 
@@ -43,7 +51,8 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
     bias = np.random.rand(hidden_size).astype(dtype)
     gamma = np.random.rand(hidden_size).astype(dtype)
     beta = np.random.rand((hidden_size)).astype(dtype)
-    epsilon = 0.0005
+    # Becuase of rocm FMAs calculation issue with float16, epsilon should be larger when hidden_size is small
+    epsilon = 0.05 if hidden_size < 8 else 0.0005
     output_y = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
 
     input_d = ke.DeviceArray(input_x)
@@ -68,11 +77,10 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
 dtypes = ["float32", "float16"]
 
 
-@pytest.mark.parametrize("bert_sizes", get_bert_sizes())
+@pytest.mark.parametrize("bert_sizes", get_bert_sizes_test())
 @pytest.mark.parametrize("dtype", dtypes)
 def test_skip_layer_norm(bert_sizes, dtype):
     for func in dtype_to_funcs(dtype):
-        print(func)
         run_skip_layer_norm(*bert_sizes, dtype, func)
 
 
@@ -109,13 +117,29 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
         )
 
 
+def profile_with_args(batch_size, seq_len, hidden_size, dtype):
+    for func in dtype_to_funcs(dtype):
+        profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func)
+    print()
+
+
 def profile():
     for dtype in dtypes:
-        for bert_size in get_bert_sizes():
-            for func in dtype_to_funcs(dtype):
-                profile_skip_layer_norm_func(*bert_size, dtype, func)
-            print()
+        for bert_size in get_bert_sizes_profile():
+            profile_with_args(*bert_size, dtype)
 
 
 if __name__ == "__main__":
-    profile()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    group = parser.add_argument_group("profile with args")
+    group.add_argument("batch_size", type=int)
+    group.add_argument("seq_len", type=int)
+    group.add_argument("hidden_size", type=int)
+    group.add_argument("dtype", choices=dtypes)
+    if len(sys.argv) == 1:
+        profile()
+    else:
+        args = parser.parse_args()
+        profile_with_args(args.batch_size, args.seq_len, args.hidden_size, args.dtype)

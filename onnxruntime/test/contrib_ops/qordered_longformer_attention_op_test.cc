@@ -79,19 +79,19 @@ static void run_qordered_longformer_attention_op_test(
 }
 
 TEST(QOrderedTest, LongformerAttention_1x128x2x16_window_32) {
-  const float scale_input = 1.0f / 32.0f;
-  const float scale_weight = 1.0f / 64.0f;
-  const float scale_bias = 1.0f / 8.0f;
-  const float scale_qkv_gemm = 1.0f / 4.0f;
-  const float scale_global_weight = 1.0f / 64.0f;
-  const float scale_global_gemm = 1.0f / 4.0f;
-  const float scale_output = 1.0f / 8.0f;
-  const int64_t batch_size = 1;
-  const int64_t sequence_len = 128;
-  const int64_t num_heads = 2;
-  const int64_t head_size = 16;
-  const int64_t window = 32;
-  const int64_t input_hidden_size = 0;  // same as hidden_size
+  constexpr float scale_input = 1.0f / 32.0f;
+  constexpr float scale_weight = 1.0f / 64.0f;
+  constexpr float scale_bias = 1.0f / 8.0f;
+  constexpr float scale_qkv_gemm = 1.0f / 4.0f;
+  constexpr float scale_global_weight = 1.0f / 64.0f;
+  constexpr float scale_global_gemm = 1.0f / 4.0f;
+  constexpr float scale_output = 1.0f / 8.0f;
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t sequence_len = 128;
+  constexpr int64_t num_heads = 2;
+  constexpr int64_t head_size = 16;
+  constexpr int64_t window = 32;
+  constexpr int64_t input_hidden_size = 0;  // same as hidden_size
 
   // Following code generate the input data vectors: (Keep it here in case)
   // #include <iostream>
@@ -154,7 +154,7 @@ TEST(QOrderedTest, LongformerAttention_1x128x2x16_window_32) {
   // debug_print(global_attention_mask.data(), batch_size, sequence_len, "global_attention_mask");
   // float scale_output = 1.0f / 8.0f;
 
-  
+
 
   //========inputq : 128x32 ============
   std::vector<int8_t> inputq = {

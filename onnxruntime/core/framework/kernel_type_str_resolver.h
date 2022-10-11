@@ -61,7 +61,7 @@ class IKernelTypeStrResolver {
  * Supports loading information from op schemas in a full build and saving to/loading from an ORT format model
  * representation.
  */
-class KernelTypeStrResolver : public IKernelTypeStrResolver {
+class KernelTypeStrResolver final : public IKernelTypeStrResolver {
  public:
   Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,
                               gsl::span<const ArgTypeAndIndex>& resolved_args) const override;
@@ -123,7 +123,7 @@ class KernelTypeStrResolver : public IKernelTypeStrResolver {
  *
  * As this requires node op schemas, it is only enabled in a full build.
  */
-class OpSchemaKernelTypeStrResolver : public IKernelTypeStrResolver {
+class OpSchemaKernelTypeStrResolver final : public IKernelTypeStrResolver {
  public:
   // Note: `node`'s op schema must be populated.
   Status ResolveKernelTypeStr(const Node& node, std::string_view kernel_type_str,

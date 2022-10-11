@@ -10,6 +10,7 @@
  * Supported tensor data type
  */
 NSString *const JsTensorTypeBool = @"bool";
+NSString *const JsTensorTypeUnsignedByte = @"uint8";
 NSString *const JsTensorTypeByte = @"int8";
 NSString *const JsTensorTypeShort = @"int16";
 NSString *const JsTensorTypeInt = @"int32";
@@ -137,6 +138,8 @@ static Ort::Value createInputTensorT(OrtAllocator *ortAllocator, const std::vect
   switch (tensorType) {
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
     return createInputTensorT<float_t>(ortAllocator, dims, buffer, allocations);
+  case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+    return createInputTensorT<uint8_t>(ortAllocator, dims, buffer, allocations);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
     return createInputTensorT<int8_t>(ortAllocator, dims, buffer, allocations);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
@@ -150,7 +153,6 @@ static Ort::Value createInputTensorT(OrtAllocator *ortAllocator, const std::vect
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
     return createInputTensorT<double_t>(ortAllocator, dims, buffer, allocations);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
-  case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
@@ -182,6 +184,8 @@ template <typename T> static NSString *createOutputTensorT(const Ort::Value &ten
   switch (tensorType) {
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
     return createOutputTensorT<float_t>(tensor);
+  case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+    return createOutputTensorT<uint8_t>(tensor);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
     return createOutputTensorT<int8_t>(tensor);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
@@ -195,7 +199,6 @@ template <typename T> static NSString *createOutputTensorT(const Ort::Value &ten
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
     return createOutputTensorT<double_t>(tensor);
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
-  case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:
   case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
@@ -219,6 +222,7 @@ NSDictionary *OnnxTensorTypeToJsTensorTypeMap;
 + (void)initialize {
   JsTensorTypeToOnnxTensorTypeMap = @{
     JsTensorTypeFloat : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT),
+    JsTensorTypeUnsignedByte : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8),
     JsTensorTypeByte : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8),
     JsTensorTypeShort : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16),
     JsTensorTypeInt : @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32),
@@ -230,6 +234,7 @@ NSDictionary *OnnxTensorTypeToJsTensorTypeMap;
 
   OnnxTensorTypeToJsTensorTypeMap = @{
     @(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) : JsTensorTypeFloat,
+    @(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8) : JsTensorTypeUnsignedByte,
     @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) : JsTensorTypeByte,
     @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16) : JsTensorTypeShort,
     @(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) : JsTensorTypeInt,

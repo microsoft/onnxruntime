@@ -22,8 +22,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
-using SplitDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
 using EnabledSplitDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
 
@@ -32,7 +30,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     2,
     10,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
@@ -42,7 +39,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 
@@ -51,7 +47,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     Split,
     13,
     KernelDefBuilder().TypeConstraint("T",
-                                      BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
     Split);
 

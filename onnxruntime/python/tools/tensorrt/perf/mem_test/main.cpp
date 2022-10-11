@@ -155,8 +155,8 @@ void run_ort_trt2() {
 
 void ort_trt_run_with_default_options() {
   //*************************************************************************
-  // initialize  enviroment...one enviroment per process
-  // enviroment maintains thread pools and other state info
+  // initialize  environment...one environment per process
+  // environment maintains thread pools and other state info
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
 
   // initialize session options if needed

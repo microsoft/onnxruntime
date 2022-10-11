@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 namespace Microsoft.ML.OnnxRuntime
 {
 #if __ENABLE_TRAINING_ON_DEVICE__
+        // NOTE: The order of the APIs in this struct should match exactly that in
         // OrtTrainingApi  (onnxruntime_training_c_api.cc)
         [StructLayout(LayoutKind.Sequential)]
         public struct OrtTrainingApi
@@ -26,6 +27,9 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr OptimizerStep;
             public IntPtr RegisterLinearLRScheduler;
             public IntPtr SchedulerStep;
+            public IntPtr GetParametersSize;
+            public IntPtr CopyParametersToBuffer;
+            public IntPtr CopyBufferToParameters;
             public IntPtr ReleaseTrainingSession;
             public IntPtr ReleaseCheckpointState;
         }

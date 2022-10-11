@@ -52,7 +52,7 @@ ort_session = onnxruntime.InferenceSession('/path/to/model.onnx', sess_options=o
 
 **C++ example:**
 ```
-// initialize  enviroment...one enviroment per process
+// initialize  environment...one environment per process
 Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
 
 // initialize session options if needed
