@@ -171,56 +171,87 @@ Status KernelTypeStrResolver::SaveToOrtFormat(
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-Status KernelTypeStrResolver::LoadFromOrtFormat(const fbs::KernelTypeStrResolver& fbs_kernel_type_str_resolver) {
+// returns an error message string which is empty if successful
+static std::string LoadFromOrtFormatImpl(const fbs::KernelTypeStrResolver& fbs_kernel_type_str_resolver,
+                                         OpKernelTypeStrMap& op_kernel_type_str_map_out) {
   const auto* fbs_op_kernel_type_str_args = fbs_kernel_type_str_resolver.op_kernel_type_str_args();
-  ORT_FORMAT_RETURN_IF_NULL(fbs_op_kernel_type_str_args, "op_kernel_type_str_args");
+  if (!fbs_op_kernel_type_str_args) {
+    return "op_kernel_type_str_args is null.";
+  }
 
   OpKernelTypeStrMap op_kernel_type_str_map{};
   op_kernel_type_str_map.reserve(fbs_op_kernel_type_str_args->size());
   for (const auto* fbs_op_kernel_type_str_args_entry : *fbs_op_kernel_type_str_args) {
-    ORT_FORMAT_RETURN_IF_NULL(fbs_op_kernel_type_str_args_entry, "op_kernel_type_str_args entry");
+    if (!fbs_op_kernel_type_str_args_entry) {
+      return "op_kernel_type_str_args entry is null.";
+    }
 
     const auto* fbs_op_id = fbs_op_kernel_type_str_args_entry->op_id();
-    ORT_FORMAT_RETURN_IF_NULL(fbs_op_id, "op_id");
+    if (!fbs_op_id) {
+      return "op_id is null.";
+    }
 
     const auto* fbs_kernel_type_str_args = fbs_op_kernel_type_str_args_entry->kernel_type_str_args();
-    ORT_FORMAT_RETURN_IF_NULL(fbs_kernel_type_str_args, "kernel_type_str_args");
+    if (!fbs_kernel_type_str_args) {
+      return "kernel_type_str_args is null.";
+    }
 
     KernelTypeStrToArgsMap kernel_type_str_map{};
     kernel_type_str_map.reserve(fbs_kernel_type_str_args->size());
     for (const auto* fbs_kernel_type_str_args_entry : *fbs_kernel_type_str_args) {
-      ORT_FORMAT_RETURN_IF_NULL(fbs_kernel_type_str_args_entry, "kernel_type_str_args entry");
+      if (!fbs_kernel_type_str_args_entry) {
+        return "kernel_type_str_args entry is null.";
+      }
 
       const auto* fbs_kernel_type_str = fbs_kernel_type_str_args_entry->kernel_type_str();
-      ORT_FORMAT_RETURN_IF_NULL(fbs_kernel_type_str, "kernel_type_str");
+      if (!fbs_kernel_type_str) {
+        return "kernel_type_str is null.";
+      }
 
       const auto* fbs_args = fbs_kernel_type_str_args_entry->args();
-      ORT_FORMAT_RETURN_IF_NULL(fbs_args, "args");
+      if (!fbs_args) {
+        return "args is null.";
+      }
 
       InlinedVector<ArgTypeAndIndex> args{};
       args.reserve(fbs_args->size());
       for (const auto* fbs_arg : *fbs_args) {
-        ORT_FORMAT_RETURN_IF_NULL(fbs_arg, "args entry");
+        if (!fbs_arg) {
+          return "args entry is null.";
+        }
         args.push_back(ArgTypeAndIndex{
             fbs_arg->arg_type() == fbs::ArgType::INPUT ? ArgType::kInput : ArgType::kOutput,
             fbs_arg->index()});
       }
 
       const auto [it, inserted] = kernel_type_str_map.try_emplace(fbs_kernel_type_str->str(), std::move(args));
-      ORT_RETURN_IF_NOT(inserted, "Duplicate entry for kernel type str: ", it->first, ". ",
-                        fbs::utils::kInvalidOrtFormatModelMessage);
+      if (!inserted) {
+        return MakeString("Duplicate entry for kernel type str: ", it->first, ".");
+      }
     }
 
     OpIdentifier op_id;
-    ORT_RETURN_IF_ERROR(fbs::utils::LoadOpIdentifierOrtFormat(*fbs_op_id, op_id));
+    const auto load_op_id_status = fbs::utils::LoadOpIdentifierOrtFormat(*fbs_op_id, op_id);
+    if (!load_op_id_status.IsOK()) {
+      return load_op_id_status.ErrorMessage();
+    }
+
     const auto [it, inserted] = op_kernel_type_str_map.try_emplace(std::move(op_id),
                                                                    std::move(kernel_type_str_map));
-    ORT_RETURN_IF_NOT(inserted, "Duplicate entry for op id: ", it->first, ". ",
-                      fbs::utils::kInvalidOrtFormatModelMessage);
+    if (!inserted) {
+      return MakeString("Duplicate entry for op id: ", it->first, ".");
+    }
   }
 
-  op_kernel_type_str_map_ = std::move(op_kernel_type_str_map);
-  return Status::OK();
+  op_kernel_type_str_map_out = std::move(op_kernel_type_str_map);
+  return "";
+}
+
+Status KernelTypeStrResolver::LoadFromOrtFormat(const fbs::KernelTypeStrResolver& fbs_kernel_type_str_resolver) {
+  const auto error_message = LoadFromOrtFormatImpl(fbs_kernel_type_str_resolver, op_kernel_type_str_map_);
+  return error_message.empty() ? Status::OK()
+                               : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_message, " ",
+                                                 fbs::utils::kInvalidOrtFormatModelMessage);
 }
 
 void KernelTypeStrResolver::Merge(KernelTypeStrResolver src) {

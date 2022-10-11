@@ -4,7 +4,7 @@ name: 'linux_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 jobs:
 - job: AMDMIGraphX_CI
   pool: 'AMD-GPU'
-  timeoutInMinutes: 60
+  timeoutInMinutes: 180
 
   # gid of video and render group on gcr-openpai-35 and -36
   variables:
@@ -28,6 +28,11 @@ jobs:
 
   - task: CmdLine@2
     inputs:
+      script: rm -rf $(Build.BinariesDirectory)/*
+    displayName: 'Clean Build.BinariesDirectory'
+
+  - task: CmdLine@2
+    inputs:
       script: |
         docker run --rm \
           -e HIP_VISIBLE_DEVICES \
@@ -38,12 +43,15 @@ jobs:
           --device=/dev/dri \
           --group-add $(video) \
           --group-add $(render) \
+          --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /onnxruntime_src \
           onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
             python tools/ci_build/build.py \
               --config RelWithDebInfo \
+              --cmake_extra_defines \
+                CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
               --mpi_home /opt/ompi \
               --use_migraphx \
               --rocm_version=5.2.3 \
@@ -71,6 +79,7 @@ jobs:
           --device=/dev/dri \
           --group-add $(video) \
           --group-add $(render) \
+          --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /build/RelWithDebInfo \
@@ -78,3 +87,5 @@ jobs:
             /onnxruntime_src/tools/ci_build/github/pai/migraphx_test_launcher.sh
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
+
+  - template: templates/clean-agent-build-directory-step.yml
