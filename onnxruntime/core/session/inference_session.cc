@@ -604,7 +604,7 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
   fbs_buffer_size = ((fbs_buffer_size + m_bytes - 1) / m_bytes) * m_bytes;
   flatbuffers::FlatBufferBuilder builder(fbs_buffer_size);
 
-  auto ort_model_version = builder.CreateString(kOrtModelVersion);
+  auto ort_model_version = builder.CreateString(std::to_string(kOrtModelVersion));
   flatbuffers::Offset<fbs::Model> fbs_model;
   ORT_RETURN_IF_ERROR(
       model_->SaveToOrtFormat(builder, fbs_model));
@@ -1024,8 +1024,8 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   const auto* fbs_ort_model_version = fbs_session->ort_version();
   ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
 
-  // if this is a full build we can update an old format model.
-  bool model_needs_update = IsOrtModelVersionSupported(fbs_ort_model_version->string_view()) == false;
+  auto model_version = std::stoi(std::string(fbs_ort_model_version->str()));
+  bool is_supported = IsOrtModelVersionSupported(model_version);
 
 #if defined(ORT_MINIMAL_BUILD)
   // Note about the ORT format version 5 breaking change.
@@ -1034,10 +1034,19 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
       "This build doesn't support ORT format models older than version 5. "
       "See: https://github.com/microsoft/onnxruntime/blob/rel-1.13.0/docs/ORT_Format_Update_in_1.13.md";
 
-  ORT_RETURN_IF(model_needs_update,
+  ORT_RETURN_IF(!is_supported,
                 "The ORT format model version [", fbs_ort_model_version->string_view(),
                 "] is not supported in this build ", ORT_VERSION, ". ",
                 kOrtFormatVersion5BreakingChangeNote);
+#else
+  // models prior to v5 can be handled by inserting the kernel constraints in a full build
+  bool is_supported_with_update = !is_supported && model_version < 5;
+
+  // currently this means the model is using a future version
+  // i.e. attempted load of model created with future version of ORT
+  ORT_RETURN_IF_NOT(is_supported || is_supported_with_update,
+                    "The ORT format model version [", fbs_ort_model_version->string_view(),
+                    "] is not supported in this build ", ORT_VERSION, ". ");
 #endif
 
   const auto* fbs_model = fbs_session->model();
@@ -1073,7 +1082,8 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.LoadFromOrtFormat(*fbs_kernel_type_str_resolver));
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
-    if (model_needs_update) {
+    // insert the kernel type constraints if we're updating an old model that had kernel hashes.
+    if (is_supported_with_update) {
       ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
     }
 #endif

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <string>
 
 #include "gtest/gtest.h"
 
@@ -128,7 +129,7 @@ TEST(GraphRuntimeOptimizationTest, SaveRuntimeOptimizationToOrtFormat) {
 
     flatbuffers::Offset<fbs::InferenceSession> fbs_session_offset =
         fbs::CreateInferenceSessionDirect(builder,
-                                          kOrtModelVersion,
+                                          std::to_string(kOrtModelVersion).c_str(),
                                           fbs_model_offset,
                                           0);
 
