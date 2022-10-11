@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/constants.h"
 #include "optimizer_api.h"
 #include "optimizer_utils.h"
 
@@ -881,7 +882,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
 
       auto input_perm = onnx_layout_transformation::ChannelFirstToLastPerm(rank);
       auto output_perm = onnx_layout_transformation::ChannelLastToFirstPerm(rank);
-
+#if defined(USE_CUDA) || defined(USE_ROCM)
       // Except for resize and convolution ops, all the other layout sensitive ops only require layout transformation
       // for 0th input and output. For resize, add the other relevant inputs which need conversion. For Conv - layout
       // transformer only converts layout for 0th input, weights should be handled by every EP.
@@ -901,10 +902,10 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
           }
         }
         onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, input_perms, {&output_perm});
-      } else {
-        onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
       }
-
+#else
+      onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
+#endif
       onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
       modified = true;
     }

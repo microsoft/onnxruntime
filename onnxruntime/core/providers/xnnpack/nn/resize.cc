@@ -101,11 +101,12 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
   const auto* x_shape = input_defs[0]->Shape();
   auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
   int64_t channels = input_shape[3];
-  if (channels <= 0) {
-    // TODO Fix it, Resize ShapeInfer for NHWC.
-    channels = node.OutputDefs()[0]->Shape()->dim(3).dim_value();
-    ORT_ENFORCE(channels > 0, "can retrieve channel from input_shape");
+  // nchw -> nhwc
+  if (scales_.size() == 4) {
+    std::swap(scales_[1], scales_[2]);
+    std::swap(scales_[3], scales_[2]);
   }
+  ORT_ENFORCE(channels > 0, "can't retrieve channel from input_shape");
   uint32_t flags = 0;
   ORT_ENFORCE(mode_ == UpsampleMode::LINEAR, "only support bilinear resize");
   if (coordinate_transform_mode_ == ResizeCoordinateTransformationMode::ALIGN_CORNERS) {
@@ -194,13 +195,13 @@ Status Resize::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
 
-  TensorShapeVector output_dims(X->Shape().GetDims().size());
+  TensorShapeVector output_dims(X_shape.NumDimensions());
 
   if (OpKernel::Node().InputDefs().size() == 1) {
     ComputeOutputShape(scales_, X_shape.GetDims(), output_dims);
     return ComputeInternal(ctx, X, output_dims);
   }
-  const auto* scales = ctx->Input<Tensor>(scales_input_idx_);
+
   const auto* sizes = ctx->Input<Tensor>(sizes_input_idx_);
   if (scales_cached_) {
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
@@ -210,6 +211,7 @@ Status Resize::Compute(OpKernelContext* ctx) const {
     return ComputeInternal(ctx, X, output_dims);
   }
 
+  const auto* scales = ctx->Input<Tensor>(scales_input_idx_);
   // Get scales data
   std::vector<float> scales_array(X->Shape().GetDims().size());
 

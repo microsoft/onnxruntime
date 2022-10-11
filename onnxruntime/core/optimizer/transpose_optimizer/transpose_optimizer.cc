@@ -3,6 +3,9 @@
 
 #include "optimizer_api.h"
 
+#include "core/graph/constants.h"
+#include "core/common/make_string.h"
+
 #include <algorithm>
 #include <gsl/gsl>
 #include <iostream>
@@ -1749,10 +1752,10 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops
   std::string key;
   auto domain = node.Domain();
   auto op_type = node.OpType();
-  if (domain == "" || domain == "ai.onnx") {
+  if (domain == onnxruntime::kOnnxDomain || domain == onnxruntime::kOnnxDomainAlias) {
     key = std::string(op_type);
-  } else if (domain == "com.microsoft") {
-    key = "com.microsoft." + std::string(op_type);
+  } else if (domain == onnxruntime::kMSDomain) {
+    key = onnxruntime::MakeString(onnxruntime::kMSDomain, ".", op_type);
   } else {
     return nullptr;
   }
