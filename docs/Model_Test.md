@@ -20,10 +20,6 @@ e.g.
    python3 -m onnx.backend.test.cmd_tools generate-data -o C:\testdata
 
 
-## Get more models
-Download https://onnxruntimetestdata.blob.core.windows.net/models/20190419.zip and unzip it.
-
-
 # Compile onnx_test_runner and run the tests
 onnx_test_runner is a C++ program. Its source code is in onnxruntime/test/onnx directory.
 
