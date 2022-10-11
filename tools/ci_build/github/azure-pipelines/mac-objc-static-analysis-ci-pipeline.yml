@@ -33,7 +33,7 @@ jobs:
     displayName: Generate compile_commands.json and ONNX protobuf files
 
   - script: |
-      "$(brew --prefix llvm)/bin/clang-tidy" \
+      "$(brew --prefix llvm@14)/bin/clang-tidy" \
         -p="$(Build.BinariesDirectory)/Debug" \
         --checks="-*,clang-analyzer-*" \
         --header-filter="objectivec/include|objectivec/src|onnxruntime/core" \
