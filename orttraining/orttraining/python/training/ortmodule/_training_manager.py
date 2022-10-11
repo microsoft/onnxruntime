@@ -283,8 +283,7 @@ class TrainingManager(GraphExecutionManager):
     def _build_graph(self):
         """Build an optimized gradient graph using the module_graph_builder"""
 
-        super()._build_graph()
-
+        super()._build_graph(training=True)
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_optimized_model(
                 self._debug_options.save_onnx_models.path,
