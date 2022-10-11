@@ -325,7 +325,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         probe_level = ortmodule._defined_from_envvar(
             "ORTMODULE_MEMORY_ALLEVIATION_PROBE_LEVEL", "1", warn=True
         )
-        warnings.warn(f"Memory alleviation config: {enable_memory_alleviation}, probe level: {probe_level}")
         session_options.add_session_config_entry("optimization.enable_memory_alleviation", enable_memory_alleviation)
         session_options.add_session_config_entry("optimization.memory_alleviation_probe_level", probe_level)
 

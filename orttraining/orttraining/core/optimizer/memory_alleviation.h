@@ -14,11 +14,11 @@ namespace onnxruntime {
 namespace memory_alleviation {
 
 /**
- * @brief Level of allowed operations.
+ * @brief Level to control allowed operations during subgraph detecting.
  * Level 0: only allow cheap-to-compute operations.
  * Level 1: allow more expensive operations.
  */
-enum ProbeLevel {
+enum class ProbeLevel {
   Basic = 0,
   Advanced = 1,
 };
@@ -26,12 +26,12 @@ enum ProbeLevel {
 /**
  * @brief Type of memory reduction techniques.
  */
-enum AlleviationType {
+enum class AlleviationType {
   None = 0,  // Disabled.
   Recompute = 1,
 };
 
-constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = 10;
+constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = 15;
 
 using NodeOutputPort = std::pair<const Node*, int>;
 using OpCrawlerFunctionType = std::function<bool(const Graph&, const Node&, InlinedVector<NodeOutputPort>&)>;
@@ -64,6 +64,7 @@ class MemoryAlleviation : public GraphTransformer {
           {"Div", memory_alleviation::EntryOperatorConfig{{0, 1}}},
           {"Mul", memory_alleviation::EntryOperatorConfig{{0, 1}}},
           {"Sub", memory_alleviation::EntryOperatorConfig{{0, 1}}},
+          {"BiasGelu", memory_alleviation::EntryOperatorConfig{{0, 1}}},
 
           // Data layout
           {"Unsqueeze", memory_alleviation::EntryOperatorConfig{{0}}},
@@ -74,7 +75,6 @@ class MemoryAlleviation : public GraphTransformer {
           {"BitmaskDropout", memory_alleviation::EntryOperatorConfig{{0}}},
           {"Gelu", memory_alleviation::EntryOperatorConfig{{0}}},
           {"FastGelu", memory_alleviation::EntryOperatorConfig{{0}}},
-          {"BiasGelu", memory_alleviation::EntryOperatorConfig{{0, 1}}},
 
           // Tenary elementwise
           {"Where", memory_alleviation::EntryOperatorConfig{{0, 1, 2}}},
@@ -91,6 +91,7 @@ class MemoryAlleviation : public GraphTransformer {
           {"FusedMatMul", memory_alleviation::EntryOperatorConfig{{0, 1}}},
           {"Softmax", memory_alleviation::EntryOperatorConfig{{0}}},
           {"BiasSoftmax", memory_alleviation::EntryOperatorConfig{{0, 1}}},
+          {"BiasSoftmaxDropout", memory_alleviation::EntryOperatorConfig{{0, 1}}},
       });
     }
   }
@@ -114,11 +115,13 @@ class MemoryAlleviation : public GraphTransformer {
    * @param is_forward_op_map Collected map of whether node is used by forward nodes or not.
    *   - key: node index in Graph.
    *   - value: a bool, indicating whether the node is a forward pass op.
+   * @param found_yield_op Return whether a YieldOp is found.
    * @return Status
    */
   Status PrepareForTransformation(const Graph& graph,
                                   memory_alleviation::ActivationUsedMap& fw_op_output_arg_used_map,
-                                  InlinedHashMap<NodeIndex, bool>& is_forward_op_map) const;
+                                  InlinedHashMap<NodeIndex, bool>& is_forward_op_map,
+                                  bool& found_yield_op) const;
   /**
    * @brief Find all stashed activations, e.g. activations used by forward operators and backward operators.
    *

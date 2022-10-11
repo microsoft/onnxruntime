@@ -60,7 +60,7 @@ Status MemoryAlleviation::ParseAlleviationConfigFromString(const std::string& en
       int alleviation_type_int = 0;
       const std::string_view& sv = alleviation_config_per_op[1];
       auto result = std::from_chars(sv.data(), sv.data() + sv.size(), alleviation_type_int);
-      ORT_RETURN_IF(result.ec == std::errc::invalid_argument, "Fail to convert allocation type from string.");
+      ORT_RETURN_IF(result.ec == std::errc::invalid_argument, "Fail to convert alleviation type from string.");
       ORT_RETURN_IF_NOT(alleviation_type_int < 2 && alleviation_type_int >= 0,
                         "Invalid alleviation type specified for op ", subgraph_string_representation);
       memory_alleviation::AlleviationType alleviation_type =
@@ -84,7 +84,8 @@ Status MemoryAlleviation::ParseAlleviationLevelFromString(const std::string& lev
 
 Status MemoryAlleviation::PrepareForTransformation(const Graph& graph,
                                                    ActivationUsedMap& fw_op_output_arg_used_map,
-                                                   InlinedHashMap<NodeIndex, bool>& is_forward_op_map) const {
+                                                   InlinedHashMap<NodeIndex, bool>& is_forward_op_map,
+                                                   bool& found_yield_op) const {
   fw_op_output_arg_used_map.clear();
   is_forward_op_map.clear();
   InlinedHashMap<std::string, InlinedHashSet<const Node*>> node_arg_name_to_consumer_node_map;
@@ -106,6 +107,7 @@ Status MemoryAlleviation::PrepareForTransformation(const Graph& graph,
     is_forward_op_map[node.Index()] = is_forward;
     if (node.OpType() == "YieldOp") {
       is_forward = false;
+      found_yield_op = true;
     }
   }
 
@@ -366,9 +368,17 @@ Status MemoryAlleviation::CreateRecomputeGraph(Graph& graph,
 
 Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                     const logging::Logger& logger) const {
+  LOGS(logger, INFO) << "Memory alleviation config: " << memory_alleviation_config_ << "probe level: "
+   << static_cast<int>(level_);
+
   InlinedHashMap<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
   InlinedHashMap<NodeIndex, bool> is_forward_op_map;
-  ORT_RETURN_IF_ERROR(PrepareForTransformation(graph, fw_op_output_arg_used_map, is_forward_op_map));
+  bool found_yield_op = false;
+  ORT_RETURN_IF_ERROR(PrepareForTransformation(graph, fw_op_output_arg_used_map, is_forward_op_map, found_yield_op));
+
+  if (!found_yield_op) {
+    return Status::OK();
+  }
 
   InlinedHashMap<const Node*, InlinedVector<size_t>> candidate_output_args_map;
   ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph, fw_op_output_arg_used_map, candidate_output_args_map));
