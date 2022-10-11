@@ -35,9 +35,9 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
       break;
     }
     const auto* output_shape = node_unit.Outputs()[0].node_arg.Shape();
-    bool length_resized_compatiable_pytorch_half_pixel = true;
+    bool length_resized_compatible_pytorch_half_pixel = true;
     if (output_shape->dim(2).dim_value() <= 1 || output_shape->dim(1).dim_value() <= 1) {
-      length_resized_compatiable_pytorch_half_pixel = false;
+      length_resized_compatible_pytorch_half_pixel = false;
     }
 
     // Refer to onnxruntime/core/providers/cpu/tensor/upsamplebase.h,
@@ -68,7 +68,7 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     if (coordinate_transform_mode_name != "asymmetric" &&
         coordinate_transform_mode_name != "half_pixel" &&
         coordinate_transform_mode_name != "align_corners" &&
-        (coordinate_transform_mode_name != "pytorch_half_pixel" || !length_resized_compatiable_pytorch_half_pixel)) {
+        (coordinate_transform_mode_name != "pytorch_half_pixel" || !length_resized_compatible_pytorch_half_pixel)) {
       break;
     }
     auto exclude_outside = info.GetAttrOrDefault<int64_t>("exclude_outside", 0) == 0 ? false : true;
