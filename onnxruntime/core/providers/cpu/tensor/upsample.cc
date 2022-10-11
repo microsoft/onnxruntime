@@ -451,10 +451,8 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
   auto* const scale_data = reinterpret_cast<float*>(p.in_x2 + output_width);
 
   p.dy1 = scale_data;
-  p.dy2 = p.dy1 + output_height;
 
   p.dx1 = p.dy1 + output_height_x2;
-  p.dx2 = p.dx1 + output_width;
 
   // Start processing
   const size_t height_rindex = is_nchw ? 1 : 2;
@@ -472,11 +470,9 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
     const int32_t in_y1 = std::min(static_cast<int32_t>(in_y), input_height - 1);
     const int32_t in_y2 = std::min(in_y1 + 1, input_height - 1);
     p.dy1[y] = std::fabs(in_y - in_y1);
-    p.dy2[y] = std::fabs(in_y - in_y2);
 
     if (in_y1 == in_y2) {
       p.dy1[y] = 0.5f;
-      p.dy2[y] = 0.5f;
     }
 
     p.input_width_mul_y1[y] = input_width * in_y1;
@@ -500,10 +496,8 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
     p.in_x2[x] = std::min(p.in_x1[x] + 1, input_width - 1);
 
     p.dx1[x] = std::fabs(in_x - p.in_x1[x]);
-    p.dx2[x] = std::fabs(in_x - p.in_x2[x]);
     if (p.in_x1[x] == p.in_x2[x]) {
       p.dx1[x] = 0.5f;
-      p.dx2[x] = 0.5f;
     }
   }
 
