@@ -25,8 +25,7 @@ RUN cd /usr/local && \
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin:${PATH}
 
 # rocm lib
-RUN yum install -y libpython3.8-dev python3-pip miopen-hip-devel rocblas-devel && \
-    yum install -y rocrand-devel rccl-devel hipsparse-devel hipfft-devel hipcub-devel hipblas-devel rocthrust-devel
+RUN yum install -y miopen-hip-devel rocblas-devel rocrand-devel rccl-devel hipsparse-devel hipfft-devel hipcub-devel hipblas-devel rocthrust-devel
 
 RUN yum remove -y devtoolset\* git\*
 
