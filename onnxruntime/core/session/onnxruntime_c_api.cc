@@ -773,6 +773,12 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input name cannot be empty");
     }
 
+    if (!input[i]) {
+      std::ostringstream ostr;
+      ostr << "NULL input supplied for input " << input_names[i];
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str());
+    }
+
     feed_names[i] = input_names[i];
     auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
 
@@ -2583,8 +2589,7 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::UpdateCANNProviderOptions,
     &OrtApis::GetCANNProviderOptionsAsString,
     &OrtApis::ReleaseCANNProviderOptions,
-    &OrtApis::MemoryInfoGetDeviceType    
-};
+    &OrtApis::MemoryInfoGetDeviceType};
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
 // If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'
