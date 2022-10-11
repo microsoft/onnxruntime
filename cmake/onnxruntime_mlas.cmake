@@ -409,6 +409,8 @@ else()
         # not including the logic to set this flag for the assembler.
         set(CMAKE_ASM${ASM_DIALECT}_OSX_DEPLOYMENT_TARGET_FLAG "${CMAKE_C_OSX_DEPLOYMENT_TARGET_FLAG}")
 
+        set_source_files_properties(${MLAS_SRC_DIR}/platform.cpp PROPERTIES COMPILE_FLAGS "-mamx-tile")
+
         # The LLVM assembler does not support the .arch directive to enable instruction
         # set extensions and also doesn't support AVX-512F instructions without
         # turning on support via command-line option. Group the sources by the

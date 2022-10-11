@@ -15,10 +15,10 @@ Abstract:
 
 --*/
 
-#include "mlasi.h"
-
-#include <thread>
 #include <mutex>
+#include <thread>
+
+#include "mlasi.h"
 
 #if defined(MLAS_TARGET_POWER) && defined(__linux__)
 #include <sys/auxv.h>
@@ -41,8 +41,8 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 
 #elif defined(__linux__)
 
-#include <sys/auxv.h>
 #include <asm/hwcap.h>
+#include <sys/auxv.h>
 // N.B. Support building with older versions of asm/hwcap.h that do not define
 // this capability bit.
 #ifndef HWCAP_ASIMDDP
@@ -59,28 +59,33 @@ MLASCPUIDInfo::MLASCPUIDInfo() { has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWC
 MLASCPUIDInfo::MLASCPUIDInfo() {}
 #endif
 
-#endif // Windows vs Linux vs Unknown
-#else // not MLAS_TARGET_ARM64 
+#endif  // Windows vs Linux vs Unknown
+#else   // not MLAS_TARGET_ARM64
 
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo() {}
 #endif
 
-#endif // MLAS_TARGET_ARM64
+#endif  // MLAS_TARGET_ARM64
 
 #ifdef MLAS_TARGET_AMD64_IX86
+#if defined(__linux__)
+#include <sys/syscall.h>
+#endif
 
 //
 // Stores a vector to build a conditional load/store mask for vmaskmovps.
 //
 
-MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveAvx[8], 32) = { 0, 1, 2, 3, 4, 5, 6, 7 };
+MLAS_INTERNAL_DATA
+MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveAvx[8], 32) = {0, 1, 2, 3, 4, 5, 6, 7};
 
 //
 // Stores a table of AVX vmaskmovps/vmaskmovpd load/store masks.
 //
 
-MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveTableAvx[16], 32) = {
+MLAS_INTERNAL_DATA
+MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveTableAvx[16], 32) = {
     0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
     0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
 };
@@ -89,7 +94,8 @@ MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveTableAvx[16], 
 // Stores a table of AVX512 opmask register values.
 //
 
-MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const int16_t MlasOpmask16BitTableAvx512[16], 32) = {
+MLAS_INTERNAL_DATA
+MLAS_DECLSPEC_ALIGN(const int16_t MlasOpmask16BitTableAvx512[16], 32) = {
     0x0000, 0x0001, 0x0003, 0x0007, 0x000F, 0x001F, 0x003F, 0x007F,
     0x00FF, 0x01FF, 0x03FF, 0x07FF, 0x0FFF, 0x1FFF, 0x3FFF, 0x7FFF,
 };
@@ -103,33 +109,96 @@ MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const int16_t MlasOpmask16BitTableAvx512[
 #define _XCR_XFEATURE_ENABLED_MASK 0
 #endif
 
-inline
-uint64_t
-MlasReadExtendedControlRegister(
-    unsigned int ext_ctrl_reg
-)
+inline uint64_t
+MlasReadExtendedControlRegister(unsigned int ext_ctrl_reg)
 {
 #if defined(_WIN32)
     return _xgetbv(ext_ctrl_reg);
 #else
     uint32_t eax, edx;
 
-    __asm__
-    (
-        "xgetbv"
-        : "=a" (eax), "=d" (edx)
-        : "c" (ext_ctrl_reg)
-    );
+    __asm__("xgetbv" : "=a"(eax), "=d"(edx) : "c"(ext_ctrl_reg));
 
     return ((uint64_t)edx << 32) | eax;
 #endif
 }
 
+bool
+MlasInitAMX()
+{
+#if defined(__linux__)
+#define XFEATURE_XTILECFG 17
+#define XFEATURE_XTILEDATA 18
+#define XFEATURE_MASK_XTILECFG (1 << XFEATURE_XTILECFG)
+#define XFEATURE_MASK_XTILEDATA (1 << XFEATURE_XTILEDATA)
+#define XFEATURE_MASK_XTILE (XFEATURE_MASK_XTILECFG | XFEATURE_MASK_XTILEDATA)
+
+#define ARCH_GET_XCOMP_PERM 0x1022
+#define ARCH_REQ_XCOMP_PERM 0x1023
+
+    unsigned long bitmask = 0;
+    long rc = syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_PERM, XFEATURE_XTILEDATA);
+    if (rc) {
+        return false;
+    }
+    rc = syscall(SYS_arch_prctl, ARCH_GET_XCOMP_PERM, &bitmask);
+    if (rc) {
+        return false;
+    }
+    if (bitmask & XFEATURE_MASK_XTILE) {
+        return true;
+    }
+    return false;
+#else
+    return true;
+#endif
+}
+
+#define TILE_M 16                   // Number of rows in an A or C tile
+#define TILE_N 16                   // Number of columns in a B or C tile
+#define TILE_K 64                   // Number of columns in an A tile or rows in a B tile
+typedef int8_t type_t;              // The type of the data being operated on
+typedef int32_t res_type_t;         // The data type of the result
+#define KPACK (4 / sizeof(type_t))  // Vertical K packing into Dword
+
+// Tile configure structure
+struct tileconfig_t {
+    uint8_t palette_id = 0;
+    uint8_t reserved[15] = { 0 };
+    uint16_t colb[16] = { 0 };
+    uint8_t rows[16] = { 0 };
+} tc = { 0 };
+
+void
+configure_tiles()
+{
+    // Filling tile configure structure.
+    tc.palette_id = 1;
+    // Configure C tiles
+    for (int t = 0; t < 4; ++t) {
+        tc.rows[t] = TILE_M;
+        tc.colb[t] = TILE_N * sizeof(res_type_t);
+    }
+    // Configure A tiles
+    for (int t = 4; t < 6; ++t) {
+        tc.rows[t] = TILE_M;
+        tc.colb[t] = TILE_K * sizeof(type_t);
+    }
+    // Configure B tile. B effectively has 64 rows and 16 columns.
+    for (int t = 6; t < 7; ++t) {
+        tc.rows[t] = TILE_K / KPACK;
+        tc.colb[t] = TILE_N * KPACK * sizeof(type_t);
+    }
+
+    // Must be done online, right before convolution
+    _tile_loadconfig(&tc);
+
+    printf("configure_tiles succesfully.\n");
+}
+
 #endif
 
-MLAS_PLATFORM::MLAS_PLATFORM(
-    void
-    )
+MLAS_PLATFORM::MLAS_PLATFORM(void)
 /*++
 
 Routine Description:
@@ -146,7 +215,6 @@ Return Value:
 
 --*/
 {
-
     this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernel<uint8_t, int8_t>;
     this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernel<uint8_t, uint8_t>;
     this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernel<int8_t, int8_t>;
@@ -218,7 +286,6 @@ Return Value:
     //
 
     if ((Cpuid1[2] & 0x18000000) == 0x18000000) {
-
         //
         // Check if the operating system supports saving SSE and AVX states.
         //
@@ -226,7 +293,6 @@ Return Value:
         uint64_t xcr0 = MlasReadExtendedControlRegister(_XCR_XFEATURE_ENABLED_MASK);
 
         if ((xcr0 & 0x6) == 0x6) {
-
             this->GemmFloatKernel = MlasGemmFloatKernelAvx;
 
 #if defined(MLAS_TARGET_AMD64)
@@ -240,8 +306,10 @@ Return Value:
             this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx;
             this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelAvx;
             this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelAvx;
-            this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelAvx;
-            this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx;
+            this->PoolFloatKernel[MlasAveragePoolingExcludePad] =
+                MlasPoolAverageExcludePadFloatKernelAvx;
+            this->PoolFloatKernel[MlasAveragePoolingIncludePad] =
+                MlasPoolAverageIncludePadFloatKernelAvx;
             this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelAvx;
             this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelAvx;
             this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx;
@@ -260,7 +328,6 @@ Return Value:
 #endif
 
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
-
                 this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAvx2;
                 this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx2;
                 this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx2;
@@ -306,7 +373,6 @@ Return Value:
 #endif
 
                 if ((Cpuid7_1[0] & 0x10) != 0) {
-
                     this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
@@ -321,7 +387,6 @@ Return Value:
                 //
 
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
-
                     this->GemmFloatKernel = MlasGemmFloatKernelAvx512F;
                     this->GemmDoubleKernel = MlasGemmDoubleKernelAvx512F;
                     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx512F;
@@ -329,8 +394,10 @@ Return Value:
                     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelAvx512F;
                     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelAvx512F;
                     this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelAvx512F;
-                    this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelAvx512F;
-                    this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
+                    this->PoolFloatKernel[MlasAveragePoolingExcludePad] =
+                        MlasPoolAverageExcludePadFloatKernelAvx512F;
+                    this->PoolFloatKernel[MlasAveragePoolingIncludePad] =
+                        MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->ComputeExpF32Kernel = MlasComputeExpF32KernelAvx512F;
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
@@ -344,7 +411,6 @@ Return Value:
                     //
 
                     if ((Cpuid7[1] & 0xC0020000) == 0xC0020000) {
-
                         this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Core;
                         this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Core;
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
@@ -355,7 +421,6 @@ Return Value:
                         //
 
                         if ((Cpuid7[2] & 0x800) != 0) {
-
                             this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAvx2;
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
@@ -364,16 +429,27 @@ Return Value:
                     }
                 }
 
-#endif // ORT_MINIMAL_BUILD
+                //
+                // Check if the processor supports AMX-TILE and AMX-INT8
+                // features.
+                //
+                printf("Checking AMX-TILE and AMX-INT8.\n");
+                if ((Cpuid7[2] & 0b1 << 24) != 0 && (Cpuid7[2] & 0b1 << 25) != 0) {
+                    printf("Has AMX-TILE and AMX-INT8.\n");
+                    if (MlasInitAMX()) {
+                        printf("AMX Initialized.\n");
+                        configure_tiles();
+                    }
+                }
 
+#endif  // ORT_MINIMAL_BUILD
             }
 
-#endif // MLAS_TARGET_AMD64
-
+#endif  // MLAS_TARGET_AMD64
         }
     }
 
-#endif // MLAS_TARGET_AMD64_IX86
+#endif  // MLAS_TARGET_AMD64_IX86
 
 #if defined(MLAS_TARGET_ARM64)
 
@@ -389,7 +465,8 @@ Return Value:
     bool HasDotProductInstructions;
 
 #if defined(_WIN32)
-    HasDotProductInstructions = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
+    HasDotProductInstructions =
+        (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
 #elif defined(__linux__)
     HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 #else
@@ -403,7 +480,7 @@ Return Value:
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
-#endif // MLAS_TARGET_ARM64
+#endif  // MLAS_TARGET_ARM64
 #if defined(MLAS_TARGET_POWER)
     this->GemmFloatKernel = MlasSgemmKernel;
     this->GemmDoubleKernel = MlasDgemmKernel;
@@ -420,7 +497,7 @@ Return Value:
     }
 
 #if defined(POWER10)
-#if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
+#if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__ == 10 && __GNUC_MINOR__ >= 2))) || \
     (defined(__clang__) && (__clang_major__ >= 12))
     bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
     if (HasP10Instructions) {
@@ -431,16 +508,12 @@ Return Value:
 #endif
 #endif
 
-#endif // __linux__
-#endif // MLAS_TARGET_POWER
-
+#endif  // __linux__
+#endif  // MLAS_TARGET_POWER
 }
 
-size_t
-MLASCALL
-MlasGetPreferredBufferAlignment(
-    void
-    )
+size_t MLASCALL
+MlasGetPreferredBufferAlignment(void)
 /*++
 
 Routine Description:
@@ -468,11 +541,8 @@ Return Value:
 
 #ifdef MLAS_TARGET_AMD64_IX86
 
-bool
-MLASCALL
-MlasPlatformU8S8Overflow(
-    void
-    )
+bool MLASCALL
+MlasPlatformU8S8Overflow(void)
 {
     const auto& p = GetMlasPlatform();
     return p.GemmU8U8Dispatch != p.GemmU8S8Dispatch;
