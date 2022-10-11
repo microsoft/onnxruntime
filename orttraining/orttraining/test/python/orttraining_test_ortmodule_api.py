@@ -1383,12 +1383,12 @@ def test_gradient_correctness_chunk(dim, chunks):
         os.remove(os.path.join(os.getcwd(), "chunk_model_execution_model_training.onnx"))
 
 
-# In PyTorch 1.11.0, there is issue during reduce node shape handling for exporter, so any sub-graph that
+# In PyTorch 1.11 to 1.12, there is issue during reduce node shape handling for exporter, so any sub-graph that
 # contains ReduceProd will fail to run, for example, "sec,sm->ecm", "sec,ecm->sm".
-# Currently skip these cases and test_gradient_correctness_einsum_2,
-# will enable these tests again once the issue in PyTorch is fixed.
-skip_torch_1_11 = pytest.mark.skipif(
-    Version(torch.__version__) >= Version("1.11.0"), reason="PyTorch 1.11 incompatible"
+# Skip these cases and test_gradient_correctness_einsum_2 for these versions.
+skip_einsum_test_if = pytest.mark.skipif(
+    Version(torch.__version__) >= Version("1.11.0") and Version(torch.__version__) < Version("1.13.0"),
+    reason="PyTorch 1.11 and 1.12 incompatible",
 )
 
 
@@ -1401,8 +1401,8 @@ skip_torch_1_11 = pytest.mark.skipif(
         "ks,ksm->sm",
         "kes,ems->mek",
         "kes,ksm->ms",
-        pytest.param("sec,sm->ecm", marks=[skip_torch_1_11]),
-        pytest.param("sec,ecm->sm", marks=[skip_torch_1_11]),
+        pytest.param("sec,sm->ecm", marks=[skip_einsum_test_if]),
+        pytest.param("sec,ecm->sm", marks=[skip_einsum_test_if]),
     ],
 )
 def test_gradient_correctness_einsum(equation):
@@ -1453,7 +1453,7 @@ def test_gradient_correctness_einsum(equation):
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-3, rtol=1e-3)
 
 
-@skip_torch_1_11
+@skip_einsum_test_if
 def test_gradient_correctness_einsum_2():
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):

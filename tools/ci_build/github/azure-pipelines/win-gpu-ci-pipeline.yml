@@ -1,3 +1,15 @@
+trigger:
+  branches:
+    include:
+    - master
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+
 parameters:
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?

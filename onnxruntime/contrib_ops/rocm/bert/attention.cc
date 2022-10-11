@@ -50,6 +50,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int sequence_length = static_cast<int>(shape[1]);
   int input_hidden_size = static_cast<int>(shape[2]);
 
+  // Note: Scenario where q_hidden_size == k_hidden_size != v_hidden_size is not supported in ROCM EP
   // bias shape (3 * hidden_size)
   const auto& bias_shape = bias->Shape();
   int hidden_size = static_cast<int>(bias_shape[0]) / 3;
