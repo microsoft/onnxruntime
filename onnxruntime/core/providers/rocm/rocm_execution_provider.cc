@@ -326,7 +326,7 @@ void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, voi
   }
 }
 
-Status ROCMExecutionProvider::EnqueueDeferredRelease() {
+Status ROCMExecutionProvider::EnqueueDeferredRelease(bool no_callbacks) {
   // Release CPU buffers allocated for GPU kernels (type: RocmKernel).
   // They have to be released outside GPU kernels because they must be alive
   // during asynchronous GPU computation even after the CPU part (e.g,
@@ -354,10 +354,15 @@ Status ROCMExecutionProvider::EnqueueDeferredRelease() {
     // we should replace the following line with
     //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
     if (cpu_buffers_info->allocator->Info().alloc_type == OrtArenaAllocator) {
-      // Release memory asynchronously to avoid blocking the compute stream.
-      HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
+      if (!no_callbacks) {
+        // Release memory asynchronously to avoid blocking the compute stream.
+        HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
+      } else {
+        // We've been explicitly asked not to enqueue a callback:
+        // synchronously release the buffers and return
+        ReleaseCpuBufferCallback(nullptr, hipSuccess, cpu_buffers_info.release());
+      }
     } else {
-
       // Per
       // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#implicit-synchronization
       // cudaHostFree doesn't block stream, so a synchronitation is needed to make sure no kernels
@@ -386,10 +391,11 @@ Status ROCMExecutionProvider::OnRunEnd(bool sync_stream) {
   // Enqueue deferred CPU memory release on related streams.
   // This will release all deferred-release CPU buffers allocated
   // before calling OnRunEnd.
-  ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
-
-  if (sync_stream) {
+  if (!sync_stream) {
+    ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
+  } else {
     HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
+    ORT_RETURN_IF_ERROR(EnqueueDeferredRelease(/* no_callbacks = */ true));
   }
 
   // In extreme cases (e.g., 1-op graph and that op fallbacks to CPU),
@@ -1283,7 +1289,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 16, MLFloat16, LessOrEqual);
 
 // Opset 17
-// TODO: Enable LayerNormalization. It uses the same implementation as the old contrib op. 
+// TODO: Enable LayerNormalization. It uses the same implementation as the old contrib op.
 // See https://github.com/microsoft/onnxruntime/pull/13066
 // class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, float, LayerNormalization);
 // class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, double, LayerNormalization);
