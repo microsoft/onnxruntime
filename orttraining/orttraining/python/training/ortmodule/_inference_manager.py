@@ -95,7 +95,7 @@ class InferenceManager(GraphExecutionManager):
 
                 # Build the inference graph
                 if build_graph:
-                    self._build_graph()
+                    self._build_graph(training=False)
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -152,10 +152,10 @@ class InferenceManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
-    def _build_graph(self):
+    def _build_graph(self, training):
         """Build an optimized inference graph using the module_graph_builder"""
 
-        super()._build_graph(training=False)
+        super()._build_graph(training)
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_optimized_model(
                 self._debug_options.save_onnx_models.path,
