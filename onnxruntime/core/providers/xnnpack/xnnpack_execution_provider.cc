@@ -71,6 +71,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<
           ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, Softmax)>,
       BuildKernelCreateInfo<
+          ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 7, 12, Gemm)>,
+      BuildKernelCreateInfo<
           ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 13, Gemm)>,
         BuildKernelCreateInfo<
           ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kOnnxDomain, 1, 12, MatMul)>,
