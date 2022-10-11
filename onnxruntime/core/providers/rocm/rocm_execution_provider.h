@@ -90,7 +90,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
   template <typename T>
   IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
     // Note that OrtMemTypeCPU and OrtMemTypeCPUOutput are the same. See onnxruntime_c_api.h.
-    // In some CUDA async
+    // In some ROCm async
     if (count_or_bytes == 0)
       return nullptr;
     return IAllocator::MakeUniquePtr<T>(GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput),
