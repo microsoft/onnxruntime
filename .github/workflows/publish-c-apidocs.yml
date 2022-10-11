@@ -2,7 +2,7 @@ name: Update C/C++ API Docs
 on:
   push:
     branches:
-      - master
+      - main
 
 jobs:
   publish:
