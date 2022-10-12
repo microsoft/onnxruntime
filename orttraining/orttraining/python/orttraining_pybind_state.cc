@@ -34,7 +34,6 @@
 
 #ifdef ENABLE_TRAINING_ON_DEVICE
 #include "orttraining/training_api/include/checkpoint.h"
-#include "orttraining/training_api/include/on_device_utils.h"
 
 #endif
 
@@ -890,10 +889,6 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         ORT_THROW_IF_ERROR(optimizer->Step());
       });
 
-  m.def("get_parameters_difference",
-        [](const OrtValue output_params, const OrtValue old_output_params, OrtValue& output) {
-          ORT_THROW_IF_ERROR(onnxruntime::training::api::GetParametersDifference(output_params, old_output_params, output));
-        });
   m.def("save_checkpoint",
         [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
            const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,

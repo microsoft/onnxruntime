@@ -7,7 +7,7 @@ import torch
 from orttraining_test_onnxblock import _get_models
 
 import onnxruntime.training.onnxblock as onnxblock
-from onnxruntime.training.api import CheckpointState, Module, Optimizer, get_parameters_difference
+from onnxruntime.training.api import CheckpointState, Module, Optimizer
 
 
 class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingModel):
@@ -168,48 +168,6 @@ def test_training_module_checkpoint():
 
         # TODO : Load checkpoint to a zeroed model and assert parameters are different.
         assert os.path.exists(checkpoint_save_path)
-
-
-def test_get_parameters_difference():
-    # Initialize Models
-    simple_model, onnx_model, optimizer_model, _, _ = _create_training_models()
-
-    # Generating random data for testing.
-    inputs = torch.randn(64, 784).numpy()
-    labels = torch.randint(high=10, size=(64,), dtype=torch.int32).numpy()
-    forward_inputs = [inputs, labels]
-
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Save models & checkpoint files to load them later.
-        checkpoint_file_path, model_file_path, optimizer_file_path = _get_test_models_path(
-            temp_dir, simple_model, onnx_model, optimizer_model=optimizer_model
-        )
-        state = CheckpointState(checkpoint_file_path)
-
-        # Create a Module and Optimizer.
-        model = Module(model_file_path, state)
-        optimizer = Optimizer(optimizer_file_path, model)
-
-        # Save initial parameters.
-        old_output_params = model.get_contiguous_parameters()
-
-        # Run a Training step.
-        model.train()
-        model(forward_inputs)
-        optimizer.step()
-
-        # Save parameters after training step.
-        output_params = model.get_contiguous_parameters()
-
-        # calculate difference between parameters.
-        delta = get_parameters_difference(output_params, old_output_params)
-
-        # calculate difference between old and new parameters using numpy.
-        delta_numpy = output_params.numpy() - old_output_params.numpy()
-
-        # assert difference is the same.
-        assert np.allclose(delta.numpy(), delta_numpy)
-
 
 def test_copy_buffer_to_parameters():
     # Initialize Models
