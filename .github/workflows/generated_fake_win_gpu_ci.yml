@@ -6,18 +6,18 @@ on:
   push:
     paths:
       - docs/**
+      - .github/**
       - README.md
       - CONTRIBUTING.md
       - BUILD.md
-      - .github/**
       - tools/ci_build/github/azure-pipeline/win-gpu-ci-pipeline.yml
   pull_request:
     paths:
       - docs/**
+      - .github/**
       - README.md
       - CONTRIBUTING.md
       - BUILD.md
-      - .github/**
       - tools/ci_build/github/azure-pipeline/win-gpu-ci-pipeline.yml
 
 jobs:
