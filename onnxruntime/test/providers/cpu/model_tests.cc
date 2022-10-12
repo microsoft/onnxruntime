@@ -18,6 +18,7 @@
 #include <string>
 #include <codecvt>
 #include <locale>
+#include <algorithm>
 
 #ifdef USE_DNNL
 #include "core/providers/dnnl/dnnl_provider_factory.h"
@@ -591,7 +592,10 @@ TEST_P(ModelTest, Run) {
 
 #ifdef _WIN32
   if (provider_name == "cuda") {
-    if (test_case_name.find(ORT_TSTR("int8")) != std::string::npos || test_case_name.find(ORT_TSTR("fp16"))) {
+    std::string temp_name = ToUTF8String(test_case_name);
+    std::transform(temp_name.begin(), temp_name.end(), temp_name.begin(), [](char c) { return static_cast<char>(std::tolower(c)); });
+
+    if (temp_name.find("int8") != std::string::npos || temp_name.find("fp16") != std::string::npos || temp_name.find("float16") != std::string::npos) {
       SkipTest("Windows CUDA doesn't support INT8 or FP16");
       return;
     }
