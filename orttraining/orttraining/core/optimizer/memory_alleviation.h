@@ -14,7 +14,7 @@ namespace onnxruntime {
 /**
 @Class MemoryAlleviation
 
-Find and recompute/offload activations for ops like Dropout/Gelu/Tile.
+Find and recompute/offload activations for found subgraphs.
 */
 
 class MemoryAlleviation : public GraphTransformer {
@@ -45,59 +45,14 @@ class MemoryAlleviation : public GraphTransformer {
   };
 
  public:
-  MemoryAlleviation(const std::string& enable_memory_alleviation, const std::string& level)
-      : GraphTransformer("MemoryAlleviation") {
-    // Parse user defined alleviation configs.
-    ORT_ENFORCE(ParseAlleviationConfigFromString(enable_memory_alleviation).IsOK());
-    ORT_ENFORCE(ParseAlleviationLevelFromString(level).IsOK());
-
-    if (static_cast<int>(level_) >= static_cast<int>(ProbeLevel::Basic)) {
-      entry_op_type_to_input_arg_index_map_.insert({
-          // Binary elementwise
-          {"Add", EntryOperatorConfig{{0, 1}}},
-          {"Div", EntryOperatorConfig{{0, 1}}},
-          {"Mul", EntryOperatorConfig{{0, 1}}},
-          {"Sub", EntryOperatorConfig{{0, 1}}},
-          {"BiasGelu", EntryOperatorConfig{{0, 1}}},
-
-          // Data layout
-          {"Unsqueeze", EntryOperatorConfig{{0}}},
-          {"Squeeze", EntryOperatorConfig{{0}}},
-
-          // Unary elementwise
-          {"Dropout", EntryOperatorConfig{{0}}},
-          {"BitmaskDropout", EntryOperatorConfig{{0}}},
-          {"Gelu", EntryOperatorConfig{{0}}},
-          {"FastGelu", EntryOperatorConfig{{0}}},
-
-          // Tenary elementwise
-          {"Where", EntryOperatorConfig{{0, 1, 2}}},
-
-          // Data copy
-          {"Tile", EntryOperatorConfig{{0}}},
-          {"Cast", EntryOperatorConfig{{0}}},
-      });
-    }
-
-    if (static_cast<int>(level_) >= static_cast<int>(ProbeLevel::Advanced)) {
-      entry_op_type_to_input_arg_index_map_.insert({
-          {"MatMul", EntryOperatorConfig{{0, 1}}},
-          {"FusedMatMul", EntryOperatorConfig{{0, 1}}},
-          {"Softmax", EntryOperatorConfig{{0}}},
-          {"BiasSoftmax", EntryOperatorConfig{{0, 1}}},
-          {"BiasSoftmaxDropout", EntryOperatorConfig{{0, 1}}},
-      });
-    }
-  }
+  MemoryAlleviation(const std::string& enable_memory_alleviation, const std::string& level);
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
   bool ShouldOnlyApplyOnce() const override { return true; }
 
  private:
-  Status ParseAlleviationConfigFromString(const std::string& enable_memory_alleviation);
-
-  Status ParseAlleviationLevelFromString(const std::string& level);
+  Status ParseConfigFromString(const std::string& enable_memory_alleviation, const std::string& level);
 
   /**
    * @brief Prepare info including activation usage, node usage in fw and bw.
@@ -106,16 +61,12 @@ class MemoryAlleviation : public GraphTransformer {
    * @param fw_op_output_arg_used_map Collected activation usage mapping.
    *   - key: node arg name
    *   - value: a pair of bool, representing whether the activation is used by forward nodes or by backward nodes.
-   * @param is_forward_op_map Collected map of whether node is used by forward nodes or not.
-   *   - key: node index in Graph.
-   *   - value: a bool, indicating whether the node is a forward pass op.
-   * @param found_yield_op Return whether a YieldOp is found.
-   * @return Status
+   * @return int64_t value The boundary op (for example YieldOp) order in topological order. If no boundary op found, return -1;
    */
-  Status PrepareForTransformation(const Graph& graph,
-                                  ActivationUsedMap& fw_op_output_arg_used_map,
-                                  InlinedHashMap<NodeIndex, bool>& is_forward_op_map,
-                                  bool& found_yield_op) const;
+  int64_t PrepareForTransformation(const Graph& graph,
+                                   ActivationUsedMap& fw_op_output_arg_used_map,
+                                   InlinedHashMap<NodeIndex, size_t>&
+                                       node_index_to_its_order_in_topological_sort_map) const;
   /**
    * @brief Find all stashed activations, e.g. activations used by forward operators and backward operators.
    *
@@ -132,22 +83,22 @@ class MemoryAlleviation : public GraphTransformer {
   /**
    * @brief Find recomputable subgraphs (has at least one nodes, at most MAXIMUM_RECOMPUTE_NODE_COUNT nodes).
    *
-   * @param graph Graph to iterate.
    * @param node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
+   * @param node_output_index_candidates Candidate output indices of "node", which are consumed by both fw and bw ops.
    * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
+   * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
+   *   Used to re-order the collected subgraph nodes.
    * @param nodes_in_topological_order Collected vector of nodes of found subgraph, in the order of the topological sorted.
-   * @param oss string stream to output information to users.
-   * @param node_type_in_topological_order string stream for the subgraph node optype sequence, used to info users.
    * @return Status
    */
-  Status SelectRecomputeSubgraph(const Graph& graph, const Node& node,
+  Status SelectRecomputeSubgraph(const Node& node,
+                                 const InlinedVector<size_t>& node_output_index_candidates,
                                  const ActivationUsedMap& fw_op_output_arg_used_map,
-                                 InlinedVector<const Node*>& nodes_in_topological_order,
-                                 std::ostringstream& oss,
-                                 std::ostringstream& node_type_in_topological_order) const;
+                                 const InlinedHashMap<NodeIndex, size_t>& node_index_to_its_order_in_topological_sort_map,
+                                 InlinedVector<const Node*>& nodes_in_topological_order) const;
 
   /**
-   * @brief Duplicate node to create a recompute subgraph.
+   * @brief Duplicate nodes to create a recompute subgraph.
    *
    * @param graph Graph to iterate.
    * @param nodes_in_topological_order Subgraph nodes to recompute.
@@ -157,6 +108,17 @@ class MemoryAlleviation : public GraphTransformer {
   Status CreateRecomputeGraph(Graph& graph,
                               const InlinedVector<const Node*>& nodes_in_topological_order,
                               Node*& recompute_subgraph_output_node) const;
+
+  /**
+   * @brief Convert the recompute subgraph to its string representation.
+   *
+   * @param nodes_in_topological_order The subgraph nodes in topological order.
+   * @param subgraph_string_representation Returns subgraph string representation.
+   * @param log_info Returns log info for users.
+   */
+  void NodesInTypoOrderToString(const InlinedVector<const Node*>& nodes_in_topological_order,
+                                std::string& subgraph_string_representation,
+                                std::string& log_info) const;
 
   /**
    * @brief Convert alleviation type to string.
@@ -178,9 +140,10 @@ class MemoryAlleviation : public GraphTransformer {
                         subgraph_str_to_alleviation_type,
                     const logging::Logger& logger) const;
 
-  // The op type that are supported.
-  InlinedHashMap<std::string, EntryOperatorConfig> entry_op_type_to_input_arg_index_map_;
+  // The op types that are supported predefined.
+  InlinedHashMap<std::string, EntryOperatorConfig> recomputable_op_type_to_input_arg_index_map_;
 
+  // User enabled map of the subgraph string representation to the alleviation type.
   InlinedHashMap<std::string, AlleviationType> pattern_subgraph_to_alleviation_type_map_;
 
   std::string memory_alleviation_config_;

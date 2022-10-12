@@ -203,10 +203,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
       }
 
-#ifdef ENABLE_TRAINING
-      transformers.emplace_back(std::make_unique<ConstantSharing>());
-#endif
-
       // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
       // shouldn't affect the end result - just easier to debug any issue if it's last.
       auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);

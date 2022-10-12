@@ -32,11 +32,23 @@ std::string TensorShapeProtoToString(const ONNX_NAMESPACE::TensorShapeProto* sha
   return shape_oss.str();
 }
 
+int ParseIntValueFromString(std::string_view str) {
+  int int_value = 0;
+  auto result = std::from_chars(str.data(), str.data() + str.size(), int_value);
+  ORT_ENFORCE(result.ec != std::errc::invalid_argument, "Fail to convert to int from string: ", str);
+  return int_value;
+}
+
+bool IsForwardPassOperator(int64_t op_order_in_topological_sort, int64_t boundary_op_order_in_topological_sort) {
+  return op_order_in_topological_sort <= boundary_op_order_in_topological_sort;
+}
+
 }  // namespace
 
-Status MemoryAlleviation::ParseAlleviationConfigFromString(const std::string& enable_memory_alleviation) {
+Status MemoryAlleviation::ParseConfigFromString(const std::string& enable_memory_alleviation,
+                                                const std::string& level) {
+  memory_alleviation_config_ = enable_memory_alleviation;
   if (!enable_memory_alleviation.empty()) {
-    memory_alleviation_config_ = enable_memory_alleviation;
     const auto alleviation_map = utils::SplitString(enable_memory_alleviation, ",");
     for (const auto& alleviation_config_per_op_str : alleviation_map) {
       const auto alleviation_config_per_op = utils::SplitString(alleviation_config_per_op_str, ":");
@@ -44,193 +56,221 @@ Status MemoryAlleviation::ParseAlleviationConfigFromString(const std::string& en
                         "Alleviation config for each operator should in format of OpType:AlleviationType.");
 
       const std::string subgraph_string_representation(alleviation_config_per_op[0]);
-      int alleviation_type_int = 0;
-      const std::string_view& sv = alleviation_config_per_op[1];
-      auto result = std::from_chars(sv.data(), sv.data() + sv.size(), alleviation_type_int);
-      ORT_RETURN_IF(result.ec == std::errc::invalid_argument, "Fail to convert alleviation type from string.");
+      int alleviation_type_int = ParseIntValueFromString(alleviation_config_per_op[1]);
       ORT_RETURN_IF_NOT(alleviation_type_int < 2 && alleviation_type_int >= 0,
-                        "Invalid alleviation type specified for op ", subgraph_string_representation);
-      AlleviationType alleviation_type =
-          static_cast<AlleviationType>(alleviation_type_int);
+                        "Invalid alleviation type specified for subgraph: ", subgraph_string_representation);
 
       // At this point, subgraph_string_representation is a pattern graph string representation.
-      pattern_subgraph_to_alleviation_type_map_[subgraph_string_representation] = alleviation_type;
+      pattern_subgraph_to_alleviation_type_map_[subgraph_string_representation] =
+          static_cast<AlleviationType>(alleviation_type_int);
     }
   }
 
+  int probe_level = ParseIntValueFromString(level);
+  ORT_RETURN_IF_NOT(probe_level < 2 && probe_level >= 0,
+                    "Invalid probe level specified: ", level);
+  level_ = static_cast<ProbeLevel>(probe_level);
+
   return Status::OK();
 }
 
-Status MemoryAlleviation::ParseAlleviationLevelFromString(const std::string& level) {
-  if (level.compare("1") == 0) {
-    level_ = ProbeLevel::Advanced;
+MemoryAlleviation::MemoryAlleviation(const std::string& enable_memory_alleviation, const std::string& level)
+    : GraphTransformer("MemoryAlleviation") {
+  // Parse user defined alleviation configs.
+  ORT_ENFORCE(ParseConfigFromString(enable_memory_alleviation, level).IsOK());
+
+  if (static_cast<int>(level_) >= static_cast<int>(ProbeLevel::Basic)) {
+    recomputable_op_type_to_input_arg_index_map_.insert({
+        // Binary elementwise
+        {"Add", EntryOperatorConfig{{0, 1}}},
+        {"BiasGelu", EntryOperatorConfig{{0, 1}}},
+        {"Div", EntryOperatorConfig{{0, 1}}},
+        {"Mul", EntryOperatorConfig{{0, 1}}},
+        {"Sub", EntryOperatorConfig{{0, 1}}},
+
+        // Data layout
+        /// The shape input is trivial whether it exists or not in backward.
+        {"Reshape", EntryOperatorConfig{{0}}},
+        {"Squeeze", EntryOperatorConfig{{0}}},
+        {"Unsqueeze", EntryOperatorConfig{{0}}},
+
+        // Unary elementwise
+        /// The ratio and mode input are trivial whether they exists or not in backward
+        {"BitmaskDropout", EntryOperatorConfig{{0}}},
+        {"Dropout", EntryOperatorConfig{{0}}},
+        {"Gelu", EntryOperatorConfig{{0}}},
+        {"FastGelu", EntryOperatorConfig{{0}}},
+
+        // Tenary elementwise
+        {"Where", EntryOperatorConfig{{0, 1, 2}}},
+
+        // Data copy
+        {"Tile", EntryOperatorConfig{{0}}},
+        {"Cast", EntryOperatorConfig{{0}}},
+    });
   }
 
-  return Status::OK();
+  if (static_cast<int>(level_) >= static_cast<int>(ProbeLevel::Advanced)) {
+    recomputable_op_type_to_input_arg_index_map_.insert({
+        {"MatMul", EntryOperatorConfig{{0, 1}}},
+        {"FusedMatMul", EntryOperatorConfig{{0, 1}}},
+        {"Softmax", EntryOperatorConfig{{0}}},
+        {"BiasSoftmax", EntryOperatorConfig{{0, 1}}},
+        {"BiasSoftmaxDropout", EntryOperatorConfig{{0, 1}}},
+    });
+  }
 }
 
-Status MemoryAlleviation::PrepareForTransformation(const Graph& graph,
-                                                   ActivationUsedMap& fw_op_output_arg_used_map,
-                                                   InlinedHashMap<NodeIndex, bool>& is_forward_op_map,
-                                                   bool& found_yield_op) const {
+int64_t MemoryAlleviation::PrepareForTransformation(const Graph& graph,
+                                                    ActivationUsedMap& fw_op_output_arg_used_map,
+                                                    InlinedHashMap<NodeIndex, size_t>&
+                                                        node_index_to_its_order_in_topological_sort_map) const {
   fw_op_output_arg_used_map.clear();
-  is_forward_op_map.clear();
-  InlinedHashMap<std::string, InlinedHashSet<const Node*>> node_arg_name_to_consumer_node_map;
 
   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
-  bool is_forward = true;
+  // Find boundary ops between forward and backward pass, currently, it's limited to YieldOp.
+  int64_t yield_op_order_in_topological_sort = -1;
   for (size_t i = 0; i < node_ids.size(); ++i) {
-    const Node& node = *graph.GetNode(node_ids[i]);
-    if (is_forward) {
-      for (auto& output_arg : node.OutputDefs()) {
-        for (auto& consumer_node : graph.GetConsumerNodes(output_arg->Name())) {
-          node_arg_name_to_consumer_node_map[output_arg->Name()].insert(consumer_node);
-        }
-      }
+    const Node* p_node = graph.GetNode(node_ids[i]);
+    if (p_node == nullptr) { /* skip removed nodes*/
+      continue;
     }
 
-    is_forward_op_map[node.Index()] = is_forward;
-    if (node.OpType() == "YieldOp") {
-      is_forward = false;
-      found_yield_op = true;
+    if (p_node->OpType() == "YieldOp") {
+      yield_op_order_in_topological_sort = static_cast<int64_t>(i);
     }
+
+    node_index_to_its_order_in_topological_sort_map[p_node->Index()] = i;
   }
 
-  for (auto& kv : node_arg_name_to_consumer_node_map) {
-    for (auto& consumer_node : kv.second) {
-      if (is_forward_op_map[consumer_node->Index()]) {
-        fw_op_output_arg_used_map[kv.first].first = true;
-      } else {
-        fw_op_output_arg_used_map[kv.first].second = true;
-      }
-    }
-  }
-
-  return Status::OK();
-}
-
-Status MemoryAlleviation::SelectRecomputeSubgraph(const Graph& graph,
-                                                  const Node& node,
-                                                  const ActivationUsedMap& fw_op_output_arg_used_map,
-                                                  InlinedVector<const Node*>& nodes,
-                                                  std::ostringstream& oss,
-                                                  std::ostringstream& node_type_in_topological_order) const {
-  LOGS_DEFAULT(VERBOSE) << "Enter SelectRecomputeSubgraph for Node " << node.Name() << "(" << node.OpType() << ")";
-
-  const Node* start_node = &node;
-  // We handle Reshape specifically because it is reusing buffer of input tensor.
-  if (node.OpType() == "Reshape") {
-    // Be noted, prev_node could be nullptr.
-    const Node* prev_node = graph.GetProducerNode(node.InputDefs()[0]->Name());
-    start_node = prev_node;
-    nodes.push_back(&node);
-  }
-
-  if (!start_node || entry_op_type_to_input_arg_index_map_.find(start_node->OpType()) ==
-                         entry_op_type_to_input_arg_index_map_.end()) {
-    nodes.clear();
-    return Status::OK();
-  }
-
-  std::deque<NodeOutputPort> q;
-  std::set<NodeOutputPort> visited_output_args_map;
-
-  // Start entry node handling.
-  // Iterate all input nodes according to allowed input arg index of the entry node.
-  nodes.push_back(start_node);
-  LOGS_DEFAULT(VERBOSE) << "start_node: " << start_node->Name() << "(" << start_node->OpType() << ")";
-
-  const auto& entry_operator_config = entry_op_type_to_input_arg_index_map_.at(start_node->OpType());
-  const auto& input_arg_indices = entry_operator_config.input_arg_indices;
-  for (auto it = start_node->InputEdgesBegin(), end = start_node->InputEdgesEnd(); it != end; ++it) {
-    const Node::EdgeEnd& input_edge = *it;
-    const auto& parent_node = input_edge.GetNode();
-    const auto parent_node_output_index = input_edge.GetSrcArgIndex();
-    const auto current_node_input_index = input_edge.GetDstArgIndex();
-    // For entry node, we only trace back from the specified output port.
-    if (std::find(input_arg_indices.begin(), input_arg_indices.end(), current_node_input_index) !=
-        input_arg_indices.end()) {
-      NodeOutputPort p = std::make_pair(&parent_node, parent_node_output_index);
-
-      LOGS_DEFAULT(VERBOSE) << "Node " << p.first->Name() << "(" << p.first->OpType() << ")'s " << p.second << "th output ["
-                            << p.first->OutputDefs()[p.second]->Name() << "] is added in recompute search list  ";
-
-      q.push_back(p);
-    }
-  }
-
-  bool early_stop = false;
-  while (nodes.size() < MAXIMUM_RECOMPUTE_NODE_COUNT && !q.empty() && !early_stop) {
-    std::deque<NodeOutputPort> next_q;
-
-    // Loop all candidate NodeOutputPort, and find the next layer of input nodes.
-    while (!q.empty()) {
-      NodeOutputPort p = q.front();
-      q.pop_front();
-
-      if (std::find(visited_output_args_map.begin(), visited_output_args_map.end(), p) !=
-          visited_output_args_map.end()) {
+  // If boundary op found, create forward op output arg used map.
+  if (yield_op_order_in_topological_sort < 0) {
+    for (size_t i = 0; i < node_ids.size(); ++i) {
+      const Node* p_node = graph.GetNode(node_ids[i]);
+      if (p_node != nullptr /* skip removed nodes*/) {
         continue;
       }
 
-      visited_output_args_map.insert({p});
+      const Node& node = *p_node;
+      bool is_forward_op = IsForwardPassOperator(static_cast<int64_t>(i), yield_op_order_in_topological_sort);
+      if (!is_forward_op) {
+        continue;
+      }
 
-      const Node* n = p.first;
-      // Intermediate node handling.
-      // If op is not in recompute list and
-      // 1). the output does not exist in backward, we cannot find a good solution for so, just skip it.
-      // 2). the output is used in backward, we don't need trace back further.
-      auto entry_operator_config_it = entry_op_type_to_input_arg_index_map_.find(n->OpType());
-      auto cur_output_arg_name = n->OutputDefs()[p.second]->Name();
-      if (entry_operator_config_it == entry_op_type_to_input_arg_index_map_.end()) {
+      for (auto& output_arg : node.OutputDefs()) {
+        std::pair<bool, bool>& used_in_fw_bw = fw_op_output_arg_used_map[output_arg->Name()];
+        for (auto& consumer_node : graph.GetConsumerNodes(output_arg->Name())) {
+          auto consumer_node_index_in_topological_order = node_index_to_its_order_in_topological_sort_map.at(consumer_node->Index());
+          if (IsForwardPassOperator(static_cast<int64_t>(consumer_node_index_in_topological_order), yield_op_order_in_topological_sort)) {
+            used_in_fw_bw.first = true;
+          } else {
+            used_in_fw_bw.second = true;
+          }
+        }
+      }
+    }
+  }
+
+  // Return whether boundary op is found or not.
+  return yield_op_order_in_topological_sort;
+}
+
+Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
+                                                  const InlinedVector<size_t>& node_output_index_candidates,
+                                                  const ActivationUsedMap& fw_op_output_arg_used_map,
+                                                  const InlinedHashMap<NodeIndex, size_t>& node_index_to_its_order_in_topological_sort_map,
+                                                  InlinedVector<const Node*>& nodes) const {
+  LOGS_DEFAULT(VERBOSE) << "Enter SelectRecomputeSubgraph for Node " << node.Name() << "(" << node.OpType() << ")";
+  nodes.clear();
+
+  std::deque<NodeOutputPort> q;
+  for (auto output_index : node_output_index_candidates) {
+    q.push_back(NodeOutputPort(&node, output_index));
+  }
+
+  bool early_stop = false;
+  std::set<NodeOutputPort> visited_output_arg_set;
+  std::set<const Node*> visited_node_set;
+  while (nodes.size() < MAXIMUM_RECOMPUTE_NODE_COUNT && !q.empty() && !early_stop) {
+    // Loop all candidate NodeOutputPort, and find the next layer of input nodes.
+    size_t current_queue_size = q.size();
+    for (size_t i = 0; i < current_queue_size; ++i) {
+      NodeOutputPort p = q.front();
+      q.pop_front();
+      const Node* curr_node = p.first;
+
+      // Skip if the node output is already visited.
+      if (std::find(visited_output_arg_set.begin(), visited_output_arg_set.end(), p) !=
+          visited_output_arg_set.end()) {
+        continue;
+      }
+
+      visited_output_arg_set.insert({p});
+
+      // If the node already visited by from it's other output index, skip it.
+      if (visited_node_set.find(curr_node) != visited_node_set.end()) {
+        continue;
+      }
+
+      visited_node_set.insert(curr_node);
+
+      // Buttom-up search rules.
+      // If current op is in allowed list, check its input args, and append the producers' NodeOutputPorts to next_q.
+      // If current op is NOT in allowed list:
+      // 1). the output does not exist in backward, we cannot find a good solution for so, search terminates.
+      // 2). the output is used in backward, we don't need trace back further, continue searching.
+      auto entry_operator_config_it = recomputable_op_type_to_input_arg_index_map_.find(curr_node->OpType());
+      auto cur_output_arg_name = curr_node->OutputDefs()[p.second]->Name();
+      if (entry_operator_config_it == recomputable_op_type_to_input_arg_index_map_.end()) {
         if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
-          LOGS_DEFAULT(VERBOSE) << "Node " << n->Name() << "(" << n->OpType() << ") "
-                                << " is **NOT** in recompute op list, but its output " << cur_output_arg_name
-                                << "is used in backward, we don't need trace back further";
+          LOGS_DEFAULT(VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
+                                << "recompute op list, but its output [" << cur_output_arg_name
+                                << "] is used in backward, we don't need trace buttom-up further";
           continue;
         } else {
           early_stop = true;
-          LOGS_DEFAULT(VERBOSE) << "Node " << n->Name() << "(" << n->OpType() << ")'s output " << cur_output_arg_name
-                                << " is not in recompute list and the output [" << cur_output_arg_name
-                                << "] does not exist in backward, we cannot find a good solution for so, just skip it.";
+          LOGS_DEFAULT(VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
+                                << "recompute op list, and its output [" << cur_output_arg_name
+                                << "] does not exist in backward, search terminates.";
           break;
         }
       }
 
       if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
-        LOGS_DEFAULT(VERBOSE) << "Node " << n->Name() << "(" << n->OpType() << ") "
-                              << " is in recompute op list, while its output [" << cur_output_arg_name
-                              << "] is used in backward, we don't need trace back further";
+        LOGS_DEFAULT(VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") "
+                              << "is in recompute op list, while its output [" << cur_output_arg_name
+                              << "] is used in backward, we don't need trace buttom-up further";
         continue;
       }
 
       // Append node to the selected graph.
-      if (std::find(nodes.begin(), nodes.end(), n) == nodes.end()) {
-        nodes.push_back(n);
-        LOGS_DEFAULT(VERBOSE) << "Node " << n->Name() << "(" << n->OpType() << ") is added in selected subgraph  ";
+      if (std::find(nodes.begin(), nodes.end(), curr_node) == nodes.end()) {
+        nodes.push_back(curr_node);
+        LOGS_DEFAULT(VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType()
+                              << ") is added in selected subgraph  ";
       }
 
+      // Iterate all input nodes according to allowed input arg index of the entry node.
       const auto& input_arg_indices = entry_operator_config_it->second.input_arg_indices;
-      for (auto it = n->InputEdgesBegin(), end = n->InputEdgesEnd(); it != end; ++it) {
+      for (auto it = curr_node->InputEdgesBegin(), end = curr_node->InputEdgesEnd(); it != end; ++it) {
         const Node::EdgeEnd& input_edge = *it;
         const auto& parent_node = input_edge.GetNode();
         const auto parent_node_output_index = input_edge.GetSrcArgIndex();
         const auto current_node_input_index = input_edge.GetDstArgIndex();
-        // For entry node, we only trace back from the specified output port.
         if (std::find(input_arg_indices.begin(), input_arg_indices.end(), current_node_input_index) !=
             input_arg_indices.end()) {
           NodeOutputPort p = std::make_pair(&parent_node, parent_node_output_index);
+
           LOGS_DEFAULT(VERBOSE) << "Node " << p.first->Name() << "(" << p.first->OpType() << ")'s " << p.second
                                 << "th output [" << p.first->OutputDefs()[p.second]->Name()
-                                << "] is added in recompute search list";
-          next_q.push_back(p);
+                                << "] is added in recompute search list  ";
+
+          q.push_back(p);
         }
       }
     }
-
-    q = next_q;
   }
 
   // If input args are not found in bw, but op count exceed MAXIMUM_RECOMPUTE_NODE_COUNT, skip recompute.
@@ -239,24 +279,21 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Graph& graph,
                           << ", queue size: " << q.size() << ", early stop: " << early_stop;
     nodes.clear();
   } else {
-    std::reverse(nodes.begin(), nodes.end());
-
-    size_t node_count = nodes.size();
-    for (size_t i = 0; i < node_count; ++i) {
-      if (i < node_count - 1) {  // Ignore the last node.
-        oss << "(name:" << nodes[i]->Name() << ", type:" << nodes[i]->OpType() << "),";
-      }
-
-      node_type_in_topological_order << nodes[i]->OpType() << "+";
-    }
+    // Re-order the nodes in topological order.
+    std::sort(nodes.begin(), nodes.end(),
+              [&node_index_to_its_order_in_topological_sort_map](const Node*& lhs, const Node*& rhs) {
+                return node_index_to_its_order_in_topological_sort_map.at(lhs->Index()) <
+                       node_index_to_its_order_in_topological_sort_map.at(rhs->Index());
+              });
   }
   return Status::OK();
 }
 
-Status MemoryAlleviation::GetStashedActivationCandidates(
-    const Graph& graph,
-    const InlinedHashMap<std::string, std::pair<bool, bool>>& fw_op_output_arg_used_map,
-    InlinedHashMap<const Node*, InlinedVector<size_t>>& candidate_output_args_map) const {
+Status MemoryAlleviation::GetStashedActivationCandidates(const Graph& graph,
+                                                         const InlinedHashMap<std::string, std::pair<bool, bool>>&
+                                                             fw_op_output_arg_used_map,
+                                                         InlinedHashMap<const Node*, InlinedVector<size_t>>&
+                                                             candidate_output_args_map) const {
   for (auto& kv : fw_op_output_arg_used_map) {
     // used by fw and bw, then it is a candidates.
     if (kv.second.first && kv.second.second) {
@@ -281,72 +318,69 @@ Status MemoryAlleviation::GetStashedActivationCandidates(
 Status MemoryAlleviation::CreateRecomputeGraph(Graph& graph,
                                                const InlinedVector<const Node*>& nodes_in_topological_order,
                                                Node*& recompute_subgraph_output_node) const {
-  const size_t node_count_to_recompute = nodes_in_topological_order.size();
-  if (node_count_to_recompute > 0) {
-    InlinedHashMap<NodeArg*, NodeArg*> self_contained_outputs_map;
-    for (size_t i = 0; i < node_count_to_recompute; ++i) {
-      Node* node_to_duplicate = const_cast<Node*>(nodes_in_topological_order[i]);
+  InlinedHashMap<NodeArg*, NodeArg*> self_contained_outputs_map;
+  for (size_t i = 0; i < nodes_in_topological_order.size(); ++i) {
+    Node* node_to_duplicate = graph.GetNode(nodes_in_topological_order[i]->Index());
 
-      // Check whether the node has been recomputed or not. Simply check the existence of the first output
-      // of the node has its corresponding recompute name or not.
-      if (graph.GetNodeArg(graph_utils::RecomputeName(node_to_duplicate->MutableOutputDefs()[0]->Name())) != nullptr) {
+    // Check whether the node has been recomputed or not. Simply check the existence of the first output
+    // of the node has its corresponding recompute name or not.
+    if (graph.GetNodeArg(graph_utils::RecomputeName(node_to_duplicate->MutableOutputDefs()[0]->Name())) != nullptr) {
+      continue;
+    }
+
+    InlinedVector<NodeArg*> new_input_args;
+    new_input_args.reserve(node_to_duplicate->MutableInputDefs().size());
+    for (NodeArg* input_arg : node_to_duplicate->MutableInputDefs()) {
+      if (self_contained_outputs_map.find(input_arg) == self_contained_outputs_map.end()) {
+        NodeArg* recompute_input_arg = graph.GetNodeArg(graph_utils::RecomputeName(input_arg->Name()));
+        new_input_args.push_back(recompute_input_arg ? recompute_input_arg : input_arg);
+      } else {
+        new_input_args.push_back(self_contained_outputs_map[input_arg]);
+      }
+    }
+
+    InlinedVector<NodeArg*> new_output_args;
+    new_output_args.reserve(node_to_duplicate->MutableOutputDefs().size());
+    for (size_t k = 0; k < node_to_duplicate->MutableOutputDefs().size(); ++k) {
+      const auto& output = node_to_duplicate->MutableOutputDefs()[k];
+      new_output_args.push_back(&graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
+                                                          output->TypeAsProto()));
+
+      self_contained_outputs_map[output] = new_output_args.back();
+    }
+
+    Node& recompute_node = graph.AddNode(node_to_duplicate->Name() + "_recompute",
+                                         node_to_duplicate->OpType(),
+                                         "Recompute of " + node_to_duplicate->Name(),
+                                         new_input_args,
+                                         new_output_args,
+                                         &node_to_duplicate->GetAttributes(),
+                                         node_to_duplicate->Domain());
+
+    recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
+    recompute_node.SetExecutionProviderType(node_to_duplicate->GetExecutionProviderType());
+    ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(recompute_node),
+                      "Failed to set op schema for added recompute node.");
+
+    recompute_subgraph_output_node = &recompute_node;
+
+    for (size_t j = 0; j < recompute_node.MutableOutputDefs().size(); ++j) {
+      graph.UpdateProducerNode(recompute_node.MutableOutputDefs()[j]->Name(), recompute_node.Index());
+    }
+
+    // Add the edges from the recompute node to the original node.
+    for (size_t j = 0; j < recompute_node.MutableInputDefs().size(); ++j) {
+      NodeArg* input_arg = recompute_node.MutableInputDefs()[j];
+      const Node* producer_node = graph.GetProducerNode(input_arg->Name());
+      if (producer_node == nullptr) {
+        // Skip when it is graph input or initializer.
         continue;
       }
+      int producer_output_index = optimizer_utils::IndexOfNodeOutput(*producer_node, *input_arg);
+      graph.AddEdge(producer_node->Index(), recompute_node.Index(), static_cast<int>(producer_output_index),
+                    static_cast<int>(j));
 
-      InlinedVector<NodeArg*> new_input_args;
-      new_input_args.reserve(node_to_duplicate->MutableInputDefs().size());
-      for (NodeArg* input_arg : node_to_duplicate->MutableInputDefs()) {
-        if (self_contained_outputs_map.find(input_arg) == self_contained_outputs_map.end()) {
-          NodeArg* recompute_input_arg = graph.GetNodeArg(graph_utils::RecomputeName(input_arg->Name()));
-          new_input_args.push_back(recompute_input_arg ? recompute_input_arg : input_arg);
-        } else {
-          new_input_args.push_back(self_contained_outputs_map[input_arg]);
-        }
-      }
-
-      InlinedVector<NodeArg*> new_output_args;
-      new_output_args.reserve(node_to_duplicate->MutableOutputDefs().size());
-      for (size_t k = 0; k < node_to_duplicate->MutableOutputDefs().size(); ++k) {
-        const auto& output = node_to_duplicate->MutableOutputDefs()[k];
-        new_output_args.push_back(&graph.GetOrCreateNodeArg(graph_utils::RecomputeName(output->Name()),
-                                                            output->TypeAsProto()));
-
-        self_contained_outputs_map[output] = new_output_args.back();
-      }
-
-      Node& recompute_node = graph.AddNode(node_to_duplicate->Name() + "_recompute",
-                                           node_to_duplicate->OpType(),
-                                           "Recompute of " + node_to_duplicate->Name(),
-                                           new_input_args,
-                                           new_output_args,
-                                           &node_to_duplicate->GetAttributes(),
-                                           node_to_duplicate->Domain());
-
-      recompute_node.SetPriority(static_cast<int>(ExecutionPriority::LOCAL_LOW));
-      recompute_node.SetExecutionProviderType(node_to_duplicate->GetExecutionProviderType());
-      ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(recompute_node),
-                        "Failed to set op schema for added recompute node.");
-
-      recompute_subgraph_output_node = &recompute_node;
-
-      for (size_t j = 0; j < recompute_node.MutableOutputDefs().size(); ++j) {
-        graph.UpdateProducerNode(recompute_node.MutableOutputDefs()[j]->Name(), recompute_node.Index());
-      }
-
-      // Add the edges from the recompute node to the original node.
-      for (size_t j = 0; j < recompute_node.MutableInputDefs().size(); ++j) {
-        NodeArg* input_arg = recompute_node.MutableInputDefs()[j];
-        const Node* producer_node = graph.GetProducerNode(input_arg->Name());
-        if (producer_node == nullptr) {
-          // Skip when it is graph input or initializer.
-          continue;
-        }
-        int producer_output_index = optimizer_utils::IndexOfNodeOutput(*producer_node, *input_arg);
-        graph.AddEdge(producer_node->Index(), recompute_node.Index(), static_cast<int>(producer_output_index),
-                      static_cast<int>(j));
-
-        graph.AddConsumerNode(input_arg->Name(), &recompute_node);
-      }
+      graph.AddConsumerNode(input_arg->Name(), &recompute_node);
     }
   }
 
@@ -355,15 +389,14 @@ Status MemoryAlleviation::CreateRecomputeGraph(Graph& graph,
 
 Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                     const logging::Logger& logger) const {
-  LOGS(logger, INFO) << "Memory alleviation config: " << memory_alleviation_config_ << "probe level: "
-                     << static_cast<int>(level_);
+  LOGS(logger, WARNING) << "Memory alleviation config: " << memory_alleviation_config_ << "probe level: "
+                        << static_cast<int>(level_);
 
   InlinedHashMap<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
-  InlinedHashMap<NodeIndex, bool> is_forward_op_map;
-  bool found_yield_op = false;
-  ORT_RETURN_IF_ERROR(PrepareForTransformation(graph, fw_op_output_arg_used_map, is_forward_op_map, found_yield_op));
-
-  if (!found_yield_op) {
+  InlinedHashMap<NodeIndex, size_t> node_index_to_its_order_in_topological_sort_map;
+  int64_t boundary_op_order_in_topological_sort =
+      PrepareForTransformation(graph, fw_op_output_arg_used_map, node_index_to_its_order_in_topological_sort_map);
+  if (boundary_op_order_in_topological_sort < 0) {
     return Status::OK();
   }
 
@@ -390,28 +423,24 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
     }
 
     InlinedVector<const Node*> nodes_in_topological_order;
-    std::ostringstream oss;
-    std::ostringstream node_type_in_topological_order;
-    ORT_RETURN_IF_ERROR(SelectRecomputeSubgraph(graph, node, fw_op_output_arg_used_map, nodes_in_topological_order,
-                                                oss, node_type_in_topological_order));
+    ORT_RETURN_IF_ERROR(SelectRecomputeSubgraph(node, candidate_output_args_map[p_node],
+                                                fw_op_output_arg_used_map,
+                                                node_index_to_its_order_in_topological_sort_map,
+                                                nodes_in_topological_order));
     if (nodes_in_topological_order.size() == 0) {
       continue;
     }
 
-    std::string postfix_if_any;
-    if (oss.tellp() != std::streampos(0)) {
-      postfix_if_any = " with its precedent nodes: " + oss.str();
-    }
-
-    LOGS(logger, VERBOSE) << "Node " << node.Name() << "(" << node.OpType() << ") can be recomputed" << postfix_if_any;
+    std::string subgraph_str_representation, log_info;
+    NodesInTypoOrderToString(nodes_in_topological_order, subgraph_str_representation, log_info);
+    LOGS(logger, VERBOSE) << "Node " << node.Name() << "(" << node.OpType() << ") can be recomputed" << log_info;
 
     Node* replacement_node = nullptr;
 
     auto alleviation_type = AlleviationType::None;
-    std::string node_type_in_topological_order_str = node_type_in_topological_order.str();
-    if (pattern_subgraph_to_alleviation_type_map_.find(node_type_in_topological_order_str) !=
+    if (pattern_subgraph_to_alleviation_type_map_.find(subgraph_str_representation) !=
         pattern_subgraph_to_alleviation_type_map_.end()) {
-      alleviation_type = pattern_subgraph_to_alleviation_type_map_.at(node_type_in_topological_order_str);
+      alleviation_type = pattern_subgraph_to_alleviation_type_map_.at(subgraph_str_representation);
     }
     bool modify_graph = (alleviation_type != AlleviationType::None);
     if (modify_graph) {
@@ -419,8 +448,7 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
       ORT_ENFORCE(replacement_node);
     }
 
-    subgraph_str_to_alleviation_type[node_type_in_topological_order_str] = alleviation_type;
-
+    subgraph_str_to_alleviation_type[subgraph_str_representation] = alleviation_type;
     for (size_t output_index : candidate_output_args_map[&node]) {
       if (modify_graph) {
         // Collect output edges (connecting to backward ops), to remove.
@@ -431,7 +459,8 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
             continue;
           }
 
-          if (!is_forward_op_map[it->GetNode().Index()]) {
+          if (!IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(it->GetNode().Index()),
+                                     boundary_op_order_in_topological_sort)) {
             // Remove the edge only connecting to backward op.
             output_edges.push_back(graph_utils::GraphEdge::CreateGraphEdge(node, *it, false));
           }
@@ -454,7 +483,7 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
       }
 
       auto shape_str = TensorShapeProtoToString(node.OutputDefs()[output_index]->Shape());
-      stashed_activation_statistics[node_type_in_topological_order_str][shape_str]++;
+      stashed_activation_statistics[subgraph_str_representation][shape_str]++;
     }
 
     modified = modify_graph;
@@ -463,6 +492,27 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
   PrintSummary(stashed_activation_statistics, subgraph_str_to_alleviation_type, logger);
 
   return Status::OK();
+}
+
+void MemoryAlleviation::NodesInTypoOrderToString(const InlinedVector<const Node*>& nodes_in_topological_order,
+                                                 std::string& subgraph_string_representation,
+                                                 std::string& log_info) const {
+  std::ostringstream oss;
+  std::ostringstream subgraph_string_representation_oss;
+  size_t node_count = nodes_in_topological_order.size();
+  for (size_t i = 0; i < node_count; ++i) {
+    if (i < node_count - 1) {  // Ignore the last node.
+      oss << "(name:" << nodes_in_topological_order[i]->Name() << ", type:" << nodes_in_topological_order[i]->OpType() << "),";
+    }
+
+    subgraph_string_representation_oss << nodes_in_topological_order[i]->OpType() << "+";
+  }
+
+  subgraph_string_representation = subgraph_string_representation_oss.str();
+  log_info = oss.str();
+  if (log_info.size() > 0) {
+    log_info = " with its precedent nodes: " + log_info;
+  }
 }
 
 std::string MemoryAlleviation::AlleviationTypeToString(const AlleviationType& type) const {
@@ -500,8 +550,7 @@ void MemoryAlleviation::PrintSummary(const InlinedHashMap<std::string, InlinedHa
             << "\t\tPatterns: \n";
     for (auto shape_stat_it = subgraph_it->second.begin(); shape_stat_it != subgraph_it->second.end();
          ++shape_stat_it) {
-      summary << "\t\t\tShape:" << shape_stat_it->first << "\n"
-              << "\t\t\tFrequency:" << shape_stat_it->second << "\n";
+      summary << "\t\t\tPatternShape:" << shape_stat_it->first << "\tFrequency:" << shape_stat_it->second << "\n";
     }
     summary << "\t--------------------------------\n";
   }
