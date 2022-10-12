@@ -17,7 +17,7 @@ jobs:
     - name: onnxruntimeBuildSucceeded
       value: false
     - name: RocmVersion
-      value: 5.3
+      value: 5.2.3
 
   # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
   container:
