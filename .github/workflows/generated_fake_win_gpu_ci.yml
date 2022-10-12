@@ -1,7 +1,7 @@
 # Don't edit this file manully.
-# Run generate_fake_workflows.py to generate it.
+# Run generate_skip_doc_change.py to generate it.
 
-name: Windows GPU CI Pipeline
+name: Windows GPU1 CI Pipeline
 on:
   pull_request:
     paths:
