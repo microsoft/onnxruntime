@@ -1,3 +1,16 @@
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - .github/**
+    - tools/ci_build/github/azure-pipeline/win-gpu-ci-pipeline.yml
 pr:
   branches:
     include:
