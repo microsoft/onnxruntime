@@ -92,6 +92,11 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QDQAvgPool;
     else if (op_type == "Softmax")
       return QuantizedOpType::QDQSoftmax;
+    else if (op_type == "Resize")
+      return QuantizedOpType::QDQResize;
+    else if (op_type == "ConcTranspose")
+      return QuantizedOpType::QDQConvTranspose;
+
   } else if (node_unit.OpType() == "QLinearConv") {
     return QuantizedOpType::QLinearConv;
   }
@@ -111,6 +116,8 @@ static const std::unordered_map<QuantizedOpType, ONNXOpType> qdq_to_onnx_type_ma
     {QuantizedOpType::QDQAvgPool, "QLinearAveragePool"},
     {QuantizedOpType::QDQSoftmax, "QLinearSoftmax"},
     {QuantizedOpType::QDQMaxPool, "MaxPool"},
+    {QuantizedOpType::QDQResize, "Resize"},
+    {QuantizedOpType::QDQConvTranspose, "QLinearConvTranspose"},
 };
 
 std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit) {
@@ -128,7 +135,7 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
   // x x-scale x-zp w w-scale w-zp. Some QDQops wouldn't have 9 inputs,
   // but the 5 more unit extra memory is not too expensive
   def.inputs.reserve(9);
-  if (qtype == QuantizedOpType::QDQConv) {
+  if (qtype == QuantizedOpType::QDQConv || qtype == QuantizedOpType::QDQConvTranspose) {
     std::for_each(inputs.cbegin(), inputs.cbegin() + 2,
                   [&def](const NodeUnitIODef& arg) {
                     // keep the number of inputs the same by inserting an empty string for a missing optional input
@@ -165,9 +172,12 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
       def.since_version = 1;
       def.attributes.emplace("opset", utils::MakeAttribute(std::string("opset"), int64_t(node_unit.SinceVersion())));
     }
-  } else if (qtype == QuantizedOpType::QDQMaxPool) {
-    // only one input for QDQMaxPool, Tensor:X
-    def.inputs.push_back(inputs[0].node_arg.Name());
+  } else if (qtype == QuantizedOpType::QDQMaxPool || qtype == QuantizedOpType::QDQResize) {
+    // Don't care about the quantization parameters for MaxPool, Resize
+    std::for_each(inputs.cbegin(), inputs.cend(),
+                  [&def](const NodeUnitIODef& arg) {
+                    def.inputs.push_back(arg.node_arg.Name());
+                  });
   } else {
     // all qdq-types are enumerated
     ORT_ENFORCE(0, "unknown QDQ ops", def.name);

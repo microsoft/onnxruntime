@@ -47,15 +47,16 @@ using OpQuantParam = std::vector<std::pair<std::vector<float>, uint8_t>>;
 
 enum class QuantizedOpType : uint8_t {
   QLinearConv,
+  QLinearConvTranspose,
   QLinearMaxPool,
-  QLinearMaxUnPool,
   QlinearAvgPool,
   // QDQ operator
   QDQConv,
+  QDQConvTranspose,
   QDQMaxPool,
-  QDQMaxUnPool,
   QDQAvgPool,
   QDQSoftmax,
+  QDQResize,
   Unknown,
 };
 

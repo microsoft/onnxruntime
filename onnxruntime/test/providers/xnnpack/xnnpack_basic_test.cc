@@ -213,23 +213,6 @@ static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* gr
   RunAndVerifyOutputsWithEP(ort_model_path, graph_name, std::move(ep), feeds, params);
 }
 
-TEST(XnnpackEP, TestConvTranspose) {
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_conv_follow_convtrans.onnx";
-  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans", nullptr);
-}
-
-// unfortunately, ONNX doesn't support the QLinearConvTranspose op yet
-TEST(XnnpackEP, TestConvTranspose_s8) {
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_conv_follow_convtrans_s8.onnx";
-  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans_s8", nullptr, 0.5f);
-}
-
-TEST(XnnpackEP, Resize) {
-  // two different coordinate_transform_mode in this model, so we can test both
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_resize.onnx";
-  RunModelTestWithPath(ort_model_path, "test_resize", nullptr);
-}
-
 TEST(XnnpackEP, TestQDQConvU8U8) {
   RunModelTest(BuildQDQConvTestCase<uint8_t /* InputType */,
                                     uint8_t /* WeightType */,
@@ -395,6 +378,96 @@ TEST(XnnpackEP, TestQDQSoftMax_axisLast) {
                "xnnpack_qdq_test_graph_softmax",
                {ExpectedEPNodeAssignment::All});
 }
+
+TEST(XnnpackEP, TestConvTranspose) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_conv_follow_convtrans.onnx";
+  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans", nullptr);
+}
+
+// unfortunately, ONNX doesn't support the QLinearConvTranspose op yet
+TEST(XnnpackEP, TestConvTranspose_s8) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_conv_follow_convtrans_s8.onnx";
+  RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans_s8", nullptr, 0.5f);
+}
+
+TEST(XnnpackEP, Resize) {
+  // two different coordinate_transform_mode in this model, so we can test both
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "test_resize.onnx";
+  RunModelTestWithPath(ort_model_path, "test_resize", nullptr);
+}
+
+TEST(XnnpackEP, TestResize_u8_and_s8_asymmetric) {
+  std::function<void(const Graph&)> verify = [](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), 3) << "Transpose *2  +resize"
+                                           " leaving 3 nodes.";
+  };
+
+  RunModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
+                                      {1, 3, 32, 32} /* sizes_data */,
+                                      "linear" /* mode */,
+                                      "asymmetric" /* coordinate_transformation_mode */),
+               "xnnpack_qdq_test_graph_resize",
+               {ExpectedEPNodeAssignment::Some});
+
+  RunModelTest(BuildQDQResizeTestCase<int8_t>({1, 3, 64, 64} /* input_shape */,
+                                              {1, 3, 32, 32} /* sizes_data */,
+                                              "linear" /* mode */,
+                                              "asymmetric" /* coordinate_transformation_mode */),
+               "xnnpack_qdq_test_graph_resize",
+               {ExpectedEPNodeAssignment::Some});
+}
+
+TEST(XnnpackEP, TestResize_u8_and_s8_half_pixel) {
+  RunModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
+                                      {1, 3, 32, 32} /* sizes_data */,
+                                      "linear" /* mode */,
+                                      "half_pixel" /* coordinate_transformation_mode */,
+                                      true /*add_dq_output_float*/),
+               "xnnpack_qdq_test_graph_resize",
+               {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
+  RunModelTest(BuildQDQResizeTestCase<int8_t>({1, 3, 64, 64} /* input_shape */,
+                                              {1, 3, 32, 32} /* sizes_data */,
+                                              "linear" /* mode */,
+                                              "half_pixel" /* coordinate_transformation_mode */,
+                                              true /*add_dq_output_float*/),
+               "xnnpack_qdq_test_graph_resize",
+               {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
+}
+
+TEST(XnnpackEP, TestResize_u8_and_s8_align_corners) {
+  RunModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
+                                      {1, 3, 32, 32} /* sizes_data */,
+                                      "linear" /* mode */,
+                                      "align_corners" /* coordinate_transformation_mode */,
+                                      true /*add_dq_output_float*/),
+               "xnnpack_qdq_test_graph_resize",
+               {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
+  RunModelTest(BuildQDQResizeTestCase<int8_t>({1, 3, 64, 64} /* input_shape */,
+                                              {1, 3, 32, 32} /* sizes_data */,
+                                              "linear" /* mode */,
+                                              "align_corners" /* coordinate_transformation_mode */,
+                                              true /*add_dq_output_float*/),
+               "xnnpack_qdq_test_graph_resize",
+               {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
+}
+
+TEST(XnnpackEP, TestResize_u8_and_s8_pytorch_half_pixel) {
+  RunModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
+                                      {1, 3, 32, 32} /* sizes_data */,
+                                      "linear" /* mode */,
+                                      "pytorch_half_pixel" /* coordinate_transformation_mode */,
+                                      true /*add_dq_output_float*/),
+               "xnnpack_qdq_test_graph_resize",
+               {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
+  RunModelTest(BuildQDQResizeTestCase<int8_t>({1, 3, 64, 64} /* input_shape */,
+                                              {1, 3, 32, 32} /* sizes_data */,
+                                              "linear" /* mode */,
+                                              "pytorch_half_pixel" /* coordinate_transformation_mode */,
+                                              true /*add_dq_output_float*/),
+               "xnnpack_qdq_test_graph_resize",
+               {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
+}
+
 #endif
 
 }  // namespace test

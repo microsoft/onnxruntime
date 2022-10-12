@@ -182,7 +182,7 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
         t_pool);
   }
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_Resize_nc_",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_resize_bilinear2d_nhwc_",
                            OpTypeToString(op_type_), " returned ", status);
   }
   status = xnn_run_operator(op0_.get(), t_pool);
@@ -216,9 +216,9 @@ Status Resize::Compute(OpKernelContext* ctx) const {
   std::vector<float> scales_array(X->Shape().GetDims().size());
 
   if (scales != nullptr && scales->Shape().Size() != 0) {
-    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
     ParseScalesData(scales, scales_array);
-
+    std::swap(scales_array[1], scales_array[2]);
+    std::swap(scales_array[3], scales_array[2]);
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
   } else {
@@ -229,24 +229,28 @@ Status Resize::Compute(OpKernelContext* ctx) const {
 
     ORT_ENFORCE(X->Shape().GetDims().size() == output_dims.size(),
                 "Resize: input tensor's rank does not match the output tensor's rank.");
-
+    std::swap(output_dims[1], output_dims[2]);
+    std::swap(output_dims[3], output_dims[2]);
     ParseScalesDataFromOutputSize(output_dims, X->Shape().GetDims(), scales_array);
   }
 
   return ComputeInternal(ctx, X, output_dims);
 }
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 1, 9, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
-                                  Resize);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 10, 10, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
+                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kMSInternalNHWCDomain, 11, 12, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
+                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 ONNX_OPERATOR_KERNEL_EX(Resize, kMSInternalNHWCDomain, 13, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()),
+                        KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
+                                                                 DataTypeImpl::GetTensorType<uint8_t>(),
+                                                                 DataTypeImpl::GetTensorType<int8_t>()}),
                         Resize);
 
 }  // namespace xnnpack

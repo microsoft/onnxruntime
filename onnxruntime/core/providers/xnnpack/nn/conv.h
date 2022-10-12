@@ -24,7 +24,8 @@ class XnnConvBase : public XnnpackKernel {
 
  protected:
   bool is_transpose_{false};
-  ConvTransposeAttributes conv_transpose_attrs_;
+  // ConvTransposeAttributes could serve as ConvAttributes as well
+  ConvTransposeAttributes xnn_conv_attrs_;
   TensorShapeVector kernel_shape_;
   int64_t C_;
   int64_t M_;
@@ -47,7 +48,7 @@ class XnnConvBase : public XnnpackKernel {
 
 class Conv : public XnnConvBase {
  public:
-  Conv(const OpKernelInfo& info) : XnnConvBase(info), conv_attrs_(conv_transpose_attrs_) {}
+  Conv(const OpKernelInfo& info) : XnnConvBase(info), conv_attrs_(xnn_conv_attrs_) {}
 
   Status Compute(OpKernelContext* /*context*/) const override;
 

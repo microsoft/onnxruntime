@@ -3,7 +3,6 @@
 
 #include "unpool.h"
 #include <algorithm>
-#include <numeric>
 
 #include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
@@ -19,21 +18,6 @@
 namespace onnxruntime {
 namespace xnnpack {
 namespace {
-bool IsQuantizedMaxUnPool(QuantizedOpType quant_op_type) {
-  return (quant_op_type == QuantizedOpType::QLinearMaxUnPool) ||
-         (quant_op_type == QuantizedOpType::QDQMaxUnPool);
-}
-
-bool IsValidQuantMaxUnPool(const NodeUnit& node_unit, const GraphViewer& graph) {
-  TensorQuantType x_input_type = GetTensorQuantType(node_unit, 0, false, graph);
-  TensorQuantType output_type = GetTensorQuantType(node_unit, 0, true, graph);
-  if (x_input_type != output_type ||
-      (x_input_type != TensorTypeUint8 &&
-       x_input_type != TensorTypeInt8)) {
-    return false;
-  }
-  return true;
-}
 
 TensorShapeVector InferOutputSizeForUnPool(const PoolAttributes& pool_attrs,
                                            const TensorShape& input_shape) {
@@ -58,12 +42,8 @@ TensorShapeVector InferOutputSizeForUnPool(const PoolAttributes& pool_attrs,
 
 // MaxUnpool doesn't have any quantization params
 bool MaxUnpool::IsOnnxNodeSupported(const NodeUnit& node_unit,
-                                    const GraphViewer& graph) {
+                                    const GraphViewer&) {
   bool supported = false;
-  auto qtype = GetQuantizedOpType(node_unit);
-  if (IsQuantizedMaxUnPool(qtype) && IsValidQuantMaxUnPool(node_unit, graph) == false) {
-    return false;
-  }
   const onnxruntime::Node& node = node_unit.GetNode();
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
@@ -73,7 +53,9 @@ bool MaxUnpool::IsOnnxNodeSupported(const NodeUnit& node_unit,
 
     const auto* x_type = x_arg.TypeAsProto();
     if (x_type == nullptr ||
-        (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+        (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
+         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
       break;
     }
 
@@ -126,7 +108,7 @@ MaxUnpool::MaxUnpool(const OpKernelInfo& info)
     const Tensor* output_shape_tensor = nullptr;
     ORT_ENFORCE(info.TryGetConstantInput(2, &output_shape_tensor), "Get output shape tensor failed");
     const auto out_sp = output_shape_tensor->DataAsSpan<int64_t>();
-    if (std::accumulate(pool_attrs_.pads.begin(), pool_attrs_.pads.end(), 0) != 0) {
+    if (std::accumulate(pool_attrs_.pads.begin(), pool_attrs_.pads.end(), 0LL) != 0) {
       // use to calculate output shape for xnnpack
       pool_attrs_.pads[0] = out_sp[2] - (H - 1) * pool_attrs_.strides[0] + pool_attrs_.kernel_shape[0];
       pool_attrs_.pads[1] = 0;

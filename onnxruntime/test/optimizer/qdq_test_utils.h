@@ -204,10 +204,46 @@ GetQDQTestCaseFn BuildQDQGlobalAveragePoolTestCase(const std::vector<int64_t>& i
   };
 }
 
+template <typename InputType = uint8_t>
 GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
                                         const std::vector<int64_t>& sizes_data,
                                         const std::string& mode = "nearest",
-                                        const std::string& coordinate_transformation_mode = "half_pixel");
+                                        const std::string& coordinate_transformation_mode = "half_pixel",
+                                        bool add_dq_output_float = false) {
+  static_assert(std::is_same_v<InputType, int8_t> || std::is_same_v<InputType, uint8_t>);
+  return [input_shape, sizes_data, mode, coordinate_transformation_mode, add_dq_output_float](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<InputType>(input_shape,
+                                                    std::numeric_limits<InputType>::min(),
+                                                    std::numeric_limits<InputType>::max());
+    auto* roi = builder.MakeInitializer<float>({0}, {});
+    auto* scales = builder.MakeInitializer<float>({0}, {});
+    auto* sizes = builder.Make1DInitializer<int64_t>(sizes_data);
+    NodeArg* output_arg = 0;
+
+    // add DQ
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<InputType>(input1_arg, .003f, 1, dq_output);
+
+    // add Resize
+    auto* resize_output = builder.MakeIntermediate();
+    Node& resize_node = builder.AddNode("Resize", {dq_output, roi, scales, sizes}, {resize_output});
+
+    resize_node.AddAttribute("mode", mode);
+    resize_node.AddAttribute("coordinate_transformation_mode", coordinate_transformation_mode);
+
+    if (add_dq_output_float) {
+      // add Q
+      output_arg = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<InputType>(resize_output, .003f, 1, output_arg);
+      auto* f_dq_output = builder.MakeOutput();
+      builder.AddDequantizeLinearNode<InputType>(output_arg, .003f, 1, f_dq_output);
+    } else {
+      output_arg = builder.MakeOutput();
+      // add Q
+      builder.AddQuantizeLinearNode<InputType>(resize_output, .003f, 1, output_arg);
+    }
+  };
+}
 
 template <typename Input1Type, typename Input2Type, typename OutputType>
 GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
