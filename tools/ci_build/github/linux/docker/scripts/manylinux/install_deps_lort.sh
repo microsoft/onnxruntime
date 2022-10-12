@@ -95,7 +95,7 @@ echo "Installing Pytorch requirements"
 /opt/python/cp39-cp39/bin/python3.9 -m pip install flatbuffers cerberus h5py onnx
 echo "Building and installing Pytorch"
 VERBOSE=1 BUILD_LAZY_TS_BACKEND=1 /opt/python/cp39-cp39/bin/python3.9 setup.py install
-/opt/python/cp39-cp39/bin/python3.9 -c "import torch; print(f'Installed Pytorch: {torch.__version__}')"
+cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import torch; print(f'Installed Pytorch: {torch.__version__}')"
 
 cd /
 rm -rf /tmp/src
