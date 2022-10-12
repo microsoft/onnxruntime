@@ -49,6 +49,7 @@
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
+#include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
 #endif
 #include "core/session/environment.h"
@@ -603,7 +604,7 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
   fbs_buffer_size = ((fbs_buffer_size + m_bytes - 1) / m_bytes) * m_bytes;
   flatbuffers::FlatBufferBuilder builder(fbs_buffer_size);
 
-  auto ort_model_version = builder.CreateString(kOrtModelVersion);
+  auto ort_model_version = builder.CreateString(std::to_string(kOrtModelVersion));
   flatbuffers::Offset<fbs::Model> fbs_model;
   ORT_RETURN_IF_ERROR(
       model_->SaveToOrtFormat(builder, fbs_model));
@@ -899,23 +900,6 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   ORT_RETURN_IF_ERROR_SESSIONID_(
       graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
-#ifdef USE_DML
-  // TODO: this is a temporary workaround to apply the DML EP's custom graph transformer prior to partitioning. This
-  // transformer applies DML-specific fusions that go beyond what ORT offers by default. Ideally the DML EP should
-  // apply these transforms during partitioning, but the full mutable Graph object isn't exposed to
-  // IExecutionProvider::GetCapability, which is necessary for the DML EP's transforms.
-  //
-  // To prevent this from interfering with other EPs, we only apply this transform if the DML EP is the only one that's
-  // registered (aside from the CPU EP, which is always registered by default.)
-  if (execution_providers_.Get(kDmlExecutionProvider) && execution_providers_.NumProviders() <= 2) {
-    Dml::GraphTransformer dml_transformer(onnxruntime::kDmlExecutionProvider,
-                                          execution_providers_.Get(kDmlExecutionProvider));
-
-    bool modified = false;
-    ORT_RETURN_IF_ERROR_SESSIONID_(dml_transformer.Apply(graph, modified, *session_logger_));
-  }
-#endif
-
   // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
   // we do this to preserve the original nodes in the model but prevent optimizers from changing them.
   // at runtime, the ORT format model will re-do the partitioning/compilation of these nodes, which may change
@@ -1040,16 +1024,30 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   const auto* fbs_ort_model_version = fbs_session->ort_version();
   ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
 
+  auto model_version = std::stoi(fbs_ort_model_version->str());
+  bool is_supported = IsOrtModelVersionSupported(model_version);
+
+#if defined(ORT_MINIMAL_BUILD)
   // Note about the ORT format version 5 breaking change.
   // TODO This change was introduced in 1.13. Remove this note a few releases later, e.g., 1.15.
   constexpr auto* kOrtFormatVersion5BreakingChangeNote =
       "This build doesn't support ORT format models older than version 5. "
       "See: https://github.com/microsoft/onnxruntime/blob/rel-1.13.0/docs/ORT_Format_Update_in_1.13.md";
 
-  ORT_RETURN_IF_NOT(IsOrtModelVersionSupported(fbs_ort_model_version->string_view()),
+  ORT_RETURN_IF(!is_supported,
+                "The ORT format model version [", fbs_ort_model_version->string_view(),
+                "] is not supported in this build ", ORT_VERSION, ". ",
+                kOrtFormatVersion5BreakingChangeNote);
+#else
+  // models prior to v5 can be handled by inserting the kernel constraints in a full build
+  bool is_supported_with_update = !is_supported && model_version < 5;
+
+  // currently this means the model is using a future version
+  // i.e. attempted load of model created with future version of ORT
+  ORT_RETURN_IF_NOT(is_supported || is_supported_with_update,
                     "The ORT format model version [", fbs_ort_model_version->string_view(),
-                    "] is not supported in this build ", ORT_VERSION, ". ",
-                    kOrtFormatVersion5BreakingChangeNote);
+                    "] is not supported in this build ", ORT_VERSION, ". ");
+#endif
 
   const auto* fbs_model = fbs_session->model();
   ORT_RETURN_IF(nullptr == fbs_model, "Missing Model. Invalid ORT format model.");
@@ -1082,7 +1080,15 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   if (const auto* fbs_kernel_type_str_resolver = fbs_session->kernel_type_str_resolver();
       fbs_kernel_type_str_resolver != nullptr) {
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.LoadFromOrtFormat(*fbs_kernel_type_str_resolver));
+  } else {
+#if !defined(ORT_MINIMAL_BUILD)
+    // insert the kernel type constraints if we're updating an old model that had kernel hashes.
+    if (is_supported_with_update) {
+      ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
+    }
+#endif
   }
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   ORT_RETURN_IF_ERROR(
       kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(
@@ -1375,6 +1381,24 @@ common::Status InferenceSession::Initialize() {
                                                                session_options_.graph_optimization_level,
                                                                minimal_build_optimization_handling,
                                                                record_runtime_optimization_produced_op_schema));
+
+#ifdef USE_DML
+      if (execution_providers_.Get(kDmlExecutionProvider)) {
+        std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
+                                                                                                                                    execution_providers_.Get(kDmlExecutionProvider));
+        if (dmlGraphFusionTransformer == nullptr) {
+          return Status(common::ONNXRUNTIME, common::FAIL, "DmlGraphFusionTransformer is nullptr");
+        }
+        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlGraphFusionTransformer), onnxruntime::TransformerLevel::Level3));
+
+        // This transformer applies DML-specific fusions that go beyond what ORT offers by default
+        std::unique_ptr<onnxruntime::GraphTransformer> dmlOperatorFusionTransformer = std::make_unique<Dml::GraphTransformer>("DmlOperatorFusionTransformer");
+        if (dmlOperatorFusionTransformer == nullptr) {
+          return Status(common::ONNXRUNTIME, common::FAIL, "DmlOperatorFusionTransformer is nullptr");
+        }
+        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformation_mgr_.Register(std::move(dmlOperatorFusionTransformer), onnxruntime::TransformerLevel::Level2));
+      }
+#endif
 
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
