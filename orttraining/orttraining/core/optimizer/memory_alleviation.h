@@ -78,7 +78,8 @@ class MemoryAlleviation : public GraphTransformer {
   Status GetStashedActivationCandidates(
       const Graph& graph,
       const InlinedHashMap<std::string, std::pair<bool, bool>>& fw_op_output_arg_used_map,
-      InlinedHashMap<const Node*, InlinedVector<size_t>>& candidate_output_args_map) const;
+      InlinedHashMap<const Node*, InlinedVector<size_t>>& candidate_output_args_map,
+      const logging::Logger& logger) const;
 
   /**
    * @brief Find recomputable subgraphs (has at least one nodes, at most MAXIMUM_RECOMPUTE_NODE_COUNT nodes).
@@ -95,7 +96,8 @@ class MemoryAlleviation : public GraphTransformer {
                                  const InlinedVector<size_t>& node_output_index_candidates,
                                  const ActivationUsedMap& fw_op_output_arg_used_map,
                                  const InlinedHashMap<NodeIndex, size_t>& node_index_to_its_order_in_topological_sort_map,
-                                 InlinedVector<const Node*>& nodes_in_topological_order) const;
+                                 InlinedVector<const Node*>& nodes_in_topological_order,
+                                 const logging::Logger& logger) const;
 
   /**
    * @brief Duplicate nodes to create a recompute subgraph.

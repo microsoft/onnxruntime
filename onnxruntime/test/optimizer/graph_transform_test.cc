@@ -85,7 +85,6 @@
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
 #ifdef ENABLE_TRAINING
-#include "core/optimizer/constant_sharing.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #endif
 

@@ -43,54 +43,6 @@ def generate_gelu_test_case():
     prediction.backward()
 
 
-class MaskedSoftmaxDropoutLinearTest(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.dropout = torch.nn.Dropout()
-        # self._seq_length = seq_length
-        # self.value_layer_fc = torch.nn.Parameter(torch.randn(batch_size * head, seq_length, 64, dtype=torch.float32))
-
-    # input1 -  float16[labels_dim0,24,512,512]
-    # mask - boolean[labels_dim0,1,512,512]
-    # value_layer - float16[24*labels_dim0,512,64]
-    def forward(self, input1, mask, value_layer):
-        output = input1.where(mask, torch.tensor(float("-inf"), dtype=input1.dtype, device=input1.device))
-        output = torch.softmax(output, -1)
-        attention_probs = output.where(mask, torch.tensor(float(0.0), dtype=output.dtype, device=input1.device))
-        attention_probs = self.dropout(attention_probs)
-
-        context_layer = torch.bmm(
-            attention_probs.view(-1, attention_probs.size(-2), attention_probs.size(-1)), value_layer
-        )
-        return context_layer
-
-
-def generate_softmax_dropout_test_case():
-    batch_size = 16
-    head = 24
-    seq_length = 512
-    model = MaskedSoftmaxDropoutLinearTest().to(DEVICE)
-    model = ORTModule(model, DebugOptions(save_onnx=True, onnx_prefix="recompute_dropout"))
-
-    input1 = torch.randn(batch_size, head, seq_length, seq_length, device=DEVICE).requires_grad_(True)
-    value_layer = torch.randn(batch_size * head, seq_length, 64, device=DEVICE).requires_grad_(True)
-
-    # ORTModule shape infer generate wrong shapes for Where's two inputs when input shape of Where are not same,
-    # which are both graph inputs.
-    # so we use same shape for where as a workaround.
-    # input_mask = torch.randint(0, seq_length, (batch_size,1,seq_length,seq_length), dtype=torch.long, device=device).to(torch.bool)
-    input_mask = torch.randint(
-        0, seq_length, (batch_size, head, seq_length, seq_length), dtype=torch.long, device=DEVICE
-    ).to(torch.bool)
-
-    # Make sure model runs without any exception
-    prediction = model(input1, input_mask, value_layer)
-    assert prediction is not None
-    prediction = prediction.sum()
-
-    prediction.backward()
-
-
 class TileTransposeLinearTest(torch.nn.Module):
     def __init__(self, head):
         super().__init__()
@@ -129,7 +81,6 @@ def generate_tile_test_case():
 def main():
     """Main entry."""
     generate_gelu_test_case()
-    generate_softmax_dropout_test_case()
     generate_tile_test_case()
 
 

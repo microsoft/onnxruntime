@@ -146,10 +146,10 @@ int64_t MemoryAlleviation::PrepareForTransformation(const Graph& graph,
   }
 
   // If boundary op found, create forward op output arg used map.
-  if (yield_op_order_in_topological_sort < 0) {
+  if (yield_op_order_in_topological_sort >= 0) {
     for (size_t i = 0; i < node_ids.size(); ++i) {
       const Node* p_node = graph.GetNode(node_ids[i]);
-      if (p_node != nullptr /* skip removed nodes*/) {
+      if (p_node == nullptr /* skip removed nodes*/) {
         continue;
       }
 
@@ -160,15 +160,20 @@ int64_t MemoryAlleviation::PrepareForTransformation(const Graph& graph,
       }
 
       for (auto& output_arg : node.OutputDefs()) {
-        std::pair<bool, bool>& used_in_fw_bw = fw_op_output_arg_used_map[output_arg->Name()];
+        bool used_in_fw = false;
+        bool used_in_bw = false;
         for (auto& consumer_node : graph.GetConsumerNodes(output_arg->Name())) {
-          auto consumer_node_index_in_topological_order = node_index_to_its_order_in_topological_sort_map.at(consumer_node->Index());
-          if (IsForwardPassOperator(static_cast<int64_t>(consumer_node_index_in_topological_order), yield_op_order_in_topological_sort)) {
-            used_in_fw_bw.first = true;
+          auto consumer_node_index_in_topological_order =
+              node_index_to_its_order_in_topological_sort_map.at(consumer_node->Index());
+          if (IsForwardPassOperator(static_cast<int64_t>(consumer_node_index_in_topological_order),
+                                    yield_op_order_in_topological_sort)) {
+            used_in_fw = true;
           } else {
-            used_in_fw_bw.second = true;
+            used_in_bw = true;
           }
         }
+        std::cout << "|||||" << output_arg->Name() << ", " << used_in_fw << used_in_bw << std::endl;
+        fw_op_output_arg_used_map.insert({{output_arg->Name(), std::make_pair(used_in_fw, used_in_bw)}});
       }
     }
   }
@@ -180,9 +185,11 @@ int64_t MemoryAlleviation::PrepareForTransformation(const Graph& graph,
 Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
                                                   const InlinedVector<size_t>& node_output_index_candidates,
                                                   const ActivationUsedMap& fw_op_output_arg_used_map,
-                                                  const InlinedHashMap<NodeIndex, size_t>& node_index_to_its_order_in_topological_sort_map,
-                                                  InlinedVector<const Node*>& nodes) const {
-  LOGS_DEFAULT(VERBOSE) << "Enter SelectRecomputeSubgraph for Node " << node.Name() << "(" << node.OpType() << ")";
+                                                  const InlinedHashMap<NodeIndex, size_t>&
+                                                      node_index_to_its_order_in_topological_sort_map,
+                                                  InlinedVector<const Node*>& nodes,
+                                                  const logging::Logger& logger) const {
+  LOGS(logger, WARNING) << "Enter SelectRecomputeSubgraph for Node " << node.Name() << "(" << node.OpType() << ")";
   nodes.clear();
 
   std::deque<NodeOutputPort> q;
@@ -193,6 +200,7 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
   bool early_stop = false;
   std::set<NodeOutputPort> visited_output_arg_set;
   std::set<const Node*> visited_node_set;
+  bool is_entry_node_output_arg = true;
   while (nodes.size() < MAXIMUM_RECOMPUTE_NODE_COUNT && !q.empty() && !early_stop) {
     // Loop all candidate NodeOutputPort, and find the next layer of input nodes.
     size_t current_queue_size = q.size();
@@ -223,32 +231,47 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
       // 2). the output is used in backward, we don't need trace back further, continue searching.
       auto entry_operator_config_it = recomputable_op_type_to_input_arg_index_map_.find(curr_node->OpType());
       auto cur_output_arg_name = curr_node->OutputDefs()[p.second]->Name();
-      if (entry_operator_config_it == recomputable_op_type_to_input_arg_index_map_.end()) {
-        if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
-          LOGS_DEFAULT(VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
-                                << "recompute op list, but its output [" << cur_output_arg_name
-                                << "] is used in backward, we don't need trace buttom-up further";
-          continue;
-        } else {
+      if (is_entry_node_output_arg) {
+        // We handle the entry node outputs differently because, we don't want this case falls into and succeed one of
+        // the checks in the other branch
+        // 1. "op is not in recompute op list, but its output is used in backward"
+        // 2. "op is in recompute op list, but its output is used in backward"
+        // (either of the above checks is true for entry node outputs)
+        if (entry_operator_config_it == recomputable_op_type_to_input_arg_index_map_.end()) {
           early_stop = true;
-          LOGS_DEFAULT(VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
-                                << "recompute op list, and its output [" << cur_output_arg_name
+          LOGS(logger, WARNING) << "Entry Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** "
+                                << "in recompute op list, and its output [" << cur_output_arg_name
                                 << "] does not exist in backward, search terminates.";
           break;
         }
-      }
+      } else {
+        if (entry_operator_config_it == recomputable_op_type_to_input_arg_index_map_.end()) {
+          if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
+            LOGS(logger, WARNING) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
+                                  << "recompute op list, but its output [" << cur_output_arg_name
+                                  << "] is used in backward, we don't need trace buttom-up further";
+            continue;
+          } else {
+            early_stop = true;
+            LOGS(logger, WARNING) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
+                                  << "recompute op list, and its output [" << cur_output_arg_name
+                                  << "] does not exist in backward, search terminates.";
+            break;
+          }
+        }
 
-      if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
-        LOGS_DEFAULT(VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") "
-                              << "is in recompute op list, while its output [" << cur_output_arg_name
-                              << "] is used in backward, we don't need trace buttom-up further";
-        continue;
+        if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
+          LOGS(logger, WARNING) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") "
+                                << "is in recompute op list, while its output [" << cur_output_arg_name
+                                << "] is used in backward, we don't need trace buttom-up further";
+          continue;
+        }
       }
 
       // Append node to the selected graph.
       if (std::find(nodes.begin(), nodes.end(), curr_node) == nodes.end()) {
         nodes.push_back(curr_node);
-        LOGS_DEFAULT(VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType()
+        LOGS(logger, WARNING) << "Node " << curr_node->Name() << "(" << curr_node->OpType()
                               << ") is added in selected subgraph  ";
       }
 
@@ -263,7 +286,7 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
             input_arg_indices.end()) {
           NodeOutputPort p = std::make_pair(&parent_node, parent_node_output_index);
 
-          LOGS_DEFAULT(VERBOSE) << "Node " << p.first->Name() << "(" << p.first->OpType() << ")'s " << p.second
+          LOGS(logger, WARNING) << "Node " << p.first->Name() << "(" << p.first->OpType() << ")'s " << p.second
                                 << "th output [" << p.first->OutputDefs()[p.second]->Name()
                                 << "] is added in recompute search list  ";
 
@@ -271,11 +294,13 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
         }
       }
     }
+    // After handle all entry node outputs, we set the flag to false.
+    is_entry_node_output_arg = false;
   }
 
   // If input args are not found in bw, but op count exceed MAXIMUM_RECOMPUTE_NODE_COUNT, skip recompute.
   if (!q.empty() || early_stop) {
-    LOGS_DEFAULT(VERBOSE) << "Fail to find a solution for recompute: current node count is " << nodes.size()
+    LOGS(logger, WARNING) << "Fail to find a solution for recompute: current node count is " << nodes.size()
                           << ", queue size: " << q.size() << ", early stop: " << early_stop;
     nodes.clear();
   } else {
@@ -293,7 +318,8 @@ Status MemoryAlleviation::GetStashedActivationCandidates(const Graph& graph,
                                                          const InlinedHashMap<std::string, std::pair<bool, bool>>&
                                                              fw_op_output_arg_used_map,
                                                          InlinedHashMap<const Node*, InlinedVector<size_t>>&
-                                                             candidate_output_args_map) const {
+                                                             candidate_output_args_map,
+                                                         const logging::Logger& logger) const {
   for (auto& kv : fw_op_output_arg_used_map) {
     // used by fw and bw, then it is a candidates.
     if (kv.second.first && kv.second.second) {
@@ -307,7 +333,7 @@ Status MemoryAlleviation::GetStashedActivationCandidates(const Graph& graph,
       }
 
       candidate_output_args_map[n].push_back(k);
-      LOGS_DEFAULT(VERBOSE) << "Find candidate output named " << kv.first << " of Node " << n->Name() << "("
+      LOGS(logger, WARNING) << "Find candidate output named [" << kv.first << "] of Node " << n->Name() << "("
                             << n->OpType() << ")";
     }
   }
@@ -389,7 +415,7 @@ Status MemoryAlleviation::CreateRecomputeGraph(Graph& graph,
 
 Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                     const logging::Logger& logger) const {
-  LOGS(logger, WARNING) << "Memory alleviation config: " << memory_alleviation_config_ << "probe level: "
+  LOGS(logger, WARNING) << "Memory alleviation config: " << memory_alleviation_config_ << ", probe level: "
                         << static_cast<int>(level_);
 
   InlinedHashMap<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
@@ -397,12 +423,15 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
   int64_t boundary_op_order_in_topological_sort =
       PrepareForTransformation(graph, fw_op_output_arg_used_map, node_index_to_its_order_in_topological_sort_map);
   if (boundary_op_order_in_topological_sort < 0) {
+    LOGS(logger, WARNING) << "No boundary op found. Skip memory alleviation.";
     return Status::OK();
   }
 
   InlinedHashMap<const Node*, InlinedVector<size_t>> candidate_output_args_map;
-  ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph, fw_op_output_arg_used_map, candidate_output_args_map));
+  ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph, fw_op_output_arg_used_map, candidate_output_args_map,
+                                                     logger));
 
+  std::cout << "1111111111111111111111111111111" << std::endl;
   InlinedHashMap<std::string, InlinedHashMap<std::string, int>> stashed_activation_statistics;
   InlinedHashMap<std::string, AlleviationType> subgraph_str_to_alleviation_type;
   GraphViewer graph_viewer(graph);
@@ -410,7 +439,8 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
 
   // Iterate through the nodes in reversed topological order and find the subgraph that can be alleviated.
   // The reason we do reversed topological order is that we want the later layers' recompute nodes can be appended
-  // earlier than the earlier layers, in this way, the execution order of later layers will be in front of the earlier layers.
+  // earlier than the earlier layers, in this way, the execution order of later layers will be in front of the earlier
+  // layers.
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
     Node* p_node = graph.GetNode(node_ids[i]);
     if (p_node == nullptr) {
@@ -426,14 +456,14 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
     ORT_RETURN_IF_ERROR(SelectRecomputeSubgraph(node, candidate_output_args_map[p_node],
                                                 fw_op_output_arg_used_map,
                                                 node_index_to_its_order_in_topological_sort_map,
-                                                nodes_in_topological_order));
+                                                nodes_in_topological_order, logger));
     if (nodes_in_topological_order.size() == 0) {
       continue;
     }
 
     std::string subgraph_str_representation, log_info;
     NodesInTypoOrderToString(nodes_in_topological_order, subgraph_str_representation, log_info);
-    LOGS(logger, VERBOSE) << "Node " << node.Name() << "(" << node.OpType() << ") can be recomputed" << log_info;
+    LOGS(logger, WARNING) << "Node " << node.Name() << "(" << node.OpType() << ") can be recomputed" << log_info;
 
     Node* replacement_node = nullptr;
 
@@ -502,7 +532,8 @@ void MemoryAlleviation::NodesInTypoOrderToString(const InlinedVector<const Node*
   size_t node_count = nodes_in_topological_order.size();
   for (size_t i = 0; i < node_count; ++i) {
     if (i < node_count - 1) {  // Ignore the last node.
-      oss << "(name:" << nodes_in_topological_order[i]->Name() << ", type:" << nodes_in_topological_order[i]->OpType() << "),";
+      oss << "(name:" << nodes_in_topological_order[i]->Name() << ", type:" << nodes_in_topological_order[i]->OpType()
+          << "),";
     }
 
     subgraph_string_representation_oss << nodes_in_topological_order[i]->OpType() << "+";
@@ -546,7 +577,8 @@ void MemoryAlleviation::PrintSummary(const InlinedHashMap<std::string, InlinedHa
   for (auto subgraph_it = stashed_activation_statistics.begin(); subgraph_it != stashed_activation_statistics.end();
        ++subgraph_it) {
     summary << "\tSubgraph: " << subgraph_it->first << "\n"
-            << "\t\tAlleviationType: " << AlleviationTypeToString(subgraph_str_to_alleviation_type.at(subgraph_it->first)) << "\n"
+            << "\t\tAlleviationType: "
+            << AlleviationTypeToString(subgraph_str_to_alleviation_type.at(subgraph_it->first)) << "\n"
             << "\t\tPatterns: \n";
     for (auto shape_stat_it = subgraph_it->second.begin(); shape_stat_it != subgraph_it->second.end();
          ++shape_stat_it) {
