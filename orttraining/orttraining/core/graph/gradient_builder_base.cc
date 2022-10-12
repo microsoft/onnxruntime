@@ -340,19 +340,46 @@ AttributeProto GradientBuilderBase::AttributeDefinitionToAttributeProto(
   }
 
   if (value.is_array()) {
-    ORT_ENFORCE(!attr_def.is_tensor, "1D tensor attribute is not supported for now.");
-    // Support only INTs for now.
-    switch (elem_type) {
-      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-        std::vector<int64_t> int_array;
-        for (const auto& elem : value) {
-          ORT_ENFORCE(elem.is_number_integer());
-          int_array.emplace_back(static_cast<int64_t>(elem.get<int>()));
-        }
-        attr_proto = ONNX_NAMESPACE::MakeAttribute(name, int_array);
-      } break;
-      default:
-        ORT_ENFORCE(false, "List attribute of type ", std::to_string(elem_type), " is not supported for now.");
+    if (attr_def.is_tensor) {
+      // 1D tensor. Support only INT and BOOL types for now.
+      TensorProto tensor_proto;
+      switch (elem_type) {
+        case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+          std::vector<int64_t> int_array;
+          for (const auto& elem : value) {
+            ORT_ENFORCE(elem.is_number_integer());
+            int_array.emplace_back(static_cast<int64_t>(elem.get<int>()));
+          }
+          tensor_proto = ONNX_NAMESPACE::ToTensor<int64_t>(int_array);
+          tensor_proto.add_dims(static_cast<int64_t>(int_array.size()));
+        } break;
+        case ONNX_NAMESPACE::TensorProto_DataType_BOOL: {
+          std::vector<bool> bool_array;
+          for (const auto& elem : value) {
+            ORT_ENFORCE(elem.is_boolean());
+            bool_array.emplace_back(elem.get<bool>());
+          }
+          tensor_proto = ONNX_NAMESPACE::ToTensor<bool>(bool_array);
+          tensor_proto.add_dims(static_cast<int64_t>(bool_array.size()));
+        } break;
+        default:
+          ORT_ENFORCE(false, "Type ", std::to_string(elem_type), " is not supported for 1D tensor attribute.");
+      }
+      attr_proto = ONNX_NAMESPACE::MakeAttribute(name, tensor_proto);
+    } else {
+      // Support only INTs for now.
+      switch (elem_type) {
+        case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+          std::vector<int64_t> int_array;
+          for (const auto& elem : value) {
+            ORT_ENFORCE(elem.is_number_integer());
+            int_array.emplace_back(static_cast<int64_t>(elem.get<int>()));
+          }
+          attr_proto = ONNX_NAMESPACE::MakeAttribute(name, int_array);
+        } break;
+        default:
+          ORT_ENFORCE(false, "List attribute of type ", std::to_string(elem_type), " is not supported for now.");
+      }
     }
   } else if (attr_def.is_tensor) {
     TensorProto tensor_proto;
