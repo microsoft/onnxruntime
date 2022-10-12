@@ -37,31 +37,25 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context));
 
   const Tensor* input_ids = context->Input<Tensor>(0);
-  //const Tensor* segment_ids = context->Input<Tensor>(1);  // optional. nullptr if it's distill-bert
+  const Tensor* segment_ids = context->Input<Tensor>(1);  // optional. nullptr if it's distill-bert
   const Tensor* word_embedding = context->Input<Tensor>(2);
-  //const Tensor* position_embedding = context->Input<Tensor>(3);
-  //const Tensor* segment_embedding = context->Input<Tensor>(4);  // optional. nullptr if it's distill-bert
-  //const Tensor* gamma = context->Input<Tensor>(5);
-  //const Tensor* beta = context->Input<Tensor>(6);
-  //const Tensor* mask = context->Input<Tensor>(7);          // optional. nullptr if not provided
-  //const Tensor* position_ids = context->Input<Tensor>(8);  // optional. nullptr if not provided
+  const Tensor* position_embedding = context->Input<Tensor>(3);
+  const Tensor* segment_embedding = context->Input<Tensor>(4);  // optional. nullptr if it's distill-bert
+  const Tensor* gamma = context->Input<Tensor>(5);
+  const Tensor* beta = context->Input<Tensor>(6);
+  const Tensor* mask = context->Input<Tensor>(7);          // optional. nullptr if not provided
+  const Tensor* position_ids = context->Input<Tensor>(8);  // optional. nullptr if not provided
 
   const auto& input_dims = input_ids->Shape().GetDims();
   int64_t hidden_size = word_embedding->Shape()[1];
 
   TensorShape output_shape({input_dims[0], input_dims[1], hidden_size});
   Tensor* output = context->Output(0, output_shape);
+
   TensorShape mask_index_shape({input_dims[0]});
   Tensor* mask_index = context->Output(1, mask_index_shape);
+
   Tensor* embedding_sum = context->Output(2, output_shape);
-
-  ORT_IGNORE_RETURN_VALUE(output);
-  ORT_IGNORE_RETURN_VALUE(mask_index);
-  ORT_IGNORE_RETURN_VALUE(embedding_sum);
-
-  return Status::OK();
-
-  /*
 
   int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
@@ -86,7 +80,6 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
           element_size,
           embedding_sum == nullptr ? nullptr : embedding_sum->MutableData<T>(),
           position_ids == nullptr ? nullptr : position_ids->Data<int32_t>());
-  */
 }
 
 }  // namespace cuda
