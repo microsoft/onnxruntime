@@ -10,6 +10,7 @@ trigger:
     - CONTRIBUTING.md
     - BUILD.md
 
+# test commit
 parameters:
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
