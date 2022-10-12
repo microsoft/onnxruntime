@@ -1,3 +1,8 @@
+
+## UPDATE: ORT 1.13 pre-release build candidates are available for testing [here](https://github.com/microsoft/onnxruntime/issues/13285).
+
+---
+
 <p align="center"><img width="50%" src="docs/images/ONNX_Runtime_logo_dark.png" /></p>
 
 **ONNX Runtime is a cross-platform inference and training machine-learning accelerator**.
