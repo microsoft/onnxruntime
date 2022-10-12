@@ -739,13 +739,13 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
               const std::vector<std::vector<int64_t>>& input_shapes) {
              ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(&input_shapes));
            })
-      .def("get_model",
+      .def("get_gradient_model",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
-             return py::bytes(ortmodule_graph_builder->GetModel());
+             return py::bytes(ortmodule_graph_builder->GetGradientModel());
            })
-      .def("get_inference_optimized_model",
+      .def("get_forward_model",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
-             return py::bytes(ortmodule_graph_builder->GetInferenceOptimizedModel());
+             return py::bytes(ortmodule_graph_builder->GetForwardModel());
            })
       .def("get_graph_info", [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
         return ortmodule_graph_builder->GetGraphInfo();
