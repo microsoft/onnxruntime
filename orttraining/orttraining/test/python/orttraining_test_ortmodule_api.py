@@ -4187,7 +4187,8 @@ def test_debug_options_save_onnx_models_os_environment(mode):
         # assert that the onnx models have been saved
         assert os.path.exists(os.path.join(temporary_dir, f"my_model_torch_exported_{mode}.onnx"))
         assert os.path.exists(os.path.join(temporary_dir, f"my_model_optimized_{mode}.onnx"))
-        assert os.path.exists(os.path.join(temporary_dir, f"my_model_optimized_pre_grad_{mode}.onnx"))
+        if mode == "training":
+            assert os.path.exists(os.path.join(temporary_dir, f"my_model_optimized_pre_grad_{mode}.onnx"))
         assert os.path.exists(os.path.join(temporary_dir, f"my_model_execution_model_{mode}.onnx"))
         del os.environ["ORTMODULE_SAVE_ONNX_PATH"]
 
@@ -4207,12 +4208,14 @@ def test_debug_options_save_onnx_models_cwd(mode):
     # assert that the onnx models have been saved
     assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_torch_exported_{mode}.onnx"))
     assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_optimized_{mode}.onnx"))
-    assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_optimized_pre_grad_{mode}.onnx"))
+    if mode == "training":
+        assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_optimized_pre_grad_{mode}.onnx"))
     assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_execution_model_{mode}.onnx"))
 
     os.remove(os.path.join(os.getcwd(), f"my_cwd_model_torch_exported_{mode}.onnx"))
     os.remove(os.path.join(os.getcwd(), f"my_cwd_model_optimized_{mode}.onnx"))
-    os.remove(os.path.join(os.getcwd(), f"my_cwd_model_optimized_pre_grad_{mode}.onnx"))
+    if mode == "training":
+        os.remove(os.path.join(os.getcwd(), f"my_cwd_model_optimized_pre_grad_{mode}.onnx"))
     os.remove(os.path.join(os.getcwd(), f"my_cwd_model_execution_model_{mode}.onnx"))
 
 
@@ -5357,3 +5360,32 @@ def test_eval_model_mode():
                 assert model.training == new_mode
                 assert model._torch_module.is_training() == new_mode
                 assert model._torch_module._flattened_module.training == new_mode
+
+
+def test_eval_onnx_models():
+    class NeuralNetBatchNorm(torch.nn.Module):
+        def __init__(self, num_features):
+            super(NeuralNetBatchNorm, self).__init__()
+            self.bn = torch.nn.BatchNorm1d(num_features)
+
+        def forward(self, input):
+            return self.bn(input)
+
+    device = "cuda"
+
+    N, H = 64, 128
+    model = ORTModule(NeuralNetBatchNorm(H).to(device))
+
+    x1 = torch.randn(N, H, device=device, requires_grad=True)
+    output = model(x1)
+    output.sum().backward()
+
+    x2 = torch.randn(N, H, device=device)
+    model.eval()
+    model(x2)
+
+    training_model = model._torch_module._execution_manager(True)._onnx_models.optimized_model
+    eval_model = model._torch_module._execution_manager(False)._onnx_models.optimized_model
+    # BatchNormInternal is for training, while BatchNormalization is for inference.
+    assert "BatchNormInternal" in [node.op_type for node in training_model.graph.node]
+    assert "BatchNormalization" in [node.op_type for node in eval_model.graph.node]
