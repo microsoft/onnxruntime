@@ -1131,9 +1131,12 @@ auto ExpandModelName = [](const ::testing::TestParamInfo<ModelTest::ParamType>& 
   std::replace(name.begin(), name.end(), '/', '_');
   std::replace(name.begin(), name.end(), '\\', '_');
 
+  // in case there's whitespace in directory name
+  std::replace(name.begin(), name.end(), ' ', '_');
+
   // Note: test name only accepts '_' and alphanumeric
   // remove '.', '-', ':'
-  char chars[] = ".-:";
+  char chars[] = ".-:()";
   for (unsigned int i = 0; i < strlen(chars); ++i) {
     name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
   }

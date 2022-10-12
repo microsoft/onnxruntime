@@ -25,17 +25,7 @@ RUN cd /usr/local && \
 ENV PATH=/usr/local/cmake-${CMAKE_VERSION}-linux-x86_64/bin:${PATH}
 
 # rocm lib
-RUN yum install -y libpython3.8-dev python3-pip miopen-hip-devel rocblas-devel && \
-    yum install -y rocrand-devel rccl-devel hipsparse-devel hipfft-devel hipcub-devel hipblas-devel rocthrust-devel
-
-# install dependencies
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && \
-    /bin/bash ~/miniconda.sh -b -p /opt/miniconda && \
-    rm ~/miniconda.sh && \
-    /opt/miniconda/bin/conda clean -ya
-
-ENV PATH=/opt/miniconda/bin:${PATH}
-RUN pip install numpy "wheel>=0.35.1"
+RUN yum install -y miopen-hip-devel rocblas-devel rocrand-devel rccl-devel hipsparse-devel hipfft-devel hipcub-devel hipblas-devel rocthrust-devel
 
 RUN yum remove -y devtoolset\* git\*
 
