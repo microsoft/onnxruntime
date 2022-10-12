@@ -52,14 +52,15 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShape output_shape({input_dims[0], input_dims[1], hidden_size});
   Tensor* output = context->Output(0, output_shape);
   ORT_IGNORE_RETURN_VALUE(output);
-  
-  return Status::OK();
 
-  /*
   TensorShape mask_index_shape({input_dims[0]});
   Tensor* mask_index = context->Output(1, mask_index_shape);
 
   Tensor* embedding_sum = context->Output(2, output_shape);
+
+  return Status::OK();
+
+  /*
 
   int batch_size = static_cast<int>(input_dims[0]);
   int sequence_length = static_cast<int>(input_dims[1]);
