@@ -5498,7 +5498,7 @@ Be noted:
 TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count_pre.size(), 2U);
+    ASSERT_EQ(op_count_pre.size(), 4U);
     ASSERT_EQ(op_count_pre["Div"], 1);
     ASSERT_EQ(op_count_pre["Cast"], 1);
     ASSERT_EQ(op_count_pre["Mul"], 3);
@@ -5508,7 +5508,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
 
   auto post_graph_checker = [&](Graph& graph) {
     const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
-    ASSERT_EQ(initialized_tensor_set.size(), 1U);
+    ASSERT_EQ(initialized_tensor_set.size(), 2U);
     const NodeArg* mul_initializer = nullptr;
     const NodeArg* add_initializer = nullptr;
     for (auto& node : graph.Nodes()) {
@@ -5550,7 +5550,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
     }
 
     auto op_count = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count.size(), 2U);
+    ASSERT_EQ(op_count.size(), 4U);
     ASSERT_EQ(op_count["Div"], 1);
     ASSERT_EQ(op_count["Mul"], 3);
     ASSERT_EQ(op_count["Cast"], 1);
