@@ -1024,7 +1024,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   const auto* fbs_ort_model_version = fbs_session->ort_version();
   ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
 
-  auto model_version = std::stoi(std::string(fbs_ort_model_version->str()));
+  auto model_version = std::stoi(fbs_ort_model_version->str());
   bool is_supported = IsOrtModelVersionSupported(model_version);
 
 #if defined(ORT_MINIMAL_BUILD)
