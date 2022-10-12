@@ -40,6 +40,8 @@ constexpr const char* CUDA_PINNED = "CudaPinned";
 constexpr const char* CANN = "Cann";
 constexpr const char* CANN_PINNED = "CannPinned";
 constexpr const char* DML = "DML";
+constexpr const char* HIP = "Hip";
+constexpr const char* HIP_PINNED = "HipPinned";
 constexpr const char* OpenVINO_CPU = "OpenVINO_CPU";
 constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
 
@@ -87,7 +89,7 @@ class IAllocator {
   }
 
   /**
-  * Calculate the memory size for an array. The size is bounds checked using SafeInt. 
+  * Calculate the memory size for an array. The size is bounds checked using SafeInt.
    * \tparam alignment must be power of 2
    * \param nmemb Number of members or elements in the array
    * \param size Size of each element
@@ -103,7 +105,7 @@ class IAllocator {
    * \param size Size of each element
    * \param out Total size required after any alignment is applied
    * \return true, successful. false, overflow
-   * \remarks This was the original API and was implemented in the header. Replaced with the above version 
+   * \remarks This was the original API and was implemented in the header. Replaced with the above version
    *          implemented in the .cc file so that the SafeInt dependency is internal.
    */
   template <size_t alignment>
