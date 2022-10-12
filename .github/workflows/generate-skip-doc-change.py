@@ -1,5 +1,5 @@
 # generate_skip_doc_change.py
-
+import os
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, Template
@@ -27,7 +27,10 @@ WIN_GPU_CI_WORKFLOW = Skipped_Workflow(
 
 
 def generate_fake_ci_yaml(template: Template, workflow: Skipped_Workflow):
-    content = template.render(ci_workflow_name=workflow.workflow_name, job_names=workflow.job_names)
+    py_file_name = os.path.basename(__file__)
+    content = template.render(
+        python_file_name=py_file_name, ci_workflow_name=workflow.workflow_name, job_names=workflow.job_names
+    )
 
     filename = workflow.fake_file_name
     with open(filename, mode="w", encoding="utf-8") as output_file:
