@@ -3,14 +3,6 @@
 
 name: {{ ci_workflow_name }}
 on:
-  push:
-    paths:
-      - docs/**
-      - .github/**
-      - README.md
-      - CONTRIBUTING.md
-      - BUILD.md
-      - tools/ci_build/github/azure-pipeline/win-gpu-ci-pipeline.yml
   pull_request:
     paths:
       - docs/**
