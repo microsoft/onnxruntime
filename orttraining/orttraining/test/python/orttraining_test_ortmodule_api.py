@@ -759,7 +759,8 @@ def test_scatternd_correctness(device, indices):
 
 @pytest.mark.parametrize("use_fp16", [False, True])
 @pytest.mark.parametrize("input_requires_grad", [False, True])
-def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
+@pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
+def test_gradient_correctness_conv1d(use_fp16, input_requires_grad, conv_algo_search):
     class NeuralNetConv1D(torch.nn.Module):
         def __init__(self, in_channels, out_channels, kernel_size, padding=0, groups=1):
             super(NeuralNetConv1D, self).__init__()
@@ -775,6 +776,9 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
     if torch.cuda.get_device_capability()[0] < 7:
         return
 
+    if conv_algo_search is not None:
+        os.environ["CONV_ALGO_SEARCH"] = conv_algo_search
+
     device = "cuda"
     N, seq_len, C_in, C_out, kernel_size = 32, 128, 1536, 1536, 3
     pt_model = NeuralNetConv1D(C_in, C_out, kernel_size, padding=1).to(device)
@@ -787,12 +791,13 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
         loss.backward()
         return prediction
 
+    torch.manual_seed(2333)
     for _ in range(10):
         x = torch.randn(N, seq_len, C_in, device=device, requires_grad=input_requires_grad)
         pt_prediction = run_step(pt_model, x)
         ort_prediction = run_step(ort_model, x)
 
-        # PyTorch's Conv/GonvGrad uses HEURISTIC mode to search algo while ORT uses EXHAUSTIVE mode by default.
+        # PyTorch's Conv/GonvGrad uses HEURISTIC mode to search algo while this UT tests different modes for ORTModule.
         # While different algo types generate slightly different results, especially for FP16,
         # so relax the tolerance for comparison, especially for FP16 run and gradient comparison.
         if use_fp16:
@@ -801,6 +806,21 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
         else:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-2, atol=4e-2)
+
+    provider_options = ort_model._torch_module._execution_manager(
+        ort_model._is_training()
+    )._execution_agent._inference_session._provider_options
+
+    expected_conv_algo_search = "HEURISTIC" if conv_algo_search is None else conv_algo_search
+    actual_conv_algo_search = None
+    if "CUDAExecutionProvider" in provider_options:
+        actual_conv_algo_search = provider_options["CUDAExecutionProvider"]["cudnn_conv_algo_search"]
+    elif "ROCMExecutionProvider" in provider_options:
+        actual_conv_algo_search = provider_options["ROCMExecutionProvider"]["cudnn_conv_algo_search"]
+    assert actual_conv_algo_search == expected_conv_algo_search
+
+    if conv_algo_search is not None:
+        del os.environ["CONV_ALGO_SEARCH"]
 
 
 def _run_gradient_correctness_transpose(perm, shape):
