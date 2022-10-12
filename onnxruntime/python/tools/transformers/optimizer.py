@@ -72,7 +72,7 @@ def optimize_by_onnxruntime(
     assert opt_level in [1, 2, 99]
     import onnxruntime
 
-    if use_gpu and "CUDAExecutionProvider" not in onnxruntime.get_available_providers():
+    if use_gpu and "CUDAExecutionProvider" and "ROCMExecutionProvider" not in onnxruntime.get_available_providers():
         logger.error("There is no gpu for onnxruntime to do optimization.")
         return onnx_model_path
 
@@ -100,9 +100,9 @@ def optimize_by_onnxruntime(
         )
     else:
         session = onnxruntime.InferenceSession(
-            onnx_model_path, sess_options, providers=["CUDAExecutionProvider"], **kwargs
+            onnx_model_path, sess_options, providers=["CUDAExecutionProvider", "ROCMExecutionProvider"], **kwargs
         )
-        assert "CUDAExecutionProvider" in session.get_providers()  # Make sure there is GPU
+        assert "CUDAExecutionProvider" or "ROCMExecutionProvider" in session.get_providers()  # Make sure there is GPU
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)
     logger.debug("Save optimized model by onnxruntime to {}".format(optimized_model_path))
