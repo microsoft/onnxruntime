@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 import re
+import sys
 from itertools import product
 
 import kernel_explorer as ke
@@ -116,13 +117,29 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
         )
 
 
+def profile_with_args(batch_size, seq_len, hidden_size, dtype):
+    for func in dtype_to_funcs(dtype):
+        profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func)
+    print()
+
+
 def profile():
     for dtype in dtypes:
         for bert_size in get_bert_sizes_profile():
-            for func in dtype_to_funcs(dtype):
-                profile_skip_layer_norm_func(*bert_size, dtype, func)
-            print()
+            profile_with_args(*bert_size, dtype)
 
 
 if __name__ == "__main__":
-    profile()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    group = parser.add_argument_group("profile with args")
+    group.add_argument("batch_size", type=int)
+    group.add_argument("seq_len", type=int)
+    group.add_argument("hidden_size", type=int)
+    group.add_argument("dtype", choices=dtypes)
+    if len(sys.argv) == 1:
+        profile()
+    else:
+        args = parser.parse_args()
+        profile_with_args(args.batch_size, args.seq_len, args.hidden_size, args.dtype)

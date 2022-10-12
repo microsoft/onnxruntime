@@ -3,9 +3,19 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import sys
+from itertools import product
+
 import kernel_explorer as ke
 import numpy as np
 import pytest
+
+
+def get_bert_sizes():
+    batch_sizes = [1]
+    seq_lens = [384]
+    hidden_sizes = [1024]
+    return product(batch_sizes, seq_lens, hidden_sizes)
 
 
 def dtype_to_funcs(dtype):
@@ -42,17 +52,17 @@ def run_fast_gelu(x_size, bias_size, dtype, func):
 
 
 test_cases = [((2, 16), 16), ((1, 2, 768), 768), ((1, 2, 1024), 1024)]
+dtypes = ["float16", "float32", "float64"]
 
 
 @pytest.mark.parametrize("x_size, bias_size", test_cases)
-def test_fast_gelu(x_size, bias_size):
-    dtypes = ["float16", "float32", "float64"]
-    for dtype in dtypes:
-        for f in dtype_to_funcs(dtype):
-            run_fast_gelu(x_size, bias_size, dtype, f)
+@pytest.mark.parametrize("dtype", dtypes)
+def test_fast_gelu(x_size, bias_size, dtype):
+    for f in dtype_to_funcs(dtype):
+        run_fast_gelu(x_size, bias_size, dtype, f)
 
 
-def profile_vector_add_func(batch_size, seq_len, hidden_size, dtype, func):
+def profile_fast_gelu_func(batch_size, seq_len, hidden_size, dtype, func):
     x_size = [batch_size, seq_len, hidden_size * 3]
     bias_size = hidden_size * 3
     np.random.seed(0)
@@ -77,19 +87,29 @@ def profile_vector_add_func(batch_size, seq_len, hidden_size, dtype, func):
     )
 
 
+def profile_with_args(batch_size, seq_len, hidden_size, dtype):
+    for func in dtype_to_funcs(dtype):
+        profile_fast_gelu_func(batch_size, seq_len, hidden_size, dtype, func)
+    print()
+
+
 def profile():
-    batch_size = [1]
-    seq_len = [384]
-    hidden_size = [1024]
-    dtypes = ["float16", "float32", "float64"]
-    for dt in dtypes:
-        for bs in batch_size:
-            for sl in seq_len:
-                for hs in hidden_size:
-                    for f in dtype_to_funcs(dt):
-                        profile_vector_add_func(bs, sl, hs, dt, f)
-                    print()
+    for dtype in dtypes:
+        for bert_size in get_bert_sizes():
+            profile_with_args(*bert_size, dtype)
 
 
 if __name__ == "__main__":
-    profile()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    group = parser.add_argument_group("profile with args")
+    group.add_argument("batch_size", type=int)
+    group.add_argument("seq_len", type=int)
+    group.add_argument("hidden_size", type=int)
+    group.add_argument("dtype", choices=dtypes)
+    if len(sys.argv) == 1:
+        profile()
+    else:
+        args = parser.parse_args()
+        profile_with_args(args.batch_size, args.seq_len, args.hidden_size, args.dtype)

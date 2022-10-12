@@ -247,33 +247,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         else:
             self._graph_builder.build()
 
-        self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_model())
-
-        self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
-            self._graph_builder.get_inference_optimized_model()
-        )
-
         self._graph_info = self._graph_builder.get_graph_info()
-
-        # Map each input/initializer to its gradient index in the graph output, or -1 is gradient is not required.
-        self._gradient_map = []
-        num_user_input_grads = len(self._input_info.require_grad_names)
-        require_grad_names_set = set(self._input_info.require_grad_names)
-        require_grad_names_index = 0
-        for input_name in self._graph_info.user_input_names:
-            if input_name in require_grad_names_set:
-                self._gradient_map.append(require_grad_names_index)
-                require_grad_names_index += 1
-            else:
-                self._gradient_map.append(-1)
-
-        initializer_index = num_user_input_grads
-        for initializer_name in self._graph_info.initializer_names:
-            if initializer_name in self._graph_initializer_names_to_train:
-                self._gradient_map.append(initializer_index)
-                initializer_index += 1
-            else:
-                self._gradient_map.append(-1)
 
     def _get_session_config(self):
         """Creates and returns the session configuration to be used for the ExecutionAgent"""
@@ -464,7 +438,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         graph_transformer_config.propagate_cast_ops_config.strategy = self._propagate_cast_ops_strategy
         return graph_transformer_config
 
-    def _initialize_graph_builder(self, training):
+    def _initialize_graph_builder(self):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 
         # All initializer names along with user inputs are a part of the onnx graph inputs
@@ -486,7 +460,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         grad_builder_config.initializer_names = initializer_names
         grad_builder_config.initializer_names_to_train = initializer_names_to_train
         grad_builder_config.input_names_require_grad = self._input_info.require_grad_names
-        grad_builder_config.build_gradient_graph = training
+        grad_builder_config.build_gradient_graph = self._export_mode == torch.onnx.TrainingMode.TRAINING
         grad_builder_config.graph_transformer_config = self._get_graph_transformer_config()
         grad_builder_config.enable_caching = self._enable_grad_acc_optimization
         grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(
