@@ -172,7 +172,6 @@ int64_t MemoryAlleviation::PrepareForTransformation(const Graph& graph,
             used_in_bw = true;
           }
         }
-        std::cout << "|||||" << output_arg->Name() << ", " << used_in_fw << used_in_bw << std::endl;
         fw_op_output_arg_used_map.insert({{output_arg->Name(), std::make_pair(used_in_fw, used_in_bw)}});
       }
     }
@@ -284,13 +283,13 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
         const auto current_node_input_index = input_edge.GetDstArgIndex();
         if (std::find(input_arg_indices.begin(), input_arg_indices.end(), current_node_input_index) !=
             input_arg_indices.end()) {
-          NodeOutputPort p = std::make_pair(&parent_node, parent_node_output_index);
+          NodeOutputPort next_p = std::make_pair(&parent_node, parent_node_output_index);
 
           LOGS(logger, WARNING) << "Node " << p.first->Name() << "(" << p.first->OpType() << ")'s " << p.second
                                 << "th output [" << p.first->OutputDefs()[p.second]->Name()
                                 << "] is added in recompute search list  ";
 
-          q.push_back(p);
+          q.push_back(next_p);
         }
       }
     }
@@ -431,7 +430,6 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
   ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph, fw_op_output_arg_used_map, candidate_output_args_map,
                                                      logger));
 
-  std::cout << "1111111111111111111111111111111" << std::endl;
   InlinedHashMap<std::string, InlinedHashMap<std::string, int>> stashed_activation_statistics;
   InlinedHashMap<std::string, AlleviationType> subgraph_str_to_alleviation_type;
   GraphViewer graph_viewer(graph);
@@ -489,7 +487,11 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
             continue;
           }
 
-          if (!IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(it->GetNode().Index()),
+          auto tid = node_index_to_its_order_in_topological_sort_map.find(it->GetNode().Index());
+          // It is possible the consumer node is newly added as the recompute node, so we need a check here.
+          // For those kind of ops, we can treat them as backward ops.
+          if (tid == node_index_to_its_order_in_topological_sort_map.end() ||
+              !IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(tid->first),
                                      boundary_op_order_in_topological_sort)) {
             // Remove the edge only connecting to backward op.
             output_edges.push_back(graph_utils::GraphEdge::CreateGraphEdge(node, *it, false));
