@@ -74,6 +74,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   // so supporting older opsets is unnecessary.
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, Conv, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, ConvTranspose, 11);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, ConvTranspose, 1);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxPool, 11);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, MaxPool, 12);
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, AveragePool, 11);
