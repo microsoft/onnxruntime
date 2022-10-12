@@ -52,6 +52,9 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShape output_shape({input_dims[0], input_dims[1], hidden_size});
   Tensor* output = context->Output(0, output_shape);
 
+  return Status::OK();
+
+  /*
   TensorShape mask_index_shape({input_dims[0]});
   Tensor* mask_index = context->Output(1, mask_index_shape);
 
@@ -80,6 +83,7 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
           element_size,
           embedding_sum == nullptr ? nullptr : embedding_sum->MutableData<T>(),
           position_ids == nullptr ? nullptr : position_ids->Data<int32_t>());
+  */
 }
 
 }  // namespace cuda
