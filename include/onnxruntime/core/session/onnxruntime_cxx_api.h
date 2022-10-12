@@ -1000,15 +1000,15 @@ struct ValueImpl : ConstValueImpl<T> {
   /// <summary>
   /// Set all strings at once in a string tensor
   /// </summary>
-  /// <param>[in] s An array of strings. Each string in this array must be null terminated.</param>
-  /// <param>s_len Count of strings in s (Must match the size of \p value's tensor shape)</param>
+  /// <param name="s">An array of strings. Each string in this array must be null terminated.</param>
+  /// <param name="s_len">Count of strings in s (Must match the size of \p value's tensor shape)</param>
   void FillStringTensor(const char* const* s, size_t s_len);
 
   /// <summary>
   ///  Set a single string in a string tensor
   /// </summary>
-  /// <param>s A null terminated UTF-8 encoded string</param>
-  /// <param>index Index of the string in the tensor to set</param>
+  /// <param name="s"> A null terminated UTF-8 encoded string</param>
+  /// <param name="index">Index of the string in the tensor to set</param>
   void FillStringTensorElement(const char* s, size_t index);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
