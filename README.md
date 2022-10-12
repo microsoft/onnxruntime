@@ -13,7 +13,7 @@
 
 **Usage documention and tutorials**: [onnxruntime.ai/docs](https://onnxruntime.ai/docs)
 
-**Companion sample repositories**: 
+**Companion sample repositories**:
 - ONNX Runtime Inferencing: [microsoft/onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples)
 - ONNX Runtime Training: [microsoft/onnxruntime-training-examples](https://github.com/microsoft/onnxruntime-training-examples)
 
@@ -47,6 +47,6 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/)
 or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-## License
+## License test commit
 
 This project is licensed under the [MIT License](LICENSE).
