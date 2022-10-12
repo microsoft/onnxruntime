@@ -5530,18 +5530,15 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
     }
 
     for (const auto& entry : initialized_tensor_set) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+      int32_t data_type = tensor_proto->data_type();
+      onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
       if (entry.first.compare(mul_initializer->Name()) == 0) {
-        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
-        int32_t data_type = tensor_proto->data_type();
-        onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
         ASSERT_EQ(float_const.size(), 1);
         ASSERT_EQ(data_type, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
         float float_const_value = *(float_const.data<float>());
         ASSERT_EQ(float_const_value, 1.0f);
       } else if (entry.first.compare(add_initializer->Name()) == 0) {
-        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
-        int32_t data_type = tensor_proto->data_type();
-        onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
         ASSERT_EQ(float_const.size(), 1);
         ASSERT_EQ(data_type, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
         float float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
@@ -5557,7 +5554,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializ
     ASSERT_EQ(op_count["Add"], 3);
   };
 
-  const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
+  const std::vector<int> opsets{12, 13, 14};
 
   auto build_test_case_float = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
