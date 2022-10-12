@@ -5,6 +5,7 @@
 
 import warnings
 
+import onnx
 import torch
 
 from onnxruntime.capi import _pybind_state as C
@@ -91,11 +92,11 @@ class InferenceManager(GraphExecutionManager):
                 build_graph = self._export_model(*inputs, **kwargs)
                 if build_graph:
                     # If model was exported, then initialize the graph builder
-                    self._initialize_graph_builder(training=False)
+                    self._initialize_graph_builder()
 
                 # Build the inference graph
                 if build_graph:
-                    self._build_graph(training=False)
+                    self._build_graph()
 
             # If creating the execution agent for the first time, this skip check will not take effect.
             # It will only take effect on subsequent forward calls.
@@ -152,10 +153,11 @@ class InferenceManager(GraphExecutionManager):
         if self._fallback_manager.is_pending():
             return self._fallback_manager.fallback(self._debug_options.logging.log_level, *inputs, **kwargs)
 
-    def _build_graph(self, training):
-        """Build an optimized inference graph using the module_graph_builder"""
+    def _build_graph(self):
+        """Build an inference graph using the module_graph_builder"""
 
-        super()._build_graph(training)
+        super()._build_graph()
+        self._onnx_models.optimized_model = onnx.load_model_from_string(self._graph_builder.get_forward_model())
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_optimized_model(
                 self._debug_options.save_onnx_models.path,
