@@ -164,7 +164,7 @@ jobs:
       python3 tools/ci_build/upload_python_package_to_azure_storage.py \
           --python_wheel_path ${files[0]} \
           --final_storage
-    condition: and(succeeded(), eq(variables['DRY_RUN'], '0'), eq('${{ parameters.BuildConfig }}', 'Release'))
+    condition: and(succeeded(), eq(variables['DRY_RUN'], '0'))
     displayName: 'Upload Rocm wheel to release repository'
 
   - template: component-governance-component-detection-steps.yml
