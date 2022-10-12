@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "max_unpool.h"
+#include "unpool.h"
 #include <algorithm>
+#include <numeric>
 
 #include "core/common/common.h"
 #include "core/framework/tensor_shape.h"
@@ -55,8 +56,8 @@ TensorShapeVector InferOutputSizeForUnPool(const PoolAttributes& pool_attrs,
 }
 }  // namespace
 
-// MaxUnPool doesn't have any quantization params
-bool MaxUnPool::IsOnnxNodeSupported(const NodeUnit& node_unit,
+// MaxUnpool doesn't have any quantization params
+bool MaxUnpool::IsOnnxNodeSupported(const NodeUnit& node_unit,
                                     const GraphViewer& graph) {
   bool supported = false;
   auto qtype = GetQuantizedOpType(node_unit);
@@ -66,17 +67,13 @@ bool MaxUnPool::IsOnnxNodeSupported(const NodeUnit& node_unit,
   const onnxruntime::Node& node = node_unit.GetNode();
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
-    // MaxUnPool has 1 input.
+    // MaxUnpool has 2 inputs.
     auto input_defs = node.InputDefs();
     const auto& x_arg = *input_defs[0];
 
-    // we only support float and u8/s8 currently
     const auto* x_type = x_arg.TypeAsProto();
-    // input of MaxUnPool could be fp16/fp32/fp64,i8/u8 according to ONNX
     if (x_type == nullptr ||
-        (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
-         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
+        (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
       break;
     }
 
@@ -93,30 +90,11 @@ bool MaxUnPool::IsOnnxNodeSupported(const NodeUnit& node_unit,
       break;
     }
 
-    // we don't support creating the optional 'I' output
-    const auto& output_defs = node.OutputDefs();
-    if (output_defs.size() == 2 && output_defs[1]->Exists()) {
-      break;
-    }
-
     ProtoHelperNodeContext nc(node);
     OpNodeProtoHelper info(&nc);
-    PoolAttributes pool_attrs(info, "MaxUnPool", node.SinceVersion());
-
-    // xnnpack doesn't appear to support using 'ceil' to calculate the output shape
-    // https://github.com/google/XNNPACK/blob/3caa8b9de973839afa1e2a1462ff356e6927a66b/src/operators/max-pooling-nhwc.c#L256
-    // calls compute_output_dimension but there's no ability to specify rounding that value up.
-    if (pool_attrs.ceil_mode != 0) {
-      break;
-    }
+    PoolAttributes pool_attrs(info, "MaxUnpool", node.SinceVersion());
 
     if (!IsPaddingTypeSupported(pool_attrs.auto_pad)) {
-      break;
-    }
-
-    if ((pool_attrs.kernel_shape.size() != 2) ||
-        (pool_attrs.kernel_shape[0] == 1 && pool_attrs.kernel_shape[1] == 1)) {
-      // XNNPack doesn't support 1x1 MaxUnPool.
       break;
     }
 
@@ -126,23 +104,10 @@ bool MaxUnPool::IsOnnxNodeSupported(const NodeUnit& node_unit,
   return supported;
 }
 
-MaxUnPool::MaxUnPool(const OpKernelInfo& info)
+MaxUnpool::MaxUnpool(const OpKernelInfo& info)
     : XnnpackKernel(info),
-      pool_attrs_{info, "MaxUnPool", info.node().SinceVersion()} {
+      pool_attrs_{info, "MaxUnpool", info.node().SinceVersion()} {
   num_inputs_ = OpKernel::Node().InputDefs().size();
-
-  uint32_t input_padding_top = gsl::narrow<uint32_t>(pool_attrs_.pads[0]);
-  uint32_t input_padding_left = gsl::narrow<uint32_t>(pool_attrs_.pads[1]);
-  uint32_t input_padding_bottom = gsl::narrow<uint32_t>(pool_attrs_.pads[2]);
-  uint32_t input_padding_right = gsl::narrow<uint32_t>(pool_attrs_.pads[3]);
-
-  uint32_t pooling_height = gsl::narrow<uint32_t>(pool_attrs_.kernel_shape[0]);
-  uint32_t pooling_width = gsl::narrow<uint32_t>(pool_attrs_.kernel_shape[1]);
-
-  uint32_t flags = 0;
-  if (pool_attrs_.auto_pad == AutoPadType::SAME_UPPER) {
-    flags |= XNN_FLAG_TENSORFLOW_SAME_PADDING;
-  }
 
   // input is NHWC and we only support input with 4 dims. we checked C, H, W were all known in the op support checker
   const auto& X_arg = *Node().InputDefs()[0];
@@ -155,22 +120,39 @@ MaxUnPool::MaxUnPool(const OpKernelInfo& info)
   // create NCHW shape to calculate most of the output shape. 'N' is set in Compute.
   TensorShapeVector input_shape{1, C, H, W};
   auto pads = pool_attrs_.pads;
+  output_dims_ = InferOutputSizeForUnPool(pool_attrs_, X_shape);
+
   if (num_inputs_ == 3) {
     const Tensor* output_shape_tensor = nullptr;
-    ORT_ENFORCE(info.TryGetConstantInput(3, &output_shape_tensor), "Get output shape tensor failed");
+    ORT_ENFORCE(info.TryGetConstantInput(2, &output_shape_tensor), "Get output shape tensor failed");
     const auto out_sp = output_shape_tensor->DataAsSpan<int64_t>();
+    if (std::accumulate(pool_attrs_.pads.begin(), pool_attrs_.pads.end(), 0) != 0) {
+      // use to calculate output shape for xnnpack
+      pool_attrs_.pads[0] = out_sp[2] - (H - 1) * pool_attrs_.strides[0] + pool_attrs_.kernel_shape[0];
+      pool_attrs_.pads[1] = 0;
+      pool_attrs_.pads[2] = out_sp[3] - (W - 1) * pool_attrs_.strides[1] + pool_attrs_.kernel_shape[1];
+      pool_attrs_.pads[3] = 0;
+    }
     output_dims_.assign(out_sp.cbegin(), out_sp.cend());
-  } else {
-    output_dims_ = InferOutputSizeForUnPool(pool_attrs_, X_shape);
+    std::swap(output_dims_[1], output_dims_[2]);
+    std::swap(output_dims_[3], output_dims_[2]);
   }
 
   // TEMPORARY sanity check. If C, H and W are known, the output shape should have been able to be inferred, with the
-  // exception of the batch size. Can be removed once we've run more models using xnnpack MaxUnPool.
+  // exception of the batch size. Can be removed once we've run more models using xnnpack MaxUnpool.
   auto inferred_output_shape = utils::GetTensorShapeFromTensorShapeProto(*Node().OutputDefs()[0]->Shape());
   ORT_ENFORCE(inferred_output_shape[1] == output_dims_[1] &&
                   inferred_output_shape[2] == output_dims_[2] &&
                   inferred_output_shape[3] == output_dims_[3],
               "Shape mismatch between inferred value and calculated value.");
+  uint32_t input_padding_top = gsl::narrow<uint32_t>(pool_attrs_.pads[0]);
+  uint32_t input_padding_left = gsl::narrow<uint32_t>(pool_attrs_.pads[1]);
+  uint32_t input_padding_bottom = gsl::narrow<uint32_t>(pool_attrs_.pads[2]);
+  uint32_t input_padding_right = gsl::narrow<uint32_t>(pool_attrs_.pads[3]);
+
+  uint32_t pooling_height = gsl::narrow<uint32_t>(pool_attrs_.kernel_shape[0]);
+  uint32_t pooling_width = gsl::narrow<uint32_t>(pool_attrs_.kernel_shape[1]);
+
   auto input_dtype = X_arg.TypeAsProto()->tensor_type().elem_type();
   xnn_status status = xnn_status_invalid_state;
   struct xnn_operator* p = nullptr;
@@ -180,18 +162,18 @@ MaxUnPool::MaxUnPool(const OpKernelInfo& info)
                                              input_padding_bottom, input_padding_left,
                                              pooling_height, pooling_width,
                                              C, C, C,  // channels, input_pixel_stride, output_pixel_stride
-                                             flags, &p);
+                                             0, &p);
   } else {
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X_arg.TypeAsProto()));
-    ORT_THROW("unsupported Conv in MaxUnPool, we have FLOAT|UINT8, but got ", stype);
+    ORT_THROW("unsupported Conv in MaxUnpool, we have FLOAT, but got ", stype);
   }
-  ORT_ENFORCE(status == xnn_status_success, "xnn_create_max_pooling2d_nhwc_",
+  ORT_ENFORCE(status == xnn_status_success, "xnn_create_max_unpooling2d_nhwc_",
               OpTypeToString(op_type_), "failed. Status:", status);
 
   op0_.reset(p);
 }
 
-Status MaxUnPool::Compute(OpKernelContext* context) const {
+Status MaxUnpool::Compute(OpKernelContext* context) const {
   const auto& X = *context->Input<Tensor>(0);
   const auto& indice = *context->Input<Tensor>(1);
   const auto& X_shape = X.Shape();
@@ -223,14 +205,12 @@ Status MaxUnPool::Compute(OpKernelContext* context) const {
 
   pthreadpool_t t_pool = GetThreadPool();
   xnn_status status = xnn_status_invalid_state;
-  if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    status = xnn_setup_unpooling2d_nhwc_x32(op0_.get(), N, H, W,
-                                            X.Data<float>(), u32_indice_span.data(), Y->MutableData<float>(),
-                                            t_pool /*threadpool */);
-  }
+  status = xnn_setup_unpooling2d_nhwc_x32(op0_.get(), N, H, W,
+                                          X.Data<float>(), u32_indice_span.data(), Y->MutableData<float>(),
+                                          t_pool /*threadpool */);
 
   if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_max_pooling2d_nhwc_",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_unpooling2d_nhwc_",
                            OpTypeToString(op_type_), " returned ", status);
   }
 
@@ -243,10 +223,17 @@ Status MaxUnPool::Compute(OpKernelContext* context) const {
 }
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    MaxUnPool, kMSInternalNHWCDomain, 11, 11, kXnnpackExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                            DataTypeImpl::GetTensorType<uint8_t>(),
-                                            DataTypeImpl::GetTensorType<int8_t>()}),
-    MaxUnPool);
+    MaxUnpool, kMSInternalNHWCDomain, 9, 10, kXnnpackExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
+    MaxUnpool);
+
+ONNX_OPERATOR_KERNEL_EX(
+    MaxUnpool, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
+    MaxUnpool);
 }  // namespace xnnpack
 }  // namespace onnxruntime

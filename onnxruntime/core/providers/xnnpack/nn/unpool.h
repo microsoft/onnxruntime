@@ -13,16 +13,16 @@ class GraphViewer;
 class Node;
 namespace xnnpack {
 
-class MaxUnPool : public XnnpackKernel {
+class MaxUnpool : public XnnpackKernel {
  public:
-  MaxUnPool(const OpKernelInfo& info);
+  MaxUnpool(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
   static bool IsOnnxNodeSupported(const NodeUnit& nodeunit,
                                   const GraphViewer& /*graph*/);
 
  private:
-  const PoolAttributes pool_attrs_;
+  PoolAttributes pool_attrs_;
   TensorShapeVector output_dims_;
   int64_t num_inputs_;
 

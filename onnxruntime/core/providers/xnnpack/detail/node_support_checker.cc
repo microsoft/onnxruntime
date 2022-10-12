@@ -20,6 +20,7 @@
 #include "core/providers/xnnpack/nn/average_pool.h"
 #include "core/providers/xnnpack/nn/resize.h"
 #include "core/providers/xnnpack/nn/softmax.h"
+// #include "core/providers/xnnpack/nn/unpool.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -94,6 +95,7 @@ bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
       NewChecker(Conv),
       NewChecker(ConvTranspose),
       NewChecker(MaxPool),
+      // NewChecker(MaxUnpool),
       NewChecker(AveragePool),
       NewChecker(Softmax),
       NewChecker(Resize),
