@@ -9,8 +9,6 @@ trigger:
     - README.md
     - CONTRIBUTING.md
     - BUILD.md
-    - .github/**
-    - tools/ci_build/github/azure-pipeline/win-gpu-ci-pipeline.yml
 pr:
   branches:
     include:
@@ -22,8 +20,6 @@ pr:
     - README.md
     - CONTRIBUTING.md
     - BUILD.md
-    - .github/**
-    - tools/ci_build/github/azure-pipeline/win-gpu-ci-pipeline.yml
 
 parameters:
 - name: RunOnnxRuntimeTests
