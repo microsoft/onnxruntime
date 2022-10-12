@@ -3,7 +3,7 @@
 
 name: {{ ci_workflow_name }}
 on:
-  push:
+  pull_request:
     paths:
       - docs/**
       - README.md
