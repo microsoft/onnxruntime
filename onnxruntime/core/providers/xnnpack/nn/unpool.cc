@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/framework/tensor_shape.h"
 #include "core/graph/graph.h"
 #include "core/providers/cpu/nn/pool_attributes.h"
@@ -42,20 +43,26 @@ TensorShapeVector InferOutputSizeForUnPool(const PoolAttributes& pool_attrs,
 
 // MaxUnpool doesn't have any quantization params
 bool MaxUnpool::IsOnnxNodeSupported(const NodeUnit& node_unit,
-                                    const GraphViewer&) {
+                                    const GraphViewer& graph_viewer) {
+  ORT_UNUSED_PARAMETER(graph_viewer);
   bool supported = false;
   const onnxruntime::Node& node = node_unit.GetNode();
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
-    // MaxUnpool has 2 inputs.
+    // MaxUnpool has 2-3 inputs.
     auto input_defs = node.InputDefs();
+
+    if (input_defs.size() == 3) {
+      const auto* output_shape = graph_viewer.GetConstantInitializer(input_defs[2]->Name(), true);
+      if (output_shape == nullptr || output_shape->dims_size() != 1 || output_shape->dims(0) != 4) {
+        break;
+      }
+    }
     const auto& x_arg = *input_defs[0];
 
     const auto* x_type = x_arg.TypeAsProto();
     if (x_type == nullptr ||
-        (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
-         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
+        (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
       break;
     }
 
@@ -90,7 +97,7 @@ MaxUnpool::MaxUnpool(const OpKernelInfo& info)
     : XnnpackKernel(info),
       pool_attrs_{info, "MaxUnpool", info.node().SinceVersion()} {
   num_inputs_ = OpKernel::Node().InputDefs().size();
-
+  info.GetAttrOrDefault<int64_t>("mode", &is_indice_produced_by_xnnpack_, 0);
   // input is NHWC and we only support input with 4 dims. we checked C, H, W were all known in the op support checker
   const auto& X_arg = *Node().InputDefs()[0];
   auto X_shape = utils::GetTensorShapeFromTensorShapeProto(*X_arg.Shape());
@@ -103,7 +110,9 @@ MaxUnpool::MaxUnpool(const OpKernelInfo& info)
   TensorShapeVector input_shape{1, C, H, W};
   auto pads = pool_attrs_.pads;
   output_dims_ = InferOutputSizeForUnPool(pool_attrs_, X_shape);
-
+  if (!is_indice_produced_by_xnnpack_) {
+    return;
+  }
   if (num_inputs_ == 3) {
     const Tensor* output_shape_tensor = nullptr;
     ORT_ENFORCE(info.TryGetConstantInput(2, &output_shape_tensor), "Get output shape tensor failed");
@@ -135,20 +144,14 @@ MaxUnpool::MaxUnpool(const OpKernelInfo& info)
   uint32_t pooling_height = gsl::narrow<uint32_t>(pool_attrs_.kernel_shape[0]);
   uint32_t pooling_width = gsl::narrow<uint32_t>(pool_attrs_.kernel_shape[1]);
 
-  auto input_dtype = X_arg.TypeAsProto()->tensor_type().elem_type();
   xnn_status status = xnn_status_invalid_state;
   struct xnn_operator* p = nullptr;
-  if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    op_type_ = OpComputeType::op_compute_type_fp32;
-    status = xnn_create_unpooling2d_nhwc_x32(input_padding_top, input_padding_right,
-                                             input_padding_bottom, input_padding_left,
-                                             pooling_height, pooling_width,
-                                             C, C, C,  // channels, input_pixel_stride, output_pixel_stride
-                                             0, &p);
-  } else {
-    auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X_arg.TypeAsProto()));
-    ORT_THROW("unsupported Conv in MaxUnpool, we have FLOAT, but got ", stype);
-  }
+  op_type_ = OpComputeType::op_compute_type_fp32;
+  status = xnn_create_unpooling2d_nhwc_x32(input_padding_top, input_padding_right,
+                                           input_padding_bottom, input_padding_left,
+                                           pooling_height, pooling_width,
+                                           C, C, C,  // channels, input_pixel_stride, output_pixel_stride
+                                           0, &p);
   ORT_ENFORCE(status == xnn_status_success, "xnn_create_max_unpooling2d_nhwc_",
               OpTypeToString(op_type_), "failed. Status:", status);
 
@@ -167,40 +170,82 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   // set the N dim to the correct value
   TensorShapeVector output_dims{output_dims_};
   output_dims[0] = N;
-  Tensor* Y = context->Output(0, output_dims);
 
-  // empty input
-  if (Y->Shape().Size() == 0) {
-    return Status::OK();
+  if (is_indice_produced_by_xnnpack_ == 0) {
+    if (num_inputs_ == 3) {
+      const auto& ouput_shape = *context->Input<Tensor>(2);
+      auto output_shape_span = ouput_shape.DataAsSpan<int64_t>();
+      output_dims[1] = output_shape_span[2];
+      output_dims[2] = output_shape_span[3];
+      output_dims[3] = output_shape_span[1];
+    }
+    Tensor* Y = context->Output(0, output_dims);
+    const int64_t HW = H * W;
+    const int64_t Channel = X_shape[3];
+    const int64_t CHW = Channel * HW;
+    const int64_t oHW = output_dims[1] * output_dims[2];
+    const int64_t oCHW = Channel * oHW;
+
+    const auto* X_data = reinterpret_cast<const int32_t*>(X.DataRaw());
+    const auto* I_data = indice.Data<int64_t>();
+    auto out = gsl::make_span(reinterpret_cast<int32_t*>(Y->MutableDataRaw()), Y->Shape().Size());
+    std::fill_n(out.data(), out.size(), 0);
+
+    using onnxruntime::TensorOpCost;
+    using onnxruntime::concurrency::ThreadPool;
+    ThreadPool::TryParallelFor(
+        context->GetOperatorThreadPool(), N * HW,
+        // Read 3*N (max,sum,div) write N (div), computation=Read
+        TensorOpCost{static_cast<double>(2),
+                     static_cast<double>(1),
+                     static_cast<double>(10)},
+        [X_data, out, I_data, HW, CHW, oCHW, oHW, Channel](std::ptrdiff_t first, std::ptrdiff_t last) {
+          for (std::ptrdiff_t nhw1 = first; nhw1 < last; ++nhw1) {
+            const int64_t n1 = nhw1 / HW;
+            const int64_t hw1 = nhw1 % HW;
+
+            const int64_t src_base = n1 * CHW + hw1 * Channel;
+            const int64_t dst_base = n1 * CHW + hw1;
+            for (int c1 = 0; c1 < Channel; ++c1) {
+              const int64_t dst_ind_in_nchw = I_data[c1 * HW + dst_base];
+              const int64_t hw_p = dst_ind_in_nchw % oHW;  //(dst_ind_in_nchw - n_p * oCHW - c_p * oHW);
+              const int64_t n_p = (dst_ind_in_nchw / oCHW);
+              const int64_t c_p = (dst_ind_in_nchw - n_p * oCHW) / oHW;
+
+              out[n_p * oCHW + c_p + hw_p * Channel] = X_data[src_base + c1];
+            }
+          }
+        });
+  } else {
+    Tensor* Y = context->Output(0, output_dims);
+
+    // allocate memory for indice
+    AllocatorPtr alloc;
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+    size_t indice_size = indice.Shape().Size();
+    auto u32_indice_ptr = IAllocator::MakeUniquePtr<uint32_t>(alloc, indice_size);
+    auto u32_indice_span = gsl::make_span(u32_indice_ptr.get(), indice_size);
+    std::transform(indice.DataAsSpan<int64_t>().cbegin(), indice.DataAsSpan<int64_t>().cend(),
+                   u32_indice_span.begin(),
+                   [](int64_t i64_d) { return gsl::narrow_cast<uint32_t>(i64_d); });
+
+    pthreadpool_t t_pool = GetThreadPool();
+    xnn_status status = xnn_status_invalid_state;
+    status = xnn_setup_unpooling2d_nhwc_x32(op0_.get(), N, H, W,
+                                            X.Data<float>(), u32_indice_span.data(), Y->MutableData<float>(),
+                                            t_pool /*threadpool */);
+
+    if (status != xnn_status_success) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_unpooling2d_nhwc_",
+                             OpTypeToString(op_type_), " returned ", status);
+    }
+
+    status = xnn_run_operator(op0_.get(), t_pool);
+    if (status != xnn_status_success) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
+    }
   }
-
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-
-  // allocate memory for indice
-  size_t indice_size = indice.Shape().Size();
-  auto u32_indice_ptr = IAllocator::MakeUniquePtr<uint32_t>(alloc, indice_size);
-  auto u32_indice_span = gsl::make_span(u32_indice_ptr.get(), indice_size);
-  std::transform(indice.DataAsSpan<int64_t>().cbegin(), indice.DataAsSpan<int64_t>().cend(),
-                 u32_indice_span.begin(),
-                 [](int64_t i64_d) { return gsl::narrow_cast<uint32_t>(i64_d); });
-
-  pthreadpool_t t_pool = GetThreadPool();
-  xnn_status status = xnn_status_invalid_state;
-  status = xnn_setup_unpooling2d_nhwc_x32(op0_.get(), N, H, W,
-                                          X.Data<float>(), u32_indice_span.data(), Y->MutableData<float>(),
-                                          t_pool /*threadpool */);
-
-  if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_unpooling2d_nhwc_",
-                           OpTypeToString(op_type_), " returned ", status);
-  }
-
-  status = xnn_run_operator(op0_.get(), t_pool);
-  if (status != xnn_status_success) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
-  }
-
   return Status::OK();
 }
 

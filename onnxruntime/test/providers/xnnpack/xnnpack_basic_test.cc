@@ -468,6 +468,75 @@ TEST(XnnpackEP, TestResize_u8_and_s8_pytorch_half_pixel) {
                {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
 }
 
+TEST(XnnpackEP, Testunpool_stride) {
+  const std::vector<int64_t> input_shape = {3, 3, 3, 3};
+
+  auto modelCreater = [input_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape,
+                                               std::numeric_limits<float>::min(),
+                                               std::numeric_limits<float>::max());
+    auto* index_arg = builder.MakeInput<int64_t>(input_shape,
+                                                 0,
+                                                 input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3] * 3);
+    auto* output_arg = builder.MakeOutput();
+
+    // add SoftMax
+    Node& maxunpool_node = builder.AddNode("MaxUnpool", {input_arg, index_arg}, {output_arg});
+    maxunpool_node.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+    maxunpool_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  };
+  RunModelTest(modelCreater,
+               "xnnpack_test_graph_maxunpool",
+               {ExpectedEPNodeAssignment::Some});
+}
+
+TEST(XnnpackEP, Testunpool_pad) {
+  const std::vector<int64_t> input_shape = {3, 3, 3, 3};
+
+  auto modelCreater = [input_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape,
+                                               std::numeric_limits<float>::min(),
+                                               std::numeric_limits<float>::max());
+    auto* index_arg = builder.MakeInput<int64_t>(input_shape,
+                                                 0,
+                                                 input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3] * 3);
+    auto* output_arg = builder.MakeOutput();
+
+    // add SoftMax
+    Node& maxunpool_node = builder.AddNode("MaxUnpool", {input_arg, index_arg}, {output_arg});
+    maxunpool_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    maxunpool_node.AddAttribute("strides", std::vector<int64_t>{3, 3});
+    maxunpool_node.AddAttribute("pads", std::vector<int64_t>{1, 2, 1, 2});
+  };
+  RunModelTest(modelCreater,
+               "xnnpack_test_graph_maxunpool",
+               {ExpectedEPNodeAssignment::Some});
+}
+
+TEST(XnnpackEP, Testunpool_output_shape) {
+  const std::vector<int64_t> input_shape = {3, 2, 3, 3};
+
+  auto modelCreater = [input_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape,
+                                               std::numeric_limits<float>::min(),
+                                               std::numeric_limits<float>::max());
+    auto* index_arg = builder.MakeInput<int64_t>(input_shape,
+                                                 0,
+                                                 input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3] * 4);
+    auto output_shape = input_shape;
+    output_shape[2] = output_shape[3] = 7;
+    auto* ouputshape_arg = builder.MakeInitializer<int64_t>(std::vector<int64_t>{4}, output_shape);
+    auto* output_arg = builder.MakeOutput();
+
+    // add SoftMax
+    Node& maxunpool_node = builder.AddNode("MaxUnpool", {input_arg, index_arg, ouputshape_arg}, {output_arg});
+    maxunpool_node.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+    maxunpool_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  };
+  RunModelTest(modelCreater,
+               "xnnpack_test_graph_maxunpool",
+               {ExpectedEPNodeAssignment::Some});
+}
 #endif
 
 }  // namespace test

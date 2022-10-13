@@ -33,6 +33,7 @@ class MaxUnpool : public XnnpackKernel {
   XnnpackOperator op0_ = nullptr;
   std::optional<std::pair<float, float>> clip_min_max_;
   OpComputeType op_type_ = OpComputeType::op_compute_type_invalid;
+  int64_t is_indice_produced_by_xnnpack_ = 0;
 };
 
 }  // namespace xnnpack

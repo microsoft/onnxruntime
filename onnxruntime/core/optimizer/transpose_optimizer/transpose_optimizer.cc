@@ -2040,8 +2040,7 @@ const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
       "AveragePool", "GlobalAveragePool", "MaxPool",
       "GlobalMaxPool", "LRN", "GridSample",
       "DepthToSpace", "SpaceToDepth", "ConvTranspose",
-      //"MaxUnpool"
-  };
+      "MaxUnpool"};
 
   return layout_sensitive_ops;
 }
