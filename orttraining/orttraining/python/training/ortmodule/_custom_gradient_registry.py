@@ -222,3 +222,16 @@ def numpy_T_gradient():
             {"operator": {"value": "numpy_T", "dtype": "string"}},
         ),
     ]
+
+
+@register_gradient("org.pytorch.aten", "ATen", "native_group_norm", "")
+def native_group_norm_gradient():
+    return [
+        ("Constant", [], ["Const_0"], {"value": {"value": [True, True, True], "dtype": "bool", "is_tensor": True}}),
+        (
+            ("ATen", "org.pytorch.aten"),
+            ["GO(0)", "I(0)", "O(1)", "O(2)", "I(1)", "I(3)", "I(4)", "I(5)", "I(6)", "Const_0"],
+            ["GI(0)", "GI(1)", "GI(2)"],
+            {"operator": {"value": "native_group_norm_backward", "dtype": "string"}},
+        ),
+    ]
