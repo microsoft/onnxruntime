@@ -2,7 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# This file is used by Linux Multi GPU TensorRT CI Pipeline,Linux Nuphar CI Pipeline,Linux OpenVINO CI Pipeline,orttraining-linux-gpu-ci-pipeline
+# This file is used by Linux Multi GPU TensorRT CI Pipeline,Linux OpenVINO CI Pipeline,orttraining-linux-gpu-ci-pipeline
 #This file is only for Linux pipelines that build on ubuntu. All the docker images here are based on ubuntu.
 #Please don't put CentOS or manylinux2014 related stuffs here.
 set -e -o -x

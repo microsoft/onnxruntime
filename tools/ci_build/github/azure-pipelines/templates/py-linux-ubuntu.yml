@@ -1,0 +1,69 @@
+parameters:
+- name: arch
+  type: string
+
+- name: machine_pool
+  type: string
+  
+- name: base_image
+  type: string
+
+jobs:
+- job: Linux_Ubuntu_CPU_py_Wheels_${{ parameters.arch }}
+  timeoutInMinutes: 240
+  workspace:
+    clean: all
+  pool: ${{ parameters.machine_pool }}
+  variables:
+    # The build machine pool doesn't have dotnet, so it can't run CG.
+    skipComponentGovernanceDetection: true
+  steps:
+    - checkout: self
+      clean: true
+      submodules: recursive
+
+    - template: set-nightly-build-option-variable-step.yml
+
+    - template: get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux_2_27_cpu
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{ parameters.base_image }} --build-arg PLATFORM=${{ parameters.arch }}"
+        Repository: onnxruntimecpubuildubuntu20python${{ parameters.arch }}
+
+    - task: CmdLine@2
+      displayName: 'Build Python Wheel'
+      inputs:
+        script: |
+            set -e -x
+            mkdir -p $HOME/.onnx
+            docker run --rm \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -w /onnxruntime_src \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              onnxruntimecpubuildubuntu20python${{ parameters.arch }} tools/ci_build/github/linux/build_linux_arm64_python_package.sh
+            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11 $(Build.BinariesDirectory)/Release/models $(Build.BinariesDirectory)/Release/_deps $(Build.BinariesDirectory)/Release/CMakeFiles
+            cd $(Build.BinariesDirectory)/Release
+            find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        PathtoPublish: '$(Build.BinariesDirectory)/dist'
+        ArtifactName: onnxruntime
+
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Test Binaries'
+      inputs:
+        artifactName: 'drop-ubuntu-cpu-${{ parameters.arch }}'
+        targetPath: '$(Build.BinariesDirectory)/Release'
+
+
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()

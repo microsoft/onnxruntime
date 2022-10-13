@@ -33,52 +33,61 @@ using namespace onnxruntime::internal_testing_ep;
 #if !defined(ORT_MINIMAL_BUILD)
 
 #define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
+
+auto RunTest(const std::string& op, const ORTCHAR_T* model_path) {
+  SessionOptions so;
+  auto session = std::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
+
+  const std::unordered_set<std::string> supported_ops{op};
+
+  ASSERT_STATUS_OK(session->RegisterExecutionProvider(
+      std::make_unique<InternalTestingExecutionProvider>(supported_ops)));
+
+  ASSERT_STATUS_OK(session->Load(model_path));
+  const auto& graph = session->GetGraph();
+  GraphViewer viewer{graph};
+
+  ASSERT_STATUS_OK(session->Initialize());
+
+  auto& func_mgr = const_cast<SessionState&>(session->GetSessionState()).GetMutableFuncMgr();
+  const NodeComputeInfo* compute_func = nullptr;
+
+  int num_partitions{0}, num_other_nodes{0};
+
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
+        << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
+    if (node.GetExecutionProviderType() == utils::kInternalTestingExecutionProvider) {
+      EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
+      EXPECT_NE(compute_func, nullptr);
+      ++num_partitions;
+    } else {
+      ++num_other_nodes;
+    }
+  }
+
+  ASSERT_EQ(num_partitions, 1) << "Partition aware topological sort should have resulted in a single partition."
+                               << " Op=" << op << " Partitions=" << num_partitions
+                               << " OtherNodes=" << num_other_nodes;
+};
+
 // model has an unsupported node between the supported nodes after the initial topo sort.
 // the partition aware topo sort should result in the unsupported node moving to earlier in the order,
 // and allow a single partition of supported nodes to be created.
 TEST(InternalTestingEP, TestSortResultsInSinglePartition) {
-  auto run_test = [](const std::string& op) {
-    SessionOptions so;
-    auto session = std::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
-
-    const std::unordered_set<std::string> supported_ops{op};
-
-    ASSERT_STATUS_OK(session->RegisterExecutionProvider(
-        std::make_unique<InternalTestingExecutionProvider>(supported_ops)));
-
-    const ORTCHAR_T* model_path = ORT_MODEL_FOLDER "ep_partitioning_test_1.onnx";
-    ASSERT_STATUS_OK(session->Load(model_path));
-    const auto& graph = session->GetGraph();
-    GraphViewer viewer{graph};
-
-    ASSERT_STATUS_OK(session->Initialize());
-
-    auto& func_mgr = const_cast<SessionState&>(session->GetSessionState()).GetMutableFuncMgr();
-    const NodeComputeInfo* compute_func = nullptr;
-
-    int num_partitions{0}, num_other_nodes{0};
-
-    for (const auto& node : graph.Nodes()) {
-      EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
-          << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
-      if (node.GetExecutionProviderType() == utils::kInternalTestingExecutionProvider) {
-        EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
-        EXPECT_NE(compute_func, nullptr);
-        ++num_partitions;
-      } else {
-        ++num_other_nodes;
-      }
-    }
-
-    ASSERT_EQ(num_partitions, 1) << "Partition aware topological sort should have resulted in a single partition."
-                                 << " Op=" << op << " Partitions=" << num_partitions
-                                 << " OtherNodes=" << num_other_nodes;
-  };
-
   // see testdata/ep_partitioning_tests.py for model description
   // There should be only one partition, regardless of whether Add or Sub is supported by the EP.
-  run_test("Add");
-  run_test("Sub");
+  const ORTCHAR_T* model_path = ORT_TSTR("testdata/ep_partitioning_test_1.onnx");
+  RunTest("Add", model_path);
+  RunTest("Sub", model_path);
+}
+
+// mode has Resize op with optional input roi which is just a placeholder.
+// partition funtion should skip the placeholder inputs.
+TEST(InternalTestingEP, TestResizeWithOptionalInput) {
+  // Resize op has optional input roi which is just a placeholder
+  const ORTCHAR_T* model_path = ORT_TSTR("testdata/model_resize_empty_optional_input.onnx");
+  RunTest("Resize", model_path);
 }
 
 // Test that when doing the partition aware sort and selecting groups that input dependencies are correctly handled

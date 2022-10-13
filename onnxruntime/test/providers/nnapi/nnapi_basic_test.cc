@@ -4,7 +4,6 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #include "core/common/logging/logging.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
-#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
@@ -34,10 +33,10 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 namespace test {
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 namespace {
-void TestModelLoad(const ORTCHAR_T* model_file_name, const std::function<void(const Graph&)>& check_graph) {
+[[maybe_unused]] void TestModelLoad(const ORTCHAR_T* model_file_name, const std::function<void(const Graph&)>& check_graph) {
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
@@ -46,6 +45,10 @@ void TestModelLoad(const ORTCHAR_T* model_file_name, const std::function<void(co
   check_graph(session_object.GetGraph());
 }
 }  // namespace
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 // Since NNAPI EP handles Reshape and Flatten differently,
 // Please see ReshapeOpBuilder::CanSkipReshape in
@@ -77,6 +80,30 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   TestModelLoad(model_file_name,
                 [](const Graph& graph) { ASSERT_GT(CountAssignedNodes(graph, kNnapiExecutionProvider), 0)
                                              << "Some nodes should have been taken by the NNAPI EP"; });
+#endif
+}
+
+TEST(NnapiExecutionProviderTest, SigmoidSupportedInputRankTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/nnapi_sigmoid_input_rank_test.onnx");
+
+#if defined(__ANDROID__)
+  std::vector<int64_t> dims_mul_x = {2, 1, 2, 1, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
+
+  OrtValue ml_value_x;
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                       &ml_value_x);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.SigmoidSupportedInputRankTest",
+                            std::make_unique<NnapiExecutionProvider>(0),
+                            feeds, {ExpectedEPNodeAssignment::None} /* params */);
+#else
+  // test load only
+  TestModelLoad(model_file_name,
+                [](const Graph& graph) { ASSERT_EQ(CountAssignedNodes(graph, kNnapiExecutionProvider), 0)
+                                             << "No nodes should have been taken by the NNAPI EP"; });
 #endif
 }
 
@@ -134,20 +161,6 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
                                              << "Some nodes should have been taken by the NNAPI EP"; });
 #endif
 }
-
-#if defined(__ANDROID__)
-// This is to verify the op_builders and op_support_checkers are consistent
-TEST(NnapiExecutionProviderTest, CreateOpBuilderAndOpSupportCheckerTest) {
-  const auto& op_builders = nnapi::GetOpBuilders();
-  const auto& op_support_checkers = nnapi::GetOpSupportCheckers();
-  for (auto entry : op_builders) {
-    ASSERT_TRUE(op_support_checkers.find(entry.first) != op_support_checkers.cend());
-  }
-  for (auto entry : op_support_checkers) {
-    ASSERT_TRUE(op_builders.find(entry.first) != op_builders.cend());
-  }
-}
-#endif  // #if defined(__ANDROID__)
 
 TEST(NnapiExecutionProviderTest, FunctionTest) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("nnapi_execution_provider_test_graph.onnx");
@@ -484,7 +497,7 @@ TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
 
 TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   // mnist model that has only had basic optimizations applied. nnapi should be able to take at least some of the nodes
-  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.basic.ort");
 
 // The execution can only be performed on Android
 #if defined(__ANDROID__)
@@ -514,7 +527,7 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
 // test that NNAPI EP can process an activation node that is outside of its partition
 TEST(NnapiExecutionProviderTest, ActivationOutsideOfPartition) {
   // model starts with Conv -> Relu
-  constexpr auto* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
+  constexpr auto* model_file_name = ORT_TSTR("testdata/mnist.basic.ort");
   // stop NNAPI partitioning at Relu so NNAPI EP only takes first Conv
   const auto nnapi_partitioning_stop_ops = "Relu";
   SessionOptions so;

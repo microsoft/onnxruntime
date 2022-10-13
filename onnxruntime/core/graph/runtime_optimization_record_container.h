@@ -12,10 +12,6 @@
 #include "core/common/common.h"
 #include "core/graph/runtime_optimization_record.h"
 
-#if !defined(ORT_MINIMAL_BUILD)
-#define ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
 namespace flatbuffers {
 class FlatBufferBuilder;
 template <typename T>
@@ -34,13 +30,15 @@ class RuntimeOptimizationRecordContainer {
  public:
   bool IsEmpty() const { return optimizer_name_to_records_.empty(); }
 
-#if defined(ORT_ENABLE_ADDING_RUNTIME_OPTIMIZATION_RECORDS)
+#if !defined(ORT_MINIMAL_BUILD)
+
   bool RecordExists(const std::string& optimizer_name,
                     const std::string& action_id,
                     const NodesToOptimizeIndices& nodes_to_optimize_indices) const;
 
   void AddRecord(const std::string& optimizer_name, RuntimeOptimizationRecord&& runtime_optimization_record);
-#endif
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   std::vector<RuntimeOptimizationRecord> RemoveRecordsForOptimizer(const std::string& optimizer_name);
 

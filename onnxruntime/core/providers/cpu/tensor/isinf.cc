@@ -21,9 +21,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
 
 class IsInf final : public OpKernel {
  public:
-  using DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                   IsInf, Input, 0);
-
   using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                           IsInf, Input, 0);
 
@@ -40,7 +37,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     10,
     KernelDefBuilder()
         .TypeConstraint("T1",
-                        BuildKernelDefConstraintsFromTypeList<IsInf::DataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<IsInf::EnabledDataTypes>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()),
     IsInf);

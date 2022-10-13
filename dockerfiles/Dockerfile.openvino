@@ -3,11 +3,11 @@
 # SPDX-License-Identifier: MIT
 #--------------------------------------------------------------------------
 
-ARG OPENVINO_VERSION=2022.1.0
+ARG OPENVINO_VERSION=2022.2.0
 
 
 # Build stage
-FROM openvino/ubuntu18_runtime:${OPENVINO_VERSION} AS builder
+FROM openvino/ubuntu20_runtime:${OPENVINO_VERSION} AS builder
 
 ENV WORKDIR_PATH=/home/openvino
 WORKDIR $WORKDIR_PATH
@@ -34,12 +34,12 @@ RUN cat /etc/apt/sources.list | sed 's/^# deb-src/deb-src/g' > ./temp; mv temp /
 RUN apt update; apt install dpkg-dev
 RUN mkdir /sources
 WORKDIR /sources
-RUN apt-get source cron iso-codes libapt-inst2.0 lsb-release powermgmt-base python-apt-common python3-apt python3-dbus python3-gi unattended-upgrades libapt-pkg5.0 libhogweed4 libnettle6
+RUN apt-get source cron iso-codes lsb-release powermgmt-base python-apt-common python3-apt python3-dbus python3-gi unattended-upgrades libapt-pkg6.0 libhogweed5 libnettle7
 WORKDIR /
 RUN tar cvf GPL_sources.tar.gz /sources
 
 # Deploy stage
-FROM openvino/ubuntu18_runtime:${OPENVINO_VERSION}
+FROM openvino/ubuntu20_runtime:${OPENVINO_VERSION}
 
 ENV DEBIAN_FRONTEND noninteractive
 USER root

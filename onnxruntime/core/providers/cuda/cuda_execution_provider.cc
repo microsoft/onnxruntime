@@ -344,7 +344,7 @@ void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
   // AllocateBufferOnCPUPinned.
 
   std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
-  void* stream = GetComputeStream();
+  cudaStream_t stream = static_cast<cudaStream_t>(GetComputeStream());
   auto it = deferred_release_buffer_pool_.find(stream);
   if (it != deferred_release_buffer_pool_.end()) {
     it->second.push_back(p);
@@ -368,23 +368,21 @@ struct CpuBuffersInfo {
   // CUDA stream. For example, this fields
   // should contain all values in
   // deferred_release_buffer_pool_[my_stream]
-  // when release my_stream's buffers.
-  void** buffers;
-  // CPU buffer buffers[i].
-  // Number of buffer points in "buffers".
-  size_t n_buffers;
+  // when release my_stream's (type: cudaStream_t)
+  // buffers.
+  std::vector<void*> buffers;
 };
 
 static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
-  auto info = reinterpret_cast<CpuBuffersInfo*>(raw_info);
-  // Uncomment the following line to check if all previous stream
-  // operations are done correctly.
-  // checkCudaErrors(tmp->status);
-  for (size_t i = 0; i < info->n_buffers; ++i) {
-    info->allocator->Free(info->buffers[i]);
+  // The passed-in raw_info is a unmanaged pointer from
+  // std::unique_ptr<CpuBuffersInfo>.release().
+  // We rewrap raw_info as std::unique_ptr<CpuBuffersInfo> so that
+  // it will be cleaned up automatically at the end of this function.
+  std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
+  cpu_buffers_info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
+  for (auto ptr : cpu_buffers_info->buffers) {
+    cpu_buffers_info->allocator->Free(ptr);
   }
-  delete[] info->buffers;
-  delete info;
 }
 
 Status CUDAExecutionProvider::EnqueueDeferredRelease() {
@@ -399,20 +397,29 @@ Status CUDAExecutionProvider::EnqueueDeferredRelease() {
     // This iteration enqueues a callback to release all buffers
     // in it->second on it->first.
 
-    auto stream = static_cast<cudaStream_t>(it->first);
+    auto stream = it->first;
     auto& buffers = it->second;
-    // Allocate a heap object to extend the lifetime of allocator and buffer pointers
-    // until the end of callback (aka ReleaseCpuBufferCallback).
-    auto cpu_buffers_info = new CpuBuffersInfo;
+    // Allocate a heap object to extend the lifetime of allocator and buffer pointers.
+    std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
     // This allocator must be the same to the allocator
     // used in AllocateBufferOnCPUPinned.
     cpu_buffers_info->allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-    cpu_buffers_info->buffers = new void*[buffers.size()];
-    for (size_t i = 0; i < buffers.size(); ++i) {
-      cpu_buffers_info->buffers[i] = buffers.at(i);
+    cpu_buffers_info->buffers = buffers;
+    // Release the ownership of cpu_buffers_info so that the underlying
+    // object will keep alive until the end of ReleaseCpuBufferCallback.
+    if (cpu_buffers_info->allocator->Info().alloc_type == OrtArenaAllocator) {
+      // Release memory asynchronously to avoid blocking the compute stream.
+      CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release()));
+    } else {
+      // Per
+      // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#implicit-synchronization
+      // cudaHostFree doesn't block stream, so a synchronitation is needed to make sure no kernels
+      // are using the host memory.
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+      // cudaFreeHost and all other CUDA APIs cannot be called by cudaLaunchHostFunc per spec.
+      // So we just do synchrous release.
+      ReleaseCpuBufferCallback(cpu_buffers_info.release());
     }
-    cpu_buffers_info->n_buffers = buffers.size();
-    CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info));
   }
   // All buffers are scheduled for release.
   // Let's clear releated information so that
@@ -1363,6 +1370,12 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 16, double, LessOrEqual);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 16, MLFloat16, LessOrEqual);
 
+// Opset 17
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, float, LayerNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, double, LayerNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, BFloat16, LayerNormalization);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, MLFloat16, LayerNormalization);
+
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
   return {};
@@ -2237,6 +2250,11 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 16, double, LessOrEqual)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 16, MLFloat16, LessOrEqual)>,
 
+      // Opset 17
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, float, LayerNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, double, LayerNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, BFloat16, LayerNormalization)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 17, MLFloat16, LayerNormalization)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -2405,7 +2423,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransf
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                     const std::vector<const KernelRegistry*>& kernel_registries) const {
+                                     const IKernelLookup& kernel_lookup) const {
   InlinedVector<NodeIndex> candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
@@ -2413,19 +2431,11 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       continue;
 
     const auto& node = *p_node;
-    const KernelCreateInfo* cuda_kernel_def = nullptr;
     if (!node.GetExecutionProviderType().empty()) {
       continue;
     }
 
-    for (auto registry : kernel_registries) {
-      auto st = registry->TryFindKernel(node, Type(), &cuda_kernel_def);
-
-      // at least one registry has a CUDA kernel for this node
-      if (st.IsOK())
-        break;
-    }
-
+    const KernelCreateInfo* cuda_kernel_def = kernel_lookup.LookUpKernel(node);
     // none of the provided registries has a CUDA kernel for this node
     if (cuda_kernel_def == nullptr) {
       LOGS_DEFAULT(INFO) << "CUDA kernel not found in registries for Op type: " << node.OpType() << " node name: " << node.Name();
@@ -2467,7 +2477,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // For CUDA EP, exclude the subgraph that is preferred to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
-  auto cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
+  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, candidates);
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)

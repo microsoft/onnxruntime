@@ -55,6 +55,6 @@ public:
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(MeanVarianceNormalization, DmlOperatorMeanVarNormalization);
-DML_OP_DEFINE_CREATION_FUNCTION(FusedMeanVarianceNormalization, DmlOperatorMeanVarNormalization);
+DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedMeanVarianceNormalization, DmlOperatorMeanVarNormalization);
 
 } // namespace Dml

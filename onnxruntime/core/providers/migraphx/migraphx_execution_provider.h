@@ -43,7 +43,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                const std::vector<const KernelRegistry*>& kernel_registries) const override;
+                const IKernelLookup& /*kernel_lookup*/) const override;
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
@@ -62,7 +62,7 @@ private:
   bool fp16_enable_ = false;
   bool dump_model_ops_ = false;
   int device_id_;
-  migraphx::target t_; 
+  migraphx::target t_;
   OrtMutex mgx_mu_;
   hipStream_t stream_ = nullptr;
 

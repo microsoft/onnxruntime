@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import sys
 from itertools import product
 
 import kernel_explorer as ke
@@ -144,9 +145,9 @@ def test_gemm_tunable_bert_cases(dtype, size, transab):
     _test_gemm(getattr(ke, wrapper_name), dtype, *size, *transab)
 
 
-def profile_gemm_func(f, dtype, m, n, k):
-    a_shape = (m, k)
-    b_shape = (k, n)
+def profile_gemm_func(f, transa: bool, transb: bool, dtype: str, m: int, n: int, k: int):
+    a_shape = (k, m) if transa else (m, k)
+    b_shape = (n, k) if transb else (k, n)
 
     np.random.seed(0)
     a = (np.random.rand(*a_shape) * 2 - 1).astype(dtype)
@@ -157,8 +158,8 @@ def profile_gemm_func(f, dtype, m, n, k):
     dev_b = ke.DeviceArray(b)
     dev_c = ke.DeviceArray(my_c)
 
-    opa = ke.blas_op.N
-    opb = ke.blas_op.N
+    opa = ke.blas_op.T if transa else ke.blas_op.N
+    opb = ke.blas_op.T if transb else ke.blas_op.N
     lda = a_shape[1]
     ldb = b_shape[1]
     alpha = 1.0
@@ -166,26 +167,46 @@ def profile_gemm_func(f, dtype, m, n, k):
     my_gemm = f(opa, opb, m, n, k, alpha, dev_a, lda, dev_b, ldb, beta, dev_c, n)
     for impl in my_gemm.ListOps():
         if not my_gemm.SelectOp(impl):
-            print(f"{impl:<50} {dtype} m={m:<4} k={k:<4} n={n:<4}, not supported")
+            print(f"{impl:<50} {transab_to_suffix((transa, transb))} {dtype} m={m:<4} k={k:<4} n={n:<4}, not supported")
+            sys.stdout.flush()
             continue
         time_ms = my_gemm.Profile()
         time_us = time_ms * 1000
         tflops = (m * k * n * 2) / (time_ms * 1e-3) / 1e12
-        print(f"{impl:<50} {dtype} m={m:<4} k={k:<4} n={n:<4}, {time_us:>8.4f} us, {tflops:>5.2f} tflops")
+        print(
+            f"{impl:<50} {transab_to_suffix((transa, transb))} {dtype} m={m:<4} k={k:<4} n={n:<4}, {time_us:>8.4f} us, {tflops:>5.2f} tflops"
+        )
+
+
+def profile_with_args(transa, transb, dtype, m, n, k):
+    dtype_suffix = "_" + dtype_to_suffix(dtype)
+    profile_gemm_func(getattr(ke, "RocblasGemm" + dtype_suffix), transa, transb, dtype, m, n, k)
+    transab_suffix = "_" + transab_to_suffix((transa, transb))
+    profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), transa, transb, dtype, m, n, k)
+    profile_gemm_func(getattr(ke, "GemmTunable" + dtype_suffix + transab_suffix), transa, transb, dtype, m, n, k)
 
 
 def profile():
     for dtype in dtypes:
         for m, n, k in get_bert_sizes(full=True):
-            dtype_suffix = "_" + dtype_to_suffix(dtype)
-            profile_gemm_func(getattr(ke, "RocblasGemm" + dtype_suffix), dtype, m, n, k)
-            transab_suffix = "_" + transab_to_suffix((False, False))
-            profile_gemm_func(getattr(ke, "CKGemm" + dtype_suffix + transab_suffix), dtype, m, n, k)
-            profile_gemm_func(getattr(ke, "GemmTunable" + dtype_suffix + transab_suffix), dtype, m, n, k)
-
+            profile_with_args(False, False, dtype, m, n, k)
             print()
         print()
 
 
 if __name__ == "__main__":
-    profile()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    group = parser.add_argument_group("profile with args")
+    group.add_argument("transa", choices="NT")
+    group.add_argument("transb", choices="NT")
+    group.add_argument("dtype", choices=dtypes)
+    group.add_argument("m", type=int)
+    group.add_argument("n", type=int)
+    group.add_argument("k", type=int)
+    if len(sys.argv) == 1:
+        profile()
+    else:
+        args = parser.parse_args()
+        profile_with_args(args.transa == "T", args.transb == "T", args.dtype, args.m, args.n, args.k)

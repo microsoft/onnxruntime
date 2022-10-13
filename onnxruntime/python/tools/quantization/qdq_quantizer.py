@@ -255,7 +255,7 @@ class QDQQuantizer(ONNXQuantizer):
 
     def _add_qdq_pair_for_initializer(self, weight_proto, tensor_type, axis=None):
         weight_name = weight_proto.name
-        if axis:
+        if axis is not None:
             if self.opset_version < 13:
                 raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(

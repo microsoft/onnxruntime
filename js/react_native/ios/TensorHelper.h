@@ -13,6 +13,7 @@
  * Supported tensor data type
  */
 FOUNDATION_EXPORT NSString* const JsTensorTypeBool;
+FOUNDATION_EXPORT NSString* const JsTensorTypeUnsignedByte;
 FOUNDATION_EXPORT NSString* const JsTensorTypeByte;
 FOUNDATION_EXPORT NSString* const JsTensorTypeShort;
 FOUNDATION_EXPORT NSString* const JsTensorTypeInt;

@@ -888,9 +888,6 @@ namespace Microsoft.ML.OnnxRuntime
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Nuphar(IntPtr /*(OrtSessionOptions*) */ options, int allow_unaligned_buffers, IntPtr /*(char char*)*/ settings);
-
-        [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tvm(IntPtr /*(OrtSessionOptions*) */ options, IntPtr /*(char char*)*/ settings);
 #endif
         /// <summary>

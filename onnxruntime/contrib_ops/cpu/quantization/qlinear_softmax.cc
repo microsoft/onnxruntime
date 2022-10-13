@@ -34,7 +34,7 @@ void QlinearBuildLookupTableUint32(gsl::span<QLinearSoftmax::EXP_OUT_DTYPE> tabl
   bit_shift = std::max(0.0, bit_shift - reserve_bit) / x_scale;
 
   for (int32_t i = 0; i < 256; i++) {
-    double scaled_exp_xi = exp((i - 255 + bit_shift) * static_cast<double>(x_scale));
+    double scaled_exp_xi = exp((static_cast<double>(i) - 255 + bit_shift) * static_cast<double>(x_scale));
     // we can't get the real max value of input tensor here, so we just assume 255-bit_shift.
     // in the function of `QlinearSoftmaxCPU`,
     // all numbers will have a shift (255-bit_shift-max_value) if its max value is not 255
@@ -54,7 +54,7 @@ void BuildLookupTableIfFixed(const OpKernelInfo& info,
   bool get_x_scale = info.TryGetConstantInput(1, &tensor_x_scale);
   ORT_ENFORCE(tensor_x_scale == nullptr || IsScalarOr1ElementVector(tensor_x_scale),
               "QlinearBuildLookupTable : input X_scale must be a scalar or 1D tensor of size 1");
-  bool is_fixed_parameters = get_x_scale;
+  bool is_fixed_parameters = get_x_scale && (tensor_x_scale != nullptr);
 
   if (is_fixed_parameters) {
     fixed_lookup_table.resize(256);
@@ -219,14 +219,14 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
         for (; first < last; first++) {
           // reduceMaxInt8
           int8_t xmax = *std::max_element(x_t, x_t + D);
-          const size_t adjustment = 127 - xmax;
+          const int32_t adjustment = int32_t(127) - xmax;
           const QLinearSoftmax::EXP_OUT_DTYPE* shifted_lookuptable = lookup_table;
           size_t elements_n = D;
           // reduceSumUin8ToUint32: need speedup
           QLinearSoftmax::EXP_OUT_DTYPE vsum = 0;
           const int8_t* x_t_cur = x_t;
           do {
-            const size_t vx = uint8_t(adjustment + (*x_t_cur++));
+            const uint8_t vx = uint8_t(adjustment + (*x_t_cur++));
             vsum += shifted_lookuptable[vx];
           } while (--elements_n != 0);
           if (vsum == 0) {
@@ -236,7 +236,7 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
           x_t_cur = x_t;
           // elementwise div
           do {
-            const size_t vx = uint8_t(adjustment + (*x_t_cur++));
+            const uint8_t vx = uint8_t(adjustment + (*x_t_cur++));
             const QLinearSoftmax::EXP_OUT_DTYPE vt = shifted_lookuptable[vx];
             // simulate round function, and re-quant to Int8
             const int32_t vq = static_cast<int32_t>(std::nearbyintf(((vt * c_y_scale)) / vsum)) + c_y_zp;

@@ -20,7 +20,7 @@ class NhwcTransformer : public GraphTransformer {
   AllocatorPtr cpu_allocator_;
 
  public:
-  explicit NhwcTransformer(AllocatorPtr cpu_allocator) noexcept 
+  explicit NhwcTransformer(AllocatorPtr cpu_allocator) noexcept
     : GraphTransformer("NhwcTransformer"), cpu_allocator_(std::move(cpu_allocator)){};
 
  private:

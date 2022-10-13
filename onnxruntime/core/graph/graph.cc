@@ -171,9 +171,9 @@ static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
 }
 
 static std::string GenerateSchemaKey(const IndexedSubGraph& subgraph_ptr) {
-    return MakeString(subgraph_ptr.GetMetaDef()->domain, "_",
-                      subgraph_ptr.GetMetaDef()->name, "_",
-                      subgraph_ptr.GetMetaDef()->since_version);
+  return MakeString(subgraph_ptr.GetMetaDef()->domain, "_",
+                    subgraph_ptr.GetMetaDef()->name, "_",
+                    subgraph_ptr.GetMetaDef()->since_version);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -756,8 +756,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
   fbs::utils::LoadStringFromOrtFormat(op_type_, fbs_node.op_type());
   node_type_ = static_cast<Node::Type>(fbs_node.type());
   // we skip populating the saved EP here
-  // the node will either be assigned to another EP by the ORT format model-specific graph partitioning or fall back to
-  // the EP encoded in its kernel def hash
+  // the node will be assigned to an EP by the ORT format model-specific graph partitioning
   // fbs::utils::LoadStringFromOrtFormat(execution_provider_type_, fbs_node.execution_provider_type());
   ORT_RETURN_IF_ERROR(LoadNodeArgsFromOrtFormat(fbs_node.inputs(), definitions_.input_defs));
 
@@ -2711,6 +2710,11 @@ Status Graph::Resolve(const ResolveOptions& options) {
 
   // perform the final steps for this graph and all subgraphs
   auto finalize_func = [&options](Graph& graph) {
+            // we don't need the resolve context any more. call Clear first to workaround bug in
+            // MSVC std::unordered_set<std::string_view>.clear() when the underlying string is invalidated.
+            // this can happen to ResolveContext.inputs_and_initializers during CleanUnusedInitializersAndNodeArgs.
+            graph.resolve_context_.Clear();
+
             graph.CleanUnusedInitializersAndNodeArgs(options.initializer_names_to_preserve);
             graph.GraphResolveNeeded(false);
 
@@ -2719,8 +2723,6 @@ Status Graph::Resolve(const ResolveOptions& options) {
             if (options.no_proto_sync_required) {
                 graph.GraphProtoSyncNeeded(false);
             }
-
-            graph.resolve_context_.Clear();
 
             return Status::OK(); };
 
@@ -3831,11 +3833,11 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
                              func_meta_def->domain);
 
   fused_node.SetNodeType(Node::Type::Fused);
+  fused_node.SetSinceVersion(func_meta_def->since_version);
+
 #if !defined(ORT_MINIMAL_BUILD)
   // if this is a full build create the lightweight Function implementation that provides the schema so that
   // kernel lookup works as per usual, if not using an existing schema.
-  // in an extended minimal build we do the lookup via a hash so don't need a schema.
-  fused_node.SetSinceVersion(func_meta_def->since_version);
   if (sub_graph.schema_source == IndexedSubGraph::SourceOfSchema::EXISTING) {
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());

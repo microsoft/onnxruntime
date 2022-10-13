@@ -256,6 +256,10 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
     sub_graph->nodes.push_back(node->Index());
 
     for (const auto* input : node->InputDefs()) {
+      if (!input->Exists()) {
+        // skip the placeholder inputs
+        continue;
+      }
       // if the node input was not produced by this subgraph, add it to the subgraph inputs.
       if (!Contains(node_outputs, input)) {
         if (!Contains(subgraph_inputs, input)) {

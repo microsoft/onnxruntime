@@ -80,7 +80,7 @@ SNPEExecutionProvider::~SNPEExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 SNPEExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                     const std::vector<const KernelRegistry*>& kernel_registries) const {
+                                     const IKernelLookup& kernel_lookup) const {
   std::vector<NodeIndex> candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
@@ -88,24 +88,11 @@ SNPEExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       continue;
 
     const auto& node = *p_node;
-    const KernelCreateInfo* snpe_kernel_def = nullptr;
     if (!node.GetExecutionProviderType().empty()) {
       continue;
     }
 
-    for (auto registry : kernel_registries) {
-#if defined(ORT_MINIMAL_BUILD)
-      auto st = registry->TryFindKernel(node, Type(), uint64_t(0), &snpe_kernel_def);
-#else
-      auto st = registry->TryFindKernel(node, Type(), &snpe_kernel_def);
-#endif
-
-      // at least one registry has a SNPE kernel for this node
-      if (st.IsOK())
-        break;
-    }
-
-    // none of the provided registries has a SNPE kernel for this node
+    const KernelCreateInfo* snpe_kernel_def = kernel_lookup.LookUpKernel(node);
     if (snpe_kernel_def == nullptr) {
       LOGS_DEFAULT(WARNING) << "Snpe kernel not found in registries for Op type: " << node.OpType()
                             << " node name: " << node.Name();

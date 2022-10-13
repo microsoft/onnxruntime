@@ -125,14 +125,6 @@ static bool IsRelevantOutput(const Node* node, const NodeArg* output) {
   return true;
 }
 
-namespace {
-// borrowed from providers/common.h
-template <class AssociativeContainer, class Key>
-inline bool Contains(const AssociativeContainer& container, const Key& key) {
-  return container.find(key) != container.end();
-}
-}  // namespace
-
 // Check whether the given opcode is fp16 allowed for the given level of optimization.
 static bool IsFP16Allow(const std::string& op_type, size_t level, const FP16AllowOps& fp16_allow_level0_ops) {
   // XXX: Shall we add a check for unsupported level or just ignore it as the current code does?

@@ -272,7 +272,7 @@ static std::unique_ptr<onnxruntime::InferenceSession> CreateSession() {
 #ifdef USE_CUDA
   NvtxRange range(__func__);
 #endif
-  // Enviroment shared by all sessions.
+  // Environment shared by all sessions.
   static onnxruntime::Environment& pybind_default_env = onnxruntime::python::GetTrainingORTEnv();
   // All sessions use the same config.
   static onnxruntime::SessionOptions sess_opts;

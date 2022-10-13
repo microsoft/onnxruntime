@@ -40,7 +40,7 @@ parameters:
 
 jobs:
 - template: c-api-linux-cpu.yml
-  parameters:        
+  parameters:
     AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
     BaseImage: 'centos:7'
     OnnxruntimeArch: 'x64'
@@ -50,7 +50,7 @@ jobs:
     PoolName: 'Linux-CPU'
 
 - template: c-api-linux-cpu.yml
-  parameters:        
+  parameters:
     AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
     BaseImage: 'arm64v8/centos:7'
     OnnxruntimeArch: 'aarch64'
@@ -66,7 +66,7 @@ jobs:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
   pool:
     vmImage: 'macOS-11'
-  timeoutInMinutes:  240
+  timeoutInMinutes:  300
   steps:
     - template: set-version-number-variables-step.yml
 
@@ -138,7 +138,7 @@ jobs:
     clean: all
   pool:
     vmImage: 'macOS-11'
-  timeoutInMinutes:  180
+  timeoutInMinutes:  300
   steps:
     - template: set-version-number-variables-step.yml
 
@@ -431,17 +431,17 @@ jobs:
       script: |
         dotnet workload install android ios macos
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
-  
-  - task: PowerShell@2  
+
+  - task: PowerShell@2
     displayName: Build Microsoft.ML.OnnxRuntime .NET 6 targets using dotnet
     inputs:
       targetType: 'inline'
       # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
-      #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\ 
-      # which is inconsistent with the msbuild output path for the pre-.net6 targets 
+      #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
+      # which is inconsistent with the msbuild output path for the pre-.net6 targets
       #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
       # and makes it harder to do the packing
-      # 
+      #
       # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
       script: |
         dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6  -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
@@ -583,7 +583,7 @@ jobs:
      git checkout -- js/**
      git checkout -- .gitattributes
     workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Testing: force EOL to lf on windows for /js/**' 
+    displayName: 'Testing: force EOL to lf on windows for /js/**'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet (Win x64)'
