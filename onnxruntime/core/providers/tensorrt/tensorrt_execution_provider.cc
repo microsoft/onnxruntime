@@ -1817,6 +1817,68 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
         const std::string& input_name = input->getName();
         nvinfer1::Dims dims = input->getDimensions();
         int nb_dims = dims.nbDims;
+
+        int print_input_value_flag = false;
+        if (print_input_value_flag) {
+          std::cout << "(" << input_name << ")" << std::endl;
+          const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
+          auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
+          const auto& tensor_type = ort.GetTensorElementType(tensor_info);
+          const auto& tensor_shapes = ort.GetTensorShape(tensor_info);
+          int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
+
+          std::cout << "shape_size: " << shape_size << std::endl;
+          std::cout << "nb_dims: " << nb_dims << std::endl;
+          std::cout << "tensor shape:" << std::endl;
+          for (auto& index : tensor_shapes) {
+            std::cout << index << std::endl;
+          }
+
+          switch (tensor_type) {
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
+              std::cout << "type is boolean" << std::endl;
+              bool* input = new bool[1];
+              CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input, ort.GetTensorData<bool>(input_tensor), sizeof(bool), cudaMemcpyDeviceToHost, stream));
+              CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+              std::cout << *input << std::endl;
+              break;
+            }
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
+              std::cout << "type is int32" << std::endl;
+              int32_t* input = new int32_t[shape_size];
+              CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input, ort.GetTensorData<int32_t>(input_tensor), shape_size * sizeof(int32_t), cudaMemcpyDeviceToHost, stream));
+              CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+              for (int i = 0; i < shape_size; ++i) {
+                std::cout << input[i] << ", ";
+              }
+              std::cout << " " << std::endl;
+              break;
+            }
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: {
+              std::cout << "type is int64" << std::endl;
+              int64_t* input = new int64_t[shape_size];
+              CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input, ort.GetTensorData<int64_t>(input_tensor), shape_size * sizeof(int64_t), cudaMemcpyDeviceToHost, stream));
+              CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+              for (int i = 0; i < shape_size; ++i) {
+                std::cout << input[i] << ", ";
+              }
+              std::cout << " " << std::endl;
+              break;
+            }
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
+              std::cout << "type is float" << std::endl;
+              float* input = new float[shape_size];
+              CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input, ort.GetTensorData<float>(input_tensor), shape_size * sizeof(float), cudaMemcpyDeviceToHost, stream));
+              CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+              for (int i = 0; i < shape_size; ++i) {
+                std::cout << input[i] << ", ";
+              }
+              std::cout << " " << std::endl;
+              break;
+            }
+          }
+        }
+
         // Check and update shape ranges for dynamic shape inputs
         input_names.insert(input_name);
         if (shape_ranges.find(input_name) != shape_ranges.end()) {
