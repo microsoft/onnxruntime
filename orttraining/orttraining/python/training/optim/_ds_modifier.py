@@ -12,10 +12,10 @@
 
 import types
 import warnings
-from distutils.version import LooseVersion
 
 import torch
 from numpy import inf
+from packaging.version import Version
 
 from ._modifier import FP16OptimizerModifier, check_overflow, check_overflow_for_grads
 from ._multi_tensor_apply import MultiTensorApply
@@ -30,9 +30,13 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
     def can_be_modified(self):
         import deepspeed
 
-        ds_version = LooseVersion(deepspeed.__version__)
-        if ds_version > LooseVersion("0.7.1") or ds_version < LooseVersion("0.4.0"):
-            warnings.warn("Skip modifying optimizer because of unsupported DeepSpeed version.", UserWarning)
+        ds_version = Version(deepspeed.__version__)
+        if ds_version > Version("0.7.3") or ds_version < Version("0.4.0"):
+            warnings.warn(
+                "Skip modifying optimizer because of unsupported DeepSpeed version {}, "
+                "supported version: 0.4.0 - 0.7.3.".format(deepspeed.__version__),
+                UserWarning,
+            )
             return False
 
         return self.check_requirements(
