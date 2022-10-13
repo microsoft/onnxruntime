@@ -241,6 +241,13 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
 
   cublasLtMatrixLayout_t A_desc = NULL, B_desc = NULL, C_desc = NULL;
   cublasLtMatmulDesc_t operation_desc = NULL;
+  cublasLtMatmulPreference_t preference = nullptr;
+
+
+    cublasLtMatmulPreferenceCreate(&preference);
+    cublasLtMatmulPreferenceSetAttribute(
+                            preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
+                            &workspace_size, sizeof(workspace_size));
 
   auto clean_desc_A = gsl::finally([&A_desc]() {
     if (A_desc) {
@@ -265,6 +272,12 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
       cublasLtMatmulDescDestroy(operation_desc);
     }
   });
+
+  auto clean_preference_desc = gsl::finally([&preference]() {
+    if (preference) {
+      cublasLtMatmulPreferenceDestroy(preference)
+    }
+  });  
 
   if (Status::OK() != InitializeCublasLtMatmulDescAndOperationHelper(A_desc, lda,
                                                                      transa,
@@ -306,6 +319,14 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                                      &bias, sizeof(bias)));
   }
 
+    int returnedResults = 0;
+    cublasLtMatmulHeuristicResult_t heuristicResult = {};
+    cublasLtMatmulAlgoGetHeuristic(handle, operation_desc, A_desc, B_desc, C_desc,
+                                                     C_desc, preference, 1, &heuristicResult,
+                                                     &returnedResults);
+
+    if (returnedResults == 0) throw std::runtime_error("Unable to find any suitable algorithms");
+
   // TODO (hasesh): Allow CublasLtMatmul tuning for clients by allowing them to pass in the
   // workspace and algo of their choice.
   // According to the cublasLtMatmul documentation, passing in NULL for the algo means that
@@ -319,7 +340,7 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
       is_compute_16f ? reinterpret_cast<const void*>(beta) : reinterpret_cast<const void*>(&f_beta),
       C, C_desc,
       C, C_desc,
-      /*algo*/ NULL,
+      &heuristicResult.algo,
       workspace_memory, workspace_size,
       stream);
 }
