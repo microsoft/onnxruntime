@@ -2794,9 +2794,13 @@ def main():
         run_csharp_tests(source_dir, build_dir, args.use_cuda, args.use_openvino, args.use_tensorrt, args.use_dnnl)
 
     if args.gen_doc:
-        # assumes build has occurred for easier use in CI where we don't always build via build.py and need to run
-        # documentation generation as a separate task post-build
-        generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
+        # special case CI where we create the build config separately to building
+        if args.update and not args.build:
+            pass
+        else:
+            # assumes build has occurred for easier use in CI where we don't always build via build.py and need to run
+            # documentation generation as a separate task post-build
+            generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
 
     if args.gen_api_doc and (args.build or args.test):
         print("Generating Python doc for ORTModule...")
