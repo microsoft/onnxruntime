@@ -45,10 +45,15 @@ parameters:
 - name: MachinePool
   type: string
 
-- name: DocUpdateNeeded
-  displayName: Run Tests?
+- name: GenerateDocumentation
+  displayName: Generate updated documentation. Requires build to have occurred and `--gen_doc` to be specifi
   type: boolean
-  default: false
+  default: true
+
+# - name: DocUpdateNeeded
+#   displayName: Set internally by build.py if GenerateDocumentation=true and there are diffs.
+#   type: boolean
+#   default: false
 
 jobs:
 - job: build_${{ parameters.job_name_suffix }}
@@ -58,7 +63,7 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-    DocUpdateNeeded: ${{ parameters.DocUpdateNeeded }}
+    DocUpdateNeeded: false # ${{ parameters.DocUpdateNeeded }}
     skipComponentGovernanceDetection: true
   workspace:
     clean: all
@@ -119,7 +124,7 @@ jobs:
 
       - ${{ if eq(parameters.isTraining, true) }}:
           - script: |
-             python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\ortmodule\stage1\requirements_torch1.11.0_cu11.3\requirements.txt
+             python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\ortmodule\stage1\requirements_torch1.11.0_cu11.6\requirements.txt
              python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\requirements.txt
             workingDirectory: '$(Build.BinariesDirectory)'
             displayName: 'Install python modules'
@@ -266,7 +271,15 @@ jobs:
           testRunTitle: 'Unit Test Run'
         condition: succeededOrFailed()
 
-  # if the validation from --gen_doc failed it sets a variable so we can publish the latest version of the docs
+  - ${{ if eq(parameters.GenerateDocumentation, true) }}:
+    - task: PythonScript@0
+      displayName: 'Generate documentation'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+  # if the validation from --gen_doc failed it sets DocUpdateNeeded so we can publish the latest version of the docs
   # as an artifact, allowing a developer to download this and replace the current version instead of having to build
   # and generate the docs locally themselves. handle each of the two md files separately - simpler than copying
   # them to another location and publishing from there in a single task.

@@ -2371,7 +2371,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                     )
                     log.debug("diff:\n" + str(diff))
 
-            diff_file(opkernel_doc_path, " with CPU and CUDA execution providers enabled")
+            diff_file(opkernel_doc_path, " with CPU, CUDA and DML execution providers enabled")
             diff_file(contrib_op_doc_path)
 
             if have_diff:
@@ -2392,7 +2392,7 @@ def main():
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
-    if not (args.update or args.clean or args.build or args.test):
+    if not (args.update or args.clean or args.build or args.test or args.gen_doc):
         log.debug("Defaulting to running update, build [and test for native builds].")
         args.update = True
         args.build = True
@@ -2793,7 +2793,9 @@ def main():
     if args.test and args.build_nuget:
         run_csharp_tests(source_dir, build_dir, args.use_cuda, args.use_openvino, args.use_tensorrt, args.use_dnnl)
 
-    if args.gen_doc and (args.build or args.test):
+    if args.gen_doc:
+        # assumes build has occurred for easier use in CI where we don't always build via build.py and need to run
+        # documentation generation as a separate task post-build
         generate_documentation(source_dir, build_dir, configs, args.gen_doc == "validate")
 
     if args.gen_api_doc and (args.build or args.test):
