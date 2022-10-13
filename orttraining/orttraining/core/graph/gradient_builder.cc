@@ -76,10 +76,21 @@ IMPLEMENT_GRADIENT_BUILDER(GetCastGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetSinGradient) {
-  return std::vector<NodeDef>{
-      NodeDef("SinGrad",
-              {GO(0), I(0)},
-              {GI(0)})};
+  std::vector<NodeDef> result;
+  result.push_back(NodeDef("Cos", {I(0)}, {IA("Cos_O0")}));
+  result.push_back(NodeDef("Mul", {GO(0), IA("Cos_O0")}, {GI(0)}));
+  return result;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetCosGradient) {
+  std::vector<NodeDef> result;
+  NodeDef zero_constant_node = ZeroConstantNode(IElemType(0));
+  ArgDef zero = zero_constant_node.output_args[0];
+  result.push_back(zero_constant_node);
+  result.push_back(NodeDef("Sin", {I(0)}, {IA("Sin_O0")}));
+  result.push_back(NodeDef("Sub", {zero, IA("Sin_O0")}, {IA("NegSin_O0")}));
+  result.push_back(NodeDef("Mul", {GO(0), IA("NegSin_O0")}, {GI(0)}));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetLogGradient) {
