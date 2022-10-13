@@ -169,6 +169,7 @@ def test_training_module_checkpoint():
         # TODO : Load checkpoint to a zeroed model and assert parameters are different.
         assert os.path.exists(checkpoint_save_path)
 
+
 def test_copy_buffer_to_parameters():
     # Initialize Models
     simple_model, onnx_model, optimizer_model, _, _ = _create_training_models()
