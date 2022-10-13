@@ -168,13 +168,13 @@ template <typename T>
 class UniDirectionalGru {
  public:
   UniDirectionalGru(AllocatorPtr allocator, int seq_length, int batch_size, int input_size, int hidden_size,
-                    bool linear_before_reset, Direction direction, const gsl::span<const T>& bias,
-                    const gsl::span<const T>& initial_hidden_state, const ActivationFuncs::Entry& activation_func_f,
+                    bool linear_before_reset, Direction direction, gsl::span<const T> bias,
+                    gsl::span<const T> initial_hidden_state, const ActivationFuncs::Entry& activation_func_f,
                     const ActivationFuncs::Entry& activation_func_g, float clip,
                     onnxruntime::concurrency::ThreadPool* ttp);
 
-  void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
-               const gsl::span<const T>& input_weights, const gsl::span<const T>& recurrent_weights,
+  void Compute(gsl::span<const T> inputs, gsl::span<const int> sequence_lengths, int num_directions,
+               gsl::span<const T> input_weights, gsl::span<const T> recurrent_weights,
                gsl::span<T>& outputs, gsl::span<T>& final_hidden_state);
 
   ~UniDirectionalGru() = default;
@@ -284,6 +284,10 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
   int seq_length = narrow<int>(X_shape[0]);
   int batch_size = narrow<int>(X_shape[1]);
   int input_size = narrow<int>(X_shape[2]);
+
+#ifdef _DEBUG
+  std::cout << "GRU: seq_len: " << seq_length << " batch_size: " << batch_size << " input_size: " << input_size << std::endl;
+#endif
 
   auto status = ValidateCommonRnnInputs(X, W.Shape(), R.Shape(), B, 3, sequence_lens, initial_h, num_directions_, hidden_size_);
   ORT_RETURN_IF_ERROR(status);
@@ -415,8 +419,8 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
                                         const int hidden_size,
                                         const bool linear_before_reset,
                                         Direction direction,
-                                        const gsl::span<const T>& bias,
-                                        const gsl::span<const T>& initial_hidden_state,
+                                        gsl::span<const T> bias,
+                                        gsl::span<const T> initial_hidden_state,
                                         const ActivationFuncs::Entry& activation_func_f,
                                         const ActivationFuncs::Entry& activation_func_g,
                                         const float clip, onnxruntime::concurrency::ThreadPool* ttp)
@@ -488,11 +492,11 @@ UniDirectionalGru<T>::UniDirectionalGru(AllocatorPtr allocator,
 }
 
 template <typename T>
-void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
-                                   const gsl::span<const int>& sequence_lengths_arg,
+void UniDirectionalGru<T>::Compute(gsl::span<const T> inputs_arg,
+                                   gsl::span<const int> sequence_lengths_arg,
                                    const int num_directions,
-                                   const gsl::span<const T>& input_weights,
-                                   const gsl::span<const T>& recurrent_weights,
+                                   gsl::span<const T> input_weights,
+                                   gsl::span<const T> recurrent_weights,
                                    gsl::span<T>& outputs,
                                    gsl::span<T>& final_hidden_state) {
   using span_T_const_iter = typename gsl::span<const T>::iterator;
