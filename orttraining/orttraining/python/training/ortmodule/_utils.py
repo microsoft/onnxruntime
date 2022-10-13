@@ -63,11 +63,11 @@ def _ortvalue_from_torch_tensor(torch_tensor):
     return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
 
 
-def _ortvalues_to_torch_tensor(ortvalues, device):
+def _ortvalues_to_torch_tensor(ortvalues, device=None):
     if len(ortvalues) == 0:
         return tuple()
 
-    if "ort" == device.type:
+    if device and "ort" == device.type:
         if not hasattr(C, "to_aten_ort_device_tensor"):
             raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
         return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
