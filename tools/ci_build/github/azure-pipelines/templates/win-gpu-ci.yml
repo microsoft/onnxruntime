@@ -111,7 +111,7 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
-  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
+  - ${{ if or(eq(parameters.RunOnnxRuntimeTests, true), eq(parameters.GenerateDocumentation, true)) }}:
       - powershell: |
          $Env:USE_MSVC_STATIC_RUNTIME=1
          $Env:ONNX_ML=1
