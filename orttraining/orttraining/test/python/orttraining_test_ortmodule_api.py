@@ -1318,6 +1318,7 @@ def test_gradient_correctness_reducesum(dim, keepdim):
         loss.backward()
         return prediction
 
+    torch.manual_seed(2333)
     for _ in range(10):
         pt_input = torch.rand((N, D, H), device=device, requires_grad=True)
         ort_input = copy.deepcopy(pt_input)
