@@ -192,6 +192,20 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact(DisplayName = "TestInitOrtEnv")]
+        public void TestInitOrtEnv()
+        {
+            var ortEnvInstance = OrtEnv.Instance();
+            Assert.Equal(LogLevel.Warning, ortEnvInstance.GetCurrentLogLevel());
+        }
+        
+        [Fact(DisplayName = "TestInitOrtEnvWithCustomizedLogLevel")]
+        public void TestInitOrtEnvWithCustomizedLogLevel()
+        {
+            var ortEnvInstance = OrtEnv.Instance(LogLevel.Verbose);
+            Assert.Equal(LogLevel.Verbose, ortEnvInstance.GetCurrentLogLevel());
+        }
+
         [Fact(DisplayName = "EnablingAndDisablingTelemetryEventCollection")]
         public void EnablingAndDisablingTelemetryEventCollection()
         {

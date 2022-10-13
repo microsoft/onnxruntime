@@ -48,16 +48,18 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     public sealed class OrtEnv : SafeHandle
     {
-        private static readonly Lazy<OrtEnv> _instance = new Lazy<OrtEnv>(()=> new OrtEnv());
+        private static Lazy<OrtEnv> _instance = null;
+        private LogLevel currentLogLevel;
 
         #region private methods
-        private OrtEnv()  //Problem: it is not possible to pass any option for a Singleton
+        private OrtEnv(LogLevel logLevel)
     : base(IntPtr.Zero, true)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(logLevel, @"CSharpOnnxRuntime", out handle));
             try
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(handle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
+                currentLogLevel = logLevel;
             }
             catch (OnnxRuntimeException)
             {
@@ -85,11 +87,47 @@ namespace Microsoft.ML.OnnxRuntime
         #region public methods
 
         /// <summary>
-        /// Returns an instance of OrtEnv
+        /// Returns an instance of OrtEnv, with customized log level
         /// It returns the same instance on every call - `OrtEnv` is singleton
         /// </summary>
         /// <returns>Returns a singleton instance of OrtEnv that represents native OrtEnv object</returns>
-        public static OrtEnv Instance() { return _instance.Value; }
+        public static OrtEnv Instance(LogLevel logLevel)
+        {
+            if (_instance == null)
+            {
+                if (Enum.IsDefined(typeof(LogLevel), logLevel)) {
+                    _instance = new Lazy<OrtEnv>(() => new OrtEnv(logLevel));
+                }
+                else
+                {
+                    _instance = new Lazy<OrtEnv>(() => new OrtEnv(LogLevel.Warning));
+                }
+            }
+            return _instance.Value; 
+        }
+
+        /// <summary>
+        /// Returns an instance of OrtEnv, with default log level set as warning
+        /// It returns the same instance on every call - `OrtEnv` is singleton
+        /// </summary>
+        /// <returns>Returns a singleton instance of OrtEnv that represents native OrtEnv object</returns>
+        public static OrtEnv Instance() 
+        {
+            if (_instance == null)
+            {
+                _instance = new Lazy<OrtEnv>(() => new OrtEnv(LogLevel.Warning));
+            }
+            return _instance.Value; 
+        }
+
+        /// <summary>
+        /// Get the current log level when initializing OrtEnv instance
+        /// </summary>
+        /// <returns>Returns the log level of OrtEnv instance </returns>
+        public LogLevel GetCurrentLogLevel()
+        {
+            return currentLogLevel;
+        }
 
         /// <summary>
         /// Enable platform telemetry collection where applicable
