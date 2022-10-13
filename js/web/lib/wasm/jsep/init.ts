@@ -1,30 +1,43 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {OrtWasmModule} from './binding/ort-wasm';
+import {OrtWasmModule} from '../binding/ort-wasm';
 
-export const init = (module: OrtWasmModule): void => {
+import {WebGpuBackend} from './backend-webgpu';
+
+export const init = async(module: OrtWasmModule): Promise<void> => {
   // init JSEP if available
   const init = module.jsepInit;
   if (init) {
+    const backend = new WebGpuBackend();
+    await backend.initialize();
+
     init(
-        {},
+        // backend
+        {backend},
+
+        // jsepAlloc()
         (size: number) => {
           // eslint-disable-next-line no-console
           console.log(`jsepAlloc: ${size}`);
-          return 1234;
+          return backend.alloc(size);
         },
+
+        // jsepFree()
         (ptr: number) => {
           // eslint-disable-next-line no-console
           console.log(`jsepFree: ${ptr}`);
-          return 5678;
+          return backend.free(size);
         },
-        (_a: number) => {
+
+        // jsepUpload(src, dst, size)
+        (dataOffset: number, gpuDataId: number, size: number) => {
           // eslint-disable-next-line no-console
           console.log('jsepUpload');
-          return 40;
+          const data = module.HEAPU8.subarray(dataOffset, dataOffset + size);
+          backend.upload(dataOffset, data, gpuDataId);
         },
-        (_a: number) => {
+        (_src: number, _dst: number) => {
           // eslint-disable-next-line no-console
           console.log('jsepDownload');
           return 41;

@@ -454,7 +454,7 @@ function run(config: Test.Config) {
     // STEP 5. use Karma to run test
     npmlog.info('TestRunnerCli.Run', '(5/5) Running karma to start test runner...');
     const karmaCommand = path.join(npmBin, 'karma');
-    const webgpu = args.backends.indexOf('webgpu') > -1;
+    const webgpu = args.backends.indexOf('webgpu') > -1 || args.backends.indexOf('js') > -1;
     const browser = getBrowserNameFromEnv(
         args.env,
         args.bundleMode === 'perf' ? 'perf' :
