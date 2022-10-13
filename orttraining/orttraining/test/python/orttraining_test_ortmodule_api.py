@@ -1338,6 +1338,7 @@ def test_gradient_correctness_reducesum(dim, keepdim):
         loss.backward()
         return prediction
 
+    torch.manual_seed(2333)
     for _ in range(10):
         pt_input = torch.rand((N, D, H), device=device, requires_grad=True)
         ort_input = copy.deepcopy(pt_input)
@@ -1653,6 +1654,41 @@ def test_numpy_T(input_shape):
     ort_prediction = run_step(ort_model, ort_input)
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+
+
+def test_aten_group_norm():
+    class NeuralNetGroupNorm(torch.nn.Module):
+        def __init__(self, num_groups, num_channels):
+            super(NeuralNetGroupNorm, self).__init__()
+            self.group_norm = torch.nn.GroupNorm(
+                num_groups=num_groups, num_channels=num_channels, eps=1e-5, affine=True
+            )
+
+        def forward(self, x, y):
+            return self.group_norm(x + y)
+
+    device = "cuda"
+    pt_model = NeuralNetGroupNorm(3, 6).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, x, y):
+        prediction = model(x, y)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_x = torch.randn([20, 6, 10, 10], dtype=torch.float, device=device, requires_grad=True)
+    pt_y = torch.randn([20, 6, 10, 10], dtype=torch.float, device=device, requires_grad=True)
+    ort_x = copy.deepcopy(pt_x)
+    ort_y = copy.deepcopy(pt_y)
+    pt_prediction = run_step(pt_model, pt_x, pt_y)
+    ort_prediction = run_step(ort_model, ort_x, ort_y)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
+    _test_helpers.assert_values_are_close(ort_y.grad, pt_y.grad)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 
 def test_gradient_correctness_cast_chain():
