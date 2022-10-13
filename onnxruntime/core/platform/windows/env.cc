@@ -90,9 +90,19 @@ class WindowsThread : public EnvThread {
         ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
     } else {
-      hThread.reset(reinterpret_cast<HANDLE>(_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
-                                                            local_param.release(), 0,
-                                                            &threadID)));
+      _set_errno(0);
+      auto th_handle = _beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
+                                      local_param.get(), 0,
+                                      &threadID);
+      if (th_handle == 0) {
+        auto err = errno;
+        auto dos_error = _doserrno;
+        char message_buf[256];
+        strerror_s(message_buf, sizeof(message_buf), err);
+        ORT_THROW("WindowThread:_beginthreadex failed with message: ", message_buf, " doserrno: ", dos_error);
+      }
+      local_param.release();
+      hThread.reset(reinterpret_cast<HANDLE>(th_handle));
     }
   }
 
@@ -222,7 +232,7 @@ class WindowsEnv : public Env {
         ret.push_back(buffer[i].ProcessorMask);
       }
     }
-    if (ret.empty()){
+    if (ret.empty()) {
       return generate_vector_of_n(std::thread::hardware_concurrency());
     }
     return ret;
@@ -363,9 +373,9 @@ class WindowsEnv : public Env {
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
       const auto error_code = GetLastError();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-          "open file ", ToUTF8String(Basename(file_path)),
-          " fail, errcode = ", error_code,
-          " - ", std::system_category().message(error_code));
+                             "open file ", ToUTF8String(Basename(file_path)),
+                             " fail, errcode = ", error_code,
+                             " - ", std::system_category().message(error_code));
     }
 
 #if NTDDI_VERSION >= NTDDI_WIN10_RS5 && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
@@ -391,9 +401,9 @@ class WindowsEnv : public Env {
     if (file_mapping_handle.get() == INVALID_HANDLE_VALUE) {
       const auto error_code = GetLastError();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-          "open file mapping ", ToUTF8String(Basename(file_path)),
-          " fail, errcode = ", error_code,
-          " - ", std::system_category().message(error_code));
+                             "open file mapping ", ToUTF8String(Basename(file_path)),
+                             " fail, errcode = ", error_code,
+                             " - ", std::system_category().message(error_code));
     }
 
     SYSTEM_INFO sysinfo;
@@ -407,11 +417,11 @@ class WindowsEnv : public Env {
     if (mapped_offset % allocation_granularity != 0) {
       const auto error_code = GetLastError();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-          "mapped offset must be a multiple of the allocation granularity",
-          " , mapped_offset = ", mapped_offset,
-          " , allocation_granularity = ", allocation_granularity,
-          " , errcode = ", error_code,
-          " - ", std::system_category().message(error_code));
+                             "mapped offset must be a multiple of the allocation granularity",
+                             " , mapped_offset = ", mapped_offset,
+                             " , allocation_granularity = ", allocation_granularity,
+                             " , errcode = ", error_code,
+                             " - ", std::system_category().message(error_code));
     }
 
     void* const mapped_base = MapViewOfFile(file_mapping_handle.get(),
@@ -650,7 +660,7 @@ class WindowsEnv : public Env {
       static constexpr DWORD bufferLength = 64 * 1024;
       std::wstring s(bufferLength, '\0');
       FormatMessageW(
-              FORMAT_MESSAGE_FROM_SYSTEM |
+          FORMAT_MESSAGE_FROM_SYSTEM |
               FORMAT_MESSAGE_IGNORE_INSERTS,
           NULL,
           error_code,
@@ -682,7 +692,7 @@ class WindowsEnv : public Env {
       static constexpr DWORD bufferLength = 64 * 1024;
       std::wstring s(bufferLength, '\0');
       FormatMessageW(
-              FORMAT_MESSAGE_FROM_SYSTEM |
+          FORMAT_MESSAGE_FROM_SYSTEM |
               FORMAT_MESSAGE_IGNORE_INSERTS,
           NULL,
           error_code,
