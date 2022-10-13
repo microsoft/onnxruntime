@@ -90,6 +90,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Returns an instance of OrtEnv, with customized log level
         /// It returns the same instance on every call - `OrtEnv` is singleton
         /// </summary>
+        /// <param name="logLevel">LogLevel instance to be used for OrtEnv initialization</param>
         /// <returns>Returns a singleton instance of OrtEnv that represents native OrtEnv object</returns>
         public static OrtEnv Instance(LogLevel logLevel)
         {
