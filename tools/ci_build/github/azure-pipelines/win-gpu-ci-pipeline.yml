@@ -88,7 +88,8 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
         buildArch: x64
-        additionalBuildFlags: --skip_tests --enable_pybind --use_dml --use_cuda --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+        # note: need to specify `--gen_doc` when creating the build config so it has to be in additionalBuildFlags
+        additionalBuildFlags: --gen_doc --skip_tests --enable_pybind --use_dml --use_cuda --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
