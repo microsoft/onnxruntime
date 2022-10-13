@@ -612,7 +612,7 @@ if nightly_build:
 
 if local_version:
     version_number = version_number + local_version
-    if enable_rocm_profiling:
+    if is_rocm and enable_rocm_profiling:
         version_number = version_number + ".profiling"
 
 if wheel_name_suffix:

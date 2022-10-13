@@ -159,7 +159,7 @@ jobs:
       ArtifactName: ${{ variables['ArtifactName'] }}
 
   - script: |
-      files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+      files=($(Build.ArtifactStagingDirectory)/${{ parameters.BuildConfig }}/dist/*.whl) && \
       echo ${files[0]} && \
       python3 tools/ci_build/upload_python_package_to_azure_storage.py \
           --python_wheel_path ${files[0]} \
