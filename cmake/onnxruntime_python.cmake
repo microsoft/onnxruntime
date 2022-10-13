@@ -199,7 +199,6 @@ endif()
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
-    ${PROVIDERS_NUPHAR}
     ${PROVIDERS_TVM}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
@@ -833,25 +832,6 @@ if (onnxruntime_USE_ROCM)
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
-endif()
-
-if (onnxruntime_USE_NUPHAR)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:tvm>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-  file(GLOB onnxruntime_python_nuphar_python_srcs CONFIGURE_DEPENDS
-      "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*"
-    )
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar
-    COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_nuphar_python_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar/
-  )
 endif()
 
 if (onnxruntime_USE_TVM)

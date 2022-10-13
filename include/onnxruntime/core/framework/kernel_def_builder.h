@@ -3,17 +3,17 @@
 
 #pragma once
 
+#include <limits.h>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <limits.h>
 
 #include "core/common/common.h"
-#include "core/common/optional.h"
-#include "core/graph/basic_types.h"
-#include "core/framework/data_types.h"
 #include "core/framework/allocator.h"
+#include "core/framework/data_types.h"
+#include "core/graph/basic_types.h"
 
 namespace onnxruntime {
 class KernelDefBuilder;
@@ -53,16 +53,9 @@ class KernelDef {
     return provider_type_;
   }
 
-  // TODO(edgchen1) do we need both TypeConstraints() and EnabledTypeConstraints()?
-
-  // type constraints with types supported by default
-  const std::unordered_map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
-    return default_type_constraints_;
-  }
-
   // type constraints with types supported in this build
-  const std::unordered_map<std::string, std::vector<MLDataType>>& EnabledTypeConstraints() const {
-    return enabled_type_constraints_;
+  const std::unordered_map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
+    return type_constraints_;
   }
 
   const std::vector<std::pair<int, int>>& MayInplace() const {
@@ -73,7 +66,7 @@ class KernelDef {
     return alias_map_;
   }
 
-  const optional<std::pair<int, int>>& VariadicAlias() const {
+  const std::optional<std::pair<int, int>>& VariadicAlias() const {
     return variadic_alias_offsets_;
   }
 
@@ -130,12 +123,9 @@ class KernelDef {
   // The type of the execution provider.
   std::string provider_type_;
 
-  // The data types that are supported by default for inputs/outputs.
-  // Key is input/output/type constraint name defined in op schema, Value are supported types.
-  std::unordered_map<std::string, std::vector<MLDataType>> default_type_constraints_;
-
-  // the type constraints that are supported in this build (enabled) for the kernel
-  std::unordered_map<std::string, std::vector<MLDataType>> enabled_type_constraints_;
+  // The data types that are supported in this build (enabled) for inputs/outputs.
+  // Key is input/output/type constraint name defined in op schema, Value is supported types.
+  std::unordered_map<std::string, std::vector<MLDataType>> type_constraints_;
 
   // An element <i, j> means that output j reuses the memory of input i.
   std::vector<std::pair<int, int>> inplace_map_;
@@ -145,7 +135,7 @@ class KernelDef {
 
   // This variable stores <input_offset, output_offset> for the variadic alias mapping
   // output 'i + output_offset' is an alias of input 'i + input_offset' for all i >= 0
-  optional<std::pair<int, int>> variadic_alias_offsets_;
+  std::optional<std::pair<int, int>> variadic_alias_offsets_;
 
   // Require input tensors to be allocated contiguously.
   bool allocate_inputs_contiguously_ = false;
@@ -210,7 +200,7 @@ class KernelDefBuilder {
   /**
      The execution provider type of the kernel.
   */
-  KernelDefBuilder& Provider(onnxruntime::ProviderType provider_type);
+  KernelDefBuilder& Provider(ProviderType provider_type);
   KernelDefBuilder& Provider(const char* provider_type);
 
   /**
@@ -219,27 +209,16 @@ class KernelDefBuilder {
 
      @param arg_name The arg name can be either op formal parameter name, say "X", or type
                      argument name specified in op schema, say "T".
-     @param default_types The types that are supported by default.
-     @param enabled_types The types that are supported in this build.
-                          Possibly different from default_types when type reduction is enabled.
+     @param types The types that are supported in this build.
   */
-  KernelDefBuilder& TypeConstraint(const std::string& arg_name,
-                                   const std::vector<MLDataType>& default_types);
-  KernelDefBuilder& TypeConstraint(const char* arg_name,
-                                   const std::vector<MLDataType>& default_types);
-
-  KernelDefBuilder& TypeConstraint(const std::string& arg_name,
-                                   const std::vector<MLDataType>& default_types,
-                                   const std::vector<MLDataType>& enabled_types);
-  KernelDefBuilder& TypeConstraint(const char* arg_name,
-                                   const std::vector<MLDataType>& default_types,
-                                   const std::vector<MLDataType>& enabled_types);
+  KernelDefBuilder& TypeConstraint(const std::string& arg_name, std::vector<MLDataType> types);
+  KernelDefBuilder& TypeConstraint(const char* arg_name, std::vector<MLDataType> types);
 
   /**
      Like TypeConstraint but supports just a single type.
   */
-  KernelDefBuilder& TypeConstraint(const std::string& arg_name, MLDataType default_type);
-  KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType default_type);
+  KernelDefBuilder& TypeConstraint(const std::string& arg_name, MLDataType type);
+  KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType type);
 
   /**
      Inplace mapping from inputs to outputs allowed.
@@ -367,10 +346,6 @@ class KernelDefBuilder {
   }
 
  private:
-  KernelDefBuilder& TypeConstraintImpl(const std::string& arg_name,
-                                       const std::vector<MLDataType>& default_types,
-                                       const std::vector<MLDataType>* enabled_types = nullptr);
-
   // we own the KernelDef until Build() is called.
   std::unique_ptr<KernelDef> kernel_def_;
 };

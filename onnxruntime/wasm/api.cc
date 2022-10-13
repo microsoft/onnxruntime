@@ -112,11 +112,12 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
   // Enable ORT CustomOps in onnxruntime-extensions
   RETURN_NULLPTR_IF_ERROR(EnableOrtCustomOps, session_options);
 #endif
-#if defined(USE_XNNPACK)
 
-  RETURN_NULLPTR_IF_ERROR(SessionOptionsAppendExecutionProvider, session_options, "XNNPACK", nullptr, nullptr, 0);
-#endif
   return session_options;
+}
+
+int OrtAppendExecutionProvider(ort_session_options_handle_t session_options, const char* name) {
+  return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, nullptr, nullptr, 0);
 }
 
 int OrtAddSessionConfigEntry(OrtSessionOptions* session_options,

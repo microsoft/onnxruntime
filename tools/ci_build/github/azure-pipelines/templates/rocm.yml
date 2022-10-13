@@ -65,7 +65,9 @@ jobs:
               --build_wheel \
               --skip_tests \
               --enable_training \
-              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF \
+              --cmake_extra_defines \
+                CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
+                onnxruntime_BUILD_UNIT_TESTS=OFF \
               --enable_training_torch_interop
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime (in container)'

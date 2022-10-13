@@ -347,6 +347,14 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                ///< The default allocator for execution provider
 } OrtMemType;
 
+/** \brief This mimics OrtDevice type constants so they can be returned in the API
+ */
+typedef enum OrtMemoryInfoDeviceType {
+  OrtMemoryInfoDeviceType_CPU = 0,
+  OrtMemoryInfoDeviceType_GPU = 1,
+  OrtMemoryInfoDeviceType_FPGA = 2
+} OrtMemoryInfoDeviceType;
+
 /** \brief Algorithm to use for cuDNN Convolution Op
 */
 typedef enum OrtCudnnConvAlgoSearch {
@@ -3560,6 +3568,13 @@ struct OrtApi {
   * \since Version 1.13.
   */
   void(ORT_API_CALL* ReleaseCANNProviderOptions)(_Frees_ptr_opt_ OrtCANNProviderOptions* input);
+  
+ /*  \brief Get OrtDevice type from MemoryInfo
+  * 
+  *  \since Version 1.14
+  */
+  void(ORT_API_CALL* MemoryInfoGetDeviceType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
+  
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
