@@ -262,8 +262,8 @@ export class TensorResultValidator {
       this.absoluteThreshold = CPU_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = CPU_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'js') {
-      this.absoluteThreshold = WEBGL_THRESHOLD_ABSOLUTE_ERROR;
-      this.relativeThreshold = WEBGL_THRESHOLD_RELATIVE_ERROR;
+      this.absoluteThreshold = WEBGPU_THRESHOLD_ABSOLUTE_ERROR;
+      this.relativeThreshold = WEBGPU_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'webgl') {
       if (TensorResultValidator.isHalfFloat === undefined) {
         TensorResultValidator.isHalfFloat = !createWebGLContext(ort.env.webgl.contextId).isRenderFloat32Supported;

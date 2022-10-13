@@ -23,10 +23,10 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /*un
 
   if (dst_device.Type() == OrtDevice::GPU) {
     // copy from CPU to GPU
-    EM_ASM({ Module.jsepUpload(); });
+    EM_ASM({ Module.jsepUpload($0, $1, $2); }, src_data, dst_data, bytes);
   } else if (src_device.Type() == OrtDevice::GPU) {
     // copy from GPU to CPU
-    EM_ASM({ Module.jsepDownload(); });
+    EM_ASM({ Module.jsepDownload($0, $1); }, src_data, dst_data);
   } else {
     // copy from CPU to CPU (don't think we ever get here)
     memcpy(dst_data, src_data, bytes);
