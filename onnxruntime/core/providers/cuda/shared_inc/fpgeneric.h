@@ -275,7 +275,7 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
 
   auto clean_preference_desc = gsl::finally([&preference]() {
     if (preference) {
-      cublasLtMatmulPreferenceDestroy(preference)
+      cublasLtMatmulPreferenceDestroy(preference);
     }
   });  
 
