@@ -266,8 +266,12 @@ class GraphExecutionManager(GraphExecutionInterface):
             providers.append("CPUExecutionProvider")
             provider_option_map = {"device_id": str(self._device.index)}
             if not self.is_rocm_pytorch:
-                # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
-                provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
+                # Set Conv algo search mode to HEURISTIC by default, which is same as PyTorch's default setting.
+                conv_algo_search = ortmodule._defined_from_envvar("CONV_ALGO_SEARCH", "HEURISTIC", warn=True)
+                if conv_algo_search not in ["HEURISTIC", "EXHAUSTIVE"]:
+                    warnings.warn("Invalid value of env CONV_ALGO_SEARCH. Must be HEURISTIC or EXHAUSTIVE.")
+                    conv_algo_search = "HEURISTIC"
+                provider_option_map["cudnn_conv_algo_search"] = conv_algo_search
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
                 provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
             if self._use_external_gpu_allocator:
