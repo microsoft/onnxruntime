@@ -26,6 +26,7 @@ limitations under the License.
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <ftw.h>
+#include <optional>
 #include <string.h>
 #include <thread>
 #include <utility>  // for std::forward
@@ -142,7 +143,7 @@ class PosixThread : public EnvThread {
     int index;
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
-    size_t affinity_mask;
+    std::optional<size_t> affinity_mask;
 
     Param(const ORTCHAR_T* name_prefix1,
           int index1,
@@ -151,8 +152,7 @@ class PosixThread : public EnvThread {
       : name_prefix(name_prefix1),
       index(index1),
       start_address(start_address1), 
-      param(param1), 
-      affinity_mask(std::numeric_limits<size_t>::max()) {}
+      param(param1) {}
   };
 
  public:
@@ -196,6 +196,7 @@ class PosixThread : public EnvThread {
         ORT_THROW("pthread_create failed, error code: ", err_no, " error msg: ", err_msg);
       }
       param_ptr.release();
+      // Do not throw beyond this point so we do not lose thread handle and then not being able to join it.
     }
   }
 
@@ -219,16 +220,17 @@ class PosixThread : public EnvThread {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
     ORT_TRY {
 #if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
-      if (p->affinity_mask != std::numeric_limits<size_t>::max()) {
+      if (p->affinity_mask.has_value()) {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
-        CPU_SET(p->affinity_mask, &cpuset);
+        CPU_SET(*p->affinity_mask, &cpuset);
         // pthread_setaffinity_np() does not set errno, it returns it.
         auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
         if (ret != 0) {
           auto [err_no, err_msg] = GetSystemError(ret);
           LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << pthread_self()
-                              << ", error code: ", err_no, " error msg: ", err_msg;
+                              << ", error code: " << err_no << " error msg: " << err_msg
+                              << " Specify the number of threads explicitly so the affinity is not set.";
         }
       }
 #endif

@@ -19,6 +19,7 @@ limitations under the License.
 #include <Windows.h>
 
 #include <fstream>
+#include <optional>
 #include <string>
 #include <thread>
 #include <process.h>
@@ -69,7 +70,7 @@ class WindowsThread : public EnvThread {
     int index;
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
-    size_t affinity_mask;
+    std::optional<size_t> affinity_mask;
     Param(const ORTCHAR_T* name_prefix1,
           int index1,
           unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
@@ -77,8 +78,7 @@ class WindowsThread : public EnvThread {
       : name_prefix(name_prefix1),
       index(index1),
       start_address(start_address1),
-      param(param1),
-      affinity_mask(std::numeric_limits<size_t>::max()) {}
+      param(param1) {}
   };
 
  public:
@@ -116,6 +116,7 @@ class WindowsThread : public EnvThread {
       }
       local_param.release();
       hThread.reset(reinterpret_cast<HANDLE>(th_handle));
+      // Do not throw beyond this point so we do not lose thread handle and then not being able to join it.
     }
   }
 
@@ -158,13 +159,14 @@ class WindowsThread : public EnvThread {
     unsigned ret = 0;
     ORT_TRY {
       // TODO: should I try to use SetThreadSelectedCpuSets?
-      if (p->affinity_mask != std::numeric_limits<size_t>::max()) {
-        auto rc = SetThreadAffinityMask(GetCurrentThread(), p->affinity_mask);
+      if (p->affinity_mask.has_value()) {
+        auto rc = SetThreadAffinityMask(GetCurrentThread(), *p->affinity_mask);
         if (!rc) {
           const auto error_code = GetLastError();
           LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
                               << " error code: " << error_code
-                              << " error msg: " << std::system_category().message(error_code);
+                              << " error msg: " << std::system_category().message(error_code)
+                              << " Specify the number of threads explicitly so the affinity is not set.";
         }
       }
 
