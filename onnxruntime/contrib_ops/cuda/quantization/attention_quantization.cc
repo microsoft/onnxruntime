@@ -50,7 +50,13 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* past_tensor) const {
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
-                                                 mask_index, past_tensor, nullptr, device_prop.maxThreadsPerBlock));
+                                                 mask_index, past_tensor,
+                                                 nullptr,  // extra_add_qk
+                                                 nullptr,  // key
+                                                 nullptr,  // value
+                                                 nullptr,  // weight_key
+                                                 nullptr,  // weight_value
+                                                 device_prop.maxThreadsPerBlock));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -176,27 +182,27 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
   return LaunchAttentionKernel(
-          GetDeviceProp(),
-          Stream(),
-          cublas,
-          element_size,
-          batch_size,
-          sequence_length,
-          num_heads_,
-          qkv_head_size[0],
-          past_sequence_length,
-          is_unidirectional_,
-          reinterpret_cast<const void*>(gemm_buffer.get()),
-          nullptr,  // bias has been added
-          nullptr == mask_index ? nullptr : mask_index->Data<int>(),
-          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
-          nullptr == past_tensor ? nullptr : past_tensor->Data<T>(),
-          nullptr,  // TODO: support add_qk in quantized attention
-          work_space.get(),
-          output->MutableData<T>(),
-          nullptr == present_tensor ? nullptr : present_tensor->MutableData<T>(),
-          fused_runner,
-          qkv_head_size[2]);
+      GetDeviceProp(),
+      Stream(),
+      cublas,
+      element_size,
+      batch_size,
+      sequence_length,
+      num_heads_,
+      qkv_head_size[0],
+      past_sequence_length,
+      is_unidirectional_,
+      reinterpret_cast<const void*>(gemm_buffer.get()),
+      nullptr,  // bias has been added
+      nullptr == mask_index ? nullptr : mask_index->Data<int>(),
+      nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
+      nullptr == past_tensor ? nullptr : past_tensor->Data<T>(),
+      nullptr,  // add_qk is not supported in quantized attention
+      work_space.get(),
+      output->MutableData<T>(),
+      nullptr == present_tensor ? nullptr : present_tensor->MutableData<T>(),
+      fused_runner,
+      qkv_head_size[2]);
 }
 
 }  // namespace cuda

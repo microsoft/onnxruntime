@@ -52,7 +52,7 @@ static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length
 }
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
+Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false, true) {
   disable_fused_runner_ = sizeof(T) != 2 || ParseEnvironmentVariableWithDefault<bool>(kDisableFusedAttention, false);
 }
 
@@ -64,6 +64,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
   const Tensor* extra_add_qk = context->Input<Tensor>(5);
+  const Tensor* key = context->Input<Tensor>(6);
+  const Tensor* value = context->Input<Tensor>(7);
+  const Tensor* weight_key = context->Input<Tensor>(8);
+  const Tensor* weight_value = context->Input<Tensor>(9);
 
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
@@ -72,6 +76,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   mask_index,
                                   past,
                                   extra_add_qk,
+                                  key,
+                                  value,
+                                  weight_key,
+                                  weight_value,
+                                  false,
                                   device_prop.maxThreadsPerBlock));
 
   // input shape (batch_size, sequence_length, input_hidden_size)
@@ -80,12 +89,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int sequence_length = static_cast<int>(shape[1]);
   int input_hidden_size = static_cast<int>(shape[2]);
 
-  // bias shape (3 * hidden_size)
+  // bias shape (q_hidden_size + k_hidden_size + v_hidden_size)
   const auto& bias_shape = bias->Shape();
   int q_hidden_size;
   int k_hidden_size;
   int v_hidden_size;
-
 
   if (qkv_hidden_sizes_.size() == 0) {
     q_hidden_size = static_cast<int>(bias_shape[0]) / 3;
