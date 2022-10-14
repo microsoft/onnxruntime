@@ -87,6 +87,16 @@ public:
                 0
             );
 
+        // overwrite output tensor desc
+        std::vector<uint32_t> outputTensorShape {batchSize, sequenceLength, numHeads, headSize};
+        std::vector<uint32_t> outputTensorStrides {sequenceLength * numHeads * headSize, headSize, headSize * sequenceLength, 1};
+        m_outputTensorDescs[0] = TensorDesc(
+                GetDmlDataTypeFromMlDataType(dataType),
+                gsl::make_span(outputTensorShape),
+                gsl::make_span(outputTensorStrides),
+                0
+            );
+
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
@@ -125,7 +135,7 @@ public:
         querySlicedOperatorDesc.InputWindowOffsets = querySliceOffset.data();
         querySlicedOperatorDesc.InputWindowSizes = sliceSize.data();
         querySlicedOperatorDesc.InputWindowStrides = strides.data();
-        DML_OPERATOR_DESC querySlicedDesc = { DML_OPERATOR_SLICE1, &querySlicedOperatorDesc };
+        const DML_OPERATOR_DESC querySlicedDesc = { DML_OPERATOR_SLICE1, &querySlicedOperatorDesc };
 
         DML_SLICE1_OPERATOR_DESC keySlicedOperatorDesc = {};
         keySlicedOperatorDesc.InputTensor = &inputDescs[2];
@@ -134,7 +144,7 @@ public:
         keySlicedOperatorDesc.InputWindowOffsets = keySliceOffset.data();
         keySlicedOperatorDesc.InputWindowSizes = sliceSize.data();
         keySlicedOperatorDesc.InputWindowStrides = strides.data();
-        DML_OPERATOR_DESC keySlicedDesc = { DML_OPERATOR_SLICE1, &keySlicedOperatorDesc };
+        const DML_OPERATOR_DESC keySlicedDesc = { DML_OPERATOR_SLICE1, &keySlicedOperatorDesc };
 
         DML_SLICE1_OPERATOR_DESC valueSlicedOperatorDesc = {};
         valueSlicedOperatorDesc.InputTensor = &inputDescs[2];
@@ -143,7 +153,7 @@ public:
         valueSlicedOperatorDesc.InputWindowOffsets = valueSliceOffset.data();
         valueSlicedOperatorDesc.InputWindowSizes = sliceSize.data();
         valueSlicedOperatorDesc.InputWindowStrides = strides.data();
-        DML_OPERATOR_DESC valueSlicedDesc = { DML_OPERATOR_SLICE1, &valueSlicedOperatorDesc};
+        const DML_OPERATOR_DESC valueSlicedDesc = { DML_OPERATOR_SLICE1, &valueSlicedOperatorDesc};
 
         TensorDesc castedMaskIndexTensorDesc = TensorDesc(
                 MLOperatorTensorDataType::Float,
@@ -158,7 +168,7 @@ public:
         DML_CAST_OPERATOR_DESC castMaskIndexOperatorDesc = {};
         castMaskIndexOperatorDesc.InputTensor = &inputDescs[3];
         castMaskIndexOperatorDesc.OutputTensor = &castedMaskIndexTensorDesc.GetDmlDesc();
-        DML_OPERATOR_DESC castMaskIndexDesc = {DML_OPERATOR_CAST, &castMaskIndexOperatorDesc};
+        const DML_OPERATOR_DESC castMaskIndexDesc = {DML_OPERATOR_CAST, &castMaskIndexOperatorDesc};
 
         DML_SCALE_BIAS scaleBias = {};
         scaleBias.Scale = -10000.0f;
@@ -167,7 +177,7 @@ public:
         maskOperatorDesc.InputTensor = &castedMaskIndexTensorDesc.GetDmlDesc();
         maskOperatorDesc.OutputTensor = &castedMaskIndexTensorDesc.GetDmlDesc();
         maskOperatorDesc.ScaleBias = &scaleBias;
-        DML_OPERATOR_DESC maskDesc = {DML_OPERATOR_ELEMENT_WISE_IDENTITY, &maskOperatorDesc};
+        const DML_OPERATOR_DESC maskDesc = {DML_OPERATOR_ELEMENT_WISE_IDENTITY, &maskOperatorDesc};
 
         // original reshaped shape: [batchSize, seqenceLength, numHeads, headSize]
         // transposed shape to [0, 2, 1, 3] -> [batchSize, numHeads, sequenceLength, headSize]
@@ -223,7 +233,7 @@ public:
         const DML_OPERATOR_DESC softmaxDesc = {DML_OPERATOR_ACTIVATION_SOFTMAX1, &softmaxOperatorDesc};
 
         std::vector<uint32_t> reshapedTransposedOutputTensorShape {batchSize, numHeads, sequenceLength, headSize};
-        std::vector<uint32_t> reshapedTransposedOutputTensorStride {sequenceLength * numHeads * headSize, headSize * numHeads, headSize, 1};
+        std::vector<uint32_t> reshapedTransposedOutputTensorStride {sequenceLength * numHeads * headSize, headSize * sequenceLength, headSize, 1};
         TensorDesc reshapedTransposedOutputTensorDesc = TensorDesc(
                 GetDmlDataTypeFromMlDataType(dataType),
                 gsl::make_span(reshapedTransposedOutputTensorShape),
@@ -243,11 +253,15 @@ public:
         attentionWeightOperatorDesc.FusedActivation = nullptr;
         const DML_OPERATOR_DESC attentionWeightDesc {DML_OPERATOR_GEMM, &attentionWeightOperatorDesc};
 
+        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC outputOperatorDesc = {};
+        outputOperatorDesc.InputTensor = &outputDescs[0];
+        outputOperatorDesc.OutputTensor = &outputDescs[0];
+        const DML_OPERATOR_DESC outputDesc {DML_OPERATOR_ELEMENT_WISE_IDENTITY, &outputOperatorDesc};
 
 
         MLOperatorGraphDesc operatorGraphDesc = {};
-        operatorGraphDesc.nodeCount = 9;
-        std::vector<const DML_OPERATOR_DESC*> opDescs{&xWeightDesc, &querySlicedDesc, &keySlicedDesc, &valueSlicedDesc, &attentionScoreDesc, &softmaxDesc, &attentionWeightDesc, &castMaskIndexDesc, &maskDesc};
+        operatorGraphDesc.nodeCount = 10;
+        std::vector<const DML_OPERATOR_DESC*> opDescs{&xWeightDesc, &querySlicedDesc, &keySlicedDesc, &valueSlicedDesc, &attentionScoreDesc, &softmaxDesc, &attentionWeightDesc, &castMaskIndexDesc, &maskDesc, &outputDesc};
         operatorGraphDesc.nodesAsOpDesc = opDescs.data();
 
         // set input edges
@@ -337,13 +351,20 @@ public:
         valueSliceToGemm.ToNodeInputIndex = 1;
         intermediateEdges.push_back(valueSliceToGemm);
 
+        DML_INTERMEDIATE_GRAPH_EDGE_DESC gemmToIdentity = {};
+        gemmToIdentity.FromNodeIndex = 6;
+        gemmToIdentity.FromNodeOutputIndex = 0;
+        gemmToIdentity.ToNodeIndex = 9;
+        gemmToIdentity.ToNodeInputIndex = 0;
+        intermediateEdges.push_back(gemmToIdentity);
+
         operatorGraphDesc.intermediateEdgeCount = gsl::narrow_cast<uint32_t>(intermediateEdges.size());
         operatorGraphDesc.intermediateEdges = intermediateEdges.data();
 
         // set the output edges
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
         DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
-        outputEdge.FromNodeIndex = 6;
+        outputEdge.FromNodeIndex = 9;
         outputEdge.FromNodeOutputIndex = 0;
         outputEdge.GraphOutputIndex = 0;
         outputEdges.push_back(outputEdge);
