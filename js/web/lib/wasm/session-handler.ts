@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {readFile} from 'fs';
+import {promisify} from 'util';
 import {env, InferenceSession, SessionHandler, Tensor} from 'onnxruntime-common';
 
 import {createSession, endProfiling, initOrt, releaseSession, run} from './proxy-wrapper';
+import { createSessionAllocate, createSessionFinallize } from './wasm-core-impl';
 
 let ortInit: boolean;
 
@@ -31,13 +34,30 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   inputNames: string[];
   outputNames: string[];
 
-  async loadModel(model: Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
+  async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
     if (!ortInit) {
       await initOrt(env.wasm.numThreads!, getLogLevel(env.logLevel!));
       ortInit = true;
     }
 
-    [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
+    if (typeof pathOrBuffer === 'string') {
+      if (typeof fetch === 'undefined') {
+        // node
+        let model = await promisify(readFile)(pathOrBuffer);
+        [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
+      } else {
+        // browser
+        let modelData : [number, number];
+        {
+          const response = await fetch(pathOrBuffer);
+          const arrayBuffer = await response.arrayBuffer();
+          modelData = createSessionAllocate(new Uint8Array(arrayBuffer));
+        }
+        [this.sessionId, this.inputNames, this.outputNames] = await createSessionFinallize(modelData, options);
+      }
+    } else {
+      [this.sessionId, this.inputNames, this.outputNames] = await createSession(pathOrBuffer, options);
+    }
   }
 
   async dispose(): Promise<void> {
