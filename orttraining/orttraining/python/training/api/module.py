@@ -84,7 +84,8 @@ class Module:
         # TODO : move this out of Module Class.
         self._model.save_checkpoint(ckpt_uri)
 
-    def get_contiguous_parameters(self, trainable_only: bool = False):
+    # This function will change when the parameters will be exposed.
+    def get_contiguous_parameters(self, trainable_only: bool = False) -> OrtValue:
         """
         Returns contiguous parameters object.
         """
@@ -101,13 +102,13 @@ class Module:
 
         return parameters
 
-    def get_parameters_size(self, trainable_only: bool = False):
+    def get_parameters_size(self, trainable_only: bool = False) -> int:
         """
         Returns the size of the parameters.
         """
         return self._model.get_parameters_size(trainable_only)
 
-    def copy_buffer_to_parameters(self, buffer):
+    def copy_buffer_to_parameters(self, buffer) -> None:
         """
         Copies buffer to parameters.
         """
