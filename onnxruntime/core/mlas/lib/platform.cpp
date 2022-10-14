@@ -164,10 +164,10 @@ typedef int32_t res_type_t;         // The data type of the result
 // Tile configure structure
 struct tileconfig_t {
     uint8_t palette_id = 0;
-    uint8_t reserved[15] = { 0 };
-    uint16_t colb[16] = { 0 };
-    uint8_t rows[16] = { 0 };
-} tc = { 0 };
+    uint8_t reserved[15] = {0};
+    uint16_t colb[16] = {0};
+    uint8_t rows[16] = {0};
+} tc = {0};
 
 void
 configure_tiles()
@@ -439,6 +439,7 @@ Return Value:
                     if (MlasInitAMX()) {
                         printf("AMX Initialized.\n");
                         configure_tiles();
+                        this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAmx;
                     }
                 }
 
