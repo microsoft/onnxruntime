@@ -16,7 +16,7 @@ class AttentionBase {
   Status CheckInputs(const TensorShape& input_shape,
                      const TensorShape& weights_shape,
                      const TensorShape& bias_shape,
-                     const Tensor*& mask_index,  // For dummy mask with shape (1, 1) or (batch_size, 1), it will be updated to nullptr.
+                     const Tensor*& mask_index,  // Dummy mask of shape (1 or batch_size, 1) will be updated to nullptr.
                      const Tensor* past,
                      const Tensor* extra_add_qk,
                      const int max_threads_per_block) const;
@@ -39,17 +39,25 @@ class AttentionBase {
     if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK() || qkv_hidden_sizes_.empty()) {
       qkv_hidden_sizes_.resize(0);
     }
+
+    use_merged_weights_ = info.GetAttrOrDefault<int64_t>("merged_weights", 1) == 1;
   }
 
   Status CheckInputs(const TensorShape& input_shape,
                      const TensorShape& weights_shape,
                      const TensorShape& bias_shape,
-                     const Tensor*& mask_index,  // For dummy mask with shape (1, 1) or (batch_size, 1), it will be updated to nullptr.
+                     const Tensor*& mask_index,  // Dummy mask of shape (1 or batch_size, 1) will be updated to nullptr.
                      const Tensor* past,
-                     const Tensor* extra_add_qk) const;
+                     const Tensor* extra_add_qk,
+                     const Tensor* key,
+                     const Tensor* value,
+                     const Tensor* weights_key,
+                     const Tensor* weights_value
+                     ) const;
 
   int num_heads_;                          // number of attention heads
   bool is_unidirectional_;                 // whether every token can only attend to previous tokens.
+  bool use_merged_weights_;                // whether the weights for Q/K/V are merged.
   std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V path hidden layer sizes
 };
 

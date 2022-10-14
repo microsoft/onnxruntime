@@ -128,17 +128,32 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
       fail_shape_inference("Invalid bias shape");
     }
 
-    std::vector<int64_t> qkv_hidden_sizes;
-    getRepeatedAttribute(ctx, "qkv_hidden_sizes", qkv_hidden_sizes);
+    int64_t merged_weight = getAttribute(ctx, "merged_weights", 1);
+    int64_t output_hidden_size = -1;
+    if (merged_weight) {
+      std::vector<int64_t> qkv_hidden_sizes;
+      getRepeatedAttribute(ctx, "qkv_hidden_sizes", qkv_hidden_sizes);
 
-    int64_t output_hidden_size;
-    if (qkv_hidden_sizes.size() != 0) {
-      if (qkv_hidden_sizes.size() != 3) {
-        fail_shape_inference("qkv_hidden_sizes should have 3 elements")
+      if (qkv_hidden_sizes.size() != 0) {
+        if (qkv_hidden_sizes.size() != 3) {
+          fail_shape_inference("qkv_hidden_sizes should have 3 elements")
+        }
+        output_hidden_size = qkv_hidden_sizes[2];
+      } else {
+        output_hidden_size = bias_shape.dim(0).dim_value() / 3;
       }
-      output_hidden_size = qkv_hidden_sizes[2];
     } else {
-      output_hidden_size = bias_shape.dim(0).dim_value() / 3;
+      if (hasInputShape(ctx, 8)) {
+        auto& weight_key_shape = getInputShape(ctx, 8);
+        auto& weight_key_dims = weight_key_shape.dim();
+        if (weight_key_dims.size() != 2) {
+          fail_shape_inference("weight_key shall be 2 dimensions");
+        }
+        if (!weight_key_dims[1].has_dim_value()) {
+          fail_shape_inference("weight_key dimension 1 does not have dim value");
+        }
+        output_hidden_size = weight_key_dims[1].dim_value()
+      }
     }
 
     ONNX_NAMESPACE::TensorShapeProto output_shape;
@@ -158,14 +173,29 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
           fail_shape_inference("Inputs 4 shall be 5 dimensions");
         }
 
-        if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
-          auto all_sequence_length = past_shape.dim(3).dim_value() + input_shape.dim(1).dim_value();
+        int64_t total_sequence_length = -1;
+        if (!merged_weight) {
+          if (hasInputShape(ctx, 6)) {
+            auto& key_shape = getInputShape(ctx, 6);
+            auto& key_dims = key_shape.dim();
+            if (key_dims.size() == 3 && key_dims[1].has_dim_value()) {
+              total_sequence_length = key_dims[1].dim_value();
+            }
+          }
+        } else {
+          if (input_dims[1].has_dim_value()) {
+            total_sequence_length = input_dims[1].dim_value();
+          }
+        }
+
+        if (total_sequence_length >= 0 && past_dims[3].has_dim_value()) {
+          total_sequence_length += past_shape.dim(3).dim_value();
 
           ONNX_NAMESPACE::TensorShapeProto present_shape;
           for (auto& dim : past_dims) {
             *present_shape.add_dim() = dim;
           }
-          present_shape.mutable_dim(3)->set_dim_value(all_sequence_length);
+          present_shape.mutable_dim(3)->set_dim_value(total_sequence_length);
 
           updateOutputShape(ctx, 1, present_shape);
         }

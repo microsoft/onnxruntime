@@ -152,25 +152,26 @@ Status QkvToContext(
 
   cublasSetStream(cublas, stream);
 
-  // Concat past (2xBxNxS'xH) to present (2xBxNxS*xH):
-  // past_k (BxNxS'xH) + k (BxNxSxH) => present_k (BxNxS*xH)
-  // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxS*xH)
+  // Concat past (2xBxNxPxH) to present (2xBxNxLxH), where P is past_sequence_length and L is total_sequence_length.
+  // past_k (BxNxPxH) + k (BxNxSxH) => present_k (BxNxLxH)
+  // past_v (BxNxPxH) + v (BxNxSxH) => present_v (BxNxLxH)
+  // When there is past state, the head size for Q/K/V shall be same: H == H_q == H_k == H_v.
   const int present_size_per_batch = all_sequence_length * head_size;
   if (nullptr != present) {
     ORT_RETURN_IF_ERROR(
         LaunchConcatPastToPresent(stream, all_sequence_length, sequence_length, batch_size, head_size, num_heads,
                                   max_threads_per_block, past, k, present));
 
-    // update pointers to present_k and present_v.
+    // Update pointers to present_k and present_v.
     k = present;
     v = present + batches * present_size_per_batch;
   }
 
-  // Raw attention mask could be 2D (BxS) or 3D (BxSxS*) or 4D(Bx1xMxM), where M is the max sequence length.
+  // Raw attention mask could be 2D (BxL) or 3D (BxSxL) or 4D(Bx1xMxM), where M is the max sequence length.
   bool use_raw_attention_mask = (nullptr != mask_index && mask_index_dims.size() >= 2);
 
-  // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxS*
-  // Q: BxNxSxH, K (present_k): BxNxS*xH, Q*K': BxNxSxS*
+  // Compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxL
+  // Q: BxNxSxH, K (present_k): BxNxLxH, Q*K': BxNxSxL
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
   const int temp_matrix_size = sequence_length * all_sequence_length;
   float one = 1.0f;
@@ -186,7 +187,7 @@ Status QkvToContext(
       q, head_size, size_per_batch,
       &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop));
 
-  // apply softmax and store result P to scratch2: BxNxSxS*
+  // Apply softmax and store result R to scratch2: BxNxSxL
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
     const int mask_dimension = static_cast<int>(mask_index_dims.size());
     const int max_sequence_length = mask_dimension == 4 ? static_cast<int>(mask_index_dims.at(3)) : 0;
@@ -210,7 +211,7 @@ Status QkvToContext(
                           scratch1, scratch2, is_unidirectional));
   }
 
-  // compute P*V (as V*P), and store in temp_output (space used by Q): BxNxSxH
+  // compute R*V (as V*R), and store in temp_output (space used by Q): BxNxSxH_v
   temp_output = qkv;
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N,
@@ -219,7 +220,7 @@ Status QkvToContext(
       scratch2, all_sequence_length, temp_matrix_size,
       &zero, temp_output, head_size, size_per_batch, batches, prop));
 
-  // temp_output is BxNxSxH, transpose to output BxSxNxH
+  // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
   return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads,
                         max_threads_per_block, false, temp_output, output);
 }
@@ -307,7 +308,7 @@ Status DecoderQkvToContext(
     T* output,
     T* new_key_cache,
     T* new_value_cache) {
-  const int max_threads_per_block = prop.maxThreadsPerBlock;
+  const int max_threads_per_block = prop.maxLhreadsPerBlock;
   const int BN = batch_size * num_heads;
   const int BHN = BN * head_size;
   const int BNS = BN * sequence_length;
@@ -373,15 +374,15 @@ Status DecoderQkvToContext(
     }
   }
 
-  // scratch1: BxNxSxS* buffer
-  // scratch2: BxNxSxS* buffer
+  // scratch1: BxNxSxL buffer
+  // scratch2: BxNxSxL buffer
   // scratch3: BxNxSxH  buffer
   T* scratch1 = temp_qkv_buffer + 3 * BHN * sequence_length;
   T* scratch2 = scratch1 + BNS * kv_sequence_length;
   T* scratch3 = scratch2 + BNS * kv_sequence_length;
 
-  // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxS*
-  // Q: BxNxSxH, K (present_k): BxNxS*xH, Q*K': BxNxSxS*
+  // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxL
+  // Q: BxNxSxH, K (present_k): BxNxLxH, Q*K': BxNxSxL
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
   const int temp_matrix_size = sequence_length * kv_sequence_length;
   float one = 1.0f;
