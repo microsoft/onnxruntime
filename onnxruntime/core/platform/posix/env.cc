@@ -32,6 +32,8 @@ limitations under the License.
 #include <vector>
 #include <assert.h>
 
+#include <gsl/gsl>
+
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/platform/scoped_resource.h"
@@ -181,11 +183,11 @@ class PosixThread : public EnvThread {
           ORT_THROW("pthread_attr_setstacksize failed, error code: ", err_no, " error msg: ", err_msg);
         }
       }
-      if (!thread_options.affinity.empty() && index < thread_options.affinity.size()) {
+      if (!thread_options.affinity.empty() && gsl::narrow<size_t>(index) < thread_options.affinity.size()) {
         param_ptr->affinity_mask = thread_options.affinity[index];
       }
 
-      s = pthread_create(&hThread, &attr, ThreadMain, pram_ptr.get());
+      s = pthread_create(&hThread, &attr, ThreadMain, param_ptr.get());
       if (s != 0) {
         auto [err_no, err_msg] = GetSystemError();
         ORT_THROW("pthread_create failed, error code: ", err_no, " error msg: ", err_msg);
@@ -463,7 +465,7 @@ class PosixEnv : public Env {
   common::Status GetCanonicalPath(
       const PathString& path,
       PathString& canonical_path) const override {
-    MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr), Free<char>()};
+    MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr), Freer<char>()};
     if (!canonical_path_cstr) {
       return ReportSystemError("realpath", path);
     }
