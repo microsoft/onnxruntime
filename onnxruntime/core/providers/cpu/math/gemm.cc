@@ -217,11 +217,7 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   const auto* A = context->Input<Tensor>(0);
   const auto* B = context->Input<Tensor>(1);
   const auto* C = context->Input<Tensor>(2);
-#if 0
-  FILE* fp;
-  fopen_s(&fp, "Native.log", "a+");
-  fprintf(fp, "current node id - %s\n", context->GetNodeName().c_str());
-#endif
+
   // Bias could be missing. Treat as scalar 0 if that is the case.
   GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B->Shape(), trans_B_ != CblasNoTrans,
                     C != nullptr ? C->Shape() : TensorShape({}));
@@ -246,66 +242,6 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<T>(), B->Data<T>(), beta_,
               c_data, c_shape, y_data, thread_pool);
 
-#if 0
-  // Debug
-
-  if (A->Shape().NumDimensions() == 2) {
-    fprintf(fp, "\nB shape is - %lld x %lld \n", A->Shape()[0], A->Shape()[1]);
-    for (int i = 0; i < A->Shape()[0]; i++) {
-      fprintf(fp, "[");
-      for (int j = 0; j < A->Shape()[1]; j++) {
-        fprintf(fp, "%lf, ", A->Data<float>()[j + i * A->Shape()[1]]);
-      }
-      fprintf(fp, "]\n");
-    }
-  } else {
-    fprintf(fp, "\nB shape is - %lld \n", A->Shape()[0]);
-    fprintf(fp, "[");
-    for (int i = 0; i < A->Shape()[0]; i++) {
-      fprintf(fp, "%lf, ", A->Data<float>()[i]);
-    }
-    fprintf(fp, "]\n");
-  }
-
-  if (B->Shape().NumDimensions() == 2) {
-    fprintf(fp, "\nB shape is - %lld x %lld \n", B->Shape()[0], B->Shape()[1]);
-    for (int i = 0; i < B->Shape()[0]; i++) {
-      fprintf(fp, "[");
-      for (int j = 0; j < B->Shape()[1]; j++) {
-        fprintf(fp, "%lf, ", B->Data<float>()[j + i * B->Shape()[1]]);
-      }
-      fprintf(fp, "]\n");
-    }
-  } else {
-    fprintf(fp, "\nB shape is - %lld \n", B->Shape()[0]);
-    fprintf(fp, "[");
-    for (int i = 0; i < B->Shape()[0]; i++) {
-      fprintf(fp, "%lf, ", B->Data<float>()[i]);
-    }
-    fprintf(fp, "]\n");
-  }
-
-  if (C->Shape().NumDimensions() == 2) {
-    fprintf(fp, "\nB shape is - %lld x %lld \n", C->Shape()[0], C->Shape()[1]);
-    for (int i = 0; i < C->Shape()[0]; i++) {
-      fprintf(fp, "[");
-      for (int j = 0; j < C->Shape()[1]; j++) {
-        fprintf(fp, "%lf, ", C->Data<float>()[j + i * C->Shape()[1]]);
-      }
-      fprintf(fp, "]\n");
-    }
-  } else {
-    fprintf(fp, "\nB shape is - %lld \n", C->Shape()[0]);
-    fprintf(fp, "[");
-    for (int i = 0; i < C->Shape()[0]; i++) {
-      fprintf(fp, "%lf, ", C->Data<float>()[i]);
-    }
-    fprintf(fp, "]\n");
-  }
-
-  fclose(fp);
-#endif
-
   ComputeActivation(y_data, M * N, thread_pool);
 
   return Status::OK();
@@ -318,11 +254,7 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
   const auto* A = context->Input<Tensor>(0);
   const auto* B = packed_b_ ? nullptr : context->Input<Tensor>(1);
   const auto* C = context->Input<Tensor>(2);
-#if 0
-  FILE* fp;
-  fopen_s(&fp, "Native.log", "a+");
-  fprintf(fp, "current node id - %s\n", context->GetNodeName().c_str());
-#endif
+
   // Bias could be missing. Treat as scalar 0 if that is the case.
   GemmHelper helper(A->Shape(), trans_A_ != CblasNoTrans, B ? B->Shape() : b_shape_, trans_B_ != CblasNoTrans,
                     C != nullptr ? C->Shape() : TensorShape({}));
@@ -364,50 +296,7 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
         static_cast<size_t>(N),
         thread_pool);
   }
-#if 0
-  // Debug
-  // const auto* C = context->Input<Tensor>(2);
 
-  if (Y->Shape().NumDimensions() == 2) {
-    fprintf(fp, "\nY shape is - %lld x %lld \n", Y->Shape()[0], Y->Shape()[1]);
-    for (int i = 0; i < Y->Shape()[0]; i++) {
-      fprintf(fp, "[");
-      for (int j = 0; j < Y->Shape()[1]; j++) {
-        fprintf(fp, "%lf, ", Y->Data<float>()[j + i * Y->Shape()[1]]);
-      }
-      fprintf(fp, "]\n");
-    }
-  } else {
-    fprintf(fp, "\nY shape is - %lld \n", Y->Shape()[0]);
-    fprintf(fp, "[");
-    for (int i = 0; i < Y->Shape()[0]; i++) {
-      fprintf(fp, "%lf, ", Y->Data<float>()[i]);
-    }
-    fprintf(fp, "]\n");
-  }
-  /*
-  fprintf(fp, "\nB is packed\n");
-
-  if (C->Shape().NumDimensions() == 2) {
-    fprintf(fp, "\nC shape is - %lld x %lld \n", C->Shape()[0], C->Shape()[1]);
-    for (int i = 0; i < C->Shape()[0]; i++) {
-      fprintf(fp, "[");
-      for (int j = 0; j < C->Shape()[1]; j++) {
-        fprintf(fp, "%lf, ", C->Data<float>()[j + i * C->Shape()[1]]);
-      }
-      fprintf(fp, "]\n");
-    }
-  } else {
-    fprintf(fp, "\nC shape is - %lld \n", C->Shape()[0]);
-    fprintf(fp, "[");
-    for (int i = 0; i < C->Shape()[0]; i++) {
-      fprintf(fp, "%lf, ", C->Data<float>()[i]);
-    }
-    fprintf(fp, "]\n");
-  }*/
-
-  fclose(fp);
-#endif
   ComputeActivation(y_data, M * N, thread_pool);
 
   return Status::OK();

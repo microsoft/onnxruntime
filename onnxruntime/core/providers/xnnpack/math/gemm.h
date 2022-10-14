@@ -42,6 +42,9 @@ class Gemm : protected GemmBase, public OpKernel {
 
   XnnpackOperator op0_ = nullptr;
 
+  float alpha_;
+  float beta_;
+
 #ifdef XNN_CACHE_ENABLE
 #if XNN_PLATFORM_JIT
   xnn_code_cache code_cache_;
