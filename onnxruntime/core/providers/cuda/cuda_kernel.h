@@ -24,6 +24,7 @@ class CudaKernel : public OpKernel {
       : OpKernel(info),
         // Is this OK to have a non-const execution provider?
         provider_(const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()))) {
+        name_ = info.node().OpType();  
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
@@ -38,7 +39,7 @@ class CudaKernel : public OpKernel {
     
     // To get the value of duration use the count()
     // member function on the duration object
-    std::cout << p_op_kernel_context->GetOpType() << " : " << duration.count() << std::endl;
+    std::cout << name_ << " : " << duration.count() << std::endl;
 
     // use this to precisely locate the node where CUDA failure comes from
     //if (cudaSuccess != cudaDeviceSynchronize())
@@ -171,6 +172,7 @@ class CudaKernel : public OpKernel {
 
  private:
   CUDAExecutionProvider* provider_;
+  std::string name_;
 };
 
 }  // namespace cuda
