@@ -143,20 +143,23 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
     displayName: Start iOS Simulator
 
-  - task: Gradle@3
-    inputs:
-      gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/android/gradlew'
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/android'
-      options: '--stacktrace'
-      tasks: 'connectedDebugAndroidTest'
-      publishJUnitResults: true
-      testResultsFiles: '**/TEST-*.xml'
-      testRunTitle: 'React Native Android Instrumented Test results'
-      javaHomeOption: 'path'
-      jdkDirectory: '$(JAVA_HOME_11_X64)'
-      sonarQubeRunAnalysis: false
-      spotBugsAnalysis: false
-    displayName: Run React Native Android Instrumented Tests
+  - template: android-dump-logs-from-steps.yml
+    parameters:
+      steps:
+      - task: Gradle@3
+        inputs:
+          gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/android/gradlew'
+          workingDirectory: '$(Build.SourcesDirectory)/js/react_native/android'
+          options: '--stacktrace'
+          tasks: 'connectedDebugAndroidTest'
+          publishJUnitResults: true
+          testResultsFiles: '**/TEST-*.xml'
+          testRunTitle: 'React Native Android Instrumented Test results'
+          javaHomeOption: 'path'
+          jdkDirectory: '$(JAVA_HOME_11_X64)'
+          sonarQubeRunAnalysis: false
+          spotBugsAnalysis: false
+        displayName: Run React Native Android Instrumented Tests
 
   - script: |
       pod install
@@ -227,35 +230,23 @@ jobs:
       targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
     displayName: Copy Android package to Android e2e test directory
 
-  - task: Gradle@3
-    inputs:
-      gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-      options: '--stacktrace'
-      tasks: ':app:connectedDebugAndroidTest'
-      publishJUnitResults: true
-      testResultsFiles: '**/TEST-*.xml'
-      testRunTitle: 'React Native Android e2e Test results'
-      javaHomeOption: 'path'
-      jdkDirectory: '$(JAVA_HOME_11_X64)'
-      sonarQubeRunAnalysis: false
-      spotBugsAnalysis: false
-    displayName: Run React Native Android e2e Tests
-
-  - script: |
-      mkdir -p $(Build.BinariesDirectory)/android_test_info
-      python3 tools/python/run_adb.py logcat -d > $(Build.BinariesDirectory)/android_test_info/android.log
-      python3 tools/python/run_adb.py pull /sdcard/Pictures/screenshots \
-        $(Build.BinariesDirectory)/android_test_info
-    displayName: Collect Android test info
-    condition: always()
-
-  - task: PublishPipelineArtifact@0
-    inputs:
-      artifactName: 'android_test_info'
-      targetPath: '$(Build.BinariesDirectory)/android_test_info'
-    displayName: Publish Android test info
-    condition: always()
+  - template: android-dump-logs-from-steps.yml
+    parameters:
+      steps:
+      - task: Gradle@3
+        inputs:
+          gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
+          workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+          options: '--stacktrace'
+          tasks: ':app:connectedDebugAndroidTest'
+          publishJUnitResults: true
+          testResultsFiles: '**/TEST-*.xml'
+          testRunTitle: 'React Native Android e2e Test results'
+          javaHomeOption: 'path'
+          jdkDirectory: '$(JAVA_HOME_11_X64)'
+          sonarQubeRunAnalysis: false
+          spotBugsAnalysis: false
+        displayName: Run React Native Android e2e Tests
 
   - script: |
       export FORCE_BUNDLING=1
