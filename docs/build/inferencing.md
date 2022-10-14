@@ -25,11 +25,33 @@ Basic CPU build
 * Checkout the source tree:
 
    ```bash
-   git clone --recursive https://github.com/Microsoft/onnxruntime
+   git clone --recursive https://github.com/Microsoft/onnxruntime.git
    cd onnxruntime
    ```
 
-* [Install](https://cmake.org/download/) cmake-3.18 or higher.
+* Install [Python 3.x](http://python.org/).
+
+* Install [cmake-3.24](https://cmake.org/download/) or higher.
+
+  On Windows, please run
+  ```bat
+    python -m pip install cmake
+    where cmake
+  ```
+  
+  On Linux, please run
+  ```bat
+    python3 -m pip install cmake
+    which cmake
+  ```
+  If the above commands failed, please manually get cmake from https://cmake.org/download/.
+  
+  Otherwise, you can run
+  ```
+    cmake --version
+  ```
+  to verify if the installation was successful.
+    
 
 ### Build Instructions
 {: .no_toc }
@@ -40,7 +62,7 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 ```
 .\build.bat --config RelWithDebInfo --build_shared_lib --parallel
 ```
-The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`
+The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`. Visual Studio 2022 should be fine too. We recommend using the latest one.
 
 #### Linux
 
@@ -50,29 +72,48 @@ The default Windows CMake Generator is Visual Studio 2017, but you can also use 
 
 #### macOS
 
-By default, ORT is configured to be built for a minimum target macOS version of 10.12.
+By default, ONNX Runtime is configured to be built for a minimum target macOS version of 10.12.
 The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.12+.
 
 If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, please add the --user_xcode argument in the command line.
 
 Without this flag, the cmake build generator will be Unix makefile by default.
-Also, if you want to cross-compile for Apple Silicon in an Intel-based MacOS machine, please add the argument --osx_arch arm64 with cmake > 3.19. Note: unit tests will be skipped due to the incompatible CPU instruction set.
+
+Today, Mac computers are either Intel-Based or Apple silicon(aka. ARM) based. By default, ONNX Runtime's build script only generate bits for the CPU ARCH that the build machine has. If you want to do cross-compiling: generate ARM binaries on a Intel-Based Mac computer, or generate x86 binaries on a Mac ARM computer, you can set the "CMAKE_OSX_ARCHITECTURES" cmake variable. For example:
+
+Build for Intel CPUs:
+```bash
+./build.sh --config RelWithDebInfo --build_shared_lib --parallel --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64
+```
+
+Build for Apple silicon CPUs:
+```bash
+./build.sh --config RelWithDebInfo --build_shared_lib --parallel --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+```
+Build for both:
+```bash
+./build.sh --config RelWithDebInfo --build_shared_lib --parallel --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+```
+The last command will generate a fat-binary for both CPU architectures.
+
+Note: unit tests will be skipped due to the incompatible CPU instruction set when doing cross-compiling.
 
 #### Notes
 
-* Please note that these instructions build the debug build, which may have performance tradeoffs
-* To build the version from each release (which include Windows, Linux, and Mac variants), see these [.yml files](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/azure-pipelines/nuget) for reference
+* Please note that these instructions build the debug build, which may have performance tradeoffs. The "--config" parameter has four valid values: Debug, Release, RelWithDebInfo and MinSizeRel. Compared to "Release", "RelWithDebInfo" not only has debug info, it also disables some inlines to make the binary easier to debug. Thus RelWithDebInfo is slower than Release.
+* To build the version from each release (which include Windows, Linux, and Mac variants), see these [.yml files](https://github.com/microsoft/onnxruntime/tree/master/tools/ci_build/github/azure-pipelines/) for reference
 * The build script runs all unit tests by default for native builds and skips tests by default for cross-compiled builds.
   To skip the tests, run with `--build` or `--update --build`.
-* If you need to install protobuf 3.6.1 from source code (cmake/external/protobuf), please note:
+* If you need to install protobuf from source code (cmake/external/protobuf), please note:
    * CMake flag `protobuf_BUILD_SHARED_LIBS` must be turned OFF. After the installation, you should have the 'protoc' executable in your PATH. It is recommended to run `ldconfig` to make sure protobuf libraries are found.
    * If you installed your protobuf in a non standard location it would be helpful to set the following env var:`export CMAKE_ARGS="-DONNX_CUSTOM_PROTOC_EXECUTABLE=full path to protoc"` so the ONNX build can find it. Also run `ldconfig <protobuf lib folder path>` so the linker can find protobuf libraries.
-* If you'd like to install onnx from source code (cmake/external/onnx), use:
+* If you'd like to install onnx from source code (cmake/external/onnx), install protobuf first and:
     ```
     export ONNX_ML=1
     python3 setup.py bdist_wheel
     pip3 install --upgrade dist/*.whl
     ```
+   Then, it's better to uninstall protobuf before you start to build ONNX Runtime, especially if you have install a different version of protobuf other than what ONNX Runtime has in the (cmake/external/protobuf) folder.
 ---
 
 ## Supported architectures and build environments
