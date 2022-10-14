@@ -164,9 +164,10 @@ class WindowsThread : public EnvThread {
         if (!rc) {
           const auto error_code = GetLastError();
           LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
-                              << " error code: " << error_code
-                              << " error msg: " << std::system_category().message(error_code)
-                              << " Specify the number of threads explicitly so the affinity is not set.";
+                              << ", mask: " << *p->affinity_mask
+                              << ", error code: " << error_code
+                              << ", error msg: " << std::system_category().message(error_code)
+                              << ". Specify the number of threads explicitly so the affinity is not set.";
         }
       }
 

@@ -229,8 +229,9 @@ class PosixThread : public EnvThread {
         if (ret != 0) {
           auto [err_no, err_msg] = GetSystemError(ret);
           LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << pthread_self()
+                              << ", mask: " << *p->affinity_mask
                               << ", error code: " << err_no << " error msg: " << err_msg
-                              << " Specify the number of threads explicitly so the affinity is not set.";
+                              << ". Specify the number of threads explicitly so the affinity is not set.";
         }
       }
 #endif
