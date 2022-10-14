@@ -3,9 +3,14 @@
 
 #pragma once
 
+
+#include <chrono>
+#include<iostream>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_fwd.h"
+
+using namespace std::chrono;
 
 namespace onnxruntime {
 namespace cuda {
@@ -22,10 +27,22 @@ class CudaKernel : public OpKernel {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
+    cudaStreamSynchronize(Stream());
+    
+    auto start = high_resolution_clock::now();
     auto s = ComputeInternal(p_op_kernel_context);
+    cudaStreamSynchronize(Stream());
+    auto stop = high_resolution_clock::now();
+
+    auto duration = duration_cast<microseconds>(stop - start);
+    
+    // To get the value of duration use the count()
+    // member function on the duration object
+    std::cout << p_op_kernel_context->GetOpType() << " : " << duration.count() << std::endl;
+
     // use this to precisely locate the node where CUDA failure comes from
-    //  if (cudaSuccess != cudaDeviceSynchronize())
-    //    __debugbreak();
+    //if (cudaSuccess != cudaDeviceSynchronize())
+    // __debugbreak();
 
     if (s.IsOK()) {
       auto err = cudaGetLastError();
