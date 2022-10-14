@@ -119,8 +119,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
-  Status EnableTunableOp();
-  Status DisableTunableOp();
+  void EnableTunableOp();
+  void DisableTunableOp();
   bool IsTunableOpEnabled() const;
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;

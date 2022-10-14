@@ -201,7 +201,7 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
 
   if (TunableOpIsEnabledByInfoOrEnv(info)) {
-    ORT_THROW_IF_ERROR(EnableTunableOp());
+    EnableTunableOp();
   }
 }
 
@@ -225,16 +225,14 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   }
 }
 
-Status ROCMExecutionProvider::EnableTunableOp() {
+void ROCMExecutionProvider::EnableTunableOp() {
   LOGS_DEFAULT(INFO) << "Enable TunableOp for ROCm Execution Provider";
   use_tunable_op_ = true;
-  return Status::OK();
 }
 
-Status ROCMExecutionProvider::DisableTunableOp() {
+void ROCMExecutionProvider::DisableTunableOp() {
   LOGS_DEFAULT(INFO) << "Disable TunableOp for ROCm Execution Provider";
   use_tunable_op_ = false;
-  return Status::OK();
 }
 
 bool ROCMExecutionProvider::IsTunableOpEnabled() const {

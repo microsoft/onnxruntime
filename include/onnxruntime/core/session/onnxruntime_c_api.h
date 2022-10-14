@@ -474,9 +474,9 @@ typedef struct OrtROCMProviderOptions {
   */
   void* user_compute_stream;
 
-  /** \brief Enable TunableOp or not.
+  /** \brief Enable TunableOp.
   *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
-  *   This option will be superseded by environment variable ORT_ROCM_USE_TUNABLE_OP.
+  *   This option can be superseded by environment variable ORT_ROCM_USE_TUNABLE_OP.
   */
   int use_tunable_op;
 
@@ -3574,13 +3574,13 @@ struct OrtApi {
   * \since Version 1.13.
   */
   void(ORT_API_CALL* ReleaseCANNProviderOptions)(_Frees_ptr_opt_ OrtCANNProviderOptions* input);
-  
+
  /*  \brief Get OrtDevice type from MemoryInfo
-  * 
+  *
   *  \since Version 1.14
   */
   void(ORT_API_CALL* MemoryInfoGetDeviceType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
-  
+
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
