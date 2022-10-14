@@ -121,7 +121,13 @@ int nftw_remove(
   return result;
 }
 
-using MallocdStringPtr = std::unique_ptr<char, &::free>;
+template <typename T>
+struct Freer {
+  void operator()(T* p) { ::free(p); }
+};
+
+using MallocdStringPtr = std::unique_ptr<char, Freer<char> >;
+
 
 class PosixThread : public EnvThread {
  private:
@@ -132,6 +138,18 @@ class PosixThread : public EnvThread {
     Eigen::ThreadPoolInterface* param;
     const ThreadOptions& thread_options;
     size_t affinity_mask;
+
+    Param(const ORTCHAR_T* name_prefix1,
+          int index1,
+          unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
+          Eigen::ThreadPoolInterface* param1,
+          const ThreadOptions& thread_options1) 
+      : name_prefix(name_prefix1),
+      index(index1),
+      start_address(start_address1), 
+      param(param1), 
+      thread_options(thread_options1),
+      affinity_mask(std::numeric_limits<size_t>::max()) {}
   };
 
  public:
@@ -163,13 +181,11 @@ class PosixThread : public EnvThread {
           ORT_THROW("pthread_attr_setstacksize failed, error code: ", err_no, " error msg: ", err_msg);
         }
       }
-      if (!thread_options.affinity.empty()) {
+      if (!thread_options.affinity.empty() && index < thread_options.affinity.size()) {
         param_ptr->affinity_mask = thread_options.affinity[index];
-      } else {
-        param_ptr->affinity_mask = std::numeric_limits<size_t>::max();
       }
 
-      s = pthread_create(&hThread, &attr, ThreadMain, pram_ptr_get());
+      s = pthread_create(&hThread, &attr, ThreadMain, pram_ptr.get());
       if (s != 0) {
         auto [err_no, err_msg] = GetSystemError();
         ORT_THROW("pthread_create failed, error code: ", err_no, " error msg: ", err_msg);
@@ -216,7 +232,7 @@ class PosixThread : public EnvThread {
       p->start_address(p->index, p->param);
     }
     ORT_CATCH(...) {
-      //ignore any exceptions
+      // Ignore exceptions
     }
     return nullptr;
   }
@@ -447,7 +463,7 @@ class PosixEnv : public Env {
   common::Status GetCanonicalPath(
       const PathString& path,
       PathString& canonical_path) const override {
-    MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr)};
+    MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr), Free<char>()};
     if (!canonical_path_cstr) {
       return ReportSystemError("realpath", path);
     }

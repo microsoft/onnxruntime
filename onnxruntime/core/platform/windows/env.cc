@@ -122,7 +122,7 @@ class WindowsThread : public EnvThread {
 #pragma warning(push)
 #pragma warning(disable : 6387)
   static unsigned __stdcall ThreadMain(void* param) {
-    std::unique_ptr<Param> p((Param*)param);
+    std::unique_ptr<Param> p(static_cast<Param*>(param));
     // TODO: should I try to use SetThreadSelectedCpuSets?
     if (!p->thread_options.affinity.empty())
       SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
@@ -149,7 +149,7 @@ class WindowsThread : public EnvThread {
     ORT_TRY {
       ret = p->start_address(p->index, p->param);
     }
-    ORT_CATCH(const std::exception&) {
+    ORT_CATCH(...) {
       p->param->Cancel();
       ret = 1;
     }
@@ -158,11 +158,11 @@ class WindowsThread : public EnvThread {
 #pragma warning(pop)
 
   static void __stdcall CustomThreadMain(void* param) {
-    std::unique_ptr<Param> p((Param*)param);
+    std::unique_ptr<Param> p(static_cast<Param*>(param));
     ORT_TRY {
       p->start_address(p->index, p->param);
     }
-    ORT_CATCH(const std::exception&) {
+    ORT_CATCH(...) {
       p->param->Cancel();
     }
   }
