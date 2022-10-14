@@ -132,6 +132,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       size_t workspace_size = 32 * 1024 * 1024;
       auto workspace_memory = GetScratchBuffer<void>(workspace_size);
 
+      cudaStreamSynchronize(Stream());
       auto start = high_resolution_clock::now();
 
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(

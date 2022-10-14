@@ -133,11 +133,22 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
+  cudaStreamSynchronize(Stream());
+  auto start = high_resolution_clock::now();
+
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->Data<T>()), k,
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+
+
+    cudaStreamSynchronize(Stream());
+    auto stop = high_resolution_clock::now();
+
+    auto duration = duration_cast<microseconds>(stop - start);
+  
+    std::cout << "QKV Gemm: " << duration.count() << std::endl;
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
