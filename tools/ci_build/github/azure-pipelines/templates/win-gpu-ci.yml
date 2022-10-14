@@ -48,7 +48,7 @@ parameters:
 - name: GenerateDocumentation
   displayName: Generate updated documentation. Requires build to have occurred and `--gen_doc` to be specified
   type: boolean
-  default: true
+  default: false
 
 jobs:
 - job: build_${{ parameters.job_name_suffix }}
@@ -58,7 +58,7 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-    DocUpdateNeeded: false  # Set to true during document generation if there are diffs 
+    DocUpdateNeeded: false  # Set to true during document generation if there are diffs
     skipComponentGovernanceDetection: true
   workspace:
     clean: all
