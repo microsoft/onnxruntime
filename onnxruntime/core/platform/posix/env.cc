@@ -58,6 +58,11 @@ class UnmapFileParam {
  */
 static std::pair<int, std::string> GetSystemError() {
   auto e = errno;
+  return GetSystemError(e);
+}
+
+
+static std::pair<int, std::string> GetSystemError(int e) {
   char buf[1024];
   const char* msg = "";
   if (e > 0) {
@@ -138,19 +143,16 @@ class PosixThread : public EnvThread {
     int index;
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
-    const ThreadOptions& thread_options;
     size_t affinity_mask;
 
     Param(const ORTCHAR_T* name_prefix1,
           int index1,
           unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
-          Eigen::ThreadPoolInterface* param1,
-          const ThreadOptions& thread_options1) 
+          Eigen::ThreadPoolInterface* param1) 
       : name_prefix(name_prefix1),
       index(index1),
       start_address(start_address1), 
       param(param1), 
-      thread_options(thread_options1),
       affinity_mask(std::numeric_limits<size_t>::max()) {}
   };
 
@@ -158,11 +160,16 @@ class PosixThread : public EnvThread {
   PosixThread(const ORTCHAR_T* name_prefix, int index,
               unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
               const ThreadOptions& thread_options) {
+    ORT_ENFORCE(index >= 0, "Negative thread index is not allowed");
     custom_create_thread_fn = thread_options.custom_create_thread_fn;
     custom_thread_creation_options = thread_options.custom_thread_creation_options;
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
 
-    auto param_ptr = std::make_unique<Param>(name_prefix, index, start_address, param, thread_options);
+    auto param_ptr = std::make_unique<Param>(name_prefix, index, start_address, param);
+    if (gsl::narrow<size_t>(index) < thread_options.affinity.size()) {
+      param_ptr->affinity_mask = thread_options.affinity[index];
+    }
+
     if (custom_create_thread_fn) {
       custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, param_ptr.get());
       if (!custom_thread_handle) {
@@ -182,9 +189,6 @@ class PosixThread : public EnvThread {
           auto [err_no, err_msg] = GetSystemError();
           ORT_THROW("pthread_attr_setstacksize failed, error code: ", err_no, " error msg: ", err_msg);
         }
-      }
-      if (!thread_options.affinity.empty() && gsl::narrow<size_t>(index) < thread_options.affinity.size()) {
-        param_ptr->affinity_mask = thread_options.affinity[index];
       }
 
       s = pthread_create(&hThread, &attr, ThreadMain, param_ptr.get());
@@ -220,14 +224,13 @@ class PosixThread : public EnvThread {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         CPU_SET(p->affinity_mask, &cpuset);
-        // We have no way of reporting or logging affinity failure
-        // and we are not at liberty of terminating the thread
-        // because it would make things worse.
-        pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-        //if (s != 0) {
-        //  auto [err_no, err_msg] = GetSystemError();
-        //  ORT_THROW("pthread_setaffinity_np failed, error code: ", err_no, " error msg: ", err_msg);
-        //}
+        // pthread_setaffinity_np() does not set errno, it returns it.
+        auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+        if (ret != 0) {
+          auto [err_no, err_msg] = GetSystemError(ret);
+          LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << gettid()
+                              << ", error code: ", err_no, " error msg: ", err_msg;
+        }
       }
 #endif
       // Ignore the returned value for now

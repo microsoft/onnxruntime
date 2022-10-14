@@ -25,6 +25,7 @@ limitations under the License.
 #include <fcntl.h>
 #include <io.h>
 
+#include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
@@ -68,29 +69,41 @@ class WindowsThread : public EnvThread {
     int index;
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
-    const ThreadOptions& thread_options;
+    size_t affinity_mask;
     Param(const ORTCHAR_T* name_prefix1,
           int index1,
           unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
-          Eigen::ThreadPoolInterface* param1,
-          const ThreadOptions& thread_options1) : name_prefix(name_prefix1), index(index1), start_address(start_address1), param(param1), thread_options(thread_options1) {}
+          Eigen::ThreadPoolInterface* param1) 
+      : name_prefix(name_prefix1),
+      index(index1),
+      start_address(start_address1),
+      param(param1),
+      affinity_mask(std::numeric_limits<size_t>::max()) {}
   };
 
  public:
   WindowsThread(const ORTCHAR_T* name_prefix, int index,
                 unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
                 const ThreadOptions& thread_options) {
+    ORT_ENFORCE(index >= 0, "Negative thread index is not allowed");
     custom_create_thread_fn = thread_options.custom_create_thread_fn;
     custom_thread_creation_options = thread_options.custom_thread_creation_options;
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
-    std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param, thread_options);
+
+    std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param);
+    if (gsl::narrow<size_t>(index) < thread_options.affinity.size()) {
+      local_param->affinity_mask = thread_options.affinity[index];
+    }
+
     if (custom_create_thread_fn) {
-      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.release());
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.get());
       if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
+      local_param.release();
     } else {
       _set_errno(0);
+      _set_doserrno(0);
       auto th_handle = _beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
                                       local_param.get(), 0,
                                       &threadID);
@@ -123,9 +136,6 @@ class WindowsThread : public EnvThread {
 #pragma warning(disable : 6387)
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
-    // TODO: should I try to use SetThreadSelectedCpuSets?
-    if (!p->thread_options.affinity.empty())
-      SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
 #if WINVER >= _WIN32_WINNT_WIN10
     constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
@@ -147,6 +157,17 @@ class WindowsThread : public EnvThread {
     }
     unsigned ret = 0;
     ORT_TRY {
+      // TODO: should I try to use SetThreadSelectedCpuSets?
+      if (p->affinity_mask != std::numeric_limits<size_t>::max()) {
+        auto rc = SetThreadAffinityMask(GetCurrentThread(), p->affinity_mask);
+        if (!rc) {
+          const auto error_code = GetLastError();
+          LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
+                              << " error code: " << error_code
+                              << " error msg: " << std::system_category().message(error_code);
+        }
+      }
+
       ret = p->start_address(p->index, p->param);
     }
     ORT_CATCH(...) {
