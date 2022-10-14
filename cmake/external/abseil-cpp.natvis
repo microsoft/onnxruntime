@@ -1,19 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
   <Type Name="absl::lts_20211102::InlinedVector&lt;*&gt;">
-    <DisplayString>{{ size={ storage_.metadata_.value >> 1 } }}</DisplayString>
+    <Intrinsic Name="_size" Expression="storage_.metadata_.value >> 1"/>
+    <Intrinsic Name="_is_allocated" Expression="(storage_.metadata_.value &amp; 1) == 1"/>
+    <Intrinsic Name="_inlined_data" Expression="($T1*)storage_.data_.inlined.inlined_data"/>
+    <Intrinsic Name="_allocated_data" Expression="storage_.data_.allocated.allocated_data"/>
+    <DisplayString>{{ size={ _size() }}}</DisplayString>
     <Expand>
-      <Item Name="[capacity]" ExcludeView="simple" Condition="(storage_.metadata_.value &amp; 1) == 0">$T2</Item>
-      <Item Name="[capacity]" ExcludeView="simple" Condition="(storage_.metadata_.value &amp; 1) == 1">storage_.data_.allocated.allocated_capacity</Item>
+      <Item Name="[capacity]" ExcludeView="simple" Condition="!_is_allocated()">$T2</Item>
+      <Item Name="[capacity]" ExcludeView="simple" Condition="_is_allocated()">storage_.data_.allocated.allocated_capacity</Item>
       <Item Name="[N]" ExcludeView="simple">$T2</Item>
-      <Item Name="[allocator]" ExcludeView="simple" Condition="(storage_.metadata_.value &amp; 1) == 1">storage_.metadata_</Item>
-      <IndexListItems Condition="(storage_.metadata_.value &amp; 1) == 0">
-        <Size>storage_.metadata_.value &gt;&gt; 1</Size>
-        <ValueNode>(($T1 &amp;)(storage_.data_.inlined.inlined_data[$i]))</ValueNode>
+      <Item Name="[size]" ExcludeView="simple">_size()</Item>
+      <Item Name="[is_allocated]" ExcludeView="simple">_is_allocated()</Item>
+      <Item Name="[allocator]" ExcludeView="simple" Condition="_is_allocated()">storage_.metadata_</Item>
+      <IndexListItems Condition="!_is_allocated()">
+        <Size>_size()</Size>
+        <ValueNode>_inlined_data()[$i]</ValueNode>
       </IndexListItems>
-      <IndexListItems Condition="(storage_.metadata_.value &amp; 1) == 1">
-        <Size>storage_.metadata_.value &gt;&gt; 1</Size>
-        <ValueNode>storage_.data_.allocated.allocated_data[$i]</ValueNode>
+      <IndexListItems Condition="_is_allocated()">
+        <Size>_size()</Size>
+        <ValueNode>_allocated_data()[$i]</ValueNode>
       </IndexListItems>
     </Expand>
   </Type>

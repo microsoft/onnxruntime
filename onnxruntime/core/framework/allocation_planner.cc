@@ -1454,7 +1454,7 @@ class PlannerImpl {
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // copy the use counts to a vector, before computing reuse
-    InlinedVector<int> ort_value_usecount;
+    std::vector<int> ort_value_usecount;
     ort_value_usecount.reserve(ort_value_info_.size());
 #endif
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
@@ -1677,7 +1677,7 @@ class PlannerImpl {
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  void CalculateLifetime(gsl::span<int> ort_value_usecount) {
+  void CalculateLifetime(std::vector<int>& ort_value_usecount) {
     auto& execution_plan = graph_viewer_.GetNodesInTopologicalOrder();
     for (size_t program_counter = 0; program_counter < execution_plan.size(); ++program_counter) {
       auto node_index = execution_plan[program_counter];
@@ -1686,7 +1686,6 @@ class PlannerImpl {
       // node outputs.
       const auto& output_defs = pnode->OutputDefs();
       // External outputs flag.
-      bool has_external_outputs = HasExternalOutputs(*pnode);
       for (size_t output_arg_def_index = 0, end = output_defs.size(); output_arg_def_index < end; ++output_arg_def_index) {
         const auto& node_output = output_defs[output_arg_def_index];
         if (!node_output->Exists()) continue;
@@ -1702,9 +1701,9 @@ class PlannerImpl {
           if (node_input->Exists()) {
             auto& sym = node_input->Name();
             // Compute lifetime
-            auto current = Index(sym);
-            if ((current != -1) && (0 == --ort_value_usecount[current])) {
-              AllocPlan(current).life_interval.second = program_counter;
+            auto current2 = Index(sym);
+            if ((current2 != -1) && (0 == --ort_value_usecount[current2])) {
+              AllocPlan(current2).life_interval.second = program_counter;
             }
           }
         }
@@ -1713,22 +1712,22 @@ class PlannerImpl {
           if (node_input->Exists()) {
             auto& sym = node_input->Name();
             // Compute lifetime
-            auto current = Index(sym);
-            if ((current != -1) && (0 == --ort_value_usecount[current])) {
-              AllocPlan(current).life_interval.second = program_counter;
+            auto current2 = Index(sym);
+            if ((current2 != -1) && (0 == --ort_value_usecount[current2])) {
+              AllocPlan(current2).life_interval.second = program_counter;
             }
           }
         }
 
         // determine if any outputs of *pnode are unused and can be freed:
-        for (auto node_output : pnode->OutputDefs()) {
-          if (node_output->Exists()) {
-            auto& sym = node_output->Name();
+        for (auto node_output2 : pnode->OutputDefs()) {
+          if (node_output2->Exists()) {
+            auto& sym = node_output2->Name();
             // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
             // See comments in the OrtValueInfo definition.
-            auto current = Index(sym);
-            if ((current != -1) && (0 == --ort_value_usecount[current])) {
-              AllocPlan(current).life_interval.second = program_counter;
+            auto current2 = Index(sym);
+            if ((current2 != -1) && (0 == --ort_value_usecount[current2])) {
+              AllocPlan(current2).life_interval.second = program_counter;
             }
           }
         }

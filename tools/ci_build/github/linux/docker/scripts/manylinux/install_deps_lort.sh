@@ -94,17 +94,8 @@ echo "Installing Pytorch requirements"
 /opt/python/cp39-cp39/bin/python3.9 -m pip install -r requirements.txt
 /opt/python/cp39-cp39/bin/python3.9 -m pip install flatbuffers cerberus h5py onnx
 echo "Building and installing Pytorch"
-VERBOSE=1 BUILD_LAZY_TS_BACKEND=1 /opt/python/cp39-cp39/bin/python3.9 setup.py develop
-/opt/python/cp39-cp39/bin/python3.9 -c "import torch; print(f'Installed Pytorch: {torch.__version__}')"
-
-echo "Installing valgrind"
-cd /tmp/src
-GetFile 'https://sourceware.org/pub/valgrind/valgrind-3.16.1.tar.bz2' /tmp/src/valgrind-3.16.1.tar.bz2
-tar -jxvf valgrind-3.16.1.tar.bz2
-cd valgrind-3.16.1
-./configure --prefix=/usr --libdir=/usr/lib64 --enable-only64bit --enable-tls
-make -j$(getconf _NPROCESSORS_ONLN)
-make install
+VERBOSE=1 BUILD_LAZY_TS_BACKEND=1 /opt/python/cp39-cp39/bin/python3.9 setup.py install
+cd ~ && /opt/python/cp39-cp39/bin/python3.9 -c "import torch; print(f'Installed Pytorch: {torch.__version__}')"
 
 cd /
 rm -rf /tmp/src

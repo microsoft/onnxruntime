@@ -104,7 +104,11 @@ const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 /// This returns a reference to the OrtApi interface in use
 inline const OrtApi& GetApi() { return *Global<void>::api_; }
 
-/// This is a C++ wrapper for OrtApi::GetAvailableProviders() and returns a vector of strings representing the available execution providers.
+/// <summary>
+/// This is a C++ wrapper for OrtApi::GetAvailableProviders() and
+/// returns a vector of strings representing the available execution providers.
+/// </summary>
+/// <returns>vector of strings</returns>
 std::vector<std::string> GetAvailableProviders();
 
 /** \brief IEEE 754 half-precision floating point data type
@@ -991,24 +995,27 @@ struct ValueImpl : ConstValueImpl<T> {
   void* GetTensorMutableRawData();
 
   /// <summary>
-  /// Obtain a reference to an element of data at the location specified
+  //  Obtain a reference to an element of data at the location specified
   /// by the vector of dims.
   /// </summary>
+  /// <typeparam name="R"></typeparam>
+  /// <param name="location">[in] expressed by a vecotr of dimensions offsets</param>
+  /// <returns></returns>
   template <typename R>
   R& At(const std::vector<int64_t>& location);
 
   /// <summary>
   /// Set all strings at once in a string tensor
   /// </summary>
-  /// <param>[in] s An array of strings. Each string in this array must be null terminated.</param>
-  /// <param>s_len Count of strings in s (Must match the size of \p value's tensor shape)</param>
+  /// <param name="s">[in] An array of strings. Each string in this array must be null terminated.</param>
+  /// <param name="s_len">[in] Count of strings in s (Must match the size of \p value's tensor shape)</param>
   void FillStringTensor(const char* const* s, size_t s_len);
 
   /// <summary>
-  ///  Set a single string in a string tensor
+  /// Set a single string in a string tensor
   /// </summary>
-  /// <param>s A null terminated UTF-8 encoded string</param>
-  /// <param>index Index of the string in the tensor to set</param>
+  /// <param name="s">[in] A null terminated UTF-8 encoded string</param>
+  /// <param name="index">[in] Index of the string in the tensor to set</param>
   void FillStringTensorElement(const char* s, size_t index);
 
 #if !defined(DISABLE_SPARSE_TENSORS)

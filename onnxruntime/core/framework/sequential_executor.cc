@@ -223,11 +223,9 @@ class SessionScope {
                          << i.second << " bytes for " << i.first << std::endl;
     }
 
-    for (const auto& node_exec_plan : exec_plan_vec) {
-      if (terminate_flag_) {
-        LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
-      }
+    for (auto i : frame_.GetDynamicMemorySizeInfo()) {
+      LOGS(logger, INFO) << "[Memory] ExecutionFrame dynamically allocates "
+                         << i.second << " bytes for " << i.first << std::endl;
     }
 #endif
   }
@@ -477,8 +475,8 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
        << "' Status Message: " << status.ErrorMessage();
     // If the computation failed, we still can record the memory consumption
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-    MemoryInfo::MemoryInfoProfile::CreateEvents("dynamic activations_" + std::to_string(MemoryInfo::GetIteration()),
-                                                MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+    ctx.GetSessionState().GetMemoryProfiler()->CreateEvents("dynamic activations_" + std::to_string(ctx.GetSessionState().GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+                                                ctx.GetSessionState().GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
 #endif
     const auto msg_string = ss.str();
     LOGS(logger, ERROR) << msg_string;
@@ -566,41 +564,6 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
     }
   }
 
-  return Status::OK();
-}
-
-onnxruntime::Status BindToDeviceStream(Stream* parent_stream,
-                                       const SequentialExecutionPlan& execution_plan,
-                                       DeviceStreamCollection& device_stream_map,
-                                       IStreamCommandHandleRegistry& stream_handle_registry) {
-  for (size_t i = 0; i < execution_plan.execution_plan.size(); ++i) {
-    auto& logic_stream = execution_plan.execution_plan[i];
-    if (logic_stream->steps_.size() > 0) {
-      auto create_stream_fn = stream_handle_registry.GetCreateStreamFn(logic_stream->device_.Type());
-      // TODO: in theory, we should make current subgraph's stream depends on parent stream.
-      // but in current code structure, it causing issues with the resource sharing and stream
-      // lifetime. it also may cause additional cost of stream sync for single stream case.
-      // In first phase, let's just put all the subgraph execution on the parent stream.
-      if (parent_stream) {
-        // if current logic stream is not on the same EP instance as parent stream
-        // and the EP instance does have async streams (not EP like CPU)
-        // throw error as we don't have the code to setup the dependency at this moment.
-        if (logic_stream->device_ != parent_stream->device && create_stream_fn) {
-          ORT_THROW("Subgraph has nodes running on device: ", logic_stream->device_.Type(),
-                    " while parent graph node running on device: ", parent_stream->device.Type(),
-                    ", this is not supported yet.");
-        }
-        device_stream_map.SetDeviceStream(i, parent_stream);
-      } else if (create_stream_fn) {
-        auto device_stream = create_stream_fn(logic_stream->device_);
-        device_stream_map.SetDeviceStream(i, std::move(device_stream));
-      } else {
-        device_stream_map.SetDeviceStream(i, nullptr);
-      }
-    } else {
-      device_stream_map.SetDeviceStream(i, nullptr);
-    }
-  }
   return Status::OK();
 }
 
