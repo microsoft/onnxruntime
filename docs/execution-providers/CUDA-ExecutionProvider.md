@@ -2,7 +2,7 @@
 title: CUDA (NVIDIA)
 description: Instructions to execute ONNX Runtime applications with CUDA
 parent: Execution Providers
-nav_order: 4
+nav_order: 5
 redirect_from: /docs/reference/execution-providers/CUDA-ExecutionProvider
 ---
 

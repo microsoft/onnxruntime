@@ -1177,6 +1177,24 @@ var validCombos = {
 
     "linux,C++,X86,XNNPACK":
         "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+    "linux,Python,ARM64,CANN":
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+    "linux,C-API,ARM64,CANN":
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+    "linux,C++,ARM64,CANN":
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+    "linux,Python,X64,CANN":
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+    "linux,C-API,X64,CANN":
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+    "linux,C++,X64,CANN":
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
 };
 
 function commandMessage(key) {

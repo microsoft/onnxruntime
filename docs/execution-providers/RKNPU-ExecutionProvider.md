@@ -2,7 +2,7 @@
 title: RKNPU
 description: Instructions to execute ONNX Runtime on Rockchip NPUs with the RKNPU execution provider
 parent: Execution Providers
-nav_order: 10
+nav_order: 11
 redirect_from: /docs/reference/execution-providers/RKNPU-ExecutionProvider
 ---
 

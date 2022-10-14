@@ -17,7 +17,7 @@ redirect_from: /docs/how-to/build/eps
 
 ## Execution Provider Shared Libraries
 
-The oneDNN, TensorRT, and OpenVINO™ providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
+The oneDNN, TensorRT, OpenVINO™, and CANN providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
 
 ### Built files
 {: .no_toc }
@@ -769,3 +769,36 @@ Linux example:
 ```bash
 <ONNX Runtime repository root>./build.sh --config <Release|Debug|RelWithDebInfo> --use_xnnpack
 ```
+
+---
+
+## CANN
+
+See more information on the CANN Execution Provider [here](../execution-providers/CANN-ExecutionProvider.md).
+
+### Prerequisites
+{: .no_toc }
+
+1. Install the CANN Toolkit for the appropriate OS and target hardware by following [documentation](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/51RC1alphaX/softwareinstall/instg/atlasdeploy_03_0017.html) for detailed instructions, please.
+
+2. Initialize the CANN environment by running the script as shown below.
+
+   ```bash
+   # Default path, change it if needed.
+   source /usr/local/Ascend/ascend-toolkit/set_env.sh
+   ```
+
+### Build Instructions
+{: .no_toc }
+
+#### Linux
+
+```bash
+./build.sh --config RelWithDebInfo --build_shared_lib --parallel --use_cann --build_wheel
+```
+
+### Notes
+{: .no_toc }
+
+* The CANN execution provider supports building for both x64 and aarch64 architectures.
+* CANN excution provider now is only supported on Linux.

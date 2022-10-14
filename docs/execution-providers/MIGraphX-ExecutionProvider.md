@@ -2,7 +2,7 @@
 title: MIGraphX (AMD)
 description: Instructions to execute ONNX Runtime with the AMD MIGraphX execution provider
 parent: Execution Providers
-nav_order: 6
+nav_order: 7
 redirect_from: /docs/reference/execution-providers/MIGraphX-ExecutionProvider
 ---
 
@@ -50,4 +50,4 @@ MIGraphX providers an environment variable ORT_MIGRAPHX_FP16_ENABLE to enable th
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../performance/tune-performance.md)
 
-When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e migraphx` 
+When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e migraphx`
