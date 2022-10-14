@@ -89,10 +89,9 @@ class Module:
         """
         Returns contiguous parameters object.
         """
-        size = self._model.get_parameters_size(trainable_only)
         parameters = OrtValue.ortvalue_from_shape_and_type(
             [
-                size,
+                self.get_parameters_size(trainable_only),
             ],
             np.float32,
             "cpu",
