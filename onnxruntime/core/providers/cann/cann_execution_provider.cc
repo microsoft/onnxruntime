@@ -747,9 +747,9 @@ void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 }
 
-void CANNExecutionProvider::LegalizeSessionOptions(SessionOptions& so, const logging::Logger& logger) {
+void CANNExecutionProvider::LegalizeSessionOptions(SessionOptions& so, const logging::Logger&) {
   if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-    LOGS(logger, WARNING)
+    LOGS_DEFAULT(WARNING)
         << "Parallel execution mode does not support the CANN Execution Provider. "
         << "So making the execution mode sequential for this session since it uses the CANN Execution Provider.";
     so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
