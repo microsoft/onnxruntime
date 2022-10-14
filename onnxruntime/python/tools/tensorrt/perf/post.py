@@ -102,8 +102,7 @@ def get_latency_over_time(report_url, latency_table):
              | resnet.. | onnx-zoo-models | ORT-CUDAFp32 |  4.18   | ...
     """
 
-    over_time = latency_table
-    over_time = over_time.melt(id_vars=[model_title, group_title], var_name="Ep", value_name="Latency")
+    over_time = latency_table.melt(id_vars=[model_title, group_title], var_name="Ep", value_name="Latency")
     over_time = over_time.assign(ReportUrl=report_url)
     over_time = over_time[
         [
@@ -177,8 +176,7 @@ def get_memory_over_time(memory_table):
              | resnet.. | onnx-zoo-models | ORT-CUDAFp32 |   873    | ...
     """
 
-    over_time = memory_table
-    over_time = over_time.melt(id_vars=[model_title, group_title], var_name="Ep", value_name="MemUsage")
+    over_time = memory_table.melt(id_vars=[model_title, group_title], var_name="Ep", value_name="MemUsage")
     over_time = over_time[
         [
             model_title,
@@ -209,11 +207,10 @@ def get_session_over_time(session_table):
     """
 
     ep_names = [cpu, cuda_fp16, cuda, trt_fp16, trt]
-    over_time = session_table
-    over_time_1 = over_time.melt(
+    over_time_1 = session_table.melt(
         id_vars=[model_title, group_title], value_vars=ep_names, var_name="Ep", value_name="SessionCreationTime"
     )
-    over_time_2 = over_time.melt(
+    over_time_2 = session_table.melt(
         id_vars=[model_title, group_title],
         value_vars=[ep + "_second" for ep in ep_names],
         value_name="SessionCreationTime_second",
@@ -250,8 +247,7 @@ def get_status_over_time(status_table):
              | FasterRCNN-10 | onnx-zoo-models | ORT-CUDAFp32 |   1  | ...
     """
 
-    over_time = status_table
-    over_time = over_time.melt(id_vars=[model_title, group_title], var_name="Ep", value_name="Pass")
+    over_time = status_table.melt(id_vars=[model_title, group_title], var_name="Ep", value_name="Pass")
     over_time["Pass"] = over_time["Pass"].map(lambda s: 1 if s == "Pass" else 0)
     over_time = over_time[
         [
