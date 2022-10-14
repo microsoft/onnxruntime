@@ -1,5 +1,6 @@
 package com.example.reactnativeonnxruntimemodule;
 
+import android.Manifest;
 import android.view.View;
 import android.widget.TextView;
 
@@ -7,14 +8,16 @@ import androidx.test.espresso.NoMatchingViewException;
 import androidx.test.espresso.UiController;
 import androidx.test.espresso.ViewAction;
 import androidx.test.espresso.ViewInteraction;
+import androidx.test.ext.junit.rules.ActivityScenarioRule;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.LargeTest;
-import androidx.test.rule.ActivityTestRule;
-import androidx.test.runner.AndroidJUnit4;
+import androidx.test.rule.GrantPermissionRule;
 
 import org.hamcrest.Matcher;
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.RuleChain;
 import org.junit.runner.RunWith;
 
 import static androidx.test.espresso.Espresso.onView;
@@ -27,7 +30,10 @@ import static org.hamcrest.Matchers.allOf;
 @LargeTest
 public class OnnxruntimeModuleExampleUITests {
     @Rule
-    public ActivityTestRule<MainActivity> activityTestRule = new ActivityTestRule<>(MainActivity.class);
+    public RuleChain rules = RuleChain
+            .outerRule(new ActivityScenarioRule<>(MainActivity.class))
+            .around(GrantPermissionRule.grant(Manifest.permission.WRITE_EXTERNAL_STORAGE))
+            .around(new ScreenshottingTestWatcher());
 
     @Test
     public void testExample() {
@@ -50,7 +56,7 @@ public class OnnxruntimeModuleExampleUITests {
         } while (waitTime < 180000);
 
         ViewInteraction view = onView(allOf(withContentDescription("output"), isDisplayed()));
-        Assert.assertEquals(getText(view), "Result: 3");
+        Assert.assertEquals("Result: 3", getText(view));
     }
 
     private String getText(ViewInteraction matcher) {

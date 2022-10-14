@@ -111,7 +111,7 @@ def start_emulator(
             "-no-snapshot",
             "-no-audio",
             "-no-boot-anim",
-            "-no-window",
+            # "-no-window",  # TODO does disabling this work on CI machines?
         ]
         if extra_args is not None:
             emulator_args += extra_args
