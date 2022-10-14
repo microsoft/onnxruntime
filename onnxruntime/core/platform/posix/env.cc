@@ -56,12 +56,6 @@ class UnmapFileParam {
  *
  * @return a pair of {errno, error message}
  */
-static std::pair<int, std::string> GetSystemError() {
-  auto e = errno;
-  return GetSystemError(e);
-}
-
-
 static std::pair<int, std::string> GetSystemError(int e) {
   char buf[1024];
   const char* msg = "";
@@ -78,6 +72,11 @@ static std::pair<int, std::string> GetSystemError(int e) {
   }
 
   return std::make_pair(e, msg);
+}
+
+static std::pair<int, std::string> GetSystemError() {
+  auto e = errno;
+  return GetSystemError(e);
 }
 
 static void UnmapFile(void* param) noexcept {
@@ -228,7 +227,7 @@ class PosixThread : public EnvThread {
         auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
         if (ret != 0) {
           auto [err_no, err_msg] = GetSystemError(ret);
-          LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << gettid()
+          LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << pthread_self()
                               << ", error code: ", err_no, " error msg: ", err_msg;
         }
       }
