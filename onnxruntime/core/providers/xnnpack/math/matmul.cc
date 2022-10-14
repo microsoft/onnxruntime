@@ -37,11 +37,13 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
       break;
     }
 
-    if (!A_shape || A_shape->dim_size() > 3 || (A_shape->dim(0).dim_value() != 1 && A_shape->dim(1).dim_value() != 1)) {
+    if (!A_shape || A_shape->dim_size() != 2 ||
+        (A_shape->dim(0).dim_value() != 1 && A_shape->dim(1).dim_value() != 1)) {
       break;
     }
 
-    if (!B_shape || B_shape->dim_size() > 3 || (B_shape->dim(0).dim_value() != 1 && B_shape->dim(1).dim_value() != 1)) {
+    if (!B_shape || B_shape->dim_size() != 2 || 
+        (B_shape->dim(0).dim_value() != 1 && B_shape->dim(1).dim_value() != 1)) {
       break;
     }
 
