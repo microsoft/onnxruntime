@@ -47,14 +47,13 @@ class UnmapFileParam {
 };
 
 static void UnmapFile(void* param) noexcept {
-  UnmapFileParam* p = reinterpret_cast<UnmapFileParam*>(param);
+  std::unique_ptr<UnmapFileParam> p(reinterpret_cast<UnmapFileParam*>(param));
   bool ret = UnmapViewOfFile(p->addr);
   if (!ret) {
     const auto error_code = GetLastError();
     LOGS_DEFAULT(ERROR) << "unmap view of file failed. error code: " << error_code
                         << " error msg: " << std::system_category().message(error_code);
   }
-  delete p;
 }
 
 std::wstring Basename(const std::wstring& path) {

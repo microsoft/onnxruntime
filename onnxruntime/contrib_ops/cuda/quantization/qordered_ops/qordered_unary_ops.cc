@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qordered_unary_ops.h"
-#include "qordered_unary_ops_impl.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_unary_ops.h"
+#include "contrib_ops/cuda/quantization/qordered_ops/qordered_unary_ops_impl.h"
+
+using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
-using namespace onnxruntime::cuda;
 
 ONNX_OPERATOR_KERNEL_EX(
     QOrderedGelu,
@@ -32,10 +32,8 @@ Status QOrderedGelu::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, shape);
 
-  QOrderedUnarySharedMemory_Gelu(Stream(), input.Data<int8_t>(), scale_input, output->MutableData<int8_t>(),
-                                 scale_output, static_cast<size_t>(shape.Size()));
-
-  return Status::OK();
+  return QOrderedUnarySharedMemory_Gelu(Stream(), input.Data<int8_t>(), scale_input, output->MutableData<int8_t>(),
+                                        scale_output, static_cast<size_t>(shape.Size()));
 }
 
 }  // namespace cuda

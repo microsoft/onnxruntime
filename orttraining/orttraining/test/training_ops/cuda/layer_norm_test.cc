@@ -101,7 +101,7 @@ TEST(CudaKernelTest, LayerNormGrad_SmallSizeTensor) {
 
 TEST(CudaKernelTest, LayerNormGrad_SmallSizeTensor_IntermediateAxis) {
   const std::vector<int64_t> X_dims{4, 20, 16, 8};
-  const int64_t axis = -2;
+  constexpr int64_t axis = -2;
   TestLayerNormGrad(X_dims, LAYER_NORM_GRAD_OP, axis);
 }
 
@@ -122,7 +122,7 @@ TEST(CudaKernelTest, SimplifiedLayerNormGrad_SmallSizeTensor) {
 
 TEST(CudaKernelTest, SimplifiedLayerNormGrad_SmallSizeTensor_IntermediateAxis) {
   const std::vector<int64_t> X_dims{4, 20, 16, 8};
-  const int64_t axis = -2;
+  constexpr int64_t axis = -2;
   TestLayerNormGrad(X_dims, SIMPLIFIED_LAYER_NORM_GRAD_OP, axis);
 }
 
@@ -239,7 +239,7 @@ TEST(CudaKernelTest, InvertibleLayerNormGrad_SmallSizeTensor) {
 
 TEST(CudaKernelTest, InvertibleLayerNormGrad_SmallSizeTensor_IntermediateAxis) {
   const std::vector<int64_t> X_dims{4, 20, 16, 8};
-  const int64_t axis = -2;
+  constexpr int64_t axis = -2;
   TestInvertibleLayerNormGrad(X_dims, axis);
 }
 
@@ -260,7 +260,7 @@ TEST(CudaKernelTest, InvertibleLayerNormGrad_SmallSizeTensor_FP16) {
 
 TEST(CudaKernelTest, InvertibleLayerNormGrad_SmallSizeTensor_IntermediateAxis_FP16) {
   const std::vector<int64_t> X_dims{4, 20, 16, 8};
-  const int64_t axis = -2;
+  constexpr int64_t axis = -2;
   TestInvertibleLayerNormGrad(X_dims, axis, 2e-3, true);
 }
 

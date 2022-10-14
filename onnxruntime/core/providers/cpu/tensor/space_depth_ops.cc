@@ -18,8 +18,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<double>()}),
     SpaceToDepth);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -27,8 +26,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<double>()}),
     SpaceToDepth);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -36,8 +34,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     1, 10,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -46,8 +43,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -55,8 +51,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()})
-        .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()}),
+                              DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 // intermediate tensor shapes are:

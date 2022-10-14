@@ -27,6 +27,7 @@
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/constant_sharing.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -37,6 +38,7 @@
 #include "core/optimizer/expand_elimination.h"
 #include "core/optimizer/fast_gelu_fusion.h"
 #include "core/optimizer/free_dim_override_transformer.h"
+#include "core/optimizer/gather_to_split_fusion.h"
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
@@ -184,6 +186,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
+
+      // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
+      // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
+      // default, CSE will not merge them, because the different initializers are represented by different NodeArg.
+      transformers.emplace_back(std::make_unique<ConstantSharing>());
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>());
@@ -249,6 +256,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<AttentionFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<EmbedLayerNormFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<GatherToSplitFusion>(cpu_cuda_rocm_eps));
 
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_cuda_rocm_eps));
@@ -293,11 +301,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
       auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
       transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
-      // NCHWCtransformer should have a higher priority versus this. Because NCHWCtransformer also do the similiar things
+      // NCHWCtransformer should have a higher priority versus this. Because NCHWCtransformer also do the similar things
       // of fusion patterns and target on CPU. However, NCHWCtransformer will reorder the layout to nchwc which is only available for
       // x86-64 cpu, not edge cpu like arm. But This tranformer could be used by opencl-ep/cpu-ep. So
       // we will prefer NhwcTransformer once ort runs on x86-64 CPU, otherwise ConvAddActivationFusion is enabled.
-      // this PR #6351 implemented similiar fusion-pattern but only for CUDA, and can only fuse conv-add-relu, while we can fuse more activation.
+      // PR #6351 implemented similar fusion-pattern for CUDA only, and can only fuse conv-add-relu,
+      // while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
 #endif
     } break;
@@ -361,6 +370,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       // currently the only level 3 optimizer is the NhwcTransformer which is fully supported at runtime
       if (!saving) {
 #ifndef DISABLE_CONTRIB_OPS
+        const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
         auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
         transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
 #else

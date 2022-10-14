@@ -1,7 +1,7 @@
 ARG UBUNTU_VERSION=20.04
 FROM ubuntu:${UBUNTU_VERSION}
 
-ARG OPENVINO_VERSION=2022.1.0
+ARG OPENVINO_VERSION=2022.2.0
 ARG PYTHON_VERSION=3.8
 
 ADD scripts /tmp/scripts
@@ -12,9 +12,7 @@ RUN /tmp/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} -d EdgeDevice && \
 RUN apt update && apt install -y libnuma1 ocl-icd-libopencl1 && \
     rm -rf /var/lib/apt/lists/* /tmp/scripts
 
-WORKDIR /root
-
-ENV INTEL_OPENVINO_DIR /opt/intel/openvino_${OPENVINO_VERSION}.643
+ENV INTEL_OPENVINO_DIR /opt/intel/openvino_${OPENVINO_VERSION}
 ENV LD_LIBRARY_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64:$INTEL_OPENVINO_DIR/runtime/3rdparty/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
 ENV InferenceEngine_DIR $INTEL_OPENVINO_DIR/runtime/cmake
 ENV ngraph_DIR $INTEL_OPENVINO_DIR/runtime/cmake
@@ -22,12 +20,13 @@ ENV IE_PLUGINS_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH /usr/local/gradle/bin:$PATH
 
-RUN wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB && \
-    apt-key add GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB && rm GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB && \
-    echo "deb https://apt.repos.intel.com/openvino/2022 bionic main" | tee /etc/apt/sources.list.d/intel-openvino-2022.list && \
-    apt update && \ 
-    apt -y install openvino-2022.1.0 && \
+RUN cd /opt && mkdir -p intel && cd intel && \
+    wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2022.2/linux/l_openvino_toolkit_ubuntu20_2022.2.0.7713.af16ea1d79a_x86_64.tgz && \
+    tar xzf l_openvino_toolkit_ubuntu20_2022.2.0.7713.af16ea1d79a_x86_64.tgz && rm -rf l_openvino_toolkit_ubuntu20_2022.2.0.7713.af16ea1d79a_x86_64.tgz && \
+    mv l_openvino_toolkit_ubuntu20_2022.2.0.7713.af16ea1d79a_x86_64 openvino_2022.2.0 && \
     cd $INTEL_OPENVINO_DIR/install_dependencies && ./install_openvino_dependencies.sh -y
+
+WORKDIR /root
 
 RUN wget "https://github.com/intel/compute-runtime/releases/download/21.48.21782/intel-gmmlib_21.3.3_amd64.deb" && \
     wget "https://github.com/intel/intel-graphics-compiler/releases/download/igc-1.0.9441/intel-igc-core_1.0.9441_amd64.deb" && \

@@ -113,6 +113,9 @@ target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT
 if(onnxruntime_USE_CUDA AND onnxruntime_CUDNN_HOME)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
 endif()
+if(onnxruntime_USE_CANN)
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
+endif()
 if(onnxruntime_USE_ROCM)
   target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_HCC__=1)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
@@ -154,19 +157,21 @@ if (onnxruntime_ENABLE_EAGER_MODE OR onnxruntime_ENABLE_LAZY_TENSOR)
     "${REPO_ROOT}/cmake/external/protobuf/src"
     ${TORCH_INCLUDE_DIRS})
 
-  if (onnxruntime_ENABLE_EAGER_MODE)
-    # For eager mode, torch build has a mkl dependency from torch's cmake config,
-    # Linking to torch libraries to avoid this unnecessary mkl dependency.
-    target_include_directories(onnxruntime_pybind11_state PRIVATE "${TORCH_INSTALL_PREFIX}/include" "${TORCH_INSTALL_PREFIX}/include/torch/csrc/api/include")
-    find_library(LIBTORCH_LIBRARY torch PATHS "${TORCH_INSTALL_PREFIX}/lib")
-    find_library(LIBTORCH_CPU_LIBRARY torch_cpu PATHS "${TORCH_INSTALL_PREFIX}/lib")
-    find_library(LIBC10_LIBRARY c10 PATHS "${TORCH_INSTALL_PREFIX}/lib")
-    target_link_libraries(onnxruntime_pybind11_state PRIVATE ${LIBTORCH_LIBRARY} ${LIBTORCH_CPU_LIBRARY} ${LIBC10_LIBRARY})
-  endif()
-
+  # For eager mode, torch build has a mkl dependency from torch's cmake config,
+  # Linking to torch libraries to avoid this unnecessary mkl dependency.
+  target_include_directories(onnxruntime_pybind11_state PRIVATE "${TORCH_INSTALL_PREFIX}/include" "${TORCH_INSTALL_PREFIX}/include/torch/csrc/api/include")
+  find_library(LIBTORCH_LIBRARY torch PATHS "${TORCH_INSTALL_PREFIX}/lib")
+  find_library(LIBTORCH_CPU_LIBRARY torch_cpu PATHS "${TORCH_INSTALL_PREFIX}/lib")
+  find_library(LIBC10_LIBRARY c10 PATHS "${TORCH_INSTALL_PREFIX}/lib")
   # Explicitly link torch_python to workaround https://github.com/pytorch/pytorch/issues/38122#issuecomment-694203281
   find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${TORCH_PYTHON_LIBRARY})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE  ${LIBTORCH_LIBRARY} ${LIBTORCH_CPU_LIBRARY} ${LIBC10_LIBRARY} ${TORCH_PYTHON_LIBRARY})
+  if (onnxruntime_USE_CUDA)
+    find_library(LIBTORCH_CUDA_LIBRARY torch_cuda PATHS "${TORCH_INSTALL_PREFIX}/lib")
+    find_library(LIBC10_CUDA_LIBRARY c10_cuda PATHS "${TORCH_INSTALL_PREFIX}/lib")
+    target_link_libraries(onnxruntime_pybind11_state PRIVATE ${LIBTORCH_CUDA_LIBRARY} ${LIBC10_CUDA_LIBRARY})
+  endif()
+
   if (onnxruntime_ENABLE_EAGER_MODE)
     target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager)
   endif()
@@ -196,7 +201,6 @@ endif()
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
-    ${PROVIDERS_NUPHAR}
     ${PROVIDERS_TVM}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
@@ -400,6 +404,9 @@ if (onnxruntime_ENABLE_TRAINING)
     )
     file(GLOB onnxruntime_python_onnxblock_loss_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/loss/*"
+    )
+    file(GLOB onnxruntime_python_api_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/api/*"
     )
     file(GLOB onnxruntime_python_onnxblock_optim_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/optim/*"
@@ -728,6 +735,7 @@ if (onnxruntime_ENABLE_TRAINING)
       COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock
       COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/loss
       COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/optim
+      COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/api
       COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_onnxblock_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/
@@ -737,6 +745,10 @@ if (onnxruntime_ENABLE_TRAINING)
       COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_onnxblock_optim_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock/optim/
+      COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_api_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/api/
+
     )
   endif()
 endif()
@@ -804,6 +816,16 @@ if (onnxruntime_USE_CUDA)
     )
 endif()
 
+if (onnxruntime_USE_CANN)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          $<TARGET_FILE:onnxruntime_providers_cann>
+          $<TARGET_FILE:onnxruntime_providers_shared>
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+endif()
+
 if (onnxruntime_USE_ROCM)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
@@ -812,25 +834,6 @@ if (onnxruntime_USE_ROCM)
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
-endif()
-
-if (onnxruntime_USE_NUPHAR)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:tvm>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-  file(GLOB onnxruntime_python_nuphar_python_srcs CONFIGURE_DEPENDS
-      "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*"
-    )
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar
-    COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_python_nuphar_python_srcs}
-      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar/
-  )
 endif()
 
 if (onnxruntime_USE_TVM)

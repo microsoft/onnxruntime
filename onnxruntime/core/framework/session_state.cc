@@ -10,11 +10,9 @@
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/allocator.h"
-#include "core/framework/kernel_def_hash_helpers.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_pattern_planner.h"
-#include "core/framework/session_state_flatbuffers_utils.h"
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
@@ -25,35 +23,22 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 void SessionState::SetupAllocators() {
-  // register allocators in reverse order. one per OrtMemType+OrtDevice combination.
-  // this order prefers allocators from the core EPs (CPU EP, CUDA EP, ROCM EP) and ensures the CUDA/ROCM EP's
-  // per-thread allocators will be preferred over the TensorRT/MIGraphX EP non-per-thread allocators.
-  // TODO: Refactor the EP/allocator relationship so that we can be explicit about which allocator is preferred and
-  //       avoid creating unnecessary allocators.
-  std::for_each(std::make_reverse_iterator(execution_providers_.end()),
-                std::make_reverse_iterator(execution_providers_.begin()),
-                [this](const auto& provider_iter) {
-                  IExecutionProvider& provider = *provider_iter;
-                  for (const auto& allocator : provider.GetAllocators()) {
-                    const OrtMemoryInfo& memory_info = allocator->Info();
-                    auto iter = allocators_.find(memory_info);
-                    if (iter != allocators_.end()) {
-                      // EPs could be sharing allocators so no info message unless this is a different instance.
-                      // This is an expected scenario as multiple EPs may have allocators for the same device.
-                      // e.g. xnnpack and CPU EP are both CPU based.
-                      if (iter->second(memory_info.id, memory_info.mem_type) != allocator) {
-                        LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
-                                            << ". Ignoring allocator from " << provider.Type();
-                      }
-                    } else {
-                      // slightly weird indirection to go back to the provider to get the allocator each time
-                      // it's needed in order to support scenarios such as the CUDA EP's per-thread allocator.
-                      allocators_[memory_info] = [&provider](int id, OrtMemType mem_type) {
-                        return provider.GetAllocator(id, mem_type);
-                      };
-                    }
-                  }
-                });
+  for (const auto& provider : execution_providers_) {
+    for (const auto& allocator : provider->GetAllocators()) {
+      const OrtMemoryInfo& memory_info = allocator->Info();
+      if (allocators_.find(memory_info) != allocators_.end()) {
+        // EPs are ordered by priority so ignore the duplicate allocator for this memory location.
+        LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
+                            << ". Ignoring allocator from " << provider->Type();
+      } else {
+        // slightly weird indirection to go back to the provider to get the allocator each time it's needed
+        // in order to support scenarios such as the CUDA EP's per-thread allocator.
+        allocators_[memory_info] = [&provider](int id, OrtMemType mem_type) {
+          return provider->GetAllocator(id, mem_type);
+        };
+      }
+    }
+  }
 }
 
 AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noexcept {
@@ -127,20 +112,18 @@ void SessionState::CreateGraphInfo() {
   LOGS(logger_, VERBOSE) << "Done saving OrtValue mappings.";
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
 Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kernel_registry_manager,
                                               bool saving_ort_format) {
   for (auto& node : graph_.Nodes()) {
     const KernelCreateInfo* kci = nullptr;
-
     auto status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
     if (!status.IsOK() && saving_ort_format) {
       // if we didn't find the kernel and are saving to ORT format an EP that compiles nodes is enabled.
       // in that case we assigned the node to that EP but do not compile it into a fused node.
       // this keeps the original node and prevents level 2 and level 3 optimizers from modifying it.
-      // we now revert to the CPU EP to include the hash for the kernel as a fallback. at runtime when the model
-      // is loaded in a minimal build, the compiling EP will replace this node if possible. if that's not possible for
-      // some reason we can fallback to the CPU EP implementation via this hash.
+      // we now revert to the CPU EP kernel as a fallback.
+      // at runtime when the model is loaded in a minimal build, the compiling EP will replace this node if possible.
+      // if that's not possible for some reason we can fallback to the CPU EP implementation.
       node.SetExecutionProviderType(kCpuExecutionProvider);
       status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
     }
@@ -154,13 +137,13 @@ Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kerne
   for (const auto& entry : subgraph_session_states_) {
     for (const auto& name_to_subgraph_session_state : entry.second) {
       SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
-      ORT_RETURN_IF_ERROR(subgraph_session_state.PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
+      ORT_RETURN_IF_ERROR(subgraph_session_state.PopulateKernelCreateInfo(kernel_registry_manager,
+                                                                          saving_ort_format));
     }
   }
 
   return Status::OK();
 }
-#endif
 
 const KernelCreateInfo& SessionState::GetNodeKernelCreateInfo(NodeIndex node_index) const {
   auto entry = kernel_create_info_map_.find(node_index);
@@ -909,55 +892,6 @@ const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedNodes(
   return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
 }
 
-static Status GetSubGraphSessionStatesOrtFormat(
-    flatbuffers::FlatBufferBuilder& builder,
-    const SubgraphSessionStateMap& subgraph_session_states,
-    std::vector<flatbuffers::Offset<fbs::SubGraphSessionState>>& fbs_subgraph_session_states) {
-  size_t number_of_states = 0;
-  for (const auto& pair : subgraph_session_states) {
-    number_of_states += pair.second.size();
-  }
-  fbs_subgraph_session_states.clear();
-  fbs_subgraph_session_states.reserve(number_of_states);
-  for (const auto& [node_idx, session_states] : subgraph_session_states) {
-    for (const auto& name_to_subgraph_session_state : session_states) {
-      const std::string& attr_name = name_to_subgraph_session_state.first;
-      SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
-      auto graph_id = builder.CreateString(fbs::utils::GetSubgraphId(node_idx, attr_name));
-      flatbuffers::Offset<fbs::SessionState> session_state;
-      ORT_RETURN_IF_ERROR(
-          subgraph_session_state.SaveToOrtFormat(builder, session_state));
-
-      fbs_subgraph_session_states.push_back(
-          fbs::CreateSubGraphSessionState(builder, graph_id, session_state));
-    }
-  }
-  return Status::OK();
-}
-
-Status SessionState::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                                     flatbuffers::Offset<fbs::SessionState>& fbs_session_state) const {
-  size_t size = kernel_create_info_map_.size();
-  std::vector<uint32_t> node_indices;
-  std::vector<uint64_t> kernel_def_hashes;
-  node_indices.reserve(size);
-  kernel_def_hashes.reserve(size);
-  for (const auto& kvp : kernel_create_info_map_) {
-    node_indices.push_back(gsl::narrow<uint32_t>(kvp.first));
-    kernel_def_hashes.push_back(kvp.second->kernel_def->GetHash());
-  }
-
-  auto kernels = fbs::CreateKernelCreateInfosDirect(builder, &node_indices, &kernel_def_hashes);
-
-  // Subgraph session states
-  std::vector<flatbuffers::Offset<fbs::SubGraphSessionState>> sub_graph_session_states;
-  ORT_RETURN_IF_ERROR(
-      GetSubGraphSessionStatesOrtFormat(builder, subgraph_session_states_, sub_graph_session_states));
-
-  fbs_session_state = fbs::CreateSessionStateDirect(builder, kernels, &sub_graph_session_states);
-  return Status::OK();
-}
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 Status SessionState::CreateSubgraphSessionState() {
@@ -988,121 +922,6 @@ Status SessionState::CreateSubgraphSessionState() {
       // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
       // by Compute() via OpKernelContextInternal.
       AddSubgraphSessionState(node.Index(), attr_name, std::move(subgraph_session_state));
-    }
-  }
-
-  return Status::OK();
-}
-
-Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_state,
-                                       const KernelRegistryManager& kernel_registry_manager) {
-  using fbs::utils::FbsSessionStateViewer;
-  const FbsSessionStateViewer fbs_session_state_viewer{fbs_session_state};
-  ORT_RETURN_IF_ERROR(fbs_session_state_viewer.Validate());
-
-  // look up KernelCreateInfo with hash and
-  // - add KernelCreateInfo for node
-  // - set node's EP from KernelCreateInfo if unset
-  auto add_kernel_and_set_node_ep_by_hash =
-      [&kernel_registry_manager, this](Node& node, HashValue hash) {
-        const KernelCreateInfo* kci = nullptr;
-        utils::UpdateHashForBackwardsCompatibility(hash);
-
-        ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(hash, &kci),
-                          "Failed to find kernel def hash (", hash, ") in kernel registries for ",
-                          node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(), "'.");
-
-        {
-          const auto [it, inserted] = kernel_create_info_map_.emplace(node.Index(),
-                                                                      gsl::not_null<const KernelCreateInfo*>(kci));
-          ORT_RETURN_IF_NOT(inserted,
-                            "Cannot overwrite existing kernel for ",
-                            node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(),
-                            "'. Existing kernel def hash: ", it->second->kernel_def->GetHash(),
-                            ", new kernel def hash: ", hash, ".");
-        }
-
-        if (node.GetExecutionProviderType().empty()) {
-          node.SetExecutionProviderType(kci->kernel_def->Provider());
-        } else {
-          ORT_RETURN_IF_NOT(node.GetExecutionProviderType() == kci->kernel_def->Provider(),
-                            "Node execution provider type mismatch. Existing: ", node.GetExecutionProviderType(),
-                            ", from KernelCreateInfo (via hash lookup): ", kci->kernel_def->Provider());
-        }
-
-        return Status::OK();
-      };
-
-  // kernel hashes for model are in top level SessionState
-  const auto& compiled_kernel_hashes = GetCompiledKernelHashes();
-
-  // process the nodes that existed when the model was created
-  for (FbsSessionStateViewer::Index i = 0, end = fbs_session_state_viewer.GetNumNodeKernelInfos(); i < end; ++i) {
-    const auto node_kernel_info = fbs_session_state_viewer.GetNodeKernelInfo(i);
-
-    Node* const node = graph_.GetNode(node_kernel_info.node_index);
-    if (node == nullptr) {
-#if defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
-      // this is OK if we have compiled kernels and the original node was replaced.
-      // if not the model is invalid.
-      ORT_RETURN_IF(compiled_kernel_hashes.empty(),
-                    "Can't find node with index ", node_kernel_info.node_index, ". Invalid ORT format model.");
-#endif  // defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
-      continue;
-    }
-
-    ORT_RETURN_IF_ERROR(add_kernel_and_set_node_ep_by_hash(*node, node_kernel_info.kernel_def_hash));
-  }
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  // process the nodes that were added by replaying any loaded runtime optimizations
-  for (const auto& [node_index, kernel_def_hash] :
-       graph_.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
-    auto* node = graph_.GetNode(node_index);
-
-    // NHWC optimizer may replace a node, so a missing node isn't necessarily an error
-    // ORT_RETURN_IF(node == nullptr, "Can't find runtime optimization produced node with index ", node_index);
-
-    if (node != nullptr) {
-      ORT_RETURN_IF_ERROR(add_kernel_and_set_node_ep_by_hash(*node, kernel_def_hash));
-    }
-  }
-
-  // Look up the hashes for any nodes we compiled or added during graph partitioning or other runtime optimizations.
-  // These nodes are not in the original model as they were created at runtime.
-  for (auto& node : graph_.Nodes()) {
-    if (kernel_create_info_map_.find(node.Index()) != kernel_create_info_map_.end()) {
-      continue;
-    }
-
-    if (node.Domain() == kOnnxDomain || node.Domain() == kMSDomain) {
-      // two possible places to get hash from
-      auto kernel_hash = utils::GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
-      if (!kernel_hash.has_value()) {
-        kernel_hash = utils::GetInternalNhwcOpHash(node);
-      }
-      ORT_RETURN_IF_NOT(kernel_hash.has_value(),
-                        "Unable to find kernel hash for node: '", node.Name(), "' optype: ", node.OpType());
-
-      ORT_RETURN_IF_ERROR(add_kernel_and_set_node_ep_by_hash(node, *kernel_hash));
-    } else {
-      const auto hash_info = compiled_kernel_hashes.find(node.OpType());
-      ORT_RETURN_IF(hash_info == compiled_kernel_hashes.cend(),
-                    "Unable to find compiled kernel hash for node '", node.Name(), "'.");
-
-      ORT_RETURN_IF_ERROR(add_kernel_and_set_node_ep_by_hash(node, hash_info->second));
-    }
-  }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-  if (!subgraph_session_states_.empty()) {
-    for (const auto& [node_idx, session_states] : subgraph_session_states_) {
-      for (const auto& [attr_name, subgraph_session_state] : session_states) {
-        const fbs::SessionState* fbs_subgraph_session_state;
-        ORT_RETURN_IF_ERROR(fbs_session_state_viewer.GetSubgraphSessionState(node_idx, attr_name, fbs_subgraph_session_state));
-
-        ORT_RETURN_IF_ERROR(subgraph_session_state->LoadFromOrtFormat(*fbs_subgraph_session_state, kernel_registry_manager));
-      }
     }
   }
 
@@ -1207,7 +1026,7 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   // If the user explicitly included the CPU provider anyway, then remain silent, but if it was implicitly added,
   // and unexpected fallback happened to a non-preferred provider, warn the user.
   size_t explicit_provider_count = providers.NumProviders() - (providers.GetCpuProviderWasImplicitlyAdded() ? 1 : 0);
-  if (node_placement_provider_set.size() > explicit_provider_count) {
+  if (node_placement_provider_set.size() > explicit_provider_count && explicit_provider_count > 0) {
     LOGS(logger, WARNING) << "Some nodes were not assigned to the preferred execution providers which may or may not have an negative impact on performance. e.g. ORT explicitly assigns shape related ops to CPU to improve perf.";
     if (!is_verbose_mode) {
       LOGS(logger, WARNING) << "Rerunning with verbose output on a non-minimal build will show node assignments.";
@@ -1220,7 +1039,6 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           const KernelRegistryManager& kernel_registry_manager,
                                           const SessionOptions& session_options,
-                                          const onnxruntime::fbs::SessionState* serialized_session_state,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
@@ -1228,24 +1046,8 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
   ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
 
-  if (serialized_session_state) {
-    ORT_RETURN_IF_ERROR(LoadFromOrtFormat(*serialized_session_state, kernel_registry_manager));
-    // LoadFromOrtFormat() may assign node EPs so check afterwards
-    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_, execution_providers_));
-  } else {
-#if !defined(ORT_MINIMAL_BUILD)
-    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_, execution_providers_));
-    ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
-#else
-    ORT_UNUSED_PARAMETER(graph_location);
-    ORT_UNUSED_PARAMETER(kernel_registry_manager);
-    ORT_UNUSED_PARAMETER(session_options);
-    ORT_UNUSED_PARAMETER(remove_initializers);
-    ORT_UNUSED_PARAMETER(saving_ort_format);
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                  "Serialized session state must be provided from an ORT format model in this build.");
-#endif
-  }
+  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_, execution_providers_));
+  ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
 
   InlinedHashMap<std::string, size_t> constant_initializers_use_count;
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
@@ -1396,8 +1198,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Not needed in a basic minimal build because only runtime optimizations are expected to possibly result in unused
   //   initializers and they are only enabled in an extended minimal build.
   {
-    InlinedVector<std::reference_wrapper<const std::string>> unused_initializer_names;
-    unused_initializer_names.reserve(graph_.GetAllInitializedTensors().size());
+    InlinedVector<std::string> unused_initializer_names;
     for (const auto& [name, tensor_proto] : graph_.GetAllInitializedTensors()) {
       ORT_UNUSED_PARAMETER(tensor_proto);
       int idx;

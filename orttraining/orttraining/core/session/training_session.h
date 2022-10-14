@@ -488,7 +488,8 @@ class TrainingSession : public InferenceSession {
   common::Status AddPredefinedTransformers(
       GraphTransformerManager& transformer_manager,
       TransformerLevel graph_optimization_level,
-      MinimalBuildOptimizationHandling minimal_build_optimization_handling) const override;
+      MinimalBuildOptimizationHandling minimal_build_optimization_handling,
+      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const override;
 
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.

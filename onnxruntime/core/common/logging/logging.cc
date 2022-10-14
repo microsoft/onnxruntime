@@ -179,6 +179,11 @@ static minutes InitLocaltimeOffset(const time_point<system_clock>& epoch) noexce
   gmtime_r(&system_time_t, &utc_tm);
 #endif
 
+  // Note: mktime() expects a local time and utc_tm is not a local time.
+  // However, we treat utc_tm as a local time in order to compute the local time offset.
+  // To avoid DST inconsistency, set utc_tm's tm_isdst to match that of actual local time local_tm.
+  utc_tm.tm_isdst = local_tm.tm_isdst;
+
   const double seconds = difftime(mktime(&local_tm), mktime(&utc_tm));
 
   // minutes should be accurate enough for timezone conversion

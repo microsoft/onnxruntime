@@ -119,7 +119,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Attention, 1,
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
 Longformer Self Attention with a local context and a global context. Tokens attend locally: Each token
-attends to its W previous tokens and W succeding tokens with W being the window length. A selected few tokens
+attends to its W previous tokens and W succeeding tokens with W being the window length. A selected few tokens
 attend globally to all other tokens.
 
 The attention mask is of shape (batch_size, sequence_length), where sequence_length is a multiple of 2W after padding.

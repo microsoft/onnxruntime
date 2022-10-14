@@ -5,52 +5,41 @@ resources:
     trigger: true 
     
 jobs:
-- job: Linux_Test
+- template: templates/py-packaging-linux-test.yml
+  parameters:
+    arch: 'x86_64'
+    machine_pool: 'Linux-CPU'
+    device: 'CPU'
+
+- template: templates/py-packaging-linux-test.yml
+  parameters:
+    arch: 'aarch64'
+    machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
+    device: 'CPU'
+
+- template: templates/py-packaging-linux-test.yml
+  parameters:
+    arch: 'x86_64'
+    machine_pool: 'Onnxruntime-Linux-GPU'
+    device: 'GPU'
+    python_wheel_suffix: '_gpu'
+
+- job: Final
+  dependsOn:
+  - Linux_Test_CPU_x86_64
+  - Linux_Test_CPU_aarch64
+  - Linux_Test_GPU_x86_64
+  #Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
+  condition: and(succeeded(), eq(variables['Build.Reason'], 'ResourceTrigger'))
   timeoutInMinutes: 60
   variables:
     skipComponentGovernanceDetection: true
   workspace:
     clean: all
-  pool: Linux-CPU  
+  pool: Azure-Pipelines-EO-Windows2022-aiinfra
   steps:
-  - task: DownloadPipelineArtifact@2
-    displayName: 'Download Pipeline Artifact'
-    inputs:
-      preferTriggeringPipeline: true      
-      artifactName: 'drop-linux-cpu-x86_64'
-      targetPath: '$(Build.BinariesDirectory)/Release'
-      runVersion: 'latest'
-      buildType: specific
-      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
-      definition: 841
-      #buildVersionToDownload: specific
-      #pipelineId: 227749
-    
-  - task: DownloadPipelineArtifact@2
-    displayName: 'Download Pipeline Artifact'
-    inputs:
-      preferTriggeringPipeline: true
-      artifactName: 'onnxruntime'
-      targetPath: '$(Build.BinariesDirectory)/whl'
-      runVersion: 'latest'
-      buildType: specific
-      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
-      definition: 841
-      #buildVersionToDownload: specific
-      #pipelineId: 227749
-
-
-  - task: Bash@3
-    displayName: 'Bash Script'
-    inputs:
-      targetType: filePath
-      filePath: tools/ci_build/github/linux/run_python_tests.sh
-
-
   - task: PowerShell@2
-    displayName: 'Add Build Tag'
-    #Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
-    condition: and(succeeded(), eq(variables['Build.Reason'], 'ResourceTrigger'))
+    displayName: 'Add Build Tag'    
     env:
       SYSTEM_ACCESSTOKEN: $(System.AccessToken)
     inputs:
@@ -61,7 +50,3 @@ jobs:
         $headers.Add("Content-Type", "application/json")
         $uri = "https://dev.azure.com/aiinfra/Lotus/_apis/build/builds/$(resources.pipeline.build.runID)/tags/test%20pass?api-version=6.0"
         Invoke-RestMethod -Uri $uri -Headers $headers -Method PUT
-
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()

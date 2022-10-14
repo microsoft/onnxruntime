@@ -22,7 +22,6 @@ onnxruntime.egg-info
 nuget_root/
 .packages/
 .vscode
-!/.vscode/settings.json
 *.code-workspace
 __pycache__
 onnxruntime_profile*.json

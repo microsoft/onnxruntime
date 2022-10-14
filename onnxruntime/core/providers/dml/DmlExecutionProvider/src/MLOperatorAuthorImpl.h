@@ -366,9 +366,7 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     }
 
     HRESULT STDMETHODCALLTYPE SetDmlOperator(
-        IDMLOperator* op,
-        _In_ const DML_OPERATOR_DESC* desc,
-        _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties
+        _In_ const MLOperatorGraphDesc* operatorGraphDesc
         ) const noexcept override
     {
         return E_NOTIMPL;
@@ -426,14 +424,10 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
     bool STDMETHODCALLTYPE IsDmlGraphNode() const noexcept override;
 
     HRESULT STDMETHODCALLTYPE SetDmlOperator(
-        IDMLOperator* op,
-        _In_ const DML_OPERATOR_DESC* desc,
-        _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties
-        ) const noexcept override;
+        _In_ const MLOperatorGraphDesc* operatorGraphDesc
+    ) const noexcept override;
 
 private:
-    void SetDmlProperties(_In_ const MLOperatorKernelDmlProperties* dmlProperties) const;
-
     // For shape info, in addition to the info
     const EdgeShapes* m_inferredOutputShapes = nullptr;
     ComPtr<IWinmlExecutionProvider> m_winmlProvider;

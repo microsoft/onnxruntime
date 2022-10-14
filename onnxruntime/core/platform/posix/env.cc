@@ -74,13 +74,12 @@ static std::pair<int, std::string> GetSystemError() {
 }
 
 static void UnmapFile(void* param) noexcept {
-  UnmapFileParam* p = reinterpret_cast<UnmapFileParam*>(param);
+  std::unique_ptr<UnmapFileParam> p(reinterpret_cast<UnmapFileParam*>(param));
   int ret = munmap(p->addr, p->len);
   if (ret != 0) {
     auto[err_no, err_msg] = GetSystemError();
     LOGS_DEFAULT(ERROR) << "munmap failed. error code: " << err_no << " error msg: " << err_msg;
   }
-  delete p;
 }
 
 struct FileDescriptorTraits {
@@ -150,7 +149,7 @@ class PosixThread : public EnvThread {
     if (custom_create_thread_fn) {
       custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
       if (!custom_thread_handle) {
-        ORT_THROW("custom_create_thread_fn returned invalid handle."); 
+        ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
     } else {
       pthread_attr_t attr;

@@ -119,7 +119,7 @@ def parse_arguments():
         required=False,
         default="None",
         type=str,
-        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "None"],
+        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "tvm", "None"],
         help="The selected execution provider for this build.",
     )
     parser.add_argument("--dependency_id", required=False, default="None", type=str, help="ependency id.")
@@ -335,6 +335,7 @@ def generate_files(list, args):
             "tensorrt_ep_shared_lib": "onnxruntime_providers_tensorrt.dll",
             "openvino_ep_shared_lib": "onnxruntime_providers_openvino.dll",
             "cuda_ep_shared_lib": "onnxruntime_providers_cuda.dll",
+            "tvm_ep_shared_lib": "onnxruntime_providers_tvm.lib",
             "onnxruntime_perf_test": "onnxruntime_perf_test.exe",
             "onnx_test_runner": "onnx_test_runner.exe",
         }
@@ -386,6 +387,14 @@ def generate_files(list, args):
         + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h")
         + '" target="build\\native\\include" />'
     )
+
+    if args.execution_provider == "tvm":
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\tvm\\tvm_provider_factory.h")
+            + '" target="build\\native\\include" />'
+        )
 
     if args.execution_provider == "openvino":
         files_list.append(
@@ -608,6 +617,38 @@ def generate_files(list, args):
             + args.target_architecture
             + '\\native" />'
         )
+
+    if args.execution_provider == "tvm":
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["tvm_ep_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+
+        tvm_build_path = os.path.join(args.ort_build_path, args.build_config, "_deps", "tvm-build")
+        if is_windows():
+            files_list.append(
+                "<file src="
+                + '"'
+                + os.path.join(tvm_build_path, args.build_config, nuget_dependencies["tvm"])
+                + runtimes_target
+                + args.target_architecture
+                + '\\native" />'
+            )
+        else:
+            # TODO(agladyshev): Add support for Linux.
+            raise RuntimeError("Now only Windows is supported for TVM EP.")
 
     if args.execution_provider == "openvino":
         openvino_path = get_env_var("INTEL_OPENVINO_DIR")

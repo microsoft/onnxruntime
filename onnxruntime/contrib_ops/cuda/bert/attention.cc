@@ -82,18 +82,31 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // bias shape (3 * hidden_size)
   const auto& bias_shape = bias->Shape();
-  int hidden_size = static_cast<int>(bias_shape[0]) / 3;
+  int q_hidden_size;
+  int k_hidden_size;
+  int v_hidden_size;
 
-  int head_size = hidden_size / num_heads_;
+
+  if (qkv_hidden_sizes_.size() == 0) {
+    q_hidden_size = static_cast<int>(bias_shape[0]) / 3;
+    k_hidden_size = static_cast<int>(bias_shape[0]) / 3;
+    v_hidden_size = static_cast<int>(bias_shape[0]) / 3;
+  } else {
+    q_hidden_size = static_cast<int>(qkv_hidden_sizes_[0]);
+    k_hidden_size = static_cast<int>(qkv_hidden_sizes_[1]);
+    v_hidden_size = static_cast<int>(qkv_hidden_sizes_[2]);
+  }
+
+  const int qkv_head_size[3] = {q_hidden_size / num_heads_, k_hidden_size / num_heads_, v_hidden_size / num_heads_};
 
   TensorShapeVector output_shape(3);
   output_shape[0] = shape[0];
   output_shape[1] = shape[1];
-  output_shape[2] = static_cast<int64_t>(hidden_size);
+  output_shape[2] = static_cast<int64_t>(v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
   int past_sequence_length = 0;
-  Tensor* present = GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
+  Tensor* present = GetPresent(context, past, batch_size, qkv_head_size[1], sequence_length, past_sequence_length);
 
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
@@ -103,12 +116,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                            nullptr == present &&
                            nullptr == extra_add_qk &&
                            !is_unidirectional_ &&
-                           HasFusedFp16Kernel(sm, head_size, sequence_length));
+                           qkv_head_size[0] == qkv_head_size[1] &&
+                           qkv_head_size[1] == qkv_head_size[2] &&
+                           HasFusedFp16Kernel(sm, qkv_head_size[0], sequence_length));
 
   MHARunner* fused_runner = nullptr;
   if (use_fused_runner) {
     if (nullptr == fused_fp16_runner_.get()) {
-      fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, head_size, sm));
+      fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, qkv_head_size[0], sm));
     }
     // In case some kernel  not loaded due to shared memory limit, we need to double check here.
     if (fused_fp16_runner_->isValid(sequence_length)) {
@@ -121,9 +136,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // Use GEMM for fully connection.
   int m = batch_size * sequence_length;
-  int n = 3 * hidden_size;
+  int n = (q_hidden_size + k_hidden_size + v_hidden_size);
   int k = input_hidden_size;
-  auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size);
+  size_t gemm_buffer_size = static_cast<size_t>(batch_size) * sequence_length * n * element_size;
+  auto gemm_buffer = GetScratchBuffer<T>(gemm_buffer_size);
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
@@ -139,10 +155,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
                                                    num_heads_,
-                                                   head_size,
+                                                   qkv_head_size[0],
                                                    sequence_length,
                                                    past_sequence_length,
-                                                   fused_runner);
+                                                   fused_runner,
+                                                   qkv_head_size[2]);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
   ORT_RETURN_IF_ERROR(LaunchAttentionKernel(
@@ -153,7 +170,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       batch_size,
       sequence_length,
       num_heads_,
-      head_size,
+      qkv_head_size[0],
       past_sequence_length,
       is_unidirectional_,
       reinterpret_cast<const void*>(gemm_buffer.get()),
@@ -165,7 +182,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       work_space.get(),
       output->MutableData<T>(),
       nullptr == present ? nullptr : present->MutableData<T>(),
-      fused_runner));
+      fused_runner,
+      qkv_head_size[2]));
 
   return Status::OK();
 }
