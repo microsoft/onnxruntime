@@ -300,8 +300,8 @@ class PlannerImpl {
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
 
   size_t num_logic_streams_{0};
-  std::vector<std::vector<NodeIndex>> stream_nodes_;
-  std::vector<size_t> node_stream_map_;
+  std::vector<InlinedVector<NodeIndex>> stream_nodes_;
+  InlinedVector<size_t> node_stream_map_;
 
   // dependence_graph_ keeps the dependencies combining model graph and logic streams
   // e.g. dependence_graph_[downstream_node] = [upstream_node_0, upstream_node_1, upstream_node_2 ...]
@@ -1174,7 +1174,7 @@ class PlannerImpl {
     auto& allocation_plan = plan_.allocation_plan;
 
     // build the consumer list for each value
-    std::vector<std::vector<NodeIndex>> value_consumers;
+    std::vector<InlinedVector<NodeIndex>> value_consumers;
     int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
     value_consumers.resize(num_ml_values);
 
@@ -1455,6 +1455,7 @@ class PlannerImpl {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // copy the use counts to a vector, before computing reuse
     std::vector<int> ort_value_usecount;
+    ort_value_usecount.reserve(ort_value_info_.size());
 #endif
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       // compute use count first
@@ -1800,7 +1801,7 @@ class PlannerImpl {
   // Convert information in execution plan and memory reuse plan into release plan
   Status GenerateDeallocationPlan() {
     // 1. build the consumer list for each value
-    std::vector<std::vector<NodeIndex>> value_consumers;
+    std::vector<InlinedVector<NodeIndex>> value_consumers;
     int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
     value_consumers.resize(num_ml_values);
 
@@ -2199,7 +2200,8 @@ class PlannerImpl {
 // For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void AdjustInplaceLifeIntervals() {
-    InlinedHashMap<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
+    InlinedHashMap<OrtValueIndex, InlinedVector<OrtValueIndex>> inplace_reuse_buffer;
+    inplace_reuse_buffer.reserve(ort_value_info_.size());
     for (size_t i = 0; i < ort_value_info_.size(); ++i) {
       if (AllocPlan(OrtValueIndex(i)).inplace_reuse != OrtValueIndex(i)) {
         inplace_reuse_buffer[ort_value_info_[i].inplace_reused_buffer_index].push_back(OrtValueIndex(i));
@@ -2334,7 +2336,7 @@ class DummyPartitioner : public INodePartitioner {
     }
   }
   void DumpPartition() const;
-  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<std::vector<NodeIndex>>& stream_nodes) override;
+  void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) override;
   virtual const std::string& Name() const override {
     return name;
   }
@@ -2343,7 +2345,7 @@ class DummyPartitioner : public INodePartitioner {
   void Initialize();
   int num_streams_{};
   std::map<OrtDevice::DeviceType, int> max_streams_;
-  std::vector<std::vector<std::string>> node_names_by_stream_;
+  std::vector<InlinedVector<std::string>> node_names_by_stream_;
   bool need_dump_ = false;
   static const std::string name;
 };
@@ -2440,7 +2442,7 @@ void DummyPartitioner::DumpPartition() const {
 
 void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_viewer,
                                       const ExecutionProviders& execution_providers,
-                                      std::vector<std::vector<NodeIndex>>& stream_nodes) {
+                                      std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
   if (!status_.IsOK()) {
     return;  // input configuration has errors, do nothing
   }
@@ -2475,6 +2477,7 @@ void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_view
     }
   }
   InlinedHashMap<std::string, size_t> node_stream_map;
+  node_stream_map.reserve(p_graph_nodes.size());
   for (size_t i = 0; i < node_names_by_stream_.size(); ++i) {
     for (const auto& node_name : node_names_by_stream_[i]) {
       node_stream_map[node_name] = i;
@@ -2497,8 +2500,8 @@ void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_view
   }
 }
 
-std::vector<std::string> INodePartitioner::Split(const std::string& line, char splitor) {
-  std::vector<std::string> columns;
+InlinedVector<std::string> INodePartitioner::Split(const std::string& line, char splitor) {
+  InlinedVector<std::string> columns;
   std::string column;
   std::stringstream ss;
   ss << line;
