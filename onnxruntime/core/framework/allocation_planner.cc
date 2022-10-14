@@ -647,7 +647,7 @@ class PlannerImpl {
     return false;
   }
 
-  void Initialize(size_t /*num_graph_nodes*/, size_t num_ml_values) {
+  void Initialize(size_t num_ml_values) {
     // All ml-value indices must be in range 0 .. num_ml_values-1
     ort_value_info_.resize(num_ml_values);
 
@@ -2164,10 +2164,11 @@ class PlannerImpl {
       }
     };
 
+    auto num_of_nodes = graph_viewer_.GetNodesInTopologicalOrder().size();
+    plan_.node_execution_order_in_training.reserve(num_of_nodes);
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       process_stream(i, -1);
     }
-    auto num_of_nodes = graph_viewer_.GetNodesInTopologicalOrder().size();
     ORT_ENFORCE(plan_.node_execution_order_in_training.size() == num_of_nodes);
     // 7. turn the step_node_index to step_pc
     for (auto& stream : plan_.execution_plan) {
@@ -2229,15 +2230,13 @@ Status PlannerImpl::CreatePlan(const ExecutionProviders& execution_providers,
                                const OpStreamMap& op_stream_map,*/
                                const std::string& partition_config_file,
                                const logging::Logger& logger) {
-  auto& p_graph_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
-
   // 1. partition graph into streams
   PartitionIntoStreams(logger, execution_providers, partition_config_file);
 
   // 2. initialize the plan based on stream partition result
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
 
-  Initialize(p_graph_nodes.size(), static_cast<size_t>(num_ml_values));
+  Initialize(static_cast<size_t>(num_ml_values));
 
   // compute value location
   ORT_RETURN_IF_ERROR(ComputeValueLocation());

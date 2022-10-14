@@ -74,10 +74,10 @@ class ExecutionContext {
  public:
   ExecutionContext(const SessionState& sess_state,
                    int32_t num_streams,
-                   std::vector<size_t> notification_owners,
+                   gsl::span<const size_t> notification_owners,
                    gsl::span<const int>& feed_mlvalue_idxs,
                    gsl::span<const OrtValue>& feeds, gsl::span<const int>& fetch_mlvalue_idxs,
-                   std::vector<OrtValue>& fetches,
+                   gsl::span<const OrtValue> fetches,
                    const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                    size_t num_barriers,
                    const logging::Logger& sess_logger,
