@@ -39,7 +39,7 @@ class CudaKernel : public OpKernel {
     
     // To get the value of duration use the count()
     // member function on the duration object
-    std::cout << name_ << " : " << duration.count() << std::endl;
+    //std::cout << name_ << " : " << duration.count() << std::endl;
 
     // use this to precisely locate the node where CUDA failure comes from
     //if (cudaSuccess != cudaDeviceSynchronize())

@@ -5,6 +5,9 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include <chrono>
+
+using namespace std::chrono;
 
 namespace onnxruntime {
 namespace cuda {
@@ -128,6 +131,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (!disable_cublaslt_matmul_) {
       size_t workspace_size = 32 * 1024 * 1024;
       auto workspace_memory = GetScratchBuffer<void>(workspace_size);
+
+      auto start = high_resolution_clock::now();
+
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
           transB,
@@ -146,6 +152,14 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           NULL, false,
           workspace_memory.get(), workspace_size,
           Stream()));
+
+      cudaStreamSynchronize(Stream());
+      auto stop = high_resolution_clock::now();
+
+      auto duration = duration_cast<microseconds>(stop - start);
+    
+      std::cout << duration.count() << std::endl;
+
     } else {
       ORT_THROW("Un");
       /*
