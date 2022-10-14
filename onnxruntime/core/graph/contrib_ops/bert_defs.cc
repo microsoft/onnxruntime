@@ -71,10 +71,10 @@ When merged_weights is 0, key, value, weight_key and weight_value are required. 
 for cross attention.
 
 The qkv_hidden_sizes is required only when merged_weights is 0 and K and V has different hidden size
-(hidden_size_k != hidden_size_v). When merged_weights is 0, qkv_hidden_sizes is ignored since we can deduce hidden sizes
-from shape of input tensors.
+(hidden_size_k != hidden_size_v). Note that hidden_size_q == hidden_size_k.
+When merged_weights is 0, qkv_hidden_sizes is ignored since we can deduce them from shape of input tensors.
 
-When there is past state, hidden_size for Q, K and V shall be same.
+When there is past state, hidden dimension for Q, K and V shall be same.
 
 The total_sequence_length is past_sequence_length + target_sequence_length.
 )DOC";
@@ -88,7 +88,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Attention, 1,
                                       AttributeProto::INT,
                                       static_cast<int64_t>(0))
                                 .Attr("qkv_hidden_sizes",
-                                      "Hidden sizes of Q, K, V in Attention: hidden_size_q, hidden_size_k and hidden_size_v. Here hidden_size_q == hidden_size_k.",
+                                      "Hidden dimension of Q, K, V: hidden_size_q, hidden_size_k and hidden_size_v.",
                                       AttributeProto::INTS,
                                       OPTIONAL_VALUE)
                                 .Attr("merged_weights",
