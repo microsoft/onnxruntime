@@ -173,8 +173,8 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
 
   if (is_indice_produced_by_xnnpack_ == 0) {
     if (num_inputs_ == 3) {
-      const auto& ouput_shape = *context->Input<Tensor>(2);
-      auto output_shape_span = ouput_shape.DataAsSpan<int64_t>();
+      const auto& output_shape = *context->Input<Tensor>(2);
+      auto output_shape_span = output_shape.DataAsSpan<int64_t>();
       output_dims[1] = output_shape_span[2];
       output_dims[2] = output_shape_span[3];
       output_dims[3] = output_shape_span[1];

@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <cstdint>
+#include <numeric>
 #include <random>
 #include <string>
 
@@ -468,16 +471,22 @@ TEST(XnnpackEP, TestResize_u8_and_s8_pytorch_half_pixel) {
                {ExpectedEPNodeAssignment::Some, 1e-2f /* fp32_abs_err */});
 }
 
-TEST(XnnpackEP, Testunpool_stride) {
+TEST(XnnpackEP, TestMaxUnpool_stride) {
   const std::vector<int64_t> input_shape = {3, 3, 3, 3};
 
   auto modelCreater = [input_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape,
                                                std::numeric_limits<float>::min(),
                                                std::numeric_limits<float>::max());
+
+    // generate unique indice
+    int64_t const indice_size = input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3];
+    std::vector<int64_t> indice_value(indice_size * 3);
+    std::iota(indice_value.begin(), indice_value.end(), 0);
+    std::shuffle(indice_value.begin(), indice_value.end(), std::mt19937(std::random_device()()));
+    indice_value.resize(indice_size);
     auto* index_arg = builder.MakeInput<int64_t>(input_shape,
-                                                 0,
-                                                 input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3] * 3);
+                                                 indice_value);
     auto* output_arg = builder.MakeOutput();
 
     // add SoftMax
@@ -490,16 +499,21 @@ TEST(XnnpackEP, Testunpool_stride) {
                {ExpectedEPNodeAssignment::Some});
 }
 
-TEST(XnnpackEP, Testunpool_pad) {
+TEST(XnnpackEP, TestMaxUnpool_pad) {
   const std::vector<int64_t> input_shape = {3, 3, 3, 3};
 
   auto modelCreater = [input_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape,
                                                std::numeric_limits<float>::min(),
                                                std::numeric_limits<float>::max());
+    // generate unique indice
+    int64_t const indice_size = input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3];
+    std::vector<int64_t> indice_value(indice_size * 3);
+    std::iota(indice_value.begin(), indice_value.end(), 0);
+    std::shuffle(indice_value.begin(), indice_value.end(), std::mt19937(std::random_device()()));
+    indice_value.resize(indice_size);
     auto* index_arg = builder.MakeInput<int64_t>(input_shape,
-                                                 0,
-                                                 input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3] * 3);
+                                                 indice_value);
     auto* output_arg = builder.MakeOutput();
 
     // add SoftMax
@@ -513,16 +527,21 @@ TEST(XnnpackEP, Testunpool_pad) {
                {ExpectedEPNodeAssignment::Some});
 }
 
-TEST(XnnpackEP, Testunpool_output_shape) {
+TEST(XnnpackEP, TestMaxUnpool_output_shape) {
   const std::vector<int64_t> input_shape = {3, 2, 3, 3};
 
   auto modelCreater = [input_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape,
                                                std::numeric_limits<float>::min(),
                                                std::numeric_limits<float>::max());
+    // generate unique indice
+    int64_t const indice_size = input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3];
+    std::vector<int64_t> indice_value(indice_size * 4);
+    std::iota(indice_value.begin(), indice_value.end(), 0);
+    std::shuffle(indice_value.begin(), indice_value.end(), std::mt19937(std::random_device()()));
+    indice_value.resize(indice_size);
     auto* index_arg = builder.MakeInput<int64_t>(input_shape,
-                                                 0,
-                                                 input_shape[0] * input_shape[1] * input_shape[2] * input_shape[3] * 4);
+                                                 indice_value);
     auto output_shape = input_shape;
     output_shape[2] = output_shape[3] = 7;
     auto* ouputshape_arg = builder.MakeInitializer<int64_t>(std::vector<int64_t>{4}, output_shape);

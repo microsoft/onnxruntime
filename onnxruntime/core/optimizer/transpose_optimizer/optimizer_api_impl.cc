@@ -882,6 +882,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
 
       auto input_perm = onnx_layout_transformation::ChannelFirstToLastPerm(rank);
       auto output_perm = onnx_layout_transformation::ChannelLastToFirstPerm(rank);
+
       // Except for resize and convolution ops, all the other layout sensitive ops only require layout transformation
       // for 0th input and output. For resize, add the other relevant inputs which need conversion. For Conv - layout
       // transformer only converts layout for 0th input, weights should be handled by every EP.
