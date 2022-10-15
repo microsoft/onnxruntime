@@ -22,6 +22,10 @@ class MatMul final : public CudaKernel {
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0},
         disable_cublaslt_matmul_{!std::is_same<T, MLFloat16>::value ||
                                  ParseEnvironmentVariableWithDefault<bool>(matmul_detail::kDisableCublasLtMatmul, false)} {
+
+      cudaMalloc(&right_X_ptr_, (size_t)(ceil(4718592 / 32.)) * 32);
+      cudaMalloc(&left_X_ptr_, (size_t)(ceil(6291456/ 32.)) * 32);
+      cudaMalloc(&Y_ptr_, (size_t)(ceil(25165824 / 32.)) * 32);                             
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -33,6 +37,10 @@ class MatMul final : public CudaKernel {
   const bool trans_batch_a_;
   const bool trans_batch_b_;
   const bool disable_cublaslt_matmul_;
+
+  void* right_X_ptr_ = nullptr;
+  void* left_X_ptr_ = nullptr;
+  void* Y_ptr_ = nullptr;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

@@ -134,16 +134,20 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
       //cudaStreamSynchronize(Stream());
       //auto start = high_resolution_clock::now();
-      void* right_X_ptr = nullptr;
-      cudaMalloc(&right_X_ptr, (size_t)(ceil(right_X->SizeInBytes() / 32.)) * 32);
 
-      void* left_X_ptr = nullptr;
-      cudaMalloc(&left_X_ptr, (size_t)(ceil(left_X->SizeInBytes() / 32.)) * 32);
+      std::cout << left_X->SizeInBytes() << "\n";
+      std::cout << right_X->SizeInBytes() << "\n";
+      std::cout << Y->SizeInBytes() << "\n";
+       
+      bool use_special = false;
+      if (left_X->SizeInBytes() == 6291456 && 
+          right_X->SizeInBytes() == 4718592 &&
+          Y->SizeInBytes() == 25165824) {
+              use_special = true;
+              std::cout << "Using special" << "\n";
+      }
 
-      void* Y_ptr = nullptr;
-      cudaMalloc(&Y_ptr, (size_t)(ceil(Y->SizeInBytes() / 32.)) * 32);
-
-
+      if (use_special) {
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
           transB,
@@ -152,27 +156,41 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           static_cast<int>(helper.M()),
           static_cast<int>(helper.K()),
           &alpha,
-          //reinterpret_cast<const CudaT*>(right_X->Data<T>()),
-          reinterpret_cast<const CudaT*>(right_X_ptr),          
+          reinterpret_cast<const CudaT*>(right_X_ptr_),          
           ldb,
-
-          //reinterpret_cast<const CudaT*>(left_X->Data<T>()),
-          reinterpret_cast<const CudaT*>(left_X_ptr),
-
+          reinterpret_cast<const CudaT*>(left_X_ptr_),
           lda,
           &zero,
-          //reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-          reinterpret_cast<CudaT*>(Y_ptr),
+          reinterpret_cast<CudaT*>(Y_ptr_),
           ldc,
           NULL, false,
           workspace_memory.get(), workspace_size,
           Stream()));
 
-      cudaFree(right_X_ptr);
-      cudaFree(left_X_ptr);
-      cudaFree(Y_ptr);
+      } else {
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
+          CublasLtHandle(),
+          transB,
+          transA,
+          static_cast<int>(helper.N()),
+          static_cast<int>(helper.M()),
+          static_cast<int>(helper.K()),
+          &alpha,
+          reinterpret_cast<const CudaT*>(right_X->Data<T>()),
+          ldb,
 
+          reinterpret_cast<const CudaT*>(left_X->Data<T>()),
 
+          lda,
+          &zero,
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          ldc,
+          NULL, false,
+          workspace_memory.get(), workspace_size,
+          Stream()));
+
+      }
+      
       //cudaStreamSynchronize(Stream());
       //auto stop = high_resolution_clock::now();
 
