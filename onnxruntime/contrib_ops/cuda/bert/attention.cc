@@ -147,7 +147,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     auto stop = high_resolution_clock::now();
 
     auto duration = duration_cast<microseconds>(stop - start);
-  
+
     std::cout << "QKV Gemm: " << duration.count() << std::endl;
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
@@ -157,6 +157,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    sequence_length,
                                                    past_sequence_length,
                                                    fused_runner);
+
+  cudaStreamSynchronize(Stream());
+  start = high_resolution_clock::now();
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
   ORT_RETURN_IF_ERROR(LaunchAttentionKernel(
@@ -180,6 +183,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       output->MutableData<T>(),
       nullptr == present ? nullptr : present->MutableData<T>(),
       fused_runner));
+
+    cudaStreamSynchronize(Stream());
+    stop = high_resolution_clock::now();
+
+    duration = duration_cast<microseconds>(stop - start);
+  
+    std::cout << "Rest of Attention: " << duration.count() << std::endl;
 
   return Status::OK();
 }

@@ -37,6 +37,9 @@ FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel
 
 template <typename T>
 Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
+  cudaStreamSynchronize(Stream());
+  auto start = high_resolution_clock::now();
+
   ORT_RETURN_IF_ERROR(bias_gelu_helper::CheckInputs(context));
 
   const Tensor* input = context->Input<Tensor>(0);
@@ -50,7 +53,7 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  return LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
+  LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
                                    Stream(),
                                    static_cast<int>(input_length),
                                    static_cast<int>(bias_length),
@@ -58,6 +61,17 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
                                    (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
                                    reinterpret_cast<CudaT*>(output->MutableData<T>()),
                                    use_half2_);
+
+
+
+    cudaStreamSynchronize(Stream());
+    auto stop = high_resolution_clock::now();
+
+    auto duration = duration_cast<microseconds>(stop - start);
+
+    std::cout << "Bias Gelu: " << duration.count() << std::endl;
+
+    return Status::OK();
 }
 
 }  // namespace cuda
