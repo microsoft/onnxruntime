@@ -348,7 +348,7 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
 
       auto duration = duration_cast<microseconds>(stop - start);
     
-      std::cout << duration.count() << std::endl;
+      std::cout << "M" <<duration.count() << std::endl;
 
       return status;
 }
