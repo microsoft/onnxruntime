@@ -100,11 +100,21 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
+        TensorDesc firstGemmOutputTensorDesc = TensorDesc(
+                dataType,
+                m_inputTensorDescs[2].GetSizes(),
+                m_inputTensorDescs[2].GetSizes(),
+                TensorAxis::DoNotCoerce,
+                TensorAxis::W,
+                TensorAxis::RightAligned,
+                1,
+                0
+            );
         DML_GEMM_OPERATOR_DESC xWeightOperatorDesc = {};
         xWeightOperatorDesc.ATensor = &inputDescs[0];
         xWeightOperatorDesc.BTensor = &inputDescs[1];
         xWeightOperatorDesc.CTensor = &inputDescs[2];
-        xWeightOperatorDesc.OutputTensor = &inputDescs[2];
+        xWeightOperatorDesc.OutputTensor = &firstGemmOutputTensorDesc.GetDmlDesc();
         xWeightOperatorDesc.TransA = DML_MATRIX_TRANSFORM_NONE;
         xWeightOperatorDesc.TransB = DML_MATRIX_TRANSFORM_NONE;
         xWeightOperatorDesc.Alpha = 1.0f;
@@ -129,7 +139,7 @@ public:
         std::vector<uint32_t> sliceSize{batchSize, sequenceLength, hiddenSize};
         std::vector<int32_t> strides{1, 1, 1};
         DML_SLICE1_OPERATOR_DESC querySlicedOperatorDesc = {};
-        querySlicedOperatorDesc.InputTensor = &inputDescs[2];
+        querySlicedOperatorDesc.InputTensor = &firstGemmOutputTensorDesc.GetDmlDesc();
         querySlicedOperatorDesc.OutputTensor = &querySlicedInputTensorDesc.GetDmlDesc();
         querySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(querySlicedTensorShape.size());
         querySlicedOperatorDesc.InputWindowOffsets = querySliceOffset.data();
@@ -138,7 +148,7 @@ public:
         const DML_OPERATOR_DESC querySlicedDesc = { DML_OPERATOR_SLICE1, &querySlicedOperatorDesc };
 
         DML_SLICE1_OPERATOR_DESC keySlicedOperatorDesc = {};
-        keySlicedOperatorDesc.InputTensor = &inputDescs[2];
+        keySlicedOperatorDesc.InputTensor = &firstGemmOutputTensorDesc.GetDmlDesc();
         keySlicedOperatorDesc.OutputTensor = &querySlicedInputTensorDesc.GetDmlDesc();
         keySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(querySlicedTensorShape.size());
         keySlicedOperatorDesc.InputWindowOffsets = keySliceOffset.data();
@@ -147,7 +157,7 @@ public:
         const DML_OPERATOR_DESC keySlicedDesc = { DML_OPERATOR_SLICE1, &keySlicedOperatorDesc };
 
         DML_SLICE1_OPERATOR_DESC valueSlicedOperatorDesc = {};
-        valueSlicedOperatorDesc.InputTensor = &inputDescs[2];
+        valueSlicedOperatorDesc.InputTensor = &firstGemmOutputTensorDesc.GetDmlDesc();
         valueSlicedOperatorDesc.OutputTensor = &querySlicedInputTensorDesc.GetDmlDesc();
         valueSlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(querySlicedTensorShape.size());
         valueSlicedOperatorDesc.InputWindowOffsets = valueSliceOffset.data();
