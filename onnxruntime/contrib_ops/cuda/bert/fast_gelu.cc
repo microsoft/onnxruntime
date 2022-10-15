@@ -53,7 +53,7 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
+  auto status = LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
                                    Stream(),
                                    static_cast<int>(input_length),
                                    static_cast<int>(bias_length),
@@ -71,7 +71,7 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
 
     std::cout << "Bias Gelu: " << duration.count() << std::endl;
 
-    return Status::OK();
+    return status;
 }
 
 }  // namespace cuda
