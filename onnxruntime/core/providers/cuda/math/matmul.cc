@@ -168,6 +168,11 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           workspace_memory.get(), workspace_size,
           Stream()));
 
+      cudaFree(right_X_ptr);
+      cudaFree(left_X_ptr);
+      cudaFree(Y_ptr);
+
+
       //cudaStreamSynchronize(Stream());
       //auto stop = high_resolution_clock::now();
 
