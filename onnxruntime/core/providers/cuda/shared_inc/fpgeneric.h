@@ -14,7 +14,9 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_common.h"
+#include <chrono>
 
+using namespace std::chrono;
 using namespace onnxruntime;
 using namespace onnxruntime::cuda;
 
@@ -241,8 +243,6 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
 
   cublasLtMatrixLayout_t A_desc = NULL, B_desc = NULL, C_desc = NULL;
   cublasLtMatmulDesc_t operation_desc = NULL;
-  cublasLtMatmulPreference_t preference = nullptr;
-
 
     cublasLtMatmulPreferenceCreate(&preference);
     cublasLtMatmulPreferenceSetAttribute(
@@ -272,12 +272,6 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
       cublasLtMatmulDescDestroy(operation_desc);
     }
   });
-
-  auto clean_preference_desc = gsl::finally([&preference]() {
-    if (preference) {
-      cublasLtMatmulPreferenceDestroy(preference);
-    }
-  });  
 
   if (Status::OK() != InitializeCublasLtMatmulDescAndOperationHelper(A_desc, lda,
                                                                      transa,
@@ -319,6 +313,7 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                                      &bias, sizeof(bias)));
   }
 
+    /*
     int returnedResults = 0;
     cublasLtMatmulHeuristicResult_t heuristicResult = {};
     cublasLtMatmulAlgoGetHeuristic(handle, operation_desc, A_desc, B_desc, C_desc,
@@ -326,6 +321,10 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                                      &returnedResults);
 
     if (returnedResults == 0) throw std::runtime_error("Unable to find any suitable algorithms");
+    */
+
+      cudaStreamSynchronize(stream);
+      auto start = high_resolution_clock::now();
 
   // TODO (hasesh): Allow CublasLtMatmul tuning for clients by allowing them to pass in the
   // workspace and algo of their choice.
@@ -333,16 +332,25 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
   // "an implicit heuristics query with
   // default search preferences will be performed to determine actual algorithm to use".
   // Source: cublasLtMatmul documentation.
-  return cublasLtMatmul(
+  auto status =  cublasLtMatmul(
       handle, operation_desc,
       is_compute_16f ? reinterpret_cast<const void*>(alpha) : reinterpret_cast<const void*>(&f_alpha),
       A, A_desc, B, B_desc,
       is_compute_16f ? reinterpret_cast<const void*>(beta) : reinterpret_cast<const void*>(&f_beta),
       C, C_desc,
       C, C_desc,
-      &heuristicResult.algo,
+      NULL,
       workspace_memory, workspace_size,
       stream);
+
+      cudaStreamSynchronize(stream);
+      auto stop = high_resolution_clock::now();
+
+      auto duration = duration_cast<microseconds>(stop - start);
+    
+      std::cout << duration.count() << std::endl;
+
+      return status;
 }
 
 inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
