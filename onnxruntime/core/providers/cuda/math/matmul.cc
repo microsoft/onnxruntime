@@ -143,8 +143,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       if (left_X->SizeInBytes() == 6291456 && 
           right_X->SizeInBytes() == 4718592 &&
           Y->SizeInBytes() == 25165824) {
-              use_special = true;
-              std::cout << "Using special" << "\n";
+              //use_special = true;
+              //std::cout << "Using special" << "\n";
       }
 
       if (use_special) {
