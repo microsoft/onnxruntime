@@ -3,9 +3,12 @@
 
 #pragma once
 
+#include "core/providers/rocm/backward_guard.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_fwd.h"
+
+#define PRE __FILE__ << ":" << __LINE__ << ":" << std::this_thread::get_id() << " "
 
 namespace onnxruntime {
 namespace rocm {
@@ -22,7 +25,17 @@ class RocmKernel : public OpKernel {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
-    auto s = ComputeInternal(p_op_kernel_context);
+    Status s;
+    auto altimpl = Info().GetAttrOrDefault<int64_t>("__altimpl", 0);
+    //std::cerr << PRE << "altimpl " << altimpl << std::endl;
+    if (altimpl) {
+      //std::cerr << PRE << "creating BackwardPassGuard" << std::endl;
+      BackwardPassGuard guard;
+      s = ComputeInternal(p_op_kernel_context);
+    }
+    else {
+      s = ComputeInternal(p_op_kernel_context);
+    }
     // use this to precisely locate the node where ROCM failure comes from
     //  if (hipSuccess != hipDeviceSynchronize())
     //    __debugbreak();

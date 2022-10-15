@@ -10,6 +10,7 @@
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+#include "core/optimizer/rocm_blas_alt_impl.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/conv_add_act_fusion.h"
@@ -206,6 +207,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // shouldn't affect the end result - just easier to debug any issue if it's last.
       auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
+
+      std::cerr << __FILE__ << ":" << __LINE__ << " emplace_back RocmBlasAltImpl" << std::endl;
+      // TODO document
+      const InlinedHashSet<std::string_view> rocm_ep = {onnxruntime::kRocmExecutionProvider};
+      transformers.emplace_back(std::make_unique<RocmBlasAltImpl>(rocm_ep));
     } break;
 
     case TransformerLevel::Level2: {
