@@ -140,49 +140,49 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
     } else {
       output_hidden_size = bias_shape.dim(0).dim_value() / 3;
     }
-  }
 
-  ONNX_NAMESPACE::TensorShapeProto output_shape;
-  for (auto& dim : input_dims) {
-    *output_shape.add_dim() = dim;
-  }
+    ONNX_NAMESPACE::TensorShapeProto output_shape;
+    for (auto& dim : input_dims) {
+      *output_shape.add_dim() = dim;
+    }
 
-  output_shape.mutable_dim(2)->set_dim_value(output_hidden_size);
-  updateOutputShape(ctx, 0, output_shape);
+    output_shape.mutable_dim(2)->set_dim_value(output_hidden_size);
+    updateOutputShape(ctx, 0, output_shape);
 
-  if (ctx.getNumOutputs() > 1) {
-    if (hasInputShape(ctx, past_input_index)) {
-      auto& past_shape = getInputShape(ctx, past_input_index);
-      auto& past_dims = past_shape.dim();
-      if (past_dims.size() != 5) {
-        fail_shape_inference("Inputs 4 shall be 5 dimensions");
-      }
+    if (ctx.getNumOutputs() > 1) {
+      if (hasInputShape(ctx, past_input_index)) {
+        auto& past_shape = getInputShape(ctx, past_input_index);
+        auto& past_dims = past_shape.dim();
+        if (past_dims.size() != 5) {
+          fail_shape_inference("Inputs 4 shall be 5 dimensions");
+        }
 
-      int64_t total_sequence_length = -1;
-      if (!hasInputShape(ctx, 1)) {  // no weights
-        if (hasInputShape(ctx, 6)) {
-          auto& key_shape = getInputShape(ctx, 6);
-          auto& key_dims = key_shape.dim();
-          if (key_dims.size() == 3 && key_dims[1].has_dim_value()) {
-            total_sequence_length = key_dims[1].dim_value();
+        int64_t total_sequence_length = -1;
+        if (!hasInputShape(ctx, 1)) {  // no weights
+          if (hasInputShape(ctx, 6)) {
+            auto& key_shape = getInputShape(ctx, 6);
+            auto& key_dims = key_shape.dim();
+            if (key_dims.size() == 3 && key_dims[1].has_dim_value()) {
+              total_sequence_length = key_dims[1].dim_value();
+            }
+          }
+        } else {
+          if (input_dims[1].has_dim_value()) {
+            total_sequence_length = input_dims[1].dim_value();
           }
         }
-      } else {
-        if (input_dims[1].has_dim_value()) {
-          total_sequence_length = input_dims[1].dim_value();
+
+        if (total_sequence_length >= 0 && past_dims[3].has_dim_value()) {
+          total_sequence_length += past_shape.dim(3).dim_value();
+
+          ONNX_NAMESPACE::TensorShapeProto present_shape;
+          for (auto& dim : past_dims) {
+            *present_shape.add_dim() = dim;
+          }
+          present_shape.mutable_dim(3)->set_dim_value(total_sequence_length);
+
+          updateOutputShape(ctx, 1, present_shape);
         }
-      }
-
-      if (total_sequence_length >= 0 && past_dims[3].has_dim_value()) {
-        total_sequence_length += past_shape.dim(3).dim_value();
-
-        ONNX_NAMESPACE::TensorShapeProto present_shape;
-        for (auto& dim : past_dims) {
-          *present_shape.add_dim() = dim;
-        }
-        present_shape.mutable_dim(3)->set_dim_value(total_sequence_length);
-
-        updateOutputShape(ctx, 1, present_shape);
       }
     }
   }
