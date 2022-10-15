@@ -243,12 +243,12 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
 
   cublasLtMatrixLayout_t A_desc = NULL, B_desc = NULL, C_desc = NULL;
   cublasLtMatmulDesc_t operation_desc = NULL;
-
+    /*
     cublasLtMatmulPreferenceCreate(&preference);
     cublasLtMatmulPreferenceSetAttribute(
                             preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
                             &workspace_size, sizeof(workspace_size));
-
+    */
   auto clean_desc_A = gsl::finally([&A_desc]() {
     if (A_desc) {
       cublasLtMatrixLayoutDestroy(A_desc);
