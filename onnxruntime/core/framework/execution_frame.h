@@ -184,12 +184,6 @@ class ExecutionFrame final : public IExecutionFrame {
   }
 #endif
 
-#ifdef ENABLE_TRAINING
-  void SetDeviceStreams(const std::vector<Stream*>* device_streams) {
-    device_streams_ = device_streams;
-  }
-#endif
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
 

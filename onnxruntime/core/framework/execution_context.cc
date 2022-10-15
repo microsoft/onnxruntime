@@ -11,7 +11,9 @@ class DeviceStreamCollectionImpl {
  public:
   DeviceStreamCollectionImpl(size_t num_streams, const SessionState& sess_state) : num_streams_(num_streams) {
     device_streams_.resize(num_streams, nullptr);
+    device_streams_containers.reserve(num_streams);
     auto& providers = sess_state.GetExecutionProviders();
+    eps_.reserve(providers.NumProviders());
     for (auto& ep : providers) {
       eps_.push_back(ep);
     }
@@ -73,10 +75,10 @@ class DeviceStreamCollectionImpl {
  private:
   size_t num_streams_;
   std::vector<Stream*> device_streams_;
-  std::vector<std::unique_ptr<Stream>> device_streams_containers;
+  InlinedVector<std::unique_ptr<Stream>> device_streams_containers;
   // due to training's partial execution, the device streams collection may need to be hold
   // with a different lifetime of session state, we need to hold the reference of EPs.
-  std::vector<std::shared_ptr<IExecutionProvider>> eps_;
+  InlinedVector<std::shared_ptr<IExecutionProvider>> eps_;
   bool is_main_graph_ = false;
 };
 
@@ -106,9 +108,9 @@ Status DeviceStreamCollection::CleanUp() {
 
 ExecutionContext::ExecutionContext(const SessionState& sess_state,
                                    int32_t num_streams,
-                                   std::vector<size_t> notification_owners,
-                                   gsl::span<const int>& feed_mlvalue_idxs,
-                                   gsl::span<const OrtValue>& feeds, gsl::span<const int>& fetch_mlvalue_idxs,
+                                   gsl::span<const size_t> notification_owners,
+                                   gsl::span<const int> feed_mlvalue_idxs,
+                                   gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                    std::vector<OrtValue>& fetches,
                                    const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                    size_t num_barriers,
@@ -120,7 +122,7 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
                                                               count_down_barriers_(num_barriers),
                                                               single_thread_mode_(single_thread_mode) {
   auto& device_streams = device_stream_map_.GetStreams();
-
+  notifications.reserve(notification_owners.size());
   for (size_t i = 0; i < notification_owners.size(); ++i) {
     auto& stream = device_streams[notification_owners[i]];
     if (stream)

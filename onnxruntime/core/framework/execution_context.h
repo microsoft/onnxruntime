@@ -74,9 +74,9 @@ class ExecutionContext {
  public:
   ExecutionContext(const SessionState& sess_state,
                    int32_t num_streams,
-                   std::vector<size_t> notification_owners,
-                   gsl::span<const int>& feed_mlvalue_idxs,
-                   gsl::span<const OrtValue>& feeds, gsl::span<const int>& fetch_mlvalue_idxs,
+                   gsl::span<const size_t> notification_owners,
+                   gsl::span<const int> feed_mlvalue_idxs,
+                   gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                    std::vector<OrtValue>& fetches,
                    const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                    size_t num_barriers,
@@ -163,7 +163,7 @@ class ExecutionContext {
   const SessionState* session_state;
   std::unique_ptr<ExecutionFrame> frame;
   const logging::Logger* logger;
-  std::vector<std::unique_ptr<synchronize::Notification>> notifications;
+  InlinedVector<std::unique_ptr<synchronize::Notification>> notifications;
   std::unique_ptr<ReleasePlan> release_plan;
   const DeviceStreamCollection& device_stream_map_;
   std::vector<CountDownBarrier> count_down_barriers_;
