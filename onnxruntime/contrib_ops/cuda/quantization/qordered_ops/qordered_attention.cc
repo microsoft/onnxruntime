@@ -208,14 +208,13 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(InputIds::Mask_Index);
 
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), merged_weights_shape, merged_bias_shape,
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), &merged_weights_shape, merged_bias_shape,
                                   mask_index,
                                   nullptr,  // past
                                   nullptr,  // extra_add_qk
                                   nullptr,  // key
                                   nullptr,  // value
-                                  nullptr,  // weight_key
-                                  nullptr,  // weight_value
+                                  nullptr,  // parameters
                                   device_prop.maxThreadsPerBlock));
 
   const Tensor* tensor_scale_attn_scores = context->Input<Tensor>(InputIds::Scale_QK_Gemm);

@@ -15,8 +15,8 @@ namespace contrib {
 
 class AttentionCPUBase : public AttentionBase {
  protected:
-  AttentionCPUBase(const OpKernelInfo& info, bool require_same_hidden_size, bool require_merged_weights)
-  : AttentionBase(info, require_same_hidden_size, require_merged_weights) {}
+  AttentionCPUBase(const OpKernelInfo& info, bool require_same_hidden_size, bool require_weights)
+  : AttentionBase(info, require_same_hidden_size, require_weights) {}
 
   template <typename T>
   Status ApplyAttention(const T* Q,                  // Q data with shape BxNxSxH_q

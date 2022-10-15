@@ -49,13 +49,13 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* w_zp_tensor,
                                           const Tensor* past_tensor) const {
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
+  auto& weights_shape = weights->Shape();
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), &weights_shape, bias->Shape(),
                                                  mask_index, past_tensor,
                                                  nullptr,  // extra_add_qk
                                                  nullptr,  // key
                                                  nullptr,  // value
-                                                 nullptr,  // weight_key
-                                                 nullptr,  // weight_value
+                                                 nullptr,  // parameters
                                                  device_prop.maxThreadsPerBlock));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),

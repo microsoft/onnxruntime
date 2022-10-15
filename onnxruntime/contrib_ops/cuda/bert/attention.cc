@@ -70,17 +70,16 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* weight_value = context->Input<Tensor>(9);
 
   auto& device_prop = GetDeviceProp();
+  AttentionParameters input_parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                  weights->Shape(),
+                                  weights,
                                   bias->Shape(),
                                   mask_index,
                                   past,
                                   extra_add_qk,
                                   key,
                                   value,
-                                  weight_key,
-                                  weight_value,
-                                  false,
+                                  &input_parameters,
                                   device_prop.maxThreadsPerBlock));
 
   // input shape (batch_size, sequence_length, input_hidden_size)
@@ -133,7 +132,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     if (nullptr == fused_fp16_runner_.get()) {
       fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, qkv_head_size[0], sm));
     }
-    // In case some kernel  not loaded due to shared memory limit, we need to double check here.
+    // In case some kernel not loaded due to shared memory limit, we need to double check here.
     if (fused_fp16_runner_->isValid(sequence_length)) {
       fused_runner = fused_fp16_runner_.get();
     }
