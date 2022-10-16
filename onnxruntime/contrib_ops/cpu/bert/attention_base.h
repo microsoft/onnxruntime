@@ -11,15 +11,20 @@ namespace onnxruntime {
 namespace contrib {
 
 struct AttentionParameters{
-  int64_t batch_size;
-  int64_t sequence_length;
-  int64_t target_sequence_length;
-  int64_t total_sequence_length;
-  int64_t input_hidden_size;
-  int64_t q_hidden_size;
-  int64_t k_hidden_size;
-  int64_t v_hidden_size;
-  int64_t num_heads;
+  int batch_size;
+  int sequence_length;
+  int target_sequence_length;
+  int past_sequence_length;
+  int total_sequence_length;
+  int max_sequence_length;
+  int input_hidden_size;
+  int q_hidden_size;
+  int k_hidden_size;
+  int v_hidden_size;
+  int q_head_size;
+  int k_head_size;
+  int v_head_size;
+  int num_heads;
   bool is_unidirectional;
 };
 

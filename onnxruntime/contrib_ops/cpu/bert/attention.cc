@@ -130,7 +130,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
 
   auto& batch_size = dims[0];
   auto& sequence_length = dims[1];
-  auto& input_hidden_size = dims[2];
+  int64_t input_hidden_size = dims[2];
 
   const auto& bias_dims = bias_shape.GetDims();
   if (bias_dims.size() != 1) {
@@ -158,7 +158,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   int64_t target_sequence_length = sequence_length;
   int64_t q_hidden_size = bias_dims[0] / static_cast<int64_t>(3);
   int64_t k_hidden_size = q_hidden_size;
-  int64_t v_hidden_size = v_hidden_size;
+  int64_t v_hidden_size = k_hidden_size;
 
   if (weights_shape == nullptr) { // no weights
     if (this->require_weights_) {
@@ -226,7 +226,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   }
 
   if (this->require_same_hidden_size_ && k_hidden_size != v_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_SUPPORT, "Hidden size of Q, K and V shall be same");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Hidden size of Q, K and V shall be same");
   }
 
   int64_t total_sequence_length = target_sequence_length;
@@ -351,17 +351,20 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   }
 
   if (parameters != nullptr) {
-    AttentionInputParameters* output_parameters = reinterpret_cast<AttentionInputParameters*>(parameters);
-    output_parameters->batch_size = batch_size;
-    output_parameters->sequence_length = sequence_length;
-    output_parameters->past_sequence_length = past_sequence_length;
-    output_parameters->target_sequence_length = target_sequence_length;
-    output_parameters->total_sequence_length = total_sequence_length;
-    output_parameters->max_sequence_length = max_sequence_length;
-    output_parameters->input_hidden_size = input_hidden_size;
-    output_parameters->q_hidden_size = q_hidden_size;
-    output_parameters->k_hidden_size = k_hidden_size;
-    output_parameters->v_hidden_size = v_hidden_size;
+    AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
+    output_parameters->batch_size = static_cast<int>(batch_size);
+    output_parameters->sequence_length = static_cast<int>(sequence_length);
+    output_parameters->past_sequence_length = static_cast<int>(past_sequence_length);
+    output_parameters->target_sequence_length = static_cast<int>(target_sequence_length);
+    output_parameters->total_sequence_length = static_cast<int>(total_sequence_length);
+    output_parameters->max_sequence_length = static_cast<int>(max_sequence_length);
+    output_parameters->input_hidden_size = static_cast<int>(input_hidden_size);
+    output_parameters->q_hidden_size = static_cast<int>(q_hidden_size);
+    output_parameters->k_hidden_size = static_cast<int>(k_hidden_size);
+    output_parameters->v_hidden_size = static_cast<int>(v_hidden_size);
+    output_parameters->q_head_size = static_cast<int>(q_hidden_size) / num_heads_;
+    output_parameters->k_head_size = static_cast<int>(k_hidden_size) / num_heads_;
+    output_parameters->v_head_size = static_cast<int>(v_hidden_size) / num_heads_;
     output_parameters->num_heads = num_heads_;
     output_parameters->is_unidirectional = is_unidirectional_;
   }
@@ -396,8 +399,8 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context,
   //   past        : (2, batch_size, num_heads, past_sequence_length, head_size)
   //   present     : (2, batch_size, num_heads, past_sequence_length + kv_sequence_length, head_size)
 
-  int64_t total_sequence_length = kv_sequence_length + (nullptr != past ? past->Shape().GetDims()[3] : 0);
-  std::vector<int64_t> present_dims{2, batch_size, num_heads_, total_sequence_length, head_size};
+  past_sequence_length = (nullptr != past) ? static_cast<int>(past->Shape().GetDims()[3]) : 0;
+  std::vector<int64_t> present_dims{2, batch_size, num_heads_, kv_sequence_length + past_sequence_length, head_size};
 
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(1, present_shape);
@@ -554,53 +557,29 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* value = context->Input<Tensor>(7);
 
   const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
+
+  AttentionParameters parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
-                                  weights_shape,
+                                  (nullptr != weights || is_prepack_) ? &weights_shape : nullptr,
                                   bias->Shape(),
                                   mask_index,
                                   past,
                                   extra_add_qk,
                                   key,
                                   value,
-                                  nullptr));
+                                  &parameters));
 
-  const auto shape = input->Shape().GetDims();
-  const int batch_size = static_cast<int>(shape[0]);
-  const int sequence_length = static_cast<int>(shape[1]);
-  const int input_hidden_size = static_cast<int>(shape[2]);
-
-  int hidden_size;
-
-  if (qkv_hidden_sizes_.size() == 0) {
-    const auto& weights_dims = weights_shape.GetDims();
-    hidden_size = static_cast<int>(weights_dims[1]) / 3;
-  } else {
-    hidden_size = static_cast<int>(qkv_hidden_sizes_[2]);
-  }
-
-  const int head_size = hidden_size / num_heads_;
+  const int batch_size = parameters.batch_size;
+  const int sequence_length = parameters.sequence_length;
+  const int input_hidden_size = parameters.input_hidden_size;
 
   std::vector<int64_t> output_shape(3);
-  output_shape[0] = shape[0];
-  output_shape[1] = shape[1];
-  output_shape[2] = static_cast<int64_t>(hidden_size);
+  output_shape[0] = static_cast<int64_t>(batch_size);
+  output_shape[1] = static_cast<int64_t>(sequence_length);
+  output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
   constexpr size_t element_size = sizeof(T);
-
-  int q_hidden_size = 0;
-  int k_hidden_size = 0;
-  int v_hidden_size = 0;
-  if (qkv_hidden_sizes_.size() == 0) {
-    q_hidden_size = hidden_size;
-    k_hidden_size = hidden_size;
-    v_hidden_size = hidden_size;
-  } else {
-    q_hidden_size = static_cast<int>(qkv_hidden_sizes_[0]);
-    k_hidden_size = static_cast<int>(qkv_hidden_sizes_[1]);
-    v_hidden_size = static_cast<int>(qkv_hidden_sizes_[2]);
-  }
-  const int qkv_head_size[3] = {q_hidden_size / num_heads_, k_hidden_size / num_heads_, v_hidden_size / num_heads_};
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -609,15 +588,16 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   // Compute Q, K, V
   // gemm_data(BS, D_t) = input(BS, D_i) x weights(D_i, D_t) + bias(D_t), where D_t = D_q + D_k + D_v
   // Hidden dimension of input could be larger than that of Q, K and V when model is pruned.
-  int qkv_hidden_size = (q_hidden_size + k_hidden_size + v_hidden_size);
+  int qkv_hidden_size = (parameters.q_hidden_size + parameters.k_hidden_size + parameters.v_hidden_size);
   auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * qkv_hidden_size * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(std::move(allocator)));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + static_cast<size_t>(batch_size) * sequence_length * q_hidden_size;
-  auto V = K + static_cast<size_t>(batch_size) * sequence_length * k_hidden_size;
+  auto K = Q + static_cast<size_t>(batch_size) * sequence_length * parameters.q_hidden_size;
+  auto V = K + static_cast<size_t>(batch_size) * sequence_length * parameters.k_hidden_size;
 
   T* QKV[3] = {Q, K, V};
+  const int qkv_head_size[3] = {parameters.q_head_size, parameters.k_head_size, parameters.v_head_size};
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
@@ -625,8 +605,10 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     const auto* weights_data = weights ? weights->Data<T>() : nullptr;
     const auto* bias_data = bias->Data<T>();
 
-    const double cost =
-        static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(input_hidden_size);
+    // We use Q/K head size to estimate the cost, this is not accurate when Q/K and V head sizes are different.
+    const double cost = static_cast<double>(sequence_length) *
+                        static_cast<double>(parameters.q_head_size) * static_cast<double>(input_hidden_size);
+
     ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const int batch_index = static_cast<int>((i / 3) / num_heads_);
@@ -638,7 +620,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         T* qkv_dest = QKV[qkv_index];
         int head_size = qkv_head_size[qkv_index];
         int weights_offset = 0;
-        int bias_offset = qkv_index * q_hidden_size + head_index * head_size;
+        int bias_offset = qkv_index * parameters.q_hidden_size + head_index * head_size;
 
         if (!is_prepack_) {
           weights_offset = bias_offset;
@@ -692,7 +674,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
               input_data + input_offset,                      // A
               input_hidden_size,                              // lda    = D
               weights_data + weights_offset,                  // B
-              q_hidden_size + k_hidden_size + v_hidden_size,  // ldb    = D_q + D_k + D_v
+              qkv_hidden_size,                                // ldb    = D_q + D_k + D_v
               1.0f,                                           // beta
               qkv_dest + qkv_offset,                          // C
               head_size,                                      // ldc
