@@ -112,7 +112,7 @@ void XnnpackExecutionProvider::LegalizeSessionOptions(SessionOptions& so, const 
            "setting ort's pool size (intra_thread_num) to 1 and try again.";
   }
   // 0 means user didn't set the value.
-  if (info_.xnn_thread_pool_size > 0) {
+  if (so.intra_op_param.thread_pool_size > 1 && info_.xnn_thread_pool_size == 0) {
     LOGS_DEFAULT(INFO) << "XNNPACK pool size is not set. Using ORT's thread-pool size as default:";
     info_.xnn_thread_pool_size = so.intra_op_param.thread_pool_size;
     // creat threadpool
