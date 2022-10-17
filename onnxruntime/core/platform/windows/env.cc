@@ -164,6 +164,7 @@ class WindowsThread : public EnvThread {
         if (!rc) {
           const auto error_code = GetLastError();
           LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
+                              << ", index: " << p->index
                               << ", mask: " << *p->affinity_mask
                               << ", error code: " << error_code
                               << ", error msg: " << std::system_category().message(error_code)
@@ -239,8 +240,13 @@ class WindowsEnv : public Env {
 
   std::vector<size_t> GetThreadAffinityMasks() const override {
     auto generate_vector_of_n = [](int n) {
-      std::vector<size_t> ret(n);
-      std::iota(ret.begin(), ret.end(), 0);
+      n = std::min(n, 64); // Limit to 64
+      std::vector<size_t> ret;
+      ret.reserve(n);
+      for (size_t shift = 0; shift < n; ++shift) {
+        size_t mask = size_t{1} << shift;
+        ret.push_back(mask);
+      }
       return ret;
     };
     // Indeed 64 should be enough. However, it's harmless to have a little more.
