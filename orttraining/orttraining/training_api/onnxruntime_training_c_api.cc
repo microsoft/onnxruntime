@@ -339,6 +339,17 @@ ORT_API(void, OrtTrainingApis::ReleaseCheckpointState, _Frees_ptr_opt_ OrtCheckp
   delete reinterpret_cast<onnxruntime::training::api::CheckpointState*>(checkpoint_state);
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrainingSession* sess,
+                    _In_ const ORTCHAR_T* inference_model_path) {
+  API_IMPL_BEGIN
+
+  auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->ExportModelForInferencing(inference_model_path));
+
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtTrainingApi ort_training_api = {
     // NOTE: The C# bindings depend on the API order within this struct. Since Training APIs are not officially
     // released, it is OK to change the order here, however a corresponding matching change should also be done in the
@@ -363,6 +374,7 @@ static constexpr OrtTrainingApi ort_training_api = {
     &OrtTrainingApis::CopyBufferToParameters,
     &OrtTrainingApis::ReleaseTrainingSession,
     &OrtTrainingApis::ReleaseCheckpointState,
+    &OrtTrainingApis::ExportModelForInferencing,
 };
 
 ORT_API(const OrtTrainingApi*, OrtTrainingApis::GetTrainingApi, uint32_t) {

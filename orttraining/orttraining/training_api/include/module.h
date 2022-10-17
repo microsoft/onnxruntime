@@ -106,6 +106,11 @@ struct Module {
   // Copy parameter values from contiguous buffer held by parameters_buffer onto parameters
   Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only = true);
 
+  // Clone the eval model and transform it for the purpose of inferencing, and serialize to given path
+  Status ExportModelForInferencing(const std::string& inference_model_path) const;
+
+  inline static std::string InferenceGraphOutputsMetadataString = "InferenceGraphOutputs";
+
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
@@ -118,6 +123,7 @@ struct Module {
   std::vector<OrtValue> gradients_;
   bool accumulate_gradient_ = false;
   const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
+  ONNX_NAMESPACE::ModelProto eval_model_;
 };
 
 }  // namespace api

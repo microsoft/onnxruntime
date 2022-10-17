@@ -17,6 +17,7 @@
 #include "orttraining/training_api/include/checkpoint.h"
 #include "orttraining/training_api/include/lr_scheduler.h"
 #include "orttraining/test/training_api/core/data_utils.h"
+#include "test/util/include/temp_dir.h"
 #include "default_providers.h"
 
 using json = nlohmann::json;
@@ -162,6 +163,69 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   for (size_t i = 0; i < current_bias_grad_vec.size(); i++) {
     ASSERT_EQ(current_bias_grad_vec[i], single_bias_grad_vec[i]);
   }
+}
+
+TEST(TrainingApiTest, ModuleExportModelForInferencing) {
+  auto training_model_uri = MODEL_FOLDER "training_model.onnx";
+  auto eval_model_uri = MODEL_FOLDER "eval_model.onnx";
+
+  onnxruntime::training::api::CheckpointState state;
+  auto checkpoint_to_load_path = MODEL_FOLDER "checkpoint.ckpt";
+  ASSERT_STATUS_OK(onnxruntime::training::api::LoadCheckpoint(checkpoint_to_load_path, state));
+
+  onnxruntime::SessionOptions session_option;
+  std::unique_ptr<Environment> env;
+  ASSERT_STATUS_OK(Environment::Create(nullptr, env));
+  auto model = std::make_unique<onnxruntime::training::api::Module>(
+      ToUTF8String(training_model_uri), state.module_checkpoint_state.named_parameters, session_option,
+      *env, std::vector<std::shared_ptr<IExecutionProvider>>(), ToUTF8String(eval_model_uri));
+
+  auto test_dir = ORT_TSTR("export_model_for_inferencing_test_dir");
+  if (Env::Default().FolderExists(test_dir)) {
+    ORT_ENFORCE(Env::Default().DeleteFolder(test_dir).IsOK());
+  }
+  onnxruntime::test::TemporaryDirectory tmp_dir{test_dir};
+  PathString inference_model_path{
+      ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("inference_model.onnx"))};
+
+  ASSERT_STATUS_OK(model->ExportModelForInferencing(inference_model_path));
+
+  // Load model
+  ONNX_NAMESPACE::ModelProto eval_model;
+  ONNX_NAMESPACE::ModelProto inference_model;
+  ORT_THROW_IF_ERROR(Model::Load(eval_model_uri, eval_model));
+  ORT_THROW_IF_ERROR(Model::Load(inference_model_path, inference_model));
+
+  // Check it has only one graph input
+  ASSERT_EQ(eval_model.graph().input().size(), 6U);
+  ASSERT_EQ(inference_model.graph().input().size(), 1U);
+  ASSERT_EQ(inference_model.graph().input()[0].name(), "input-0");
+
+  // Check that it does not have any node which has op type SoftmaxCrossEntropyLoss
+  auto softmaxceloss_node_found = [](auto& model) -> bool {
+    for (auto& node : model.graph().node()) {
+      if (node.op_type() == "SoftmaxCrossEntropyLoss") {
+        return true;
+      }
+    }
+    return false;
+  };
+  ASSERT_EQ(softmaxceloss_node_found(eval_model), true);
+  ASSERT_EQ(softmaxceloss_node_found(inference_model), false);
+
+  // Try running an inference session
+  auto inference_session = std::make_unique<onnxruntime::InferenceSession>(session_option, *env);
+  ASSERT_STATUS_OK(inference_session->Load(inference_model_path));
+  ASSERT_STATUS_OK(inference_session->Initialize());
+  std::vector<std::string> input_names({"input-0"});
+  OrtValue graph_input;
+  GenerateRandomInput(std::array<int64_t, 2>{2, 784}, graph_input);
+  std::vector<OrtValue> feeds;
+  feeds.emplace_back(graph_input);
+  std::vector<std::string> output_names({"output-0"});
+  std::vector<OrtValue> outputs;
+  ASSERT_STATUS_OK(inference_session->Run(RunOptions(), input_names, feeds, output_names, &outputs));
+  ASSERT_EQ(outputs.size(), 1U);
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)

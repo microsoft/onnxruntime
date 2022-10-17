@@ -110,6 +110,10 @@ Status TrainingSession::CopyBufferToParameters(OrtValue& parameters_buffer, cons
   return module_->CopyBufferToParameters(parameters_buffer, trainable_only);
 }
 
+Status TrainingSession::ExportModelForInferencing(const std::string& inference_model_path) const {
+  return module_->ExportModelForInferencing(inference_model_path);
+}
+
 }  // namespace api
 }  // namespace training
 }  // namespace onnxruntime

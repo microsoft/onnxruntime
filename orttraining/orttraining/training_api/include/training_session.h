@@ -63,11 +63,13 @@ class TrainingSession {
 
   Status CreateCheckpointState(CheckpointState& chkpt_state, bool save_optimizer_state) const;
 
-  size_t GetParametersSize(const bool trainable_only=true) const;
+  size_t GetParametersSize(const bool trainable_only = true) const;
 
-  Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only=true);
-  
-  Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only=true);
+  Status CopyParametersToBuffer(OrtValue& parameters_buffer, const bool trainable_only = true);
+
+  Status CopyBufferToParameters(OrtValue& parameters_buffer, const bool trainable_only = true);
+
+  Status ExportModelForInferencing(const std::string& inference_model_path) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TrainingSession);

@@ -983,6 +983,10 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
           ort_model->ToProto().SerializeToString(&model_str);
           return py::bytes(model_str);
         });
+
+  m.def("get_inference_graph_outputs_metadata_string", []() {
+    return onnxruntime::training::api::Module::InferenceGraphOutputsMetadataString;
+  });
 #endif
 }
 

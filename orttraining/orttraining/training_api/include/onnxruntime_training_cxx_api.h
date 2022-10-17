@@ -143,6 +143,13 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
    *
    */
   void OptimizerStep();
+
+  /** \brief Exports a model that can be used for inferencing with the inference session.
+   *
+   * Wraps OrtTrainingApi::ExportModelForInferencing
+   *
+   */
+  void ExportModelForInferencing(const std::basic_string<ORTCHAR_T>& inference_model_path);
 };
 
 }  // namespace Ort

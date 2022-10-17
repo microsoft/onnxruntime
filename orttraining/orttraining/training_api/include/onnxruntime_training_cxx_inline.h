@@ -94,4 +94,8 @@ inline void CheckpointState::SaveCheckpoint(const TrainingSession& session,
   ThrowOnError(GetTrainingApi().SaveCheckpoint(path_to_checkpoint.c_str(), session, include_optimizer_states));
 }
 
+inline void TrainingSession::ExportModelForInferencing(const std::basic_string<ORTCHAR_T>& inference_model_path) {
+  ThrowOnError(GetTrainingApi().ExportModelForInferencing(p_, inference_model_path.c_str()));
+}
+
 }  // namespace Ort
