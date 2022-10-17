@@ -80,7 +80,7 @@
     return supported;
   }
 
-  Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), OpKernel(info) {
+  Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info) {
     const auto& node{Node()};
     
     ORT_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());
@@ -102,7 +102,6 @@
     if (trans_B_ == CblasNoTrans) {
       N = B.Shape()->dim_size() == 3 ? B.Shape()->dim(2).dim_value() : B.Shape()->dim(1).dim_value();
     } else {
-      //N = B.Shape()->dim_size() == 3 ? B.Shape()->dim(1).dim_value() : B.Shape()->dim(2).dim_value();
       N = B.Shape()->dim_size() == 3 ? B.Shape()->dim(1).dim_value() : B.Shape()->dim(0).dim_value() > 1 ? B.Shape()->dim(0).dim_value()                                                                                                  : 1;
     }
   }
@@ -160,7 +159,7 @@
   }
 
   Status Gemm::Compute(OpKernelContext* context) const {
-    // concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
+    pthreadpool_t t_pool = GetThreadPool();
     const auto* A = context->Input<Tensor>(0);
     auto Y = context->Output(0, {M, N});
 
@@ -173,7 +172,7 @@
         trans_A_ != CblasNoTrans ? K : M,
         A->Data<float>(),
         Y->MutableData<float>(),
-        nullptr);
+        t_pool);
 
     status = xnn_run_operator(op0_.get(), nullptr);
     

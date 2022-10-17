@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/framework/op_kernel.h"
+#include "core/providers/xnnpack/xnnpack_kernel.h"
 #include "core/framework/allocator.h"
 #include "core/providers/cpu/math/gemm_base.h"
 #include "core/providers/xnnpack/detail/utils.h"
@@ -16,7 +16,7 @@ class GraphViewer;
 class Node;
 namespace xnnpack {
 
-class MatMul : public OpKernel {
+class MatMul : public XnnpackKernel {
  public:
   MatMul(const OpKernelInfo& info);
 

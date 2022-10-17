@@ -59,7 +59,7 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
   return supported;
 }
 
-MatMul::MatMul(const OpKernelInfo& info) : OpKernel(info) {
+MatMul::MatMul(const OpKernelInfo& info) : XnnpackKernel(info) {
   info.GetAttrOrDefault<int64_t>("transA", &trans_a_attr_, 0);
   info.GetAttrOrDefault<int64_t>("transB", &trans_b_attr_, 0);
   info.GetAttrOrDefault<float>("alpha", &alpha_attr_, 1.0);
@@ -113,7 +113,7 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 
 Status MatMul::Compute(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
-
+  pthreadpool_t t_pool = GetThreadPool();
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
   Tensor* y = ctx->Output(0, helper.OutputShape());
@@ -128,7 +128,7 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
       a->Shape()[0],
       a->Data<float>(),
       y_data,
-      nullptr);
+      t_pool);
 
   status = xnn_run_operator(op0_.get(), nullptr);
   if (status != xnn_status_success) {
