@@ -21,6 +21,7 @@ ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState&
   new_region.start_pc = program_counter_start_;
   new_region.end_pc = program_counter_end_;
 
+  new_region.stream_pc_range.reserve(plan->execution_plan.size());
   for (auto& stream : plan->execution_plan) {
     size_t cur = 0;
     while (cur < stream->step_pc.size() &&

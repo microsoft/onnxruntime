@@ -244,7 +244,7 @@ const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {
   return &p_seq_exec_plan_.value();
 }
 
-void Print(const std::string& type, const std::vector<AllocPlanPerValue>& alloc_plans) {
+void Print(const std::string& type, gsl::span<const AllocPlanPerValue> alloc_plans) {
   std::cout << type << std::endl;
   int i = 0;
   for (const auto& alloc_plan : alloc_plans) {
@@ -793,7 +793,9 @@ void SessionState::ResolveMemoryPatternFlag() {
     // TODO: we can improve memory pattern to support multiple streams
     bool multi_stream = false;
     auto cmp = [](const OrtDevice& op1, const OrtDevice& op2) {
-      return op1.Type() == op2.Type() && op1.MemType() == op2.MemType() && op1.Id() == op2.Id();
+      if (op1.Type() != op2.Type()) return op1.Type() < op2.Type();
+      if (op1.MemType() != op2.MemType()) return op1.MemType() < op2.MemType();
+      return op1.Id() < op2.Id();
     };
     std::set<OrtDevice, decltype(cmp)> device_set(cmp);
     auto& streams = GetExecutionPlan()->execution_plan;

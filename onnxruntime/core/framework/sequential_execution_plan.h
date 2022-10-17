@@ -116,7 +116,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     LogicStream(const OrtDevice& device) : device_(device) {}
   };
 
-  std::vector<std::unique_ptr<LogicStream>> execution_plan;
+  InlinedVector<std::unique_ptr<LogicStream>> execution_plan;
 
   InlinedHashMap<size_t, size_t> value_to_stream_map;
 
@@ -142,7 +142,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   size_t num_barriers{0};
 
 #ifdef ENABLE_TRAINING
-  std::vector<NodeIndex> node_execution_order_in_training;
+  InlinedVector<NodeIndex> node_execution_order_in_training;
 #endif
 
   const std::vector<AllocPlanPerValue>& GetAllocationPlan() const {
