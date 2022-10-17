@@ -17,8 +17,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     element_type_lists::All);
 }
 
-using ScatterNDDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, ScatterND, Input, 0);
 using EnabledScatterNDDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ScatterND, Input, 0);
 
@@ -28,7 +26,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterNDDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
@@ -38,7 +35,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     15,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterNDDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
@@ -47,7 +43,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     16,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterNDDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 

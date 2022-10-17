@@ -98,9 +98,9 @@ static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
  * Stubs for the publicly exported static registration functions for EPs that are referenced in the C# bindings
  * and are not implemented in provider_bridge_ort.cc.
  *
- * NOTE: The nuget packages that the C# bindings will use are all for full builds, so we don't need to allow for 
+ * NOTE: The nuget packages that the C# bindings will use are all for full builds, so we don't need to allow for
  * provider_bridge_ort.cc being excluded in a minimal build.
- * 
+ *
  * These are required when building an iOS app using Xamarin as all external symbols must be defined at compile time.
  * In that case a static ORT library is used and the symbol needs to exist but doesn't need to be publicly exported.
  * TODO: Not sure if we need to purely limit to iOS builds, so limit to __APPLE__ for now
@@ -264,5 +264,42 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(migraphx_options);
   return CreateNotEnabledStatus("MIGraphX");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CANN,
+                    _In_ OrtSessionOptions* options, _In_ const OrtCANNProviderOptions* provider_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_options);
+  return CreateNotEnabledStatus("CANN");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateCANNProviderOptions, _Outptr_ OrtCANNProviderOptions** out) {
+  ORT_UNUSED_PARAMETER(out);
+  return CreateNotEnabledStatus("CANN");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateCANNProviderOptions,
+                    _Inout_ OrtCANNProviderOptions* cann_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  ORT_UNUSED_PARAMETER(cann_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateNotEnabledStatus("CANN");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetCANNProviderOptionsAsString,
+                    _In_ const OrtCANNProviderOptions* cann_options, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  ORT_UNUSED_PARAMETER(cann_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "CANN execution provider is not enabled in this build.");
+}
+
+ORT_API(void, OrtApis::ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProviderOptions* ptr) {
+  ORT_UNUSED_PARAMETER(ptr);
 }
 #endif

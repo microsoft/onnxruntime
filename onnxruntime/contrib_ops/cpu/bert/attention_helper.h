@@ -91,7 +91,7 @@ void PrepareMask(const int32_t* mask_index,
             p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(-10000.0f);
           }
         }
-        p_mask += sequence_length * all_sequence_length;
+        p_mask += static_cast<size_t>(sequence_length) * all_sequence_length;
       }
     }
 

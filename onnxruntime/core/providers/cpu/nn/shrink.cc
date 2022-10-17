@@ -17,8 +17,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     element_type_lists::AllNumeric);
 }
 
-using ShrinkDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Shrink, Input, 0);
 using EnabledShrinkDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Shrink, Input, 0);
 
@@ -28,7 +26,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ShrinkDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledShrinkDataTypes>()),
     Shrink);
 //TODO: fix the warnings

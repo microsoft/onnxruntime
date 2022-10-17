@@ -86,8 +86,8 @@ class QDQQuantizer(ONNXQuantizer):
         # So, we don't recommend to add QDQ to node's output under such condition.
         self.op_types_to_exclude_output_quantization = (
             []
-            if "OpTypesToExcludeOutputQuantizatioin" not in extra_options
-            else extra_options["OpTypesToExcludeOutputQuantizatioin"]
+            if "OpTypesToExcludeOutputQuantization" not in extra_options
+            else extra_options["OpTypesToExcludeOutputQuantization"]
         )
 
         # We do quantization on Dequantizelinear's input to remove Quantizelinear for weight as an optimization.
@@ -255,7 +255,7 @@ class QDQQuantizer(ONNXQuantizer):
 
     def _add_qdq_pair_for_initializer(self, weight_proto, tensor_type, axis=None):
         weight_name = weight_proto.name
-        if axis:
+        if axis is not None:
             if self.opset_version < 13:
                 raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(

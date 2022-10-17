@@ -178,10 +178,10 @@ class MinMaxCalibrater(CalibraterBase):
         """
         super(MinMaxCalibrater, self).__init__(
             model,
-            op_types_to_calibrate,
-            augmented_model_path,
-            symmetric,
-            use_external_data_format,
+            op_types_to_calibrate=op_types_to_calibrate,
+            augmented_model_path=augmented_model_path,
+            symmetric=symmetric,
+            use_external_data_format=use_external_data_format,
         )
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
@@ -351,7 +351,11 @@ class HistogramCalibrater(CalibraterBase):
         :param percentile: A float number between [0, 100]. Default 99.99.
         """
         super(HistogramCalibrater, self).__init__(
-            model, op_types_to_calibrate, augmented_model_path, use_external_data_format
+            model,
+            op_types_to_calibrate=op_types_to_calibrate,
+            augmented_model_path=augmented_model_path,
+            symmetric=symmetric,
+            use_external_data_format=use_external_data_format,
         )
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
@@ -359,7 +363,6 @@ class HistogramCalibrater(CalibraterBase):
         self.model_original_outputs = set(output.name for output in self.model.graph.output)
         self.collector = None
         self.method = method
-        self.symmetric = symmetric
         self.num_bins = num_bins
         self.num_quantized_bins = num_quantized_bins
         self.percentile = percentile

@@ -65,7 +65,6 @@ def main():
         "Linux CPU Minimal Build E2E CI Pipeline",
         "Linux GPU CI Pipeline",
         "Linux GPU TensorRT CI Pipeline",
-        "Linux Nuphar CI Pipeline",
         "Linux OpenVINO CI Pipeline",
         # mac
         "MacOS CI Pipeline",

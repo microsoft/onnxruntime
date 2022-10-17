@@ -75,6 +75,9 @@ struct OpenVINOExecutionProviderInfo {
 #if defined OPENVINO_CONFIG_CPU_FP32
       device_type_ = "CPU";
       precision_ = "FP32";
+#elif defined OPENVINO_CONFIG_CPU_FP16
+      device_type_ = "CPU";
+      precision_ = "FP16";      
 #elif defined OPENVINO_CONFIG_GPU_FP32
       device_type_ = "GPU";
       precision_ = "FP32";
@@ -107,11 +110,26 @@ struct OpenVINOExecutionProviderInfo {
     } else if (dev_type == "CPU_FP32") {
       device_type_ = "CPU";
       precision_ = "FP32";
+    } else if (dev_type == "CPU_FP16") {
+      device_type_ = "CPU";
+      precision_ = "FP16";  
     } else if (dev_type == "GPU_FP32") {
       device_type_ = "GPU";
       precision_ = "FP32";
+    } else if (dev_type == "GPU.0_FP32") {
+      device_type_ = "GPU.0";
+      precision_ = "FP32";
+    } else if (dev_type == "GPU.1_FP32") {
+      device_type_ = "GPU.1";
+      precision_ = "FP32";
     } else if (dev_type == "GPU_FP16") {
       device_type_ = "GPU";
+      precision_ = "FP16";
+    } else if (dev_type == "GPU.0_FP16") {
+      device_type_ = "GPU.0";
+      precision_ = "FP16";
+    } else if (dev_type == "GPU.1_FP16") {
+      device_type_ = "GPU.1";
       precision_ = "FP16";
     } else if (dev_type == "MYRIAD_FP16") {
       device_type_ = "MYRIAD";
@@ -155,7 +173,7 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const GraphViewer& graph_viewer,
-                const std::vector<const KernelRegistry*>& kernel_registries) const override;
+                const IKernelLookup& /*kernel_lookup*/) const override;
 
   Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;

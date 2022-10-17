@@ -144,7 +144,9 @@ class AttentionCPUBase : public AttentionBase {
 
           // Broadcast mask data: (Bx)SxS* -> (BxNx)SxS*
           if (mask_data != nullptr) {
-            memcpy(output, mask_data + mask_offset, sequence_length * all_sequence_length * sizeof(T));
+            memcpy(output,
+                   mask_data + mask_offset,
+                   static_cast<size_t>(sequence_length) * all_sequence_length * sizeof(T));
           }
 
           const T* k = K + input_chunk_length * i;

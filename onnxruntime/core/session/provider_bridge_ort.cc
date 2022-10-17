@@ -68,6 +68,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/shared_library/provider_interfaces.h"
 
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
+#include "core/providers/cann/cann_provider_factory_creator.h"
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #include "core/providers/dnnl/dnnl_provider_factory_creator.h"
 #include "core/providers/migraphx/migraphx_provider_factory_creator.h"
@@ -75,6 +76,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
 
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cann/cann_provider_factory.h"
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/migraphx/migraphx_provider_factory.h"
@@ -82,6 +84,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/cuda/cuda_provider_options.h"
+#include "core/providers/cann/cann_provider_options.h"
 
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
@@ -103,6 +106,8 @@ namespace onnxruntime {
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
+ProviderInfo_CANN* TryGetProviderInfo_CANN();
+ProviderInfo_CANN& GetProviderInfo_CANN();
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
 ProviderInfo_ROCM& GetProviderInfo_ROCM();
 ProviderHostCPU& GetProviderHostCPU();
@@ -224,10 +229,9 @@ struct ProviderHostImpl : ProviderHost {
   std::string demangle(const std::string& name) override { return onnxruntime::profiling::demangle(name); }
 
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                     const std::string& provider_type,
-                                                     gsl::span<const KernelRegistry* const> kernel_registries,
+                                                     const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                      gsl::span<const NodeIndex> tentative_nodes) override {
-    return onnxruntime::GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
+    return onnxruntime::GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
   }
 
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
@@ -278,8 +282,11 @@ struct ProviderHostImpl : ProviderHost {
   // IExecutionProvider (direct)
   AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) override { return p->IExecutionProvider::GetAllocator(id, mem_type); }
   void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::InsertAllocator(allocator); }
-  std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-                                                                                    const std::vector<const KernelRegistry*>& kernel_registries) override { return p->IExecutionProvider::GetCapability(graph_viewer, kernel_registries); }
+  std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
+      const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
+      const IExecutionProvider::IKernelLookup& kernel_lookup) override {
+    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
+  }
 
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
     return p->IExecutionProvider::Compile(fused_nodes_and_graphs, node_compute_funcs);
@@ -587,10 +594,6 @@ struct ProviderHostImpl : ProviderHost {
   void KernelRegistry__operator_delete(KernelRegistry* p) override { delete p; }
   Status KernelRegistry__Register(KernelRegistry* p, KernelCreateInfo&& create_info) override { return p->Register(std::move(create_info)); }
 
-  Status KernelRegistry__TryFindKernel(const KernelRegistry* p, const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) override {
-    return p->TryFindKernel(node, exec_provider, out);
-  }
-
   // PrimitiveDataTypeBase (wrapped)
   int32_t PrimitiveDataTypeBase__GetDataType(const PrimitiveDataTypeBase* p) override { return p->GetDataType(); }
 
@@ -755,6 +758,10 @@ struct ProviderHostImpl : ProviderHost {
   bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
 
   const Node* Graph__ParentNode(const Graph* p) const override { return p->ParentNode(); }
+  const Graph* Graph__ParentGraph(const Graph* p) const override { return p->ParentGraph(); }
+  const std::string& Graph__Name(const Graph* p) const noexcept override { return p->Name(); }
+  const std::vector<const NodeArg*>& Graph__GetInputsIncludingInitializers(const Graph* p) const noexcept override { return p->GetInputsIncludingInitializers(); }
+  bool Graph__IsSubgraph(const Graph* p) override { return p->IsSubgraph(); }
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
@@ -985,7 +992,7 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   void contrib__PythonOpGradBase__Init(contrib::PythonOpGradBase* p, const OpKernelInfo& info) override { return p->PythonOpGradBase::Init(info); }
-  void contrib__PythonOpGradBase__RunBackward(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) {
+  void contrib__PythonOpGradBase__RunBackward(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) override {
     return p->PythonOpGradBase::RunBackward(context, returned_ortvalues);
   }
   void contrib__PythonOpGradBase__SetOutputs(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_args) override { p->PythonOpGradBase::SetOutputs(context, returned_args); }
@@ -1111,6 +1118,12 @@ static ProviderLibrary s_library_cuda(LIBRARY_PREFIX "onnxruntime_providers_cuda
                                       false /* unload - On Linux if we unload the cuda shared provider we crash */
 #endif
 );
+static ProviderLibrary s_library_cann(LIBRARY_PREFIX "onnxruntime_providers_cann" LIBRARY_EXTENSION
+#ifndef _WIN32
+                                      ,
+                                      false /* unload - On Linux if we unload the cann shared provider we crash */
+#endif
+);
 static ProviderLibrary s_library_rocm(LIBRARY_PREFIX "onnxruntime_providers_rocm" LIBRARY_EXTENSION
 #ifndef _WIN32
                                       ,
@@ -1127,6 +1140,7 @@ void UnloadSharedProviders() {
   s_library_openvino.Unload();
   s_library_tensorrt.Unload();
   s_library_cuda.Unload();
+  s_library_cann.Unload();
   s_library_rocm.Unload();
   s_library_shared.Unload();
   s_library_migraphx.Unload();
@@ -1178,6 +1192,11 @@ std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(co
 
 std::shared_ptr<IExecutionProviderFactory> RocmProviderFactoryCreator::Create(const OrtROCMProviderOptions* provider_options) {
   return s_library_rocm.Get().CreateExecutionProviderFactory(provider_options);
+}
+
+std::shared_ptr<IExecutionProviderFactory>
+CannProviderFactoryCreator::Create(const OrtCANNProviderOptions* provider_options) {
+  return s_library_cann.Get().CreateExecutionProviderFactory(provider_options);
 }
 
 std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(int use_arena) {
@@ -1253,6 +1272,20 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA() {
     return *info;
 
   ORT_THROW("CUDA Provider not available, can't get interface for it");
+}
+
+ProviderInfo_CANN* TryGetProviderInfo_CANN() try {
+  return reinterpret_cast<ProviderInfo_CANN*>(s_library_cann.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
+}
+
+ProviderInfo_CANN& GetProviderInfo_CANN() {
+  if (auto* info = TryGetProviderInfo_CANN())
+    return *info;
+
+  ORT_THROW("CANN Provider not available, can't get interface for it");
 }
 
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM() try {
@@ -1701,6 +1734,109 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAP
 
 ORT_API(void, OrtApis::ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2* ptr) {
 #ifdef USE_CUDA
+  delete ptr;
+#else
+  ORT_UNUSED_PARAMETER(ptr);
+#endif
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CANN,
+                    _In_ OrtSessionOptions* options, _In_ const OrtCANNProviderOptions* cann_options) {
+  API_IMPL_BEGIN
+  auto factory = onnxruntime::CannProviderFactoryCreator::Create(cann_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_CANN: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateCANNProviderOptions, _Outptr_ OrtCANNProviderOptions** out) {
+  API_IMPL_BEGIN
+#ifdef USE_CANN
+  *out = new OrtCANNProviderOptions();
+  (*out)->device_id = 0;
+  (*out)->npu_mem_limit = SIZE_MAX;
+  (*out)->arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(0);
+  (*out)->do_copy_in_default_stream = 1;
+  (*out)->default_memory_arena_cfg = nullptr;
+  (*out)->max_opqueue_num = 10000;
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "CANN execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateCANNProviderOptions,
+                    _Inout_ OrtCANNProviderOptions* cann_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  API_IMPL_BEGIN
+#ifdef USE_CANN
+  onnxruntime::ProviderOptions provider_options_map;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
+    }
+
+    provider_options_map[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  onnxruntime::s_library_cann.Get().UpdateProviderOptions(reinterpret_cast<void*>(cann_options), provider_options_map);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(cann_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "CANN execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetCANNProviderOptionsAsString,
+                    _In_ const OrtCANNProviderOptions* cann_options, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_CANN
+  onnxruntime::ProviderOptions options =
+    onnxruntime::s_library_cann.Get().GetProviderOptions(reinterpret_cast<const void*>(cann_options));
+  onnxruntime::ProviderOptions::iterator it = options.begin();
+  std::string options_str = "";
+
+  while (it != options.end()) {
+    if (options_str == "") {
+      options_str += it->first;
+      options_str += "=";
+      options_str += it->second;
+    } else {
+      options_str += ";";
+      options_str += it->first;
+      options_str += "=";
+      options_str += it->second;
+    }
+    it++;
+  }
+
+  *ptr = onnxruntime::StrDup(options_str, allocator);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(cann_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "CANN execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProviderOptions* ptr) {
+#ifdef USE_CANN
   delete ptr;
 #else
   ORT_UNUSED_PARAMETER(ptr);

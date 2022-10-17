@@ -154,6 +154,9 @@ endif()
 if(onnxruntime_USE_SNPE)
     include(onnxruntime_snpe_provider.cmake)
 endif()
+if (onnxruntime_USE_CANN)
+  set(PROVIDERS_CANN onnxruntime_providers_cann)
+endif()
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -763,7 +766,7 @@ if (onnxruntime_USE_OPENVINO)
   find_package(InferenceEngine REQUIRED)
   find_package(ngraph REQUIRED)
 
-  if (OPENVINO_2022_1)
+  if (OPENVINO_2022_1 OR OPENVINO_2022_2)
   find_package(OpenVINO REQUIRED COMPONENTS Runtime ONNX)
   list (OV_20_LIBS openvino::frontend::onnx openvino::runtime)
   endif()
@@ -960,6 +963,8 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/*.h"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/*.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/impl/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/impl/*.cc"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
       "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.cc"
@@ -1188,6 +1193,15 @@ if (onnxruntime_USE_MIGRAPHX)
   set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/migraphx/version_script.lds -Xlinker --gc-sections")
   target_link_libraries(onnxruntime_providers_migraphx PRIVATE nsync_cpp stdc++fs)
 
+  include(CheckLibraryExists)
+  check_library_exists(migraphx::c "migraphx_program_run_async" "/opt/rocm/migraphx/lib" HAS_STREAM_SYNC)
+  if(HAS_STREAM_SYNC)
+      target_compile_definitions(onnxruntime_providers_migraphx PRIVATE -DMIGRAPHX_STREAM_SYNC)
+      message(STATUS "MIGRAPHX GPU STREAM SYNC is ENABLED")
+  else()
+      message(STATUS "MIGRAPHX GPU STREAM SYNC is DISABLED")
+  endif()
+
   install(TARGETS onnxruntime_providers_migraphx
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -1363,15 +1377,15 @@ if (onnxruntime_USE_ROCM)
   endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
   list(APPEND HIP_CLANG_FLAGS ${HIP_CXX_FLAGS})
+  list(APPEND HIP_CLANG_FLAGS ${CMAKE_HIP_FLAGS})
 
   # Generate GPU code during compilation
   list(APPEND HIP_CLANG_FLAGS -fno-gpu-rdc)
 
-  # Generate GPU code for GFX9 Generation
-  list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx906 --amdgpu-target=gfx908)
-  if (ROCM_VERSION_DEV_INT GREATER_EQUAL 50000)
-    list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx90a --amdgpu-target=gfx1030)
-  endif()
+  # Generate GPU code
+  foreach(HIP_ARCH ${CMAKE_HIP_ARCHITECTURES})
+    list(APPEND HIP_CLANG_FLAGS --offload-arch=${HIP_ARCH})
+  endforeach()
 
   #onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
   hip_add_library(onnxruntime_providers_rocm MODULE ${onnxruntime_providers_rocm_src})
@@ -1394,8 +1408,15 @@ if (onnxruntime_USE_ROCM)
 
   add_dependencies(onnxruntime_providers_rocm onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_link_libraries(onnxruntime_providers_rocm PRIVATE ${ONNXRUNTIME_ROCM_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} ${ABSEIL_LIBS})
-  # During transition to separate hipFFT repo, put hipfft/include early
-  target_include_directories(onnxruntime_providers_rocm PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hipcub/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${onnxruntime_ROCM_HOME}/roctracer/include)
+  target_include_directories(onnxruntime_providers_rocm SYSTEM
+    PRIVATE
+      ${ONNXRUNTIME_ROOT}
+      ${CMAKE_CURRENT_BINARY_DIR}
+      ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime
+      ${eigen_INCLUDE_DIRS}
+    PUBLIC
+      ${onnxruntime_ROCM_HOME}/include
+      ${onnxruntime_ROCM_HOME}/include/roctracer)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/rocm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES FOLDER "ONNXRuntime")
@@ -1412,6 +1433,9 @@ if (onnxruntime_USE_ROCM)
     #  target_link_libraries(onnxruntime_providers_rocm PRIVATE ${NCCL_LIBRARIES})
     #endif()
   endif()
+
+  include(composable_kernel)
+  target_link_libraries(onnxruntime_providers_rocm PRIVATE onnxruntime_composable_kernel_includes device_gemm_instance)
 
   if(UNIX)
     set_property(TARGET onnxruntime_providers_rocm APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/rocm/version_script.lds -Xlinker --gc-sections")
@@ -1533,6 +1557,38 @@ if (onnxruntime_USE_XNNPACK)
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
+endif()
+
+if (onnxruntime_USE_CANN)
+  add_definitions(-DUSE_CANN=1)
+  file(GLOB_RECURSE onnxruntime_providers_cann_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/cann/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cann/*.cc"
+  )
+
+  # The shared_library files are in a separate list since they use precompiled headers, and the above files have them disabled.
+  file(GLOB_RECURSE onnxruntime_providers_cann_shared_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cann_cc_srcs} ${onnxruntime_providers_cann_shared_srcs})
+  set(onnxruntime_providers_cann_src ${onnxruntime_providers_cann_cc_srcs} ${onnxruntime_providers_cann_shared_srcs})
+
+  onnxruntime_add_shared_library_module(onnxruntime_providers_cann ${onnxruntime_providers_cann_src})
+  onnxruntime_add_include_to_target(onnxruntime_providers_cann onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+
+  add_dependencies(onnxruntime_providers_cann onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_link_libraries(onnxruntime_providers_cann PRIVATE ascendcl acl_op_compiler nsync_cpp ${ABSEIL_LIBS} onnxruntime_providers_shared)
+  target_link_directories(onnxruntime_providers_cann PRIVATE ${onnxruntime_CANN_HOME}/lib64)
+  target_include_directories(onnxruntime_providers_cann PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${onnxruntime_CANN_HOME} ${onnxruntime_CANN_HOME}/include)
+  set_target_properties(onnxruntime_providers_cann PROPERTIES LINKER_LANGUAGE CXX)
+  set_target_properties(onnxruntime_providers_cann PROPERTIES FOLDER "ONNXRuntime")
+
+  install(TARGETS onnxruntime_providers_cann
+          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

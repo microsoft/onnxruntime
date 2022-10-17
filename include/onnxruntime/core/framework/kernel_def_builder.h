@@ -3,17 +3,17 @@
 
 #pragma once
 
+#include <limits.h>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <limits.h>
 
 #include "core/common/common.h"
-#include "core/common/optional.h"
-#include "core/graph/basic_types.h"
-#include "core/framework/data_types.h"
 #include "core/framework/allocator.h"
+#include "core/framework/data_types.h"
+#include "core/graph/basic_types.h"
 
 namespace onnxruntime {
 class KernelDefBuilder;
@@ -53,14 +53,9 @@ class KernelDef {
     return provider_type_;
   }
 
-  // type constraints with types supported by default
-  const std::map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
-    return default_type_constraints_;
-  }
-
   // type constraints with types supported in this build
-  const std::map<std::string, std::vector<MLDataType>>& EnabledTypeConstraints() const {
-    return enabled_type_constraints_;
+  const std::unordered_map<std::string, std::vector<MLDataType>>& TypeConstraints() const {
+    return type_constraints_;
   }
 
   const std::vector<std::pair<int, int>>& MayInplace() const {
@@ -71,7 +66,7 @@ class KernelDef {
     return alias_map_;
   }
 
-  const optional<std::pair<int, int>>& VariadicAlias() const {
+  const std::optional<std::pair<int, int>>& VariadicAlias() const {
     return variadic_alias_offsets_;
   }
 
@@ -108,18 +103,8 @@ class KernelDef {
 
   bool IsConflict(const KernelDef& other) const;
 
-  HashValue GetHash() const noexcept {
-    // if we need to support different hash versions we can update CalculateHash to take a version number
-    // and calculate any non-default versions dynamically. we only use this during kernel lookup so
-    // it's not performance critical
-    return hash_;
-  }
-
  private:
   friend class KernelDefBuilder;
-
-  // called once by KernelDefBuilder::Build
-  void CalculateHash();
 
   // The operator name supported by <*this> kernel..
   std::string op_name_;
@@ -138,19 +123,9 @@ class KernelDef {
   // The type of the execution provider.
   std::string provider_type_;
 
-  // The data types that are supported by default for inputs/outputs.
-  // Key is input/output name defined in op schema, Value are supported types.
-  // note: std::map as we need the order to be deterministic for the hash
-  // Note: default_type_constraints_ are used to calculate the kernel hash so that the hash is
-  // stable across builds with and without kernel type reduction enabled.
-  std::map<std::string, std::vector<MLDataType>> default_type_constraints_;
-
-  // the type constraints that are supported in this build (enabled) for the kernel
-  std::map<std::string, std::vector<MLDataType>> enabled_type_constraints_;
-
-  // optional alternate type constraints to use to calculate the hash instead of default_type_constraints_
-  // note: this provides a way to update the default type constraints while preserving the hash value
-  optional<std::map<std::string, std::vector<MLDataType>>> hash_type_constraints_;
+  // The data types that are supported in this build (enabled) for inputs/outputs.
+  // Key is input/output/type constraint name defined in op schema, Value is supported types.
+  std::unordered_map<std::string, std::vector<MLDataType>> type_constraints_;
 
   // An element <i, j> means that output j reuses the memory of input i.
   std::vector<std::pair<int, int>> inplace_map_;
@@ -160,7 +135,7 @@ class KernelDef {
 
   // This variable stores <input_offset, output_offset> for the variadic alias mapping
   // output 'i + output_offset' is an alias of input 'i + input_offset' for all i >= 0
-  optional<std::pair<int, int>> variadic_alias_offsets_;
+  std::optional<std::pair<int, int>> variadic_alias_offsets_;
 
   // Require input tensors to be allocated contiguously.
   bool allocate_inputs_contiguously_ = false;
@@ -186,9 +161,6 @@ class KernelDef {
   OrtMemType default_inputs_mem_type_{OrtMemTypeDefault};
   // Default memory type for all outputs
   OrtMemType default_outputs_mem_type_{OrtMemTypeDefault};
-
-  // hash of kernel definition for lookup in minimal build
-  HashValue hash_ = 0;
 };
 
 class KernelDefBuilder {
@@ -228,7 +200,7 @@ class KernelDefBuilder {
   /**
      The execution provider type of the kernel.
   */
-  KernelDefBuilder& Provider(onnxruntime::ProviderType provider_type);
+  KernelDefBuilder& Provider(ProviderType provider_type);
   KernelDefBuilder& Provider(const char* provider_type);
 
   /**
@@ -237,38 +209,16 @@ class KernelDefBuilder {
 
      @param arg_name The arg name can be either op formal parameter name, say "X", or type
                      argument name specified in op schema, say "T".
-     @param default_types The types that are supported by default.
-     @param enabled_types The types that are supported in this build.
-                          Possibly different from default_types when type reduction is enabled.
+     @param types The types that are supported in this build.
   */
-  KernelDefBuilder& TypeConstraint(const std::string& arg_name,
-                                   const std::vector<MLDataType>& default_types);
-  KernelDefBuilder& TypeConstraint(const char* arg_name,
-                                   const std::vector<MLDataType>& default_types);
-
-  KernelDefBuilder& TypeConstraint(const std::string& arg_name,
-                                   const std::vector<MLDataType>& default_types,
-                                   const std::vector<MLDataType>& enabled_types);
-  KernelDefBuilder& TypeConstraint(const char* arg_name,
-                                   const std::vector<MLDataType>& default_types,
-                                   const std::vector<MLDataType>& enabled_types);
+  KernelDefBuilder& TypeConstraint(const std::string& arg_name, std::vector<MLDataType> types);
+  KernelDefBuilder& TypeConstraint(const char* arg_name, std::vector<MLDataType> types);
 
   /**
      Like TypeConstraint but supports just a single type.
   */
-  KernelDefBuilder& TypeConstraint(const std::string& arg_name, MLDataType default_type);
-  KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType default_type);
-
-  /**
-     Specify the original set of types that this kernel supports by default to use when computing the kernel def hash.
-     The set of types supported by default may change over time, but the hash should stay the same.
-  */
-  KernelDefBuilder& FixedTypeConstraintForHash(
-      const std::string& arg_name,
-      const std::vector<MLDataType>& default_types_for_hash);
-  KernelDefBuilder& FixedTypeConstraintForHash(
-      const char* arg_name,
-      const std::vector<MLDataType>& default_types_for_hash);
+  KernelDefBuilder& TypeConstraint(const std::string& arg_name, MLDataType type);
+  KernelDefBuilder& TypeConstraint(const char* arg_name, MLDataType type);
 
   /**
      Inplace mapping from inputs to outputs allowed.
@@ -392,15 +342,10 @@ class KernelDefBuilder {
      Return the kernel definition, passing ownership of the KernelDef to the caller
   */
   std::unique_ptr<KernelDef> Build() {
-    kernel_def_->CalculateHash();
     return std::move(kernel_def_);
   }
 
  private:
-  KernelDefBuilder& TypeConstraintImpl(const std::string& arg_name,
-                                       const std::vector<MLDataType>& default_types,
-                                       const std::vector<MLDataType>* enabled_types = nullptr);
-
   // we own the KernelDef until Build() is called.
   std::unique_ptr<KernelDef> kernel_def_;
 };

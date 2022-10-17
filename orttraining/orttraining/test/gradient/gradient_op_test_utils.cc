@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gradient_op_test_utils.h"
+#include "core/framework/kernel_type_str_resolver.h"
 #include "core/session/inference_session.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
@@ -180,6 +181,8 @@ void GradientOpTester::Run(
 
         bool valid = true;
 
+        OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
+
         // set execution provider for all nodes in the graph
         for (auto& node : graph.Nodes()) {
           if (node.OpType() == kConstant)
@@ -195,7 +198,7 @@ void GradientOpTester::Run(
 
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci;
-          auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);
+          auto st = reg->TryFindKernel(node, execution_provider->Type(), kernel_type_str_resolver, &kci);
           if (!st.IsOK()) {
             // The goal here is unclear. It seems best to leave it to the Session
             // creation to figure out whether the model can be executed using some

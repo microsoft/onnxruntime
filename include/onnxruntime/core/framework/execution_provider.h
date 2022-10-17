@@ -15,11 +15,10 @@
 
 namespace onnxruntime {
 class GraphViewer;
-class Node;
 struct ComputeCapability;
 class KernelRegistry;
-class KernelRegistryManager;
-
+struct KernelCreateInfo;
+class Node;
 }  // namespace onnxruntime
 #else
 #include <memory>
@@ -90,28 +89,46 @@ class IExecutionProvider {
   }
 
   /**
+   * Interface for performing kernel lookup within kernel registries.
+   * Abstracts away lower-level details about kernel registries and kernel matching.
+   */
+  class IKernelLookup {
+   public:
+    /**
+     * Given `node`, try to find a matching kernel for this EP.
+     * The return value is non-null if and only if a matching kernel was found.
+     */
+    virtual const KernelCreateInfo* LookUpKernel(const Node& node) const = 0;
+
+   protected:
+    ~IKernelLookup() = default;
+  };
+
+  /**
      Get execution provider's capability for the specified <graph>.
      Return a bunch of IndexedSubGraphs <*this> execution provider can run if
      the sub-graph contains only one node or can fuse to run if the sub-graph
      contains more than one node. The node indexes contained in sub-graphs may
      have overlap, and it's ONNXRuntime's responsibility to do the partition
      and decide whether a node will be assigned to <*this> execution provider.
+     For kernels registered in a kernel registry, `kernel_lookup` must be used
+     to find a matching kernel for this EP.
   */
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                const std::vector<const KernelRegistry*>& kernel_registries) const;
+                const IKernelLookup& kernel_lookup) const;
 
   /**
      Get kernel registry per execution provider type.
      The KernelRegistry share pointer returned is shared across sessions.
 
-     NOTE: this is a tricky but final solution to achieve following goals,
+     NOTE: this approach was taken to achieve the following goals,
      1. The execution provider type based kernel registry should be shared
      across sessions.
      Only one copy of this kind of kernel registry exists in ONNXRuntime
      with multiple sessions/models.
      2. Adding an execution provider into ONNXRuntime does not need to touch ONNXRuntime
-     frameowrk/session code.
+     framework/session code.
      3. onnxruntime (framework/session) does not depend on any specific
      execution provider lib.
   */
@@ -222,7 +239,7 @@ class IExecutionProvider {
   };
 
   virtual FusionStyle GetFusionStyle() const {
-    // All the ORT build in EP has migrate to FilteredGraphViewer style except Nuphar.
+    // All the ORT build in EP has migrate to FilteredGraphViewer style.
     // For newer EPs, please avoid use Function style as it is deprecated.
     return FusionStyle::FilteredGraphViewer;
   }

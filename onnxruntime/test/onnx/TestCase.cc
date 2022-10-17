@@ -343,7 +343,7 @@ class OnnxTestCase : public ITestCase {
   const std::string& GetNodeName() const override { return model_info_->GetNodeName(); }
   const PATH_CHAR_TYPE* GetModelUrl() const override { return model_info_->GetModelUrl(); }
   const std::string& GetTestCaseName() const override { return test_case_name_; }
-  std::string GetTestCaseVersion() const override { return model_info_->GetModelVersion(); }
+  std::string GetTestCaseVersion() const override { return model_info_->GetNominalOpsetVersion(); }
 
   void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, Ort::Value>&,
                     bool is_input) const override;

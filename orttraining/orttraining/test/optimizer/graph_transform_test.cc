@@ -288,7 +288,7 @@ void RunSceLossGradBiasFusionTest(bool has_reshape, bool is_add_op, bool is_bias
                                   const logging::Logger& logger) {
   std::string bias_op_type = is_add_op ? "Add" : "Sum";
   auto build_test_case = [&](ModelTestBuilder& builder) {
-    auto* dY_arg = builder.MakeInput<T>({{}});
+    auto* dY_arg = builder.MakeInput<T>(std::optional<std::vector<int64_t>>{std::vector<int64_t>{}});
     auto* log_prob_arg = builder.MakeInput<T>({{8, 2}});
     auto* index_arg = builder.MakeInput<int64_t>({{8}});
     std::vector<NodeArg*> scegrad_inputs{dY_arg, log_prob_arg, index_arg};
@@ -297,7 +297,7 @@ void RunSceLossGradBiasFusionTest(bool has_reshape, bool is_add_op, bool is_bias
       scegrad_inputs.emplace_back(weight_arg);
     }
     if (has_ignore_index) {
-      auto* ignore_index_arg = builder.MakeInput<int64_t>({{}});
+      auto* ignore_index_arg = builder.MakeInput<int64_t>(std::optional<std::vector<int64_t>>{std::vector<int64_t>{}});
       scegrad_inputs.emplace_back(ignore_index_arg);
     }
     auto* sce_grad_out = builder.MakeIntermediate();
@@ -396,7 +396,7 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
   // Sum has more than 2 inputs.
   {
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* dY_arg = builder.MakeInput<float>({{}});
+      auto* dY_arg = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{std::vector<int64_t>{}});
       auto* log_prob_arg = builder.MakeInput<float>({{8, 2}});
       auto* index_arg = builder.MakeInput<int64_t>({{8}});
       auto* sce_grad_out = builder.MakeIntermediate();
@@ -417,7 +417,7 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
   // SceGrad has more than 1 consumers.
   {
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* dY_arg = builder.MakeInput<float>({{}});
+      auto* dY_arg = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{std::vector<int64_t>{}});
       auto* log_prob_arg = builder.MakeInput<float>({{8, 2}});
       auto* index_arg = builder.MakeInput<int64_t>({{8}});
       auto* sce_grad_out = builder.MakeIntermediate();
@@ -439,7 +439,7 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
   // Sum inputs shape mismatch.
   {
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* dY_arg = builder.MakeInput<float>({{}});
+      auto* dY_arg = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{std::vector<int64_t>{}});
       auto* log_prob_arg = builder.MakeInput<float>({{8, 2}});
       auto* index_arg = builder.MakeInput<int64_t>({{8}});
       auto* sce_grad_out = builder.MakeIntermediate();
@@ -459,7 +459,7 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
   // Sum inputs shape mismatch.
   {
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* dY_arg = builder.MakeInput<float>({{}});
+      auto* dY_arg = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{std::vector<int64_t>{}});
       auto* log_prob_arg = builder.MakeInput<float>({{8, 1}});
       auto* index_arg = builder.MakeInput<int64_t>({{8}});
       auto* bias_arg = builder.MakeInput<float>({{8, 1}});
@@ -482,7 +482,7 @@ TEST_F(GraphTransformationTests, SceLossGradBiasFusion_Invalid) {
   // Reshape output has more than 1 consumers.
   {
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* dY_arg = builder.MakeInput<float>({{}});
+      auto* dY_arg = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{std::vector<int64_t>{}});
       auto* log_prob_arg = builder.MakeInput<float>({{8, 2}});
       auto* index_arg = builder.MakeInput<int64_t>({{8}});
       auto* bias_arg = builder.MakeInput<float>({{16}});

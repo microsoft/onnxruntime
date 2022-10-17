@@ -44,7 +44,7 @@ struct ROCMExecutionProviderInfo {
   void* user_compute_stream{nullptr};
   // The following OrtArenaCfg instance only characterizes the behavior of the default memory
   // arena allocator and not any other auxiliary allocator that may also be part of the ROCM EP.
-  // For example, auxiliary allocators `CUDA_PINNED` and `CUDA_CPU` will not be configured using this
+  // For example, auxiliary allocators `HIP_PINNED` and `HIP_CPU` will not be configured using this
   // arena config.
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
   ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};

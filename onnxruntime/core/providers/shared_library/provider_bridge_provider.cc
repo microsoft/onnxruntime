@@ -288,8 +288,8 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                                                  const std::vector<const KernelRegistry*>& kernel_registries) const {
-  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries);
+                                                                                  const IKernelLookup& kernel_lookup) const {
+  return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_lookup);
 }
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
@@ -337,10 +337,9 @@ std::string GetEnvironmentVar(const std::string& var_name) {
 }
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                   const std::string& provider_type,
-                                                   gsl::span<const KernelRegistry* const> kernel_registries,
+                                                   const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                    gsl::span<const NodeIndex> tentative_nodes) {
-  return g_host->GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
+  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
 }
 
 namespace profiling {
