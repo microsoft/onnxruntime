@@ -4,7 +4,6 @@
 import {Tensor} from './tensor';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {ProgramManager} from './webgpu/program-manager';
-import {createTensorDataManager, TensorDataManager} from './webgpu/tensor-data-manager';
 import {GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 
 const getProgramInfoUniqueKey =
@@ -23,7 +22,6 @@ const getProgramInfoUniqueKey =
 export class WebGpuBackend {
   device: GPUDevice;
   gpuDataManager: GpuDataManager;
-  dataManager: TensorDataManager;
   programManager: ProgramManager;
 
   commandEncoder: GPUCommandEncoder|null = null;
@@ -42,7 +40,6 @@ export class WebGpuBackend {
     }
     this.device = await adapter.requestDevice();
     this.gpuDataManager = createGpuDataManager(this);
-    this.dataManager = createTensorDataManager(this.gpuDataManager);
     this.programManager = new ProgramManager(this);
     // TODO: set up flags
 
@@ -88,7 +85,7 @@ export class WebGpuBackend {
   }
 
   private uploadGpuData(tensor: Tensor, textureType: GpuDataType): GpuData {
-    return this.dataManager.uploadTensorToGpu(tensor, textureType);
+    return this.gpuDataManager.upload(tensor, textureType);
   }
 
   private createGpuData(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): [Tensor, GpuData] {
@@ -144,6 +141,10 @@ export class WebGpuBackend {
   }
 
   alloc(size: number): number {
-    throw new Error('Method not implemented.');
+    return this.gpuDataManager.create(size).id;
+  }
+
+  free(ptr: number): number {
+    return this.gpuDataManager.release(ptr);
   }
 }

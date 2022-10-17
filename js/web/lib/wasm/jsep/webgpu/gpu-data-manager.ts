@@ -17,7 +17,7 @@ export interface GpuDataManager {
   /**
    * create new data on GPU.
    */
-  create(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): GpuData;
+  create(size: number): GpuData;
   /**
    * get GPU data by ID.
    */
@@ -25,7 +25,7 @@ export interface GpuDataManager {
   /**
    * release the data on GPU by ID.
    */
-  release(id: GpuDataId): void;
+  release(id: GpuDataId): number;
   /**
    * download the data from GPU.
    */

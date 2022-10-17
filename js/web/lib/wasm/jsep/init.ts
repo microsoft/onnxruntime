@@ -27,7 +27,7 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
         (ptr: number) => {
           // eslint-disable-next-line no-console
           console.log(`jsepFree: ${ptr}`);
-          return backend.free(size);
+          return backend.free(ptr);
         },
 
         // jsepUpload(src, dst, size)
