@@ -451,7 +451,7 @@ void LoopImpl::SaveOutputsAndUpdateFeeds(const std::vector<OrtValue>& last_outpu
 
   // simple copy for cond and loop carried vars. start at 1 to skip iter_num in input
   for (uint64_t i = 1; i < info_.num_subgraph_inputs; ++i)
-    next_inputs[i] = last_outputs[(i - 1)];
+    next_inputs[i] = last_outputs[i - 1];
 
   // save loop outputs as we have to concatenate at the end
   for (auto j = info_.num_loop_carried_vars; j < info_.num_outputs; ++j) {
