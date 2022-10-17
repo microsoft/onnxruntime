@@ -66,8 +66,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* extra_add_qk = context->Input<Tensor>(5);
   const Tensor* key = context->Input<Tensor>(6);
   const Tensor* value = context->Input<Tensor>(7);
-  const Tensor* weight_key = context->Input<Tensor>(8);
-  const Tensor* weight_value = context->Input<Tensor>(9);
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
@@ -81,9 +79,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   value,
                                   &parameters,
                                   device_prop.maxThreadsPerBlock));
-
-  // input shape (batch_size, sequence_length, input_hidden_size)
-  const auto& shape = input->Shape();
 
   int batch_size = parameters.batch_size;
   int sequence_length = parameters.sequence_length;
