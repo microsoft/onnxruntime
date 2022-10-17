@@ -74,7 +74,7 @@ __device__ inline char2 QuantizeHalf2Char2(const __half2 xy, const __half2 inver
   s2xy.s2.x = __half2short_rn(scaled_xy.x);
   s2xy.s2.y = __half2short_rn(scaled_xy.y);
   s2xy.u1 = __vmaxs2(__vmins2(s2xy.u1, 0x007F007F), 0xFF80FF80);
-  return char2{(char)s2xy.s2.x, (char)s2xy.s2.y};
+  return char2{(signed char)s2xy.s2.x, (signed char)s2xy.s2.y};
 }
 
 __device__ inline char4 QuantizeHalf4Char4(const __half4 val4, const __half2 inverse_scale2) {
@@ -87,7 +87,7 @@ __device__ inline char4 QuantizeHalf4Char4(const __half4 val4, const __half2 inv
   shortzw.s2.y = __half2short_rn(__high2half(val4_zw));
   shortxy.u1 = __vmaxs2(__vmins2(shortxy.u1, 0x007F007F), 0xFF80FF80);
   shortzw.u1 = __vmaxs2(__vmins2(shortzw.u1, 0x007F007F), 0xFF80FF80);
-  return char4{(char)shortxy.s2.x, (char)shortxy.s2.y, (char)shortzw.s2.x, (char)shortzw.s2.y};
+  return char4{(signed char)shortxy.s2.x, (signed char)shortxy.s2.y, (signed char)shortzw.s2.x, (signed char)shortzw.s2.y};
 }
 
 __device__ inline char4 QuantizeHalf4Char4Strict(const __half4 val4, const float inverse_scale) {
@@ -98,7 +98,7 @@ __device__ inline char4 QuantizeHalf4Char4Strict(const __half4 val4, const float
   shortzw.s2.y = static_cast<short>(__float2int_rn(__half2float(val4.zw.y) * inverse_scale));
   shortxy.u1 = __vmaxs2(__vmins2(shortxy.u1, 0x007F007F), 0xFF80FF80);
   shortzw.u1 = __vmaxs2(__vmins2(shortzw.u1, 0x007F007F), 0xFF80FF80);
-  return char4{(char)shortxy.s2.x, (char)shortxy.s2.y, (char)shortzw.s2.x, (char)shortzw.s2.y};
+  return char4{(signed char)shortxy.s2.x, (signed char)shortxy.s2.y, (signed char)shortzw.s2.x, (signed char)shortzw.s2.y};
 }
 
 __device__ inline __half4 DeqantizeChar4Half4(const char4 ch4, const __half2 scale2) {
