@@ -24,21 +24,21 @@ class Loop : public controlflow::IControlFlowKernel {
                                     const SessionState& subgraph_session_state) override;
 
   struct Info {
-    Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in);
+      Info(const onnxruntime::Node &node, const GraphViewer &subgraph_in);
 
-    const GraphViewer& subgraph;
+      const GraphViewer &subgraph;
 
-    int num_loop_carried_vars;
-    int num_implicit_inputs;
-    int num_outputs;
+      size_t num_loop_carried_vars;
+      size_t num_implicit_inputs;
+      size_t num_outputs;
 
-    int num_subgraph_inputs;
-    int num_subgraph_outputs;
+      size_t num_subgraph_inputs;
+      size_t num_subgraph_outputs;
 
-    std::vector<std::string> subgraph_input_names;
-    std::vector<std::string> subgraph_output_names;
+      std::vector<std::string> subgraph_input_names;
+      std::vector<std::string> subgraph_output_names;
 
-    std::vector<const ONNX_NAMESPACE::TypeProto*> loop_carried_vars_types;
+      std::vector<const ONNX_NAMESPACE::TypeProto *> loop_carried_vars_types;
   };
 
   // function to concatenate the OrtValue instances from each Loop iteration into a single output buffer.

@@ -133,44 +133,44 @@ ONNX_CPU_OPERATOR_KERNEL(Loop,
 
 Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
     : subgraph(subgraph_in) {
-  num_loop_carried_vars = static_cast<int>(node.InputDefs().size()) - 2;  // skip 'M' and 'cond'
-  num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
-  num_subgraph_inputs = 2 + static_cast<int>(num_loop_carried_vars);  // iter_num, cond, loop carried vars
-  num_outputs = static_cast<int>(node.OutputDefs().size());
+  num_loop_carried_vars = node.InputDefs().size() - 2;  // skip 'M' and 'cond'
+  num_implicit_inputs = node.ImplicitInputDefs().size();
+  num_subgraph_inputs = 2 + num_loop_carried_vars;  // iter_num, cond, loop carried vars
+  num_outputs = node.OutputDefs().size();
 
   // Hold the type for loop carried dependencies - we will use it later
-  const auto& node_input_types = node.InputDefs();
-  loop_carried_vars_types.reserve(static_cast<uint64_t>(num_subgraph_inputs));
+  const auto &node_input_types = node.InputDefs();
+  loop_carried_vars_types.reserve(num_subgraph_inputs);
   for (int i = 0; i < num_loop_carried_vars; ++i) {
-    loop_carried_vars_types.push_back(node_input_types[static_cast<size_t>(i) + 2]->TypeAsProto());
+    loop_carried_vars_types.push_back(node_input_types[i + 2]->TypeAsProto());
   }
 
-  auto& subgraph_inputs = subgraph.GetInputs();
-  auto& subgraph_outputs = subgraph.GetOutputs();
+  const auto &subgraph_inputs = subgraph.GetInputs();
+  const auto &subgraph_outputs = subgraph.GetOutputs();
 
   // we know how many inputs we are going to call the subgraph with based on the Loop inputs,
   // and that value is in num_subgraph_inputs.
   // validate that the subgraph has that many inputs.
-  ORT_ENFORCE(static_cast<size_t>(num_subgraph_inputs) == subgraph_inputs.size(),
+  ORT_ENFORCE(num_subgraph_inputs == subgraph_inputs.size(),
               "Graph in 'body' attribute of Loop should have ", num_subgraph_inputs, " inputs. Found:",
               subgraph_inputs.size());
 
   // check num outputs are correct. the 'cond' output from the subgraph is not a Loop output, so diff is 1
-  num_subgraph_outputs = static_cast<int>(subgraph_outputs.size());
+  num_subgraph_outputs = subgraph_outputs.size();
   ORT_ENFORCE(num_subgraph_outputs - 1 == num_outputs,
               "'Loop' node has ", num_outputs, " outputs so the subgraph requires ", num_outputs + 1,
               " but has ", num_subgraph_outputs);
 
-  subgraph_input_names.reserve(static_cast<uint64_t>(num_subgraph_inputs));
+  subgraph_input_names.reserve(num_subgraph_inputs);
   for (uint64_t i = 0; i < num_subgraph_inputs; ++i) {
     subgraph_input_names.push_back(subgraph_inputs[i]->Name());
   }
 
   // save list of subgraph output names in their provided order to use when fetching the results
   // from each subgraph execution. the Loop outputs will match this order.
-  subgraph_output_names.reserve(static_cast<uint64_t>(num_subgraph_outputs));
+  subgraph_output_names.reserve(num_subgraph_outputs);
   for (uint64_t i = 0; i < num_subgraph_outputs; ++i) {
-    auto& output = subgraph_outputs[i];
+    const auto &output = subgraph_outputs[i];
     subgraph_output_names.push_back(output->Name());
   }
 }
@@ -280,7 +280,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   // the Loop inputs are matched to subgraph feeds based on order.
   // we first need the names of the Loop inputs to determine what device they are available on
   std::vector<std::string> feed_names;
-  feed_names.reserve(static_cast<size_t>(info_->num_subgraph_inputs) + static_cast<uint64_t>(info_->num_implicit_inputs));
+  feed_names.reserve(info_->num_subgraph_inputs + info_->num_implicit_inputs);
 
   // iter_num and cond subgraph inputs - created by the LoopImpl::Initialize so the name doesn't matter
   // as we skip them when we call FindDevicesForValues, and default them to always being on CPU.
@@ -289,9 +289,9 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
 
   // add the names for the loop carried vars from the Loop input
   const auto& loop_inputs = node.InputDefs();
-  for (int i = 0; i < info_->num_loop_carried_vars; ++i) {
+  for (size_t i = 0; i < info_->num_loop_carried_vars; ++i) {
     // + 2 to skip 'M' and 'cond' Loop inputs
-    feed_names.push_back(loop_inputs[static_cast<size_t>(i) + 2]->Name());
+    feed_names.push_back(loop_inputs[i + 2]->Name());
   }
 
   for (auto& entry : node.ImplicitInputDefs()) {
@@ -306,9 +306,9 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
 
   // now update the feed names to use the subgraph input names for the loop carried vars so that we can determine
   // what device the subgraph needs them on
-  for (ptrdiff_t i = 0; i < info_->num_loop_carried_vars; ++i) {
+  for (size_t i = 0; i < info_->num_loop_carried_vars; ++i) {
     // +2 for both to skip the iter_num and cond values
-    feed_names[static_cast<uint64_t>(i + 2)] = info_->subgraph_input_names[static_cast<uint64_t>(i + 2)];
+    feed_names[i + 2] = info_->subgraph_input_names[i + 2];
   }
 
   std::unique_ptr<FeedsFetchesManager> ffm;
@@ -318,7 +318,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
 
   // setup the locations where we want the subgraph output to end up on
   std::vector<const OrtMemoryInfo*> fetch_locations;
-  fetch_locations.reserve(static_cast<uint64_t>(info_->num_subgraph_outputs));
+  fetch_locations.reserve(info_->num_subgraph_outputs);
 
   // 'cond' is first output and we need it to be on CPU so we can read the latest value
   const auto& cpu_allocator_info = session_state.GetExecutionProviders()
@@ -331,14 +331,14 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   // to match the feed location.
   for (ptrdiff_t i = 0; i < info_->num_loop_carried_vars; ++i) {
     // +2 for both to skip the iter_num and cond input values
-    const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, loop_inputs[static_cast<size_t>(i + 2)]->Name());
+    const auto &alloc_info = utils::FindMemoryInfoForValue(session_state, loop_inputs[i + 2]->Name());
     fetch_locations.push_back(&alloc_info);
   }
 
   // remaining outputs we want where the matching Loop output will be allocated
   const auto& loop_outputs = node.OutputDefs();
-  for (size_t i = static_cast<size_t>(info_->num_loop_carried_vars), end = loop_outputs.size(); i < end; ++i) {
-    const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, loop_outputs[i]->Name());
+  for (size_t i = info_->num_loop_carried_vars, end = loop_outputs.size(); i < end; ++i) {
+    const auto &alloc_info = utils::FindMemoryInfoForValue(session_state, loop_outputs[i]->Name());
     fetch_locations.push_back(&alloc_info);
   }
 
@@ -421,13 +421,13 @@ Status LoopImpl::Initialize() {
   iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(cpu_allocator, 0, iter_num_rank != 0);
   condition_mlvalue_ = MakeScalarMLValue<bool>(cpu_allocator, condition_, condition_rank != 0);
 
-  loop_output_tensors_.resize(static_cast<size_t>(info_.num_outputs) - static_cast<uint64_t>(info_.num_loop_carried_vars));
+  loop_output_tensors_.resize(info_.num_outputs - info_.num_loop_carried_vars);
 
   return status;
 }
 
 void LoopImpl::CreateInitialFeeds(std::vector<OrtValue>& feeds) {
-  feeds.reserve(static_cast<size_t>(info_.num_subgraph_inputs) + static_cast<uint64_t>(info_.num_implicit_inputs));
+  feeds.reserve(info_.num_subgraph_inputs + info_.num_implicit_inputs);
 
   // This ordering is the same as used in SetupSubgraphExecutionInfo
   feeds.push_back(iter_num_mlvalue_);
@@ -451,12 +451,12 @@ void LoopImpl::SaveOutputsAndUpdateFeeds(const std::vector<OrtValue>& last_outpu
 
   // simple copy for cond and loop carried vars. start at 1 to skip iter_num in input
   for (uint64_t i = 1; i < info_.num_subgraph_inputs; ++i)
-    next_inputs[i] = last_outputs[static_cast<uint64_t>(i - 1)];
+    next_inputs[i] = last_outputs[(i - 1)];
 
   // save loop outputs as we have to concatenate at the end
   for (auto j = info_.num_loop_carried_vars; j < info_.num_outputs; ++j) {
-    ORT_ENFORCE(last_outputs[static_cast<uint64_t>(j + 1)].IsTensor(), "All scan outputs MUST be tensors");
-    loop_output_tensors_[static_cast<uint64_t>(j-info_.num_loop_carried_vars)].push_back(last_outputs[static_cast<uint64_t>(j + 1)]);  // skip 'cond' in output
+    ORT_ENFORCE(last_outputs[(j + 1)].IsTensor(), "All scan outputs MUST be tensors");
+    loop_output_tensors_[(j - info_.num_loop_carried_vars)].push_back(last_outputs[(j + 1)]);  // skip 'cond' in output
   }
 }
 
@@ -574,8 +574,8 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
 
     for (uint64_t i = info_.num_loop_carried_vars; i < info_.num_outputs; ++i) {
       // add last output
-      auto& per_iteration_outputs = loop_output_tensors_[i - info_.num_loop_carried_vars];
-      per_iteration_outputs.push_back(fetches[static_cast<uint64_t>(static_cast<ptrdiff_t>(i) + 1)]);  // skip cond
+      auto &per_iteration_outputs = loop_output_tensors_[i - info_.num_loop_carried_vars];
+      per_iteration_outputs.push_back(fetches[(static_cast<ptrdiff_t>(i) + 1)]);  // skip cond
 
       ORT_RETURN_IF_ERROR(ConcatenateLoopOutput(per_iteration_outputs, static_cast<int>(i)));
     }
@@ -591,16 +591,16 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
 
     for (uint64_t i = info_.num_loop_carried_vars; i < info_.num_outputs; ++i) {
       // get shape from subgraph output if possible to attempt to have the correct rank
-      auto* graph_output = graph_outputs.at(static_cast<uint64_t>(static_cast<ptrdiff_t>(i) + 1));  // + 1 as first subgraph output is condition value
-      auto* graph_output_shape = graph_output->Shape();
+      auto *graph_output = graph_outputs.at(i + 1);  // + 1 as first subgraph output is condition value
+      auto *graph_output_shape = graph_output->Shape();
 
       std::vector<int64_t> output_dims;
-      output_dims.reserve(static_cast<uint64_t>(static_cast<ptrdiff_t>(graph_output_shape ? graph_output_shape->dim_size() : 0) + 1));
+      output_dims.reserve(((graph_output_shape ? graph_output_shape->dim_size() : 0) + 1));
       output_dims.push_back(0);  // num iterations is first dim
 
       if (graph_output_shape) {
-        const auto& tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
-        const auto& dims = tensor_shape.GetDims();
+        const auto &tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
+        const auto &dims = tensor_shape.GetDims();
 
         // copy to output dims and use 0 for any symbolic dim
         std::for_each(dims.cbegin(), dims.cend(),
