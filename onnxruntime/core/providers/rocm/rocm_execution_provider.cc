@@ -160,6 +160,10 @@ bool TunableOpIsEnabledByInfoOrEnv(const ROCMExecutionProviderInfo& info) {
     return info.use_tunable_op;
   }
 
+  LOGS_DEFAULT(WARNING) << "Environment variable ORT_ROCM_USE_TUNABLE_OP is used. "
+                           "It is reserved for internal testing prupose. "
+                           "End users should opt for session options and must not rely ont it.";
+
   if (env_ort_rocm_use_tunable_op != "0" && env_ort_rocm_use_tunable_op != "1") {
     LOGS_DEFAULT(ERROR) << "Value of environment variable ORT_ROCM_USE_TUNABLE_OP must be 0 or 1, but got "
                         << env_ort_rocm_use_tunable_op;
