@@ -6,15 +6,9 @@
 # This script helps creating dummy inputs for Longformer model.
 
 import logging
-import os
-import random
-import re
-import time
-from pathlib import Path
 from typing import Dict, List, Tuple, Union
 
 import numpy
-import onnx
 import torch
 
 logger = logging.getLogger(__name__)

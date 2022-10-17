@@ -254,11 +254,12 @@ def validate_nuget(args):
             args.package_type, is_windows_ai_package, is_gpu_package, args.platforms_supported, zip_file, None
         )
 
+        verify_nuget_signing = args.verify_nuget_signing.lower()
         # Check if the Nuget has been signed
-        if args.verify_nuget_signing != "true" and args.verify_nuget_signing != "false":
+        if verify_nuget_signing != "true" and verify_nuget_signing != "false":
             raise Exception("Parameter verify_nuget_signing accepts only true or false as an argument")
 
-        if args.verify_nuget_signing == "true":
+        if verify_nuget_signing == "true":
             print("Verifying if Nuget has been signed")
             if not check_if_nuget_is_signed(args.package_path):
                 print("Nuget signing verification failed")

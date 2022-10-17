@@ -10,6 +10,7 @@
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -67,10 +68,8 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
     // assume X has 3 or 4 dimensions, that was checked in IsPReluOpSupported()
     const auto num_channels = x_shape[x_shape.size() - 3];
 
-    std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(slope_tensor, unpacked_tensor));
-    float value;
-    std::memcpy(&value, unpacked_tensor.data(), sizeof(value));
+    Initializer unpacked_tensor(slope_tensor);
+    float value = unpacked_tensor.DataAsSpan<float>()[0];
 
     auto& weight_values = *prelu.mutable_alpha()->mutable_floatvalue();
     weight_values.Clear();

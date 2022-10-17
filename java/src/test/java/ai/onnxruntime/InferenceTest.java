@@ -20,17 +20,20 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+import java.nio.LongBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -615,6 +618,12 @@ public class InferenceTest {
   @EnabledIfSystemProperty(named = "USE_DNNL", matches = "1")
   public void testDNNL() throws OrtException {
     runProvider(OrtProvider.DNNL);
+  }
+
+  @Test
+  @EnabledIfSystemProperty(named = "USE_XNNPACK", matches = "1")
+  public void testXNNPACK() throws OrtException {
+    runProvider(OrtProvider.XNNPACK);
   }
 
   private void runProvider(OrtProvider provider) throws OrtException {
@@ -1294,7 +1303,8 @@ public class InferenceTest {
 
         // try-cast first element in sequence to map/dictionary type
         @SuppressWarnings("unchecked")
-        Map<Long, Float> map = (Map<Long, Float>) ((List<Object>) secondOutput.getValue()).get(0);
+        Map<Long, Float> map =
+            (Map<Long, Float>) ((List<OnnxMap>) secondOutput.getValue()).get(0).getValue();
         assertEquals(0.25938290, map.get(0L), 1e-6);
         assertEquals(0.40904793, map.get(1L), 1e-6);
         assertEquals(0.33156919, map.get(2L), 1e-6);
@@ -1361,12 +1371,79 @@ public class InferenceTest {
         // try-cast first element in sequence to map/dictionary type
         @SuppressWarnings("unchecked")
         Map<String, Float> map =
-            (Map<String, Float>) ((List<Object>) secondOutput.getValue()).get(0);
+            (Map<String, Float>) ((List<OnnxMap>) secondOutput.getValue()).get(0).getValue();
         assertEquals(0.25938290, map.get("0"), 1e-6);
         assertEquals(0.40904793, map.get("1"), 1e-6);
         assertEquals(0.33156919, map.get("2"), 1e-6);
       }
       ov.close();
+    }
+  }
+
+  @Test
+  public void testModelSequenceOfTensors() throws OrtException {
+    String modelPath = TestHelpers.getResourcePath("/test_sequence_tensors.onnx").toString();
+
+    try (SessionOptions options = new SessionOptions();
+        OrtSession session = env.createSession(modelPath, options)) {
+      Map<String, NodeInfo> outputInfos = session.getOutputInfo();
+      NodeInfo outputInfo = outputInfos.get("output_sequence");
+      assertTrue(outputInfo.getInfo() instanceof SequenceInfo);
+
+      Map<String, OnnxTensor> container = new HashMap<>();
+      OnnxTensor firstInputTensor =
+          OnnxTensor.createTensor(
+              env, OrtUtil.reshape(new long[] {1, 2, 3, 4, 5, 6}, new long[] {2, 3}));
+      OnnxTensor secondInputTensor =
+          OnnxTensor.createTensor(
+              env, OrtUtil.reshape(new long[] {7, 8, 9, 10, 11, 12}, new long[] {2, 3}));
+
+      container.put("tensor1", firstInputTensor);
+      container.put("tensor2", secondInputTensor);
+
+      try (OrtSession.Result outputs = session.run(container)) {
+        // output is a sequence<tensors>
+        Optional<OnnxValue> output = outputs.get("output_sequence");
+        assertTrue(output.isPresent());
+        assertTrue(output.get() instanceof OnnxSequence);
+
+        // cast to a sequence
+        OnnxSequence seq = (OnnxSequence) output.get();
+
+        // make sure that the sequence holds only 2 elements (tensors)
+        assertEquals(2, seq.getInfo().length);
+
+        // try-cast the elements in sequence to tensor type
+        List<? extends OnnxValue> elements = seq.getValue();
+        assertEquals(2, elements.size());
+        assertTrue(elements.get(0) instanceof OnnxTensor);
+        assertTrue(elements.get(1) instanceof OnnxTensor);
+
+        OnnxTensor firstTensor = (OnnxTensor) elements.get(0);
+        OnnxTensor secondTensor = (OnnxTensor) elements.get(1);
+
+        LongBuffer outputBuf = firstTensor.getLongBuffer();
+
+        // make sure the tensors in the output sequence hold the correct values
+        assertEquals(1, outputBuf.get(0));
+        assertEquals(2, outputBuf.get(1));
+        assertEquals(3, outputBuf.get(2));
+        assertEquals(4, outputBuf.get(3));
+        assertEquals(5, outputBuf.get(4));
+        assertEquals(6, outputBuf.get(5));
+
+        outputBuf = secondTensor.getLongBuffer();
+
+        assertEquals(7, outputBuf.get(0));
+        assertEquals(8, outputBuf.get(1));
+        assertEquals(9, outputBuf.get(2));
+        assertEquals(10, outputBuf.get(3));
+        assertEquals(11, outputBuf.get(4));
+        assertEquals(12, outputBuf.get(5));
+
+        firstTensor.close();
+        secondTensor.close();
+      }
     }
   }
 
@@ -1515,8 +1592,8 @@ public class InferenceTest {
         case CORE_ML:
           options.addCoreML();
           break;
-        case NUPHAR:
-          options.addNuphar(true, "");
+        case XNNPACK:
+          options.addXnnpack(Collections.emptyMap());
           break;
         case VITIS_AI:
         case RK_NPU:

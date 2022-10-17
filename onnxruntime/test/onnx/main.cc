@@ -40,7 +40,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
-      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'nnapi', 'snpe' or 'coreml'. "
+      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'nnapi', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -126,7 +126,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_cuda = false;
   bool enable_dnnl = false;
   bool enable_openvino = false;
-  bool enable_nuphar = false;
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
   bool enable_nnapi = false;
@@ -196,8 +195,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_dnnl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
             enable_openvino = true;
-          } else if (!CompareCString(optarg, ORT_TSTR("nuphar"))) {
-            enable_nuphar = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
             enable_tensorrt = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
@@ -375,14 +372,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");
-      return -1;
-#endif
-    }
-    if (enable_nuphar) {
-#ifdef USE_NUPHAR
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(sf, /*allow_unaligned_buffers*/ 1, ""));
-#else
-      fprintf(stderr, "Nuphar is not supported in this build");
       return -1;
 #endif
     }
@@ -627,12 +616,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"BERT_Squad", "test data bug"},
     {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
     {"constantofshape_int_zeros", "test data bug", {"onnx141", "onnx150"}},
-    {"convtranspose_autopad_same", "Implementation need to be adjusted for ONNX changes"},
+    {"convtranspose_autopad_same", "Test data has been corrected in ONNX 1.10.", {"onnx180", "onnx181", "onnx190"}},
     {"cast_STRING_to_FLOAT", "Linux CI has old ONNX python package with bad test data", {"onnx141"}},
     // Numpy float to string has unexpected rounding for some results given numpy default precision is meant to be 8.
     // "e.g. 0.296140194 -> '0.2961402' not '0.29614019'. ORT produces the latter with precision set to 8,
     // which doesn't match the expected output that was generated with numpy.
     {"cast_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results."},
+    {"cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose", {}},
     {"tf_nasnet_large", "disable temporarily"},
     {"tf_nasnet_mobile", "disable temporarily"},
     {"tf_pnasnet_large", "disable temporarily"},

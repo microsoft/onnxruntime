@@ -25,7 +25,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 logger = logging.getLogger(__name__)
 
-# Walkaround by replacing torch.triu using self-defined op
+# Workaround by replacing torch.triu using self-defined op
 # Since torch.triu cannot be exported to ONNX. See https://github.com/pytorch/pytorch/issues/32968
 torch_func = {"triu": torch.triu}
 
@@ -202,7 +202,7 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
         from optimizer import get_fusion_statistics, optimize_by_onnxruntime
 
         # Use onnxruntime to optimize model, which will be saved to *_ort.onnx
-        opt_model = optimize_by_onnxruntime(
+        _ = optimize_by_onnxruntime(
             onnx_model_path,
             use_gpu=use_gpu,
             optimized_model_path=ort_model_path,
@@ -214,7 +214,6 @@ def optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwri
 
 
 def optimize_onnx_model(
-    model_name,
     onnx_model_path,
     optimized_model_path,
     model_type,
@@ -234,7 +233,7 @@ def optimize_onnx_model(
         from fusion_options import FusionOptions
         from optimizer import optimize_model
 
-        if optimization_options == None:
+        if optimization_options is None:
             optimization_options = FusionOptions(model_type)
         optimization_options.use_raw_attention_mask(use_raw_attention_mask)
         if Precision.FLOAT16 == precision:
@@ -327,8 +326,8 @@ def load_tf_model(model_name, model_class, cache_dir, config_modifier):
     config_modifier.modify(config)
     # Loading tf model from transformers limits the cpu affinity to {0} when KMP_AFFINITY is set
     # Restore the affinity after model loading for expected ORT performance
-    affi_helper = AffinitySetting()
-    affi_helper.get_affinity()
+    affinity_setting = AffinitySetting()
+    affinity_setting.get_affinity()
     model = load_pretrained_model(
         model_name,
         config=config,
@@ -336,7 +335,7 @@ def load_tf_model(model_name, model_class, cache_dir, config_modifier):
         custom_model_class=model_class,
         is_tf_model=True,
     )
-    affi_helper.set_affinity()
+    affinity_setting.set_affinity()
 
     return config, model
 
@@ -399,7 +398,6 @@ def validate_and_optimize_onnx(
             use_external_data_format,
         )
         optimize_onnx_model(
-            model_name,
             onnx_model_path,
             optimized_model_path,
             model_type,
@@ -664,7 +662,7 @@ def export_onnx_model_from_tf(
         logger.info(f"Skip export since model existed: {onnx_model_path}")
 
     model_type = model_type + "_tf"
-    (opt_onnx_model_file, onnx_model_file, is_valid_onnx_model, vocab_size,) = validate_and_optimize_onnx(
+    optimized_onnx_path, is_valid_onnx_model, vocab_size = validate_and_optimize_onnx(
         model_name,
         use_external_data_format,
         model_type,
@@ -686,8 +684,7 @@ def export_onnx_model_from_tf(
     )
 
     return (
-        opt_onnx_model_file,
-        onnx_model_file,
+        optimized_onnx_path,
         is_valid_onnx_model,
         vocab_size,
         max_input_size,

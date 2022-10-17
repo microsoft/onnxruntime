@@ -1,110 +1,91 @@
 #-------------------------------------------------------------------------
-# Copyright(C) 2019 Intel Corporation.
-# Licensed under the MIT License.
+# Copyright(C) 2021 Intel Corporation.
+# SPDX-License-Identifier: MIT
 #--------------------------------------------------------------------------
 
-FROM ubuntu:18.04
+ARG OPENVINO_VERSION=2022.2.0
 
-ARG DEVICE=CPU_FP32
-ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
-ARG ONNXRUNTIME_BRANCH=master
+# Build stage
+FROM openvino/ubuntu20_runtime:${OPENVINO_VERSION} AS base
 
-WORKDIR /code
-ARG MY_ROOT=/code
+ENV WORKDIR_PATH=/home/openvino
+WORKDIR $WORKDIR_PATH
+ENV DEBIAN_FRONTEND noninteractive
 
-ENV PATH /opt/miniconda/bin:/code/cmake-3.21.0-linux-x86_64/bin:$PATH
-ENV LD_LIBRARY_PATH=/opt/miniconda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+USER root
+RUN apt update; apt install -y --no-install-recommends wget gnupg && \
+    rm -rf /var/lib/apt/lists/*
 
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2022.1.0.643
-ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
-ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/runtime/lib/intel64
-ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/runtime/3rdparty/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
-ENV HDDL_INSTALL_DIR=${INTEL_OPENVINO_DIR}/runtime/3rdparty/hddl
-ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/runtime/3rdparty/hddl/lib:$LD_LIBRARY_PATH
-ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
-ENV LANG en_US.UTF-8
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt update -y && \
-    apt -y install --no-install-recommends apt-transport-https ca-certificates python3 python3-pip gnupg udev zip unzip x11-apps lsb-core wget curl cpio sudo libboost-python-dev libpng-dev zlib1g-dev git libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.65-dev libboost-thread1.65-dev protobuf-compiler libprotoc-dev autoconf automake libtool libjson-c-dev unattended-upgrades && \
-    unattended-upgrade && \
-    rm -rf /var/lib/apt/lists/* && \
-# libusb from source
-    cd /opt && \
-    curl -L https://github.com/libusb/libusb/archive/v1.0.22.zip --output v1.0.22.zip && \
-    unzip v1.0.22.zip && \
-    cd /opt/libusb-1.0.22 && \
-# bootstrap steps
-    ./bootstrap.sh && \
-    ./configure --disable-udev --enable-shared && \
-    make -j4 && \
-    cd /opt/libusb-1.0.22/libusb && \
-# configure libusb1.0.22
-    /bin/mkdir -p '/usr/local/lib' && \
-    /bin/bash ../libtool --mode=install /usr/bin/install -c   libusb-1.0.la '/usr/local/lib' && \
-    /bin/mkdir -p '/usr/local/include/libusb-1.0' && \
-    /usr/bin/install -c -m 644 libusb.h '/usr/local/include/libusb-1.0' && \
-    /bin/mkdir -p '/usr/local/lib/pkgconfig' && \
-# Install OpenVINO
-    cd ${MY_ROOT} && \
-    wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB && \
-    apt-key add GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB && rm GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB && \
-    echo "deb https://apt.repos.intel.com/openvino/2022 bionic main" | tee /etc/apt/sources.list.d/intel-openvino-2022.list && \
-    apt update -y && \
-    apt -y install openvino-2022.1.0 && \
-    cd ${INTEL_OPENVINO_DIR}/install_dependencies && ./install_openvino_dependencies.sh -y && \
-    cd /opt/libusb-1.0.22/ && \
-    /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig' && \
-    cp ${INTEL_OPENVINO_DIR}/runtime/3rdparty/97-myriad-usbboot.rules /etc/udev/rules.d/ && \
-    ldconfig && \
-# Install GPU runtime and drivers
-    cd ${MY_ROOT} && \
-    mkdir /tmp/opencl && \
-    cd /tmp/opencl && \
-    apt update -y && \
-    apt install -y --no-install-recommends ocl-icd-libopencl1 && \
-    rm -rf /var/lib/apt/lists/* && \
-    wget "https://github.com/intel/compute-runtime/releases/download/21.38.21026/intel-gmmlib_21.2.1_amd64.deb" && \
-    wget "https://github.com/intel/intel-graphics-compiler/releases/download/igc-1.0.8708/intel-igc-core_1.0.8708_amd64.deb" && \
-    wget "https://github.com/intel/intel-graphics-compiler/releases/download/igc-1.0.8708/intel-igc-opencl_1.0.8708_amd64.deb" && \
-    wget "https://github.com/intel/compute-runtime/releases/download/21.38.21026/intel-opencl_21.38.21026_amd64.deb" && \
-    wget "https://github.com/intel/compute-runtime/releases/download/21.38.21026/intel-ocloc_21.38.21026_amd64.deb" && \
-    wget "https://github.com/intel/compute-runtime/releases/download/21.38.21026/intel-level-zero-gpu_1.2.21026_amd64.deb" && \
-    dpkg -i /tmp/opencl/*.deb && \
-    ldconfig && \
-    rm -rf /tmp/opencl && \
 # Install Mono
-    cd ${MY_ROOT} && \
-    apt install -y gnupg ca-certificates && \
-    curl https://download.mono-project.com/repo/xamarin.gpg | apt-key add - && \
-    echo "deb https://download.mono-project.com/repo/ubuntu stable-bionic main" | sudo tee /etc/apt/sources.list.d/mono-official-stable.list && \
+RUN wget http://download.mono-project.com/repo/xamarin.gpg && apt-key add xamarin.gpg && rm xamarin.gpg && \
+    echo "deb https://download.mono-project.com/repo/ubuntu stable-bionic main" | tee /etc/apt/sources.list.d/mono-official-stable.list && \
     apt update -y && \
-    apt install -y mono-devel && \
+    apt install -y mono-devel
+
 # Install nuget.exe
-    wget https://dist.nuget.org/win-x86-commandline/latest/nuget.exe && \
+RUN wget https://dist.nuget.org/win-x86-commandline/latest/nuget.exe && \
     mv nuget.exe /usr/local/bin/nuget.exe && \
     echo 'mono /usr/local/bin/nuget.exe $@' > /usr/local/bin/nuget && \
-    chmod a+x /usr/local/bin/nuget && \
+    chmod a+x /usr/local/bin/nuget
+
 # Install .NET core
-    wget https://packages.microsoft.com/config/ubuntu/18.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
+RUN wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
     dpkg -i packages-microsoft-prod.deb && \
     apt-get update -y &&\
     apt-get install -y apt-transport-https && \
     apt-get update -y && \
-    apt-get install -y dotnet-sdk-5.0 && \
-# Download and build ONNX Runtime
-    cd ${MY_ROOT} && \
-    git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} && \
-    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
-    pip install onnx==1.9 && \
-    cd ${MY_ROOT}/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_nuget --build_shared_lib && \
-    cp ${MY_ROOT}/onnxruntime/build/Linux/Release/Microsoft.ML.OnnxRuntime.Managed* ${MY_ROOT}/onnxruntime/build/Linux/Release/nuget-artifacts && \
-    mv ${MY_ROOT}/onnxruntime/build/Linux/Release/nuget-artifacts ${MY_ROOT} && \
-# Clean-up unnecessary files
-    rm -rf ${MY_ROOT}/cmake* /opt/cmake ${MY_ROOT}/onnxruntime && \
-    rm -rf /opt/miniconda && \
-    rm -rf /opt/v1.0.22.zip && \
-    apt remove -y git && apt autoremove -y  && apt remove -y cmake && \
-    cd /usr/lib/ && rm -rf python2.7 python3.7 python3.8  && \
-    cd && rm -rf .cache && \
-    cd /usr/share/python-wheels/ && rm -rf *.whl
+    apt-get install -y dotnet-sdk-5.0
+
+# Build stage
+FROM base AS builder
+
+ENV WORKDIR_PATH=/home/openvino
+WORKDIR $WORKDIR_PATH
+ENV DEBIAN_FRONTEND noninteractive
+
+ARG DEVICE=CPU_FP32 
+ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
+ARG ONNXRUNTIME_BRANCH=main
+
+ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
+ENV LANG en_US.UTF-8
+
+USER root
+RUN apt update; apt install -y --no-install-recommends git protobuf-compiler libprotobuf-dev ca-certificates unattended-upgrades && \
+    unattended-upgrade && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} 
+RUN /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh
+RUN ln -s cmake-* cmake-dir
+RUN python3 -m pip install wheel
+ENV PATH=${WORKDIR_PATH}/cmake-dir/bin:$PATH
+RUN pip3 install onnx
+RUN ln -s /usr/bin/python3 /usr/bin/python
+RUN apt install locales && \
+    locale-gen en_US en_US.UTF-8 && \
+    dpkg-reconfigure locales
+RUN cd onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_nuget --build_shared_lib
+RUN cp /home/openvino/onnxruntime/build/Linux/Release/Microsoft.ML.OnnxRuntime.Managed* /home/openvino/onnxruntime/build/Linux/Release/nuget-artifacts
+
+# Deploy stage
+FROM base
+
+ENV DEBIAN_FRONTEND noninteractive
+USER root
+
+RUN apt update; apt install -y unattended-upgrades fonts-freefont-ttf && \
+    unattended-upgrade
+ARG BUILD_UID=1001
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --uid $BUILD_UID $BUILD_USER
+RUN usermod -a -G video,users ${BUILD_USER}
+ENV WORKDIR_PATH /home/${BUILD_USER}
+WORKDIR ${WORKDIR_PATH}
+COPY --from=builder /home/openvino/onnxruntime/build/Linux/Release/nuget-artifacts ${WORKDIR_PATH}/nuget-artifacts
+
+USER ${BUILD_USER}
+ENV PATH=${WORKDIR_PATH}/miniconda/bin:${WORKDIR_PATH}/cmake-dir/bin:$PATH
+ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/runtime/lib/intel64
+ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/runtime/3rdparty/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
+

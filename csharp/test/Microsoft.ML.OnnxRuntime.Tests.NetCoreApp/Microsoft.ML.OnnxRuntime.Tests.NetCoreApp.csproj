@@ -6,11 +6,11 @@
     <OnnxRuntimeCsharpRoot>$(ProjectDir)..\..</OnnxRuntimeCsharpRoot>
     <Platforms>AnyCPU;x86</Platforms>
     <OutputPath>bin\$(Configuration)\</OutputPath>
-    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild> 
-    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild> 
-    <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild> 
+    <IsLinuxBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))' == 'true'">true</IsLinuxBuild>
+    <IsWindowsBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))' == 'true'">true</IsWindowsBuild>
+    <IsMacOSBuild Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::OSX)))' == 'true'">true</IsMacOSBuild>
 
-    <!-- following attributes were necessary for the migrated Tensor tests -->  
+    <!-- following attributes were necessary for the migrated Tensor tests -->
     <LangVersion>7.2</LangVersion>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly> <!-- need signing for friend access to the internals of the Tensors assembly -->
@@ -18,6 +18,9 @@
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <!-- end -->
     <DefineConstants>__NET_CORE_APP__;$(DefineConstants)</DefineConstants>
+
+    <!-- Training build property. With Visual Studio, change to true to enable. -->
+    <OnDeviceTraining Condition="'$(OnDeviceTraining)' == ''">false</OnDeviceTraining>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
@@ -92,6 +95,16 @@
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\ArrayTensorExtensionsTests.cs">
       <Link>ArrayTensorExtensionsTests.cs</Link>
     </Compile>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(OnDeviceTraining)' == 'true'">
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\TrainingTest.cs">
+      <Link>TrainingTest.cs</Link>
+    </Compile>
+    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\training_api\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

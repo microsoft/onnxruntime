@@ -2,11 +2,16 @@
 // Licensed under the MIT License.
 
 #include "python/tools/kernel_explorer/kernels/gemm.h"
-#include "python/tools/kernel_explorer/kernels/gemm_rocblas.h"
-#include "python/tools/kernel_explorer/kernels/gemm_ck.h"
 
-#include <type_traits>
 #include <pybind11/pybind11.h>
+#include <type_traits>
+
+#include "core/providers/rocm/tunable/gemm_common.h"
+#include "python/tools/kernel_explorer/kernels/gemm_ck.h"
+#include "python/tools/kernel_explorer/kernels/gemm_rocblas.h"
+#include "python/tools/kernel_explorer/kernels/gemm_tunable.h"
+
+using BlasOp = onnxruntime::rocm::tunable::blas::BlasOp;
 
 namespace py = pybind11;
 
@@ -22,6 +27,7 @@ void InitGemm(py::module mod) {
 
   InitRocBlasGemm(mod);
   InitComposableKernelGemm(mod);
+  InitTunableGemm(mod);
 }
 
 }  // namespace onnxruntime

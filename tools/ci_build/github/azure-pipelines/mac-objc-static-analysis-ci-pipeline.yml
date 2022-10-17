@@ -1,12 +1,16 @@
 jobs:
 - job: ObjCStaticAnalysis
-  
+
   pool:
-    vmImage: 'macOS-11'
-  
-  timeoutInMinutes: 60
+    vmImage: 'macOS-12'
+
+  timeoutInMinutes: 30
 
   steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
   - task: UsePythonVersion@0
     inputs:
       versionSpec: "3.9"
@@ -24,12 +28,12 @@ jobs:
         --config Debug \
         --build_shared_lib --use_coreml --build_objc \
         --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        --update \
-        --build --parallel
-    displayName: Generate compile_commands.json
+        --update --skip_submodule_sync \
+        --build --parallel --target onnx_proto
+    displayName: Generate compile_commands.json and ONNX protobuf files
 
   - script: |
-      "$(brew --prefix llvm)/bin/clang-tidy" \
+      "$(brew --prefix llvm@14)/bin/clang-tidy" \
         -p="$(Build.BinariesDirectory)/Debug" \
         --checks="-*,clang-analyzer-*" \
         --header-filter="objectivec/include|objectivec/src|onnxruntime/core" \

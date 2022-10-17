@@ -24,6 +24,16 @@ def parse_arguments():
     return parser.parse_args()
 
 
+def run_on_device_training_python_api_tests(cwd, log):
+    """Runs the tests for on-device training api."""
+
+    log.debug("Running: on device training api tests")
+
+    command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_python_bindings.py"]
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
 def run_onnxblock_tests(cwd, log):
     """Runs the offline tooling tests for on-device training."""
 

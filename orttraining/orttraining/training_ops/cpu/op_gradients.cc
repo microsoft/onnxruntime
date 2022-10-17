@@ -15,21 +15,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-ONNX_CPU_OPERATOR_KERNEL(
-    SinGrad,
-    9,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-    SinGrad<float>);
-
-template <typename T>
-Status SinGrad<T>::Compute(OpKernelContext* context) const {
-  auto& dY = *context->Input<Tensor>(0);
-  auto& X = *context->Input<Tensor>(1);
-  auto& dX = *context->Output(0, X.Shape());
-  MakeEigenArrayMap<float>(dX) = MakeEigenArrayMap<float>(dY) * MakeEigenArrayMap<float>(X).cos();
-  return Status::OK();
-}
-
 ONNX_OPERATOR_KERNEL_EX(
     ReluGrad,
     kMSDomain,

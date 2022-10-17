@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cpu/quantization/qlinear_softmax.h"
 
+#include <cmath>
 #include <cstdint>
 #include <type_traits>
 #include <utility>
@@ -23,32 +24,37 @@ constexpr int OPSET13 = 13;
 
 namespace {
 
-void QlinearBuildLookupTableUint32(gsl::span<uint32_t> table,
+void QlinearBuildLookupTableUint32(gsl::span<QLinearSoftmax::EXP_OUT_DTYPE> table,
                                    const float x_scale,
                                    size_t reduce_len, bool is_signed) {
-  const double qscale =
-      fmin(static_cast<double>(UINT32_MAX) / static_cast<double>(reduce_len), static_cast<double>(0x7fffff));
+  // make sure sum(exp(x)) < max<T>()
+  double bit_shift =
+      log(std::numeric_limits<QLinearSoftmax::EXP_OUT_DTYPE>::max() / reduce_len);
+  double reserve_bit = std::is_same_v<QLinearSoftmax::EXP_OUT_DTYPE, float> ? 5 : 3;
+  bit_shift = std::max(0.0, bit_shift - reserve_bit) / x_scale;
+
   for (int32_t i = 0; i < 256; i++) {
-    double scaled_exp_xi = qscale * exp(static_cast<double>(i - 255) * static_cast<double>(x_scale));
-    // we can't get the real max value of input tensor here, so we just assume 255.
+    double scaled_exp_xi = exp((static_cast<double>(i) - 255 + bit_shift) * static_cast<double>(x_scale));
+    // we can't get the real max value of input tensor here, so we just assume 255-bit_shift.
     // in the function of `QlinearSoftmaxCPU`,
-    // all numbers will have a shift (255-max_value) if its max value is not 255
+    // all numbers will have a shift (255-bit_shift-max_value) if its max value is not 255
     //
     // if is_signed index = [1 2 3 ......126 127 -128 -127 ..... -3 -2 -1]
     // else [0 1 2 3 4 ..... 256]
     uint8_t index = static_cast<uint8_t>(is_signed ? i - 128 : i);
-    table[index] = static_cast<uint32_t>(lrint(scaled_exp_xi));
+    table[index] = static_cast<QLinearSoftmax::EXP_OUT_DTYPE>((scaled_exp_xi));
   }
 }
 
-void BuildLookupTableIfFixed(const OpKernelInfo& info, std::vector<uint32_t>& fixed_lookup_table,
+void BuildLookupTableIfFixed(const OpKernelInfo& info,
+                             std::vector<QLinearSoftmax::EXP_OUT_DTYPE>& fixed_lookup_table,
                              size_t reduce_len, bool is_signed) {
   const Tensor* tensor_x_scale = nullptr;
 
   bool get_x_scale = info.TryGetConstantInput(1, &tensor_x_scale);
   ORT_ENFORCE(tensor_x_scale == nullptr || IsScalarOr1ElementVector(tensor_x_scale),
               "QlinearBuildLookupTable : input X_scale must be a scalar or 1D tensor of size 1");
-  bool is_fixed_parameters = get_x_scale;
+  bool is_fixed_parameters = get_x_scale && (tensor_x_scale != nullptr);
 
   if (is_fixed_parameters) {
     fixed_lookup_table.resize(256);
@@ -103,9 +109,9 @@ Status QLinearSoftmax::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-  const size_t D = opset_ < OPSET13 ? X_shape.SizeFromDimension(axis_): X_shape[axis_];
-  uint32_t tmp_lookup_table[256];
-  gsl::span<const uint32_t> lookup_table = GetLookupTable(ctx, tmp_lookup_table, D);
+  const size_t D = opset_ < OPSET13 ? X_shape.SizeFromDimension(axis_) : X_shape[axis_];
+  EXP_OUT_DTYPE tmp_lookup_table[256];
+  gsl::span<const EXP_OUT_DTYPE> lookup_table = GetLookupTable(ctx, tmp_lookup_table, D);
 
   if (opset_ < OPSET13) {
     return ComputeInternal(ctx, *X, *Y, lookup_table, axis_, thread_pool);
@@ -119,8 +125,8 @@ common::Status QlinearSoftmaxCPU(size_t N,
                                  size_t D,
                                  const T* x_data,
                                  T* y_data,
-                                 const uint32_t* lookup_table,
-                                 uint32_t y_scale,
+                                 const QLinearSoftmax::EXP_OUT_DTYPE* lookup_table,
+                                 QLinearSoftmax::EXP_OUT_DTYPE y_scale,
                                  T yzp,
                                  onnxruntime::concurrency::ThreadPool* thread_pool);
 
@@ -129,8 +135,8 @@ common::Status QlinearSoftmaxCPU<uint8_t>(size_t N,
                                           size_t D,
                                           const uint8_t* x_data,
                                           uint8_t* y_data,
-                                          const uint32_t* lookup_table,
-                                          uint32_t y_scale,
+                                          const QLinearSoftmax::EXP_OUT_DTYPE* lookup_table,
+                                          QLinearSoftmax::EXP_OUT_DTYPE y_scale,
                                           uint8_t yzp,
                                           onnxruntime::concurrency::ThreadPool* thread_pool) {
   using onnxruntime::TensorOpCost;
@@ -156,11 +162,11 @@ common::Status QlinearSoftmaxCPU<uint8_t>(size_t N,
           // 1   3   5 ... 10
           // after the shift --->
           //                        235  237  239  .. 255
-          const uint32_t* shifted_lookuptable = lookup_table + 255 - xmax;
+          const QLinearSoftmax::EXP_OUT_DTYPE* shifted_lookuptable = lookup_table + 255 - xmax;
           size_t elements_n = D;
           // reduceSumUin8ToUint32: need speedup
           // vsum = \sum_i{e^x_i}
-          uint32_t vsum = 0;
+          QLinearSoftmax::EXP_OUT_DTYPE vsum = 0;
           const uint8_t* x_t_cur = x_t;
           do {
             const size_t vx = *x_t_cur++;
@@ -172,12 +178,11 @@ common::Status QlinearSoftmaxCPU<uint8_t>(size_t N,
           elements_n = D;
           x_t_cur = x_t;
           // elementwise div, y_i=\frac{x_i}{vsum}
-          const uint32_t vrounding = (vsum >> 1);
           do {
             const size_t vx = *x_t_cur++;
-            const uint32_t vt = shifted_lookuptable[vx];
+            const QLinearSoftmax::EXP_OUT_DTYPE vt = shifted_lookuptable[vx];
             // simulate round function, and re-quant to uint8
-            const uint32_t vq = ((vt * c_y_scale) + vrounding) / vsum + c_y_zp;
+            const uint32_t vq = static_cast<uint32_t>(std::nearbyintf(((vt * c_y_scale)) / vsum)) + c_y_zp;
             const uint8_t vy = vq > 255 ? static_cast<uint8_t>(255) : static_cast<uint8_t>(vq);
             *y_t++ = vy;
           } while (--elements_n != 0);
@@ -193,8 +198,8 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
                                          size_t D,
                                          const int8_t* x_data,
                                          int8_t* y_data,
-                                         const uint32_t* lookup_table,
-                                         uint32_t y_scale,
+                                         const QLinearSoftmax::EXP_OUT_DTYPE* lookup_table,
+                                         QLinearSoftmax::EXP_OUT_DTYPE y_scale,
                                          int8_t yzp,
                                          onnxruntime::concurrency::ThreadPool* thread_pool) {
   using onnxruntime::TensorOpCost;
@@ -214,14 +219,14 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
         for (; first < last; first++) {
           // reduceMaxInt8
           int8_t xmax = *std::max_element(x_t, x_t + D);
-          const size_t adjustment = 127 - xmax;
-          const uint32_t* shifted_lookuptable = lookup_table;
+          const int32_t adjustment = int32_t(127) - xmax;
+          const QLinearSoftmax::EXP_OUT_DTYPE* shifted_lookuptable = lookup_table;
           size_t elements_n = D;
           // reduceSumUin8ToUint32: need speedup
-          uint32_t vsum = 0;
+          QLinearSoftmax::EXP_OUT_DTYPE vsum = 0;
           const int8_t* x_t_cur = x_t;
           do {
-            const size_t vx = uint8_t(adjustment + (*x_t_cur++));
+            const uint8_t vx = uint8_t(adjustment + (*x_t_cur++));
             vsum += shifted_lookuptable[vx];
           } while (--elements_n != 0);
           if (vsum == 0) {
@@ -230,12 +235,11 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
           elements_n = D;
           x_t_cur = x_t;
           // elementwise div
-          const uint32_t vrounding = (vsum >> 1);
           do {
-            const size_t vx = uint8_t(adjustment + (*x_t_cur++));
-            const uint32_t vt = shifted_lookuptable[vx];
+            const uint8_t vx = uint8_t(adjustment + (*x_t_cur++));
+            const QLinearSoftmax::EXP_OUT_DTYPE vt = shifted_lookuptable[vx];
             // simulate round function, and re-quant to Int8
-            const uint32_t vq = ((vt * c_y_scale) + vrounding) / vsum + c_y_zp;
+            const int32_t vq = static_cast<int32_t>(std::nearbyintf(((vt * c_y_scale)) / vsum)) + c_y_zp;
             const int8_t vy = static_cast<int32_t>(vq) > 255 ? static_cast<int8_t>(255) : static_cast<int8_t>(vq);
             *y_t++ = vy;
           } while (--elements_n != 0);
@@ -246,10 +250,11 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
   return Status::OK();
 }
 
-gsl::span<const uint32_t> QLinearSoftmax::GetLookupTable(OpKernelContext* context,
-                                                         gsl::span<uint32_t> lookup_table_span,
-                                                         size_t reduce_len) const {
-  gsl::span<const uint32_t> lookup_table = fixed_lookup_table_;
+gsl::span<const QLinearSoftmax::EXP_OUT_DTYPE> QLinearSoftmax::GetLookupTable(
+    OpKernelContext* context,
+    gsl::span<EXP_OUT_DTYPE> lookup_table_span,
+    size_t reduce_len) const {
+  gsl::span<const EXP_OUT_DTYPE> lookup_table = fixed_lookup_table_;
   if (fixed_lookup_table_.size() == 0) {
     lookup_table = lookup_table_span;
     const float X_scale = *(context->Input<Tensor>(1)->Data<float>());
@@ -260,11 +265,11 @@ gsl::span<const uint32_t> QLinearSoftmax::GetLookupTable(OpKernelContext* contex
 
 // opset-12 and below
 Status QLinearSoftmax::ComputeInternal(OpKernelContext* context, const Tensor& input, Tensor& output,
-                                       gsl::span<const uint32_t> lookup_table, int axis,
+                                       gsl::span<const EXP_OUT_DTYPE> lookup_table, int axis,
                                        concurrency::ThreadPool* thread_pool) const {
   const auto* Y_scale_tensor = context->Input<Tensor>(3);
   const auto* Y_zp_tensor = context->Input<Tensor>(4);
-  const auto Y_scale = gsl::narrow_cast<uint32_t>(1.0F / (*(Y_scale_tensor->Data<float>())));
+  const QLinearSoftmax::EXP_OUT_DTYPE Y_scale = std::floor(1.0F / (*(Y_scale_tensor->Data<float>())));
   const auto& X_shape = input.Shape();
   const size_t N = X_shape.SizeToDimension(axis);
   const size_t D = X_shape.SizeFromDimension(axis);
@@ -286,7 +291,7 @@ Status QLinearSoftmax::ComputeInternal(OpKernelContext* context, const Tensor& i
 // opset-13 and above
 Status QLinearSoftmax::ComputeImplOpset13(OpKernelContext* context,
                                           const Tensor& input, Tensor& output,
-                                          gsl::span<const uint32_t> lookup_table,
+                                          gsl::span<const EXP_OUT_DTYPE> lookup_table,
                                           concurrency::ThreadPool* thread_pool) const {
   const auto& X_shape = input.Shape();
   size_t rank = X_shape.NumDimensions();

@@ -17,9 +17,10 @@
 
 #pragma once
 
-#include <algorithm>
-#include <cstring>
 #include <climits>
+#include <cstring>
+#include <algorithm>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -28,8 +29,8 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
-#include <chrono>
 
 #include "core/common/code_location.h"
 #include "core/common/exceptions.h"
@@ -41,10 +42,6 @@
 namespace onnxruntime {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
-
-// Using statements for common classes that we refer to in ONNXRuntime very often.
-// TODO(Task:137) Remove 'using' statements from header files
-using common::Status;
 
 #ifdef _WIN32
 #define ORT_UNUSED_PARAMETER(x) (x)
@@ -95,11 +92,10 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #endif
 
 // Capture where a message is coming from. Use __FUNCTION__ rather than the much longer __PRETTY_FUNCTION__
-#define ORT_WHERE \
-  ::onnxruntime::CodeLocation(__FILE__, __LINE__, __FUNCTION__)
+#define ORT_WHERE ::onnxruntime::CodeLocation(__FILE__, __LINE__, static_cast<const char*>(__FUNCTION__))
 
 #define ORT_WHERE_WITH_STACK \
-  ::onnxruntime::CodeLocation(__FILE__, __LINE__, __PRETTY_FUNCTION__, ::onnxruntime::GetStackTrace())
+  ::onnxruntime::CodeLocation(__FILE__, __LINE__, static_cast<const char*>(__PRETTY_FUNCTION__), ::onnxruntime::GetStackTrace())
 
 #ifdef ORT_NO_EXCEPTIONS
 
@@ -226,25 +222,25 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(TypeName);           \
   ORT_DISALLOW_MOVE(TypeName)
 
-#define ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id)                                      \
-  do {                                                                                       \
-    auto _status = (expr);                                                                   \
-    if ((!_status.IsOK())) {                                                                 \
-      ::onnxruntime::LogRuntimeError(session_id, _status, __FILE__, __FUNCTION__, __LINE__); \
-      return _status;                                                                        \
-    }                                                                                        \
+#define ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id)                                                                \
+  do {                                                                                                                 \
+    auto _status = (expr);                                                                                             \
+    if ((!_status.IsOK())) {                                                                                           \
+      ::onnxruntime::LogRuntimeError(session_id, _status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__); \
+      return _status;                                                                                                  \
+    }                                                                                                                  \
   } while (0)
 
 #define ORT_RETURN_IF_ERROR_SESSIONID_(expr) ORT_RETURN_IF_ERROR_SESSIONID(expr, session_id_)
 #define ORT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR_SESSIONID(expr, 0)
 
-#define ORT_THROW_IF_ERROR(expr)                                                    \
-  do {                                                                              \
-    auto _status = (expr);                                                          \
-    if ((!_status.IsOK())) {                                                        \
-      ::onnxruntime::LogRuntimeError(0, _status, __FILE__, __FUNCTION__, __LINE__); \
-      ORT_THROW(_status);                                                           \
-    }                                                                               \
+#define ORT_THROW_IF_ERROR(expr)                                                                              \
+  do {                                                                                                        \
+    auto _status = (expr);                                                                                    \
+    if ((!_status.IsOK())) {                                                                                  \
+      ::onnxruntime::LogRuntimeError(0, _status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__); \
+      ORT_THROW(_status);                                                                                     \
+    }                                                                                                         \
   } while (0)
 
 // use this macro when cannot early return
@@ -283,9 +279,10 @@ constexpr size_t kMaxStrLen = 2048;
 // Returns whether `key` is in `container`.
 // Like C++20's map/set contains() member function.
 template <typename Key, typename... OtherContainerArgs,
-          template <typename...> typename AssociativeContainer>
-inline bool Contains(const AssociativeContainer<Key, OtherContainerArgs...>& container, const Key& key) {
-  return container.find(key) != container.end();
+          template <typename...> typename AssociativeContainer,
+          typename LookupKey>
+inline bool Contains(const AssociativeContainer<Key, OtherContainerArgs...>& container, LookupKey&& key) {
+  return container.find(std::forward<LookupKey>(key)) != container.end();
 }
 
 }  // namespace onnxruntime

@@ -30,6 +30,7 @@ void SoftmaxCrossEntropyLossGradImpl(
     const Tin* label,
     const T* weight,
     const TAcc* normalize_factor,
+    const T* bias_data,
     size_t count,
     size_t label_depth,
     bool reduction_none,

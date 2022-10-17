@@ -11,4 +11,4 @@ namespace onnxruntime {
 
 void InitRocBlasGemm(py::module mod);
 
-}
+}  // namespace onnxruntime

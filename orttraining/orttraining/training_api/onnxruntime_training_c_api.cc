@@ -9,14 +9,16 @@
 #include "orttraining/training_api/include/checkpoint.h"
 #include "orttraining/training_api/include/training_session.h"
 #include "orttraining/training_api/include/ort_training_apis.h"
+#include "core/common/string_helper.h"
 
 namespace {
 
 std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>> CreateProviders(
     const std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>>& provider_factories) {
   std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>> execution_providers;
+  execution_providers.reserve(provider_factories.size());
   for (const auto& factory : provider_factories) {
-    execution_providers.emplace_back(std::move(factory->CreateProvider()));
+    execution_providers.emplace_back(factory->CreateProvider());
   }
 
   return execution_providers;
@@ -60,20 +62,40 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::CreateTrainingSession, _In_ const OrtEnv* e
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainModeOutputCount, _In_ const OrtTrainingSession* sess,
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelOutputCount, _In_ const OrtTrainingSession* sess,
                     _Out_ size_t* out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
-  *out = session->GetTrainModeOutputCount();
+  *out = session->GetTrainingModelOutputCount();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModeOutputCount, _In_ const OrtTrainingSession* sess,
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputCount, _In_ const OrtTrainingSession* sess,
                     _Out_ size_t* out) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
-  *out = session->GetEvalModeOutputCount();
+  *out = session->GetEvalModelOutputCount();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetTrainingModelOutputName, _In_ const OrtSession* sess, size_t index,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  std::string name = session->GetTrainingModelOutputName(index);
+  *output = onnxruntime::StrDup(name, allocator);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::TrainingSessionGetEvalModelOutputName, _In_ const OrtSession* sess, size_t index,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** output) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  std::string name = session->GetEvalModelOutputName(index);
+  *output = onnxruntime::StrDup(name, allocator);
   return nullptr;
   API_IMPL_END
 }
@@ -195,6 +217,16 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SetLearningRate, _Inout_ OrtTrainingSession
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::GetLearningRate, _Inout_ OrtTrainingSession* sess,
+                    _Out_ float* learning_rate) {
+  API_IMPL_BEGIN
+
+  auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
+  *learning_rate = session->GetLearningRate();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtTrainingApis::OptimizerStep, _Inout_ OrtTrainingSession* sess,
                     _In_opt_ const OrtRunOptions* run_options) {
   API_IMPL_BEGIN
@@ -210,35 +242,21 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::OptimizerStep, _Inout_ OrtTrainingSession* 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtTrainingApis::RegisterLRScheduler, _Inout_ OrtTrainingSession* sess,
-                    _In_ void* lr_scheduler_parameters, _In_ enum OrtLRSchedulerType lr_scheduler_type,
-                    _In_opt_ const float* initial_lr) {
+ORT_API_STATUS_IMPL(OrtTrainingApis::RegisterLinearLRScheduler, _Inout_ OrtTrainingSession* sess,
+                    _In_ const int64_t warmup_step_count,
+                    _In_ const int64_t total_step_count,
+                    _In_ const float initial_lr) {
   API_IMPL_BEGIN
 
   OrtStatus* status = nullptr;
 
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
-
-  if (!lr_scheduler_parameters) {
-    return OrtApis::CreateStatus(ORT_FAIL, "The provided learning rate scheduler parameters is a nullptr.");
-  }
-
-  switch (lr_scheduler_type) {
-    case OrtLRSchedulerType::LinearLRScheduler: {
-      auto parameters = reinterpret_cast<OrtLinearLRSchedulerParameters*>(lr_scheduler_parameters);
-      ORT_API_RETURN_IF_STATUS_NOT_OK(
-          session->RegisterScheduler([&parameters](auto optimizer) {
-            return std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
-                optimizer, parameters->warmup_step_count, parameters->total_step_count);
-          },
-                                     initial_lr ? std::optional<float>(*initial_lr) : std::nullopt));
-      break;
-    }
-    default: {
-      status = OrtApis::CreateStatus(ORT_FAIL, "Could not decipher the OrtLRSchedulerType from the given argument.");
-      break;
-    }
-  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      session->RegisterScheduler([=](auto optimizer) {
+        return std::make_unique<onnxruntime::training::api::LinearLRScheduler>(
+            optimizer, warmup_step_count, total_step_count);
+      },
+                                 std::optional<float>(initial_lr)));
 
   return status;
   API_IMPL_END
@@ -278,6 +296,41 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::SaveCheckpoint, _In_ const ORTCHAR_T* check
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtTrainingApis::GetParametersSize, _Inout_ OrtTrainingSession* sess,
+                    _Out_ size_t* out, bool trainable_only) {
+  API_IMPL_BEGIN
+  auto session = reinterpret_cast<const onnxruntime::training::api::TrainingSession*>(sess);
+  *out = session->GetParametersSize(trainable_only);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::CopyParametersToBuffer, _Inout_ OrtTrainingSession* sess,
+                    _Inout_ OrtValue* parameters_buffer, bool trainable_only) {
+  API_IMPL_BEGIN
+  if (parameters_buffer == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "parameters_buffer is null.");
+  }
+  auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CopyParametersToBuffer(*parameters_buffer, trainable_only));
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtTrainingApis::CopyBufferToParameters, _Inout_ OrtTrainingSession* sess,
+                    _Inout_ OrtValue* parameters_buffer, bool trainable_only) {
+  API_IMPL_BEGIN
+  if (parameters_buffer == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "parameters_buffer is null.");
+  }
+  auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->CopyBufferToParameters(*parameters_buffer, trainable_only));
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(void, OrtTrainingApis::ReleaseTrainingSession, _Frees_ptr_opt_ OrtTrainingSession* session) {
   delete reinterpret_cast<onnxruntime::training::api::TrainingSession*>(session);
 }
@@ -287,18 +340,27 @@ ORT_API(void, OrtTrainingApis::ReleaseCheckpointState, _Frees_ptr_opt_ OrtCheckp
 }
 
 static constexpr OrtTrainingApi ort_training_api = {
+    // NOTE: The C# bindings depend on the API order within this struct. Since Training APIs are not officially
+    // released, it is OK to change the order here, however a corresponding matching change should also be done in the
+    // "OrtTrainingApi" struct in NativeTrainingMethods.shared.cs
     &OrtTrainingApis::LoadCheckpoint,
     &OrtTrainingApis::SaveCheckpoint,
     &OrtTrainingApis::CreateTrainingSession,
-    &OrtTrainingApis::TrainingSessionGetTrainModeOutputCount,
-    &OrtTrainingApis::TrainingSessionGetEvalModeOutputCount,
+    &OrtTrainingApis::TrainingSessionGetTrainingModelOutputCount,
+    &OrtTrainingApis::TrainingSessionGetEvalModelOutputCount,
+    &OrtTrainingApis::TrainingSessionGetTrainingModelOutputName,
+    &OrtTrainingApis::TrainingSessionGetEvalModelOutputName,
     &OrtTrainingApis::ResetGrad,
     &OrtTrainingApis::TrainStep,
     &OrtTrainingApis::EvalStep,
     &OrtTrainingApis::SetLearningRate,
+    &OrtTrainingApis::GetLearningRate,
     &OrtTrainingApis::OptimizerStep,
-    &OrtTrainingApis::RegisterLRScheduler,
+    &OrtTrainingApis::RegisterLinearLRScheduler,
     &OrtTrainingApis::SchedulerStep,
+    &OrtTrainingApis::GetParametersSize,
+    &OrtTrainingApis::CopyParametersToBuffer,
+    &OrtTrainingApis::CopyBufferToParameters,
     &OrtTrainingApis::ReleaseTrainingSession,
     &OrtTrainingApis::ReleaseCheckpointState,
 };

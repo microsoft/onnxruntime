@@ -14,11 +14,6 @@ const std::string onnxruntime::python::SessionObjectInitializer::default_logger_
 std::string openvino_device_type;
 #endif
 
-#ifdef USE_NUPHAR
-// TODO remove deprecated global config
-std::string nuphar_settings;
-#endif
-
 // TODO remove deprecated global config
 OrtDevice::DeviceId cuda_device_id = 0;
 // TODO remove deprecated global config

@@ -46,12 +46,12 @@ Refer to the following links for development information:
 
 #### WebAssembly backend
 
-ONNX Runtime Web currently support all operators in [ai.onnx](https://github.com/onnx/onnx/blob/master/docs/Operators.md) and [ai.onnx.ml](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md).
+ONNX Runtime Web currently support all operators in [ai.onnx](https://github.com/onnx/onnx/blob/main/docs/Operators.md) and [ai.onnx.ml](https://github.com/onnx/onnx/blob/main/docs/Operators-ml.md).
 
 #### WebGL backend
 
-ONNX Runtime Web currently supports a subset of operators in [ai.onnx](https://github.com/onnx/onnx/blob/master/docs/Operators.md) operator set. See [operators.md](./docs/operators.md) for a complete, detailed list of which ONNX operators are supported by WebGL backend.
+ONNX Runtime Web currently supports a subset of operators in [ai.onnx](https://github.com/onnx/onnx/blob/main/docs/Operators.md) operator set. See [operators.md](./docs/operators.md) for a complete, detailed list of which ONNX operators are supported by WebGL backend.
 
 ## License
 
-License information can be found [here](https://github.com/microsoft/onnxruntime/blob/master/README.md#license).
+License information can be found [here](https://github.com/microsoft/onnxruntime/blob/main/README.md#license).

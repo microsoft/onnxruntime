@@ -33,6 +33,7 @@ REGISTER_GRADIENT_KERNEL_TYPED(float, float, float)
 REGISTER_GRADIENT_KERNEL_TYPED(double, double, double)
 REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16, float, MLFloat16)
 REGISTER_GRADIENT_KERNEL_TYPED(float, float, MLFloat16)
+REGISTER_GRADIENT_KERNEL_TYPED(MLFloat16, float, float)
 REGISTER_GRADIENT_KERNEL_TYPED(BFloat16, float, BFloat16)
 
 template <typename T, typename U, typename V, bool simplified>
@@ -80,10 +81,10 @@ Status LayerNormGrad<T, U, V, simplified>::ComputeInternal(OpKernelContext* p_op
   }
 
   #ifndef USE_ROCM
-  const int part_size = 16;
+  constexpr int part_size = 16;
   #else
   // Optimization for ROCm MI100
-  const int part_size = 64;
+  constexpr int part_size = 64;
   #endif
   auto part_grad_gamma = GetScratchBuffer<CudaU>(part_size * n2);
   auto part_grad_beta = GetScratchBuffer<CudaU>(part_size * n2);
@@ -135,10 +136,10 @@ Status InvertibleLayerNormGrad<T, U, V>::ComputeInternal(OpKernelContext* p_op_k
   auto bias_grad_data = reinterpret_cast<CudaV*>(bias_grad->template MutableData<V>());
 
   #ifndef USE_ROCM
-  const int part_size = 16;
+  constexpr int part_size = 16;
   #else
   // Optimization for ROCm MI100
-  const int part_size = 64;
+  constexpr int part_size = 64;
   #endif
   auto part_grad_gamma = GetScratchBuffer<CudaU>(part_size * n2);
   auto part_grad_beta = GetScratchBuffer<CudaU>(part_size * n2);

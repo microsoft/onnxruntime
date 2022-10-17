@@ -72,6 +72,9 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <DebugType>portable</DebugType>
 
+    <!-- Training build property. With Visual Studio, change to true to enable. -->
+    <OnDeviceTraining Condition="'$(OnDeviceTraining)' == ''">false</OnDeviceTraining>
+
     <!--- The package name is always hardcoded as the package created by this project only contains managed assemblies -->
     <!--- The parameter OrtPackageId is only used for some conditional logic below -->    
     <PackageId>Microsoft.ML.OnnxRuntime.Managed</PackageId>
@@ -174,6 +177,14 @@
 
   <PropertyGroup Condition="'$(IsXamarinTarget)'=='true'">
     <OrtConstants>$(OrtConstants);__XAMARIN__</OrtConstants>
+  </PropertyGroup>
+
+  <!-- Enable training APIs for the build. The native package must be
+       a training build with build flags 'enable_training' and
+       'enable_training_on_device' set.
+  -->
+  <PropertyGroup Condition="'$(OnDeviceTraining)' == 'true'">
+    <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_ON_DEVICE__</OrtConstants>
   </PropertyGroup>
 
   <PropertyGroup>

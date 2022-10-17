@@ -4,8 +4,8 @@ resources:
     type: Github
     endpoint: Microsoft
     name: pypa/manylinux
-    ref: a8099af1b3e25f0489717ad9c4f9a2e25a8c5b36
-    
+    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+
 jobs:
 - job: Linux_Build
   timeoutInMinutes: 120
@@ -74,7 +74,6 @@ jobs:
          mkdir $(Build.BinariesDirectory)/requirements_torch_cpu/
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
-         ln -sf /data/models $(Build.BinariesDirectory)
          cd $(Build.SourcesDirectory)/java
          /usr/local/gradle/bin/gradle "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"
 

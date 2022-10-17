@@ -4,7 +4,7 @@
 #include "core/providers/cpu/ml/binarizer.h"
 #include <cmath>
 /**
-https://github.com/onnx/onnx/blob/master/onnx/defs/traditionalml/defs.cc
+https://github.com/onnx/onnx/blob/main/onnx/defs/traditionalml/defs.cc
 
 ONNX_OPERATOR_SCHEMA(Binarizer)
 .SetDomain("ai.onnx.ml")

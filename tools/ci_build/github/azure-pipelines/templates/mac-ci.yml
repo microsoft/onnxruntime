@@ -13,7 +13,7 @@ jobs:
 - job: ${{ parameters.JobName }}
   workspace:
     clean: all
-  timeoutInMinutes:  150
+  timeoutInMinutes:  180
   pool:
     vmImage: 'macOS-11'
   variables:
@@ -47,13 +47,7 @@ jobs:
         sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
         ${{ parameters.BuildCommand }}
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
-    - task: PublishTestResults@2
-      displayName: 'Publish unit test results'
-      inputs:
-        testResultsFiles: '**/*.results.xml'
-        searchFolder: '$(Build.BinariesDirectory)'
-        testRunTitle: 'Unit Test Run'
-      condition: succeededOrFailed()
+
     - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
       - script: |
          ${{ parameters.NuPackScript }}

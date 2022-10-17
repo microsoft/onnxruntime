@@ -1,4 +1,4 @@
-from ..quant_utils import QuantizedValue, QuantizedValueType
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -26,11 +26,11 @@ class GatherQuant(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [0])
+        ) = self.quantizer.quantize_activation(node, [0])
         if quantized_input_names is None:
             return super().quantize()
 
-        gather_new_output = node.output[0] + "_quantized"
+        gather_new_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
 
         # Create an entry for this quantized value
         q_output = QuantizedValue(
@@ -58,7 +58,7 @@ class QDQGather(QDQOperatorBase):
         assert node.op_type == "Gather"
 
         if self.quantizer.is_valid_quantize_weight(node.input[0]) or self.quantizer.force_quantize_no_input_check:
-            self.quantizer.quantize_tensor(node.input[0])
-            self.quantizer.quantize_tensor(node.output[0], node.input[0])
+            self.quantizer.quantize_activation_tensor(node.input[0])
+            self.quantizer.quantize_activation_tensor(node.output[0], node.input[0])
         elif self.quantizer.is_tensor_quantized(node.input[0]):
-            self.quantizer.quantize_tensor(node.output[0], node.input[0])
+            self.quantizer.quantize_activation_tensor(node.output[0], node.input[0])

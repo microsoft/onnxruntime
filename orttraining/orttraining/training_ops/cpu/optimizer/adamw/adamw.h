@@ -5,7 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-
+#include "core/providers/cpu/tensor/utils.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
 
 namespace onnxruntime {

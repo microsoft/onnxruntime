@@ -26,12 +26,13 @@ static int GetVersionForDomain(const std::string& domain, const M<std::string, i
   return it->second;
 }
 
-std::unique_ptr<ONNX_NAMESPACE::OpSchema>
-CreateSchema(const Graph& graph,
-             const IndexedSubGraph& nodes_to_fuse) {
+std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
+    const Graph& graph,
+    const IndexedSubGraph& nodes_to_fuse, bool allow_aggregated_tensor_type) {
   const auto* meta_def = nodes_to_fuse.GetMetaDef();
-  auto op_schema = std::make_unique<ONNX_NAMESPACE::OpSchema>();
-  op_schema->SetName(meta_def->name);
+
+  using ONNX_NAMESPACE::OpSchema;
+  auto op_schema = std::make_unique<OpSchema>(meta_def->name, __FILE__, __LINE__);
   op_schema->SetDomain(meta_def->domain);
   op_schema->SetDoc(meta_def->doc_string);
   op_schema->SinceVersion(meta_def->since_version);
@@ -40,20 +41,34 @@ CreateSchema(const Graph& graph,
     op_schema->TypeAndShapeInferenceFunction(meta_def->type_and_shape_inference_function);
   }
 
-  int i = 0;
+  if (allow_aggregated_tensor_type) {
+    // The generated schema will use the same type constraint for all inputs and outputs,
+    // and that type constraint will match all tensor types.
+    // Due to this, a user of this style of schema must manually check whether any applicable type constraints
+    // for each input or output are satisfied prior to creating a node that uses this schema
+    //
+    op_schema->TypeConstraint("TAggregatedTypes", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
+                              "all_tensor_types_with_bfloat");
+  }
 
-  for (auto& input : meta_def->inputs) {
-    auto input_arg = graph.GetNodeArg(input);
+  int i = 0;
+  for (const auto& input : meta_def->inputs) {
+    const auto* input_arg = graph.GetNodeArg(input);
     // inputs must have a type. can be inferred for outputs.
     ORT_ENFORCE(input_arg->Type() != nullptr);
-    op_schema->Input(i, input, "", *input_arg->Type());
-    ++i;
+    op_schema->Input(i, input, "",
+                     allow_aggregated_tensor_type ? "TAggregatedTypes" : *input_arg->Type(),
+                     OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_aggregated_tensor_type);
+    i++;
   }
+
   i = 0;
-  for (auto& output : meta_def->outputs) {
-    auto output_arg = graph.GetNodeArg(output);
-    op_schema->Output(i, output, "", *output_arg->Type());
-    ++i;
+  for (const auto& output : meta_def->outputs) {
+    const auto* output_arg = graph.GetNodeArg(output);
+    op_schema->Output(i, output, "",
+                      allow_aggregated_tensor_type ? "TAggregatedTypes" : *output_arg->Type(),
+                      OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_aggregated_tensor_type);
+    i++;
   }
   op_schema->Finalize();
 
@@ -99,17 +114,29 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 
   std::function<void(const ONNX_NAMESPACE::NodeProto&)> process_node = [&](const ONNX_NAMESPACE::NodeProto& node) {
     auto it = opset_imports.find(node.domain());
-    ORT_ENFORCE(it != opset_imports.end(), "No opset registered for domain " + node.domain() + " in function opset imports.");
+    ORT_ENFORCE(it != opset_imports.end(),
+                "No opset registered for domain " + node.domain() + " in function opset imports.");
     int domain_version = it->second;
-    ORT_ENFORCE(domain_version != -1, "No opset registered for domain " + node.domain() + " in function opset imports.");
-    const auto node_op_schema =
-        schema_registry->GetSchema(node.op_type(), domain_version, node.domain());
+    ORT_ENFORCE(domain_version != -1,
+                "No opset registered for domain " + node.domain() + " in function opset imports.");
+
+    const auto* node_op_schema = schema_registry->GetSchema(node.op_type(), domain_version, node.domain());
+    int variadic_arg_idx = -1;
     for (int i = 0; i < node.input_size(); ++i) {
       auto& in_name = node.input().Get(i);
       auto iter = input_name_idx_map.find(in_name);
       if (iter != input_name_idx_map.end()) {
         int idx = iter->second;
-        std::string type_str = node_op_schema ? node_op_schema->inputs().at(i).GetTypeStr() + "in" + std::to_string(idx) : "Tin" + std::to_string(idx);
+        // if we have hit a variadic arg it is the last input in the schema, so we need to use that index not i.
+        auto schema_idx = variadic_arg_idx != -1 ? variadic_arg_idx : i;
+
+        std::string type_str;
+        if (node_op_schema) {
+          type_str = node_op_schema->inputs().at(schema_idx).GetTypeStr() + "in" + std::to_string(idx);
+        } else {
+          type_str = "Tin" + std::to_string(idx);
+        }
+
         input_types_list[idx] = std::make_pair(in_name, type_str);
         if (!type_constraint_map.count(type_str)) {
           // If schema is available for the node then get the allowed types from the schema
@@ -118,7 +145,7 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
           // the requested types.
           auto& dest_types = type_constraint_map[type_str];
           if (node_op_schema) {
-            const auto& types = node_op_schema->inputs().at(i).GetTypes();
+            const auto& types = node_op_schema->inputs().at(schema_idx).GetTypes();
             dest_types.reserve(dest_types.size() + types.size());
             for (const auto* s : types) {
               dest_types.emplace_back(*s);
@@ -130,14 +157,31 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
             }
           }
         }
+
+        // if this is a variadic input there are no more inputs in the schema
+        if (node_op_schema && variadic_arg_idx == -1 &&
+            node_op_schema->inputs().at(schema_idx).GetOption() == OpSchema::FormalParameterOption::Variadic) {
+          variadic_arg_idx = i;
+        }
       }
     }
+
+    variadic_arg_idx = -1;
     for (int i = 0; i < node.output_size(); ++i) {
       auto& out_name = node.output().Get(i);
       auto iter = output_name_idx_map.find(out_name);
       if (iter != output_name_idx_map.end()) {
         int idx = iter->second;
-        std::string type_str = node_op_schema ? node_op_schema->outputs().at(i).GetTypeStr() + "out" + std::to_string(i) : "Tout" + std::to_string(i);
+        // if we have hit a variadic arg it is the last output in the schema, so we need to use that index.
+        auto schema_idx = variadic_arg_idx != -1 ? variadic_arg_idx : i;
+
+        std::string type_str;
+        if (node_op_schema) {
+          type_str = node_op_schema->outputs().at(schema_idx).GetTypeStr() + "out" + std::to_string(idx);
+        } else {
+          type_str = "Tout" + std::to_string(idx);
+        }
+
         output_types_list[idx] = std::make_pair(out_name, type_str);
         if (!type_constraint_map.count(type_str)) {
           // If schema is available for the node then get the allowed types from the schema
@@ -146,7 +190,7 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
           // the requested types.
           auto& dest_types = type_constraint_map[type_str];
           if (node_op_schema) {
-            const auto& types = node_op_schema->outputs().at(i).GetTypes();
+            const auto& types = node_op_schema->outputs().at(schema_idx).GetTypes();
             dest_types.reserve(dest_types.size() + types.size());
             for (auto* data_type : types) {
               dest_types.emplace_back(*data_type);
@@ -157,6 +201,12 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
               dest_types.emplace_back(data_type);
             }
           }
+        }
+
+        // if this is a variadic output there are no more outputs in the schema
+        if (node_op_schema && variadic_arg_idx == -1 &&
+            node_op_schema->outputs().at(schema_idx).GetOption() == OpSchema::FormalParameterOption::Variadic) {
+          variadic_arg_idx = i;
         }
       }
     }
@@ -278,7 +328,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
 }
 
 class Inliner {
-private:
+ private:
   std::string prefix;
   const onnxruntime::NodeAttributes& attr_map;
   std::vector<InlinedHashMap<std::string, std::string>> rename_scopes;
@@ -359,7 +409,10 @@ private:
         // if the call-node contains the attribute. Otherwise, this attribute must be removed.
         auto entry = attr_map.find(attr.ref_attr_name());
         if (entry != attr_map.cend()) {
+          // Copy value of attribute, but retain original name:
+          std::string name = attr.name();
           attr = entry->second;
+          attr.set_name(name);
         } else {
           attr_iter = attributes.erase(attr_iter);
           continue;
@@ -369,7 +422,7 @@ private:
       if (attr.has_g()) {
         transform(*attr.mutable_g());
       }
-      for (auto& graph: *attr.mutable_graphs())
+      for (auto& graph : *attr.mutable_graphs())
         transform(graph);
       ++attr_iter;
     }
@@ -380,6 +433,8 @@ private:
     rename_scopes.emplace_back();
     for (auto& x : *graph.mutable_input())
       make_unique(*x.mutable_name());
+    for (auto& init : *graph.mutable_initializer())
+      make_unique(*init.mutable_name());
     for (auto& y : *graph.mutable_output())
       make_unique(*y.mutable_name());
     for (auto& n : *graph.mutable_node())
@@ -387,7 +442,7 @@ private:
     rename_scopes.pop_back();
   }
 
-public:
+ public:
   // The main specialization method: specialize a FunctionProto for a particular call-site.
   static void specialize(const NodeProto& callnode, FunctionProto& callee, const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
     Inliner inliner(unique_prefix, attr_map);

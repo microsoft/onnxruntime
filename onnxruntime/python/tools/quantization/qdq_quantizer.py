@@ -30,15 +30,17 @@ from .registry import CreateQDQQuantizer
 
 
 class QDQQuantTensorType(Enum):
-    NORMAL = 0
-    SHARE_PARAM = 1
+    ACTIVATION = 0
+    WEIGHT = 1
+    BIAS = 2
 
 
 class QDQTensorQuantInfo:
-    def __init__(self, tensor_type=QDQQuantTensorType.NORMAL, quant_para_provider=None, axis=None):
+    def __init__(self, tensor_type=QDQQuantTensorType.ACTIVATION, quant_para_provider=None, axis=None):
         self.tensor_type = tensor_type
         self.quant_para_provider = quant_para_provider
         self.axis = axis
+        self.is_shared = quant_para_provider is not None
 
 
 class QDQQuantizer(ONNXQuantizer):
@@ -50,7 +52,7 @@ class QDQQuantizer(ONNXQuantizer):
         mode,
         static,
         weight_qType,
-        input_qType,
+        activation_qType,
         tensors_range,
         nodes_to_quantize,
         nodes_to_exclude,
@@ -65,7 +67,7 @@ class QDQQuantizer(ONNXQuantizer):
             mode,
             static,
             weight_qType,
-            input_qType,
+            activation_qType,
             tensors_range,
             nodes_to_quantize,
             nodes_to_exclude,
@@ -84,8 +86,8 @@ class QDQQuantizer(ONNXQuantizer):
         # So, we don't recommend to add QDQ to node's output under such condition.
         self.op_types_to_exclude_output_quantization = (
             []
-            if "OpTypesToExcludeOutputQuantizatioin" not in extra_options
-            else extra_options["OpTypesToExcludeOutputQuantizatioin"]
+            if "OpTypesToExcludeOutputQuantization" not in extra_options
+            else extra_options["OpTypesToExcludeOutputQuantization"]
         )
 
         # We do quantization on Dequantizelinear's input to remove Quantizelinear for weight as an optimization.
@@ -131,27 +133,50 @@ class QDQQuantizer(ONNXQuantizer):
 
         return False
 
-    def quantize_tensor(self, tensor_name, quant_sharing_param=None):
+    def __quantize_tensor(self, tensor_name, quant_sharing_param=None, tensor_type=QDQQuantTensorType.ACTIVATION):
         """
         Quantize tensors. If quant_param_tensor is not None, tensor with name tensor_name will be quantized with same
         quantization parameters as tensor quant_param_tensor
-        :param tensor_name: name of the tensor to quantize
-        :param quant_sharing_param: name of the tensor that provides quantization parameter
+
+        Args:
+            tensor_name: name of the tensor to quantize
+            quant_sharing_param: name of the tensor that provides quantization parameter
+            tensor_type: QDQQuantTensorType default ACTIVATION
         """
         if self._is_tensor_quantizable(tensor_name):
             if quant_sharing_param:
                 self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo(
-                    tensor_type=QDQQuantTensorType.SHARE_PARAM, quant_para_provider=quant_sharing_param
+                    tensor_type=tensor_type, quant_para_provider=quant_sharing_param
                 )
             elif tensor_name not in self.tensors_to_quantize:
-                self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo()
+                self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo(tensor_type=tensor_type)
 
-    def quantize_tensor_per_channel(self, tensor_name, axis):
+    def quantize_activation_tensor(self, tensor_name, quant_sharing_param=None):
+        """
+        Quantize Activation Tensor
+        Args:
+            tensor_name: name of the tensor to quantize
+            quant_sharing_param: name of the tensor that provides quantization parameter
+
+        """
+        return self.__quantize_tensor(tensor_name, quant_sharing_param, QDQQuantTensorType.ACTIVATION)
+
+    def quantize_weight_tensor(self, tensor_name, quant_sharing_param=None):
+        """
+        Quantize Weight Tensor
+        Args:
+            tensor_name: name of the tensor to quantize
+            quant_sharing_param: name of the tensor that provides quantization parameter
+
+        """
+        return self.__quantize_tensor(tensor_name, quant_sharing_param, QDQQuantTensorType.WEIGHT)
+
+    def quantize_weight_tensor_per_channel(self, tensor_name, axis):
         weight = find_by_name(tensor_name, self.model.initializer())
         if weight:
             if weight.data_type == onnx_proto.TensorProto.FLOAT:
                 self.tensors_to_quantize[tensor_name] = QDQTensorQuantInfo(
-                    tensor_type=QDQQuantTensorType.NORMAL, axis=axis
+                    tensor_type=QDQQuantTensorType.WEIGHT, axis=axis
                 )
         else:
             logging.warning(
@@ -228,17 +253,19 @@ class QDQQuantizer(ONNXQuantizer):
         )
         self.model.add_nodes([qlinear_node, dequant_node])
 
-    def _add_qdq_pair_for_weight(self, weight_proto, axis=None):
+    def _add_qdq_pair_for_initializer(self, weight_proto, tensor_type, axis=None):
         weight_name = weight_proto.name
-        if axis:
+        if axis is not None:
             if self.opset_version < 13:
                 raise ValueError("Per-Channel support with QDQ format requires onnx opset version 13 or above.")
             q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
                 weight_name, onnx_proto.TensorProto.INT8, axis, keep_float_weight=self.add_qdq_pair_to_weight
             )
         else:
-            q_weight_name, zp_name, scale_name = self.quantize_weight(
-                weight_proto, self.weight_qType, keep_float_weight=self.add_qdq_pair_to_weight
+            q_weight_name, zp_name, scale_name = self.quantize_initializer(
+                weight_proto,
+                self.weight_qType if tensor_type is QDQQuantTensorType.WEIGHT else self.activation_qType,
+                keep_float_weight=self.add_qdq_pair_to_weight,
             )
 
         weight_dequant_output = add_dequant_output_suffix(weight_name)
@@ -335,11 +362,11 @@ class QDQQuantizer(ONNXQuantizer):
             if tensor_name in self.quantized_value_map.keys():
                 continue
 
-            if tensor_info.tensor_type == QDQQuantTensorType.NORMAL:
+            if not tensor_info.is_shared:
                 # Quantize the input
                 initializer = find_by_name(tensor_name, self.model.initializer())
                 if initializer:
-                    self._add_qdq_pair_for_weight(initializer, tensor_info.axis)
+                    self._add_qdq_pair_for_initializer(initializer, tensor_info.tensor_type, tensor_info.axis)
                 else:
                     used_scale, used_zp = self.find_quant_scale_zp(tensor_name)
                     data_found, scale_name, zp_name, _, _ = self._get_quantization_params(

@@ -121,6 +121,20 @@ public class TensorInfo implements ValueInfo {
   }
 
   /**
+   * Constructs a TensorInfo with the specified shape and native type int.
+   *
+   * <p>Called from JNI.
+   *
+   * @param shape The tensor shape.
+   * @param typeInt The native type int.
+   */
+  TensorInfo(long[] shape, int typeInt) {
+    this.shape = shape;
+    this.onnxType = OnnxTensorType.mapFromInt(typeInt);
+    this.type = OnnxJavaType.mapFromOnnxTensorType(this.onnxType);
+  }
+
+  /**
    * Get a copy of the tensor's shape.
    *
    * @return A copy of the tensor's shape.

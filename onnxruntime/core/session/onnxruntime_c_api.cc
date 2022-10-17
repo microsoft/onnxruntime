@@ -36,6 +36,7 @@
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
+#include "core/common/string_helper.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -48,6 +49,14 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 #ifdef ENABLE_TRAINING_ON_DEVICE
 #include "orttraining/training_api/include/onnxruntime_training_c_api.h"
 #include "orttraining/training_api/include/ort_training_apis.h"
+#endif
+
+#ifdef USE_CANN
+#include "core/providers/cann/cann_provider_factory.h"
+#include "core/providers/cann/cann_execution_provider_info.h"
+namespace onnxruntime {
+ProviderInfo_CANN* TryGetProviderInfo_CANN();
+}
 #endif
 
 #ifdef USE_DML
@@ -764,6 +773,12 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input name cannot be empty");
     }
 
+    if (!input[i]) {
+      std::ostringstream ostr;
+      ostr << "NULL input supplied for input " << input_names[i];
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str());
+    }
+
     feed_names[i] = input_names[i];
     auto& ort_value = feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
 
@@ -1259,7 +1274,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetOverridableInitializerTypeInfo, _In_ cons
   return GetNodeDefTypeInfoHelper(sess, get_overridable_initializers_fn, index, out);
 }
 
-static char* StrDup(const std::string& str, _Inout_ OrtAllocator* allocator) {
+char* onnxruntime::StrDup(const std::string& str, OrtAllocator* allocator) {
   char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
   memcpy(output_string, str.c_str(), str.size());
   output_string[str.size()] = '\0';
@@ -2249,8 +2264,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #ifdef ENABLE_TRAINING_ON_DEVICE
   return OrtTrainingApis::GetTrainingApi(version);
-
 #else
+
   ORT_UNUSED_PARAMETER(version);
   fprintf(stderr,
           "Training APIs are not supported with this build. Please build onnxruntime "
@@ -2569,7 +2584,12 @@ static constexpr OrtApi ort_api_1_to_12 = {
 
     // Start of Version 13 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::GetTrainingApi,
-};
+    &OrtApis::SessionOptionsAppendExecutionProvider_CANN,
+    &OrtApis::CreateCANNProviderOptions,
+    &OrtApis::UpdateCANNProviderOptions,
+    &OrtApis::GetCANNProviderOptionsAsString,
+    &OrtApis::ReleaseCANNProviderOptions,
+    &OrtApis::MemoryInfoGetDeviceType};
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
 // If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'

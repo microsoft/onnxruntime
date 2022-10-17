@@ -22,7 +22,7 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
@@ -50,6 +50,9 @@ struct OrtStatus {
 #if OPENVINO_CONFIG_CPU_FP32
 #define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
 
+#elif OPENVINO_CONFIG_CPU_FP16
+#define BACKEND_OPENVINO "-OPENVINO_CPU_FP16"
+
 #elif OPENVINO_CONFIG_GPU_FP32
 #define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
 
@@ -76,12 +79,6 @@ struct OrtStatus {
 #endif
 #else
 #define BACKEND_OPENVINO ""
-#endif
-
-#ifdef USE_NUPHAR
-#define BACKEND_NUPHAR "-NUPHAR"
-#else
-#define BACKEND_NUPHAR ""
 #endif
 
 #ifdef USE_TVM
@@ -121,6 +118,12 @@ struct OrtStatus {
 #define BACKEND_DML ""
 #endif
 
+#if USE_CANN
+#define BACKEND_CANN "-CANN"
+#else
+#define BACKEND_CANN ""
+#endif
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -145,15 +148,6 @@ extern std::string openvino_device_type;
 }
 }  // namespace onnxruntime
 #endif
-#ifdef USE_NUPHAR
-#include "core/providers/nuphar/nuphar_provider_factory.h"
-// TODO remove deprecated global config
-namespace onnxruntime {
-namespace python {
-extern std::string nuphar_settings;
-}
-}  // namespace onnxruntime
-#endif
 #ifdef USE_TVM
 #include "core/providers/tvm/tvm_ep_options.h"
 #endif
@@ -169,6 +163,10 @@ extern std::string nuphar_settings;
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 #endif
+#ifdef USE_CANN
+#include "core/providers/cann/cann_provider_factory.h"
+#include "core/providers/cann/cann_execution_provider_info.h"
+#endif
 
 #ifdef USE_CUDA
 namespace onnxruntime {
@@ -182,6 +180,13 @@ extern bool do_copy_in_default_stream;
 extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info;
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
+}  // namespace onnxruntime
+#endif
+
+#ifdef USE_CANN
+namespace onnxruntime {
+ProviderInfo_CANN* TryGetProviderInfo_CANN();
+ProviderInfo_CANN& GetProviderInfo_CANN();
 }  // namespace onnxruntime
 #endif
 
@@ -475,6 +480,28 @@ void DlpackCapsuleDestructor(PyObject* data);
 
 }  // namespace python
 
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptionsV2* params);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const OrtMIGraphXProviderOptions* params);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
+#ifdef USE_TVM
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);
+#endif
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id,
+                                                                                  const char* export_runtime_module,
+                                                                                  const char* load_runtime_module);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
+    uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t flags);
 
 constexpr const char* kDefaultExecutionProviderEntry = "GetProvider";
 }  // namespace onnxruntime

@@ -11,4 +11,4 @@ namespace onnxruntime {
 
 void InitComposableKernelGemm(py::module mod);
 
-}
+}  // namespace onnxruntime

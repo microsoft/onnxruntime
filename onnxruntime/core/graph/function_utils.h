@@ -14,13 +14,17 @@
 namespace onnxruntime {
 namespace function_utils {
 
-/** Create a OpSchema given a subgraph EP whant to fuse.
-* This is used when EP return fusion in GetCapability implementation.
-* @param graph The graph which host the subgraph.
-* @param nodes_to_fuse The metadata for the subgraph that EP want to fuse.
-*/
+/** Create a OpSchema given a subgraph EP want to fuse.
+ * This is used when EP return fusion in GetCapability implementation.
+ * @param graph The graph which host the subgraph.
+ * @param nodes_to_fuse The metadata for the subgraph that EP want to fuse.
+ * @param allow_aggregated_tensor_type if true, it will use a type constraint called
+ * TAggregatedTypes for all inputs and outputs,
+ * and that this will match all tensor types in the all_tensor_types_with_bfloat list.
+ */
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
-                                                       const IndexedSubGraph& nodes_to_fuse);
+                                                       const IndexedSubGraph& nodes_to_fuse,
+                                                       bool allow_aggregated_tensor_type = false);
 
 /** Create a OpSchema given from a local function in onnx model.
 * @param function_domain The domain of the function.

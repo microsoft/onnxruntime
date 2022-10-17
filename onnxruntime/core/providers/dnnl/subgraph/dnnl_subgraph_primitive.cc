@@ -197,7 +197,7 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlLrn().CreatePrimitive(*this, node);
     // MatMulPostOps is a OneDNN only fusion of MatMul and upto 32 elementwise or binary ops
     // FusedMatMul is a ContribOperator defined here:
-    //    https://github.com/microsoft/onnxruntime/blob/master/docs/ContribOperators.md#com.microsoft.FusedMatMul
+    //    https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#com.microsoft.FusedMatMul
     } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulPostOps" || node.OpType() == "FusedMatMul") {
       DnnlMatMul().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMulInteger" || node.OpType() == "MatMulIntegerPostOps") {

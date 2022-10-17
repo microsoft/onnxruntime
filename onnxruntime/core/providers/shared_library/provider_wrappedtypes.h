@@ -57,6 +57,7 @@ struct AttributeProto final {
   void operator=(const AttributeProto& v) { g_host->AttributeProto__operator_assign(this, v); }
   static void operator delete(void* p) { g_host->AttributeProto__operator_delete(reinterpret_cast<AttributeProto*>(p)); }
 
+  const std::string& name() const { return g_host->AttributeProto__name(this); }
   AttributeProto_AttributeType type() const { return g_host->AttributeProto__type(this); }
   int ints_size() const { return g_host->AttributeProto__ints_size(this); }
   int floats_size() const { return g_host->AttributeProto__floats_size(this); }
@@ -134,6 +135,17 @@ struct ModelProto final {
   ModelProto() = delete;
   ModelProto(const ModelProto&) = delete;
   void operator=(const ModelProto&) = delete;
+};
+
+struct NodeProto final {
+  static std::unique_ptr<NodeProto> Create() { return g_host->NodeProto__construct(); }
+  static void operator delete(void* p) { g_host->NodeProto__operator_delete(reinterpret_cast<NodeProto*>(p)); }
+  void operator=(const NodeProto& v) { g_host->NodeProto__operator_assign(this, v); }
+  int attribute_size() { return g_host->NodeProto__attribute_size(this); }
+  const AttributeProto& attribute(int index) const { return g_host->NodeProto__attribute(this, index); }
+
+  NodeProto() = delete;
+  NodeProto(const NodeProto&) = delete;
 };
 
 struct TensorProto final {
@@ -499,8 +511,6 @@ struct KernelRegistry final {
 
   Status Register(KernelCreateInfo&& create_info) { return g_host->KernelRegistry__Register(this, std::move(create_info)); }
 
-  Status TryFindKernel(const Node& node, ProviderType exec_provider, const KernelCreateInfo** out) const { return g_host->KernelRegistry__TryFindKernel(this, node, exec_provider, out); }
-
   KernelRegistry() = delete;
   KernelRegistry(const KernelRegistry&) = delete;
   void operator=(const KernelRegistry&) = delete;
@@ -574,6 +584,8 @@ struct Node final {
   ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept { return g_host->Node__OutputDefs(this); }
   NodeIndex Index() const noexcept { return g_host->Node__Index(this); }
 
+  std::vector<gsl::not_null<const Graph*>> GetSubgraphs() const noexcept { return g_host->Node__GetSubgraphs(this); }
+
   void ToProto(ONNX_NAMESPACE::NodeProto& proto, bool update_subgraphs = false) const { return g_host->Node__ToProto(this, proto, update_subgraphs); }
 
   const NodeAttributes& GetAttributes() const noexcept { return g_host->Node__GetAttributes(this); }
@@ -646,6 +658,8 @@ struct NodeAttributes final {
   IteratorHolder<NodeAttributes_Iterator, std::pair<const std::string, ONNX_NAMESPACE::AttributeProto>> end() const { return g_host->NodeAttributes__end(this); }
   IteratorHolder<NodeAttributes_Iterator, std::pair<const std::string, ONNX_NAMESPACE::AttributeProto>> find(const std::string& key) const { return g_host->NodeAttributes__find(this, key); }
   void insert(const NodeAttributes& v) { return g_host->NodeAttributes__insert(this, v); }
+  void emplace(const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) { g_host->NodeAttributes__emplace(this, k, v); }
+  void reserve(size_t size) { g_host->NodeAttributes__reserve(this, size); }
 
   NodeAttributes() = delete;
   NodeAttributes(const NodeAttributes&) = delete;
@@ -680,6 +694,12 @@ struct Graph final {
 
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const { return g_host->Graph__GetInitializedTensor(this, tensor_name, value); }
 
+  const Node* ParentNode() const { return g_host->Graph__ParentNode(this); }
+  const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
+  const std::string& Name() const noexcept { return g_host->Graph__Name(this); }
+  const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->Graph__GetInputsIncludingInitializers(this); }
+  bool IsSubgraph() const { return g_host->Graph__IsSubgraph(this); }
+
   PROVIDER_DISALLOW_ALL(Graph)
 };
 
@@ -695,7 +715,9 @@ struct GraphViewer final {
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->GraphViewer__GetNodeArg(this, name); }
 
   bool IsSubgraph() const { return g_host->GraphViewer__IsSubgraph(this); }
+  const Graph& GetGraph() const { return g_host->GraphViewer__GetGraph(this); }
   bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const { return g_host->GraphViewer__IsConstantInitializer(this, name, check_outer_scope); }
+  const Node* ParentNode() const { return g_host->GraphViewer__ParentNode(this); }
 
   int NumberOfNodes() const noexcept { return g_host->GraphViewer__NumberOfNodes(this); }
   int MaxNodeIndex() const noexcept { return g_host->GraphViewer__MaxNodeIndex(this); }

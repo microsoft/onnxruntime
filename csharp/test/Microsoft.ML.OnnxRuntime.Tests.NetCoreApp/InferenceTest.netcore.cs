@@ -213,6 +213,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 #endif
 
+        private static Func<DirectoryInfo, IEnumerable<DirectoryInfo>> getOpsetDirectories = delegate (DirectoryInfo modelsDirInfo)
+        {
+            return modelsDirInfo.EnumerateDirectories("opset*", SearchOption.AllDirectories);
+        };
+
         private static Dictionary<string, string> GetSkippedModels(DirectoryInfo modelsDirInfo)
         {
             var skipModels = new Dictionary<string, string>() {
@@ -229,6 +234,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" },
+                { "cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose" },
                 { "coreml_Imputer-LogisticRegression_sklearn_load_breast_cancer", "Can't determine model file name" },
                 { "mask_rcnn_keras", "Model should be edited to remove the extra outputs" },
                 { "test_strnormalizer_export_monday_casesensintive_lower", "ElementType not currently supported"},
@@ -304,7 +310,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_min_uint16", "node test error"},
                 { "test_adam_multiple", "node test error"},
                 { "test_loop13_seq", "node test error"},
-                { "test_convtranspose_autopad_same", "node test error"},
                 { "test_training_dropout_default_mask", "node test error"},
                 { "test_min_int8", "node test error"},
                 { "test_identity_sequence", "data type not supported"},
@@ -371,7 +376,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var isMlOpsDisabled = (disableMlOpsEnvVar != null) ? disableMlOpsEnvVar.Equals("ON") : false;
             if (isMlOpsDisabled)
             {
-                foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+                foreach (var opsetDir in getOpsetDirectories(modelsDirInfo))
                 {
                     foreach (var modelDir in opsetDir.EnumerateDirectories())
                     {
@@ -413,14 +418,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var modelsDirInfo = new DirectoryInfo(modelsDir);
             var skipModels = GetSkippedModels(modelsDirInfo);
 
-            foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+            foreach (var opsetDir in getOpsetDirectories(modelsDirInfo))
             {
                 //var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
                 foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
                     if (!skipModels.ContainsKey(modelDir.Name))
                     {
-                        yield return new object[] { modelDir.Parent.Name, modelDir.Name };
+                        yield return new object[] { modelDir.Parent.FullName, modelDir.Name };
                     }
                 } //model
             } //opset
@@ -432,15 +437,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var modelsDirInfo = new DirectoryInfo(modelsDir);
             var skipModels = GetSkippedModels(modelsDirInfo);
 
-            foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+            foreach (var opsetDir in getOpsetDirectories(modelsDirInfo))
             {
-                var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
-                foreach (var modelDir in modelRoot.EnumerateDirectories())
+                foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
                     if (skipModels.ContainsKey(modelDir.Name))
                     {
                         //Console.WriteLine("Model {0} is skipped due to the error: {1}", modelDir.FullName, skipModels[modelDir.Name]);
-                        yield return new object[] { modelDir.Parent.Name, modelDir.Name };
+                        yield return new object[] { modelDir.Parent.FullName, modelDir.Name };
                     }
 
                 }
@@ -450,12 +454,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Theory(DisplayName = "TestPreTrainedModels")]
         [MemberData(nameof(GetModelsForTest))]
         [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
-        private void TestPreTrainedModels(string opset, string modelName)
+        private void TestPreTrainedModels(string opsetDir, string modelName)
         {
-            var modelsDir = GetTestModelsDir();
+            var opsetDirInfo = new DirectoryInfo(opsetDir);
+            var opset = opsetDirInfo.Name;
             string onnxModelFileName = null;
 
-            var modelDir = new DirectoryInfo(Path.Combine(modelsDir, opset, modelName));
+            var modelDir = new DirectoryInfo(Path.Combine(opsetDir, modelName));
 
             try
             {

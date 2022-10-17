@@ -41,7 +41,7 @@ target_include_directories(tensorboard PUBLIC $<TARGET_PROPERTY:protobuf::libpro
 target_compile_definitions(tensorboard PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
 
 if(WIN32)
-  target_compile_options(tensorboard PRIVATE /wd4100 /wd4996 /wd4244 /wd4267 /wd4309)
+  target_compile_options(tensorboard PRIVATE /wd4100 /wd4125 /wd4127 /wd4996 /wd4244 /wd4267 /wd4309)
   set_target_properties(tensorboard PROPERTIES FOLDER "External/tensorboard")
 else()
   target_compile_options(tensorboard PRIVATE "-Wno-unused-parameter")

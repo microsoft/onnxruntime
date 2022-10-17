@@ -18,7 +18,7 @@ jobs:
         -t onnxruntime_ortmodule_distributed_tests_image \
         -x " \
           --config RelWithDebInfo \
-          --use_cuda --cuda_version=11.3 --cuda_home=/usr/local/cuda-11.3 --cudnn_home=/usr/local/cuda-11.3 \
+          --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
           --enable_training \
           --enable_training_torch_interop \
           --update --build \

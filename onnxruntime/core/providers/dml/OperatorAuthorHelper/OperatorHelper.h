@@ -18,6 +18,14 @@ std::vector<DimensionType> BroadcastTensorShape(
     gsl::span<const DimensionType> inputShape0,
     gsl::span<const DimensionType> inputShape1);
 
+// This won't allocate extra memory, if required. This expects
+// caller to make the size of all containers to be same
+void BroadcastTensorShapeAndSetStrides(
+    gsl::span<DimensionType> inputShape0,
+    gsl::span<DimensionType> inputStride0,
+    gsl::span<DimensionType> inputShape1,
+    gsl::span<DimensionType> inputStride1);
+
 // Find all the occurrences of a value, and return the array indices (in ascending order).
 //
 // e.g. input values = {2,1,3,1,1,5}
@@ -217,6 +225,18 @@ void MatMulShapeMapping(
     std::vector<DimensionType>& inputShape0,
     std::vector<DimensionType>& inputShape1,
     std::vector<DimensionType>& outputShape);
+
+void FusedMatMulShapeMapping(
+    std::vector<DimensionType>& inputShape0,
+    std::vector<DimensionType>& inputStride0,
+    std::vector<DimensionType>& inputShape1,
+    std::vector<DimensionType>& inputStride1,
+    std::vector<DimensionType>& outputShape);
+
+std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(
+    gsl::span<const uint32_t> sizes, 
+    int32_t transBatch = 0,
+    int32_t transpose = 0);
 
 class GetOutputShapeAsInputShapeHelper
 {
@@ -760,6 +780,15 @@ class MatMulHelper : public MatMulHelperBase
 public:
     template<typename Info_t, typename Shape_t>
     MatMulHelper(const Info_t& info, const Shape_t& shape) : MatMulHelperBase(info, shape, 0, 1) {}
+};
+
+class FusedMatMulHelper
+{
+public:
+    template<typename Info_t, typename Shape_t>
+    FusedMatMulHelper(const Info_t& info, const Shape_t& shape) {}
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
 class QLinearMatMulHelper : public MatMulHelperBase
@@ -1339,6 +1368,8 @@ using ShapeInferenceHelper_BatchNormalization15 = BatchNormalizationHelper;
 
 using ShapeInferenceHelper_LRN = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_LayerNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_LayerNormalization17 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LpNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RNN = RecurrentHelper;
 using ShapeInferenceHelper_GRU = RecurrentHelper;
@@ -1430,6 +1461,7 @@ using ShapeInferenceHelper_Atan = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Affine = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QuantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_DequantizeLinear = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_QLinearSigmoid = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Sign = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_IsNaN = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Erf = GetBroadcastedOutputShapeHelper;
@@ -1519,14 +1551,15 @@ using ShapeInferenceHelper_Range = RangeHelper;
 
 using ShapeInferenceHelper_CastLike15 = GetOutputShapeAsInputShapeHelper;
 
-using ShapeInferenceHelper_FusedConv = ConvHelper;
-using ShapeInferenceHelper_FusedConvTranspose = ConvTransposeHelper;
-using ShapeInferenceHelper_FusedInstanceNormalization = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_FusedBatchNormalization = BatchNormalizationHelper;
-using ShapeInferenceHelper_FusedMeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_FusedGemm = GemmHelper;
-using ShapeInferenceHelper_FusedMatMul = MatMulHelper;
-using ShapeInferenceHelper_FusedAdd = GetBroadcastedOutputShapeHelper;
-using ShapeInferenceHelper_FusedSum = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_DmlFusedConv = ConvHelper;
+using ShapeInferenceHelper_DmlFusedConvTranspose = ConvTransposeHelper;
+using ShapeInferenceHelper_DmlFusedInstanceNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_DmlFusedBatchNormalization = BatchNormalizationHelper;
+using ShapeInferenceHelper_DmlFusedMeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_DmlFusedGemm = GemmHelper;
+using ShapeInferenceHelper_DmlFusedMatMul = MatMulHelper;
+using ShapeInferenceHelper_FusedMatMul = FusedMatMulHelper;
+using ShapeInferenceHelper_DmlFusedAdd = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_DmlFusedSum = GetBroadcastedOutputShapeHelper;
 
 }  // namespace OperatorHelper

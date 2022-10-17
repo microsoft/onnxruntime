@@ -41,9 +41,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
               [&info](const std::string& value_str) -> Status {
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.device_id));
                 int num_devices{};
-                ORT_RETURN_IF_NOT(
-                    CUDA_CALL(cudaGetDeviceCount(&num_devices)),
-                    "cudaGetDeviceCount() failed.");
+                CUDA_RETURN_IF_ERROR(cudaGetDeviceCount(&num_devices));
                 ORT_RETURN_IF_NOT(
                     0 <= info.device_id && info.device_id < num_devices,
                     "Invalid device ID: ", info.device_id,

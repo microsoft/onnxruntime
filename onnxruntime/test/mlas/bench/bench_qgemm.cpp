@@ -29,13 +29,13 @@ void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed) {
 
   const size_t batch = static_cast<size_t>(state.range(3));
   const size_t threads = static_cast<size_t>(state.range(4));
-  
+
   OrtThreadPoolParams tpo;
   tpo.thread_pool_size = int(threads);
   tpo.auto_set_affinity = true;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
-      tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
+                                                 tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
   auto A_holder = RandomVectorUniform<uint8_t>(static_cast<size_t>(M * K * batch), uint8_t(-100), uint8_t(100));
   auto B_holder = RandomVectorUniform<uint8_t>(static_cast<size_t>(N * K * batch), uint8_t(-110), uint8_t(110));
@@ -55,7 +55,6 @@ void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed) {
   gemm_shape.K = static_cast<size_t>(K);
   gemm_shape.AIsSigned = a_is_signed;
   gemm_shape.BIsSigned = b_is_signed;
-
 
   std::vector<MLAS_GEMM_QUANT_DATA_PARAMS> gemm_data_vec(batch);
   for (size_t i = 0; i < batch; i++) {
@@ -81,7 +80,7 @@ void QGEMM(benchmark::State& state, bool pack_b, bool a_is_signed) {
 
 static void QGemmSize(benchmark::internal::Benchmark* b) {
   b->ArgNames(qgemm_arg_names);
-  // Args for  "M", "N", "K", "Batch",
+  // Args for  "M", "N", "K", "Batch", "Threads"
 
   b->Args({512, 32128, 768, 1, 1});
   b->Args({512, 32128, 768, 1, 4});
@@ -112,7 +111,11 @@ static void QGemmSize(benchmark::internal::Benchmark* b) {
   b->Args({512, 64, 512, 12, 6});
 }
 
-BENCHMARK_CAPTURE(QGEMM, PackB, true, false)->Apply(QGemmSize)->UseRealTime();
-BENCHMARK_CAPTURE(QGEMM, NoPackB, false, false)->Apply(QGemmSize)->UseRealTime();
-BENCHMARK_CAPTURE(QGEMM, PackB, true, true)->Apply(QGemmSize)->UseRealTime();
-BENCHMARK_CAPTURE(QGEMM, NoPackB, false, true)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, UnsignedAPackB, true, false)->Apply(QGemmSize)->UseRealTime();
+BENCHMARK_CAPTURE(QGEMM, UnsignedANoPackB, false, false)->Apply(QGemmSize)->UseRealTime();
+#if !defined(MLAS_TARGET_AMD64)
+// QGEMM is not supported for signed A, signed B (Packed) on AMD64 CPU. The
+// benchmark assumes MlasGemmPackBSize return non-zero is not true.
+BENCHMARK_CAPTURE(QGEMM, SignedAPackB, true, true)->Apply(QGemmSize)->UseRealTime();
+#endif
+BENCHMARK_CAPTURE(QGEMM, SignedANoPackB, false, true)->Apply(QGemmSize)->UseRealTime();

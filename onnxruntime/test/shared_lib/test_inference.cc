@@ -112,14 +112,6 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #else
     return;
 #endif
-  } else if (provider_type == 3) {
-#ifdef USE_NUPHAR
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(session_options,
-                                                                      /*allow_unaligned_buffers*/ 1, ""));
-    std::cout << "Running simple inference with nuphar provider" << std::endl;
-#else
-    return;
-#endif
   } else {
     std::cout << "Running simple inference with default provider" << std::endl;
   }
@@ -182,7 +174,6 @@ static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/f
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
-static constexpr PATH_TYPE OPTIONAL_TYPE_GH_11717_MODEL = TSTR("testdata/gh_issue_11717.onnx");
 #if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
 #ifndef DISABLE_CONTRIB_OPS
@@ -237,7 +228,8 @@ TEST(CApiTest, dim_param) {
   // reading 1st dimension only so don't need to malloc int64_t* or const char** values for the Get*Dimensions calls
   int64_t dim_value = 0;
   const char* dim_param = nullptr;
-  in0_ttsi.GetDimensions(&dim_value, 1);
+  auto dims = in0_ttsi.GetShape();
+  if (!dims.empty()) dim_value = dims[0];
   in0_ttsi.GetSymbolicDimensions(&dim_param, 1);
   ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
   ASSERT_EQ(strcmp(dim_param, "n"), 0) << "Expected 'n'. Got: " << dim_param;
@@ -247,7 +239,10 @@ TEST(CApiTest, dim_param) {
   auto num_output_dims = out0_ttsi.GetDimensionsCount();
   ASSERT_EQ(num_output_dims, 1u);
 
-  out0_ttsi.GetDimensions(&dim_value, 1);
+  dim_value = 0;
+  dims = out0_ttsi.GetShape();
+  if (!dims.empty()) dim_value = dims[0];
+  
   out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
   ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
   ASSERT_EQ(strcmp(dim_param, ""), 0);
@@ -1053,16 +1048,6 @@ TEST(CApiTest, io_binding) {
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
 TEST(CApiTest, io_binding_cuda) {
-  struct CudaMemoryDeleter {
-    explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
-      alloc_ = alloc;
-    }
-    void operator()(void* ptr) const {
-      alloc_->Free(ptr);
-    }
-
-    const Ort::Allocator* alloc_;
-  };
 
   Ort::SessionOptions session_options;
 #ifdef USE_TENSORRT
@@ -1080,8 +1065,7 @@ TEST(CApiTest, io_binding_cuda) {
 
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  auto input_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(x_values.size() * sizeof(float)),
-                                                             CudaMemoryDeleter(&cuda_allocator));
+  auto input_data = cuda_allocator.GetAllocation(x_values.size() * sizeof(float));
   ASSERT_NE(input_data.get(), nullptr);
   cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
@@ -1091,8 +1075,7 @@ TEST(CApiTest, io_binding_cuda) {
 
   const std::array<int64_t, 2> expected_y_shape = {3, 2};
   const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
-  auto output_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(expected_y.size() * sizeof(float)),
-                                                              CudaMemoryDeleter(&cuda_allocator));
+  auto output_data = cuda_allocator.GetAllocation(expected_y.size() * sizeof(float));
   ASSERT_NE(output_data.get(), nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory
@@ -1186,17 +1169,6 @@ TEST(CApiTest, cuda_graph) {
                   rel_cuda_options.get()) == nullptr);
 
   // Create IoBinding for inputs and outputs.
-  struct CudaMemoryDeleter {
-    explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
-      alloc_ = alloc;
-    }
-    void operator()(void* ptr) const {
-      alloc_->Free(ptr);
-    }
-
-    const Ort::Allocator* alloc_;
-  };
-
   Ort::Session session(*ort_env, MODEL_URI, session_options);
   Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 
@@ -1206,8 +1178,8 @@ TEST(CApiTest, cuda_graph) {
 
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  auto input_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(x_values.size() * sizeof(float)),
-                                                             CudaMemoryDeleter(&cuda_allocator));
+  auto input_data = cuda_allocator.GetAllocation(x_values.size() * sizeof(float));
+  
   ASSERT_NE(input_data.get(), nullptr);
   cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
@@ -1217,8 +1189,8 @@ TEST(CApiTest, cuda_graph) {
 
   const std::array<int64_t, 2> expected_y_shape = {3, 2};
   std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
-  auto output_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(expected_y.size() * sizeof(float)),
-                                                              CudaMemoryDeleter(&cuda_allocator));
+  auto output_data = cuda_allocator.GetAllocation(expected_y.size() * sizeof(float));
+  
   ASSERT_NE(output_data.get(), nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory
@@ -2012,7 +1984,10 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
 
   char* cuda_options_str = nullptr;
   ASSERT_TRUE(api.GetCUDAProviderOptionsAsString(rel_cuda_options.get(), allocator, &cuda_options_str) == nullptr);
-  std::string s(cuda_options_str, strnlen(cuda_options_str, 2048));
+  std::string s;
+  if (cuda_options_str != nullptr) {
+    s = std::string(cuda_options_str, strnlen(cuda_options_str, 2048));
+  }
   ASSERT_TRUE(s.find("device_id=0") != std::string::npos);
   ASSERT_TRUE(s.find("gpu_mem_limit=1024") != std::string::npos);
   ASSERT_TRUE(s.find("arena_extend_strategy=kSameAsRequested") != std::string::npos);
@@ -2179,7 +2154,8 @@ TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
 // Reduced Ops build doesn't support OptionalHasElement (16) yet
 #if !defined(REDUCED_OPS_BUILD) && !defined(DISABLE_OPTIONAL_TYPE)
 TEST(CApiTest, GH_11717) {
-  const auto* model_path = OPTIONAL_TYPE_GH_11717_MODEL;
+  const auto* model_path = TSTR("testdata/gh_issue_11717.onnx");
+
   Ort::SessionOptions session_options{};
   // Just check if the model loads fine without a segmentation fault
   // in the default CPU EP

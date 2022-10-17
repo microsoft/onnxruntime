@@ -160,7 +160,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Sets a session configuration key-value pair.
  * Any value for a previously set key will be overwritten.
  * The session configuration keys and values are documented here:
- * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
+ * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
  *
  * @param key The key.
  * @param value The value.
@@ -212,7 +212,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Sets a run configuration key-value pair.
  * Any value for a previously set key will be overwritten.
  * The run configuration keys and values are documented here:
- * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h
+ * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h
  *
  * @param key The key.
  * @param value The value.

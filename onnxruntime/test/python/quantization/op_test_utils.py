@@ -130,3 +130,12 @@ def create_clip_node(input_name, output_name, node_name, initializers, min_value
     initializers.append(onnx.numpy_helper.from_array(np.array(min_value, dtype=np.float32), name=clip_min_name))
     initializers.append(onnx.numpy_helper.from_array(np.array(max_value, dtype=np.float32), name=clip_max_name))
     return onnx.helper.make_node("Clip", clip_inputs, clip_outputs, name=clip_name)
+
+
+def generate_random_initializer(initializer_name, tensor_shape, tensor_dtype, mean=0.0, dev=0.3):
+    """
+    Helper function to generate initializers for test inputs
+    """
+    tensor = np.random.normal(mean, dev, tensor_shape).astype(tensor_dtype)
+    init = onnx.numpy_helper.from_array(tensor, initializer_name)
+    return init

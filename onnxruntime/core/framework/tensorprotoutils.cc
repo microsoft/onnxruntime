@@ -494,14 +494,14 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
   return TensorShape(std::move(tensor_shape_vec));
 }
 
-std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+TensorShape GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   const auto& dims = tensor_proto.dims();
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
   for (int i = 0; i < dims.size(); ++i) {
     tensor_shape_vec[i] = dims[i];
   }
 
-  return tensor_shape_vec;
+  return TensorShape(std::move(tensor_shape_vec));
 }
 
 struct UnInitializeParam {
@@ -650,8 +650,8 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                            const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            Tensor& tensor) {
   // Validate tensor compatibility
-  std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
-  if (gsl::make_span(tensor_shape_vec) != tensor.Shape().GetDims()) {
+  TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
+  if (tensor_shape != tensor.Shape()) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "TensorProtoToTensor() tensor shape mismatch!");
   }
   const DataTypeImpl* const source_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
@@ -747,7 +747,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* model_path,
   }
 
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
-  TensorShape tensor_shape{GetTensorShapeFromTensorProto(tensor_proto)};
+  TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::unique_ptr<Tensor> tensorp = std::make_unique<Tensor>(type, tensor_shape, m.GetBuffer(), m.GetAllocInfo());
   if (tensorp->SizeInBytes() > m.GetLen()) {
@@ -798,7 +798,7 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name) {
   // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
-  if constexpr(endian::native != endian::little) {
+  if constexpr (endian::native != endian::little) {
     ORT_THROW("Big endian not supported");
   }
 
@@ -1146,10 +1146,9 @@ static void SetIndices(gsl::span<int64_t> gathered_indices,
   auto* ind_dest = reinterpret_cast<T*>(raw_indices.data());
   size_t dest_index = 0;
   for (auto src_index : gathered_indices) {
-    if constexpr(sizeof(T) == sizeof(int8_t)) {
+    if constexpr (sizeof(T) == sizeof(int8_t)) {
       ind_dest[dest_index] = static_cast<T>(src_index);
-    }
-    else {
+    } else {
       auto* dst = ind_dest + dest_index;
       T v = static_cast<T>(src_index);
       memcpy(dst, &v, sizeof(T));

@@ -91,7 +91,7 @@ void PrepareMask(const int32_t* mask_index,
             p_mask[s_i * all_sequence_length + m_i] += static_cast<T>(-10000.0f);
           }
         }
-        p_mask += sequence_length * all_sequence_length;
+        p_mask += static_cast<size_t>(sequence_length) * all_sequence_length;
       }
     }
 
@@ -99,7 +99,9 @@ void PrepareMask(const int32_t* mask_index,
   }
 
   bool is_raw_attention_mask = (nullptr != mask_index && mask_index_dims.size() == 2);
-  bool has_mask_start_position = (nullptr != mask_index && mask_index_dims.size() == 1 && static_cast<int>(mask_index_dims.at(0)) == 2 * batch_size);
+  bool has_mask_start_position = (nullptr != mask_index &&
+                                  mask_index_dims.size() == 1 &&
+                                  static_cast<int>(mask_index_dims.at(0)) == 2 * batch_size);
 
   for (int b_i = 0; b_i < batch_size; b_i++) {
     // TODO: mask_index can be used in softmax to save some calculation.
@@ -150,7 +152,12 @@ void PrepareMask(const int32_t* mask_index,
 // Concatenate a past state chunk S'xH with input state chunk SxH into present state chunk S*xH
 // Returns a pointer to the start of present state chunk.
 template <typename T>
-T* ConcatStateChunk(const T* past, const T* chunk, T* present, size_t past_chunk_length, size_t present_chunk_length, std::ptrdiff_t i) {
+T* ConcatStateChunk(const T* past,
+                    const T* chunk,
+                    T* present,
+                    size_t past_chunk_length,
+                    size_t present_chunk_length,
+                    std::ptrdiff_t i) {
   T* start = present + i * present_chunk_length;
 
   T* p = start;

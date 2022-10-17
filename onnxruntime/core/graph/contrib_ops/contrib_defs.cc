@@ -1295,7 +1295,8 @@ activation and leaky_relu_alpha.)DOC")
                                     "C",
                                     "Input tensor C. "
                                     "The shape of C should be unidirectional broadcastable to (M, N).",
-                                    "T")
+                                    "T",
+                                    OpSchema::Optional)
                                 .Output(0, "Y", "Output tensor of shape (M, N).", "T")
                                 .TypeConstraint(
                                     "T",
@@ -1755,14 +1756,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(WordConvEmbedding, 1,
                                 .Attr(
                                     "embedding_size",
                                     "Integer representing the embedding vector size for each word."
-                                    "If not provide, use the fileter size of conv weight",
+                                    "If not provide, use the filter size of conv weight",
                                     AttributeProto::INT,
                                     OPTIONAL_VALUE)
                                 .Attr(
                                     "conv_window_size",
                                     "This operator applies convolution to word from left to right with window equal to conv_window_size and stride to 1."
                                     "Take word 'example' for example, with conv_window_size equal to 2, conv is applied to [ex],[xa], [am], [mp]..."
-                                    "If not provide, use the first dimension of conv kernal shape.",
+                                    "If not provide, use the first dimension of conv kernel shape.",
                                     AttributeProto::INT,
                                     OPTIONAL_VALUE)
                                 .Attr(

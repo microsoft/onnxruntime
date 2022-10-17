@@ -1,11 +1,11 @@
 onnx >= 1.8
-numpy
+numpy >= 1.19.0
 coloredlogs
 psutil
 py-cpuinfo
 py3nvml
 packaging
-transformers >= 4.0
+transformers >= 4.18.0
 scipy
 sentencepiece
 

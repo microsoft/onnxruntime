@@ -141,7 +141,6 @@ struct CudnnConvState {
   const void* w_data = nullptr;
   CudnnTensor b_tensor;
   const void* b_data = nullptr;
-  void* b_zero = nullptr;
   CudnnTensor y_tensor;
   Tensor* Y = nullptr;
   void* y_data = nullptr;
@@ -166,13 +165,6 @@ struct CudnnConvState {
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
   OrtMutex mutex;
   IAllocatorUniquePtr<void> memory_for_cudnn_conv_results;
-
-  ~CudnnConvState() {
-    if (b_zero) {
-      CUDA_CALL_THROW(cudaFree(b_zero));
-      b_zero = nullptr;
-    }
-  }
 };
 
 enum : size_t {
@@ -197,7 +189,7 @@ class Conv : public CudaKernel {
     return GetScratchBuffer<void>(s_.workspace_bytes);
   }
 
-  Status UpdateState(OpKernelContext* context, bool bias_expected = false) const;
+  Status UpdateState(OpKernelContext* context) const;
   ConvAttributes conv_attrs_;
   mutable CudnnConvState<cudnnConvolutionFwdAlgoPerf_t> s_;
   constexpr static auto kDefaultConvAlgo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;

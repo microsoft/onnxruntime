@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 #include "orttraining/training_ops/cuda/optimizer/lamb.h"
 #include "orttraining/training_ops/cuda/optimizer/lamb_impl.h"
 
@@ -574,9 +573,9 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     size_t rbs = compute_reduction_buffer_size<CudaT2>(max_tensor_size);
 
     // Enlarge reduction buffer to accomodate multi-tensor reduction kernel as well
-    const int tensor_group_size = 4;  // w, d, w_norm, d_norm
-    const int max_blocks = ChunkGroup<tensor_group_size>::max_block_count;
-    const size_t multitensor_block_reduce_buffer_size = 2 * max_blocks * sizeof(CudaT2);
+    constexpr int tensor_group_size = 4;  // w, d, w_norm, d_norm
+    constexpr int max_blocks = ChunkGroup<tensor_group_size>::max_block_count;
+    constexpr size_t multitensor_block_reduce_buffer_size = 2 * max_blocks * sizeof(CudaT2);
     rbs = std::max(rbs, multitensor_block_reduce_buffer_size);
 
     return rbs;

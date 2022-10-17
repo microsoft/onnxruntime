@@ -10,6 +10,7 @@
 #include <stack>
 #include <queue>
 
+#include "core/common/common.h"
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
 #include "core/common/inlined_containers.h"
@@ -104,7 +105,8 @@ static Status MergeShapeInfo(const std::string& output_name,
       // target.shape() was empty. 'assert' just in case that ever changes.
       assert(utils::HasShape(source) && utils::HasShape(target));
       LOGS(logger, WARNING) << "Error merging shape info for output. '" << output_name
-                            << "' source:" << utils::GetShape(source) << " target:" << utils::GetShape(target)
+                            << "' source:" << utils::GetTensorShapeFromTensorShapeProto(utils::GetShape(source))
+                            << " target:" << utils::GetTensorShapeFromTensorShapeProto(utils::GetShape(target))
                             << ". Falling back to lenient merge.";
       if (utils::HasTensorType(source)) {
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_tensor_type());
@@ -166,6 +168,12 @@ static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
     shape->add_dim()->set_dim_value(dim);
 
   return t;
+}
+
+static std::string GenerateSchemaKey(const IndexedSubGraph& subgraph_ptr) {
+  return MakeString(subgraph_ptr.GetMetaDef()->domain, "_",
+                    subgraph_ptr.GetMetaDef()->name, "_",
+                    subgraph_ptr.GetMetaDef()->since_version);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -748,8 +756,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
   fbs::utils::LoadStringFromOrtFormat(op_type_, fbs_node.op_type());
   node_type_ = static_cast<Node::Type>(fbs_node.type());
   // we skip populating the saved EP here
-  // the node will either be assigned to another EP by the ORT format model-specific graph partitioning or fall back to
-  // the EP encoded in its kernel def hash
+  // the node will be assigned to an EP by the ORT format model-specific graph partitioning
   // fbs::utils::LoadStringFromOrtFormat(execution_provider_type_, fbs_node.execution_provider_type());
   ORT_RETURN_IF_ERROR(LoadNodeArgsFromOrtFormat(fbs_node.inputs(), definitions_.input_defs));
 
@@ -2413,19 +2420,25 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
           node_arg->SetShape(inferred_shape);
         }
       } else {
+        bool invalid = false;
+
         if (p_existing_shape->dim_size() != tensor_proto->dims_size()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Type Error: Shape of initializer ", name, " does not match. ",
-                                 *p_existing_shape, " != ", *tensor_proto);
+          invalid = true;
+        } else {
+          for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
+            auto& d = p_existing_shape->dim(i);
+            if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
+              invalid = true;
+              break;
+            }
+          }
         }
 
-        for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
-          auto& d = p_existing_shape->dim(i);
-          if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Type Error: Shape of initializer ", name, " does not match. ",
-                                   *p_existing_shape, " != ", *tensor_proto);
-          }
+        if (invalid) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Type Error: Shape of initializer ", name, " does not match. ",
+                                 utils::GetTensorShapeFromTensorShapeProto(*p_existing_shape), " != ",
+                                 utils::GetTensorShapeFromTensorProto(*tensor_proto));
         }
       }
     }
@@ -2551,6 +2564,15 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     // Accumulate output names of the iterated Node
     for (auto& output_name : node_proto.output()) {
       lsc.output_names.insert(output_name);
+    }
+  }
+
+  // verify subgraphs
+  for (auto node_index : nodes_in_topological_order_) {
+    auto& node = *GetNode(node_index);
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      Graph* subgraph = entry.second;
+      ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
     }
   }
 
@@ -2688,6 +2710,11 @@ Status Graph::Resolve(const ResolveOptions& options) {
 
   // perform the final steps for this graph and all subgraphs
   auto finalize_func = [&options](Graph& graph) {
+            // we don't need the resolve context any more. call Clear first to workaround bug in
+            // MSVC std::unordered_set<std::string_view>.clear() when the underlying string is invalidated.
+            // this can happen to ResolveContext.inputs_and_initializers during CleanUnusedInitializersAndNodeArgs.
+            graph.resolve_context_.Clear();
+
             graph.CleanUnusedInitializersAndNodeArgs(options.initializer_names_to_preserve);
             graph.GraphResolveNeeded(false);
 
@@ -2696,8 +2723,6 @@ Status Graph::Resolve(const ResolveOptions& options) {
             if (options.no_proto_sync_required) {
                 graph.GraphProtoSyncNeeded(false);
             }
-
-            graph.resolve_context_.Clear();
 
             return Status::OK(); };
 
@@ -3788,13 +3813,13 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   std::unordered_map<std::string, int> output_indexes;
 
   int cur_idx = 0;
-  for (auto& arg_name : func_meta_def->inputs) {
+  for (const auto& arg_name : func_meta_def->inputs) {
     input_args.push_back(GetNodeArg(arg_name));
     input_indexes[arg_name] = cur_idx++;
   }
 
   cur_idx = 0;
-  for (auto& arg_name : func_meta_def->outputs) {
+  for (const auto& arg_name : func_meta_def->outputs) {
     output_args.push_back(GetNodeArg(arg_name));
     output_indexes[arg_name] = cur_idx++;
   }
@@ -3808,17 +3833,25 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
                              func_meta_def->domain);
 
   fused_node.SetNodeType(Node::Type::Fused);
+  fused_node.SetSinceVersion(func_meta_def->since_version);
+
 #if !defined(ORT_MINIMAL_BUILD)
   // if this is a full build create the lightweight Function implementation that provides the schema so that
   // kernel lookup works as per usual, if not using an existing schema.
-  // in an extended minimal build we do the lookup via a hash so don't need a schema.
-  fused_node.SetSinceVersion(func_meta_def->since_version);
-  if (sub_graph.use_existing_schema) {
+  if (sub_graph.schema_source == IndexedSubGraph::SourceOfSchema::EXISTING) {
     ORT_ENFORCE(SetOpSchemaFromRegistryForNode(fused_node),
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
+  } else if (IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE == sub_graph.schema_source) {
+    auto schema_key = GenerateSchemaKey(sub_graph);
+    if (!reusable_fused_schema_map_.contains(schema_key)) {
+      fused_schemas_containers_.push_back(
+          function_utils::CreateSchema(*this, sub_graph, /*allow_aggregated_tensor_type=*/true));
+      reusable_fused_schema_map_.emplace(schema_key, *fused_schemas_containers_.back());
+    }
+
+    fused_node.op_ = &(reusable_fused_schema_map_.at(schema_key).get());
   } else {
-    auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
-    fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
+    fused_schemas_containers_.push_back(function_utils::CreateSchema(*this, sub_graph));
     fused_node.op_ = fused_schemas_containers_.back().get();
   }
 #endif
@@ -3829,31 +3862,6 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
   Node& node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
 
   return node;
-}
-
-void Graph::CancelFuseSubGraph(const Node& fused_node) {
-  auto node_idx = fused_node.Index();
-  if (!GetNode(node_idx))
-    return;
-
-  if (fused_node.NodeType() != Node::Type::Fused)
-    return;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // Remove the tempoary schema from schema container container
-  auto* temp_schema_ptr = fused_node.Op();
-  auto it = std::find_if(
-      fused_schemas_containers_.begin(), fused_schemas_containers_.end(),
-      [temp_schema_ptr](const std::unique_ptr<ONNX_NAMESPACE::OpSchema>& schema) {
-        return schema.get() == temp_schema_ptr;
-      });
-  if (it != fused_schemas_containers_.end()) {
-    fused_schemas_containers_.erase(it);
-  }
-#endif
-
-  // Remove the fused_node
-  RemoveNode(node_idx);
 }
 
 void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node) {

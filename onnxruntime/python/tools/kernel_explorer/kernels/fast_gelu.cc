@@ -3,64 +3,48 @@
 
 #include <pybind11/pybind11.h>
 #include <hip/hip_fp16.h>
-#include "python/tools/kernel_explorer/device_array.h"
-#include "python/tools/kernel_explorer/operator.h"
 #include "contrib_ops/rocm/bert/fast_gelu_impl_kernel.h"
 #include "contrib_ops/rocm/bert/fast_gelu_tunable_op.h"
+#include "python/tools/kernel_explorer/device_array.h"
+#include "python/tools/kernel_explorer/kernel_explorer_interface.h"
 
 namespace py = pybind11;
-using onnxruntime::contrib::rocm::LaunchFastGelu;
-using onnxruntime::contrib::rocm::FastGeluParams;
-using onnxruntime::contrib::rocm::FastGeluTunableOp;
 
 namespace onnxruntime {
 
 template <typename T, int ThreadsPerBlock, int VecSize>
-class FastGelu: public Operator {
+class FastGelu : public IKernelExplorer {
  public:
-  FastGelu(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length) :
-    input_(reinterpret_cast<T*>(input.ptr())),
-    bias_(reinterpret_cast<T*>(bias.ptr())),
-    output_(reinterpret_cast<T*>(output.ptr())),
-    input_length_(input_length),
-    bias_length_(bias_length) {}
+  FastGelu(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length)
+      : params_(this->Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
+                static_cast<T*>(output.ptr()), input_length, bias_length) {}
 
-  void Run() {
-    LaunchFastGelu<T, ThreadsPerBlock, VecSize>(stream_, input_, bias_, output_, input_length_, bias_length_);
+  void Run() override {
+    ORT_THROW_IF_ERROR((contrib::rocm::FastGeluOp<T, ThreadsPerBlock, VecSize>(&params_)));
   }
 
  private:
-  T* input_;
-  T* bias_;
-  T* output_;
-  int input_length_;
-  int bias_length_;
+  using ParamsT = contrib::rocm::FastGeluParams<T>;
+  ParamsT params_{};
 };
 
 template <typename T>
-class FastGeluTunable: public Operator {
+class FastGeluTunable : public IKernelExplorer {
  public:
-  FastGeluTunable(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length) :
-    input_(reinterpret_cast<T*>(input.ptr())),
-    bias_(reinterpret_cast<T*>(bias.ptr())),
-    output_(reinterpret_cast<T*>(output.ptr())),
-    input_length_(input_length),
-    bias_length_(bias_length) {
+  FastGeluTunable(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length)
+      : params_(this->Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
+                static_cast<T*>(output.ptr()), input_length, bias_length) {
     op_.EnableTuning();
   }
 
-  void Run() {
-    FastGeluParams<T> op_params(stream_, input_, bias_, output_, input_length_, bias_length_);
-    op_.Run(&op_params);
+  void Run() override {
+    ORT_THROW_IF_ERROR(op_(&params_));
   }
 
  private:
-  T* input_;
-  T* bias_;
-  T* output_;
-  int input_length_;
-  int bias_length_;
-  FastGeluTunableOp<T> op_;
+  using ParamsT = contrib::rocm::FastGeluParams<T>;
+  ParamsT params_{};
+  contrib::rocm::FastGeluTunableOp<T> op_{};
 };
 
 #define REGISTER_OP(name, type, threads_per_block, vec_size)                                              \
@@ -87,15 +71,21 @@ class FastGeluTunable: public Operator {
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 448)           \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 512)
 
+#define REGISTER_TUNABLE_OP(type)                                          \
+  py::class_<FastGeluTunable<type>>(m, "FastGelu_" #type "_Tunable")       \
+      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int, int>()) \
+      .def("SetRepeats", &FastGeluTunable<type>::SetRepeats)               \
+      .def("Profile", &FastGeluTunable<type>::Profile)                     \
+      .def("Run", &FastGeluTunable<type>::Run);
+
 void InitFastGelu(py::module m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, float);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, double);
-  py::class_<FastGeluTunable<half>>(m, "FastGelu_half_Tunable")
-    .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int, int>())
-    .def("SetRepeats", &FastGeluTunable<half>::SetRepeats)
-    .def("Profile", &FastGeluTunable<half>::Profile)
-    .def("Run", &FastGeluTunable<half>::Run);
+
+  REGISTER_TUNABLE_OP(half);
+  REGISTER_TUNABLE_OP(float);
+  REGISTER_TUNABLE_OP(double);
 }
 
 }  // namespace onnxruntime

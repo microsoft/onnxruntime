@@ -75,12 +75,12 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   trainable_param_values.reserve(expected_trainable_param_names.size());
   std::vector<ONNX_NAMESPACE::TensorProto> non_trainable_param_values;
   const auto& initializer_tensors = graph.GetAllInitializedTensors();
-  for (const std::pair<std::string, const ONNX_NAMESPACE::TensorProto*>& pair : initializer_tensors) {
-    if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), pair.first) !=
+  for (const auto& [initializer_name, tensor_proto] : initializer_tensors) {
+    if (std::find(expected_trainable_param_names.begin(), expected_trainable_param_names.end(), initializer_name) !=
         expected_trainable_param_names.end()) {
-      trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
+      trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
     } else {
-      non_trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*pair.second));
+      non_trainable_param_values.emplace_back(static_cast<ONNX_NAMESPACE::TensorProto>(*tensor_proto));
     }
   }
 
@@ -107,7 +107,7 @@ TEST(CheckpointApiTest, SaveOnnxModelAsCheckpoint_ThenLoad_CPU) {
   std::set<PathString> expected_file_names{ORT_TSTR("paramfrozen_tensors.pbseq"), ORT_TSTR("paramtrain_tensors.pbseq")};
   std::set<PathString> valid_file_names;
   LoopDir(checkpoint_path,
-          [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
+          [&valid_file_names](const PathChar* filename, OrtFileType file_type) -> bool {
             PathString filename_str = filename;
             bool is_valid_ckpt_file_exts = HasExtensionOf(filename_str, ORT_TSTR("pbseq"));
             if (filename_str[0] == '.' || file_type == OrtFileType::TYPE_DIR || !is_valid_ckpt_file_exts) {
@@ -213,14 +213,14 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
   const std::vector<int64_t> fc2_bias_shape{fc2_weight_dim_in};
 
   onnxruntime::training::test::training_api::SyntheticDataLoader data_loader;
-  auto sample = std::make_unique<onnxruntime::training::test::training_api::SyntheticSampleBatch>();
-  sample->AddFloatInput(fc1_weight_shape);
-  sample->AddFloatInput(fc1_bias_shape);
-  sample->AddFloatInput(fc2_weight_shape);
-  sample->AddFloatInput(fc2_bias_shape);
+  auto sample = onnxruntime::training::test::training_api::SyntheticSampleBatch();
+  sample.AddFloatInput(fc1_weight_shape);
+  sample.AddFloatInput(fc1_bias_shape);
+  sample.AddFloatInput(fc2_weight_shape);
+  sample.AddFloatInput(fc2_bias_shape);
   data_loader.AddSyntheticSampleBatch(std::move(sample));
 
-  std::vector<OrtValue*> all_weights_values;
+  std::vector<Ort::Value> all_weights_values;
   data_loader.GetNextSampleBatch(all_weights_values);
   ASSERT_EQ(all_weights_values.size(), 4);
   NameMLValMap name_to_ort_value{
@@ -306,9 +306,8 @@ TEST(CheckpointApiTest, SaveOptimizerStateAsCheckpoint_ThenLoad_CUDA) {
 
   for (auto it = param_named_optimizer_states.begin(); it != param_named_optimizer_states.end(); ++it) {
     ASSERT_TRUE(named_parameters.find(it->first) != named_parameters.end());
-    for (auto& state_pair : it->second.momentum_named_states) {
-      ASSERT_TRUE(state_pair.first == "momentum0" || state_pair.first == "momentum1");
-      const OrtValue& restored_ort_value = state_pair.second;
+    for (auto& [momentum_name, restored_ort_value] : it->second.momentum_named_states) {
+      ASSERT_TRUE(momentum_name == "momentum0" || momentum_name == "momentum1");
       const OrtValue& param_ort_value = name_to_ort_value[it->first];
       ASSERT_TRUE(restored_ort_value.IsTensor() && param_ort_value.IsTensor());
       const Tensor& restored_tensor = restored_ort_value.Get<Tensor>();
@@ -343,15 +342,15 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   float f_data = 0.5f;
   std::string f_property_name("float_number");
-  property_bag.AddProperty<float>(f_property_name, f_data);
+  property_bag.AddProperty(f_property_name, f_data);
 
   int64_t i_data = 400;
   std::string i_property_name("dataset_epoch_index");
-  property_bag.AddProperty<int64_t>(i_property_name, i_data);
+  property_bag.AddProperty(i_property_name, i_data);
 
   std::string s_data("/data/path/train.bin");
   std::string s_property_name("train_data_path");
-  property_bag.AddProperty<std::string>(s_property_name, s_data);
+  property_bag.AddProperty(s_property_name, s_data);
 
   // Remove the tempoprary directory if it already exists.
   auto ckpt_test_root_dir = ORT_TSTR("checkpointing_api_test_dir");
@@ -375,7 +374,7 @@ TEST(CheckpointApiTest, SaveCustomPropertyAsCheckpoint_ThenLoad_CPU) {
 
   std::set<PathString> valid_file_names;
   LoopDir(checkpoint_path,
-          [&valid_file_names, &checkpoint_path](const PathChar* filename, OrtFileType file_type) -> bool {
+          [&valid_file_names](const PathChar* filename, OrtFileType file_type) -> bool {
             PathString filename_str = filename;
             bool is_valid_ckpt_file_exts =
                 HasExtensionOf(filename_str, ORT_TSTR("pbseq")) || HasExtensionOf(filename_str, ORT_TSTR("bin"));

@@ -11,10 +11,13 @@
 
 #pragma once
 
+#include "gsl/gsl"
+
 #include <onnxruntime_cxx_api.h>
 
 #include <memory>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace onnxruntime {
@@ -22,81 +25,61 @@ namespace training {
 namespace test {
 namespace training_api {
 
-template <typename T>
-struct TypedSyntheticInput;
+using SyntheticDataVector = std::variant<std::vector<int32_t>, std::vector<int64_t>, std::vector<float>,
+                                         std::vector<uint8_t>>;
 
 struct SyntheticInput {
-  explicit SyntheticInput(const std::vector<int64_t>& shape) : shape_(shape) {
+  explicit SyntheticInput(gsl::span<const int64_t> shape) : shape_(shape.begin(), shape.end()) {
     for (auto d : shape) {
       num_of_elements_ *= d;
     }
   }
 
-  virtual ~SyntheticInput() {}
-
-  template <typename T>
-  std::vector<T>& GetData() {
-    auto ptr = dynamic_cast<TypedSyntheticInput<T>*>(this);
-    return ptr->Data();
-  }
-
-  size_t NumOfElements() {
+  size_t NumOfElements() const {
     return num_of_elements_;
   }
 
-  std::vector<int64_t> ShapeVector() const {
+  gsl::span<const int64_t> ShapeVector() const {
     return shape_;
   }
 
- protected:
-  std::vector<int64_t> shape_;
-  size_t num_of_elements_{1};
-};
-
-template <typename T>
-struct TypedSyntheticInput : public SyntheticInput {
-  explicit TypedSyntheticInput(const std::vector<int64_t>& shape)
-      : SyntheticInput(shape) {
-    data_.resize(num_of_elements_);
-  }
-
-  std::vector<T>& Data() {
+  SyntheticDataVector& GetData() {
     return data_;
   }
 
  private:
-  std::vector<T> data_;
+  std::vector<int64_t> shape_;
+  size_t num_of_elements_{1};
+  SyntheticDataVector data_;
 };
 
 struct SyntheticSampleBatch {
-  SyntheticSampleBatch() {}
+  SyntheticSampleBatch() = default;
 
-  void AddInt32Input(const std::vector<int64_t>& shape, int32_t low, int32_t high);
-  void AddInt64Input(const std::vector<int64_t>& shape, int64_t low, int64_t high);
-  void AddFloatInput(const std::vector<int64_t>& shape);
+  void AddInt32Input(gsl::span<const int64_t> shape, int32_t low, int32_t high);
+  void AddInt64Input(gsl::span<const int64_t> shape, int64_t low, int64_t high);
+  void AddFloatInput(gsl::span<const int64_t> shape);
+  void AddBoolInput(gsl::span<const int64_t> shape);
 
-  size_t NumOfInput() {
-    return data_vector_.size();
-  }
-
-  SyntheticInput* GetInputAtIndex(size_t index) {
-    return data_vector_[index].get();
-  }
+  void GetBatch(std::vector<Ort::Value>& batches);
 
  private:
-  std::vector<std::unique_ptr<SyntheticInput>> data_vector_;
+  template <typename T>
+  void AddIntInput(gsl::span<const int64_t> shape, T low, T high);
+
+  std::vector<SyntheticInput> data_vector_;
 };
 
 struct SyntheticDataLoader {
-  SyntheticDataLoader() {}
+  SyntheticDataLoader() = default;
 
-  void AddSyntheticSampleBatch(std::unique_ptr<SyntheticSampleBatch> samples) {
-    sample_batch_collections_.emplace_back(std::move(samples));
+  void AddSyntheticSampleBatch(SyntheticSampleBatch&& samples) {
+    sample_batch_collections_.emplace_back(samples);
   }
 
-  bool GetNextSampleBatch(std::vector<OrtValue*>& batches);
+  bool GetNextSampleBatch(std::vector<Ort::Value>& batches);
 
-  size_t NumOfSampleBatches() {
+  size_t NumOfSampleBatches() const {
     return sample_batch_collections_.size();
   }
 
@@ -109,7 +92,7 @@ struct SyntheticDataLoader {
   // did not explicitly copy the data in.
   // And also, the created OrtValue also won't clean the raw data pointer. The raw data should be removed when
   // the life time of this struct ends.
-  std::vector<std::unique_ptr<SyntheticSampleBatch>> sample_batch_collections_;
+  std::vector<SyntheticSampleBatch> sample_batch_collections_;
   size_t sample_batch_iter_index_{0};
 };
 

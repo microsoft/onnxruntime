@@ -14,7 +14,7 @@ using std::vector;
 namespace onnxruntime {
 namespace test {
 
-static const int kMinOpsetVersion = 17;
+static constexpr int kMinOpsetVersion = 17;
 
 static void TestNaiveDFTFloat(bool onesided) {
   OpTester test("DFT", kMinOpsetVersion);

@@ -5,9 +5,8 @@ INSTALL_DEPS_TRAINING=false
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ORTMODULE_BUILD=false
 TARGET_ROCM=false
-CU_VER="11.1"
-ROCM_VER="5.1.1"
-TORCH_VERSION='1.11.0'
+CU_VER="11.6"
+TORCH_VERSION='1.12.1'
 USE_CONDA=false
 
 while getopts p:h:d:v:tmurc parameter_Option
@@ -17,7 +16,6 @@ p) PYTHON_VER=${OPTARG};;
 h) TORCH_VERSION=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
 v) CU_VER=${OPTARG};;
-o) ROCM_VER=${OPTARG};;
 t) INSTALL_DEPS_TRAINING=true;;
 m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
 u) ORTMODULE_BUILD=true;;
@@ -64,8 +62,7 @@ if [ $DEVICE_TYPE = "gpu" ]; then
         ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_torch${TORCH_VERSION}_cu${CU_VER}\/requirements.txt}
         ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage2\/requirements.txt}
       else
-        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_torch${TORCH_VERSION}_rocm${ROCM_VER}\/requirements.txt}
-        ${PYTHON_EXE} -m pip install fairscale==0.4.6
+        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_rocm\/requirements.txt}
       fi
     fi
   fi
