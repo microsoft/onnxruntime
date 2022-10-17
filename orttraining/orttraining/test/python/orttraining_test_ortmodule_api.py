@@ -4126,7 +4126,6 @@ def test_ortmodule_string_inputs_are_ignored():
     with pytest.warns(UserWarning) as warning_record:
         out = ort_model(x, "hello")
 
-    assert len(warning_record) == 2
     assert (
         "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
         in warning_record[1].message.args[0]
