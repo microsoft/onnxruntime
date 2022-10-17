@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "gtest/gtest.h"
+
 #include "custom_op_utils.h"
 #include "core/common/common.h"
 
@@ -21,6 +23,9 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   const float* X = input_X.GetTensorData<float>();
   const float* Y = input_Y.GetTensorData<float>();
 
+  auto x_mem_type = input_X.GetTensorMemoryInfo().GetMemoryType();
+  auto y_mem_type = input_Y.GetTensorMemoryInfo().GetMemoryType();
+
   // Setup output
   auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
   auto output = ctx.GetOutput(0, dimensions);
@@ -31,6 +36,9 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
 
   // Do computation
 #ifdef USE_CUDA
+  ASSERT_EQ(x_mem_type, OrtMemType::OrtMemTypeDefault);
+  ASSERT_EQ(y_mem_type, OrtMemType::OrtMemTypeDefault);
+
   // Launch on stream 0 or user provided stream
   cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
   // cudaStreamSynchronize(nullptr);
@@ -42,6 +50,8 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   //     and use the same compute stream to launch the custom op.
   // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
 #else
+  ASSERT_EQ(x_mem_type, OrtMemType::OrtMemTypeDefault);
+  ASSERT_EQ(y_mem_type, OrtMemType::OrtMemTypeDefault);
   ORT_UNUSED_PARAMETER(compute_stream_);
   for (int64_t i = 0; i < size; i++) {
     out[i] = X[i] + Y[i];

@@ -392,14 +392,19 @@ TEST(CApiTest, custom_op_handler) {
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
 
+  auto mem_type = custom_op.GetInputMemoryType(0);
+
 #ifdef USE_CUDA
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
                        custom_op_domain, nullptr, nullptr, false, compute_stream);
   cudaStreamDestroy(compute_stream);
+  ASSERT_EQ(mem_type, OrtMemType::OrtMemTypeDefault);
 #else
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
                        custom_op_domain, nullptr);
+  ASSERT_EQ(mem_type, OrtMemType::OrtMemTypeDefault);
 #endif
+
 }
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
