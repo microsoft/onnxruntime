@@ -300,9 +300,8 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
   if (it == output_names.end()) {
     ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
   }
-  auto index = it->second;
-  output_tensor = ort.KernelContext_GetOutput(context, static_cast<uint64_t>(index), output_shape.get(), num_dims);
-  return output_tensor;
+  int index = it->second;
+  return context.GetOutput(static_cast<uint64_t>(index), output_shape.get(), num_dims);
 }
 
 OrtValue*
@@ -331,13 +330,11 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
   for (size_t j = 0; j < num_dims; j++) {
     output_shape[j] = static_cast<int64_t>(shape[j]);
   }
-  output_tensor = ort.KernelContext_GetOutput(context, static_cast<uint64_t>(index), output_shape.get(), num_dims);
-
-  return output_tensor;
+  return context.GetOutput(static_cast<uint64_t>(index), output_shape.get(), num_dims);
 }
 
 int GetFirstAvailableDevice(GlobalContext& global_context) {
-  uint64_t i = 0;
+  int i = 0;
   //Get the first available VAD-M device and set the device to busy
   while (i < 8) {
     bool device = global_context.deviceAvailableList[i];
@@ -352,7 +349,7 @@ int GetFirstAvailableDevice(GlobalContext& global_context) {
   if (i == 8) {
     i = 0;
     global_context.deviceAvailableList[i] = false;
-    for (uint64_t j = 1; j < 8; j++) {
+    for (int j = 1; j < 8; j++) {
       global_context.deviceAvailableList[j] = true;
     }
   }
@@ -403,9 +400,9 @@ void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t batch_slice_idx
   auto input_data = minputHolder.as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
   size_t input_data_size = inputBlob->byteSize();
 
-  const OrtValue* tensor = ort.KernelContext_GetInput(context, static_cast<uint64_t>(subgraph_context.input_names.at(input_name)));
-  auto mem_info = ort.GetTensorMemoryInfo(tensor);
-  if (strcmp(mem_info->name, OpenVINO_GPU) == 0) {
+  auto tensor = context.GetInput(static_cast<uint64_t>(subgraph_context.input_names.at(input_name)));
+  auto mem_info = tensor.GetTensorMemoryInfo();
+  if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
     ORT_THROW(log_tag + "IO Buffering is not enabled, Please enable Input on CPU");
   }
   auto tensor_shape = ort.GetTensorTypeAndShape(tensor);

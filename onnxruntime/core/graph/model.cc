@@ -79,13 +79,12 @@ Model::Model(const std::string& graph_name,
     p_domain_to_version = &domain_to_version_static;
   }
 
-  for (const auto& domain : *p_domain_to_version) {
-    model_load_utils::ValidateOpsetForDomain(
-        domain_to_version_static, logger, allow_released_opsets_only_final,
-        domain.first, domain.second);
+  for (const auto& [domain, version] : *p_domain_to_version) {
+    model_load_utils::ValidateOpsetForDomain(domain_to_version_static, logger, allow_released_opsets_only_final,
+                                             domain, version);
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_.add_opset_import()};
-    opset_id_proto->set_domain(domain.first);
-    opset_id_proto->set_version(domain.second);
+    opset_id_proto->set_domain(domain);
+    opset_id_proto->set_version(version);
   }
 
   for (auto& func : model_local_functions) {
@@ -202,12 +201,12 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   auto domain_map = allow_official_onnx_release_only_final
                         ? schema_registry->GetLastReleasedOpsetVersions(false)
                         : schema_registry->GetLatestOpsetVersions(false);
-  for (const auto& domain : domain_map) {
-    if (domain_to_version.find(domain.first) == domain_to_version.end()) {
-      domain_to_version[domain.first] = domain.second;
+  for (const auto& [domain, version] : domain_map) {
+    if (domain_to_version.find(domain) == domain_to_version.end()) {
+      domain_to_version[domain] = version;
       const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_.add_opset_import()};
-      opset_id_proto->set_domain(domain.first);
-      opset_id_proto->set_version(domain.second);
+      opset_id_proto->set_domain(domain);
+      opset_id_proto->set_version(version);
     }
   }
 
@@ -230,12 +229,14 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
     model_local_function_templates_.push_back(std::move(func_template_ptr));
-    model_local_function_templates_maps_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] = model_local_function_templates_.back().get();
+    model_local_function_templates_maps_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] =
+        model_local_function_templates_.back().get();
   }
 
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger, options.strict_shape_type_inference));
+  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry,
+                         logger, options.strict_shape_type_inference));
 }
 
 const InlinedHashMap<std::string, FunctionTemplate*>& Model::GetModelLocalFunctionTemplates() const {
@@ -828,6 +829,14 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   ORT_RETURN_IF(nullptr == fbs_graph, "Graph is null. Invalid ORT format model.");
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // add the opset imports to the model_proto in case we're updating an ORT format model and need those to be
+  // included when SaveToOrtFormat is called later
+  for (const auto& [domain, version] : domain_to_version) {
+    const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model->model_proto_.add_opset_import()};
+    opset_id_proto->set_domain(domain);
+    opset_id_proto->set_version(version);
+  }
+
   ORT_RETURN_IF_ERROR(Graph::LoadFromOrtFormat(*fbs_graph, *model, domain_to_version, schema_registry,
                                                can_use_flatbuffer_for_initializers, logger, model->graph_));
 #else

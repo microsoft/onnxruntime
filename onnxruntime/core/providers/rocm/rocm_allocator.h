@@ -57,7 +57,7 @@ class ROCMPinnedAllocator : public IAllocator {
   ROCMPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, device_id),
+                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, device_id),
                           device_id, OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;

@@ -58,7 +58,7 @@ __global__ void SkipLayerNormKernelVec(
   hipcub::KeyValuePair<T, T> thread_data(0, 0);
 
   using VecT = aligned_vector<T, ILP>;
-  T input_v[ILP], skip_v[ILP], bias_v[ILP], output_v[ILP];
+  T input_v[ILP], skip_v[ILP], bias_v[ILP];
   if (threadIdx.x * ILP < ld) {
     VecT* input_val = reinterpret_cast<VecT*>(&input_v);
     VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
@@ -73,8 +73,6 @@ __global__ void SkipLayerNormKernelVec(
         *bias_val = *reinterpret_cast<const VecT*>(&bias[i]);
       }
 
-      T rldval_sum = T(0.f);
-      T rldvalsq_sum = T(0.f);
       #pragma unroll
       for (int k = 0; k < ILP; k++) {
         input_v[k] += hasBias ? skip_v[k] + bias_v[k] : skip_v[k];

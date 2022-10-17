@@ -23,5 +23,5 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& real, con
 
 // verify if the 'value' matches the 'expected' ValueInfoProto. 'value' is a model output
 std::pair<COMPARE_RESULT, std::string> VerifyValueInfo(const ONNX_NAMESPACE::ValueInfoProto& expected,
-                                                       const Ort::Value& value);
+                                                       const OrtValue* value);
 }  // namespace onnxruntime

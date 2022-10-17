@@ -135,7 +135,7 @@ Visual Studio Code Analysis with [C++ Core guidelines](https://github.com/isocpp
 
 Code changes should build with no Code Analysis warnings, however this is somewhat difficult to achieve consistently as the Code Analysis implementation is in fairly constant flux. Different minor releases may have less false positives (a build with the latest version may be warning free, and a build with an earlier version may not), or detect additional problems (an earlier version builds warning free and a later version doesn't).
 
-We use [BinSkim Binary Analyzer](https://github.com/microsoft/binskim) to scan our binraries.
+We use [BinSkim Binary Analyzer](https://github.com/microsoft/binskim) to scan our binaries.
 
 ## Unit Testing and Code Coverage
 
