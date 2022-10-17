@@ -85,7 +85,7 @@ static void UnmapFile(void* param) noexcept {
   std::unique_ptr<UnmapFileParam> p(reinterpret_cast<UnmapFileParam*>(param));
   int ret = munmap(p->addr, p->len);
   if (ret != 0) {
-    auto[err_no, err_msg] = GetSystemError();
+    auto [err_no, err_msg] = GetSystemError();
     LOGS_DEFAULT(ERROR) << "munmap failed. error code: " << err_no << " error msg: " << err_msg;
   }
 }
@@ -95,7 +95,7 @@ struct FileDescriptorTraits {
   static Handle GetInvalidHandleValue() { return -1; }
   static void CleanUp(Handle h) {
     if (close(h) == -1) {
-      auto[err_no, err_msg] = GetSystemError();
+      auto [err_no, err_msg] = GetSystemError();
       LOGS_DEFAULT(ERROR) << "Failed to close file descriptor " << h << " - error code: " << err_no << " error msg: " << err_msg;
     }
   }
@@ -122,7 +122,7 @@ int nftw_remove(
     int /*typeflag*/, struct FTW* /*ftwbuf*/) {
   const auto result = remove(fpath);
   if (result != 0) {
-    auto[err_no, err_msg] = GetSystemError();
+    auto [err_no, err_msg] = GetSystemError();
     LOGS_DEFAULT(WARNING) << "remove() failed. Error code: " << err_no << " error msg: " << err_msg
                           << ", path: " << fpath;
   }
@@ -136,7 +136,6 @@ struct Freer {
 
 using MallocdStringPtr = std::unique_ptr<char, Freer<char> >;
 
-
 class PosixThread : public EnvThread {
  private:
   struct Param {
@@ -149,11 +148,11 @@ class PosixThread : public EnvThread {
     Param(const ORTCHAR_T* name_prefix1,
           int index1,
           unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
-          Eigen::ThreadPoolInterface* param1) 
-      : name_prefix(name_prefix1),
-      index(index1),
-      start_address(start_address1), 
-      param(param1) {}
+          Eigen::ThreadPoolInterface* param1)
+        : name_prefix(name_prefix1),
+          index(index1),
+          start_address(start_address1),
+          param(param1) {}
   };
 
  public:
@@ -229,7 +228,10 @@ class PosixThread : public EnvThread {
         auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
         if (ret != 0) {
           auto [err_no, err_msg] = GetSystemError(ret);
-          LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << pthread_getthreadid_np()
+          auto self = pthread_self();
+          pthread_id_np_t tid;
+          pthread_getunique_np(&self, &tid);
+          LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << tid
                               << ", index: " << p->index
                               << ", mask: " << *p->affinity_mask
                               << ", error code: " << err_no << " error msg: " << err_msg
@@ -409,7 +411,7 @@ class PosixEnv : public Env {
   }
 
   static common::Status ReportSystemError(const char* operation_name, const std::string& path) {
-    auto[err_no, err_msg] = GetSystemError();
+    auto [err_no, err_msg] = GetSystemError();
     std::ostringstream oss;
     oss << operation_name << " file \"" << path << "\" failed: " << err_msg;
     return common::Status(common::SYSTEM, err_no, oss.str());
