@@ -263,10 +263,18 @@ public:
         attentionWeightOperatorDesc.FusedActivation = nullptr;
         const DML_OPERATOR_DESC attentionWeightDesc {DML_OPERATOR_GEMM, &attentionWeightOperatorDesc};
 
-        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC outputOperatorDesc = {};
+        TensorDesc finalOutputTensorDesc = TensorDesc(
+                m_outputTensorDescs[0].GetDmlDataType(),
+                m_outputTensorDescs[0].GetSizes(),
+                std::nullopt,
+                0 // guaranteedBaseOffsetAlignment
+            );
+        DML_ACTIVATION_LINEAR_OPERATOR_DESC outputOperatorDesc = {};
+        outputOperatorDesc.Alpha = 1.0f;
+        outputOperatorDesc.Beta = 0.0f;
         outputOperatorDesc.InputTensor = &outputDescs[0];
-        outputOperatorDesc.OutputTensor = &outputDescs[0];
-        const DML_OPERATOR_DESC outputDesc {DML_OPERATOR_ELEMENT_WISE_IDENTITY, &outputOperatorDesc};
+        outputOperatorDesc.OutputTensor = &finalOutputTensorDesc.GetDmlDesc();
+        const DML_OPERATOR_DESC outputDesc {DML_OPERATOR_ACTIVATION_LINEAR, &outputOperatorDesc};
 
 
         MLOperatorGraphDesc operatorGraphDesc = {};
