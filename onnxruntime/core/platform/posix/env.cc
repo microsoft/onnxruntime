@@ -23,14 +23,13 @@ limitations under the License.
 #include <fcntl.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#include <sys/syscall.h>
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <ftw.h>
 #include <optional>
 #include <string.h>
 #include <thread>
-#include <thread.h>
-#include <pthread.h>
 #include <utility>  // for std::forward
 #include <vector>
 #include <assert.h>
@@ -229,7 +228,7 @@ class PosixThread : public EnvThread {
         auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
         if (ret != 0) {
           auto [err_no, err_msg] = GetSystemError(ret);
-          LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << thrd_current()
+          LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
                               << ", index: " << p->index
                               << ", mask: " << *p->affinity_mask
                               << ", error code: " << err_no << " error msg: " << err_msg
