@@ -164,10 +164,6 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
         f.write(s)
 
 
-def amd_hipify(hipify_perl_path, src_file_path, dst_file_path):
-    hipify(hipify_perl_path, src_file_path, dst_file_path)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--hipify_perl", required=True)
@@ -175,4 +171,4 @@ if __name__ == "__main__":
     parser.add_argument("src", help="src")
     args = parser.parse_args()
 
-    amd_hipify(args.hipify_perl, args.src, args.output)
+    hipify(args.hipify_perl, args.src, args.output)
