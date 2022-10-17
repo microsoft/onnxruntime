@@ -455,8 +455,8 @@ void LoopImpl::SaveOutputsAndUpdateFeeds(const std::vector<OrtValue>& last_outpu
 
   // save loop outputs as we have to concatenate at the end
   for (auto j = info_.num_loop_carried_vars; j < info_.num_outputs; ++j) {
-    ORT_ENFORCE(last_outputs[(j + 1)].IsTensor(), "All scan outputs MUST be tensors");
-    loop_output_tensors_[(j - info_.num_loop_carried_vars)].push_back(last_outputs[(j + 1)]);  // skip 'cond' in output
+    ORT_ENFORCE(last_outputs[j + 1].IsTensor(), "All scan outputs MUST be tensors");
+    loop_output_tensors_[j - info_.num_loop_carried_vars].push_back(last_outputs[j + 1]);  // skip 'cond' in output
   }
 }
 
