@@ -21,9 +21,9 @@ Status RocmBlasAltImpl::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
 
-    std::cerr << PRE << node << std::endl;
+    //std::cerr << PRE << node << std::endl;
 
-#if 0
+#if 1
     if (node.OpType() == "YieldOp") {
       is_backward_pass = true;
       //std::cerr << PRE << "YieldOp found, before recurse" << std::endl;

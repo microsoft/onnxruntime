@@ -6,6 +6,9 @@
 #include "core/graph/graph_utils.h"
 #include <deque>
 
+//#include <thread>
+//#define PRE __FILE__ << ":" << __LINE__ << ":" << std::this_thread::get_id() << " "
+
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
@@ -404,6 +407,14 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     matmul_node.AddAttribute("alpha", alpha);
     // Assign provider to this new node. Provider should be same as the provider for old node.
     matmul_node.SetExecutionProviderType(node.GetExecutionProviderType());
+#ifdef USE_ROCM
+    // forward the __altimpl, if present
+    auto& attrs = node.GetAttributes();
+    if (attrs.count("__altimpl")) {
+      //std::cerr << PRE << " forwarding __altimpl attr " << static_cast<int64_t>(attrs.at("__altimpl").i()) << std::endl;
+      matmul_node.AddAttribute("__altimpl", static_cast<int64_t>(attrs.at("__altimpl").i()));
+    }
+#endif
 
     graph_utils::FinalizeNodeFusion(graph, matmul_node, node);
 

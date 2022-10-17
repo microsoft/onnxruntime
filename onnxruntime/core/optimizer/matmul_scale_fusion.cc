@@ -12,6 +12,9 @@
 #include "core/graph/graph_viewer.h"
 #include "core/optimizer/utils.h"
 
+//#include <thread>
+//#define PRE __FILE__ << ":" << __LINE__ << ":" << std::this_thread::get_id() << " "
+
 namespace onnxruntime {
 
 namespace {
@@ -254,6 +257,14 @@ Status ProcessNode(
       kMSDomain);
 
   matmul_scale_node.SetExecutionProviderType(node.GetExecutionProviderType());
+#ifdef USE_ROCM
+    // forward the __altimpl, if present
+    auto& attrs = node.GetAttributes();
+    if (attrs.count("__altimpl")) {
+      //std::cerr << PRE << " forwarding __altimpl attr " << static_cast<int64_t>(attrs.at("__altimpl").i()) << std::endl;
+      matmul_scale_node.AddAttribute("__altimpl", static_cast<int64_t>(attrs.at("__altimpl").i()));
+    }
+#endif
 
   {
     InlinedVector<std::reference_wrapper<Node>> nodes_to_remove{node};

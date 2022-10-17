@@ -8,7 +8,7 @@
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_fwd.h"
 
-#define PRE __FILE__ << ":" << __LINE__ << ":" << std::this_thread::get_id() << " "
+//#define PRE __FILE__ << ":" << __LINE__ << ":" << std::this_thread::get_id() << " "
 
 namespace onnxruntime {
 namespace rocm {
@@ -26,10 +26,11 @@ class RocmKernel : public OpKernel {
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
     Status s;
+    const std::string& op_name = Info().GetKernelDef().OpName();
     auto altimpl = Info().GetAttrOrDefault<int64_t>("__altimpl", 0);
-    //std::cerr << PRE << "altimpl " << altimpl << std::endl;
+    //std::cerr << PRE << op_name << " altimpl " << altimpl << std::endl;
     if (altimpl) {
-      //std::cerr << PRE << "creating BackwardPassGuard" << std::endl;
+      //std::cerr << PRE << op_name << " creating BackwardPassGuard" << std::endl;
       BackwardPassGuard guard;
       s = ComputeInternal(p_op_kernel_context);
     }
