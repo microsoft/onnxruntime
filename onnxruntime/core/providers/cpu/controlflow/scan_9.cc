@@ -302,12 +302,13 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
 Status ScanImpl::ValidateInput() {
   // validate/calculate the input axes values and populate input_axes_.
   // we already checked that input_axes_from_attribute_.size() == info_.num_scan_inputs
-  for (int i = 0; i < info_.num_scan_inputs; ++i) {
+  for (uint64_t i = 0; i < info_.num_scan_inputs; ++i) {
     auto axis = input_axes_from_attribute_[static_cast<uint64_t>(i)];
 
     // zero is always valid, so only do extra checks for non-zero values
     if (axis != 0) {
-      int64_t input_rank = static_cast<int64_t>(context_.Input<Tensor>(i + info_.num_loop_state_variables)->Shape().NumDimensions());
+      int64_t input_rank = static_cast<int64_t>(context_.Input<Tensor>(
+              i + info_.num_loop_state_variables)->Shape().NumDimensions());
       // check axis is valid for input_rank and also handle any negative axis value
       if (axis >= -input_rank && axis < input_rank)
         axis = HandleNegativeAxis(axis, input_rank);
@@ -335,15 +336,15 @@ Status ScanImpl::SetupInputs() {
   auto status = Status::OK();
   AllocatorPtr alloc;
 
-  for (int i = 0; i < info_.num_scan_inputs; ++i) {
+  for (uint64_t i = 0; i < info_.num_scan_inputs; ++i) {
     auto sequence_dim = input_axes_[static_cast<uint64_t>(i)];
 
     if (sequence_dim == 0) {
       // no transpose required
       inputs_.push_back(*context_.GetInputMLValue(i + info_.num_loop_state_variables));
     } else {
-      auto& input_tensor = *context_.Input<Tensor>(i + info_.num_loop_state_variables);
-      const auto& input_shape = input_tensor.Shape();
+      auto &input_tensor = *context_.Input<Tensor>(i + info_.num_loop_state_variables);
+      const auto &input_shape = input_tensor.Shape();
 
       InlinedVector<size_t> permutations;
       TensorShapeVector new_shape;
@@ -377,7 +378,7 @@ Status ScanImpl::AllocateOutputTensors() {
 
   std::unique_ptr<OutputIterator> output_iter;
 
-  for (int i = 0; i < info_.num_loop_state_variables; ++i) {
+  for (uint64_t i = 0; i < info_.num_loop_state_variables; ++i) {
     status = AllocateOutput(context_, info_.subgraph, i, true, -1, sequence_len_, output_iter,
                             device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
     ORT_RETURN_IF_ERROR(status);
@@ -412,9 +413,9 @@ Status ScanImpl::CreateLoopStateVariables(std::vector<LoopStateVariable>& loop_s
 
   loop_state_variables.reserve(static_cast<uint64_t>(info_.num_loop_state_variables));
 
-  for (int i = 0; i < info_.num_loop_state_variables; ++i) {
-    const OrtValue& input_mlvalue = *context_.GetInputMLValue(i);
-    OrtValue* output_mlvalue = context_.GetOutputMLValue(i);
+  for (uint64_t i = 0; i < info_.num_loop_state_variables; ++i) {
+    const OrtValue &input_mlvalue = *context_.GetInputMLValue(i);
+    OrtValue *output_mlvalue = context_.GetOutputMLValue(i);
     ORT_ENFORCE(output_mlvalue, "Output OrtValue has not been created for loop state variable output ", i);
 
     loop_state_variables.push_back(LoopStateVariable(input_mlvalue, *output_mlvalue, sequence_len_, alloc));

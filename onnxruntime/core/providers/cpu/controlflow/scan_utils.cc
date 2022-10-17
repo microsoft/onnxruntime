@@ -44,7 +44,7 @@ Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
 
   auto &graph_inputs = subgraph.GetInputs();
-  auto num_subgraph_inputs = static_cast<int>(graph_inputs.size());
+  auto num_subgraph_inputs = graph_inputs.size();
   ORT_ENFORCE(num_variadic_inputs == num_subgraph_inputs,
               "The subgraph in 'body' requires ", num_subgraph_inputs,
               " inputs but Scan was only given ", num_variadic_inputs);
@@ -184,13 +184,13 @@ Status CreateFeedsFetchesManager(const Node& node,
   return Status::OK();
 }
 
-Status IterateSequence(OpKernelContextInternal& context, const SessionState& session_state,
-                       std::vector<LoopStateVariable>& loop_state_variables,
-                       std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
-                       int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs,
-                       int num_variadic_outputs, const std::vector<const OrtValue*>& implicit_inputs,
-                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators,
-                       const FeedsFetchesManager& ffm) {
+Status IterateSequence(OpKernelContextInternal &context, const SessionState &session_state,
+                       std::vector<LoopStateVariable> &loop_state_variables,
+                       std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> &scan_input_stream_iterators,
+                       int64_t seq_length, uint64_t num_loop_state_variables, uint64_t num_variadic_inputs,
+                       uint64_t num_variadic_outputs, const std::vector<const OrtValue *> &implicit_inputs,
+                       std::vector<std::unique_ptr<OutputIterator>> &output_iterators,
+                       const FeedsFetchesManager &ffm) {
   Status status = Status::OK();
 
   auto num_implicit_inputs = implicit_inputs.size();
@@ -308,10 +308,10 @@ void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t
   permutations.push_back((axis));
 
   transposed_shape.reserve(rank);
-  transposed_shape.push_back(dims[(axis)]);
+  transposed_shape.push_back(dims[static_cast<uint64_t>(axis)]);
 
   for (uint64_t i = 0; i < rank; ++i) {
-    if (i != axis) {
+    if (i != static_cast<uint64_t>(axis)) {
       permutations.push_back(i);
       transposed_shape.push_back(dims[i]);
     }
@@ -326,7 +326,7 @@ void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_
   permutations.reserve(rank);
   transposed_shape.reserve(rank);
 
-  for (uint64_t i = 1; i <= axis; ++i) {
+  for (uint64_t i = 1; i <= static_cast<uint64_t>(axis); ++i) {
     permutations.push_back(i);
     transposed_shape.push_back(dims[i]);
   }
@@ -334,7 +334,7 @@ void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_
   permutations.push_back(0);
   transposed_shape.push_back(dims[0]);
 
-  for (uint64_t i = (axis + 1); i < rank; ++i) {
+  for (uint64_t i = static_cast<uint64_t>(axis + 1); i < rank; ++i) {
     permutations.push_back(i);
     transposed_shape.push_back(dims[i]);
   }

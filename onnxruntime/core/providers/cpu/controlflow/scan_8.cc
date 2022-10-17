@@ -319,7 +319,7 @@ Status Scan8Impl::AllocateOutputTensors() {
 
   std::unique_ptr<OutputIterator> output_iter;
 
-  for (int i = 0; i < info_.num_loop_state_variables; ++i) {
+  for (uint64_t i = 0; i < info_.num_loop_state_variables; ++i) {
     status = AllocateOutput(context_, info_.subgraph, i, true, batch_size_, max_sequence_len_, output_iter,
                             device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
     ORT_RETURN_IF_ERROR(status);
@@ -348,14 +348,14 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
   loop_state_input_iterators.reserve(static_cast<uint64_t>(info_.num_loop_state_variables));
 
   // create the input and output slice iterator for each loop state variable.
-  for (int i = 0; i < info_.num_loop_state_variables; ++i) {
-    const OrtValue& ort_value = GetSubgraphInputMLValue(context_, i);
-    OrtValue* p_mlvalue = context_.GetOutputMLValue(i);
+      for (uint64_t i = 0; i < info_.num_loop_state_variables; ++i) {
+        const OrtValue &ort_value = GetSubgraphInputMLValue(context_, i);
+        OrtValue *p_mlvalue = context_.GetOutputMLValue(i);
 
-    ORT_ENFORCE(p_mlvalue, "Output OrtValue has not been created for loop state variable output ", i);
+        ORT_ENFORCE(p_mlvalue, "Output OrtValue has not been created for loop state variable output ", i);
 
-    loop_state_input_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).begin());
-  }
+        loop_state_input_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).begin());
+      }
 
   batch_loop_state_variables.clear();
   batch_loop_state_variables.resize(static_cast<uint64_t>(batch_size_));
@@ -369,9 +369,9 @@ Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVari
     std::vector<LoopStateVariable>& variables = batch_loop_state_variables[static_cast<uint64_t>(b)];
     variables.reserve(static_cast<uint64_t>(info_.num_loop_state_variables));
 
-    for (int i = 0; i < info_.num_loop_state_variables; ++i) {
-      auto& input_iter = loop_state_input_iterators[static_cast<uint64_t>(i)];
-      auto& output_iter = *output_iterators_[static_cast<uint64_t>(i)];
+    for (uint64_t i = 0; i < info_.num_loop_state_variables; ++i) {
+      auto &input_iter = loop_state_input_iterators[static_cast<uint64_t>(i)];
+      auto &output_iter = *output_iterators_[static_cast<uint64_t>(i)];
 
       variables.emplace_back(*input_iter, *output_iter, sequence_lens_[static_cast<uint64_t>(b)], alloc);
 

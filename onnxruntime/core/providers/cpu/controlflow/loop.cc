@@ -141,7 +141,7 @@ Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
   // Hold the type for loop carried dependencies - we will use it later
   const auto &node_input_types = node.InputDefs();
   loop_carried_vars_types.reserve(num_subgraph_inputs);
-  for (int i = 0; i < num_loop_carried_vars; ++i) {
+  for (uint64_t i = 0; i < num_loop_carried_vars; ++i) {
     loop_carried_vars_types.push_back(node_input_types[i + 2]->TypeAsProto());
   }
 
@@ -329,7 +329,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
 
   // Loop state variables need to be where we can feed them in to the next iteration, so set the fetch location
   // to match the feed location.
-  for (ptrdiff_t i = 0; i < info_->num_loop_carried_vars; ++i) {
+  for (uint64_t i = 0; i < info_->num_loop_carried_vars; ++i) {
     // +2 for both to skip the iter_num and cond input values
     const auto &alloc_info = utils::FindMemoryInfoForValue(session_state, loop_inputs[i + 2]->Name());
     fetch_locations.push_back(&alloc_info);
@@ -434,7 +434,7 @@ void LoopImpl::CreateInitialFeeds(std::vector<OrtValue>& feeds) {
   feeds.push_back(condition_mlvalue_);
 
   // populate loop carried var inputs which conveniently start at slot 2 in both the Loop and subgraph inputs
-  for (int i = 2; i < info_.num_subgraph_inputs; ++i) {
+  for (uint64_t i = 2; i < info_.num_subgraph_inputs; ++i) {
     feeds.push_back(*context_.GetInputMLValue(i));
   }
 
