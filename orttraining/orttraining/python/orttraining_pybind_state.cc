@@ -861,7 +861,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   checkpoint_state.def(py::init([](
                                     const std::string& ckpt_uri) {
     onnxruntime::training::api::CheckpointState state;
-    ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(ckpt_uri, state));
+    ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(ToPathString(ckpt_uri), state));
     return state;
   }));
 
