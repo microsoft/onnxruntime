@@ -29,6 +29,7 @@ limitations under the License.
 #include <optional>
 #include <string.h>
 #include <thread>
+#include <pthread.h>
 #include <utility>  // for std::forward
 #include <vector>
 #include <assert.h>
