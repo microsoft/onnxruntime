@@ -29,6 +29,7 @@ limitations under the License.
 #include <optional>
 #include <string.h>
 #include <thread>
+#include <thread.h>
 #include <pthread.h>
 #include <utility>  // for std::forward
 #include <vector>
@@ -228,10 +229,7 @@ class PosixThread : public EnvThread {
         auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
         if (ret != 0) {
           auto [err_no, err_msg] = GetSystemError(ret);
-          auto self = pthread_self();
-          pthread_id_np_t tid;
-          pthread_getunique_np(&self, &tid);
-          LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << tid
+          LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << thrd_current()
                               << ", index: " << p->index
                               << ", mask: " << *p->affinity_mask
                               << ", error code: " << err_no << " error msg: " << err_msg
