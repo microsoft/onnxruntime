@@ -5,7 +5,7 @@ declare namespace JSEP {
   type BackendType = unknown;
   type AllocFunction = (size: number) => number;
   type FreeFunction = (size: number) => number;
-  type UploadFunction = (size: number) => number;
+  type UploadFunction = (dataOffset: number, gpuDataId: number, size: number) => void;
   type DownloadFunction = (size: number) => number;
   type RunFunction = (size: number) => number;
 }

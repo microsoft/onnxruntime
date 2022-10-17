@@ -4,9 +4,11 @@
 import {Tensor} from '../tensor';
 
 export enum GpuDataType {
-  default = 0
+  default = 0,
+  upload = 1,
+  profile = 2
 }
-export type GpuDataId = unknown;
+export type GpuDataId = number;
 
 export interface GpuData {
   type: GpuDataType;
