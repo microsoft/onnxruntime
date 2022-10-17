@@ -54,7 +54,7 @@ using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExec
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
                                      const InlinedTensorsVector& input_tensors,
                                      Prepare& p) const {
-  int input_count = static_cast<int>(input_tensors.size());
+  auto input_count = input_tensors.size();
 
   // Must have atleast one input to concat
   ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
@@ -69,7 +69,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
   bool all_inputs_are_empty = true;
 
-  for (int index = 0; index < input_count; ++index) {
+  for (uint64_t index = 0; index < input_count; ++index) {
     const auto* input = input_tensors[index];
     ORT_ENFORCE(input != nullptr, "input count mismatch");
 
@@ -81,7 +81,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     if (num_elements > 0) {
       reference_dims = shape.AsShapeVector();
       reference_rank = reference_dims.size();
-      reference_tensor_index = index;
+      reference_tensor_index = static_cast<int>(index);
       input_tensor_sizes.push_back(num_elements);
       all_inputs_are_empty = false;
       break;
@@ -106,12 +106,12 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   // Handle and fix negative axis
   // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
   p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, !is_stack_
-                                                               ? reference_rank
-                                                               : reference_rank + 1));
+                                                               ? static_cast<int64_t>(reference_rank)
+                                                               : static_cast<int64_t>(reference_rank + 1)));
 
   // Ensure all of the non concatenated axes match each other
   for (int index = reference_tensor_index + 1; index < input_count; index++) {
-    const auto* input = input_tensors[index];
+    const auto* input = input_tensors[static_cast<uint64_t>(index)];
     ORT_ENFORCE(input != nullptr, "input count mismatch");
     const auto& input_shape = input->Shape();
     const auto input_dims = input_shape.GetDims();
@@ -169,11 +169,11 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
     // Calculate the size of the concatenated axis
     size_t concat_axis_size = 0;
-    for (int64_t index = 0; index < input_count; index++) {
-      concat_axis_size += input_tensors[index]->Shape()[static_cast<int>(p.axis)];
+    for (uint64_t index = 0; index < input_count; index++) {
+      concat_axis_size += static_cast<uint64_t>(input_tensors[index]->Shape()[p.axis]);
     }
 
-    output_dims[p.axis] = concat_axis_size;
+    output_dims[p.axis] = static_cast<int64_t>(concat_axis_size);
   } else {  // 'Stack' mode
     // While stacking, the rank of the output is one more than the input rank(s).
     // Stacking may be thought of as adding an unit dimension (of value 1) in the input tensors,
@@ -204,7 +204,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
   // Fill the 'Prepare' struct with available information
   p.inputs.reserve(input_count);
-  for (int input_index = 0; input_index < input_count; input_index++) {
+  for (uint64_t input_index = 0; input_index < input_count; input_index++) {
     const Tensor* data_n_ptr = input_tensors[input_index];
     auto& data_n = *data_n_ptr;
 
@@ -256,7 +256,7 @@ Status ConcatBase::ComputeImpl(Prepare& p, OpKernelContext* ctx) const {
   // Note that output_strides_full is only used later when is_stack_ is true, so it's safe to move
   auto output_strides_for_copy = is_stack_ ? StridesForStack(output_strides_full, p.axis) : std::move(output_strides_full);
 
-  for (int input_index = 0; input_index < input_count; input_index++) {
+  for (uint64_t input_index = 0; input_index < input_count; input_index++) {
     const auto& prep = p.inputs[input_index];
 
     // no data in this tensor - so skip it
@@ -291,7 +291,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
   InlinedTensorsVector input_tensors;
-  input_tensors.reserve(input_count);
+  input_tensors.reserve(static_cast<uint64_t>(input_count));
   for (int i = 0; i < input_count; ++i) {
     input_tensors.push_back(ctx->Input<Tensor>(i));
   }

@@ -37,7 +37,7 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
   InlinedTensorsVector input_tensors;
-  input_tensors.reserve(input_count);
+  input_tensors.reserve(static_cast<uint64_t>(input_count));
   for (int i = 0; i < input_count; ++i) {
     input_tensors.push_back(ctx->Input<Tensor>(i));
   }
@@ -50,18 +50,18 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
 
   std::vector<int64_t> concat_sizes;
-  concat_sizes.reserve(input_count);
+  concat_sizes.reserve(static_cast<uint64_t>(input_count));
 
-  CudaAsyncBuffer<const void*> input_ptr(this, input_count);
+  CudaAsyncBuffer<const void*> input_ptr(this, static_cast<uint64_t>(input_count));
   gsl::span<const void*> input_ptr_cpuspan = input_ptr.CpuSpan();
-  std::vector<int64_t> axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
-  int index = 0;
-  for (int i = 0; i < input_count; ++i) {
+  std::vector<int64_t> axis_dimension_input_output_mapping(static_cast<uint64_t>(p.output_tensor->Shape()[p.axis]));
+  uint64_t index = 0;
+  for (uint64_t i = 0; i < input_count; ++i) {
     const auto& input = p.inputs[i];
     concat_sizes.push_back(input.tensor->Shape()[p.axis]);
     input_ptr_cpuspan[i] = input.tensor->DataRaw();
     for (int j = 0; j < input.tensor->Shape()[p.axis]; ++j) {
-      axis_dimension_input_output_mapping.at(index++) = i;
+      axis_dimension_input_output_mapping.at(index++) = static_cast<int64_t>(i);
     }
   }
 
@@ -74,12 +74,12 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
       for (int i = 0; i < input_count; ++i) input_ptr_array[i] = input_ptr_cpuspan[i];
       ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(
           Stream(), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
-          p.output_tensor->MutableDataRaw(), input_ptr_array, static_cast<size_t>(p.output_num_elements)));
+          p.output_tensor->MutableDataRaw(), input_ptr_array, static_cast<uint64_t>(p.output_num_elements)));
     } else {
       ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu());
       ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(
           Stream(), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
-          p.output_tensor->MutableDataRaw(), input_ptr.GpuPtr(), static_cast<size_t>(p.output_num_elements)));
+          p.output_tensor->MutableDataRaw(), input_ptr.GpuPtr(), static_cast<uint64_t>(p.output_num_elements)));
     }
   } else {
     CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
@@ -96,7 +96,7 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
     ORT_RETURN_IF_ERROR(ConcatImpl(Stream(), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim,
                                    concat_sizes_gpu.GpuPtr(), concat_sizes_range_gpu.GpuPtr(),
                                    axis_dimension_input_output_mapping_gpu.GpuPtr(), p.output_tensor->MutableDataRaw(),
-                                   input_ptr.GpuPtr(), static_cast<size_t>(p.output_num_elements)));
+                                   input_ptr.GpuPtr(), static_cast<uint64_t>(p.output_num_elements)));
   }
 
   return Status::OK();

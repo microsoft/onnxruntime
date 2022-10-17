@@ -35,7 +35,7 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
   auto input_dimensions = input_tensor->Shape().GetDims();
   int64_t axis = 0;
   if (has_axis_) {
-    axis = HandleNegativeAxis(axis_, rank);
+    axis = HandleNegativeAxis(axis_, static_cast<int64_t>(rank));  // handle negative and enforce axis is valid
   }
 
   const Tensor* condition = ctx->Input<Tensor>(1);
@@ -45,10 +45,10 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
 
   // if has axis, we need to compress on dimension[axis], otherwise compress on the flattened input data
   int64_t input_size = input_tensor->Shape().Size();
-  int64_t compress_input_length = has_axis_ ? input_dimensions[axis] : input_size;
+  int64_t compress_input_length = has_axis_ ? input_dimensions[static_cast<uint64_t>(axis)] : input_size;
   int64_t valid_condition_length = compress_input_length < condition_length ? compress_input_length : condition_length;
 
-  auto condition_cumulative_sum_buffer = GetScratchBuffer<int32_t>(gsl::narrow<size_t>(valid_condition_length));
+  auto condition_cumulative_sum_buffer = GetScratchBuffer<int32_t>(gsl::narrow<uint64_t>(valid_condition_length));
   auto condition_cumulative_sum = condition_cumulative_sum_buffer.get();
 
   size_t temp_storage_bytes = 0;
@@ -73,7 +73,7 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
 
   std::vector<int64_t> output_dims(input_dimensions.begin(), input_dimensions.end());
   if (has_axis_) {
-    output_dims[axis] = positive_condition_count;
+    output_dims[static_cast<uint64_t>(axis)] = positive_condition_count;
   } else {
     output_dims.resize(1);
     output_dims[0] = positive_condition_count;

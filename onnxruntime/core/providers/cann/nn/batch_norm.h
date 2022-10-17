@@ -14,7 +14,7 @@ class BatchNorm final : public CannKernel {
  public:
   BatchNorm(const OpKernelInfo& info)
       : CannKernel(info),
-        momentum_(0.9) {
+        momentum_(0.9f) {
     float tmp_epsilon;
     ORT_ENFORCE(info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
     epsilon_ = static_cast<float>(tmp_epsilon);

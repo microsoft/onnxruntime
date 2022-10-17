@@ -50,7 +50,7 @@ Status Clip_6<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor& X = *ctx->Input<Tensor>(0);
   const TensorShape& input_shape{X.Shape()};
   Tensor* Y = ctx->Output(0, input_shape);
-  const size_t count = input_shape.Size();
+  const size_t count = static_cast<uint64_t>(input_shape.Size());
   if (count > 0) {
     auto* y_data = Y->MutableData<T>();
     const auto* x_data = X.Data<T>();

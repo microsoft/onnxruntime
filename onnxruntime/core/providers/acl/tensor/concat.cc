@@ -27,7 +27,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
   std::vector<const Tensor*> input_tensors;
-  input_tensors.reserve(input_count);
+  input_tensors.reserve(static_cast<uint64_t>(input_count));
   for (int i = 0; i < input_count; ++i) {
     input_tensors.push_back(ctx->Input<Tensor>(i));
   }
@@ -40,11 +40,11 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
 
     // Calculate the size of the concatenated axis
     size_t concat_axis_size = 0;
-    for (int64_t index = 0; index < input_count; index++) {
-      concat_axis_size += input_tensors[index]->Shape()[static_cast<int>(axis_)];
+    for (uint64_t index = 0; index < input_count; index++) {
+      concat_axis_size += static_cast<uint64_t>(input_tensors[index]->Shape()[static_cast<size_t>(axis_)]);
     }
 
-    output_dims[axis_] = concat_axis_size;
+    output_dims[static_cast<uint64_t>(axis_)] = static_cast<int64_t>(concat_axis_size);
   } else { // 'Stack' mode
     // While stacking, the rank of the output is one more than the input rank(s).
     // Stacking may be thought of as adding an unit dimension (of value 1) in the input tensors,
@@ -65,7 +65,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
 
   arm_compute::Tensor output;
   std::vector<arm_compute::ITensor*> inputs_vector;
-  for (int i = 0; i < input_count; i++) {
+  for (uint64_t i = 0; i < input_count; i++) {
     arm_compute::Tensor* input = new arm_compute::Tensor();
     auto X = input_tensors[i];
     LOGS_DEFAULT(VERBOSE) << "X[" << i << "]: " << X->Shape().ToString().c_str();
@@ -80,7 +80,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
   LOGS_DEFAULT(VERBOSE) << "axis: " << axis_;
   LOGS_DEFAULT(VERBOSE) << std::endl;
 
-  for (int i = 0; i < input_count; i++) {
+  for (uint64_t i = 0; i < input_count; i++) {
     auto X = input_tensors[i];
     const T* x_data = X->Data<T>();
     arm_compute::Tensor* in = static_cast<arm_compute::Tensor*>(inputs_vector[i]);

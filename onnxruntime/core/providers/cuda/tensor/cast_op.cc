@@ -64,7 +64,7 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   const TensorShape& shape = X->Shape();
   Tensor* Y = context->Output(0, shape);
   const auto* x_data = reinterpret_cast<const CudaSrcT*>(X->Data<SrcT>());
-  size_t count = shape.Size();
+  size_t count = static_cast<uint64_t>(shape.Size());
 
 #define CASE(TP_TYPE, DstT)                                                                          \
   case TP_TYPE:                                                                                      \

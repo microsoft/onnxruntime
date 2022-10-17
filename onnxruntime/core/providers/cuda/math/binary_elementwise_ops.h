@@ -55,8 +55,8 @@ struct BinaryElementwisePreparation {
       int64_t C = 0;
       if (1 == std::count_if(rhs_dims.begin(), rhs_dims.end(),
                              [&C](int64_t dim) { if (dim != 1) C = dim; return (dim != 1); })) {
-        int32_t dim_C = gsl::narrow_cast<int32_t>(std::find(rhs_dims.begin(), rhs_dims.end(), C) - rhs_dims.begin() + output_shape.NumDimensions() - rhs_shape.NumDimensions());
-        int64_t N = output_shape.SizeToDimension(dim_C);
+        int32_t dim_C = gsl::narrow_cast<int32_t>(static_cast<size_t>(std::find(rhs_dims.begin(), rhs_dims.end(), C) - rhs_dims.begin()) + output_shape.NumDimensions() - rhs_shape.NumDimensions());
+        int64_t N = output_shape.SizeToDimension(static_cast<size_t>(dim_C));
         int64_t H = (dim_C < out_rank - 1 ? output_shape.SizeFromDimension(static_cast<size_t>(dim_C) + 1) : 1);
 
         std::vector<int64_t> new_output_dims;
@@ -75,24 +75,24 @@ struct BinaryElementwisePreparation {
     output_rank_or_simple_broadcast = out_rank;
 
     if (lhs_shape != output_shape) {
-      TensorPitches original_lhs_padded_strides(lhs_shape.GetDims(), out_rank);
+      TensorPitches original_lhs_padded_strides(lhs_shape.GetDims(), static_cast<size_t>(out_rank));
       lhs_padded_strides.SetSize(out_rank);
       auto offset = out_rank - lhs_rank;
       for (auto i = offset; i < out_rank; ++i) {
         // the stride for broadcast dimension is kept as 0
-        if (lhs_shape.GetDims()[static_cast<size_t>(i) - offset] != 1) {
+        if (lhs_shape.GetDims()[static_cast<size_t>(i) - static_cast<size_t>(offset)] != 1) {
           lhs_padded_strides[i] = original_lhs_padded_strides[i];
         }
       }
     }
 
     if (rhs_shape != output_shape) {
-      TensorPitches original_rhs_padded_strides(rhs_shape.GetDims(), out_rank);
+      TensorPitches original_rhs_padded_strides(rhs_shape.GetDims(), static_cast<size_t>(out_rank));
       rhs_padded_strides.SetSize(out_rank);
       auto offset = out_rank - rhs_rank;
       for (auto i = offset; i < out_rank; ++i) {
         // the stride for broadcast dimension is kept as 0
-        if (rhs_shape.GetDims()[static_cast<size_t>(i) - offset] != 1) {
+        if (rhs_shape.GetDims()[static_cast<size_t>(i) - static_cast<size_t>(offset)] != 1) {
           rhs_padded_strides[i] = original_rhs_padded_strides[i];
         }
       }

@@ -205,7 +205,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     // If the output was not allocated inplace with the sum tensor, then copy here.
     const auto* sum_data = Sum->Data<float>();
     if (Ydata != sum_data) {
-      memcpy(Ydata, sum_data, sum_shape.Size() * sizeof(float));
+      memcpy(Ydata, sum_data, static_cast<uint64_t>(sum_shape.Size()) * sizeof(float));
     }
     Beta = 1.0f;
   }
@@ -285,7 +285,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             thread_pool);
       }
 
-      MlasActivation(&activation_, Ydata, Bdata, M, output_image_size, output_image_size);
+      MlasActivation(&activation_, Ydata, Bdata, static_cast<uint64>(M), static_cast<uint64>(output_image_size), static_cast<size_t>(output_image_size));
 
       Xdata += X_offset * conv_attrs_.group;
       Ydata += Y_offset * conv_attrs_.group;

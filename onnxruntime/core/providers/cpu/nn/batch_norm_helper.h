@@ -48,7 +48,7 @@ class BatchNormHelper {
     }
     // in non-spatial cases - the other dims of 'scale' must be validated
     if (!is_spatial) {
-      for (int feature = 0; feature < num_feature_dims; ++feature) {
+      for (uint64_t feature = 0; feature < num_feature_dims; ++feature) {
         if (scale_dims[1 + feature] != x_dims[2 + feature]) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input scale: ", (1 + feature), " dimension != ", x_dims[2 + feature]);
         }
@@ -65,7 +65,7 @@ class BatchNormHelper {
     }
     // in non-spatial cases - the other dims of 'B' must be validated
     if (!is_spatial) {
-      for (int feature = 0; feature < num_feature_dims; ++feature) {
+      for (uint64_t feature = 0; feature < num_feature_dims; ++feature) {
         if (B_dims[1 + feature] != x_dims[2 + feature]) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input B: ", (1 + feature), " dimension != ", x_dims[2 + feature]);
         }
@@ -82,7 +82,7 @@ class BatchNormHelper {
     }
     // in non-spatial cases - the other dims of 'mean' must be validated
     if (!is_spatial) {
-      for (int feature = 0; feature < num_feature_dims; ++feature) {
+      for (uint64_t feature = 0; feature < num_feature_dims; ++feature) {
         if (mean_dims[1 + feature] != x_dims[2 + feature]) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input mean: ", (1 + feature), " dimension != ", x_dims[2 + feature]);
         }
@@ -99,7 +99,7 @@ class BatchNormHelper {
     }
     // in non-spatial cases - the other dims of 'var' must be validated
     if (!is_spatial) {
-      for (int feature = 0; feature < num_feature_dims; ++feature) {
+      for (uint64_t feature = 0; feature < num_feature_dims; ++feature) {
         if (var_dims[1 + feature] != x_dims[2 + feature]) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid input var: ", (1 + feature), " dimension != ", x_dims[2 + feature]);
         }

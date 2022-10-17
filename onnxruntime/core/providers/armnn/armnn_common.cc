@@ -13,11 +13,11 @@ namespace armnn_ep {
 
 armnn::TensorShape ArmNNTensorShape(const TensorShape& tensorShape, unsigned int extDim) {
   std::vector<unsigned int> dims;
-  unsigned int inDim = tensorShape.NumDimensions();
-  unsigned int outDim = (extDim > inDim) ? extDim : inDim;
+  uint64_t inDim = tensorShape.NumDimensions();
+  uint64_t outDim = (extDim > inDim) ? extDim : inDim;
 
-  for (unsigned int i = 0; i < inDim; ++i)
-	  dims.push_back(tensorShape.GetDims()[i]);
+  for (uint64_t i = 0; i < inDim; ++i)
+	  dims.push_back(static_cast<unsigned int>(tensorShape.GetDims()[i]));
 
   // extend dimensions
   for (unsigned int i = 0; i < outDim - inDim; i++)
