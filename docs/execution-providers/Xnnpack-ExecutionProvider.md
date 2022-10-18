@@ -2,7 +2,7 @@
 title: XNNPACK
 description: Instructions to execute ONNX Runtime with the XNNPACK execution provider
 parent: Execution Providers
-nav_order: 16
+nav_order: 17
 ---
 {::options toc_levels="2" /}
 

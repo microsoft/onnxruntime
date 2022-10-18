@@ -2,7 +2,7 @@
 title: Add a new execution provider
 description: Instructions to add a new execution provider to ONNX Runtime
 parent: Execution Providers
-nav_order: 17
+nav_order: 18
 redirect_from: /docs/how-to/add-execution-provider
 ---
 
