@@ -51,7 +51,7 @@ class CANNExecutionProvider : public IExecutionProvider {
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
-  void LegalizeSessionOptions(SessionOptions& session_options, const logging::Logger& logger) override;
+  common::Status CheckSessionOptions(const SessionOptions& session_options) override;
 
  private:
   CANNExecutionProviderInfo info_;

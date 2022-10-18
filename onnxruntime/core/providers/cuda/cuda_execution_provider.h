@@ -128,7 +128,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
-  void LegalizeSessionOptions(SessionOptions& session_options, const logging::Logger& logger) override;
+  common::Status CheckSessionOptions(const SessionOptions& session_options) override;
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   bool IsGraphCaptureEnabled() const override;

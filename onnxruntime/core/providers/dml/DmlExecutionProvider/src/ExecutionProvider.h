@@ -169,7 +169,7 @@ namespace Dml
         }
 
         onnxruntime::common::Status OnSessionInitializationEnd();
-        void LegalizeSessionOptions(onnxruntime::SessionOptions& so, const onnxruntime::logging::Logger& logger);
+        common::Status CheckSessionOptions(onnxruntime::SessionOptions& so);
 
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
@@ -283,9 +283,9 @@ namespace Dml
             return Status::OK();
         }
 
-        virtual void LegalizeSessionOptions(onnxruntime::SessionOptions& so, const onnxruntime::logging::Logger& logger) final override
+        virtual common::Status CheckSessionOptions(onnxruntime::SessionOptions& so) override
         {
-            m_impl->LegalizeSessionOptions(so, logger);
+            m_impl->CheckSessionOptions(so);
         }
 
         void Flush()

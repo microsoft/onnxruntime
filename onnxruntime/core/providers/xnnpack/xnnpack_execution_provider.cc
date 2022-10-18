@@ -96,12 +96,12 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
   }
 }
 
-void XnnpackExecutionProvider::LegalizeSessionOptions(SessionOptions& so, const logging::Logger& logger) {
+common::Status XnnpackExecutionProvider::CheckSessionOptions(const SessionOptions& so) {
   if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-    LOGS(logger, WARNING)
-        << "Parallel execution mode does not support the Xnnpack Execution Provider. "
-        << "So making the execution mode sequential for this session since it uses the Xnnpack Execution Provider.";
-    so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Parallel execution mode does not support the Xnnpack Execution Provider. "
+                           "Please set the execution mode as sequential for this "
+                           "session since it uses the Xnnpack Execution Provider.");
   }
   if (so.intra_op_param.allow_spinning && so.intra_op_param.thread_pool_size > 1) {
     LOGS_DEFAULT(WARNING)
@@ -115,9 +115,9 @@ void XnnpackExecutionProvider::LegalizeSessionOptions(SessionOptions& so, const 
   if (so.intra_op_param.thread_pool_size > 1 && info_.xnn_thread_pool_size == 0) {
     LOGS_DEFAULT(INFO) << "XNNPACK pool size is not set. Using ORT's thread-pool size as default:";
     info_.xnn_thread_pool_size = so.intra_op_param.thread_pool_size;
-    // creat threadpool
     xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info_.xnn_thread_pool_size));
   }
+  return Status::OK();
 }
 
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
