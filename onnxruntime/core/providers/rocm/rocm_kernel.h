@@ -24,7 +24,6 @@ class RocmKernel : public OpKernel {
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
     Status s;
-    const std::string& op_name = Info().GetKernelDef().OpName();
     auto is_backward_pass = Info().GetAttrOrDefault<int64_t>("__backwardpass", 0);
     if (is_backward_pass) {
       BackwardPassGuard guard;
