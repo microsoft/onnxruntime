@@ -462,13 +462,13 @@ Status ScanImpl::Execute(const FeedsFetchesManager& ffm) {
 Status ScanImpl::TransposeOutput() {
   auto status = Status::OK();
 
-  for (int i = 0; i < info_.num_scan_outputs; ++i) {
-    auto axis = output_axes_from_attribute_[static_cast<uint64_t>(i)];
+  for (uint64_t i = 0; i < info_.num_scan_outputs; ++i) {
+    auto axis = output_axes_from_attribute_[i];
 
     if (axis != 0) {
       auto output_index = i + info_.num_loop_state_variables;
-      const OrtValue& temporary_output_mlvalue = output_iterators_[static_cast<uint64_t>(output_index)]->GetOutput();
-      const auto& temporary_output_tensor = temporary_output_mlvalue.Get<Tensor>();
+      const OrtValue &temporary_output_mlvalue = output_iterators_[static_cast<uint64_t>(output_index)]->GetOutput();
+      const auto &temporary_output_tensor = temporary_output_mlvalue.Get<Tensor>();
 
       int64_t output_rank = static_cast<int64_t>(temporary_output_tensor.Shape().NumDimensions());
 
