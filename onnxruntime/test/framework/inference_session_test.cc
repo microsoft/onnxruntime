@@ -1591,8 +1591,8 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
 
 #if USE_TENSORRT
   // previous run with graph being optimized, one of If node’s both subgraphs become empty, so TRT EP won’t assign this If node to TRT and later ORT assign it to CUDA.
-  // we also want to test graph not being optimized and TRT EP should also be able to run it and make the whole graph run on TRT. 
-  so.graph_optimization_level = TransformerLevel::Default; 
+  // we also want to test graph not being optimized and TRT EP should also be able to run it and make the whole graph run on TRT.
+  so.graph_optimization_level = TransformerLevel::Default;
   InferenceSession session_object_2{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object_2.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
   status = session_object_2.Load(model_file_name);
@@ -2068,19 +2068,9 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
   InferenceSession session_object{so, GetEnvironment()};
 
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  auto status = (session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 
-  ASSERT_STATUS_OK(session_object.Load(model_uri));
-
-  auto status = session_object.Initialize();
-
-  ASSERT_TRUE(status.IsOK());
-
-  const auto& so_queried = session_object.GetSessionOptions();
-
-  // execution mode is sequential since we have registered the CUDA EP
-  // (which isn't supported by the parallel execution mode)
-  ASSERT_TRUE(so_queried.execution_mode == ExecutionMode::ORT_SEQUENTIAL);
+  ASSERT_FALSE(status.IsOK());
 }
 
 TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
