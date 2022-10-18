@@ -84,6 +84,40 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 }  // namespace xnnpack
 
+static void* xnn_allocate(void* context, size_t size) {
+  return static_cast<IAllocator*>(context)->Alloc(size);
+}
+
+static void* xnn_reallocate(void* context, void* pointer, size_t size) {
+  if (pointer == nullptr) {
+    return xnn_allocate(context, size);
+  }
+  // it will lead to crash when free memory with context->Free, but luckily it is not used in xnnpack temporary
+  return realloc(pointer, size);
+}
+
+static void xnn_deallocate(void* context, void* pointer) {
+  if (pointer != nullptr) {
+    static_cast<IAllocator*>(context)->Free(pointer);
+  }
+}
+
+static void* xnn_aligned_allocate(void* context, size_t alignment, size_t size) {
+#if XNN_ARCH_WASM
+  ORT_ENFORCE(alignment <= 2 * sizeof(void*));
+  return xnn_allocate(context, size);
+#else
+  void* ptr = xnn_allocate(context, size);
+  ORT_ENFORCE((int64_t(ptr) & (alignment - 1)) == 0, "address is not aligned");
+  // if ptr is not aligned, we have to find a way to return a aligned ptr and store the original ptr
+  return ptr;
+#endif
+}
+
+static void xnn_aligned_deallocate(void* context, void* pointer) {
+  return xnn_deallocate(context, pointer);
+}
+
 using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
@@ -121,9 +155,15 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
     InsertAllocator(cpu_alloc);
   }
 
-  // TODO: Create `struct xnn_allocator` that wraps cpu_allocator, and provide in the call to xnn_initialize so that
-  //       xnnpack is using the ORT allocator.
-  xnn_status st = xnn_initialize(nullptr);
+  static const xnn_allocator xnn_default_allocator = {
+      .context = cpu_alloc.get(),
+      .allocate = xnn_allocate,
+      .reallocate = xnn_reallocate,
+      .deallocate = xnn_deallocate,
+      .aligned_allocate = xnn_aligned_allocate,
+      .aligned_deallocate = xnn_aligned_deallocate,
+  };
+  xnn_status st = xnn_initialize(&xnn_default_allocator);
   if (st != xnn_status_success) {
     ORT_THROW("XNNPACK initialization failed with status ", st);
   }
