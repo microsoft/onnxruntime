@@ -3,7 +3,6 @@
 
 #include "precomp.h"
 #include "GraphDescBuilder.h"
-#include "GraphKernelHelper.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
@@ -33,17 +32,18 @@ namespace Dml::GraphDescBuilder
     #pragma warning(pop)
 
     GraphDesc BuildGraphDesc(
-        const onnxruntime::OpKernelInfo& kernelInfo,
         const uint8_t* isConstGpuGraphInput,
         const size_t isConstGpuGraphInputCount,
-        std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap,
+        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
         const onnxruntime::Graph& graph,
-        const gsl::span<const std::string> fusedNodeInputArgOriginalNames,
-        const gsl::span<const std::string> fusedNodeOutputArgOriginalNames,
+        const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const std::unordered_map<std::string, GraphNodeProperties>& graphNodePropertyMap,
         IDMLDevice* device,
         const void* executionHandle)
     {
+        
+        const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph.GetMetaDef()->inputs;
+        const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph.GetMetaDef()->outputs;
         struct NodeAndIndex
         {
             uint32_t nodeIndex; // The index of the node itself
@@ -56,9 +56,9 @@ namespace Dml::GraphDescBuilder
         // Map from Lotus node argument names to input indices of the fused kernel node.
         std::unordered_map<std::string, uint32_t> nameToDmlFusedNodeInputIndex;
 
-        for (size_t inputIndex = 0; inputIndex < fusedNodeInputArgOriginalNames.size(); ++inputIndex)
+        for (size_t inputIndex = 0; inputIndex < subGraphInputArgNames.size(); ++inputIndex)
         {
-            const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(fusedNodeInputArgOriginalNames[inputIndex]);
+            const onnxruntime::NodeArg* graphInput = graph.GetNodeArg(subGraphInputArgNames[inputIndex]);
 
             if (!graphInput)
             {
@@ -79,42 +79,34 @@ namespace Dml::GraphDescBuilder
         std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> graphIntermediateEdges;
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> graphOutputEdges;
 
-        // Get the topological sorting of Lotus nodes
-        // paulm: breaking change from LOTUS that removed GetNodesInTopologicalOrder from Graph
-        onnxruntime::GraphViewer viewer(graph);
-        const std::vector<onnxruntime::NodeIndex>& orderedNodeIndices = viewer.GetNodesInTopologicalOrder();
-
         // Avoid using separate command lists for small graphs. This value can be reduced by tuning the 
         // flushing behavior of DmlCommandRecorder.  Its current behavior is to assume that graphs contain
         // enough GPU work to be worth flushing immediately.
         const uint32_t minNodeCountToReuseCommandList = 5;
         bool reuseCommandList = false;
         
-        if (orderedNodeIndices.size() >= minNodeCountToReuseCommandList)
+        if (indexedSubGraph.nodes.size() >= minNodeCountToReuseCommandList)
         {
             reuseCommandList = true;
         }
 
-#ifdef _GAMING_XBOX
-        // #40265989
-        reuseCommandList = false;
-#endif
-
-        auto constantCpuGraphInputGetter = [&transferredInitializerMap](const std::string& argName)
+        auto constantCpuGraphInputGetter = [&isInitializerTransferable](const std::string& argName)
         {
             ComPtr<OnnxTensorWrapper> tensorWrapper;
 
-            auto iter = transferredInitializerMap.find(argName);
-            if (iter != transferredInitializerMap.end())
+            auto iter = isInitializerTransferable.find(argName);
+            if (iter != isInitializerTransferable.end())
             {
-                tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(&iter->second);
+                // Using const_cast here is simpler than making surrounding code const correct.
+                tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<ONNX_NAMESPACE::TensorProto*>(iter->second.first));
             }
 
             return tensorWrapper;
         };
 
         // Iterate through each node and create a corresponding node in the new graph
-        for (size_t sortedNodeIndex : orderedNodeIndices) 
+        // We can iterate the nodes in any order because the edge connectivity will take care of the topological order
+        for (size_t sortedNodeIndex : indexedSubGraph.nodes) 
         {
             const onnxruntime::Node& node = *graph.GetNode(sortedNodeIndex);
 
@@ -262,9 +254,9 @@ namespace Dml::GraphDescBuilder
         }
 
         // Add graph output nodes, which might be in a different order from the encapsulating node
-        for (size_t outputIndex = 0; outputIndex < fusedNodeOutputArgOriginalNames.size(); ++outputIndex)
+        for (size_t outputIndex = 0; outputIndex < subGraphOutputArgNames.size(); ++outputIndex)
         {
-            const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(fusedNodeOutputArgOriginalNames[outputIndex]);
+            const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(subGraphOutputArgNames[outputIndex]);
 
             ORT_THROW_HR_IF_NULL_MSG(E_POINTER, graphOutput, "FusedNode's nodeArgList does not contain one of the nodeArg");
             const auto& outputNodeAndIndex = nameToNodeAndIndexMap.at(graphOutput->Name());

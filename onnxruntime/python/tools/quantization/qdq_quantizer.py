@@ -86,8 +86,8 @@ class QDQQuantizer(ONNXQuantizer):
         # So, we don't recommend to add QDQ to node's output under such condition.
         self.op_types_to_exclude_output_quantization = (
             []
-            if "OpTypesToExcludeOutputQuantizatioin" not in extra_options
-            else extra_options["OpTypesToExcludeOutputQuantizatioin"]
+            if "OpTypesToExcludeOutputQuantization" not in extra_options
+            else extra_options["OpTypesToExcludeOutputQuantization"]
         )
 
         # We do quantization on Dequantizelinear's input to remove Quantizelinear for weight as an optimization.

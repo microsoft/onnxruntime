@@ -20,6 +20,8 @@ class NvtxRangeCreator;
 }
 
 struct ProviderInfo_CUDA {
+  virtual ~ProviderInfo_CUDA() {} // This is declared due to a TSA warning, the only instantiation of this class is a global variable of automatic storage.
+
   virtual OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) = 0;
   virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
 

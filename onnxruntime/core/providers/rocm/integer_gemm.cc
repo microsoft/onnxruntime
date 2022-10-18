@@ -3,7 +3,7 @@
 
 
 #include <hip/hip_runtime.h>
-#include <rocblas.h>
+#include <rocblas/rocblas.h>
 #include "core/providers/rocm/shared_inc/integer_gemm.h"
 
 #include "core/providers/rocm/rocm_common.h"

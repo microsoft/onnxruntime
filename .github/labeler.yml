@@ -4,7 +4,7 @@ ep:CUDA: '/\bcuda\b/i'
 ep:DML:
   - '/\bdirectml\b/i'
   - '/\bdml\b/i'
-ep:MIGraphX: /\bmigraphx\b/i'
+ep:MIGraphX: '/\bmigraphx\b/i'
 ep:oneDNN: '/\bonednn\b/i'
 ep:OpenVINO: '/\bopen\s*vino\b/i'
 ep:RockchipNPU: '/\brockchip\b/i'

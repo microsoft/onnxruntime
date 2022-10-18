@@ -788,7 +788,7 @@ TEST_P(ModelTest, Run) {
           const ONNX_NAMESPACE::ValueInfoProto* v = name_output_value_info_proto[output_name];
           if (v == nullptr)
             continue;
-          ret = VerifyValueInfo(*v, Ort::Unowned<Ort::Value>{actual_output_value});
+          ret = VerifyValueInfo(*v, actual_output_value);
           compare_result = ret.first;
           ASSERT_EQ(COMPARE_RESULT::SUCCESS, ret.first) << ret.second;
 
@@ -1131,9 +1131,12 @@ auto ExpandModelName = [](const ::testing::TestParamInfo<ModelTest::ParamType>& 
   std::replace(name.begin(), name.end(), '/', '_');
   std::replace(name.begin(), name.end(), '\\', '_');
 
+  // in case there's whitespace in directory name
+  std::replace(name.begin(), name.end(), ' ', '_');
+
   // Note: test name only accepts '_' and alphanumeric
   // remove '.', '-', ':'
-  char chars[] = ".-:";
+  char chars[] = ".-:()";
   for (unsigned int i = 0; i < strlen(chars); ++i) {
     name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
   }

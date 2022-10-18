@@ -445,6 +445,7 @@ requirements_file = "requirements.txt"
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, "--enable_training")
 enable_training_on_device = parse_arg_remove_boolean(sys.argv, "--enable_training_on_device")
+enable_rocm_profiling = parse_arg_remove_boolean(sys.argv, "--enable_rocm_profiling")
 disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, "--disable_auditwheel_repair")
 default_training_package_device = parse_arg_remove_boolean(sys.argv, "--default_training_package_device")
 
@@ -491,6 +492,7 @@ if enable_training:
         ]
     )
     if enable_training_on_device:
+        packages.append("onnxruntime.training.api")
         packages.append("onnxruntime.training.onnxblock")
         packages.append("onnxruntime.training.onnxblock.loss")
         packages.append("onnxruntime.training.onnxblock.optim")
@@ -611,6 +613,8 @@ if nightly_build:
 
 if local_version:
     version_number = version_number + local_version
+    if is_rocm and enable_rocm_profiling:
+        version_number = version_number + ".profiling"
 
 if wheel_name_suffix:
     if not (enable_training and wheel_name_suffix == "gpu"):

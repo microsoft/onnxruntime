@@ -45,7 +45,6 @@ class QOrderedAttention final : public CudaKernel, public AttentionBase {
   Status PutIntoMergedBias(const Tensor& tensor, AllocatorPtr alloc, int qkv_index);
 
 #endif
-
 };
 
 }  // namespace cuda
