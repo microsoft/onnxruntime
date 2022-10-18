@@ -849,6 +849,15 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("reset_grad", [](onnxruntime::training::api::Module* model) -> void {
         ORT_THROW_IF_ERROR(model->ResetGrad());
       })
+      .def("copy_parameters_to_buffer", [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
+        ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output));
+      })
+      .def("copy_buffer_to_parameters", [](onnxruntime::training::api::Module* model, OrtValue& input) -> void {
+        ORT_THROW_IF_ERROR(model->CopyBufferToParameters(input));
+      })
+      .def("get_parameters_size", [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
+        return model->GetParametersSize(trainable_only);
+      })
       .def("save_checkpoint", [](onnxruntime::training::api::Module* model, const std::string& checkpoint_path) -> void {
         onnxruntime::training::api::CheckpointState state;
         ORT_THROW_IF_ERROR(model->GetStateDict(state.module_checkpoint_state));
