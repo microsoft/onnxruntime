@@ -188,7 +188,7 @@ TEST(TrainingApiTest, ModuleExportModelForInferencing) {
   PathString inference_model_path{
       ConcatPathComponent<PathChar>(tmp_dir.Path(), ORT_TSTR("inference_model.onnx"))};
 
-  ASSERT_STATUS_OK(model->ExportModelForInferencing(inference_model_path));
+  ASSERT_STATUS_OK(model->ExportModelForInferencing(ToUTF8String(inference_model_path)));
 
   // Load model
   ONNX_NAMESPACE::ModelProto eval_model;
@@ -197,8 +197,8 @@ TEST(TrainingApiTest, ModuleExportModelForInferencing) {
   ORT_THROW_IF_ERROR(Model::Load(inference_model_path, inference_model));
 
   // Check it has only one graph input
-  ASSERT_EQ(eval_model.graph().input().size(), 6U);
-  ASSERT_EQ(inference_model.graph().input().size(), 1U);
+  ASSERT_EQ(eval_model.graph().input().size(), 6);
+  ASSERT_EQ(inference_model.graph().input().size(), 1);
   ASSERT_EQ(inference_model.graph().input()[0].name(), "input-0");
 
   // Check that it does not have any node which has op type SoftmaxCrossEntropyLoss

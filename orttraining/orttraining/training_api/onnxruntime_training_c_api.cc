@@ -344,7 +344,7 @@ ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrain
   API_IMPL_BEGIN
 
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(session->ExportModelForInferencing(inference_model_path));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->ExportModelForInferencing(onnxruntime::ToUTF8String(inference_model_path)));
 
   return nullptr;
   API_IMPL_END
