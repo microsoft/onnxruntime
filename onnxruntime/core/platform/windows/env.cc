@@ -74,11 +74,11 @@ class WindowsThread : public EnvThread {
     Param(const ORTCHAR_T* name_prefix1,
           int index1,
           unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
-          Eigen::ThreadPoolInterface* param1) 
-      : name_prefix(name_prefix1),
-      index(index1),
-      start_address(start_address1),
-      param(param1) {}
+          Eigen::ThreadPoolInterface* param1)
+        : name_prefix(name_prefix1),
+          index(index1),
+          start_address(start_address1),
+          param(param1) {}
   };
 
  public:
@@ -159,8 +159,9 @@ class WindowsThread : public EnvThread {
     unsigned ret = 0;
     ORT_TRY {
       // TODO: should I try to use SetThreadSelectedCpuSets?
-      if (p->affinity_mask.has_value()) {
-        auto rc = SetThreadAffinityMask(GetCurrentThread(), *p->affinity_mask);
+      if (p->affinity_mask.has_value() && *p->affinity_mask < 64) {
+        const DWORD_PTR mask = DWORD_PTR{1} << *p->affinity_mask;
+        auto rc = SetThreadAffinityMask(GetCurrentThread(), mask);
         if (!rc) {
           const auto error_code = GetLastError();
           LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
@@ -213,10 +214,37 @@ class WindowsEnv : public Env {
     Sleep(static_cast<DWORD>(micros) / 1000);
   }
 
-  int GetNumCpuCores() const override {
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
-    DWORD returnLength = sizeof(buffer);
+  struct LogicalProcessorInformation {
+    std::unique_ptr<char[]> buffer_;
+    size_t count_;
+  };
+
+  std::optional<LogicalProcessorInformation> FetchLogicalProcessorInfo() const {
+    // We will fail the first time around. The docs say, the size of the structure
+    // is different on different versions and releases.
+    DWORD returnLength = 0;
+    if (GetLogicalProcessorInformation(NULL, &returnLength) == FALSE) {
+      if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+        return {};
+      }
+    }
+
+    auto allocation = std::make_unique<char[]>(returnLength);
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION* buffer = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(allocation.get());
     if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
+      return {};
+    }
+
+    size_t count = gsl::narrow<size_t>(returnLength) / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+    std::optional<LogicalProcessorInformation> result;
+    result = {std::move(allocation), count};
+    return result;
+  }
+
+  int GetNumCpuCores() const override {
+
+    auto logical_processor_info = FetchLogicalProcessorInfo();
+    if (!logical_processor_info.has_value()) {
       // try GetSystemInfo
       SYSTEM_INFO sysInfo;
       GetSystemInfo(&sysInfo);
@@ -226,42 +254,71 @@ class WindowsEnv : public Env {
       // This is the number of logical processors in the current group
       return sysInfo.dwNumberOfProcessors;
     }
+
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION* buffer =
+        reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(logical_processor_info->buffer_.get());
+
+    const size_t count = logical_processor_info->count_;
+
     int processorCoreCount = 0;
-    int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-    for (int i = 0; i != count; ++i) {
+      for (int i = 0; i < count; ++i) {
       if (buffer[i].Relationship == RelationProcessorCore) {
         ++processorCoreCount;
       }
     }
+
     if (!processorCoreCount)
       ORT_THROW("Fatal error: 0 count processors from GetLogicalProcessorInformation");
     return processorCoreCount;
   }
 
   std::vector<size_t> GetThreadAffinityMasks() const override {
-    auto generate_vector_of_n = [](int n) {
-      n = std::clamp(n, 0, 64);
+    auto generate_vector_of_n = [](unsigned int n) {
+      // The return values will be converted into a 64-bit
+      // mask at the site of the SetThreadAffinityMask() call, so we need to make sure
+      // that n does not exceed 64, which is the max number of processors
+      // supported by SetThreadAffinityMask(). We assume two logical processors per
+      // physical core.
+      n = std::clamp(n, 0U, 64U);
       std::vector<size_t> ret;
-      ret.reserve(n);
-      for (int shift = 0; shift < n; ++shift) {
-        size_t mask = size_t{1} << shift;
-        ret.push_back(mask);
+      ret.reserve(n / 2);
+      for (unsigned int c = 1; c < n; c += 2) {
+        ret.push_back(c);
       }
       return ret;
     };
-    // Indeed 64 should be enough. However, it's harmless to have a little more.
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
-    DWORD returnLength = sizeof(buffer);
-    if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
+
+    // Returns the log2 of the lowest bit set
+    // (just one logical core per physical core)
+    auto log2_for_mask = [](uint64_t mask) -> size_t {
+      size_t res = 0;
+      while (mask >>= uint64_t{1})
+        res++;
+      return res;
+    };
+
+    auto logical_processor_info = FetchLogicalProcessorInfo();
+    if (!logical_processor_info.has_value()) {
       return generate_vector_of_n(std::thread::hardware_concurrency());
     }
+
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION* buffer = 
+      reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(logical_processor_info->buffer_.get());
+
+    const size_t count = logical_processor_info->count_;
     std::vector<size_t> ret;
-    int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
+    ret.reserve(count);
     for (int i = 0; i != count; ++i) {
       if (buffer[i].Relationship == RelationProcessorCore) {
-        ret.push_back(buffer[i].ProcessorMask);
+        // A single core can host multiple logical processors
+        // so the mask returned can have more than one bit set.
+        // In the past customers complained that threads jump from
+        // one logical process to another, we want to take just one
+        // bit per physical core.
+        ret.push_back(log2_for_mask(buffer[i].ProcessorMask));
       }
     }
+
     if (ret.empty()) {
       return generate_vector_of_n(std::thread::hardware_concurrency());
     }

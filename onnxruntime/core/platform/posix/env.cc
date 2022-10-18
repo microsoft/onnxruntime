@@ -271,8 +271,14 @@ class PosixEnv : public Env {
   }
 
   std::vector<size_t> GetThreadAffinityMasks() const override {
-    std::vector<size_t> ret(std::thread::hardware_concurrency() / 2);
-    std::iota(ret.begin(), ret.end(), 0);
+    // Assumed two logical processors per physical  core
+    // add masks of 1 logical process per physical core.
+    const auto logical_processors = std::thread::hardware_concurrency();
+    std::vector<size_t> ret;
+    ret.reserve(logical_processors/2);
+    for (unsigned int c = 1; c < logical_processors; c += 2) {
+      ret.push_back(c);
+    }
     return ret;
   }
 
