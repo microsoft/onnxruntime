@@ -19,25 +19,18 @@ Status RocmBlasAltImpl::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
 
-#if 1
     if (node.OpType() == "YieldOp") {
       is_backward_pass = true;
       ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
     }
-    else
-#else
-    is_backward_pass = true;
-#endif
-    {
+    else {
       ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
     }
 
-    //if (node.OpType() == "MatMul" || node.OpType() == "FusedMatMul" || node.OpType() == "Gemm") {
-      if (is_backward_pass) {
-        node.AddAttribute(std::string("__altimpl"), static_cast<int64_t>(1));
-        modified = true;
-      }
-    //}
+    if (is_backward_pass) {
+      node.AddAttribute(std::string("__backwardpass"), static_cast<int64_t>(1));
+      modified = true;
+    }
   }
 
   return Status::OK();

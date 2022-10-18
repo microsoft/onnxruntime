@@ -208,8 +208,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
 
-      std::cerr << __FILE__ << ":" << __LINE__ << " emplace_back RocmBlasAltImpl" << std::endl;
-      // TODO document
+      // add __backwardpass attribute to nodes after YieldOp, ROCm-only
       const InlinedHashSet<std::string_view> rocm_ep = {onnxruntime::kRocmExecutionProvider};
       transformers.emplace_back(std::make_unique<RocmBlasAltImpl>(rocm_ep));
     } break;
