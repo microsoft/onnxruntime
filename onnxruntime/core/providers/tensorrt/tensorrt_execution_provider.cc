@@ -1326,7 +1326,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       {
-        // Engine serialization/deserialization, engine build and context build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading. 
+        // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
         auto lock = GetApiLock();
 
         std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
@@ -1394,10 +1394,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
           }
         }
+      }
 
-
-        // Build context
-        if (context_memory_sharing_enable_) {
+      // Build context
+      if (context_memory_sharing_enable_) {
           size_t mem_size = trt_engine->getDeviceMemorySize();
           if (mem_size > max_ctx_mem_size_) {
             max_ctx_mem_size_ = mem_size;
@@ -1405,12 +1405,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
           }
           trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
         } else {
-          trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
-        }
-        if (trt_context == nullptr) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                                 "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
-        }
+        trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+      }
+      if (trt_context == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "TensorRT EP could not build execution context for fused node: " + fused_node.Name());
       }
     }
 
