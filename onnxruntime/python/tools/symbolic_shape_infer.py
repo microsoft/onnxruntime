@@ -211,6 +211,7 @@ class SymbolicShapeInference:
             "avg_pool2d": self._infer_aten_pool2d,
             "_adaptive_avg_pool2d": self._infer_aten_pool2d,
             "numpy_T": self._infer_Transpose,
+            "native_group_norm": self._infer_aten_group_norm,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -1350,6 +1351,9 @@ class SymbolicShapeInference:
         if node.output[0] and new_shape is not None:
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, new_shape))
+
+    def _infer_aten_group_norm(self, node):
+        self._propagate_shape_and_type(node)
 
     def _infer_BatchNormalization(self, node):
         self._propagate_shape_and_type(node)
