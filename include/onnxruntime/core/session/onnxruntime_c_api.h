@@ -3471,6 +3471,7 @@ struct OrtApi {
    *
    * XNNPACK supported keys:
    *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
+   *      default value is 0, which means to use the global thread-pool size.
    *
    * \since Version 1.12.
    */
@@ -3568,13 +3569,12 @@ struct OrtApi {
   * \since Version 1.13.
   */
   void(ORT_API_CALL* ReleaseCANNProviderOptions)(_Frees_ptr_opt_ OrtCANNProviderOptions* input);
-  
- /*  \brief Get OrtDevice type from MemoryInfo
-  * 
-  *  \since Version 1.14
-  */
+
+  /*  \brief Get OrtDevice type from MemoryInfo
+   *
+   *  \since Version 1.14
+   */
   void(ORT_API_CALL* MemoryInfoGetDeviceType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
-  
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer

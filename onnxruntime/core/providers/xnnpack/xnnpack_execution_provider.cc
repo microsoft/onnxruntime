@@ -14,6 +14,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
 #include "core/providers/shared/node_unit/node_unit.h"
+#include "core/framework/session_options.h"
 
 namespace onnxruntime {
 
@@ -87,11 +88,35 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
-    : IExecutionProvider{kXnnpackExecutionProvider, true} {
+    : IExecutionProvider{kXnnpackExecutionProvider, true}, info_(info) {
   if (info.xnn_thread_pool_size > 1) {
     // pthreadpool is independent of ort-threadpoool, so we have to disable cpu spinning for ort-threadpool.
     // otherwise, the pthreadpool will be starved and harm performance a lot.
     xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info.xnn_thread_pool_size));
+  }
+}
+
+void XnnpackExecutionProvider::LegalizeSessionOptions(SessionOptions& so, const logging::Logger& logger) {
+  if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+    LOGS(logger, WARNING)
+        << "Parallel execution mode does not support the Xnnpack Execution Provider. "
+        << "So making the execution mode sequential for this session since it uses the Xnnpack Execution Provider.";
+    so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  }
+  if (so.intra_op_param.allow_spinning && so.intra_op_param.thread_pool_size > 1) {
+    LOGS_DEFAULT(WARNING)
+        << "XNNPACK EP utilize pthreadpool for multi-threading. So, if allow_spinning on ORT's"
+           "thread-pool and its pool size is not 1, "
+           "pthreadpool will content with ORT's intra-op thread pool and hurt performance a lot. "
+           "Please Setting intra_op_param.allow_spinning to false or "
+           "setting ort's pool size (intra_thread_num) to 1 and try again.";
+  }
+  // 0 means user didn't set the value.
+  if (so.intra_op_param.thread_pool_size > 1 && info_.xnn_thread_pool_size == 0) {
+    LOGS_DEFAULT(INFO) << "XNNPACK pool size is not set. Using ORT's thread-pool size as default:";
+    info_.xnn_thread_pool_size = so.intra_op_param.thread_pool_size;
+    // creat threadpool
+    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info_.xnn_thread_pool_size));
   }
 }
 
