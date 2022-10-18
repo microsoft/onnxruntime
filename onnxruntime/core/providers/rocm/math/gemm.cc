@@ -6,8 +6,6 @@
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
 
-#define PRE __FILE__ << ":" << __LINE__ << ":" << std::this_thread::get_id() << " "
-
 namespace onnxruntime {
 namespace rocm {
 
@@ -61,8 +59,6 @@ template <typename T>
 Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToHipType<T>::MappedType HipT;
 
-  //auto altimpl = Info().GetAttrOrDefault<int64_t>("altimpl", 0);
-  //std::cerr << PRE << "wtf altimpl " << altimpl << std::endl;
   const auto* X = ctx->Input<Tensor>(0);
   const auto* W = ctx->Input<Tensor>(1);
   const auto* B = ctx->Input<Tensor>(2);

@@ -12,9 +12,6 @@
 #include "core/graph/graph_viewer.h"
 #include "core/optimizer/utils.h"
 
-//#include <thread>
-//#define PRE __FILE__ << ":" << __LINE__ << ":" << std::this_thread::get_id() << " "
-
 namespace onnxruntime {
 
 namespace {
@@ -261,7 +258,6 @@ Status ProcessNode(
     // forward the __altimpl, if present
     auto& attrs = node.GetAttributes();
     if (attrs.count("__altimpl")) {
-      //std::cerr << PRE << " forwarding __altimpl attr " << static_cast<int64_t>(attrs.at("__altimpl").i()) << std::endl;
       matmul_scale_node.AddAttribute("__altimpl", static_cast<int64_t>(attrs.at("__altimpl").i()));
     }
 #endif

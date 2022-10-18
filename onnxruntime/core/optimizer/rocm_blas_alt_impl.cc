@@ -6,8 +6,6 @@
 #include "core/optimizer/rocm_blas_alt_impl.h"
 #include "core/graph/graph_utils.h"
 
-#define PRE __FILE__ << ":" << __LINE__ << ":" << std::this_thread::get_id() << " "
-
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
@@ -21,14 +19,10 @@ Status RocmBlasAltImpl::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   for (auto node_index : node_topology_list) {
     auto& node = *graph.GetNode(node_index);
 
-    //std::cerr << PRE << node << std::endl;
-
 #if 1
     if (node.OpType() == "YieldOp") {
       is_backward_pass = true;
-      //std::cerr << PRE << "YieldOp found, before recurse" << std::endl;
       ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
-      //std::cerr << PRE << "YieldOp found, after recurse" << std::endl;
     }
     else
 #else
@@ -39,7 +33,6 @@ Status RocmBlasAltImpl::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     //if (node.OpType() == "MatMul" || node.OpType() == "FusedMatMul" || node.OpType() == "Gemm") {
-      //std::cerr << PRE << "HIT, is_backward_pass " << is_backward_pass << std::endl;
       if (is_backward_pass) {
         node.AddAttribute(std::string("__altimpl"), static_cast<int64_t>(1));
         modified = true;

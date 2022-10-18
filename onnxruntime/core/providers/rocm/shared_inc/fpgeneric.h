@@ -13,13 +13,10 @@
 #define FLAG 0
 #endif
 
-#define PRE __FILE__ << ":" << __LINE__ << ":" << std::this_thread::get_id() << " "
-
 using namespace onnxruntime;
 
 inline int get_flag() {
   int result = BackwardPassGuard::is_backward_pass() ? FLAG : 0;
-  //std::cerr << PRE << "get_flag() " << result << std::endl;
   return result;
 }
 
