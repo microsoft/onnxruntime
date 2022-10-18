@@ -1276,7 +1276,7 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
             *cfg == "true") {
           std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
           if (provider_type == onnxruntime::kRocmExecutionProvider) {
-            execution_providers.emplace_back(DefaultRocmExecutionProvider(/*use_tunable_op=*/true));
+            execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
           }
 
           if (!execution_providers.empty()) {

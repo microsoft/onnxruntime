@@ -125,12 +125,12 @@ TEST(GemmOpTest, GemmNoTrans_bfloat16) {
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*use_tunable_op=*/true));
+  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 
   execution_providers.clear();
-  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*use_tunable_op=*/false));
+  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
 #endif
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
