@@ -283,7 +283,7 @@ namespace Dml
             return Status::OK();
         }
 
-        virtual common::Status CheckSessionOptions(onnxruntime::SessionOptions& so) override
+        virtual onnxruntime::common::Status CheckSessionOptions(onnxruntime::SessionOptions& so) override
         {
             m_impl->CheckSessionOptions(so);
         }
