@@ -113,6 +113,7 @@ def diagonal_gradient():
         ),
     ]
 
+
 @register_gradient("org.pytorch.aten", "ATen", "max_pool2d_with_indices", "")
 def max_pool2d_gradient():
     return [
