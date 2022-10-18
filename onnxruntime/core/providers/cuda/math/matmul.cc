@@ -139,6 +139,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       std::cout << right_X->SizeInBytes() << "\n";
       std::cout << Y->SizeInBytes() << "\n";
        
+      std::cout << GetDeviceProp().textureAlignment << "\n";
+       
       bool use_special = false;
       if (left_X->SizeInBytes() == 6291456 && 
           right_X->SizeInBytes() == 4718592 &&
