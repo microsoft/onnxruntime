@@ -285,7 +285,7 @@ namespace Dml
 
         virtual onnxruntime::common::Status CheckSessionOptions(const onnxruntime::SessionOptions& so) final override
         {
-            m_impl->CheckSessionOptions(so);
+            return m_impl->CheckSessionOptions(so);
         }
 
         void Flush()
