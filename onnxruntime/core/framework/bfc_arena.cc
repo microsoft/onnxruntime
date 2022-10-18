@@ -369,6 +369,7 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // max_dead_bytes_per_chunk bytes on padding this alloc.
         if (chunk->size >= rounded_bytes * 2 ||
             static_cast<int64_t>(chunk->size) - static_cast<int64_t>(rounded_bytes) >= max_dead_bytes_per_chunk_) {
+              std::cout << "Split";
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
         }
