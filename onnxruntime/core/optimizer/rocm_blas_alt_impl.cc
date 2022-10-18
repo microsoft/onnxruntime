@@ -21,11 +21,9 @@ Status RocmBlasAltImpl::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     if (node.OpType() == "YieldOp") {
       is_backward_pass = true;
-      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
     }
-    else {
-      ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
-    }
+
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if (is_backward_pass) {
       node.AddAttribute(std::string("__backwardpass"), static_cast<int64_t>(1));
