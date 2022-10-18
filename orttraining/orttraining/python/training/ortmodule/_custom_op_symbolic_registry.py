@@ -114,6 +114,23 @@ def multinomial(g, self, num_samples, replacement=False, generator=None):
 
 
 @register_symbolic("resize")
+def resize(g, self, kernel_size, stride, padding, dilation, ceil_mode):
+    stride_val = sym_help._maybe_get_const(stride, "is")
+    if not stride_val:
+        stride = kernel_size
+    return g.op(
+        "org.pytorch.aten::ATen",
+        self,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        ceil_mode,
+        operator_s="max_pool2d_with_indices",
+        outputs=2,
+    )[0]
+
+
 @register_symbolic("max_pool2d")
 def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
     stride_val = sym_help._maybe_get_const(stride, "is")
