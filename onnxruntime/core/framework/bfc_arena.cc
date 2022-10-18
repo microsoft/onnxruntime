@@ -65,7 +65,7 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
     size_t bin_size = BinNumToSize(b);
     new (BinFromIndex(b)) Bin(this, bin_size);
     ORT_ENFORCE(BinForSize(bin_size) == BinFromIndex(b));
-    ORT_ENFORCE(BinForSize(bin_size + 31) == BinFromIndex(b));
+    ORT_ENFORCE(BinForSize(bin_size + 255) == BinFromIndex(b));
     ORT_ENFORCE(BinForSize(bin_size * 2 - 1) == BinFromIndex(b));
     if (b + 1 < kNumBins) {
       ORT_ENFORCE(BinForSize(bin_size * 2) != BinFromIndex(b));
