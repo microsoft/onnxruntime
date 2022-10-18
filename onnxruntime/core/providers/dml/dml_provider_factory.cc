@@ -46,6 +46,17 @@ struct DMLProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProviderWithSessionOption(const SessionOptions* options) {
+      // DML's memory is not byte addressable and hence mem pattern doesn't work.
+    if (options && options->enable_mem_pattern) {
+      ORT_THROW("Having memory pattern enabled is not supported while using the DML Execution Provider. " ,
+                "Please disabling it for this session since it uses the DML Execution Provider.");
+    }
+
+    // Parallel execution mode does not support DML EP
+    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+      ORT_THROW("Parallel execution mode does not support the DML Execution Provider. " ,
+                "Please making the execution mode sequential for this session since it uses the DML Execution Provider.");
+    }
   auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_);
   Dml::SetDefaultRoundingMode(provider.get(), rounding_mode_);
   return provider;

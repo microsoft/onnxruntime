@@ -29,7 +29,11 @@ struct CANNProviderFactory : IExecutionProviderFactory {
   CANNExecutionProviderInfo info_;
 };
 
-std::unique_ptr<IExecutionProvider> CANNProviderFactory::CreateProviderWithSessionOption(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> CANNProviderFactory::CreateProviderWithSessionOption(const SessionOptions* options) {
+  if (options && options->execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+    ORT_THROW("Parallel execution mode does not support the CANN Execution Provider. ",
+              "So Please making the execution mode sequential for this session for CANN Execution Provider.");
+  }
   return std::make_unique<CANNExecutionProvider>(info_);
 }
 

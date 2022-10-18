@@ -50,7 +50,11 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
   CUDAExecutionProviderInfo info_;
 };
 
-std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProviderWithSessionOption(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProviderWithSessionOption(const SessionOptions* options) {
+  if (options && options->execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
+    ORT_THROW("Parallel execution mode does not support the CUDA Execution Provider. ",
+              "Please execution_mode as  sequential for this session since it uses the CUDA Execution Provider.");
+  }
   return std::make_unique<CUDAExecutionProvider>(info_);
 }
 
