@@ -224,8 +224,6 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
                                            void* workspace_memory,
                                            size_t workspace_size,
                                            cudaStream_t stream) {
-  std::cout << "Reached";
-
   const HalfGemmOptions* half_options = HalfGemmOptions::GetInstance();
 
   cudaDataType_t data_type = CUDA_R_16F;
@@ -350,7 +348,7 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
 
       auto duration = duration_cast<microseconds>(stop - start);
     
-      std::cout << "M" << duration.count() << std::endl;
+      std::cout << duration.count() << std::endl;
 
       return status;
 }

@@ -140,12 +140,12 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       std::cout << Y->SizeInBytes() << "\n";
        
       std::cout << GetDeviceProp().textureAlignment << "\n";
-       
+
       bool use_special = false;
       if (left_X->SizeInBytes() == 6291456 && 
           right_X->SizeInBytes() == 4718592 &&
           Y->SizeInBytes() == 25165824) {
-              //use_special = true;
+              // use_special = true;
               //std::cout << "Using special" << "\n";
       }
 
