@@ -7,7 +7,7 @@ declare namespace JSEP {
   type FreeFunction = (size: number) => number;
   type UploadFunction = (dataOffset: number, gpuDataId: number, size: number) => void;
   type DownloadFunction = (gpuDataId: number, dataOffset: number, size: number) => Promise<void>;
-  type RunFunction = (size: number) => number;
+  type RunFunction = (contextDataOffset: number, output: (index: number) => number) => number;
 }
 
 export interface OrtWasmModule extends EmscriptenModule {

@@ -40,7 +40,7 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
               await backend.download(gpuDataId, data);
             },
 
-        (_a: number) => {
+        (contextDataOffset: number, output: (index: number) => number) => {
           // eslint-disable-next-line no-console
           console.log('jsepRun');
           return 42;
