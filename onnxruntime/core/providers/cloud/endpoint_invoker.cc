@@ -17,7 +17,7 @@ std::unique_ptr<EndPointInvoker> EndPointInvoker::CreateInvoker(EndPointType typ
   std::unique_ptr<EndPointInvoker> invoker;
   switch (type) {
     case onnxruntime::cloud::Rest:
-      invoker = std::make_unique<HttpPointInvoker>(config);
+      invoker = std::make_unique<RestInvoker>(config);
       break;
     default:
       break;
@@ -58,9 +58,9 @@ static size_t SendCallback(char* dest, size_t size, size_t nmemb, void* userp) {
   return 0;
 }
 
-HttpPointInvoker::HttpPointInvoker(const EndPointConfig& config) : config_(config) {}
+RestInvoker::RestInvoker(const EndPointConfig& config) : config_(config) {}
 
-Data HttpPointInvoker::Send(Data request) const {
+Data RestInvoker::Send(Data request) const {
   CURL* curl = {};
   CURLcode res = {};
   ORT_ENFORCE(config_.contains("uri"), "must specify uri for sending the data");

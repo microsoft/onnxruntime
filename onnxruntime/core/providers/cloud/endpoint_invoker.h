@@ -18,7 +18,7 @@ using EndPointConfig = onnxruntime::InlinedHashMap<std::string, std::string>;
 
 enum EndPointType {
   Rest,
-  //grpc
+  //Soap
   Unknown,
 };
 
@@ -31,16 +31,16 @@ class EndPointInvoker {
   static std::unique_ptr<EndPointInvoker> CreateInvoker(EndPointType type, const EndPointConfig& config);
 };
 
-class HttpPointInvoker : public EndPointInvoker {
+class RestInvoker : public EndPointInvoker {
  public:
-  HttpPointInvoker(const EndPointConfig& config);
+  RestInvoker(const EndPointConfig& config);
   Data Send(Data) const override;
 
  private:
   const EndPointConfig& config_;
 };
 
-//class GrpcPointInvoker : public EndPointInvoker {
+//class SoapInvoker : public EndPointInvoker {
 // public:
 //
 //};
