@@ -249,8 +249,8 @@ TensorShapeVector StridesForStack(const TensorShapeVector& full_strides, uint64_
 
 // This method computes the output tensor for Concat/ConcatFromSequence ops
 Status ConcatBase::ComputeImpl(Prepare& p, OpKernelContext* ctx) const {
-  int input_count = static_cast<int>(p.inputs.size());
-  int64_t initial_output_offset = 0;  // initial offset for each input
+  auto input_count = p.inputs.size();
+      int64_t initial_output_offset = 0;  // initial offset for each input
 
   auto output_strides_full = StridesForTensor(*p.output_tensor);
   // Note that output_strides_full is only used later when is_stack_ is true, so it's safe to move
