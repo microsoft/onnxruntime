@@ -5,8 +5,8 @@ import {readFile} from 'fs';
 import {promisify} from 'util';
 import {env, InferenceSession, SessionHandler, Tensor} from 'onnxruntime-common';
 
-import {createSession, endProfiling, initOrt, releaseSession, run} from './proxy-wrapper';
-import { createSessionAllocate, createSessionFinallize } from './wasm-core-impl';
+import {createSessionAllocate, createSessionFinalize, createSession, endProfiling, initOrt, releaseSession, run} from './proxy-wrapper';
+import { SerializableModeldata } from './proxy-messages';
 
 let ortInit: boolean;
 
@@ -28,11 +28,20 @@ const getLogLevel = (logLevel: 'verbose'|'info'|'warning'|'error'|'fatal'): numb
   }
 };
 
+
 export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   private sessionId: number;
 
   inputNames: string[];
   outputNames: string[];
+
+  async createSessionAllocate(path: string): Promise<SerializableModeldata> {
+    // fetch model from url and move to wasm heap. The arraybufffer that held the http
+    // response is freed once we return
+    const response = await fetch(path);
+    const arrayBuffer = await response.arrayBuffer();
+    return createSessionAllocate(new Uint8Array(arrayBuffer));
+  }
 
   async loadModel(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions): Promise<void> {
     if (!ortInit) {
@@ -47,13 +56,10 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
         [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
       } else {
         // browser
-        let modelData : [number, number];
-        {
-          const response = await fetch(pathOrBuffer);
-          const arrayBuffer = await response.arrayBuffer();
-          modelData = createSessionAllocate(new Uint8Array(arrayBuffer));
-        }
-        [this.sessionId, this.inputNames, this.outputNames] = await createSessionFinallize(modelData, options);
+        // fetch model and move to wasm heap.
+        let modelData : SerializableModeldata = await this.createSessionAllocate(pathOrBuffer);
+        // create the session
+        [this.sessionId, this.inputNames, this.outputNames] = await createSessionFinalize(modelData, options);
       }
     } else {
       [this.sessionId, this.inputNames, this.outputNames] = await createSession(pathOrBuffer, options);

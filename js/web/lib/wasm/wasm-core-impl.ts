@@ -3,7 +3,7 @@
 
 import {InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
+import {SerializableModeldata, SerializableSessionMetadata, SerializableTensor} from './proxy-messages';
 import {setRunOptions} from './run-options';
 import {setSessionOptions} from './session-options';
 import {allocWasmString} from './string-utils';
@@ -40,8 +40,8 @@ const activeSessions = new Map<number, SessionMetadata>();
    return [modelDataOffset, model.byteLength];
  }
 
- export const createSessionFinallize =
- (modelData: [number, number], options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
+ export const createSessionFinalize =
+ (modelData: SerializableModeldata, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
    const wasm = getInstance();
 
    let sessionHandle = 0;
@@ -96,8 +96,8 @@ const activeSessions = new Map<number, SessionMetadata>();
  */
 export const createSession =
     (model: Uint8Array, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
-      const modelData: [number, number] = createSessionAllocate(model);
-      return createSessionFinallize(modelData, options);
+      const modelData: SerializableModeldata = createSessionAllocate(model);
+      return createSessionFinalize(modelData, options);
     };
 
 export const releaseSession = (sessionId: number): void => {
