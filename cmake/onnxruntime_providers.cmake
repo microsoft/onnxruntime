@@ -1193,6 +1193,15 @@ if (onnxruntime_USE_MIGRAPHX)
   set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/migraphx/version_script.lds -Xlinker --gc-sections")
   target_link_libraries(onnxruntime_providers_migraphx PRIVATE nsync_cpp stdc++fs)
 
+  include(CheckLibraryExists)
+  check_library_exists(migraphx::c "migraphx_program_run_async" "/opt/rocm/migraphx/lib" HAS_STREAM_SYNC)
+  if(HAS_STREAM_SYNC)
+      target_compile_definitions(onnxruntime_providers_migraphx PRIVATE -DMIGRAPHX_STREAM_SYNC)
+      message(STATUS "MIGRAPHX GPU STREAM SYNC is ENABLED")
+  else()
+      message(STATUS "MIGRAPHX GPU STREAM SYNC is DISABLED")
+  endif()
+
   install(TARGETS onnxruntime_providers_migraphx
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -1424,6 +1433,9 @@ if (onnxruntime_USE_ROCM)
     #  target_link_libraries(onnxruntime_providers_rocm PRIVATE ${NCCL_LIBRARIES})
     #endif()
   endif()
+
+  include(composable_kernel)
+  target_link_libraries(onnxruntime_providers_rocm PRIVATE onnxruntime_composable_kernel_includes device_gemm_instance)
 
   if(UNIX)
     set_property(TARGET onnxruntime_providers_rocm APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/rocm/version_script.lds -Xlinker --gc-sections")

@@ -946,6 +946,22 @@ class OpTester {
   }
 
  private:
+  // Execute the model for a single execution providers combination
+  void ExecuteModelForEps(
+      std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers,
+      onnxruntime::Model& model,
+      SessionOptions sess_options,
+      onnxruntime::test::OpTester::ExpectResult expect_result,
+      const std::string& expected_failure_string,
+      const onnxruntime::RunOptions* run_options,
+      const std::unordered_map<std::string, OrtValue>& feeds,
+      const std::vector<std::string>& output_names,
+      const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries,
+      bool try_assign_ep_for_nodes,
+      bool allow_released_onnx_opset_only,
+      size_t* number_of_pre_packed_weights_counter,
+      size_t* number_of_shared_pre_packed_weights_counter);
+
   template <typename T>
   void AddSeqData(std::vector<Data>& data, const char* name,
                   const SeqTensors<T>* seq_tensors,

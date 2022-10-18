@@ -27,7 +27,7 @@ size_t GetAttentionWorkspaceSize(
 
 Status LaunchAttentionKernel(
     const hipDeviceProp_t& prop,               // Device Properties
-    hipStream_t stream,                        // cuda stream
+    hipStream_t stream,                        // Hip stream
     rocblas_handle& rocblas,                   // Rocblas handle
     const size_t element_size,                 // Element size of input tensor
     int batch_size,                            // Batch size (B)
@@ -48,7 +48,7 @@ Status LaunchAttentionKernel(
 
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,      // Device Properties
-    hipStream_t stream,               // Cuda stream
+    hipStream_t stream,               // Hip stream
     rocblas_handle& rocblas,          // Rocblas handle
     const size_t element_size,        // Element size of input tensor
     const int batch_size,             // Batch size (B)
