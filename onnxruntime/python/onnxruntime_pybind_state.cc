@@ -321,7 +321,7 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
 
   Provider* provider = PGetProvider();
   std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
-  return ep_factory->CreateProviderWithSessionOption();
+  return ep_factory->CreateProvider();
 }
 
 #ifdef USE_CUDA
@@ -383,7 +383,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   if (type == kCpuExecutionProvider) {
     return onnxruntime::CPUProviderFactoryCreator::Create(
                session_options.enable_cpu_mem_arena)
-        ->CreateProviderWithSessionOption();
+        ->CreateProvider();
   } else if (type == kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     // If the environment variable 'ORT_TENSORRT_UNAVAILABLE' exists, then we do not load TensorRT. This is set by _ld_preload for the manylinux case
@@ -541,11 +541,11 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           }
         }
         if (std::shared_ptr<IExecutionProviderFactory> tensorrt_provider_factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&params)) {
-          return tensorrt_provider_factory->CreateProviderWithSessionOption();
+          return tensorrt_provider_factory->CreateProvider();
         }
       } else {
         if (std::shared_ptr<IExecutionProviderFactory> tensorrt_provider_factory = onnxruntime::TensorrtProviderFactoryCreator::Create(cuda_device_id)) {
-          return tensorrt_provider_factory->CreateProviderWithSessionOption();
+          return tensorrt_provider_factory->CreateProvider();
         }
       }
     }
@@ -553,7 +553,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
-    return onnxruntime::MIGraphXProviderFactoryCreator::Create(0)->CreateProviderWithSessionOption();
+    return onnxruntime::MIGraphXProviderFactoryCreator::Create(0)->CreateProvider();
 #endif
   } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
@@ -568,7 +568,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
         // since FromProviderOptions might contain external CUDA allocator.
         external_allocator_info = info.external_allocator_info;
-        return cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProviderWithSessionOption();
+        return cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
       } else {
         if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
           ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
@@ -587,7 +587,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // exist are are in-use. Neverthless, it is used to return ROCMAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external ROCM allocator.
       external_allocator_info = info.external_allocator_info;
-      return rocm_provider_info->CreateExecutionProviderFactory(info)->CreateProviderWithSessionOption();
+      return rocm_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
     } else {
       if (!Env::Default().GetEnvironmentVar("ROCM_PATH").empty()) {
         ORT_THROW("ROCM_PATH is set but ROCM wasn't able to be loaded. Please install the correct version of ROCM and MIOpen as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
@@ -596,7 +596,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
-    return onnxruntime::DnnlProviderFactoryCreator::Create(session_options.enable_cpu_mem_arena)->CreateProviderWithSessionOption();
+    return onnxruntime::DnnlProviderFactoryCreator::Create(session_options.enable_cpu_mem_arena)->CreateProvider();
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
@@ -659,7 +659,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       }
     }
     if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&params)) {
-      auto p = openvino_provider_factory->CreateProviderWithSessionOption();
+      auto p = openvino_provider_factory->CreateProvider();
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
       return p;
@@ -679,7 +679,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       info = onnxruntime::tvm::TvmEPOptionsHelper::FromProviderOptions(it->second);
     }
 
-    return onnxruntime::TVMProviderFactoryCreator::Create(info)->CreateProviderWithSessionOption();
+    return onnxruntime::TVMProviderFactoryCreator::Create(info)->CreateProvider();
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
@@ -710,19 +710,19 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     return onnxruntime::VitisAIProviderFactoryCreator::Create(target.c_str(), 0,
                                                               export_runtime_module.c_str(),
                                                               load_runtime_module.c_str())
-        ->CreateProviderWithSessionOption();
+        ->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
     return onnxruntime::ACLProviderFactoryCreator::Create(
                session_options.enable_cpu_mem_arena)
-        ->CreateProviderWithSessionOption();
+        ->CreateProvider();
 #endif
   } else if (type == kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
     return onnxruntime::ArmNNProviderFactoryCreator::Create(
                session_options.enable_cpu_mem_arena)
-        ->CreateProviderWithSessionOption();
+        ->CreateProvider();
 #endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
@@ -737,7 +737,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         }
       }
     }
-    return onnxruntime::DMLProviderFactoryCreator::Create(device_id)->CreateProviderWithSessionOption();
+    return onnxruntime::DMLProviderFactoryCreator::Create(device_id)->CreateProvider();
 #endif
   } else if (type == kNnapiExecutionProvider) {
 #if defined(USE_NNAPI)
@@ -746,29 +746,29 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
     const auto partitioning_stop_ops_list = session_options.config_options.GetConfigEntry(
         kOrtSessionOptionsConfigNnapiEpPartitioningStopOps);
-    return onnxruntime::NnapiProviderFactoryCreator::Create(0, partitioning_stop_ops_list)->CreateProviderWithSessionOption();
+    return onnxruntime::NnapiProviderFactoryCreator::Create(0, partitioning_stop_ops_list)->CreateProvider();
 #endif
   } else if (type == kRknpuExecutionProvider) {
 #ifdef USE_RKNPU
-    return onnxruntime::RknpuProviderFactoryCreator::Create()->CreateProviderWithSessionOption();
+    return onnxruntime::RknpuProviderFactoryCreator::Create()->CreateProvider();
 #endif
   } else if (type == kCoreMLExecutionProvider) {
 #if defined(USE_COREML)
 #if !defined(__APPLE__)
     LOGS_DEFAULT(WARNING) << "CoreML execution provider can only be used to generate ORT format model in this build.";
 #endif
-    return onnxruntime::CoreMLProviderFactoryCreator::Create(0)->CreateProviderWithSessionOption();
+    return onnxruntime::CoreMLProviderFactoryCreator::Create(0)->CreateProvider();
 #endif
   } else if (type == kXnnpackExecutionProvider) {
 #if defined(USE_XNNPACK)
-    return onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{})->CreateProviderWithSessionOption();
+    return onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{})->CreateProvider();
 #endif
   } else if (type == kCannExecutionProvider) {
 #ifdef USE_CANN
     if (auto* cann_provider_info = TryGetProviderInfo_CANN()) {
       const CANNExecutionProviderInfo info = GetCannExecutionProviderInfo(cann_provider_info,
                                                                           provider_options_map);
-      return cann_provider_info->CreateExecutionProviderFactory(info)->CreateProviderWithSessionOption();
+      return cann_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
     } else {
       ORT_THROW("create CANN ExecutionProvider fail");
     }

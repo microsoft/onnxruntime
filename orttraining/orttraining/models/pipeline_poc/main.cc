@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
   OrtCUDAProviderOptions xp_info{};
   xp_info.device_id = static_cast<OrtDevice::DeviceId>(world_rank);
   auto cuda_factory = CudaProviderFactoryCreator::Create(&xp_info);
-  st = session_object.RegisterExecutionProvider(cuda_factory->CreateProviderWithSessionOption());
+  st = session_object.RegisterExecutionProvider(cuda_factory->CreateProvider());
   ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
 
   std::string model_at_rank;

@@ -13,13 +13,13 @@ namespace onnxruntime {
 struct ACLProviderFactory : IExecutionProviderFactory {
   ACLProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~ACLProviderFactory() override {}
-  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   bool create_arena_;
 };
 
-std::unique_ptr<IExecutionProvider> ACLProviderFactory::CreateProviderWithSessionOption(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> ACLProviderFactory::CreateProvider() {
   ACLExecutionProviderInfo info;
   info.create_arena = create_arena_;
   return std::make_unique<ACLExecutionProvider>(info);

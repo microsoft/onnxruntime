@@ -134,7 +134,7 @@ class OpTesterSnpe : public OpTester {
       OpTester::Run();
     } else {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(SNPEProviderFactoryCreator::Create(provider_options_map_)->CreateProviderWithSessionOption());
+      execution_providers.push_back(SNPEProviderFactoryCreator::Create(provider_options_map_)->CreateProvider());
       OpTester::Run(ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
   }

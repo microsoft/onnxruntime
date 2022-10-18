@@ -52,7 +52,7 @@ void CUDAExecutionProviderPool::Initialize() {
     ProviderInfo_CUDA* cuda_provider_info = TryGetProviderInfo_CUDA();
     CUDAExecutionProviderInfo info;
     cuda_provider_info->CUDAExecutionProviderInfo__FromProviderOptions(options, info);
-    cuda_execution_providers_.emplace_back(std::move(cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProviderWithSessionOption()));
+    cuda_execution_providers_.emplace_back(std::move(cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider()));
   }
 }
 

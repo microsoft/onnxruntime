@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace test {
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
-  auto ret = CPUProviderFactoryCreator::Create(enable_arena)->CreateProviderWithSessionOption();
+  auto ret = CPUProviderFactoryCreator::Create(enable_arena)->CreateProvider();
   // The factory created CPU provider doesn't create/reg allocators; something that is expected by
   // clients of DefaultCpuExecutionProvider; hence the need to call RegisterAllocator explicitly.
   AllocatorManager mgr;  // needed only to call RegisterAllocator
@@ -44,7 +44,7 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
       nullptr,
       0};
   if (auto factory = TensorrtProviderFactoryCreator::Create(&params))
-    return factory->CreateProviderWithSessionOption();
+    return factory->CreateProvider();
 #endif
   return nullptr;
 }
@@ -52,7 +52,7 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params) {
 #ifdef USE_TENSORRT
   if (auto factory = TensorrtProviderFactoryCreator::Create(params))
-    return factory->CreateProviderWithSessionOption();
+    return factory->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
 #endif
@@ -62,7 +62,7 @@ std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const O
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptionsV2* params) {
 #ifdef USE_TENSORRT
   if (auto factory = TensorrtProviderFactoryCreator::Create(params))
-    return factory->CreateProviderWithSessionOption();
+    return factory->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
 #endif
@@ -75,7 +75,7 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
       0,
       0,
       0};
-  return MIGraphXProviderFactoryCreator::Create(&params)->CreateProviderWithSessionOption();
+  return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -84,7 +84,7 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
 std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const OrtMIGraphXProviderOptions* params) {
 #ifdef USE_MIGRAPHX
   if (auto factory = MIGraphXProviderFactoryCreator::Create(params))
-    return factory->CreateProviderWithSessionOption();
+    return factory->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
 #endif
@@ -94,7 +94,7 @@ std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const O
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 #ifdef USE_OPENVINO
   OrtOpenVINOProviderOptions params;
-  return OpenVINOProviderFactoryCreator::Create(&params)->CreateProviderWithSessionOption();
+  return OpenVINOProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -105,7 +105,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
   OrtCUDAProviderOptions provider_options{};
   provider_options.do_copy_in_default_stream = true;
   if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
-    return factory->CreateProviderWithSessionOption();
+    return factory->CreateProvider();
 #endif
   return nullptr;
 }
@@ -113,7 +113,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena) {
 #ifdef USE_DNNL
   if (auto factory = DnnlProviderFactoryCreator::Create(enable_arena ? 1 : 0))
-    return factory->CreateProviderWithSessionOption();
+    return factory->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
 #endif
@@ -122,7 +122,7 @@ std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_are
 
 // std::unique_ptr<IExecutionProvider> DefaultTvmExecutionProvider() {
 // #ifdef USE_TVM
-//   return TVMProviderFactoryCreator::Create("")->CreateProviderWithSessionOption();
+//   return TVMProviderFactoryCreator::Create("")->CreateProvider();
 // #else
 //   return nullptr;
 // #endif
@@ -132,7 +132,7 @@ std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 // The NNAPI EP uses a stub implementation on non-Android platforms so cannot be used to execute a model.
 // Manually append an NNAPI EP instance to the session to unit test the GetCapability and Compile implementation.
 #if defined(USE_NNAPI) && defined(__ANDROID__)
-  return NnapiProviderFactoryCreator::Create(0, {})->CreateProviderWithSessionOption();
+  return NnapiProviderFactoryCreator::Create(0, {})->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -140,7 +140,7 @@ std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
 #ifdef USE_RKNPU
-  return RknpuProviderFactoryCreator::Create()->CreateProviderWithSessionOption();
+  return RknpuProviderFactoryCreator::Create()->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -148,7 +148,7 @@ std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_arena) {
 #ifdef USE_ACL
-  return ACLProviderFactoryCreator::Create(enable_arena)->CreateProviderWithSessionOption();
+  return ACLProviderFactoryCreator::Create(enable_arena)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
   return nullptr;
@@ -157,7 +157,7 @@ std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_aren
 
 std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena) {
 #ifdef USE_ARMNN
-  return ArmNNProviderFactoryCreator::Create(enable_arena)->CreateProviderWithSessionOption();
+  return ArmNNProviderFactoryCreator::Create(enable_arena)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(enable_arena);
   return nullptr;
@@ -169,7 +169,7 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider() {
   OrtROCMProviderOptions provider_options{};
   provider_options.do_copy_in_default_stream = true;
   if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
-    return factory->CreateProviderWithSessionOption();
+    return factory->CreateProvider();
 #endif
   return nullptr;
 }
@@ -181,7 +181,7 @@ std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
   // We want to run UT on CPU only to get output value without losing precision
   uint32_t coreml_flags = 0;
   coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
-  return CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProviderWithSessionOption();
+  return CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -190,7 +190,7 @@ std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider() {
 #if defined(USE_SNPE)
   ProviderOptions provider_options_map;
-  return SNPEProviderFactoryCreator::Create(provider_options_map)->CreateProviderWithSessionOption();
+  return SNPEProviderFactoryCreator::Create(provider_options_map)->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -198,7 +198,7 @@ std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #ifdef USE_XNNPACK
-  return XnnpackProviderFactoryCreator::Create(ProviderOptions())->CreateProviderWithSessionOption();
+  return XnnpackProviderFactoryCreator::Create(ProviderOptions())->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -208,7 +208,7 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 #ifdef USE_CANN
   OrtCANNProviderOptions provider_options{};
   if (auto factory = CannProviderFactoryCreator::Create(&provider_options))
-    return factory->CreateProviderWithSessionOption();
+    return factory->CreateProvider();
 #endif
   return nullptr;
 }

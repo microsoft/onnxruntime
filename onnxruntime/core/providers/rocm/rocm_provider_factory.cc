@@ -37,13 +37,13 @@ struct ROCMProviderFactory : IExecutionProviderFactory {
       : info_{info} {}
   ~ROCMProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   ROCMExecutionProviderInfo info_;
 };
 
-std::unique_ptr<IExecutionProvider> ROCMProviderFactory::CreateProviderWithSessionOption(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> ROCMProviderFactory::CreateProvider() {
   return std::make_unique<ROCMExecutionProvider>(info_);
 }
 

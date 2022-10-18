@@ -12,8 +12,6 @@ using Microsoft::WRL::ComPtr;
 #include <wil/wrl.h>
 #include <wil/result.h>
 
-#include "core/common/common.h"
-#include "core/framework/session_options.h"
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #include "core/session/abi_session_options_impl.h"
@@ -33,7 +31,7 @@ struct DMLProviderFactory : IExecutionProviderFactory {
                                                       cmd_queue_(cmd_queue) {}
   ~DMLProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
   void SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode);
 
   void SetMetacommandsEnabled(bool metacommands_enabled);
@@ -45,18 +43,7 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   bool metacommands_enabled_ = true;
 };
 
-std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProviderWithSessionOption(const SessionOptions* options) {
-      // DML's memory is not byte addressable and hence mem pattern doesn't work.
-    if (options && options->enable_mem_pattern) {
-      ORT_THROW("Having memory pattern enabled is not supported while using the DML Execution Provider. " ,
-                "Please disabling it for this session since it uses the DML Execution Provider.");
-    }
-
-    // Parallel execution mode does not support DML EP
-    if (session_options_.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-      ORT_THROW("Parallel execution mode does not support the DML Execution Provider. " ,
-                "Please making the execution mode sequential for this session since it uses the DML Execution Provider.");
-    }
+std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
   auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_);
   Dml::SetDefaultRoundingMode(provider.get(), rounding_mode_);
   return provider;
@@ -113,7 +100,7 @@ bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
     auto isBasicRenderDriverVendorId = desc.VendorId == 0x1414;
     auto isBasicRenderDriverDeviceId = desc.DeviceId == 0x8c;
     auto isSoftwareAdapter = desc.Flags == DXGI_ADAPTER_FLAG_SOFTWARE;
-
+    
     return isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
 }
 

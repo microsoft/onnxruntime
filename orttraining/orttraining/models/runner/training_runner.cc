@@ -262,7 +262,7 @@ Status TrainingRunner::Initialize() {
   ORT_RETURN_IF_ERROR(session_.OverrideGraphOutputs(fetch_names));
 
   for (const auto& factory : params_.providers) {
-    auto provider = factory.second->CreateProviderWithSessionOption();
+    auto provider = factory.second->CreateProvider();
     ORT_ENFORCE(factory.first == provider->Type());
     ORT_RETURN_IF_ERROR(session_.RegisterExecutionProvider(std::move(provider)));
   }

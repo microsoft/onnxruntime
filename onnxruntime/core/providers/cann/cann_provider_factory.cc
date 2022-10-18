@@ -2,9 +2,7 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/common.h"
 #include "core/providers/shared_library/provider_api.h"
-#include "core/framework/session_options.h"
 #include "core/providers/cann/cann_provider_factory.h"
 #include "core/providers/cann/cann_provider_factory_creator.h"
 #include "core/providers/cann/cann_provider_options.h"
@@ -23,17 +21,13 @@ struct CANNProviderFactory : IExecutionProviderFactory {
   explicit CANNProviderFactory(const CANNExecutionProviderInfo& info) : info_(info) {}
   ~CANNProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   CANNExecutionProviderInfo info_;
 };
 
-std::unique_ptr<IExecutionProvider> CANNProviderFactory::CreateProviderWithSessionOption(const SessionOptions* options) {
-  if (options && options->execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-    ORT_THROW("Parallel execution mode does not support the CANN Execution Provider. ",
-              "So Please making the execution mode sequential for this session for CANN Execution Provider.");
-  }
+std::unique_ptr<IExecutionProvider> CANNProviderFactory::CreateProvider() {
   return std::make_unique<CANNExecutionProvider>(info_);
 }
 

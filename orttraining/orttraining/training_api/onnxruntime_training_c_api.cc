@@ -18,7 +18,7 @@ std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>> CreateProviders(
   std::vector<std::shared_ptr<onnxruntime::IExecutionProvider>> execution_providers;
   execution_providers.reserve(provider_factories.size());
   for (const auto& factory : provider_factories) {
-    execution_providers.emplace_back(factory->CreateProviderWithSessionOption());
+    execution_providers.emplace_back(factory->CreateProvider());
   }
 
   return execution_providers;

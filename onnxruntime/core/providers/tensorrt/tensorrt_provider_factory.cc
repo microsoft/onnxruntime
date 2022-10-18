@@ -21,13 +21,13 @@ struct TensorrtProviderFactory : IExecutionProviderFactory {
   TensorrtProviderFactory(const TensorrtExecutionProviderInfo& info) : info_{info} {}
   ~TensorrtProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   TensorrtExecutionProviderInfo info_;
 };
 
-std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProviderWithSessionOption(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> TensorrtProviderFactory::CreateProvider() {
   return std::make_unique<TensorrtExecutionProvider>(info_);
 }
 

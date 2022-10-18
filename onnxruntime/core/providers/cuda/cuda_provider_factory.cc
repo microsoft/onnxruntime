@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/common.h"
-#include "core/framework/session_options.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
@@ -44,17 +42,13 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
       : info_{info} {}
   ~CUDAProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   CUDAExecutionProviderInfo info_;
 };
 
-std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProviderWithSessionOption(const SessionOptions* options) {
-  if (options && options->execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-    ORT_THROW("Parallel execution mode does not support the CUDA Execution Provider. ",
-              "Please execution_mode as  sequential for this session since it uses the CUDA Execution Provider.");
-  }
+std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   return std::make_unique<CUDAExecutionProvider>(info_);
 }
 

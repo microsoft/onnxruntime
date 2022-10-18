@@ -15,13 +15,13 @@ struct MyProviderFactory : IExecutionProviderFactory {
   MyProviderFactory(const MyProviderInfo& info) : info_{info} {}
   ~MyProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
  private:
   MyProviderInfo info_;
 };
 
-std::unique_ptr<IExecutionProvider> MyProviderFactory::CreateProviderWithSessionOption(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> MyProviderFactory::CreateProvider() {
   std::cout << "My EP provider created, with device id: " << info_.device_id << ", some_option: " << info_.some_config << std::endl;
   return std::make_unique<MyExecutionProvider>(info_);
 }
