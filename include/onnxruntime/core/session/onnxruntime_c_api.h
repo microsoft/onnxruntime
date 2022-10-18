@@ -476,9 +476,9 @@ typedef struct OrtROCMProviderOptions {
 
   /** \brief Enable TunableOp.
   *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
-  *   This option can be superseded by environment variable ORT_ROCM_USE_TUNABLE_OP.
+  *   This option can be superseded by environment variable ORT_ROCM_TUNABLE_OP_ENABLED.
   */
-  int use_tunable_op;
+  int tunable_op_enabled;
 
   /** \brief ROCM memory arena configuration parameters
   */

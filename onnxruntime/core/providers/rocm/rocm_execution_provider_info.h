@@ -34,6 +34,13 @@ struct ROCMExecutionProviderExternalAllocatorInfo {
   }
 };
 
+namespace rocm {
+struct TunableOpInfo {
+  bool enabled{false};
+  int dummy_config{};
+};
+}  // namespace rocm
+
 struct ROCMExecutionProviderInfo {
   OrtDevice::DeviceId device_id{0};
   size_t gpu_mem_limit{std::numeric_limits<size_t>::max()};                         // Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)
@@ -42,7 +49,7 @@ struct ROCMExecutionProviderInfo {
   bool do_copy_in_default_stream{true};
   bool has_user_compute_stream{false};
   void* user_compute_stream{nullptr};
-  bool use_tunable_op{false};
+  rocm::TunableOpInfo tunable_op{};
   // The following OrtArenaCfg instance only characterizes the behavior of the default memory
   // arena allocator and not any other auxiliary allocator that may also be part of the ROCM EP.
   // For example, auxiliary allocators `HIP_PINNED` and `HIP_CPU` will not be configured using this

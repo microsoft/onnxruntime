@@ -130,7 +130,6 @@ class ROCMExecutionProvider : public IExecutionProvider {
   hipDeviceProp_t device_prop_;
   bool external_stream_ = false;
   hipStream_t stream_ = nullptr;
-  bool use_tunable_op_ = false;
 
   // deferred_release_buffer_pool_[my_stream] store all CPU buffers associated with
   // HIP kernels running on my_stream (type: hipStream_t).
