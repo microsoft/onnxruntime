@@ -224,7 +224,7 @@ static Status SliceImpl(OpKernelContext* ctx,
 
   auto create_output = [&output, &output_end](SliceIterator<T>& slice_input_iterator) {
     while (output < output_end) {
-      output = slice_input_iterator.CopyMaxDataInOneStep(output);
+      output = slice_input_iterator.CopyContiguousInnermostAxes(output);
     }
 
      ORT_ENFORCE(output == output_end);

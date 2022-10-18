@@ -650,6 +650,25 @@ TEST(SliceTest, Slice5D_LargeStep) {
                       {});
 }
 
+TEST(SliceTest, Slice5D_CopyAxis2LargeBlock) {
+  // We are trying combine axis 2 slices 1 and 2 together
+  RunSliceTest<float>({1, 1, 4, 2, 2},
+                      {1.f, 2.f, 3.f, 4.f,
+                       5.f, 6.f, 7.f, 8.f,
+                       -1.f, -2.f, -3.f, -4.f,
+                       -5.f, -6.f, -7.f, -8.f},
+                      {1}, // starts
+                      {3}, // ends
+                      {2}, // axis
+                      {},  // steps defaults to 1
+                      {1, 1, 2, 2, 2},
+                      { 5.f, 6.f, 7.f, 8.f,
+                       -1.f, -2.f, -3.f, -4.f},
+                      true,
+                      {});
+}
+
+
 TEST(SliceTest, EmptyDim) {
   RunSliceTest<float>({0, 6},  // empty dim in shape
                       {},

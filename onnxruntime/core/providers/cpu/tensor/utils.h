@@ -190,8 +190,8 @@ struct SliceIteratorBase {
     }
 
     inner_extent_ = static_cast<size_t>(extents_[dims_size - 1]);
-    // It could be -1
     const auto steps_size = steps.size();
+    // It could be -1
     inner_step_ = static_cast<ptrdiff_t>(dims_size == steps_size
                                              ? steps[steps_size - 1]
                                              : 1);
@@ -300,7 +300,7 @@ struct SliceIteratorBase {
     return out_bytes;
   }
 
-  void* CopyMaxDataInOneStep(void* output) {
+  void* CopyContiguousInnermostAxes(void* output) {
     byte* out_bytes = nullptr;
     const auto bytes_to_copy = max_copying_elements_block_ * element_size_;
     if (SolitaryInnerStep()) {
@@ -434,8 +434,8 @@ struct SliceIterator : public SliceIteratorBase {
     return static_cast<T*>(new_output);
   }
 
-  T* CopyMaxDataInOneStep(void* output) {
-    void* new_output = SliceIteratorBase::CopyMaxDataInOneStep(output);
+  T* CopyContiguousInnermostAxes(void* output) {
+    void* new_output = SliceIteratorBase::CopyContiguousInnermostAxes(output);
     return static_cast<T*>(new_output);
   }
 };
