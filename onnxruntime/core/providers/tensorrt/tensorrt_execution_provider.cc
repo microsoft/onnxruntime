@@ -1326,7 +1326,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       {
+        // engine serialization/deserialization, engine build and context build are in critical section. It needs lock protection to prevent race conditions when inferencing with multithreading. 
         auto lock = GetApiLock();
+
         std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
         if (engine_cache_enable_ && engine_file) {
           engine_file.seekg(0, std::ios::end);
