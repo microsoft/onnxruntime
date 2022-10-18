@@ -242,7 +242,6 @@ class WindowsEnv : public Env {
   }
 
   int GetNumCpuCores() const override {
-
     auto logical_processor_info = FetchLogicalProcessorInfo();
     if (!logical_processor_info.has_value()) {
       // try GetSystemInfo
@@ -261,7 +260,7 @@ class WindowsEnv : public Env {
     const size_t count = logical_processor_info->count_;
 
     int processorCoreCount = 0;
-      for (int i = 0; i < count; ++i) {
+    for (size_t i = 0; i < count; ++i) {
       if (buffer[i].Relationship == RelationProcessorCore) {
         ++processorCoreCount;
       }
@@ -302,13 +301,13 @@ class WindowsEnv : public Env {
       return generate_vector_of_n(std::thread::hardware_concurrency());
     }
 
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION* buffer = 
-      reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(logical_processor_info->buffer_.get());
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION* buffer =
+        reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(logical_processor_info->buffer_.get());
 
     const size_t count = logical_processor_info->count_;
     std::vector<size_t> ret;
     ret.reserve(count);
-    for (int i = 0; i != count; ++i) {
+    for (size_t i = 0; i < count; ++i) {
       if (buffer[i].Relationship == RelationProcessorCore) {
         // A single core can host multiple logical processors
         // so the mask returned can have more than one bit set.
