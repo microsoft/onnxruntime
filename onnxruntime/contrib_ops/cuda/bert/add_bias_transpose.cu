@@ -284,21 +284,21 @@ void LaunchAddBiasTranspose(
     const half* input, const half* biases, half* output,
     bool enable_half4, const int v_head_size) {
   if (enable_half4 && 0 == (qk_head_size % 4) && 0 == (v_head_size % 4)) {
-    const int H_q = qk_head_size / 4;
+    const int H = qk_head_size / 4;
     const int H_v = v_head_size / 4;
     const Half4* input2 = reinterpret_cast<const Half4*>(input);
     const Half4* biases2 = reinterpret_cast<const Half4*>(biases);
     Half4* output2 = reinterpret_cast<Half4*>(output);
     InvokeAddBiasTranspose<Half4>(stream, num_matrices, format, max_threads_per_block,
-                                  batch_size, sequence_length, num_heads, H_q, input2, biases2, output2, H_v);
+                                  batch_size, sequence_length, num_heads, H, input2, biases2, output2, H_v);
   } else if (0 == (qk_head_size & 1) && 0 == (v_head_size % 1)) {
-    const int H_q = qk_head_size / 2;
+    const int H = qk_head_size / 2;
     const int H_v = v_head_size / 2;
     const half2* input2 = reinterpret_cast<const half2*>(input);
     const half2* biases2 = reinterpret_cast<const half2*>(biases);
     half2* output2 = reinterpret_cast<half2*>(output);
     InvokeAddBiasTranspose<half2>(stream, num_matrices, format, max_threads_per_block,
-                                  batch_size, sequence_length, num_heads, H_q, input2, biases2, output2, H_v);
+                                  batch_size, sequence_length, num_heads, H, input2, biases2, output2, H_v);
   } else {
     InvokeAddBiasTranspose<half>(stream, num_matrices, format, max_threads_per_block,
                                  batch_size, sequence_length, num_heads, qk_head_size, input, biases, output, v_head_size);

@@ -19,15 +19,15 @@ class AttentionCPUBase : public AttentionBase {
   : AttentionBase(info, require_same_hidden_size, require_weights) {}
 
   template <typename T>
-  Status ApplyAttention(const T* Q,                  // Q data with shape BxNxSxH_q
-                        const T* K,                  // K data with shape BxNxSxH_k
+  Status ApplyAttention(const T* Q,                  // Q data with shape BxNxSxH
+                        const T* K,                  // K data with shape BxNxSxH
                         const T* V,                  // V value with size BxNxSxH_v
                         const Tensor* mask_index,    // mask index. nullptr if no mask or its size is B
                         const Tensor* past,          // past state
                         Tensor* output,              // output tensor
                         int batch_size,              // batch size (B)
                         int sequence_length,         // sequence length (S)
-                        int qk_head_size,            // head size of Q or K (H_qk == H_q == H_k)
+                        int qk_head_size,            // head size of Q or K (H)
                         int v_head_size,             // head size of V (H_v)
                         int v_hidden_size,           // hidden size of V (D_v)
                         const Tensor* extra_add_qk,  // extra add in QK. Its size is BxNxSxT
@@ -91,13 +91,13 @@ class AttentionCPUBase : public AttentionBase {
 
  private:
   // Helper function to compute the attention probs. It does 2 things:
-  //  attention_probs(B, N, S, T) = 1/sqrt(H) x Q(B, N, S, H_qk) x K'(B, N, T, H_qk -> B, N, H_qk, T) +
+  //  attention_probs(B, N, S, T) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, T, H -> B, N, H, T) +
   //                                1 x mask_data(B, N, S, T)
   //  attention_probs(B, N, S, T) = Softmax(attention_probs)
   template <typename T>
   void ComputeAttentionProbs(T* attention_probs,                        // output buffer with size BxNxSxT
                              const T* Q,                                // Q data. Its size is BxNxSxH
-                             const T* K,                                // k data. Its size is BxNxSxH
+                             const T* K,                                // k data. Its size is BxNxLxH
                              const int32_t* mask_index,                 // mask index. nullptr if no mask.
                              gsl::span<const int64_t> mask_index_dims,  // mask index shape
                              T* mask_data,                              // buffer for mask data.

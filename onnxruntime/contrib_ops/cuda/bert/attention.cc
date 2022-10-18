@@ -90,9 +90,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   int past_sequence_length = 0;
+  // This assumes Q, K and V has same hidden size
   Tensor* present = GetPresent(context, past,
                                parameters.batch_size,
-                               parameters.k_head_size,
+                               parameters.head_size,
                                parameters.sequence_length,
                                past_sequence_length);
 
@@ -104,13 +105,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                            nullptr == present &&
                            nullptr == extra_add_qk &&
                            !is_unidirectional_ &&
-                           parameters.k_hidden_size == parameters.v_hidden_size &&
-                           HasFusedFp16Kernel(sm, parameters.q_head_size, sequence_length));
+                           parameters.hidden_size == parameters.v_hidden_size &&
+                           HasFusedFp16Kernel(sm, parameters.head_size, sequence_length));
 
   MHARunner* fused_runner = nullptr;
   if (use_fused_runner) {
     if (nullptr == fused_fp16_runner_.get()) {
-      fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.q_head_size, sm));
+      fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm));
     }
     // In case some kernel not loaded due to shared memory limit, we need to double check here.
     if (fused_fp16_runner_->isValid(sequence_length)) {
@@ -125,7 +126,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (weights != nullptr) {
     // Use GEMM for fully connection.
     int m = batch_size * sequence_length;
-    int n = (parameters.q_hidden_size + parameters.k_hidden_size + parameters.v_hidden_size);
+    int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
     int k = parameters.input_hidden_size;
     size_t gemm_buffer_size = static_cast<size_t>(batch_size) * sequence_length * n * element_size;
     gemm_buffer = GetScratchBuffer<T>(gemm_buffer_size);
@@ -145,7 +146,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
-                                                   parameters.q_head_size,
+                                                   parameters.head_size,
                                                    parameters.sequence_length,
                                                    parameters.past_sequence_length,
                                                    fused_runner,
@@ -160,7 +161,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       parameters.batch_size,
       parameters.sequence_length,
       parameters.num_heads,
-      parameters.q_head_size,
+      parameters.head_size,
       parameters.past_sequence_length,
       parameters.is_unidirectional,
       nullptr == weights ? nullptr : reinterpret_cast<const void*>(gemm_buffer.get()),

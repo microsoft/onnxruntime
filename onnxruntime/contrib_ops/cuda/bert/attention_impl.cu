@@ -108,9 +108,10 @@ Status QkvToContext(
     const int v_head_size) {
   const int max_threads_per_block = prop.maxThreadsPerBlock;
 
-  // input should be BxSx3xNxH => qkv: 3xBxNxSxH
   T* qkv = workspace;
   if (bias == nullptr) {
+    // input should be BxSx3xNxH => qkv: 3xBxNxSxH
+    ORT_ENFORCE(qk_head_size == v_head_size);
     ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, qk_head_size, num_heads,
                                        max_threads_per_block, false, input, qkv));
 
@@ -118,6 +119,8 @@ Status QkvToContext(
     // For fused TRT attention, qkv need transpose to BxSxNx3xH
     const int format = (nullptr == fused_runner ? 1 : 2);
     const bool enable_half4 = true;
+
+    // When H_v != H, BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
     LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
                            sequence_length, num_heads, qk_head_size,
                            input, bias, qkv,
@@ -159,10 +162,10 @@ Status QkvToContext(
 
   cublasSetStream(cublas, stream);
 
-  // Concat past (2xBxNxPxH) to present (2xBxNxLxH), where P is past_sequence_length and L is total_sequence_length.
-  // past_k (BxNxPxH) + k (BxNxSxH) => present_k (BxNxLxH)
-  // past_v (BxNxPxH) + v (BxNxSxH) => present_v (BxNxLxH)
-  // When there is past state, the head size for Q/K/V shall be same: H == H_q == H_k == H_v.
+  // Concat past key value to present (2xBxNxLxH), where L is kv_sequence_length and T is total_sequence_length.
+  // past_k (BxNxPxH) + k (BxNxLxH) => present_k (BxNxTxH)
+  // past_v (BxNxPxH) + v (BxNxLxH) => present_v (BxNxTxH)
+  // When there is past state, the head size for Q/K/V shall be same: H == H_v.
   const int present_size_per_batch_k = all_sequence_length * qk_head_size;
   const int present_size_per_batch_v = all_sequence_length * v_head_size;
 
@@ -176,17 +179,17 @@ Status QkvToContext(
     v = present + batches * present_size_per_batch_k;
   }
 
-  // Raw attention mask could be 2D (BxL) or 3D (BxSxL) or 4D(Bx1xMxM), where M is the max sequence length.
+  // Raw attention mask could be 2D (BxT) or 3D (BxSxT) or 4D(Bx1xMxM), where M is the max sequence length.
   bool use_raw_attention_mask = (nullptr != mask_index && mask_index_dims.size() >= 2);
 
-  // Compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxL
-  // Q: BxNxSxH, K (present_k): BxNxLxH, Q*K': BxNxSxL
+  // Compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxT
+  // Q: BxNxSxH, K (present_k): BxNxTxH, Q*K': BxNxSxT
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(qk_head_size));
   const int temp_matrix_size = sequence_length * all_sequence_length;
   float one = 1.0f;
   float zero = 0.f;
 
-  // For raw attention mask, the scalar 1/sqrt(H_qk) is moved to combine with softmax computation.
+  // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   float alpha = use_raw_attention_mask ? one : rsqrt_head_size;
 
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
@@ -196,7 +199,7 @@ Status QkvToContext(
       q, qk_head_size, size_per_batch_qk,
       &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop));
 
-  // Apply softmax and store result R to scratch2: BxNxSxL
+  // Apply softmax and store result R to scratch2: BxNxSxT
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
     const int mask_dimension = static_cast<int>(mask_index_dims.size());
     const int max_sequence_length = mask_dimension == 4 ? static_cast<int>(mask_index_dims.at(3)) : 0;

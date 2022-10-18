@@ -35,7 +35,7 @@ Status LaunchAttentionKernel(
     int batch_size,                            // Batch size (B)
     int sequence_length,                       // Sequence length (S)
     int num_heads,                             // Number of attention heads (N)
-    const int qk_head_size,                    // Hidden layer size per head for q and k (H_qk)
+    const int qk_head_size,                    // Hidden size per head for q and k (H)
     int past_sequence_length,                  // Sequence length in past state
     bool is_unidirectional,                    // Whether there is unidirecitonal mask.
     const void* input,                         // Input tensor
@@ -48,7 +48,7 @@ Status LaunchAttentionKernel(
     void* output,                              // Output tensor
     void* present,                             // Present state output
     void* fused_runner,                        // Fused multi-head attention
-    const int v_head_size);                    // Hidden layer size per head for v (H_v)
+    const int v_head_size);                    // Hidden size per head for v (H_v)
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties
@@ -59,7 +59,7 @@ Status LaunchDecoderAttentionKernel(
     const int sequence_length,        // Sequence length (S)
     const int kv_sequence_length,     // Key/Value/Cache sequence length
     const int num_heads,              // Number of attention heads (N)
-    const int head_size,              // Hidden layer size per head (H)
+    const int head_size,              // Hidden size per head (H)
     const bool static_kv,             // Whether cross attention or not
     const bool use_past,              // Whether use cache or not
     const bool has_layer_state,       // Whether output cache or not

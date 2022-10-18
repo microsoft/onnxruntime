@@ -75,43 +75,39 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //   M:    max_sequence_length
   //   T:    total_sequence_length = past_sequence_length + kv_sequence_length
   //   N:    num_heads
-  //   H_q:  q_head_size (Note that q_head_size == k_head_size)
-  //   H_k:  k_head_size
+  //   H:    head size for Q and K, aka q_head_size or v_head_size or qk_head_size
   //   H_v:  v_head_size
   //   D_i:  input hidden size
-  //   D_q:  q_hidden_size = num_heads * q_head_size (Note that q_hidden_size == k_hidden_size)
-  //   D_k:  k_hidden_size = num_heads * k_head_size
+  //   D:    hidden size for Q and K (D = N * H), aka q_hidden_size or k_hidden_size or qk_hidden_size
   //   D_v:  v_hidden_size = num_heads * v_head_size
 
-  // When past state is used, Q, K and V should have same hidden size (unless we split it into past_key and past_value):
-  //   H:    head_size
-  //   D:    hidden_size, where D == N * H
+  // When past state is used, Q, K and V should have same hidden size (unless we split it into past_key and past_value).
 
   // Input shapes with weights:
   //   input        (Q/K/V)    : (B, S, D_i)
-  //   weights      (Q/K/V)    : (D_i, D_q + D_k + D_v)
-  //   bias         (Q/K/V)    : (D_q + D_k + D_v)
+  //   weights      (Q/K/V)    : (D_i, D + D + D_v)
+  //   bias         (Q/K/V)    : (D + D + D_v)
   //   mask_index              : see below
   //   past         (K/V)      : (2, B, N, P, H) or NULL
-  //   extra_add_qk            : (B, N, S, L) or NULL
+  //   extra_add_qk            : (B, N, S, T) or NULL
   //   key                     : NULL
   //   value                   : NULL
 
   // Input shapes without weights (only bias is provided):
-  //   input         (Q)       : (B, S, D_q)
+  //   input         (Q)       : (B, S, D)
   //   weights                 : NULL
-  //   bias          (Q/K/V)   : (D_q + D_k + D_v)
+  //   bias          (Q/K/V)   : (D + D + D_v)
   //   mask_index              : see below
   //   past          (K/V)     : (2, B, N, P, H) or NULL
-  //   extra_add_qk            : (B, N, S, L) or NULL
-  //   key           (K)       : (B, L, D_k)
+  //   extra_add_qk            : (B, N, S, T) or NULL
+  //   key           (K)       : (B, L, D)
   //   value         (V)       : (B, L, D_v)
 
   // For mask_index, the following shapes are supported:
   //     NULL, (B, 1), (1, 1)
   //     (B), (2 * B),
-  //     (B, L)
-  //     (B, S, L)
+  //     (B, T)
+  //     (B, S, T)
   //     (B, 1, M, M)
   //
   // When a model is pruned (like some attention heads are removed in Q/K/V), input_hidden_size could be larger
@@ -155,7 +151,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     }
   }
 
-  int64_t target_sequence_length = sequence_length;
+  int64_t kv_sequence_length = sequence_length;
   int64_t q_hidden_size = bias_dims[0] / static_cast<int64_t>(3);
   int64_t k_hidden_size = q_hidden_size;
   int64_t v_hidden_size = k_hidden_size;
@@ -199,7 +195,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     q_hidden_size = dims[2];
     k_hidden_size = key_dims[2];
     v_hidden_size = value_dims[1];
-    target_sequence_length = key_dims[1];
+    kv_sequence_length = key_dims[1];
   } else {  // with weights
     if (qkv_hidden_sizes_.size() != 0) {
       if (qkv_hidden_sizes_.size() != 3) {
@@ -229,7 +225,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Hidden size of Q, K and V shall be same");
   }
 
-  int64_t total_sequence_length = target_sequence_length;
+  int64_t total_sequence_length = kv_sequence_length;
   if (bias_dims[0] != q_hidden_size + k_hidden_size + v_hidden_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'bias' dimension 0 should have same length as sum of Q/K/V hidden sizes");
@@ -355,15 +351,13 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->batch_size = static_cast<int>(batch_size);
     output_parameters->sequence_length = static_cast<int>(sequence_length);
     output_parameters->past_sequence_length = static_cast<int>(past_sequence_length);
-    output_parameters->target_sequence_length = static_cast<int>(target_sequence_length);
+    output_parameters->kv_sequence_length = static_cast<int>(kv_sequence_length);
     output_parameters->total_sequence_length = static_cast<int>(total_sequence_length);
     output_parameters->max_sequence_length = static_cast<int>(max_sequence_length);
     output_parameters->input_hidden_size = static_cast<int>(input_hidden_size);
-    output_parameters->q_hidden_size = static_cast<int>(q_hidden_size);
-    output_parameters->k_hidden_size = static_cast<int>(k_hidden_size);
+    output_parameters->hidden_size = static_cast<int>(q_hidden_size);
     output_parameters->v_hidden_size = static_cast<int>(v_hidden_size);
-    output_parameters->q_head_size = static_cast<int>(q_hidden_size) / num_heads_;
-    output_parameters->k_head_size = static_cast<int>(k_hidden_size) / num_heads_;
+    output_parameters->head_size = static_cast<int>(q_hidden_size) / num_heads_;
     output_parameters->v_head_size = static_cast<int>(v_hidden_size) / num_heads_;
     output_parameters->num_heads = num_heads_;
     output_parameters->is_unidirectional = is_unidirectional_;
@@ -586,18 +580,18 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   auto* tp = context->GetOperatorThreadPool();
   // Compute Q, K, V
-  // gemm_data(BS, D_t) = input(BS, D_i) x weights(D_i, D_t) + bias(D_t), where D_t = D_q + D_k + D_v
+  // gemm_data(BS, D_t) = input(BS, D_i) x weights(D_i, D_t) + bias(D_t), where D_t = D + D + D_v
   // Hidden dimension of input could be larger than that of Q, K and V when model is pruned.
-  int qkv_hidden_size = (parameters.q_hidden_size + parameters.k_hidden_size + parameters.v_hidden_size);
+  int qkv_hidden_size = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
   auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * qkv_hidden_size * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(std::move(allocator)));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + static_cast<size_t>(batch_size) * sequence_length * parameters.q_hidden_size;
-  auto V = K + static_cast<size_t>(batch_size) * sequence_length * parameters.k_hidden_size;
+  auto K = Q + static_cast<size_t>(batch_size) * sequence_length * parameters.hidden_size;
+  auto V = K + static_cast<size_t>(batch_size) * sequence_length * parameters.hidden_size;
 
   T* QKV[3] = {Q, K, V};
-  const int qkv_head_size[3] = {parameters.q_head_size, parameters.k_head_size, parameters.v_head_size};
+  const int qkv_head_size[3] = {parameters.head_size, parameters.head_size, parameters.v_head_size};
 
   {
     const int loop_len = 3 * batch_size * num_heads_;
@@ -607,7 +601,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
     // We use Q/K head size to estimate the cost, this is not accurate when Q/K and V head sizes are different.
     const double cost = static_cast<double>(sequence_length) *
-                        static_cast<double>(parameters.q_head_size) * static_cast<double>(input_hidden_size);
+                        static_cast<double>(parameters.head_size) * static_cast<double>(input_hidden_size);
 
     ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
@@ -620,7 +614,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         T* qkv_dest = QKV[qkv_index];
         int head_size = qkv_head_size[qkv_index];
         int weights_offset = 0;
-        int bias_offset = qkv_index * parameters.q_hidden_size + head_index * head_size;
+        int bias_offset = qkv_index * parameters.hidden_size + head_index * head_size;
 
         if (!is_prepack_) {
           weights_offset = bias_offset;
@@ -644,7 +638,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         // A: input          (BxSxD_i)          (B.)S x D_i           S x D_i
         // B: weights        (D_ixNxH_t)        D_i x (N.)H_t         D_i x H_t
         // C: QKV[qkv_index] (BxNxSxH_t)        (B.N.)S x H_t         S x H_t
-        // Here H_t = H_q + H_k + H_v is size of one head of Q, K and V
+        // Here H_t = H + H + H_v is size of one head of Q, K and V
         if (is_prepack_) {
           uint8_t* packed_weight;
           packed_weight = static_cast<uint8_t*>(packed_weights_[qkv_index].get()) +
@@ -674,7 +668,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
               input_data + input_offset,                      // A
               input_hidden_size,                              // lda    = D
               weights_data + weights_offset,                  // B
-              qkv_hidden_size,                                // ldb    = D_q + D_k + D_v
+              qkv_hidden_size,                                // ldb    = D + D + D_v
               1.0f,                                           // beta
               qkv_dest + qkv_offset,                          // C
               head_size,                                      // ldc
@@ -688,7 +682,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past, output,
                         batch_size, sequence_length,
-                        parameters.q_head_size, parameters.v_head_size, parameters.v_hidden_size,
+                        parameters.head_size, parameters.v_head_size, parameters.v_hidden_size,
                         extra_add_qk, context);
 }
 }  // namespace contrib

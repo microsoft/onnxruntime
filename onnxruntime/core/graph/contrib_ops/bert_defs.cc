@@ -60,8 +60,8 @@ void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx
 constexpr const char* Attention_ver1_doc = R"DOC(
 Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
 
-The weights for input projection of Q, K and V are merged. The data is packed so that one head of Q, K and V are put
-together with shape like (input_hidden_size, num_heads * (q_head_size + k_head_size + v_head_size)).
+The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension, its shape
+is (input_hidden_size, num_heads * q_head_size + num_heads * q_head_size + num_heads * v_head_size).
 
 The mask_index is optional. Besides raw attention mask with shape (batch_size, total_sequence_length)
 or (batch_size, sequence_length, total_sequence_length) with value 0 for masked and 1 otherwise,
@@ -71,13 +71,14 @@ left-side padding, mask_index has shape (2 * batch_size), where the values are t
 the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. Both
 past and present state are optional.
 
-When weights is not provided, key and value are required. Usually, key and value are same tensor for cross attention.
+When weights is not provided, key and value are required. For input projections of Q, K and V, MatMul is excluded
+and Add bias is included in this situation.
 
-The qkv_hidden_sizes is required only when K and V has different hidden size (hidden_size_k != hidden_size_v).
+The qkv_hidden_sizes is required only when K and V has different hidden size.
 
 When there is past state, hidden dimension for Q, K and V shall be the same.
 
-The total_sequence_length is past_sequence_length + target_sequence_length.
+The total_sequence_length is past_sequence_length + kv_sequence_length.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(Attention, 1,
@@ -89,20 +90,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Attention, 1,
                                       AttributeProto::INT,
                                       static_cast<int64_t>(0))
                                 .Attr("qkv_hidden_sizes",
-                                      "Hidden dimension of Q, K, V: q_hidden_size, k_hidden_size and v_hidden_size. It is required that hidden_size_q == hidden_size_k",
+                                      "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size",
                                       AttributeProto::INTS,
                                       OPTIONAL_VALUE)
-                                .Input(0, "input", "input tensor with shape (batch_size, sequence_length, input_hidden_size) for Q, K, V with weights provided, or (batch_size, sequence_length, q_hidden_size) for Q without weights", "T")
+                                .Input(0, "input", "input tensor with shape (batch_size, sequence_length, input_hidden_size) for Q, K, V with weights provided, or (batch_size, sequence_length, hidden_size) for Q without weights", "T")
                                 .Input(1, "weights", "weights with shape (input_hidden_size, q_hidden_size + k_hidden_size + v_hidden_size) for input projection", "T", OpSchema::Optional)
-                                .Input(2, "bias", "bias tensor with shape (q_hidden_size + k_hidden_size + v_hidden_size) for input projection", "T")
+                                .Input(2, "bias", "bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection", "T")
                                 .Input(3, "mask_index",
                                        "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, total_sequence_length)"
                                        "or (batch_size, sequence_length, total_sequence_length), or index with shape (batch_size) or (2 * batch_size).",
                                        "M", OpSchema::Optional)
                                 .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
                                 .Input(5, "extra_add", "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "T", OpSchema::Optional)
-                                .Input(6, "key", "Input for key with shape (batch_size, target_sequence_length, k_input_hidden). Required when merged_weights is 0", "T", OpSchema::Optional)
-                                .Input(7, "value", "Input for key with shape (batch_size, target_sequence_length, v_input_hidden). Required when merged_weights is 0", "T", OpSchema::Optional)
+                                .Input(6, "key", "Input for key with shape (batch_size, kv_sequence_length, hidden_size). Required when weights is not avaiable", "T", OpSchema::Optional)
+                                .Input(7, "value", "Input for key with shape (batch_size, kv_sequence_length, v_hidden_size). Required when weights is not avaiable", "T", OpSchema::Optional)
                                 .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)", "T")
                                 .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size)", "T", OpSchema::Optional)
                                 .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
