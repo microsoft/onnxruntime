@@ -6,7 +6,7 @@ declare namespace JSEP {
   type AllocFunction = (size: number) => number;
   type FreeFunction = (size: number) => number;
   type UploadFunction = (dataOffset: number, gpuDataId: number, size: number) => void;
-  type DownloadFunction = (size: number) => number;
+  type DownloadFunction = (gpuDataId: number, dataOffset: number, size: number) => Promise<void>;
   type RunFunction = (size: number) => number;
 }
 
