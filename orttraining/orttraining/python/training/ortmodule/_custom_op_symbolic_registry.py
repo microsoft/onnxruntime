@@ -126,7 +126,7 @@ def resize(g, self, kernel_size, stride, padding, dilation, ceil_mode):
         padding,
         dilation,
         ceil_mode,
-        operator_s="max_pool2d_with_indices",
+        operator_s="resize",
         outputs=2,
     )[0]
 
