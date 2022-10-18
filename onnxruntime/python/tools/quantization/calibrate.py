@@ -817,7 +817,12 @@ class HistogramCollector(CalibrationDataCollector):
 
         min_kl_divergence_idx = np.argmin(kl_divergence)
         optimal_threshold = thresholds[min_kl_divergence_idx]
-
+        min_value = histogram[2]
+        max_value = histogram[3]
+        if optimal_threshold[0] < min_value:
+            optimal_threshold = (min_value, optimal_threshold[1])
+        if optimal_threshold[1] > max_value:
+            optimal_threshold = (optimal_threshold[0], max_value)
         return optimal_threshold
 
 
