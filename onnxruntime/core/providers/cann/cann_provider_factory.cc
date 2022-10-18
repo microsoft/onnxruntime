@@ -2,7 +2,9 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/common.h"
 #include "core/providers/shared_library/provider_api.h"
+#include "core/framework/session_options.h"
 #include "core/providers/cann/cann_provider_factory.h"
 #include "core/providers/cann/cann_provider_factory_creator.h"
 #include "core/providers/cann/cann_provider_options.h"
@@ -21,13 +23,13 @@ struct CANNProviderFactory : IExecutionProviderFactory {
   explicit CANNProviderFactory(const CANNExecutionProviderInfo& info) : info_(info) {}
   ~CANNProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider() override;
+  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
 
  private:
   CANNExecutionProviderInfo info_;
 };
 
-std::unique_ptr<IExecutionProvider> CANNProviderFactory::CreateProvider() {
+std::unique_ptr<IExecutionProvider> CANNProviderFactory::CreateProviderWithSessionOption(const SessionOptions*) {
   return std::make_unique<CANNExecutionProvider>(info_);
 }
 

@@ -14,7 +14,7 @@ struct XnnpackProviderFactory : IExecutionProviderFactory {
       : info_{provider_options} {
   }
 
-  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override {
+  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override {
     if (options && options->intra_op_param.allow_spinning && options->intra_op_param.thread_pool_size > 1) {
       LOGS_DEFAULT(WARNING)
           << "XNNPACK EP utilize pthreadpool for multi-threading. So, if allow_spinning on ORT's"

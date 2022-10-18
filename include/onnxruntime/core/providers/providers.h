@@ -9,7 +9,7 @@ struct SessionOptions;
 
 struct IExecutionProviderFactory {
   virtual ~IExecutionProviderFactory() = default;
-  virtual std::unique_ptr<IExecutionProvider> CreateProvider(
+  virtual std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(
       const SessionOptions* options = nullptr) = 0;
 };
 }  // namespace onnxruntime

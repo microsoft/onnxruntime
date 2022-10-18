@@ -401,7 +401,7 @@ std::unique_ptr<IExecutionProvider> create_cuda_execution_provider() {
   options.device_id = device_id;
   options.gpu_mem_limit = gpu_mem_limit;
   auto factory = CudaProviderFactoryCreator::Create(&options);
-  return factory->CreateProvider();
+  return factory->CreateProviderWithSessionOption();
 }
 
 TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {

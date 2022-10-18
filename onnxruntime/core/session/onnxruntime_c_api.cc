@@ -686,7 +686,7 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
   if (options) {
     for (auto& factory : options->provider_factories) {
-      auto provider = factory->CreateProvider(&(options->value));
+      auto provider = factory->CreateProviderWithSessionOption(&(options->value));
       provider_list.push_back(std::move(provider));
     }
   }

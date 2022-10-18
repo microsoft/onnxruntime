@@ -12,6 +12,8 @@ using Microsoft::WRL::ComPtr;
 #include <wil/wrl.h>
 #include <wil/result.h>
 
+#include "core/common/common.h"
+#include "core/framework/session_options.h"
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #include "core/session/abi_session_options_impl.h"
@@ -31,7 +33,7 @@ struct DMLProviderFactory : IExecutionProviderFactory {
                                                       cmd_queue_(cmd_queue) {}
   ~DMLProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
   void SetDefaultRoundingMode(AllocatorRoundingMode rounding_mode);
 
   void SetMetacommandsEnabled(bool metacommands_enabled);
@@ -43,7 +45,7 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   bool metacommands_enabled_ = true;
 };
 
-std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProviderWithSessionOption(const SessionOptions* options) {
   auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), cmd_queue_.Get(), metacommands_enabled_);
   Dml::SetDefaultRoundingMode(provider.get(), rounding_mode_);
   return provider;

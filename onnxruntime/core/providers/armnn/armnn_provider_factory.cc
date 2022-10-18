@@ -12,13 +12,13 @@ namespace onnxruntime {
 struct ArmNNProviderFactory : IExecutionProviderFactory {
   ArmNNProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~ArmNNProviderFactory() override {}
-  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
 
  private:
   bool create_arena_;
 };
 
-std::unique_ptr<IExecutionProvider> ArmNNProviderFactory::CreateProvider(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> ArmNNProviderFactory::CreateProviderWithSessionOption(const SessionOptions*) {
   ArmNNExecutionProviderInfo info;
   info.create_arena = create_arena_;
   return std::make_unique<ArmNNExecutionProvider>(info);

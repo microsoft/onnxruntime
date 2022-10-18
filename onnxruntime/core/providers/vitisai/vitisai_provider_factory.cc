@@ -17,7 +17,7 @@ struct VitisAIProviderFactory : IExecutionProviderFactory {
       : backend_type_(std::move(backend_type)), device_id_(device_id), export_runtime_module_(std::move(export_runtime_module)), load_runtime_module_(std::move(load_runtime_module)) {}
   ~VitisAIProviderFactory() = default;
 
-  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
 
  private:
   // The Vitis AI DPU target
@@ -32,7 +32,7 @@ struct VitisAIProviderFactory : IExecutionProviderFactory {
   const std::string load_runtime_module_;
 };
 
-std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProviderWithSessionOption(const SessionOptions*) {
   VitisAIExecutionProviderInfo info;
   info.backend_type = backend_type_;
   info.device_id = device_id_;

@@ -85,9 +85,9 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
         };
 
       for (const auto& f : factories) {
-          auto kernel_registry = f->CreateProvider()->GetKernelRegistry();
-          for (const auto& m : kernel_registry->GetKernelCreateMap()) {
-            result.emplace_back(*(m.second.kernel_def));
+        auto kernel_registry = f->CreateProviderWithSessionOption()->GetKernelRegistry();
+        for (const auto& m : kernel_registry->GetKernelCreateMap()) {
+          result.emplace_back(*(m.second.kernel_def));
           }
         }
 

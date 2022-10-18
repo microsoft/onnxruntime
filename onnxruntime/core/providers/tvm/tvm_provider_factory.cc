@@ -17,7 +17,7 @@ struct TvmProviderFactory : IExecutionProviderFactory {
   TvmProviderFactory(const tvm::TvmEPOptions& options) : options_{options} {}
   ~TvmProviderFactory() = default;
 
-  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override {
+  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override {
     std::unique_ptr<IExecutionProvider> provider = nullptr;
     if (options_.so_folder != "") {
       ORT_ENFORCE(options_.executor == "vm",

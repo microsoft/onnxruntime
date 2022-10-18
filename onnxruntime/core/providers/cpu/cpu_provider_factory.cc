@@ -15,13 +15,13 @@ namespace onnxruntime {
 struct CpuProviderFactory : IExecutionProviderFactory {
   CpuProviderFactory(bool create_arena) : create_arena_(create_arena) {}
   ~CpuProviderFactory() override = default;
-  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
 
  private:
   bool create_arena_;
 };
 
-std::unique_ptr<IExecutionProvider> CpuProviderFactory::CreateProvider(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> CpuProviderFactory::CreateProviderWithSessionOption(const SessionOptions*) {
   CPUExecutionProviderInfo info;
   info.create_arena = create_arena_;
   return std::make_unique<CPUExecutionProvider>(info, true /* delay allocator registration to allow sharing */);

@@ -19,14 +19,14 @@ struct NnapiProviderFactory : IExecutionProviderFactory {
 
   ~NnapiProviderFactory() override {}
 
-  std::unique_ptr<IExecutionProvider> CreateProvider(const SessionOptions* options = nullptr) override;
+  std::unique_ptr<IExecutionProvider> CreateProviderWithSessionOption(const SessionOptions* options = nullptr) override;
 
  private:
   const uint32_t nnapi_flags_;
   const optional<std::string> partitioning_stop_ops_list_;
 };
 
-std::unique_ptr<IExecutionProvider> NnapiProviderFactory::CreateProvider(const SessionOptions*) {
+std::unique_ptr<IExecutionProvider> NnapiProviderFactory::CreateProviderWithSessionOption(const SessionOptions*) {
   return std::make_unique<NnapiExecutionProvider>(nnapi_flags_, partitioning_stop_ops_list_);
 }
 }  // namespace
