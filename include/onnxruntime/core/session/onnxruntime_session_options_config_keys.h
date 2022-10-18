@@ -63,8 +63,11 @@ static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimizati
 
 #ifdef ENABLE_TRAINING
 // Specifies a list of op types for memory footprint reduction.
-// The value should be a ","-delimited list of pair of <subgraph string, alleviation strategy>.
-// For example, "Gelu+Cast+:1,Dropout:1". Alleviation strateg currently has valid values: 0 - disabled, 1 - recompute.
+// The value should be a ","-delimited list of pair of
+// <subgraph string : alleviation strategy : number of subgraph to skip>.
+// For example, "Gelu+Cast+:1:0,Dropout:1:1".
+//   Alleviation strateg currently has valid values: 0 - disabled, 1 - recompute.
+//   Number of ignorances is used to control how many subgraphs to skip alleviation to avoid "oversaving" the memory.
 static const char* const kOrtSessionOptionsMemoryAlleviationEnabler = "optimization.enable_memory_alleviation";
 
 // Specifies the level for detecting subgraphs for memory footprint reduction.

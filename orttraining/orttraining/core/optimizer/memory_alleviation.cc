@@ -52,17 +52,21 @@ Status MemoryAlleviation::ParseConfigFromString(const std::string& enable_memory
     const auto alleviation_map = utils::SplitString(enable_memory_alleviation, ",");
     for (const auto& alleviation_config_per_op_str : alleviation_map) {
       const auto alleviation_config_per_op = utils::SplitString(alleviation_config_per_op_str, ":");
-      ORT_RETURN_IF_NOT(alleviation_config_per_op.size() == 2,
+      ORT_RETURN_IF_NOT(alleviation_config_per_op.size() == 3,
                         "Alleviation config for each operator should in format of OpType:AlleviationType.");
 
       const std::string subgraph_string_representation(alleviation_config_per_op[0]);
       int alleviation_type_int = ParseIntValueFromString(alleviation_config_per_op[1]);
+      int alleviation_freq = ParseIntValueFromString(alleviation_config_per_op[2]);
       ORT_RETURN_IF_NOT(alleviation_type_int < 2 && alleviation_type_int >= 0,
                         "Invalid alleviation type specified for subgraph: ", subgraph_string_representation);
 
+      ORT_RETURN_IF_NOT(alleviation_freq == -1 || alleviation_freq >= 0,
+                        "Invalid alleviation_freq specified for subgraph: ", alleviation_freq);
+
       // At this point, subgraph_string_representation is a pattern graph string representation.
-      pattern_subgraph_to_alleviation_type_map_[subgraph_string_representation] =
-          static_cast<AlleviationType>(alleviation_type_int);
+      pattern_subgraph_to_user_alleviation_config_map_[subgraph_string_representation] =
+         UserAlleviationConfig{static_cast<AlleviationType>(alleviation_type_int), alleviation_freq};
     }
   }
 
@@ -97,6 +101,8 @@ MemoryAlleviation::MemoryAlleviation(const std::string& enable_memory_alleviatio
         // Unary elementwise
         /// The ratio and mode input are trivial whether they exists or not in backward
         {"BitmaskDropout", EntryOperatorConfig{{0}}},
+        /// The axis input are trivial whether they exists or not in backward
+        {"CumSum", EntryOperatorConfig{{0}}},
         {"Dropout", EntryOperatorConfig{{0}}},
         {"Gelu", EntryOperatorConfig{{0}}},
         {"FastGelu", EntryOperatorConfig{{0}}},
@@ -193,7 +199,7 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
 
   std::deque<NodeOutputPort> q;
   for (auto output_index : node_output_index_candidates) {
-    q.push_back(NodeOutputPort(&node, output_index));
+    q.push_back(NodeOutputPort(&node, static_cast<int>(output_index)));
   }
 
   bool early_stop = false;
@@ -285,8 +291,9 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
             input_arg_indices.end()) {
           NodeOutputPort next_p = std::make_pair(&parent_node, parent_node_output_index);
 
-          LOGS(logger, VERBOSE) << "Node " << p.first->Name() << "(" << p.first->OpType() << ")'s " << p.second
-                                << "th output [" << p.first->OutputDefs()[p.second]->Name()
+          LOGS(logger, VERBOSE) << "Node " << parent_node.Name() << "(" << parent_node.OpType() << ")'s "
+                                << parent_node_output_index
+                                << "th output [" << parent_node.OutputDefs()[parent_node_output_index]->Name()
                                 << "] is added in recompute search list  ";
 
           q.push_back(next_p);
@@ -431,7 +438,7 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
                                                      logger));
 
   InlinedHashMap<std::string, InlinedHashMap<std::string, int>> stashed_activation_statistics;
-  InlinedHashMap<std::string, AlleviationType> subgraph_str_to_alleviation_type;
+  InlinedHashMap<std::string, UserAlleviationConfig> subgraph_str_to_user_alleviation_config;
   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -465,18 +472,29 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
 
     Node* replacement_node = nullptr;
 
-    auto alleviation_type = AlleviationType::None;
-    if (pattern_subgraph_to_alleviation_type_map_.find(subgraph_str_representation) !=
-        pattern_subgraph_to_alleviation_type_map_.end()) {
-      alleviation_type = pattern_subgraph_to_alleviation_type_map_.at(subgraph_str_representation);
+    UserAlleviationConfig alleviation_config{AlleviationType::None, 0};
+    if (pattern_subgraph_to_user_alleviation_config_map_.find(subgraph_str_representation) !=
+        pattern_subgraph_to_user_alleviation_config_map_.end()) {
+      alleviation_config = pattern_subgraph_to_user_alleviation_config_map_.at(subgraph_str_representation);
     }
-    bool modify_graph = (alleviation_type != AlleviationType::None);
+    bool modify_graph = (alleviation_config.type != AlleviationType::None);
+
+    if (subgraph_str_to_user_alleviation_config.find(subgraph_str_representation) == subgraph_str_to_user_alleviation_config.end()) {
+      subgraph_str_to_user_alleviation_config[subgraph_str_representation] = alleviation_config;
+    }
+
+    auto& current_alleviation_config = subgraph_str_to_user_alleviation_config[subgraph_str_representation];
+    if (current_alleviation_config.skip_count > 0) {
+      current_alleviation_config.skip_count--;
+      modify_graph = false;
+    }
+
     if (modify_graph) {
+      LOGS(logger, WARNING) << "[Modify Graph] Node " << node.Name() << "(" << node.OpType() << ") is recomputed";
       ORT_RETURN_IF_ERROR(CreateRecomputeGraph(graph, nodes_in_topological_order, replacement_node));
       ORT_ENFORCE(replacement_node);
     }
 
-    subgraph_str_to_alleviation_type[subgraph_str_representation] = alleviation_type;
     for (size_t output_index : candidate_output_args_map[&node]) {
       if (modify_graph) {
         // Collect output edges (connecting to backward ops), to remove.
@@ -521,7 +539,7 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
     modified = modify_graph;
   }
 
-  PrintSummary(stashed_activation_statistics, subgraph_str_to_alleviation_type, logger);
+  PrintSummary(stashed_activation_statistics, subgraph_str_to_user_alleviation_config, logger);
 
   return Status::OK();
 }
@@ -548,24 +566,26 @@ void MemoryAlleviation::NodesInTypoOrderToString(const InlinedVector<const Node*
   }
 }
 
-std::string MemoryAlleviation::AlleviationTypeToString(const AlleviationType& type) const {
-  switch (type) {
+std::string MemoryAlleviation::UserAlleviationConfigToString(const UserAlleviationConfig& config) const {
+  std::string type_str;
+  switch (config.type) {
     case AlleviationType::None: {
-      return "Disabled";
+      type_str =  "Disabled" ;
     } break;
     case AlleviationType::Recompute: {
-      return "Recompute";
+      type_str =  "Recompute" ;
     } break;
     default: {
-      return "Unknown";
+      type_str = "Unknown";
     } break;
   }
+  return type_str;
 }
 
 void MemoryAlleviation::PrintSummary(const InlinedHashMap<std::string, InlinedHashMap<std::string, int>>&
                                          stashed_activation_statistics,
-                                     const InlinedHashMap<std::string, AlleviationType>&
-                                         subgraph_str_to_alleviation_type,
+                                     const InlinedHashMap<std::string, UserAlleviationConfig>&
+                                         subgraph_str_to_user_alleviation_config,
                                      const logging::Logger& logger) const {
   if (stashed_activation_statistics.size() == 0) {
     return;
@@ -580,7 +600,7 @@ void MemoryAlleviation::PrintSummary(const InlinedHashMap<std::string, InlinedHa
        ++subgraph_it) {
     summary << "\tSubgraph: " << subgraph_it->first << "\n"
             << "\t\tAlleviationType: "
-            << AlleviationTypeToString(subgraph_str_to_alleviation_type.at(subgraph_it->first)) << "\n"
+            << UserAlleviationConfigToString(subgraph_str_to_user_alleviation_config.at(subgraph_it->first)) << "\n"
             << "\t\tPatterns: \n";
     for (auto shape_stat_it = subgraph_it->second.begin(); shape_stat_it != subgraph_it->second.end();
          ++shape_stat_it) {

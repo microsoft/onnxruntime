@@ -40,6 +40,18 @@ class MemoryAlleviation : public GraphTransformer {
     Recompute = 1,
   };
 
+  /**
+   * @brief Type of user config.
+   * type: type of memory reduction techniques.
+   * skip_count: the number of occurrences of a subgraph pattern to ignore for alleviation. 0 means don't skip any.
+   *   One example: if a subgraph pattern is found 3 times, and skip_count is set 2, then the 2nd and 3rd subgraph in
+   *   typological order will be ignored for alleviation. This is useful to avoid alleviating more memory than needed.
+   */
+  struct UserAlleviationConfig {
+    AlleviationType type;
+    int skip_count;
+  };
+
   struct EntryOperatorConfig {
     InlinedVector<int> input_arg_indices;  // input index to iterate further (bottom up)
   };
@@ -128,7 +140,7 @@ class MemoryAlleviation : public GraphTransformer {
    * @param type Alleviation type.
    * @return std::string
    */
-  std::string AlleviationTypeToString(const AlleviationType& type) const;
+  std::string UserAlleviationConfigToString(const UserAlleviationConfig& type) const;
 
   /**
    * @brief Summarize transformation details.
@@ -138,15 +150,15 @@ class MemoryAlleviation : public GraphTransformer {
    */
   void PrintSummary(const InlinedHashMap<std::string, InlinedHashMap<std::string, int>>&
                         stashed_activation_statistics,
-                    const InlinedHashMap<std::string, AlleviationType>&
-                        subgraph_str_to_alleviation_type,
+                    const InlinedHashMap<std::string, UserAlleviationConfig>&
+                        subgraph_str_to_user_alleviation_config,
                     const logging::Logger& logger) const;
 
   // The op types that are supported predefined.
   InlinedHashMap<std::string, EntryOperatorConfig> recomputable_op_type_to_input_arg_index_map_;
 
   // User enabled map of the subgraph string representation to the alleviation type.
-  InlinedHashMap<std::string, AlleviationType> pattern_subgraph_to_alleviation_type_map_;
+  InlinedHashMap<std::string, UserAlleviationConfig> pattern_subgraph_to_user_alleviation_config_map_;
 
   std::string memory_alleviation_config_;
   ProbeLevel level_;
