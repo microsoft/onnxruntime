@@ -169,7 +169,7 @@ namespace Dml
         }
 
         onnxruntime::common::Status OnSessionInitializationEnd();
-        onnxruntime::common::Status CheckSessionOptions(onnxruntime::SessionOptions& so);
+        onnxruntime::common::Status CheckSessionOptions(const onnxruntime::SessionOptions& so);
 
     private:
         void Initialize(ID3D12CommandQueue* queue, ExecutionProvider& executionProvider);
@@ -283,7 +283,7 @@ namespace Dml
             return Status::OK();
         }
 
-        virtual onnxruntime::common::Status CheckSessionOptions(onnxruntime::SessionOptions& so) override
+        virtual onnxruntime::common::Status CheckSessionOptions(const onnxruntime::SessionOptions& so) final override
         {
             m_impl->CheckSessionOptions(so);
         }
