@@ -1591,6 +1591,33 @@ if (onnxruntime_USE_CANN)
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
+if (onnxruntime_USE_CLOUD)
+  file(GLOB_RECURSE onnxruntime_providers_cloud_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/cloud/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cloud/*.cc"
+  )
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cloud_src})
+  onnxruntime_add_static_library(onnxruntime_providers_cloud ${onnxruntime_providers_cloud_src})
+  target_include_directories(onnxruntime_providers_cloud PRIVATE external/curl/include)
+  onnxruntime_add_include_to_target(onnxruntime_providers_cloud onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  target_link_libraries(onnxruntime_providers_cloud PRIVATE onnx nnxruntime_common onnxruntime_framework libcurl)
+  set_target_properties(onnxruntime_providers_cloud PROPERTIES FOLDER "ONNXRuntime")
+  set_target_properties(onnxruntime_providers_cloud PROPERTIES LINKER_LANGUAGE CXX)
+  
+  install(TARGETS onnxruntime_providers_cloud
+          ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+          FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  
+  #add_dependencies(onnxruntime_providers_cloud onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  #onnxruntime_add_include_to_target(onnxruntime_providers_cloud onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  #target_include_directories(onnxruntime_providers_cloud PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
+  #set_target_properties(onnxruntime_providers_cloud PROPERTIES LINKER_LANGUAGE CXX)
+  #set_target_properties(onnxruntime_providers_cloud PROPERTIES FOLDER "ONNXRuntime")
+  #target_link_libraries(onnxruntime_providers_cloud PRIVATE ${ONNXRUNTIME_PROVIDERS_SHARED})
+endif()
+
 if (NOT onnxruntime_BUILD_SHARED_LIB)
   install(TARGETS onnxruntime_providers
           ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
