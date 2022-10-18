@@ -4,6 +4,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/bfc_arena.h"
 #include <type_traits>
+#include <iostream>
 
 namespace onnxruntime {
 BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
