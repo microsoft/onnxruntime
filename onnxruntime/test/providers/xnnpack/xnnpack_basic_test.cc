@@ -489,7 +489,7 @@ TEST(XnnpackEP, TestMaxUnpool_stride) {
                                                  indice_value);
     auto* output_arg = builder.MakeOutput();
 
-    // add SoftMax
+    // add MaxUnpool
     Node& maxunpool_node = builder.AddNode("MaxUnpool", {input_arg, index_arg}, {output_arg});
     maxunpool_node.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
     maxunpool_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
@@ -516,7 +516,7 @@ TEST(XnnpackEP, TestMaxUnpool_pad) {
                                                  indice_value);
     auto* output_arg = builder.MakeOutput();
 
-    // add SoftMax
+    // add MaxUnpool
     Node& maxunpool_node = builder.AddNode("MaxUnpool", {input_arg, index_arg}, {output_arg});
     maxunpool_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
     maxunpool_node.AddAttribute("strides", std::vector<int64_t>{3, 3});
@@ -547,7 +547,7 @@ TEST(XnnpackEP, TestMaxUnpool_output_shape) {
     auto* ouputshape_arg = builder.MakeInitializer<int64_t>(std::vector<int64_t>{4}, output_shape);
     auto* output_arg = builder.MakeOutput();
 
-    // add SoftMax
+    // add MaxUnpool
     Node& maxunpool_node = builder.AddNode("MaxUnpool", {input_arg, index_arg, ouputshape_arg}, {output_arg});
     maxunpool_node.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
     maxunpool_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
