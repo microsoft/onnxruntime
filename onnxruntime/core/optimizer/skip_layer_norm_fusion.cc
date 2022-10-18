@@ -48,8 +48,18 @@ static bool CheckFirstAdd(Node& add, ProviderType providertype) {
     if (!utils::HasDimValue(add_input1_shape->dim(i)) ||
         !utils::HasDimValue(add_input2_shape->dim(i)) ||
         add_input1_shape->dim(i).dim_value() != add_input2_shape->dim(i).dim_value()) {
-      is_valid_input = false;
-      break;
+      // dim0 is batch_size, which could be only have dim_param.
+      if (i == 0) {
+        if (!utils::HasDimParam(add_input1_shape->dim(i)) ||
+            !utils::HasDimParam(add_input2_shape->dim(i)) ||
+            add_input1_shape->dim(i).dim_param() != add_input2_shape->dim(i).dim_param()) {
+          is_valid_input = false;
+          break;
+        }
+      } else {
+        is_valid_input = false;
+        break;
+      }
     }
   }
   return is_valid_input;
