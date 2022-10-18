@@ -32,6 +32,8 @@ class AttentionCPUBase : public AttentionBase {
                         int v_hidden_size,           // hidden size of V (D_v)
                         const Tensor* extra_add_qk,  // extra add in QK. Its size is BxNxSxT
                         OpKernelContext* context) const {
+    const int kv_sequence_length = sequence_length;
+
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -40,8 +42,8 @@ class AttentionCPUBase : public AttentionBase {
     int past_sequence_length = 0;
     Tensor* present = GetPresent(context, past, batch_size, v_head_size, sequence_length, past_sequence_length);
 
-    // Total sequence length including that of past state: T = P + S
-    const int total_sequence_length = past_sequence_length + sequence_length;
+    // Total sequence length including that of past state: T = P + L
+    const int total_sequence_length = past_sequence_length + kv_sequence_length;
 
     // Compute the attention score.
     size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T);
@@ -83,7 +85,8 @@ class AttentionCPUBase : public AttentionBase {
 
     ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data),
                             static_cast<T*>(attention_probs), V,
-                            batch_size, sequence_length, past_sequence_length, v_head_size, v_hidden_size,
+                            batch_size, sequence_length, kv_sequence_length, past_sequence_length,
+                            v_head_size, v_hidden_size,
                             past_data, present_data, tp);
 
     return Status::OK();
@@ -190,57 +193,58 @@ class AttentionCPUBase : public AttentionBase {
   }
 
   template <typename T>
-  void ComputeVxAttentionScore(T* output,                 // buffer for the result with size BxSxNxH
-                               T* tmp_buffer,             // buffer for temp use with size is BxNxSxH
-                               const T* attention_probs,  // Attention probs with size BxNxSxL
-                               const T* V,                // V value with size BxNxSxH
+  void ComputeVxAttentionScore(T* output,                 // buffer for the result with size BxSxNxH_v
+                               T* tmp_buffer,             // buffer for temp use with size is BxNxSxH_v
+                               const T* attention_probs,  // Attention probs with size BxNxSxT
+                               const T* V,                // V value with size BxNxLxH_v
                                int batch_size,            // batch size
                                int sequence_length,       // sequence length
+                               int kv_sequence_length,    // sequence length of K or V
                                int past_sequence_length,  // sequence length in past state
-                               int head_size,             // head size
-                               int hidden_size,           // hidden size
+                               int v_head_size,           // head size of V (H_v)
+                               int v_hidden_size,         // hidden size of V (D_v)
                                const T* past,             // past state
                                T* present,                // present state
                                ThreadPool* tp) const {
-    const int total_sequence_length = past_sequence_length + sequence_length;                // T = P + S
-    const size_t past_chunk_length = static_cast<size_t>(past_sequence_length * head_size);  // P x H
-    const size_t input_chunk_length = static_cast<size_t>(sequence_length * head_size);      // S x H
-    const size_t present_chunk_length = past_chunk_length + input_chunk_length;              // T x H
+    const int total_sequence_length = past_sequence_length + kv_sequence_length;               // T = P + L
+    const size_t past_chunk_length = static_cast<size_t>(past_sequence_length * v_head_size);  // P x H_v
+    const size_t input_chunk_length = static_cast<size_t>(kv_sequence_length * v_head_size);   // L x H_v
+    const size_t present_chunk_length = past_chunk_length + input_chunk_length;                // T x H_v
 
     // Move the pointer of past and present to start of v values.
     if (nullptr != past) {
-      past += batch_size * num_heads_ * past_sequence_length * head_size;
+      past += batch_size * num_heads_ * past_sequence_length * v_head_size;
     }
     if (nullptr != present) {
-      present += batch_size * num_heads_ * total_sequence_length * head_size;
+      present += batch_size * num_heads_ * total_sequence_length * v_head_size;
     }
 
     const double cost =
-        static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(sequence_length);
+        static_cast<double>(sequence_length) * static_cast<double>(v_head_size) * static_cast<double>(sequence_length);
 
     ThreadPool::TryParallelFor(tp, batch_size * num_heads_, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const T* v = V + input_chunk_length * i;
         if (nullptr != present) {
-          // Concatenate past_V and V: (BxNx)PxH, (BxNx)LxH -> (BxNx)TxH
+          // Concatenate past_V and V: (BxNx)PxH_v, (BxNx)LxH_v -> (BxNx)TxH_v
           v = ConcatStateChunk(past, v, present, past_chunk_length, present_chunk_length, i);
         }
 
         T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + input_chunk_length * i;
-        math::MatMul<T>(sequence_length, head_size, total_sequence_length,
+        math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
                         attention_probs + sequence_length * total_sequence_length * i,
                         v, current_tmp_data, nullptr);
 
-        // Transpose: out(B, S, N, H) -> out_tmp(B, N, S, H)
+        // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
         const int batch_index = static_cast<int>(i / num_heads_);
         const int head_index = static_cast<int>(i % num_heads_);
         T* src = current_tmp_data;
-        T* dest = output + (batch_index * sequence_length * num_heads_ + head_index) * head_size;
-        const auto bytes_to_copy = SafeInt<size_t>(head_size) * sizeof(T);
+        T* dest = output + (batch_index * sequence_length * num_heads_ + head_index) * v_head_size;
+        const auto bytes_to_copy = SafeInt<size_t>(v_head_size) * sizeof(T);
         for (int j = 0; j < sequence_length; j++) {
           memcpy(dest, src, bytes_to_copy);
-          src += head_size;
-          dest += hidden_size;
+          src += v_head_size;
+          dest += v_hidden_size;
         }
       }
     });
