@@ -292,8 +292,8 @@ struct Base<Unowned<T>> {
 
   Base(Base&& v) noexcept : p_{v.p_} { v.p_ = nullptr; }
   Base& operator=(Base&& v) noexcept {
-    auto t = nullptr;
-    std::swap(t, v.p_);
+    p_ = nullptr;
+    std::swap(p_, v.p_);
     return *this;
   }
 
