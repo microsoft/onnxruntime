@@ -307,7 +307,9 @@ class IExecutionProvider {
    * @param session_options The SessionOptions object to be altered.
    * @param logger The EP write the reason of the altering to it.
    */
-  virtual void LegalizeSessionOptions(SessionOptions& /*session_options*/, const logging::Logger& /*logger*/) {}
+  virtual common::Status CheckSessionOptions(const SessionOptions& /*session_options*/) {
+    return Status::OK();
+  }
 
  private:
   const std::string type_;
