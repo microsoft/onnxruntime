@@ -193,7 +193,7 @@ class BFCArena : public IAllocator {
         : bin_size(bs), free_chunks(ChunkComparator(allocator)) {}
   };
 
-  static const size_t kMinAllocationBits = 8;
+  static const size_t kMinAllocationBits = 9;
   static const size_t kMinAllocationSize = 1 << kMinAllocationBits;
 
   // AllocationRegion maps pointers to ChunkHandles for a single
