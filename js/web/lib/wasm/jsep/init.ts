@@ -17,31 +17,29 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
         {backend},
 
         // jsepAlloc()
-        (size: number) => {
-          // eslint-disable-next-line no-console
-          console.log(`jsepAlloc: ${size}`);
-          return backend.alloc(size);
-        },
+        (size: number) => backend.alloc(size),
 
         // jsepFree()
-        (ptr: number) => {
-          // eslint-disable-next-line no-console
-          console.log(`jsepFree: ${ptr}`);
-          return backend.free(ptr);
-        },
+        (ptr: number) => backend.free(ptr),
 
         // jsepUpload(src, dst, size)
         (dataOffset: number, gpuDataId: number, size: number) => {
           // eslint-disable-next-line no-console
           console.log('jsepUpload');
           const data = module.HEAPU8.subarray(dataOffset, dataOffset + size);
-          backend.upload(dataOffset, data, gpuDataId);
+          backend.upload(gpuDataId, data);
         },
-        (_src: number, _dst: number) => {
-          // eslint-disable-next-line no-console
-          console.log('jsepDownload');
-          return 41;
-        },
+
+        // jsepDownload(src, dst, size)
+        async(gpuDataId: number, dataOffset: number, size: number):
+            Promise<void> => {
+              // eslint-disable-next-line no-console
+              console.log('jsepDownload');
+
+              const data = module.HEAPU8.subarray(dataOffset, dataOffset + size);
+              await backend.download(gpuDataId, data);
+            },
+
         (_a: number) => {
           // eslint-disable-next-line no-console
           console.log('jsepRun');

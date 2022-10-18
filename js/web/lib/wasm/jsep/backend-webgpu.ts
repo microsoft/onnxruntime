@@ -130,14 +130,13 @@ export class WebGpuBackend {
     return outputTensors;
   }
 
-  reshape(input: Tensor, reshapedDims: readonly number[]): Tensor {
-    return this.dataManager.hasGpuData(input.dataId) ?
-        this.dataManager.createGpuRef(input.dataId, input.type, reshapedDims)[0] :
-        new Tensor(reshapedDims, input.type, undefined, undefined, input.data);
+  upload(gpuDataId: number, data: Uint8Array) {
+    this.gpuDataManager.upload(gpuDataId, data);
   }
 
-  upload(dataOffset: number, data: Uint8Array, gpuDataId: number) {
-    throw new Error('Method not implemented.');
+  async download(gpuDataId: number, data: Uint8Array) {
+    const arrayBuffer = await this.gpuDataManager.download(gpuDataId);
+    data.set(new Uint8Array(arrayBuffer));
   }
 
   alloc(size: number): number {

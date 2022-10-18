@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {sizeof, Tensor} from '../tensor';
-import {ShapeUtil} from '../util';
 import {WebGpuBackend} from '../backend-webgpu';
+
 import {GpuData, GpuDataId, GpuDataType} from './types';
 
 /**
@@ -11,9 +10,9 @@ import {GpuData, GpuDataId, GpuDataType} from './types';
  */
 export interface GpuDataManager {
   /**
-   * upload data to GPU. if the ID already exists in cache, returns the cached value without uploading anything.
+   * upload data to GPU.
    */
-  upload(id: GpuDataId, data: Uint8Array, gpuDataType: GpuDataType): GpuData;
+  upload(id: GpuDataId, data: Uint8Array): void;
   /**
    * create new data on GPU.
    */
@@ -24,6 +23,8 @@ export interface GpuDataManager {
   get(id: GpuDataId): GpuData|undefined;
   /**
    * release the data on GPU by ID.
+   *
+   * @return size of the data released
    */
   release(id: GpuDataId): number;
   /**
@@ -34,7 +35,7 @@ export interface GpuDataManager {
 
 interface StorageCacheValue {
   gpuData: GpuData;
-  size: number;
+  originalSize: number;
 }
 
 interface DownloadCacheValue {
@@ -62,50 +63,53 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.downloadCache = new Map();
   }
 
-  upload(data: Tensor.NumberType, gpuDataType: GpuDataType): GpuData {
-    if (gpuDataType !== GpuDataType.default) {
-      throw new Error('we only support default GPU data type now');
-    }
-
+  upload(id: GpuDataId, data: Uint8Array): void {
     const srcArrayBuffer = data.buffer;
     const srcOffset = data.byteOffset;
     const srcLength = data.byteLength;
     const size = calcNormalizedBufferSize(srcLength);
 
-    // create gpu buffer
-    const gpuBuffer = this.backend.device.createBuffer({mappedAtCreation: true, size, usage: GPUBufferUsage.STORAGE});
-
-    // copy (upload) data
-    const arrayBuffer = gpuBuffer.getMappedRange();
-    new Uint8Array(arrayBuffer).set(new Uint8Array(srcArrayBuffer, srcOffset, srcLength));
-    gpuBuffer.unmap();
-
-    const gpuData = {id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer};
-    this.storageCache.set(gpuData.id, {gpuData, size: srcLength});
-    return gpuData;
-  }
-
-  create(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): GpuData {
-    if (gpuDataType !== GpuDataType.default) {
-      throw new Error('we only support default GPU data type now');
+    // get destination gpu buffer
+    const gpuDataCache = this.storageCache.get(id);
+    if (!gpuDataCache) {
+      throw new Error('gpu data for uploading does not exist');
+    }
+    if (gpuDataCache.originalSize !== srcLength) {
+      throw new Error(`inconsistent data size. gpu data size=${gpuDataCache.originalSize}, data size=${srcLength}`);
     }
 
+    // create gpu buffer
+    const gpuBufferForUploading =
+        this.backend.device.createBuffer({mappedAtCreation: true, size, usage: GPUBufferUsage.STORAGE});
+
+    // copy (upload) data
+    const arrayBuffer = gpuBufferForUploading.getMappedRange();
+    new Uint8Array(arrayBuffer).set(new Uint8Array(srcArrayBuffer, srcOffset, srcLength));
+    gpuBufferForUploading.unmap();
+
+
+    // GPU copy
+    this.backend.getCommandEncoder().copyBufferToBuffer(gpuBufferForUploading, 0, gpuDataCache.gpuData.buffer, 0, size);
+    this.backend.flush();
+
+    gpuBufferForUploading.destroy();
+  }
+
+  create(size: number): GpuData {
     // !!!
     // !!! IMPORTANT: TODO: whether we should keep the storage buffer every time, or always create new ones.
     // !!!                  This need to be figured out by performance test results.
     // !!!
 
-    const elemCount = ShapeUtil.size(dims);
-    const bufferLength = sizeof(type) * elemCount;
-    const size = calcNormalizedBufferSize(bufferLength);
+    const bufferSize = calcNormalizedBufferSize(size);
 
     // create gpu buffer
     const gpuBuffer =
         // eslint-disable-next-line no-bitwise
-        this.backend.device.createBuffer({size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC});
+        this.backend.device.createBuffer({size: bufferSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC});
 
     const gpuData = {id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer};
-    this.storageCache.set(gpuData.id, {gpuData, size: bufferLength});
+    this.storageCache.set(gpuData.id, {gpuData, originalSize: size});
     return gpuData;
   }
 
@@ -113,7 +117,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     return this.storageCache.get(id)?.gpuData;
   }
 
-  release(id: GpuDataId): void {
+  release(id: GpuDataId): number {
     const cachedData = this.storageCache.get(id);
     if (!cachedData) {
       throw new Error('releasing data does not exist');
@@ -129,6 +133,8 @@ class GpuDataManagerImpl implements GpuDataManager {
       });
       this.downloadCache.delete(id);
     }
+
+    return cachedData.originalSize;
   }
 
   async download(id: GpuDataId): Promise<ArrayBufferLike> {
@@ -146,15 +152,17 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.backend.endComputePass();
     const gpuReadBuffer = this.backend.device.createBuffer(
         // eslint-disable-next-line no-bitwise
-        {size: cachedData.size, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ});
+        {size: cachedData.originalSize, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ});
     commandEncoder.copyBufferToBuffer(
         cachedData.gpuData.buffer /* source buffer */, 0 /* source offset */, gpuReadBuffer /* destination buffer */,
-        0 /* destination offset */, cachedData.size /* size */
+        0 /* destination offset */, cachedData.originalSize /* size */
     );
     this.backend.flush();
 
     await gpuReadBuffer.mapAsync(GPUMapMode.READ);
     return gpuReadBuffer.getMappedRange();
+
+    // TODO: release gpuReadBuffer
   }
 }
 
