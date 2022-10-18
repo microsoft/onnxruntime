@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/common/inlined_containers.h"
-#include "core/framework/session_options.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -260,16 +259,6 @@ std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
 #pragma warning(push)
 #pragma warning(disable : 26816)
 #endif
-
-void CUDAExecutionProvider::LegalizeSessionOptions(SessionOptions& so, const logging::Logger&) {
-  // Parallel execution mode does not support the CUDA EP
-  if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-    LOGS_DEFAULT(WARNING)
-        << "Parallel execution mode does not support the CUDA Execution Provider. "
-        << "So making the execution mode sequential for this session since it uses the CUDA Execution Provider.";
-    so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-  }
-}
 
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {
   const auto& per_thread_context_cache = PerThreadContextCache();

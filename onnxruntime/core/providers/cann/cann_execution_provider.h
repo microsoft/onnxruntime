@@ -51,8 +51,6 @@ class CANNExecutionProvider : public IExecutionProvider {
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
-  void LegalizeSessionOptions(SessionOptions& session_options, const logging::Logger& logger) override;
-
  private:
   CANNExecutionProviderInfo info_;
   aclrtStream stream_ = nullptr;

@@ -662,11 +662,11 @@ namespace Dml
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask(); // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
 
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>> result;
-
+        
         // Get the list of node indices in toplogical order, so nodes are visited before
         // downstream nodes consuming them.
         const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
-        for (size_t nodeIndex : toplogicalOrder)
+        for (size_t nodeIndex : toplogicalOrder) 
         {
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
             if (IsNodeSupportedByDml(node, kernel_lookup, deviceDataTypeMask))
@@ -941,26 +941,6 @@ namespace Dml
         m_uploadHeap->Trim();
 
         return onnxruntime::common::Status::OK();
-    }
-
-    void ExecutionProviderImpl::LegalizeSessionOptions(onnxruntime::SessionOptions& so, const onnxruntime::logging::Logger& logger)
-    {
-        // DML's memory is not byte addressable and hence mem pattern doesn't work.
-        if (so.enable_mem_pattern) {
-        LOGS(logger, WARNING)
-            << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
-            << "So disabling it for this session since it uses the DML Execution Provider.";
-        so.enable_mem_pattern = false;
-        }
-
-        // Parallel execution mode does not support DML EP
-        if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-        LOGS(logger, WARNING)
-            << "Parallel execution mode does not support the DML Execution Provider. "
-            << "So making the execution mode sequential for this session since it uses the DML Execution Provider.";
-
-        so.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-        }
     }
 
     std::unique_ptr<onnxruntime::IExecutionProvider> CreateExecutionProvider(
