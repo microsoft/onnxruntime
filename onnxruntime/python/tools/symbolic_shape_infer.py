@@ -164,7 +164,7 @@ class SymbolicShapeInference:
             "ReduceSum": self._infer_ReduceSum,
             "ReduceProd": self._infer_ReduceProd,
             "Reshape": self._infer_Reshape,
-            "Resize": self._infer_Resize,
+            # "Resize": self._infer_Resize,
             "Round": self._pass_on_shape_and_type,
             "Scan": self._infer_Scan,
             "ScatterElements": self._infer_ScatterElements,
