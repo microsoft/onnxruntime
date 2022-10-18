@@ -65,18 +65,18 @@ class BatchNorm : public OpKernel {
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
     const auto* X = p_op_kernel_context->Input<Tensor>(0);
     const auto* scale = p_op_kernel_context->Input<Tensor>(1);
-    const auto* B = p_op_kernel_context->Input<Tensor>(2);
-    const auto* mean = p_op_kernel_context->Input<Tensor>(3);
-    const auto* var = p_op_kernel_context->Input<Tensor>(4);
+    const auto *B = p_op_kernel_context->Input<Tensor>(2);
+    const auto *mean = p_op_kernel_context->Input<Tensor>(3);
+    const auto *var = p_op_kernel_context->Input<Tensor>(4);
 
     ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, scale, B, mean, var, is_spatial_));
 
-    const TensorShape& x_shape = X->Shape();
-    Tensor* Y = p_op_kernel_context->Output(0, x_shape);
+    const TensorShape &x_shape = X->Shape();
+    Tensor *Y = p_op_kernel_context->Output(0, x_shape);
 
-    const auto& dims_vec = x_shape.GetDims();
-    const size_t N = static_cast<const size_t>(dims_vec[0]);
-    const size_t C = static_cast<const size_t>(dims_vec[1]);  // assume NCHW as per the spec
+    const auto &dims_vec = x_shape.GetDims();
+    const size_t N = static_cast<size_t>(dims_vec[0]);
+    const size_t C = static_cast<size_t>(dims_vec[1]);  // assume NCHW as per the spec
 
     // calculate sample_size (per individual channel)
     size_t sample_size = 1;

@@ -285,7 +285,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             thread_pool);
       }
 
-      MlasActivation(&activation_, Ydata, Bdata, static_cast<uint64>(M), static_cast<uint64>(output_image_size), static_cast<size_t>(output_image_size));
+      MlasActivation(&activation_, Ydata, Bdata, static_cast<uint64_t>(M), static_cast<uint64_t>(output_image_size),
+                     static_cast<size_t>(output_image_size));
 
       Xdata += X_offset * conv_attrs_.group;
       Ydata += Y_offset * conv_attrs_.group;
