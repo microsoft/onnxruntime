@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import zipfile  # Available Python 3.2 or higher
+from urllib import request
 
 linux_gpu_package_libraries = [
     "libonnxruntime_providers_shared.so",
@@ -28,7 +29,23 @@ gpu_related_header_files = [
     "onnxruntime_cxx_api.h",
     "onnxruntime_cxx_inline.h",
 ]
-
+dmlep_related_header_files = [
+    "cpu_provider_factory.h",
+    "onnxruntime_c_api.h",
+    "onnxruntime_cxx_api.h",
+    "onnxruntime_cxx_inline.h",
+    "dml_provider_factory.h",
+]
+dml_related_header_files = [
+    "DirectML.h",
+]
+dml_related_dlls = [
+    "DirectML.Debug.dll",
+    "DirectML.Debug.pdb",
+    "DirectML.dll",
+    "DirectML.lib",
+    "DirectML.pdb",
+]
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
@@ -57,13 +74,65 @@ def parse_arguments():
 def check_exists(path):
     return os.path.exists(path)
 
+def remove_residual_files(path):
+    if check_exists(path):
+        os.remove(path)
+
 
 def is_windows():
     return sys.platform.startswith("win")
 
 
+def check_if_headers_are_present(
+    header_files, header_folder, file_list_in_package, platform
+):
+    for header in header_files:
+        path = header_folder + "/" + header
+        print("Checking path: " + path)
+        if path not in file_list_in_package:
+            print(header + " not found for " + platform)
+            raise Exception(header + " not found for " + platform)
+
+def download_and_verify_directml_dlls(zip_file, platform, package_folder):
+    dml_nuget_spec_file_name = "Microsoft.ML.OnnxRuntime.DirectML.nuspec"
+    dml_nuget_package_name = 'Microsoft.AI.DirectML'
+    dml_nuget_package_version = '1.9.0'
+    dml_dependency_string = '<dependency id="' + dml_nuget_package_name + '" version="' + dml_nuget_package_version + '" />'
+
+    with zip_file.open(dml_nuget_spec_file_name, 'r') as file:
+        content = file.read().decode('UTF-8')
+        if dml_dependency_string in content:
+            dml_nupkg_name = package_folder + "/DirectML.nupkg"
+            dml_nupkg_zip = package_folder + "/DirectML.zip"
+
+            if not check_exists(dml_nupkg_zip):
+                request.urlretrieve('https://api.nuget.org/v3-flatcontainer/' + dml_nuget_package_name +'/' + dml_nuget_package_version + '/' +
+                                        dml_nuget_package_name + '.' + dml_nuget_package_version + '.nupkg', dml_nupkg_name)
+                os.rename(dml_nupkg_name, dml_nupkg_zip)
+
+            dml_zip_file_list = zipfile.ZipFile(dml_nupkg_zip).namelist()
+
+            # ORT accepts win-x64 as platform, whereas DirectML accepts x64-win
+            platform_split = platform.strip().split("-")
+            platform = platform_split[1] + "-" + platform_split[0]
+
+            folder = "bin/" + platform
+            header_folder = "include"
+
+            check_if_headers_are_present(dml_related_header_files, header_folder, dml_zip_file_list, platform)
+            for dll in dml_related_dlls:
+                path = folder + "/" + dll
+                print("Checking path: " + path)
+                if path not in dml_zip_file_list:
+                    print(dll + " not found for " + platform)
+                    raise Exception(dll + " not found for " + platform)
+        else:
+            print(dml_dependency_string + " not found for " + platform)
+            raise Exception(dml_dependency_string + " not found for " + platform)
+
+
 def check_if_dlls_are_present(
-    package_type, is_windows_ai_package, is_gpu_package, platforms_supported, zip_file, package_path
+    package_type, is_windows_ai_package, is_gpu_package, is_dml_package, platforms_supported, zip_file, package_path
 ):
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
@@ -97,12 +166,11 @@ def check_if_dlls_are_present(
                     if path not in file_list_in_package:
                         print(dll + " not found for " + platform)
                         raise Exception(dll + " not found for " + platform)
-                for header in gpu_related_header_files:
-                    path = header_folder + "/" + header
-                    print("Checking path: " + path)
-                    if path not in file_list_in_package:
-                        print(header + " not found for " + platform)
-                        raise Exception(header + " not found for " + platform)
+                check_if_headers_are_present(gpu_related_header_files, header_folder, file_list_in_package, platform)
+
+            if is_dml_package:
+                check_if_headers_are_present(dmlep_related_header_files, header_folder, file_list_in_package, platform)
+                download_and_verify_directml_dlls(zip_file, platform, package_path)
 
         elif platform.startswith("linux"):
             if package_type == "nuget":
@@ -179,8 +247,9 @@ def validate_tarball(args):
 
     is_windows_ai_package = False
     zip_file = None
+    is_dml_package = False
     check_if_dlls_are_present(
-        args.package_type, is_windows_ai_package, is_gpu_package, args.platforms_supported, zip_file, package_folder
+        args.package_type, is_windows_ai_package, is_gpu_package, is_dml_package, args.platforms_supported, zip_file, package_folder
     )
 
 
@@ -200,9 +269,10 @@ def validate_zip(args):
     package_folder = re.search("(.*)[.].*", package_name).group(1)
 
     is_windows_ai_package = False
+    is_dml_package = False
     zip_file = zipfile.ZipFile(package_name)
     check_if_dlls_are_present(
-        args.package_type, is_windows_ai_package, is_gpu_package, args.platforms_supported, zip_file, package_folder
+        args.package_type, is_windows_ai_package, is_gpu_package, is_dml_package, args.platforms_supported, zip_file, package_folder
     )
 
 
@@ -221,6 +291,11 @@ def validate_nuget(args):
     else:
         is_gpu_package = False
 
+    if "directml" in nuget_file_name.lower():
+        is_dml_package = True
+    else:
+        is_dml_package = False
+
     exit_code = 0
 
     nupkg_copy_name = "NugetCopy" + ".nupkg"
@@ -228,11 +303,8 @@ def validate_nuget(args):
     zip_file = None
 
     # Remove any residual files
-    if check_exists(nupkg_copy_name):
-        os.remove(nupkg_copy_name)
-
-    if check_exists(zip_copy_name):
-        os.remove(zip_copy_name)
+    remove_residual_files(nupkg_copy_name)
+    remove_residual_files(zip_copy_name)
 
     # Do all validations here
     try:
@@ -251,7 +323,7 @@ def validate_nuget(args):
         print("Checking if the Nuget contains relevant dlls")
         is_windows_ai_package = os.path.basename(full_nuget_path).startswith("Microsoft.AI.MachineLearning")
         check_if_dlls_are_present(
-            args.package_type, is_windows_ai_package, is_gpu_package, args.platforms_supported, zip_file, None
+            args.package_type, is_windows_ai_package, is_gpu_package, is_dml_package, args.platforms_supported, zip_file, args.package_path
         )
 
         verify_nuget_signing = args.verify_nuget_signing.lower()
