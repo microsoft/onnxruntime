@@ -50,6 +50,7 @@ def _check_file_sha256_digest(path, expected_digest):
 def main():
     parser = argparse.ArgumentParser(description="Downloads an Azure blob archive.")
     parser.add_argument("--azure_blob_url", required=True, help="The Azure blob URL.")
+    parser.add_argument("--azure_blob_sas_token", type=str, default='', help="The Azure blob SAS Token")
     parser.add_argument("--target_dir", required=True, help="The destination directory.")
     parser.add_argument("--archive_sha256_digest", help="The SHA256 digest of the archive. Verified if provided.")
     args = parser.parse_args()
@@ -57,7 +58,10 @@ def main():
     with tempfile.TemporaryDirectory() as temp_dir, get_azcopy() as azcopy_path:
         archive_path = os.path.join(temp_dir, "archive.zip")
         print("Downloading archive from '{}'...".format(args.azure_blob_url))
-        _download(azcopy_path, args.azure_blob_url, archive_path)
+        azure_blob_url = args.azure_blob_url
+        if args.azure_blob_sas_token != '' :
+            azure_blob_url = azure_blob_url + "?" + args.azure_blob_sas_token
+        _download(azcopy_path, azure_blob_url, archive_path)
         if args.archive_sha256_digest:
             _check_file_sha256_digest(archive_path, args.archive_sha256_digest)
         print("Extracting to '{}'...".format(args.target_dir))
