@@ -392,7 +392,7 @@ class BFCArena : public IAllocator {
 
   // Structures immutable after construction
   size_t memory_limit_ = 0;
-  ArenaExtendStrategy arena_extend_strategy_ = ArenaExtendStrategy::kNextPowerOfTwo;
+  ArenaExtendStrategy arena_extend_strategy_ = ArenaExtendStrategy::kSameAsRequested;
 
   int Log2FloorNonZeroSlow(uint64_t n) {
     int r = 0;
