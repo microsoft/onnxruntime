@@ -23,15 +23,15 @@ class Resize : public UpsampleBase, public XnnpackKernel {
   explicit Resize(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
-  Status ComputeInternal(OpKernelContext* ctx, const Tensor* input,
-                         const TensorShapeVector& output_dims) const;
+
   static bool IsOnnxNodeSupported(const NodeUnit& nodeunit, const GraphViewer& graph);
 
  private:
-  TensorShapeVector output_dims_;
+  Status ComputeInternal(OpKernelContext* ctx, const Tensor* input,
+                         const TensorShapeVector& output_dims) const;
 
+ private:
   XnnpackOperator op0_;
-  std::optional<std::pair<float, float>> clip_min_max_;
   OpComputeType op_type_ = OpComputeType::op_compute_type_invalid;
 };
 }  // namespace xnnpack

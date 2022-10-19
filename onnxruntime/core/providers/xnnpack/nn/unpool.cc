@@ -44,7 +44,6 @@ TensorShapeVector InferOutputSizeForUnPool(const PoolAttributes& pool_attrs,
 // MaxUnpool doesn't have any quantization params
 bool MaxUnpool::IsOnnxNodeSupported(const NodeUnit& node_unit,
                                     const GraphViewer& graph_viewer) {
-  ORT_UNUSED_PARAMETER(graph_viewer);
   bool supported = false;
   const onnxruntime::Node& node = node_unit.GetNode();
   // use do {} while(false) so it's easier to set a breakpoint on the return
@@ -52,7 +51,9 @@ bool MaxUnpool::IsOnnxNodeSupported(const NodeUnit& node_unit,
     // MaxUnpool has 2-3 inputs.
     auto input_defs = node.InputDefs();
 
+    // the third input is output_shape.
     if (input_defs.size() == 3) {
+      // only support fixed output_shape with dimension 4
       const auto* output_shape = graph_viewer.GetConstantInitializer(input_defs[2]->Name(), true);
       if (output_shape == nullptr || output_shape->dims_size() != 1 || output_shape->dims(0) != 4) {
         break;

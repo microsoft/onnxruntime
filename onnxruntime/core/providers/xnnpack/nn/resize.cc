@@ -28,9 +28,9 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
       break;
     }
     const auto* x_shape = x_arg.Shape();
-    //'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1 or
-    // 4-D input with outermost and innermost scales as 1
-    // but we just support 4-d tensor for now
+    //'bilinear' == 2-D input or 4-D input with outermost 2 scales as 1 (NCHW) or
+    // 4-D input with outermost and innermost scales as 1 (NHWC)
+    // but we just support 4-d tensor for now, and the channel must be known.
     if (!x_shape || x_shape->dim_size() != 4 || x_shape->dim(1).dim_value() <= 0) {
       break;
     }
@@ -41,7 +41,6 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     }
 
     // Refer to onnxruntime/core/providers/cpu/tensor/upsamplebase.h,
-    // But I can't find the definition of Resize with Opset less than 10
     // besides, opset 18 is too complicated, so we don't support it temperately.
     auto opset_version = node_unit.SinceVersion();
     if (opset_version >= 18) {
@@ -87,17 +86,30 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
   auto input_defs = node.InputDefs();
   int x_dtype = 0;
   ORT_ENFORCE(GetType(*input_defs[0], x_dtype));
-  if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    op_type_ = OpComputeType::op_compute_type_fp32;
-  } else if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
-             x_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-    op_type_ = x_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8
-                   ? OpComputeType::op_compute_type_qu8
-                   : OpComputeType::op_compute_type_qs8;
-  } else {
-    auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*input_defs[0]->TypeAsProto()));
-    ORT_THROW("unsupported op in Resize, we have FLOAT|UINT8, but got ", stype);
+  switch (x_dtype) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      op_type_ = OpComputeType::op_compute_type_fp32;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      op_type_ = OpComputeType::op_compute_type_qu8;
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      op_type_ = OpComputeType::op_compute_type_qs8;
+      break;
+    default:
+      auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*input_defs[0]->TypeAsProto()));
+      ORT_THROW("unsupported op in Resize, we have FLOAT|UINT8, but got ", stype);
   }
+
+  // size or scales shouldnt't be provided in the same time but should at least be provided one of them
+  const Tensor* size_ptr = 0;
+  bool shouldnot_be_coexist = scales_cached_ && sizes_input_idx_ > 0 &&
+                              info.TryGetConstantInput(sizes_input_idx_, &size_ptr) &&
+                              size_ptr != nullptr && size_ptr->Shape().Size() != 0;
+  bool should_either_exist_one = scales_cached_ || (size_ptr != nullptr && size_ptr->Shape().Size() != 0);
+  ORT_ENFORCE(shouldnot_be_coexist == false && should_either_exist_one == true,
+              "Either scales or sizes MUST be provided as input.");
+
   const auto* x_shape = input_defs[0]->Shape();
   auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
   int64_t channels = input_shape[3];
@@ -197,15 +209,8 @@ Status Resize::Compute(OpKernelContext* ctx) const {
 
   TensorShapeVector output_dims(X_shape.NumDimensions());
 
-  if (OpKernel::Node().InputDefs().size() == 1) {
-    ComputeOutputShape(scales_, X_shape.GetDims(), output_dims);
-    return ComputeInternal(ctx, X, output_dims);
-  }
-
   const auto* sizes = ctx->Input<Tensor>(sizes_input_idx_);
   if (scales_cached_) {
-    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_, X->Shape().GetDims(), output_dims);
     return ComputeInternal(ctx, X, output_dims);
@@ -222,8 +227,6 @@ Status Resize::Compute(OpKernelContext* ctx) const {
     // Compute output shape from scales and input dims
     ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
   } else {
-    ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0, "Either scales or sizes MUST be provided as input.");
-
     // When sizes input is available directly populate it into the output_dims array.
     memcpy(output_dims.data(), sizes->template Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));
 
