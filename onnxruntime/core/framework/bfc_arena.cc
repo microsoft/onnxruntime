@@ -312,7 +312,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   std::lock_guard<OrtMutex> lock(lock_);
   void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
   if (ptr != nullptr) {
-    ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(left_X_ptr_) % 2048 == 0);
+    ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(ptr) % 2048 == 0);
     return ptr;
   }
 
@@ -324,7 +324,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   if (status.IsOK()) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
     if (ptr != nullptr) {
-      ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(left_X_ptr_) % 2048 == 0);
+      ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(ptr) % 2048 == 0);
       return ptr;
     } else {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -372,7 +372,7 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // max_dead_bytes_per_chunk bytes on padding this alloc.
         if (chunk->size >= rounded_bytes * 2 ||
             static_cast<int64_t>(chunk->size) - static_cast<int64_t>(rounded_bytes) >= max_dead_bytes_per_chunk_) {
-          std::cout << "Split";
+          std::cout << "Split" << std::endl;
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
         }
