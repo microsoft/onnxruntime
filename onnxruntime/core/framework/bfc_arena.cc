@@ -252,6 +252,8 @@ size_t BFCArena::RoundedBytes(size_t bytes) {
       (kMinAllocationSize *
        ((bytes + kMinAllocationSize - 1) / kMinAllocationSize));
   ORT_ENFORCE(size_t{0} == rounded_bytes % kMinAllocationSize);
+  std::cout << rounded_bytes;
+  std::cout << kMinAllocationSize;
   return rounded_bytes;
 }
 
