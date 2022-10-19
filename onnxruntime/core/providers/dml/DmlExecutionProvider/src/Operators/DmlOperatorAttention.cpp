@@ -97,9 +97,6 @@ public:
                 0
             );
 
-        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
-        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
-
         TensorDesc firstGemmOutputTensorDesc = TensorDesc(
                 dataType,
                 m_inputTensorDescs[2].GetSizes(),
@@ -110,11 +107,16 @@ public:
                 1,
                 0
             );
+        DML_TENSOR_DESC namedFirstGemmOutputTensorDesc = firstGemmOutputTensorDesc.GetDmlDesc();
+
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
         DML_GEMM_OPERATOR_DESC xWeightOperatorDesc = {};
         xWeightOperatorDesc.ATensor = &inputDescs[0];
         xWeightOperatorDesc.BTensor = &inputDescs[1];
         xWeightOperatorDesc.CTensor = &inputDescs[2];
-        xWeightOperatorDesc.OutputTensor = &firstGemmOutputTensorDesc.GetDmlDesc();
+        xWeightOperatorDesc.OutputTensor = &namedFirstGemmOutputTensorDesc;
         xWeightOperatorDesc.TransA = DML_MATRIX_TRANSFORM_NONE;
         xWeightOperatorDesc.TransB = DML_MATRIX_TRANSFORM_NONE;
         xWeightOperatorDesc.Alpha = 1.0f;
@@ -134,13 +136,14 @@ public:
                 1, // minDimensionCount
                 0 // guaranteedBaseOffsetAlignment
             );
+        DML_TENSOR_DESC namedQuerySlicedInputTensorDesc = querySlicedInputTensorDesc.GetDmlDesc();
 
         std::vector<uint32_t> querySliceOffset{0, 0, 0}, keySliceOffset{0, 0, hiddenSize}, valueSliceOffset{0, 0, 2 * hiddenSize};
         std::vector<uint32_t> sliceSize{batchSize, sequenceLength, hiddenSize};
         std::vector<int32_t> strides{1, 1, 1};
         DML_SLICE1_OPERATOR_DESC querySlicedOperatorDesc = {};
-        querySlicedOperatorDesc.InputTensor = &firstGemmOutputTensorDesc.GetDmlDesc();
-        querySlicedOperatorDesc.OutputTensor = &querySlicedInputTensorDesc.GetDmlDesc();
+        querySlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
+        querySlicedOperatorDesc.OutputTensor = &namedQuerySlicedInputTensorDesc;
         querySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(querySlicedTensorShape.size());
         querySlicedOperatorDesc.InputWindowOffsets = querySliceOffset.data();
         querySlicedOperatorDesc.InputWindowSizes = sliceSize.data();
@@ -148,8 +151,8 @@ public:
         const DML_OPERATOR_DESC querySlicedDesc = { DML_OPERATOR_SLICE1, &querySlicedOperatorDesc };
 
         DML_SLICE1_OPERATOR_DESC keySlicedOperatorDesc = {};
-        keySlicedOperatorDesc.InputTensor = &firstGemmOutputTensorDesc.GetDmlDesc();
-        keySlicedOperatorDesc.OutputTensor = &querySlicedInputTensorDesc.GetDmlDesc();
+        keySlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
+        keySlicedOperatorDesc.OutputTensor = &namedQuerySlicedInputTensorDesc;
         keySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(querySlicedTensorShape.size());
         keySlicedOperatorDesc.InputWindowOffsets = keySliceOffset.data();
         keySlicedOperatorDesc.InputWindowSizes = sliceSize.data();
@@ -157,8 +160,8 @@ public:
         const DML_OPERATOR_DESC keySlicedDesc = { DML_OPERATOR_SLICE1, &keySlicedOperatorDesc };
 
         DML_SLICE1_OPERATOR_DESC valueSlicedOperatorDesc = {};
-        valueSlicedOperatorDesc.InputTensor = &firstGemmOutputTensorDesc.GetDmlDesc();
-        valueSlicedOperatorDesc.OutputTensor = &querySlicedInputTensorDesc.GetDmlDesc();
+        valueSlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
+        valueSlicedOperatorDesc.OutputTensor = &namedQuerySlicedInputTensorDesc;
         valueSlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(querySlicedTensorShape.size());
         valueSlicedOperatorDesc.InputWindowOffsets = valueSliceOffset.data();
         valueSlicedOperatorDesc.InputWindowSizes = sliceSize.data();
@@ -175,17 +178,19 @@ public:
                 1, // minDimensionCount
                 0 // guaranteedBaseOffsetAlignment
             );
+        DML_TENSOR_DESC namedCastedMaskIndexTensorDesc = castedMaskIndexTensorDesc.GetDmlDesc();
+
         DML_CAST_OPERATOR_DESC castMaskIndexOperatorDesc = {};
         castMaskIndexOperatorDesc.InputTensor = &inputDescs[3];
-        castMaskIndexOperatorDesc.OutputTensor = &castedMaskIndexTensorDesc.GetDmlDesc();
+        castMaskIndexOperatorDesc.OutputTensor = &namedCastedMaskIndexTensorDesc;
         const DML_OPERATOR_DESC castMaskIndexDesc = {DML_OPERATOR_CAST, &castMaskIndexOperatorDesc};
 
         DML_SCALE_BIAS scaleBias = {};
         scaleBias.Scale = -10000.0f;
         scaleBias.Bias = 10000.0f;
         DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC maskOperatorDesc = {};
-        maskOperatorDesc.InputTensor = &castedMaskIndexTensorDesc.GetDmlDesc();
-        maskOperatorDesc.OutputTensor = &castedMaskIndexTensorDesc.GetDmlDesc();
+        maskOperatorDesc.InputTensor = &namedCastedMaskIndexTensorDesc;
+        maskOperatorDesc.OutputTensor = &namedCastedMaskIndexTensorDesc;
         maskOperatorDesc.ScaleBias = &scaleBias;
         const DML_OPERATOR_DESC maskDesc = {DML_OPERATOR_ELEMENT_WISE_IDENTITY, &maskOperatorDesc};
 
@@ -199,6 +204,7 @@ public:
                 gsl::make_span(reshapedTransposedQueryTensorStride),
                 0 // guaranteedBaseOffsetAlignment
             );
+        DML_TENSOR_DESC namedReshapedTransposedQueryTensorDesc = reshapedTransposedQueryTensorDesc.GetDmlDesc();
 
         std::vector<uint32_t> reshapedTransposedKeyTensorShape {batchSize, numHeads, headSize, sequenceLength};
         std::vector<uint32_t> reshapedTransposedKeyTensorStride {sequenceLength * numHeads * headSize, headSize, 1, numHeads * headSize};
@@ -208,6 +214,7 @@ public:
                 gsl::make_span(reshapedTransposedKeyTensorStride),
                 0 // guaranteedBaseOffsetAlignment
             );
+        DML_TENSOR_DESC namedReshapedTransposedKeyTensorDesc = reshapedTransposedKeyTensorDesc.GetDmlDesc();
         
         std::vector<uint32_t> queryKeyTensorShape {batchSize, numHeads, sequenceLength, sequenceLength};
         TensorDesc queryKeyTensorDesc = TensorDesc(
@@ -220,13 +227,14 @@ public:
                 1, // minDimensionCount
                 0 // guaranteedBaseOffsetAlignment
             );
+        DML_TENSOR_DESC namedQueryKeyTensorDesc = queryKeyTensorDesc.GetDmlDesc();
 
         float alpha = static_cast<float>(1 / sqrt(headSize));
         DML_GEMM_OPERATOR_DESC attentionScoreOperatorDesc = {};
-        attentionScoreOperatorDesc.ATensor = &reshapedTransposedQueryTensorDesc.GetDmlDesc();
-        attentionScoreOperatorDesc.BTensor = &reshapedTransposedKeyTensorDesc.GetDmlDesc();
-        attentionScoreOperatorDesc.CTensor = &castedMaskIndexTensorDesc.GetDmlDesc();
-        attentionScoreOperatorDesc.OutputTensor = &queryKeyTensorDesc.GetDmlDesc();
+        attentionScoreOperatorDesc.ATensor = &namedReshapedTransposedQueryTensorDesc;
+        attentionScoreOperatorDesc.BTensor = &namedReshapedTransposedKeyTensorDesc;
+        attentionScoreOperatorDesc.CTensor = &namedCastedMaskIndexTensorDesc;
+        attentionScoreOperatorDesc.OutputTensor = &namedQueryKeyTensorDesc;
         attentionScoreOperatorDesc.TransA = DML_MATRIX_TRANSFORM_NONE;
         attentionScoreOperatorDesc.TransB = DML_MATRIX_TRANSFORM_NONE;
         attentionScoreOperatorDesc.Alpha = alpha;
@@ -236,8 +244,8 @@ public:
 
         std::vector<uint32_t> axes {3};
         DML_ACTIVATION_SOFTMAX1_OPERATOR_DESC softmaxOperatorDesc = {};
-        softmaxOperatorDesc.InputTensor = &queryKeyTensorDesc.GetDmlDesc();
-        softmaxOperatorDesc.OutputTensor = &queryKeyTensorDesc.GetDmlDesc();
+        softmaxOperatorDesc.InputTensor = &namedQueryKeyTensorDesc;
+        softmaxOperatorDesc.OutputTensor = &namedQueryKeyTensorDesc;
         softmaxOperatorDesc.AxisCount = 1;
         softmaxOperatorDesc.Axes = axes.data();
         const DML_OPERATOR_DESC softmaxDesc = {DML_OPERATOR_ACTIVATION_SOFTMAX1, &softmaxOperatorDesc};
@@ -250,12 +258,13 @@ public:
                 gsl::make_span(reshapedTransposedOutputTensorStride),
                 0 // guaranteedBaseOffsetAlignment
             );
+        DML_TENSOR_DESC namedReshapedTransposedOutputTensorDesc = reshapedTransposedOutputTensorDesc.GetDmlDesc();
 
         DML_GEMM_OPERATOR_DESC attentionWeightOperatorDesc = {};
-        attentionWeightOperatorDesc.ATensor = &queryKeyTensorDesc.GetDmlDesc();
-        attentionWeightOperatorDesc.BTensor = &reshapedTransposedQueryTensorDesc.GetDmlDesc();
+        attentionWeightOperatorDesc.ATensor = &namedQueryKeyTensorDesc;
+        attentionWeightOperatorDesc.BTensor = &namedReshapedTransposedQueryTensorDesc;
         attentionWeightOperatorDesc.CTensor = nullptr;
-        attentionWeightOperatorDesc.OutputTensor = &reshapedTransposedOutputTensorDesc.GetDmlDesc();
+        attentionWeightOperatorDesc.OutputTensor = &namedReshapedTransposedOutputTensorDesc;
         attentionWeightOperatorDesc.TransA = DML_MATRIX_TRANSFORM_NONE;
         attentionWeightOperatorDesc.TransB = DML_MATRIX_TRANSFORM_NONE;
         attentionWeightOperatorDesc.Alpha = 1.0f;
@@ -269,11 +278,13 @@ public:
                 std::nullopt,
                 0 // guaranteedBaseOffsetAlignment
             );
+        DML_TENSOR_DESC namedFinalOutputTensorDesc = finalOutputTensorDesc.GetDmlDesc();
+
         DML_ACTIVATION_LINEAR_OPERATOR_DESC outputOperatorDesc = {};
         outputOperatorDesc.Alpha = 1.0f;
         outputOperatorDesc.Beta = 0.0f;
         outputOperatorDesc.InputTensor = &outputDescs[0];
-        outputOperatorDesc.OutputTensor = &finalOutputTensorDesc.GetDmlDesc();
+        outputOperatorDesc.OutputTensor = &namedFinalOutputTensorDesc;
         const DML_OPERATOR_DESC outputDesc {DML_OPERATOR_ACTIVATION_LINEAR, &outputOperatorDesc};
 
 
