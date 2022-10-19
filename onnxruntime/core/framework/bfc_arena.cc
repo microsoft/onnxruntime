@@ -124,6 +124,8 @@ Status BFCArena::Extend(size_t rounded_bytes) {
         }
       });
     }
+
+    ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(new_mem) % 2048 == 0, "Alert");
     return new_mem;
   };
 
@@ -324,7 +326,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   if (status.IsOK()) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
     if (ptr != nullptr) {
-      ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(ptr) % 2048 == 0);
+      ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(ptr) % 2048 == 0, "");
       return ptr;
     } else {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
