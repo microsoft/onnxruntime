@@ -42,8 +42,8 @@ common::Status BinarizerOp<T>::Compute(OpKernelContext* context) const {
   const TensorShape& x_shape = X.Shape();
   Tensor* Y = context->Output(0, x_shape);
   const T* x_data = X.Data<T>();
-  T* y_data = Y->MutableData<T>();
-  size_t x_size = x_shape.Size();
+  T *y_data = Y->MutableData<T>();
+  size_t x_size = static_cast<size_t>(x_shape.Size());
 
   common::Status status = common::Status::OK();
   for (size_t i = 0; i < x_size; ++i) {

@@ -31,34 +31,34 @@ Status CategoryMapper::Compute(OpKernelContext* context) const {
     if (!Y.IsDataType<int64_t>())
       return Status(ONNXRUNTIME, FAIL, "Input of string must have output of int64");
 
-    auto input = gsl::make_span(X.Data<std::string>(), shape.Size());
-    auto output = gsl::make_span(Y.MutableData<int64_t>(), shape.Size());
+    auto input = gsl::make_span(X.Data<std::string>(), static_cast<uint64_t>(shape.Size()));
+    auto output = gsl::make_span(Y.MutableData<int64_t>(), static_cast<uint64_t>(shape.Size()));
     auto out = output.begin();
 
     // map isn't going to change so get end() once instead of calling inside the for_each loop
     const auto map_end = string_to_int_map_.end();
 
     std::for_each(input.cbegin(), input.cend(),
-                  [&out, &map_end, this](const std::string& value) {
-                    auto map_to = string_to_int_map_.find(value);
-                    *out = map_to == map_end ? default_int_ : map_to->second;
-                    ++out;
+                  [&out, &map_end, this](const std::string &value) {
+                      auto map_to = string_to_int_map_.find(value);
+                      *out = map_to == map_end ? default_int_ : map_to->second;
+                      ++out;
                   });
   } else {
     if (!Y.IsDataTypeString())
       return Status(ONNXRUNTIME, FAIL, "Input of int64 must have output of string ");
 
-    auto input = gsl::make_span(X.Data<int64_t>(), shape.Size());
-    auto output = gsl::make_span(Y.MutableData<std::string>(), shape.Size());
+    auto input = gsl::make_span(X.Data<int64_t>(), static_cast<uint64_t>(shape.Size()));
+    auto output = gsl::make_span(Y.MutableData<std::string>(), static_cast<uint64_t>(shape.Size()));
     auto out = output.begin();
 
     const auto map_end = int_to_string_map_.end();
 
     std::for_each(input.cbegin(), input.cend(),
-                  [&out, &map_end, this](const int64_t& value) {
-                    auto map_to = int_to_string_map_.find(value);
-                    *out = map_to == map_end ? default_string_ : map_to->second;
-                    ++out;
+                  [&out, &map_end, this](const int64_t &value) {
+                      auto map_to = int_to_string_map_.find(value);
+                      *out = map_to == map_end ? default_string_ : map_to->second;
+                      ++out;
                   });
   }
 

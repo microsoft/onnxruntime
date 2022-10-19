@@ -165,29 +165,29 @@ class OutputIterator {
 void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
                     TensorShapeVector& directions, size_t num_entries);
 
-Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
-                      int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
-                      std::unique_ptr<OutputIterator>& output_iterator,
-                      const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func,
-                      const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
+Status AllocateOutput(OpKernelContextInternal &context, const GraphViewer &subgraph,
+                      size_t output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
+                      std::unique_ptr<OutputIterator> &output_iterator,
+                      const scan::detail::DeviceHelpers::CreateMutableSlicer &create_slicer_func,
+                      const scan::detail::DeviceHelpers::ZeroData &zero_data_func,
                       ScanDirection direction = ScanDirection::kForward,
                       bool temporary = false);
 
-Status CreateFeedsFetchesManager(const Node& node, const Info& info,
-                                 const SessionState& session_state,
-                                 const SessionState& subgraph_session_state,
-                                 bool is_v8,
-                                 std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
+    Status CreateFeedsFetchesManager(const Node &node, const Info &info,
+                                     const SessionState &session_state,
+                                     const SessionState &subgraph_session_state,
+                                     bool is_v8,
+                                     std::unique_ptr<FeedsFetchesManager> &feeds_fetches_manager);
 
-Status IterateSequence(OpKernelContextInternal& context, const SessionState& session_state,
-                       std::vector<LoopStateVariable>& loop_state_variables,
-                       std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
-                       int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs,
-                       int num_variadic_outputs, const std::vector<const OrtValue*>& implicit_inputs,
-                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators,
-                       const FeedsFetchesManager& ffm);
+    Status IterateSequence(OpKernelContextInternal &context, const SessionState &session_state,
+                           std::vector<LoopStateVariable> &loop_state_variables,
+                           std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> &scan_input_stream_iterators,
+                           int64_t seq_length, uint64_t num_loop_state_variables, uint64_t num_variadic_inputs,
+                           uint64_t num_variadic_outputs, const std::vector<const OrtValue *> &implicit_inputs,
+                           std::vector<std::unique_ptr<OutputIterator>> &output_iterators,
+                           const FeedsFetchesManager &ffm);
 
-OrtValue AllocateTensorInMLValue(MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator);
+    OrtValue AllocateTensorInMLValue(MLDataType data_type, const TensorShape &shape, AllocatorPtr &allocator);
 
 /**
 Calculate the transpose permutations and shape by shifting the chosen axis TO the first dimension.

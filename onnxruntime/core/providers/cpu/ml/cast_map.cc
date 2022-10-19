@@ -105,8 +105,8 @@ Status CastMap::ComputeImpl(OpKernelContext& context, TTo pad_value) const {
   int64_t num_dims = map_form_ == PACK_MAP::DENSE ? gsl::narrow_cast<int64_t>(X.size()) : max_map_;
 
   // create a span for the output
-  Tensor* Y = context.Output(0, {1, num_dims});
-  auto out = gsl::make_span(Y->MutableData<TTo>(), Y->Shape().Size());
+  Tensor *Y = context.Output(0, {1, num_dims});
+  auto out = gsl::make_span(Y->MutableData<TTo>(), static_cast<uint64_t>(Y->Shape().Size()));
   auto out_iter = out.begin();
 
   // for each item in the entry, use the template specialized Cast function to convert

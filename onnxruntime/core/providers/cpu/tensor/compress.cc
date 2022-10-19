@@ -100,7 +100,9 @@ Status Compress::Compute(OpKernelContext* ctx) const {
           }
           output_index += axes_right_stride;
         } else {
-          memcpy(output_data + output_index, input_data + i * axes_included_right_stride_bytes + j * axes_right_stride_bytes, axes_right_stride_bytes);
+          memcpy(output_data + output_index,
+                 input_data + i * axes_included_right_stride_bytes + j * axes_right_stride_bytes,
+                 axes_right_stride_bytes);
           output_index += axes_right_stride_bytes;
         }
       }

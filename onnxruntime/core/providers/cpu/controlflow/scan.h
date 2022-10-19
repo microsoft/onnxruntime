@@ -22,21 +22,21 @@ Helper struct for keeping static information about the Scan node and its subgrap
 Used to create the FeedsFetchesManager needed for efficient subgraph execution.
 */
 struct Info {
-  Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in, bool is_v8);
+    Info(const Node &node, const GraphViewer &subgraph_in, int num_scan_inputs_in, bool is_v8);
 
-  const GraphViewer& subgraph;
+    const GraphViewer &subgraph;
 
-  int num_inputs;
-  int num_variadic_inputs;
-  int num_outputs;
-  int num_loop_state_variables;
-  int num_scan_inputs;
-  int num_scan_outputs;
+    size_t num_inputs;
+    size_t num_variadic_inputs;
+    size_t num_outputs;
+    size_t num_loop_state_variables;
+    size_t num_scan_inputs;
+    size_t num_scan_outputs;
 
-  int num_implicit_inputs;
+    size_t num_implicit_inputs;
 
-  std::vector<std::string> subgraph_input_names;
-  std::vector<std::string> subgraph_output_names;
+    std::vector<std::string> subgraph_input_names;
+    std::vector<std::string> subgraph_output_names;
 };
 
 // helpers for handling data on a non-CPU device.

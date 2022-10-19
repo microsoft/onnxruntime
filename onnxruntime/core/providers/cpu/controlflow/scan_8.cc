@@ -140,7 +140,7 @@ void Scan<8>::Init(const OpKernelInfo& info) {
 
   ORT_ENFORCE(info.GetAttr<int64_t>("num_scan_inputs", &num_scan_inputs_).IsOK());
 
-  ReadDirections(info, "directions", input_directions_, num_scan_inputs_);
+  ReadDirections(info, "directions", input_directions_, static_cast<uint64_t>(num_scan_inputs_));
 
   device_helpers_.transpose_func = [](const gsl::span<const size_t>&, const Tensor&, Tensor&) -> Status {
     ORT_NOT_IMPLEMENTED("Scan<8> spec does not support transpose of output. This should never be called.");
@@ -240,7 +240,7 @@ Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_
     const auto& input_shape = input_tensor.Shape();
 
     if (input_shape.NumDimensions() < static_cast<size_t>(min_dims_required))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[i]->Name(),
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid scan input:", graph_inputs[static_cast<uint64_t>(i)]->Name(),
                              " Expected ", min_dims_required,
                              " dimensions or more but input had shape of ", input_shape);
 
@@ -251,7 +251,8 @@ Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_
     else {
       if (batch_size_ != this_batch_size) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent batch size. Previous value was ",
-                               batch_size_, " but ", graph_inputs[i]->Name(), " has batch size of ",
+                               batch_size_, " but ", graph_inputs[static_cast<uint64_t>(i)]->Name(),
+                               " has batch size of ",
                                this_batch_size);
       }
     }
@@ -263,8 +264,9 @@ Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_
         max_sequence_len_ = this_seq_len;
       } else {
         if (max_sequence_len_ != this_seq_len) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent sequence lengths. Previous value was ",
-                                 max_sequence_len_, " but ", graph_inputs[i]->Name(),
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Scan inputs have inconsistent sequence lengths. Previous value was ",
+                                 max_sequence_len_, " but ", graph_inputs[static_cast<uint64_t>(i)]->Name(),
                                  " has length of ", this_seq_len);
         }
       }
@@ -302,7 +304,7 @@ Status Scan8Impl::ValidateInput() {
     }
 
   } else {
-    sequence_lens_ = std::vector<int64_t>(batch_size_, max_sequence_len_);
+    sequence_lens_ = std::vector<int64_t>(static_cast<uint64_t>(batch_size_), max_sequence_len_);
   }
 
   return Status::OK();
@@ -319,7 +321,7 @@ Status Scan8Impl::AllocateOutputTensors() {
 
   std::unique_ptr<OutputIterator> output_iter;
 
-  for (int i = 0; i < info_.num_loop_state_variables; ++i) {
+  for (uint64_t i = 0; i < info_.num_loop_state_variables; ++i) {
     status = AllocateOutput(context_, info_.subgraph, i, true, batch_size_, max_sequence_len_, output_iter,
                             device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func);
     ORT_RETURN_IF_ERROR(status);
@@ -338,42 +340,42 @@ Status Scan8Impl::AllocateOutputTensors() {
 
 // setup the loop state variables for each batch item
 Status Scan8Impl::CreateLoopStateVariables(std::vector<std::vector<LoopStateVariable>>& batch_loop_state_variables) {
-  // Setup loop state variables
-  // 1. Slice the input/output loop state variable tensors provided to Scan into the per-batch-item chunks
-  //    (slice on the first dimension which is the batch size).
-  // 2. For each batch item, create the LoopStateVariable instances that can be used to pass state between
-  //    each iteration of the subgraph. This minimizes copying of data during each iteration.
+      // Setup loop state variables
+      // 1. Slice the input/output loop state variable tensors provided to Scan into the per-batch-item chunks
+      //    (slice on the first dimension which is the batch size).
+      // 2. For each batch item, create the LoopStateVariable instances that can be used to pass state between
+      //    each iteration of the subgraph. This minimizes copying of data during each iteration.
 
-  std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> loop_state_input_iterators;
-  loop_state_input_iterators.reserve(info_.num_loop_state_variables);
+      std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> loop_state_input_iterators;
+      loop_state_input_iterators.reserve(static_cast<uint64_t>(info_.num_loop_state_variables));
 
-  // create the input and output slice iterator for each loop state variable.
-  for (int i = 0; i < info_.num_loop_state_variables; ++i) {
-    const OrtValue& ort_value = GetSubgraphInputMLValue(context_, i);
-    OrtValue* p_mlvalue = context_.GetOutputMLValue(i);
+      // create the input and output slice iterator for each loop state variable.
+      for (uint64_t i = 0; i < info_.num_loop_state_variables; ++i) {
+        const OrtValue &ort_value = GetSubgraphInputMLValue(context_, i);
+        OrtValue *p_mlvalue = context_.GetOutputMLValue(i);
 
-    ORT_ENFORCE(p_mlvalue, "Output OrtValue has not been created for loop state variable output ", i);
+        ORT_ENFORCE(p_mlvalue, "Output OrtValue has not been created for loop state variable output ", i);
 
-    loop_state_input_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).begin());
-  }
+        loop_state_input_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 0, 0).begin());
+      }
 
-  batch_loop_state_variables.clear();
-  batch_loop_state_variables.resize(batch_size_);
+      batch_loop_state_variables.clear();
+      batch_loop_state_variables.resize(static_cast<uint64_t>(batch_size_));
 
-  AllocatorPtr alloc;
+      AllocatorPtr alloc;
   auto status = context_.GetTempSpaceAllocator(&alloc);
   ORT_RETURN_IF_ERROR(status);
 
   // setup the loop state variables for each batch row
   for (int64_t b = 0; b < batch_size_; ++b) {
-    std::vector<LoopStateVariable>& variables = batch_loop_state_variables[b];
-    variables.reserve(info_.num_loop_state_variables);
+    std::vector<LoopStateVariable> &variables = batch_loop_state_variables[static_cast<uint64_t>(b)];
+    variables.reserve(static_cast<uint64_t>(info_.num_loop_state_variables));
 
-    for (int i = 0; i < info_.num_loop_state_variables; ++i) {
-      auto& input_iter = loop_state_input_iterators[i];
-      auto& output_iter = *output_iterators_[i];
+    for (uint64_t i = 0; i < info_.num_loop_state_variables; ++i) {
+      auto &input_iter = loop_state_input_iterators[static_cast<uint64_t>(i)];
+      auto &output_iter = *output_iterators_[static_cast<uint64_t>(i)];
 
-      variables.emplace_back(*input_iter, *output_iter, sequence_lens_[b], alloc);
+      variables.emplace_back(*input_iter, *output_iter, sequence_lens_[static_cast<uint64_t>(b)], alloc);
 
       ++input_iter;
       ++output_iter;
@@ -392,17 +394,19 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
   ORT_RETURN_IF_ERROR(status);
 
   for (int64_t b = 0; b < batch_size_; ++b) {
-    auto sequence_len = sequence_lens_[b];
+    auto sequence_len = sequence_lens_[static_cast<uint64_t>(b)];
 
     // Setup input OrtValue streams
     std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
-    scan_input_stream_iterators.reserve(static_cast<size_t>(info_.num_variadic_inputs) - info_.num_loop_state_variables);
+    scan_input_stream_iterators.reserve(
+            static_cast<size_t>(info_.num_variadic_inputs) - static_cast<uint64_t>(info_.num_loop_state_variables));
 
     for (int i = info_.num_loop_state_variables, end = info_.num_variadic_inputs; i < end; ++i) {
       const auto& ort_value = GetSubgraphInputMLValue(context_, i);
 
       // forward
-      if (directions_[static_cast<ptrdiff_t>(i) - info_.num_loop_state_variables] == static_cast<int64_t>(ScanDirection::kForward)) {
+      if (directions_[static_cast<uint64_t>(static_cast<ptrdiff_t>(i) - info_.num_loop_state_variables)] ==
+          static_cast<int64_t>(ScanDirection::kForward)) {
         // the iterator is self contained, so we don't need to keep the OrtValueTensorSlicer instance around
         scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 1, b).begin());
       } else {  // reverse
@@ -417,14 +421,15 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
     }
 
     // Call the subgraph for each item in the sequence
-    status = IterateSequence(context_, session_state_, batch_loop_state_variables[b], scan_input_stream_iterators,
+    status = IterateSequence(context_, session_state_, batch_loop_state_variables[static_cast<uint64_t>(b)],
+                             scan_input_stream_iterators,
                              sequence_len, info_.num_loop_state_variables, info_.num_variadic_inputs, info_.num_outputs,
                              implicit_inputs_, output_iterators_, ffm);
 
     // zero out any remaining values in the sequence
     for (int64_t i = sequence_len; i < max_sequence_len_; ++i) {
-      for (int output = info_.num_loop_state_variables; output < info_.num_outputs; ++output) {
-        auto& iterator = *output_iterators_[output];
+      for (auto output = info_.num_loop_state_variables; output < info_.num_outputs; ++output) {
+        auto &iterator = *output_iterators_[output];
         ORT_RETURN_IF_ERROR(iterator.ZeroOutCurrent());
         ++iterator;
       }
@@ -436,11 +441,11 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
   return status;
 }
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
-                                   8, 8,
-                                   KernelDefBuilder()
-                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
-                                   Scan<8>);
+    ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
+                                       8, 8,
+                                       KernelDefBuilder()
+                                               .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                               .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                       Scan<8>)
 
 }  // namespace onnxruntime

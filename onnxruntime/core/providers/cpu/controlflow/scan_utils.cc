@@ -43,19 +43,19 @@ Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs
 
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
 
-  auto& graph_inputs = subgraph.GetInputs();
-  auto num_subgraph_inputs = static_cast<int>(graph_inputs.size());
+  auto &graph_inputs = subgraph.GetInputs();
+  auto num_subgraph_inputs = graph_inputs.size();
   ORT_ENFORCE(num_variadic_inputs == num_subgraph_inputs,
               "The subgraph in 'body' requires ", num_subgraph_inputs,
               " inputs but Scan was only given ", num_variadic_inputs);
 
-  subgraph_input_names.reserve(num_inputs);
-  subgraph_output_names.reserve(num_outputs);
-  for (const auto& input : graph_inputs) {
+  subgraph_input_names.reserve((num_inputs));
+  subgraph_output_names.reserve((num_outputs));
+  for (const auto &input: graph_inputs) {
     subgraph_input_names.push_back(input->Name());
   }
 
-  for (const auto& output : subgraph.GetOutputs()) {
+  for (const auto &output: subgraph.GetOutputs()) {
     subgraph_output_names.push_back(output->Name());
   }
 }
@@ -77,27 +77,27 @@ void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
   }
 }
 
-Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
-                      int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
-                      std::unique_ptr<OutputIterator>& output_iterator,
-                      const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func,
-                      const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
-                      ScanDirection direction,
-                      bool temporary) {
-  // use the shape from the subgraph output. we require this to be specified in the model or inferable.
-  auto& graph_outputs = subgraph.GetOutputs();
-  auto* graph_output = graph_outputs.at(output_index);
-  auto* graph_output_shape = graph_output->Shape();
+    Status AllocateOutput(OpKernelContextInternal &context, const GraphViewer &subgraph,
+                          size_t output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
+                          std::unique_ptr<OutputIterator> &output_iterator,
+                          const scan::detail::DeviceHelpers::CreateMutableSlicer &create_slicer_func,
+                          const scan::detail::DeviceHelpers::ZeroData &zero_data_func,
+                          ScanDirection direction,
+                          bool temporary) {
+      // use the shape from the subgraph output. we require this to be specified in the model or inferable.
+      auto &graph_outputs = subgraph.GetOutputs();
+      auto *graph_output = graph_outputs.at((output_index));
+      auto *graph_output_shape = graph_output->Shape();
 
-  if (!graph_output_shape) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
-                           graph_output->Name(), " did not.");
-  }
+      if (!graph_output_shape) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Subgraph must have the shape set for all outputs but ",
+                               graph_output->Name(), " did not.");
+      }
 
-  TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
-  auto graph_output_dims(output_shape.GetDims());
+      TensorShape output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*graph_output_shape);
+      auto graph_output_dims(output_shape.GetDims());
 
-  TensorShapeVector scan_output_dims;
+      TensorShapeVector scan_output_dims;
   scan_output_dims.reserve(graph_output_dims.size() + 2);
 
   // v8 has batch size. v9 and later do not.
@@ -142,15 +142,15 @@ Status CreateFeedsFetchesManager(const Node& node,
   // we need the names of the Scan inputs to determine what device they are available on,
   // so first create a list using those value
   std::vector<std::string> feed_names;
-  feed_names.reserve(static_cast<size_t>(info.num_variadic_inputs) + info.num_implicit_inputs);
+  feed_names.reserve(info.num_variadic_inputs + info.num_implicit_inputs);
 
-  const auto& scan_inputs = node.InputDefs();
-  int start = is_v8 ? 1 : 0;  // skip sequence_lens for v8
-  for (int i = start; i < info.num_inputs; ++i) {
+  const auto &scan_inputs = node.InputDefs();
+  uint64_t start = is_v8 ? 1 : 0;  // skip sequence_lens for v8
+  for (uint64_t i = start; i < info.num_inputs; ++i) {
     feed_names.push_back(scan_inputs[i]->Name());
   }
 
-  for (auto& entry : node.ImplicitInputDefs()) {
+  for (auto &entry: node.ImplicitInputDefs()) {
     feed_names.push_back(entry->Name());
   }
 
@@ -159,7 +159,7 @@ Status CreateFeedsFetchesManager(const Node& node,
   ORT_RETURN_IF_ERROR(controlflow::detail::FindDevicesForValues(session_state, feed_names, feed_locations));
 
   // now update the feed names to use the subgraph input names so we know what devices they're needed on
-  for (int i = 0; i < info.num_variadic_inputs; ++i) {
+  for (uint64_t i = 0; i < info.num_variadic_inputs; ++i) {
     feed_names[i] = info.subgraph_input_names[i];
   }
 
@@ -170,7 +170,7 @@ Status CreateFeedsFetchesManager(const Node& node,
 
   // we provide fetches using memory allocated by Scan, so provide locations based on the Scan output locations
   std::vector<const OrtMemoryInfo*> fetch_locations;
-  fetch_locations.reserve(info.num_outputs);
+  fetch_locations.reserve((info.num_outputs));
 
   for (const auto& output : node.OutputDefs()) {
     const auto& alloc_info = utils::FindMemoryInfoForValue(session_state, output->Name());
@@ -184,59 +184,59 @@ Status CreateFeedsFetchesManager(const Node& node,
   return Status::OK();
 }
 
-Status IterateSequence(OpKernelContextInternal& context, const SessionState& session_state,
-                       std::vector<LoopStateVariable>& loop_state_variables,
-                       std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator>& scan_input_stream_iterators,
-                       int64_t seq_length, int num_loop_state_variables, int num_variadic_inputs,
-                       int num_variadic_outputs, const std::vector<const OrtValue*>& implicit_inputs,
-                       std::vector<std::unique_ptr<OutputIterator>>& output_iterators,
-                       const FeedsFetchesManager& ffm) {
-  Status status = Status::OK();
+    Status IterateSequence(OpKernelContextInternal &context, const SessionState &session_state,
+                           std::vector<LoopStateVariable> &loop_state_variables,
+                           std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> &scan_input_stream_iterators,
+                           int64_t seq_length, uint64_t num_loop_state_variables, uint64_t num_variadic_inputs,
+                           uint64_t num_variadic_outputs, const std::vector<const OrtValue *> &implicit_inputs,
+                           std::vector<std::unique_ptr<OutputIterator>> &output_iterators,
+                           const FeedsFetchesManager &ffm) {
+      Status status = Status::OK();
 
-  auto num_implicit_inputs = implicit_inputs.size();
-  auto num_inputs = num_variadic_inputs + num_implicit_inputs;
+      auto num_implicit_inputs = implicit_inputs.size();
+      auto num_inputs = num_variadic_inputs + num_implicit_inputs;
 
-  std::vector<OrtValue> feeds;
-  std::vector<OrtValue> fetches;
-  std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
+      std::vector<OrtValue> feeds;
+      std::vector<OrtValue> fetches;
+      std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
 
-  feeds.resize(num_inputs);
-  fetches.resize(num_variadic_outputs);
+      feeds.resize(num_inputs);
+      fetches.resize((num_variadic_outputs));
 
-  // add implicit inputs and pass in implicit inputs as feeds. we're going to pass in the explicit inputs
-  // first in each iteration though so offset by num_variadic_inputs
-  for (size_t i = 0; i < num_implicit_inputs; ++i) {
-    feeds[num_variadic_inputs + i] = *implicit_inputs[i];
-  }
+      // add implicit inputs and pass in implicit inputs as feeds. we're going to pass in the explicit inputs
+      // first in each iteration though so offset by num_variadic_inputs
+      for (size_t i = 0; i < num_implicit_inputs; ++i)
+        feeds[(num_variadic_inputs) + i] = *implicit_inputs[i];
 
-  int64_t seq_no = 0;
-  for (; seq_no < seq_length; ++seq_no) {
-    for (int input = 0; input < num_variadic_inputs; ++input) {
-      if (input < num_loop_state_variables) {
-        // add loop state variable input
-        feeds[input] = loop_state_variables[input].Input();
-      } else {
-        // add sliced input
-        auto& iterator = scan_input_stream_iterators[static_cast<ptrdiff_t>(input) - num_loop_state_variables];
-        feeds[input] = *iterator;
 
-        ++iterator;
-      }
+      int64_t seq_no = 0;
+      for (; seq_no < seq_length; ++seq_no) {
+        for (uint64_t input = 0; input < num_variadic_inputs; ++input) {
+          if (input < num_loop_state_variables) {
+            // add loop state variable input
+            feeds[input] = loop_state_variables[input].Input();
+          } else {
+            // add sliced input
+            auto &iterator = scan_input_stream_iterators[input - (num_loop_state_variables)];
+            feeds[input] = *iterator;
+
+            ++iterator;
+          }
     }
 
     fetches.clear();
 
-    for (int output = 0, end = num_variadic_outputs; output < end; ++output) {
-      if (output < num_loop_state_variables) {
-        // add loop state variable output
-        fetches.push_back(loop_state_variables[output].Output());
-      } else {
-        auto& iterator = *output_iterators[output];
+        for (uint64_t output = 0, end = (num_variadic_outputs); output < end; ++output) {
+          if (output < num_loop_state_variables) {
+            // add loop state variable output
+            fetches.push_back(loop_state_variables[output].Output());
+          } else {
+            auto &iterator = *output_iterators[output];
 
-        if (iterator.FinalOutputAllocated()) {
-          // add OrtValue from sliced output
-          auto& ort_value = *iterator;
-          fetches.push_back(ort_value);
+            if (iterator.FinalOutputAllocated()) {
+              // add OrtValue from sliced output
+              auto &ort_value = *iterator;
+              fetches.push_back(ort_value);
         } else {
           // need a dummy empty entry in fetches so the order matches the output names
           size_t i = fetches.size();
@@ -280,9 +280,9 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
     std::for_each(loop_state_variables.begin(), loop_state_variables.end(), [](LoopStateVariable& v) { v.Next(); });
 
     // and move the output iterators.
-    for (int output = num_loop_state_variables; output < num_variadic_outputs; ++output) {
-      ++(*output_iterators[output]);
-    }
+        for (uint64_t output = (num_loop_state_variables); output < num_variadic_outputs; ++output) {
+          ++(*output_iterators[output]);
+        }
 
     if (seq_no == 0) {
       // we only ever use custom allocators on the first iteration as the final output is always allocated during that
@@ -297,21 +297,21 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
   OrtValue ort_value;
   Tensor::InitOrtValue(data_type, shape, allocator, ort_value);
   return ort_value;
-};
+}
 
 void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,
                                       InlinedVector<size_t>& permutations, TensorShapeVector& transposed_shape) {
-  int64_t rank = original_shape.NumDimensions();
-  const auto& dims = original_shape.GetDims();
+  uint64_t rank = original_shape.NumDimensions();
+  const auto &dims = original_shape.GetDims();
 
   permutations.reserve(rank);
-  permutations.push_back(axis);
+  permutations.push_back((axis));
 
   transposed_shape.reserve(rank);
-  transposed_shape.push_back(dims[axis]);
+  transposed_shape.push_back(dims[static_cast<uint64_t>(axis)]);
 
-  for (int64_t i = 0; i < rank; ++i) {
-    if (i != axis) {
+  for (uint64_t i = 0; i < rank; ++i) {
+    if (i != static_cast<uint64_t>(axis)) {
       permutations.push_back(i);
       transposed_shape.push_back(dims[i]);
     }
@@ -320,13 +320,13 @@ void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t
 
 void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis,
                                        InlinedVector<size_t>& permutations, TensorShapeVector& transposed_shape) {
-  int64_t rank = original_shape.NumDimensions();
-  const auto& dims = original_shape.GetDims();
+  uint64_t rank = original_shape.NumDimensions();
+  const auto &dims = original_shape.GetDims();
 
   permutations.reserve(rank);
   transposed_shape.reserve(rank);
 
-  for (int64_t i = 1; i <= axis; ++i) {
+  for (uint64_t i = 1; i <= static_cast<uint64_t>(axis); ++i) {
     permutations.push_back(i);
     transposed_shape.push_back(dims[i]);
   }
@@ -334,7 +334,7 @@ void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_
   permutations.push_back(0);
   transposed_shape.push_back(dims[0]);
 
-  for (int64_t i = axis + 1; i < rank; ++i) {
+  for (uint64_t i = static_cast<uint64_t>(axis + 1); i < rank; ++i) {
     permutations.push_back(i);
     transposed_shape.push_back(dims[i]);
   }
@@ -431,7 +431,7 @@ OutputIterator::OutputIterator(OpKernelContextInternal& context,
   if (is_v8) {
     // there are one or two dimensions being iterated depending on whether it's a loop state variable or scan input.
     auto num_iteration_dims = is_loop_state_var_ ? 1 : 2;
-    num_iterations_ = final_shape_.Slice(0, num_iteration_dims).Size();
+    num_iterations_ = final_shape_.Slice(0, (num_iteration_dims)).Size();
   } else {
     // batch dimension is not handled in v9 and later so for a loop state var there are no iterations, and for
     // the scan outputs we use dimension 0 which is the sequence length.

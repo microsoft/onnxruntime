@@ -4,7 +4,6 @@
 #include "core/providers/cpu/tensor/concat.h"
 
 #include "core/framework/element_type_lists.h"
-#include "core/framework/TensorSeq.h"
 #include "core/framework/copy.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
@@ -54,7 +53,7 @@ using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExec
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
                                      const InlinedTensorsVector& input_tensors,
                                      Prepare& p) const {
-  int input_count = static_cast<int>(input_tensors.size());
+  auto input_count = input_tensors.size();
 
   // Must have atleast one input to concat
   ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
@@ -69,20 +68,20 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
   bool all_inputs_are_empty = true;
 
-  for (int index = 0; index < input_count; ++index) {
-    const auto* input = input_tensors[index];
-    ORT_ENFORCE(input != nullptr, "input count mismatch");
+      for (uint64_t index = 0; index < input_count; ++index) {
+        const auto *input = input_tensors[index];
+        ORT_ENFORCE(input != nullptr, "input count mismatch");
 
-    // find the first tensor that isn't empty
-    // to be used as a reference for all
-    // downstream shape/rank validations of other inputs
-    const auto& shape = input->Shape();
-    const auto num_elements = shape.Size();
-    if (num_elements > 0) {
-      reference_dims = shape.AsShapeVector();
-      reference_rank = reference_dims.size();
-      reference_tensor_index = index;
-      input_tensor_sizes.push_back(num_elements);
+        // find the first tensor that isn't empty
+        // to be used as a reference for all
+        // downstream shape/rank validations of other inputs
+        const auto &shape = input->Shape();
+        const auto num_elements = shape.Size();
+        if (num_elements > 0) {
+          reference_dims = shape.AsShapeVector();
+          reference_rank = reference_dims.size();
+          reference_tensor_index = static_cast<int>(index);
+          input_tensor_sizes.push_back(num_elements);
       all_inputs_are_empty = false;
       break;
     } else {
@@ -90,48 +89,48 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     }
   }
 
-  if (all_inputs_are_empty) {
-    // Reference dim and reference rank can just come from the first input
-    // No shape/rank validations will be done (as all inputs are empty).
-    // But the rest of the execution flow (filling in the Prepare instance - p)
-    // can use this info.
-    reference_dims = input_tensors[0]->Shape().AsShapeVector();
-    reference_rank = reference_dims.size();
-  }
+      if (all_inputs_are_empty) {
+        // Reference dim and reference rank can just come from the first input
+        // No shape/rank validations will be done (as all inputs are empty).
+        // But the rest of the execution flow (filling in the Prepare instance - p)
+        // can use this info.
+        reference_dims = input_tensors[0]->Shape().AsShapeVector();
+        reference_rank = reference_dims.size();
+      }
 
-  // Cannot concatenate scalars (but they can be stacked)
-  if (!is_stack_)
-    ORT_RETURN_IF_NOT(reference_rank > 0, "Cannot concatenate scalars");
+      // Cannot concatenate scalars (but they can be stacked)
+      if (!is_stack_)
+        ORT_RETURN_IF_NOT(reference_rank > 0, "Cannot concatenate scalars");
 
-  // Handle and fix negative axis
-  // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
-  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, !is_stack_
-                                                               ? reference_rank
-                                                               : reference_rank + 1));
+      // Handle and fix negative axis
+      // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
+      p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, !is_stack_
+                                                               ? static_cast<int64_t>(reference_rank)
+                                                               : static_cast<int64_t>(reference_rank + 1)));
 
-  // Ensure all of the non concatenated axes match each other
-  for (int index = reference_tensor_index + 1; index < input_count; index++) {
-    const auto* input = input_tensors[index];
-    ORT_ENFORCE(input != nullptr, "input count mismatch");
-    const auto& input_shape = input->Shape();
-    const auto input_dims = input_shape.GetDims();
+      // Ensure all of the non concatenated axes match each other
+      for (uint64_t index = reference_tensor_index + 1; index < input_count; index++) {
+        const auto *input = input_tensors[index];
+        ORT_ENFORCE(input != nullptr, "input count mismatch");
+        const auto &input_shape = input->Shape();
+        const auto input_dims = input_shape.GetDims();
 
-    // Skip shape/rank validation for inputs that are empty.
-    // The ONNX spec states that all dim values along axes not concatentated on
-    // need to be the same for all inputs (empty inputs are not explicitly exempted).
-    // The model in GH issue 8020 has a bunch of Loop nodes all feeding into
-    // the 'Concat' node and one of these Loops tend to have an iteration
-    // count of 0 for some inputs. If the iteration count for a Loop is zero,
-    // we don't execute its subgraph (since the outputs are going to be empty anyway)
-    // and we send an "empty" tensor(s) downstream and use ONNX shape inferred shape
-    // to "compose" the shape for these empty tensor(s).
-    // If we encounter symbolic dims in the ONNX shape inferred shape, we place a '0'
-    // in that position and due to the "lossy" nature of this process, the inputs' shape
-    // validation for such empty inputs fail and hence we skip these validations for all
-    // empty inputs.
-    // This isn't too bad as we will never use empty inputs while concatenating anyway.
-    // We just loosen this check to unblock model in GH issue 8020 to complete processing.
-    if (input_shape.Size() == 0) {
+        // Skip shape/rank validation for inputs that are empty.
+        // The ONNX spec states that all dim values along axes not concatentated on
+        // need to be the same for all inputs (empty inputs are not explicitly exempted).
+        // The model in GH issue 8020 has a bunch of Loop nodes all feeding into
+        // the 'Concat' node and one of these Loops tend to have an iteration
+        // count of 0 for some inputs. If the iteration count for a Loop is zero,
+        // we don't execute its subgraph (since the outputs are going to be empty anyway)
+        // and we send an "empty" tensor(s) downstream and use ONNX shape inferred shape
+        // to "compose" the shape for these empty tensor(s).
+        // If we encounter symbolic dims in the ONNX shape inferred shape, we place a '0'
+        // in that position and due to the "lossy" nature of this process, the inputs' shape
+        // validation for such empty inputs fail and hence we skip these validations for all
+        // empty inputs.
+        // This isn't too bad as we will never use empty inputs while concatenating anyway.
+        // We just loosen this check to unblock model in GH issue 8020 to complete processing.
+        if (input_shape.Size() == 0) {
       input_tensor_sizes.push_back(0);
     } else {
       const size_t input_rank = input_dims.size();
@@ -169,11 +168,11 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
     // Calculate the size of the concatenated axis
     size_t concat_axis_size = 0;
-    for (int64_t index = 0; index < input_count; index++) {
-      concat_axis_size += input_tensors[index]->Shape()[static_cast<int>(p.axis)];
+    for (uint64_t index = 0; index < input_count; index++) {
+      concat_axis_size += static_cast<uint64_t>(input_tensors[index]->Shape()[p.axis]);
     }
 
-    output_dims[p.axis] = concat_axis_size;
+    output_dims[p.axis] = static_cast<int64_t>(concat_axis_size);
   } else {  // 'Stack' mode
     // While stacking, the rank of the output is one more than the input rank(s).
     // Stacking may be thought of as adding an unit dimension (of value 1) in the input tensors,
@@ -204,17 +203,17 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
   // Fill the 'Prepare' struct with available information
   p.inputs.reserve(input_count);
-  for (int input_index = 0; input_index < input_count; input_index++) {
-    const Tensor* data_n_ptr = input_tensors[input_index];
-    auto& data_n = *data_n_ptr;
+      for (uint64_t input_index = 0; input_index < input_count; input_index++) {
+        const Tensor *data_n_ptr = input_tensors[input_index];
+        auto &data_n = *data_n_ptr;
 
-    // Type sanity check (Make sure we are working on homogeneous types)
-    ORT_RETURN_IF_NOT(data_n.DataType() == p.output_tensor->DataType(), "Data type mismatch");
+        // Type sanity check (Make sure we are working on homogeneous types)
+        ORT_RETURN_IF_NOT(data_n.DataType() == p.output_tensor->DataType(), "Data type mismatch");
 
-    // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
-    // Can handle stacking as well (as the "new dummy dimension" in the input is of unit value).
-    // TODO: Minor Optimization possibility: This input_axis_patch will be common across all inputs
-    // in 'ConcatFromSequence' (stack mode). They have to be computed for each input only while concatenating.
+        // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
+        // Can handle stacking as well (as the "new dummy dimension" in the input is of unit value).
+        // TODO: Minor Optimization possibility: This input_axis_patch will be common across all inputs
+        // in 'ConcatFromSequence' (stack mode). They have to be computed for each input only while concatenating.
     int64_t input_axis_pitch = 1;
     const auto& data_dims = data_n.Shape().GetDims();
     for (size_t i = reference_rank; i-- > p.axis;) {
@@ -249,24 +248,25 @@ TensorShapeVector StridesForStack(const TensorShapeVector& full_strides, uint64_
 
 // This method computes the output tensor for Concat/ConcatFromSequence ops
 Status ConcatBase::ComputeImpl(Prepare& p, OpKernelContext* ctx) const {
-  int input_count = static_cast<int>(p.inputs.size());
-  int64_t initial_output_offset = 0;  // initial offset for each input
+      auto input_count = p.inputs.size();
+      int64_t initial_output_offset = 0;  // initial offset for each input
 
-  auto output_strides_full = StridesForTensor(*p.output_tensor);
-  // Note that output_strides_full is only used later when is_stack_ is true, so it's safe to move
-  auto output_strides_for_copy = is_stack_ ? StridesForStack(output_strides_full, p.axis) : std::move(output_strides_full);
+      auto output_strides_full = StridesForTensor(*p.output_tensor);
+      // Note that output_strides_full is only used later when is_stack_ is true, so it's safe to move
+      auto output_strides_for_copy = is_stack_ ? StridesForStack(output_strides_full, p.axis) : std::move(
+              output_strides_full);
 
-  for (int input_index = 0; input_index < input_count; input_index++) {
-    const auto& prep = p.inputs[input_index];
+      for (uint64_t input_index = 0; input_index < input_count; input_index++) {
+        const auto &prep = p.inputs[input_index];
 
-    // no data in this tensor - so skip it
-    if (prep.num_elements == 0)
-      continue;
+        // no data in this tensor - so skip it
+        if (prep.num_elements == 0)
+          continue;
 
-    // parallel copy the data across
-    auto status = DispatchStridedCopy<EnabledDataTypes>(ctx->GetOperatorThreadPool(),
-                                                        *p.output_tensor,
-                                                        initial_output_offset,
+        // parallel copy the data across
+        auto status = DispatchStridedCopy<EnabledDataTypes>(ctx->GetOperatorThreadPool(),
+                                                            *p.output_tensor,
+                                                            initial_output_offset,
                                                         output_strides_for_copy,
                                                         prep.tensor->Shape(),
                                                         *prep.tensor,
@@ -291,7 +291,7 @@ Status Concat::Compute(OpKernelContext* ctx) const {
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
   InlinedTensorsVector input_tensors;
-  input_tensors.reserve(input_count);
+      input_tensors.reserve(static_cast<uint64_t>(input_count));
   for (int i = 0; i < input_count; ++i) {
     input_tensors.push_back(ctx->Input<Tensor>(i));
   }
