@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from '../tensor';
+import {Tensor, TensorView} from '../tensor';
 
 export enum GpuDataType {
   default = 0,
@@ -93,4 +93,10 @@ export interface Artifact {
   programInfo: ProgramInfo;
   computePipeline: GPUComputePipeline;
   // attribLocations: {position: number; textureCoord: number};
+}
+
+export interface ComputeContext {
+  readonly pointer: number;
+  readonly inputs: readonly TensorView[];
+  output(index: number, dims: readonly number[]): number;
 }

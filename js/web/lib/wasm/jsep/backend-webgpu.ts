@@ -3,8 +3,9 @@
 
 import {Tensor} from './tensor';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
+import {WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
+import {ComputeContext, GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 
 const getProgramInfoUniqueKey =
     (programInfo: ProgramInfo|ProgramInfoLoader, inputTensors: readonly Tensor[], inputGpuDatas: readonly GpuData[]):
@@ -24,6 +25,8 @@ export class WebGpuBackend {
   gpuDataManager: GpuDataManager;
   programManager: ProgramManager;
 
+  kernelAttributes: Map<number, [(context: ComputeContext) => number, unknown]>;
+
   commandEncoder: GPUCommandEncoder|null = null;
   computePassEncoder: GPUComputePassEncoder|null = null;
   pendingDispatchNumber = 0;
@@ -41,6 +44,7 @@ export class WebGpuBackend {
     this.device = await adapter.requestDevice();
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
+    this.kernelAttributes = new Map();
     // TODO: set up flags
 
     this.device.onuncapturederror = ev => {
@@ -145,5 +149,23 @@ export class WebGpuBackend {
 
   free(ptr: number): number {
     return this.gpuDataManager.release(ptr);
+  }
+
+  createKernel(name: string, kernelId: number, attribute: unknown) {
+    const lookup = WEBGPU_OP_RESOLVE_RULES.get(name);
+    if (!lookup) {
+      throw new Error(`kernel not implemented: ${name}`);
+    }
+
+    if (Array.isArray(lookup)) {
+      const init = lookup[1];
+    }
+    this.kernelAttributes.set(kernelId)
+  }
+
+  releaseKernel(kernelId: number) {}
+
+  computeKernel(kernelId: number, context: ComputeContext): number {
+    throw new Error('Method not implemented.');
   }
 }
