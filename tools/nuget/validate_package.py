@@ -38,13 +38,7 @@ dmlep_related_header_files = [
 ]
 dml_related_header_files = [
     "DirectML.h",
-]
-dml_related_dlls = [
-    "DirectML.Debug.dll",
-    "DirectML.Debug.pdb",
-    "DirectML.dll",
-    "DirectML.lib",
-    "DirectML.pdb",
+    "DirectMLConfig.h"
 ]
 
 def parse_arguments():
@@ -96,19 +90,29 @@ def check_if_headers_are_present(
 def download_and_verify_directml_dlls(zip_file, platform, package_folder):
     dml_nuget_spec_file_name = "Microsoft.ML.OnnxRuntime.DirectML.nuspec"
     dml_nuget_package_name = 'Microsoft.AI.DirectML'
-    dml_nuget_package_version = '1.9.0'
+    dml_nuget_package_version = '1.9.1'
     dml_dependency_string = '<dependency id="' + dml_nuget_package_name + '" version="' + dml_nuget_package_version + '" />'
+
+    dml_related_dlls = [
+        "DirectML.Debug.dll",
+        "DirectML.Debug.pdb",
+        "DirectML.dll",
+        "DirectML.lib",
+        "DirectML.pdb",
+    ]
 
     with zip_file.open(dml_nuget_spec_file_name, 'r') as file:
         content = file.read().decode('UTF-8')
         if dml_dependency_string in content:
-            dml_nupkg_name = package_folder + "/DirectML.nupkg"
-            dml_nupkg_zip = package_folder + "/DirectML.zip"
+            dml_nupkg_zip = package_folder + '/' + dml_nuget_package_name + '.' + dml_nuget_package_version + '.zip'
 
             if not check_exists(dml_nupkg_zip):
-                request.urlretrieve('https://api.nuget.org/v3-flatcontainer/' + dml_nuget_package_name +'/' + dml_nuget_package_version + '/' +
-                                        dml_nuget_package_name + '.' + dml_nuget_package_version + '.nupkg', dml_nupkg_name)
-                os.rename(dml_nupkg_name, dml_nupkg_zip)
+                dml_nuget_url = 'https://api.nuget.org/v3-flatcontainer/' + dml_nuget_package_name + '/' + dml_nuget_package_version + '/' + dml_nuget_package_name + '.' + dml_nuget_package_version + '.nupkg'
+                try:
+                    request.urlretrieve(dml_nuget_url, dml_nupkg_zip)
+                except Exception as e:
+                    print(e)
+                    raise Exception("Unable to download" + dml_nuget_url+  "NuGet package")
 
             dml_zip_file_list = zipfile.ZipFile(dml_nupkg_zip).namelist()
 
