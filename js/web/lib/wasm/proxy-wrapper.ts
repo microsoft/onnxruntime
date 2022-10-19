@@ -171,7 +171,7 @@ export const createSessionFinalize =
       proxyWorker!.postMessage(message);
     });
   } else {
-    return core.createSessionFinalize(modeldata);
+    return core.createSessionFinalize(modeldata, options);
   }
 };
 
