@@ -33,6 +33,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/transformer_common.h"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
+#include "contrib_ops/cpu/bert/attention_base.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -93,6 +94,9 @@ Status QkvToContext(
     const int qk_head_size,
     const size_t element_size,
     const T* input,
+    const T* query,
+    const T* key,
+    const T* value,
     const T* bias,
     T* output,
     T* workspace,
@@ -109,22 +113,42 @@ Status QkvToContext(
   const int max_threads_per_block = prop.maxThreadsPerBlock;
 
   T* qkv = workspace;
-  if (bias == nullptr) {
-    // input should be BxSx3xNxH => qkv: 3xBxNxSxH
-    ORT_ENFORCE(qk_head_size == v_head_size);
-    ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, qk_head_size, num_heads,
-                                       max_threads_per_block, false, input, qkv));
+  const int total_size_qk = batch_size * num_heads * sequence_length * qk_head_size;
 
-  } else {
-    // For fused TRT attention, qkv need transpose to BxSxNx3xH
-    const int format = (nullptr == fused_runner ? 1 : 2);
-    const bool enable_half4 = true;
+  // For fused TRT attention, qkv need transpose to BxSxNx3xH
+  const int format = (nullptr == fused_runner ? 1 : 2);
 
-    // When H_v != H, BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
-    LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block, batch_size,
-                           sequence_length, num_heads, qk_head_size,
-                           input, bias, qkv,
-                           enable_half4, v_head_size);
+  if (nullptr != input) {
+    if (bias == nullptr) {
+      // input should be BxSx3xNxH => qkv: 3xBxNxSxH
+      ORT_ENFORCE(qk_head_size == v_head_size);
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, qk_head_size, num_heads,
+                                         max_threads_per_block, false, input, qkv));
+    } else {
+      // When H_v != H, BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
+      LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block,
+                             batch_size, sequence_length, num_heads, qk_head_size,
+                             input, bias, qkv,
+                             true, v_head_size);
+      CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    }
+  } else {  // input == nullptr
+    ORT_ENFORCE(query != nullptr && key != nullptr && value != nullptr && bias != nullptr);
+
+    LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block,
+                           batch_size, sequence_length, num_heads, qk_head_size,
+                           query, bias, qkv,
+                           true, -1);
+
+    LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block,
+                           batch_size, sequence_length, num_heads, qk_head_size,
+                           key, bias, qkv + total_size_qk,
+                           true, -1);
+
+    LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block,
+                           batch_size, sequence_length, num_heads, v_head_size,
+                           value, bias, qkv + total_size_qk + total_size_qk,
+                           true, -1);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
 
@@ -132,7 +156,6 @@ Status QkvToContext(
   const int batches = batch_size * num_heads;
   const int size_per_batch_qk = sequence_length * qk_head_size;
   const int size_per_batch_v = sequence_length * v_head_size;
-  const int total_size_qk = batches * size_per_batch_qk;
 
   T* scratch1;
   scratch1 = qkv + (batches * sequence_length * (qk_head_size + qk_head_size + v_head_size));
@@ -157,8 +180,8 @@ Status QkvToContext(
   T* scratch2 = scratch1 + (bytes / element_size);
 
   const T* q = qkv;
-  const T* k = q + (batches * sequence_length * qk_head_size);
-  const T* v = k + (batches * sequence_length * qk_head_size);
+  const T* k = q + total_size_qk;
+  const T* v = k + total_size_qk;
 
   cublasSetStream(cublas, stream);
 
@@ -263,9 +286,16 @@ Status LaunchAttentionKernel(
   const TransformerOptions* options = TransformerOptions::GetInstance();
   bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
 
+  const void* query = nullptr;
+  const void* key = nullptr;
+  const void* value = nullptr;
+
   if (element_size == 2) {
     return QkvToContext(prop, cublas, stream, batch_size, sequence_length, num_heads, qk_head_size, element_size,
                         reinterpret_cast<const half*>(input),
+                        reinterpret_cast<const half*>(query),
+                        reinterpret_cast<const half*>(key),
+                        reinterpret_cast<const half*>(value),
                         reinterpret_cast<const half*>(bias),
                         reinterpret_cast<half*>(output),
                         reinterpret_cast<half*>(workspace),
@@ -282,6 +312,9 @@ Status LaunchAttentionKernel(
   } else {
     return QkvToContext(prop, cublas, stream, batch_size, sequence_length, num_heads, qk_head_size, element_size,
                         reinterpret_cast<const float*>(input),
+                        reinterpret_cast<const float*>(query),
+                        reinterpret_cast<const float*>(key),
+                        reinterpret_cast<const float*>(value),
                         reinterpret_cast<const float*>(bias),
                         reinterpret_cast<float*>(output),
                         reinterpret_cast<float*>(workspace),
@@ -295,6 +328,72 @@ Status LaunchAttentionKernel(
                         use_persistent_softmax,
                         nullptr,
                         v_head_size);
+  }
+}
+
+Status LaunchAttentionKernel(
+    const cudaDeviceProp& prop,
+    cudaStream_t stream,
+    cublasHandle_t& cublas,
+    const void* parameters,
+    const size_t element_size,
+    const void* input,
+    const void* bias,
+    const void* query,
+    const void* key,
+    const void* value,
+    const int* mask_index,
+    gsl::span<const int64_t> mask_index_dims,
+    const void* past,
+    const void* extra_add_qk,
+    void* workspace,
+    void* output,
+    void* present,
+    void* fused_runner) {
+  constexpr bool use_persistent_softmax = false;
+
+  const contrib::AttentionParameters* p = reinterpret_cast<const contrib::AttentionParameters*>(parameters);
+
+  if (element_size == 2) {
+    return QkvToContext(prop, cublas, stream,
+                        p->batch_size, p->sequence_length, p->num_heads, p->head_size, element_size,
+                        reinterpret_cast<const half*>(input),
+                        reinterpret_cast<const half*>(query),
+                        reinterpret_cast<const half*>(key),
+                        reinterpret_cast<const half*>(value),
+                        reinterpret_cast<const half*>(bias),
+                        reinterpret_cast<half*>(output),
+                        reinterpret_cast<half*>(workspace),
+                        mask_index,
+                        mask_index_dims,
+                        p->is_unidirectional,
+                        p->past_sequence_length,
+                        reinterpret_cast<const half*>(past),
+                        reinterpret_cast<const half*>(extra_add_qk),
+                        reinterpret_cast<half*>(present),
+                        use_persistent_softmax,
+                        reinterpret_cast<MHARunner*>(fused_runner),
+                        p->v_head_size);
+  } else {
+    return QkvToContext(prop, cublas, stream,
+                        p->batch_size, p->sequence_length, p->num_heads, p->head_size, element_size,
+                        reinterpret_cast<const float*>(input),
+                        reinterpret_cast<const float*>(query),
+                        reinterpret_cast<const float*>(key),
+                        reinterpret_cast<const float*>(value),
+                        reinterpret_cast<const float*>(bias),
+                        reinterpret_cast<float*>(output),
+                        reinterpret_cast<float*>(workspace),
+                        mask_index,
+                        mask_index_dims,
+                        p->is_unidirectional,
+                        p->past_sequence_length,
+                        reinterpret_cast<const float*>(past),
+                        reinterpret_cast<const float*>(extra_add_qk),
+                        reinterpret_cast<float*>(present),
+                        use_persistent_softmax,
+                        nullptr,
+                        p->v_head_size);
   }
 }
 

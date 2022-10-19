@@ -157,14 +157,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       device_prop,
       Stream(),
       cublas,
+      &parameters,
       element_size,
-      parameters.batch_size,
-      parameters.sequence_length,
-      parameters.num_heads,
-      parameters.head_size,
-      parameters.past_sequence_length,
-      parameters.is_unidirectional,
       nullptr == weights ? nullptr : reinterpret_cast<const void*>(gemm_buffer.get()),
+      nullptr != weights ? nullptr : input->Data<T>(),
+      nullptr == key ? nullptr : key->Data<T>(),
+      nullptr == value ? nullptr : value->Data<T>(),
       bias->Data<T>(),
       nullptr == mask_index ? nullptr : mask_index->Data<int>(),
       nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
@@ -173,8 +171,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       work_space.get(),
       output->MutableData<T>(),
       nullptr == present ? nullptr : present->MutableData<T>(),
-      fused_runner,
-      parameters.v_head_size));
+      fused_runner));
 
   return Status::OK();
 }

@@ -50,6 +50,26 @@ Status LaunchAttentionKernel(
     void* fused_runner,                        // Fused multi-head attention
     const int v_head_size);                    // Hidden size per head for v (H_v)
 
+Status LaunchAttentionKernel(
+    const cudaDeviceProp& prop,
+    cudaStream_t stream,
+    cublasHandle_t& cublas,
+    const void* parameters,
+    const size_t element_size,
+    const void* input,
+    const void* bias,
+    const void* query,
+    const void* key,
+    const void* value,
+    const int* mask_index,
+    gsl::span<const int64_t> mask_index_dims,
+    const void* past,
+    const void* extra_add_qk,
+    void* workspace,
+    void* output,
+    void* present,
+    void* fused_runner);
+
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties
     cudaStream_t stream,              // Cuda stream
