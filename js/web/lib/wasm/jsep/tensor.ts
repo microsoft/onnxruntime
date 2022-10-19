@@ -262,3 +262,9 @@ export class Tensor {
     return new Tensor(dims, type, undefined, undefined, data);
   }
 }
+
+export interface TensorView {
+  readonly data: number;
+  readonly dataType: number;
+  readonly dims: readonly number[];
+}

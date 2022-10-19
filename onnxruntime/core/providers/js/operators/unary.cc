@@ -2,15 +2,14 @@
 // Licensed under the MIT License.
 
 #include "core/providers/js/js_execution_provider.h"
-
-#include "core/framework/op_kernel.h"
+#include "core/providers/js/js_kernel.h"
 
 namespace onnxruntime {
 namespace js {
 
-class AbsImpl : public OpKernel {
+class AbsImpl : public JsKernel {
 public:
-    AbsImpl(const OpKernelInfo& info) : OpKernel(info) {}
+    AbsImpl(const OpKernelInfo& info) : JsKernel(info) {}
 
     Status Compute(OpKernelContext* context) const override {
         AllocatorPtr alloc;

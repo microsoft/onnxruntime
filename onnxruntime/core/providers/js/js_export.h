@@ -8,5 +8,5 @@
 #include <stddef.h>
 
 extern "C" {
-void * EMSCRIPTEN_KEEPALIVE JSEP_Output(void * context, int index, void * data);
+const void * EMSCRIPTEN_KEEPALIVE JsepOutput(void * context, int index, void * data);
 };
