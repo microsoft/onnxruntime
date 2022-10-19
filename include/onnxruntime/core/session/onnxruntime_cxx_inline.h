@@ -54,31 +54,57 @@ inline OrtErrorCode Status::GetErrorCode() const {
 template <typename T>
 struct TypeToTensorType;
 template <>
-struct TypeToTensorType<float> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+struct TypeToTensorType<float> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+};
 template <>
-struct TypeToTensorType<Float16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };
+struct TypeToTensorType<Float16_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+};
 template <>
-struct TypeToTensorType<BFloat16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16; };
+struct TypeToTensorType<BFloat16_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;
+};
 template <>
-struct TypeToTensorType<double> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE; };
+struct TypeToTensorType<double> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+};
 template <>
-struct TypeToTensorType<int8_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8; };
+struct TypeToTensorType<int8_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
+};
 template <>
-struct TypeToTensorType<int16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16; };
+struct TypeToTensorType<int16_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
+};
 template <>
-struct TypeToTensorType<int32_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; };
+struct TypeToTensorType<int32_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
+};
 template <>
-struct TypeToTensorType<int64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64; };
+struct TypeToTensorType<int64_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+};
 template <>
-struct TypeToTensorType<uint8_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8; };
+struct TypeToTensorType<uint8_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
+};
 template <>
-struct TypeToTensorType<uint16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16; };
+struct TypeToTensorType<uint16_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
+};
 template <>
-struct TypeToTensorType<uint32_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32; };
+struct TypeToTensorType<uint32_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
+};
 template <>
-struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; };
+struct TypeToTensorType<uint64_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
+};
 template <>
-struct TypeToTensorType<bool> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL; };
+struct TypeToTensorType<bool> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+};
 
 inline MemoryAllocation::MemoryAllocation(OrtAllocator* allocator, void* p, size_t size)
     : allocator_(allocator), p_(p), size_(size) {
@@ -234,7 +260,7 @@ template <typename T>
 inline std::vector<Value> ConstIoBindingImpl<T>::GetOutputValues(OrtAllocator* allocator) const {
   return binding_utils::GetOutputValuesHelper(this->p_, allocator);
 }
-  
+
 template <typename T>
 inline void IoBindingImpl<T>::BindInput(const char* name, const Value& value) {
   ThrowOnError(GetApi().BindInput(this->p_, name, value));
@@ -626,7 +652,7 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_MIG
   return *this;
 }
 
-template<typename T>
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_CANN(this->p_, &provider_options));
   return *this;
@@ -794,20 +820,20 @@ inline SessionOptions::SessionOptions() {
   ThrowOnError(GetApi().CreateSessionOptions(&this->p_));
 }
 
-inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
+inline Session::Session(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &this->p_));
 }
 
-inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options,
+inline Session::Session(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options,
                         OrtPrepackedWeightsContainer* prepacked_weights_container) {
   ThrowOnError(GetApi().CreateSessionWithPrepackedWeightsContainer(env, model_path, options, prepacked_weights_container, &this->p_));
 }
 
-inline Session::Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options) {
+inline Session::Session(const Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &this->p_));
 }
 
-inline Session::Session(Env& env, const void* model_data, size_t model_data_length,
+inline Session::Session(const Env& env, const void* model_data, size_t model_data_length,
                         const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container) {
   ThrowOnError(GetApi().CreateSessionFromArrayWithPrepackedWeightsContainer(env, model_data, model_data_length, options,
                                                                             prepacked_weights_container, &this->p_));
@@ -1167,7 +1193,7 @@ void ValueImpl<T>::UseBlockSparseIndices(const Shape& indices_shape, int32_t* in
 
 template <typename T>
 void ValueImpl<T>::FillSparseTensorCoo(const OrtMemoryInfo* mem_info, const OrtSparseValuesParam& values_param,
-                                                                                  const int64_t* indices_data, size_t indices_num) {
+                                       const int64_t* indices_data, size_t indices_num) {
   ThrowOnError(GetApi().FillSparseTensorCoo(this->p_, mem_info, values_param.values_shape,
                                             values_param.values_shape_len, values_param.data.p_data,
                                             indices_data, indices_num));
@@ -1175,9 +1201,9 @@ void ValueImpl<T>::FillSparseTensorCoo(const OrtMemoryInfo* mem_info, const OrtS
 
 template <typename T>
 void ValueImpl<T>::FillSparseTensorCsr(const OrtMemoryInfo* data_mem_info,
-                                  const OrtSparseValuesParam& values,
-                                  const int64_t* inner_indices_data, size_t inner_indices_num,
-                                  const int64_t* outer_indices_data, size_t outer_indices_num) {
+                                       const OrtSparseValuesParam& values,
+                                       const int64_t* inner_indices_data, size_t inner_indices_num,
+                                       const int64_t* outer_indices_data, size_t outer_indices_num) {
   ThrowOnError(GetApi().FillSparseTensorCsr(this->p_, data_mem_info, values.values_shape, values.values_shape_len, values.data.p_data,
                                             inner_indices_data, inner_indices_num,
                                             outer_indices_data, outer_indices_num));
@@ -1185,9 +1211,9 @@ void ValueImpl<T>::FillSparseTensorCsr(const OrtMemoryInfo* data_mem_info,
 
 template <typename T>
 void ValueImpl<T>::FillSparseTensorBlockSparse(const OrtMemoryInfo* data_mem_info,
-                                          const OrtSparseValuesParam& values,
-                                          const Shape& indices_shape,
-                                          const int32_t* indices_data) {
+                                               const OrtSparseValuesParam& values,
+                                               const Shape& indices_shape,
+                                               const int32_t* indices_data) {
   ThrowOnError(GetApi().FillSparseTensorBlockSparse(this->p_, data_mem_info, values.values_shape, values.values_shape_len, values.data.p_data,
                                                     indices_shape.shape, indices_shape.shape_len,
                                                     indices_data));
@@ -1317,7 +1343,7 @@ inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType
 }
 
 namespace detail {
-template<typename T>
+template <typename T>
 inline KernelInfo KernelInfoImpl<T>::Copy() const {
   OrtKernelInfo* info_copy;
   Ort::ThrowOnError(GetApi().CopyKernelInfo(this->p_, &info_copy));
@@ -1398,7 +1424,7 @@ inline void Op::Invoke(const OrtKernelContext* context,
                        size_t output_count) {
   static_assert(sizeof(Value) == sizeof(OrtValue*),
                 "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
-  auto ort_input_values = reinterpret_cast<const OrtValue* const *>(input_values);
+  auto ort_input_values = reinterpret_cast<const OrtValue* const*>(input_values);
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
   Ort::ThrowOnError(GetApi().InvokeOp(context, p_, ort_input_values, static_cast<int>(input_count),
                                       ort_output_values, static_cast<int>(output_count)));
