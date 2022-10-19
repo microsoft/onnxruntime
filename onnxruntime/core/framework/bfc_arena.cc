@@ -125,7 +125,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
       });
     }
 
-    ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(new_mem) % 2048 == 0, "Alert");
+    ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(new_mem) % 2048 == 0, "Alert: ", reinterpret_cast<std::uintptr_t>(new_mem) % 2048);
     return new_mem;
   };
 
