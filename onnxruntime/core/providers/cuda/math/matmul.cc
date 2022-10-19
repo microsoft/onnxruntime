@@ -151,24 +151,25 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       }
 
       if (use_special) {
+
         std::cout << "\n";
 
-        auto i =  reinterpret_cast<std::uintptr_t>(left_X->Data<T>());
+        auto i =  reinterpret_cast<std::uintptr_t>(left_X->Data<T>()) % 2048;
         std::cout << i << "\n";
 
-        i = reinterpret_cast<std::uintptr_t>(right_X->Data<T>());
+        i = reinterpret_cast<std::uintptr_t>(right_X->Data<T>()) % 2048;
         std::cout << i << "\n";
 
-        i =  reinterpret_cast<std::uintptr_t>(Y->MutableData<T>());
+        i =  reinterpret_cast<std::uintptr_t>(Y->MutableData<T>()) % 2048;
         std::cout << i << "\n";
 
-        i =  reinterpret_cast<std::uintptr_t>(left_X_ptr_);
+        i =  reinterpret_cast<std::uintptr_t>(left_X_ptr_) % 2048;
         std::cout << i << "\n";
 
-        i =  reinterpret_cast<std::uintptr_t>(right_X_ptr_);
+        i =  reinterpret_cast<std::uintptr_t>(right_X_ptr_) % 2048;
         std::cout << i << "\n";
 
-        i = reinterpret_cast<std::uintptr_t>(Y_ptr_);
+        i = reinterpret_cast<std::uintptr_t>(Y_ptr_) % 2048;
         std::cout << i << "\n";
 
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
