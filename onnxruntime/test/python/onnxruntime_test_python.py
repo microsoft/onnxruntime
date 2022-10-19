@@ -385,7 +385,7 @@ class TestInferenceSession(unittest.TestCase):
     def testRunModelFromBytes(self):
         with open(get_name("mul_1.onnx"), "rb") as f:
             content = f.read()
-        sess = onnxrt.InferenceSession(content, providers=onnxrt.get_available_providers())
+        sess = create_inference_session(content, providers=onnxrt.get_available_providers())
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -651,7 +651,7 @@ class TestInferenceSession(unittest.TestCase):
         model_path = "../models/opset8/test_squeezenet/model.onnx"
         if not os.path.exists(model_path):
             return
-        sess = onnxrt.InferenceSession(model_path, providers=onnxrt.get_available_providers())
+        sess = create_inference_session(model_path, providers=onnxrt.get_available_providers())
         modelmeta = sess.get_modelmeta()
         self.assertEqual("onnx-caffe2", modelmeta.producer_name)
         self.assertEqual("squeezenet_old", modelmeta.graph_name)
@@ -662,6 +662,7 @@ class TestInferenceSession(unittest.TestCase):
     def testProfilerWithSessionOptions(self):
         so = onnxrt.SessionOptions()
         so.enable_profiling = True
+        so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         sess = onnxrt.InferenceSession(
             get_name("mul_1.onnx"),
             sess_options=so,
@@ -683,6 +684,7 @@ class TestInferenceSession(unittest.TestCase):
     def testProfilerGetStartTimeNs(self):
         def getSingleSessionProfilingStartTime():
             so = onnxrt.SessionOptions()
+            so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
             so.enable_profiling = True
             sess = onnxrt.InferenceSession(
                 get_name("mul_1.onnx"),
@@ -710,6 +712,7 @@ class TestInferenceSession(unittest.TestCase):
             opt.graph_optimization_level,
             onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTENDED,
         )
+        opt.enable_mem_pattern = "DmlExecutionProvider" not in available_providers
         sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), sess_options=opt, providers=available_providers)
         a = np.array([[True, True], [False, False]], dtype=bool)
         b = np.array([[True, False], [True, False]], dtype=bool)
@@ -738,7 +741,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_expected, res[0])
 
     def testSequenceConstruct(self):
-        sess = onnxrt.InferenceSession(
+        sess = create_inference_session(
             get_name("sequence_construct.onnx"),
             providers=available_providers_without_tvm,
         )
@@ -771,6 +774,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSequenceInsert(self):
         opt = onnxrt.SessionOptions()
+        opt.enable_mem_pattern = "DmlExecutionProvider" not in available_providers_without_tvm
         opt.execution_mode = onnxrt.ExecutionMode.ORT_SEQUENTIAL
         sess = onnxrt.InferenceSession(
             get_name("sequence_insert.onnx"),
@@ -808,8 +812,8 @@ class TestInferenceSession(unittest.TestCase):
     def testLoadingSessionOptionsFromModel(self):
         try:
             os.environ["ORT_LOAD_CONFIG_FROM_MODEL"] = str(1)
-            sess = onnxrt.InferenceSession(
-                get_name("model_with_valid_ort_config_json.onnx"),
+            sess = create_inference_session(
+                "model_with_valid_ort_config_json.onnx",
                 providers=onnxrt.get_available_providers(),
             )
             session_options = sess.get_session_options()
@@ -838,6 +842,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSessionOptionsAddFreeDimensionOverrideByDenotation(self):
         so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         so.add_free_dimension_override_by_denotation("DATA_BATCH", 3)
         so.add_free_dimension_override_by_denotation("DATA_CHANNEL", 5)
         sess = onnxrt.InferenceSession(
@@ -853,6 +858,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSessionOptionsAddFreeDimensionOverrideByName(self):
         so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         so.add_free_dimension_override_by_name("Dim1", 4)
         so.add_free_dimension_override_by_name("Dim2", 6)
         sess = onnxrt.InferenceSession(
@@ -944,6 +950,7 @@ class TestInferenceSession(unittest.TestCase):
 
         so1 = onnxrt.SessionOptions()
         so1.register_custom_ops_library(shared_library)
+        so1.enable_mem_pattern = "DmlExecutionProvider" not in available_providers_without_tvm_and_tensorrt
 
         # Model loading successfully indicates that the custom op node could be resolved successfully
         sess1 = onnxrt.InferenceSession(
@@ -1177,6 +1184,7 @@ class TestInferenceSession(unittest.TestCase):
         so1 = onnxrt.SessionOptions()
         so1.log_severity_level = 1
         so1.add_session_config_entry("session.use_env_allocators", "1")
+        so1.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         onnxrt.InferenceSession(
             get_name("mul_1.onnx"),
             sess_options=so1,
