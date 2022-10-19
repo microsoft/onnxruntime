@@ -182,7 +182,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           &alpha,
           reinterpret_cast<const CudaT*>(right_X->Data<T>()),          
           ldb,
-          reinterpret_cast<const CudaT*>(left_X_ptr_),
+          reinterpret_cast<const CudaT*>(left_X->Data<T>() + 1024),
           lda,
           &zero,
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
