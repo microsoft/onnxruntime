@@ -189,7 +189,7 @@ ORT_API_STATUS_IMPL(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_opt
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(SetGlobalIntraThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string) {
+ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string) {
   if (!tp_options) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
   }

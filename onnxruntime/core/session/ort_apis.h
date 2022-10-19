@@ -261,5 +261,5 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_TensorRT,
 ORT_API_STATUS_IMPL(SetCurrentGpuDeviceId, _In_ int device_id);
 ORT_API_STATUS_IMPL(GetCurrentGpuDeviceId, _In_ int* device_id);
 
-ORT_API_STATUS_IMPL(SetGlobalIntraThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
+ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
 }  // namespace OrtApis

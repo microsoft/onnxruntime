@@ -1186,7 +1186,7 @@ struct OrtApi {
   * 1,10
   * the number of "group,processor_mask" pairs in the affinity_string should be intra_op_num_threads - 1, since ort will not set affinity for main thread
   */
-  ORT_API2_STATUS(SetGlobalIntraThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
+  ORT_API2_STATUS(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
 };
 
 /*
