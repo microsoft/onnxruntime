@@ -145,7 +145,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       if (left_X->SizeInBytes() == 6291456 && 
           right_X->SizeInBytes() == 4718592 &&
           Y->SizeInBytes() == 25165824) {
-              //use_special = true;
+              use_special = true;
               //std::cout << "Using special" << "\n";
       }
 
@@ -163,7 +163,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           reinterpret_cast<const CudaT*>(left_X_ptr_),
           lda,
           &zero,
-          reinterpret_cast<CudaT*>(Y_ptr_),
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
           ldc,
           NULL, false,
           workspace_memory.get(), workspace_size,
