@@ -6,6 +6,7 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include <chrono>
+#include <cstdint>
 
 using namespace std::chrono;
 
@@ -150,6 +151,17 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       }
 
       if (use_special) {
+        std::cout << "\n";
+
+        auto i = reinterpret_cast<std::uintptr_t>(right_X->Data<T>());
+        std::cout << i << "\n";
+        
+        i =  reinterpret_cast<std::uintptr_t>(left_X->Data<T>());
+        std::cout << i << "\n";
+
+        i =  reinterpret_cast<std::uintptr_t>(Y->MutableData<T>());
+        std::cout << i << "\n";
+
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
           transB,
