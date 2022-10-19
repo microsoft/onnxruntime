@@ -165,7 +165,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         i =  reinterpret_cast<std::uintptr_t>(left_X_ptr_);
         std::cout << i << "\n";
 
-        auto i =  reinterpret_cast<std::uintptr_t>(right_X_ptr_);
+        i =  reinterpret_cast<std::uintptr_t>(right_X_ptr_);
         std::cout << i << "\n";
 
         i = reinterpret_cast<std::uintptr_t>(Y_ptr_);
