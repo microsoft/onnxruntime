@@ -92,6 +92,7 @@ static void* xnn_reallocate(void* context, void* pointer, size_t size) {
   if (pointer == nullptr) {
     return xnn_allocate(context, size);
   }
+  ORT_NOT_IMPLEMENTED("xnn_reallocate is not implemented");
   // it will lead to crash when free memory with context->Free, but luckily it is not used in xnnpack temporary
   return realloc(pointer, size);
 }
@@ -156,12 +157,12 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
   }
 
   static const xnn_allocator xnn_default_allocator = {
-      .context = cpu_alloc.get(),
-      .allocate = xnn_allocate,
-      .reallocate = xnn_reallocate,
-      .deallocate = xnn_deallocate,
-      .aligned_allocate = xnn_aligned_allocate,
-      .aligned_deallocate = xnn_aligned_deallocate,
+      cpu_alloc.get(),
+      xnn_allocate,
+      xnn_reallocate,
+      xnn_deallocate,
+      xnn_aligned_allocate,
+      xnn_aligned_deallocate,
   };
   xnn_status st = xnn_initialize(&xnn_default_allocator);
   if (st != xnn_status_success) {
