@@ -165,11 +165,11 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   static constexpr float kBackpedalFactor = 0.9f;
   // Try allocating less memory.
   while (mem_addr == nullptr) {
-  // kBackpedalFactor is float, bytes is size_t. The result of bytes * kBackpedalFactor is float. When we cast it to
-  // size_t, which is a smaller type, it could loss data. This is what C4244 complains. The "static_cast<size_t>" here 
-  // is to suppress the warning. C26451 suggest we may change kBackpedalFactor to double to get better accuary. But if
-  // we do that, AMD GPU CI build pipeline will have an "out-of-memory" error. So I choose to keep this piece of code
-  // untouched and disable the warning first.
+    // kBackpedalFactor is float, bytes is size_t. The result of bytes * kBackpedalFactor is float. When we cast it to
+    // size_t, which is a smaller type, it could loss data. This is what C4244 complains. The "static_cast<size_t>" here
+    // is to suppress the warning. C26451 suggest we may change kBackpedalFactor to double to get better accuary. But if
+    // we do that, AMD GPU CI build pipeline will have an "out-of-memory" error. So I choose to keep this piece of code
+    // untouched and disable the warning first.
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26451)
@@ -368,12 +368,12 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // If we can break the size of the chunk into two reasonably large
         // pieces, do so.  In any case don't waste more than
         // max_dead_bytes_per_chunk bytes on padding this alloc.
-        //if (chunk->size >= rounded_bytes * 2 ||
-        //    static_cast<int64_t>(chunk->size) - static_cast<int64_t>(rounded_bytes) >= max_dead_bytes_per_chunk_) {
-        //      std::cout << "Split";
-        //  SplitChunk(h, rounded_bytes);
-        //  chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
-        //}
+        if (chunk->size >= rounded_bytes * 2 ||
+            static_cast<int64_t>(chunk->size) - static_cast<int64_t>(rounded_bytes) >= max_dead_bytes_per_chunk_) {
+          std::cout << "Split";
+          SplitChunk(h, rounded_bytes);
+          chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
+        }
 
         // The requested size of the returned chunk is what the user
         // has allocated.
