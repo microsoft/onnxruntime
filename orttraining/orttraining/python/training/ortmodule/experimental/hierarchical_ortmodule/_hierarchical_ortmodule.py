@@ -18,11 +18,11 @@ _force_exportable_set = set(
 )
 
 
-class IteratedORTModule(torch.nn.Module):
+class _IteratedORTModule(torch.nn.Module):
     """
     It's possible that a module instance is called multiple times in a single forward() call with different inputs.
     If the number of inputs or the data types are different, the exported graph for a given input set cannot be used
-    for others. The IteratedORTModule class is used to handle this case. It creates multiple ORTModule instances
+    for others. The _IteratedORTModule class is used to handle this case. It creates multiple ORTModule instances
     for a given nn.Module instance and uses one of them for each input set.
 
     NOTE that we assume that for each step run, the running order of different input sets are same.
@@ -32,7 +32,7 @@ class IteratedORTModule(torch.nn.Module):
     """
 
     def __init__(self, module, count, log_level, save_onnx, onnx_prefix):
-        super(IteratedORTModule, self).__init__()
+        super(_IteratedORTModule, self).__init__()
         assert count > 1
         self._count = count
         self._it = count - 1
@@ -113,7 +113,7 @@ class HierarchicalORTModule(torch.nn.Module):
         # NOTE that if a module is not called from forward(), it will fail to be captured by this hook.
         def recursive_hook(module):
             # We cannot skip module in whitelist because it's possible that a module is called multiple times
-            # so that we still need to know the number of different input sets and use IteratedORTModule to handle it.
+            # so that we still need to know the number of different input sets and use _IteratedORTModule to handle it.
             handle_pool.append(module.register_forward_pre_hook(record_args))
             for _, sub_module in module._modules.items():
                 if isinstance(sub_module, torch.nn.ModuleList):
@@ -130,18 +130,17 @@ class HierarchicalORTModule(torch.nn.Module):
         def check_exportable(module):
             def try_export(module, args):
                 try:
-                    with tempfile.NamedTemporaryFile(prefix="sub-module") as temp:
-                        with torch.no_grad():
-                            torch.onnx.export(
-                                module,
-                                args,
-                                temp,
-                                opset_version=ortmodule.ONNX_OPSET_VERSION,
-                                do_constant_folding=False,
-                                export_params=False,
-                                keep_initializers_as_inputs=True,
-                                training=torch.onnx.TrainingMode.TRAINING,
-                            )
+                    with tempfile.NamedTemporaryFile(prefix="sub-module") as temp, torch.no_grad():
+                        torch.onnx.export(
+                            module,
+                            args,
+                            temp,
+                            opset_version=ortmodule.ONNX_OPSET_VERSION,
+                            do_constant_folding=False,
+                            export_params=False,
+                            keep_initializers_as_inputs=True,
+                            training=torch.onnx.TrainingMode.TRAINING,
+                        )
                 except Exception as e:
                     if self._log_level <= LogLevel.WARNING:
                         warnings.warn(
@@ -224,7 +223,7 @@ class HierarchicalORTModule(torch.nn.Module):
                         sub_new_prefix = new_prefix + "_" + item_name
                         if is_supported(sub_module_item):
                             if sub_module_item in module_arg_pool and len(module_arg_pool[sub_module_item]) > 1:
-                                sub_module._modules[item_name] = IteratedORTModule(
+                                sub_module._modules[item_name] = _IteratedORTModule(
                                     sub_module_item,
                                     len(module_arg_pool[sub_module_item]),
                                     self._log_level,
@@ -245,7 +244,7 @@ class HierarchicalORTModule(torch.nn.Module):
                     if is_supported(sub_module):
                         # Just wrap it as ORTModule when possible.
                         if sub_module in module_arg_pool and len(module_arg_pool[sub_module]) > 1:
-                            sub_module_dict[name] = IteratedORTModule(
+                            sub_module_dict[name] = _IteratedORTModule(
                                 sub_module, len(module_arg_pool[sub_module]), self._log_level, save_onnx, new_prefix
                             )
                         else:

@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
 from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import HierarchicalORTModule, IteratedORTModule
+from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import HierarchicalORTModule
 
 
 class A(nn.Module):
@@ -185,7 +185,7 @@ class MainWithNonForwardCall(nn.Module):
 
 def test_hierarchical_ortmodule():
     def count_ortmodule(module, is_iterated=False):
-        n = 1 if isinstance(module, IteratedORTModule if is_iterated else ORTModule) else 0
+        n = 1 if type(module).__name__ == ("_IteratedORTModule" if is_iterated else "ORTModule") else 0
         for sub in module._modules.values():
             n = n + count_ortmodule(sub, is_iterated)
         return n

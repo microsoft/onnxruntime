@@ -75,7 +75,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
     try:
         name = kwargs["name"]
         if name in BANNED_AUTOGRAD_FUNCTION_NAMES and (
-            not ortmodule._defined_from_envvar("ALLOW_AUTOGRAD_CHECKPOINT", 0)
+            not ortmodule._defined_from_envvar("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", 0)
             or name != torch.utils.checkpoint.CheckpointFunction.__name__
         ):
             raise Exception(
@@ -249,7 +249,9 @@ def _post_process_after_export(exported_model, enable_custom_autograd_function, 
 
 def _post_process_enabling_autograd_fallback(exported_model):
     registered_name_mappings = {}
-    skipped_autograd_function_list = ortmodule._defined_from_envvar("SKIPPED_AUTOGRAD_FUNCTIONS", "").split(",")
+    skipped_autograd_function_list = ortmodule._defined_from_envvar("ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS", "").split(
+        ","
+    )
     for kclass in torch.autograd.Function.__subclasses__():
         if full_name(kclass) in skipped_autograd_function_list:
             continue

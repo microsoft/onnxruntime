@@ -1144,7 +1144,7 @@ def test_checkpoint_function():
         print("Ref:")
         print(y_ref)
 
-        os.environ["ALLOW_AUTOGRAD_CHECKPOINT"] = "1"
+        os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"] = "1"
 
         m = ORTModule(m)
 
@@ -1159,7 +1159,7 @@ def test_checkpoint_function():
         print("Train:")
         assert torch.allclose(y_ref, y_train)
 
-        del os.environ["ALLOW_AUTOGRAD_CHECKPOINT"]
+        del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]
 
     run()
 
@@ -1194,7 +1194,7 @@ def test_skipped_autograd_function():
     output_size = 1024
 
     os.environ[
-        "SKIPPED_AUTOGRAD_FUNCTIONS"
+        "ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS"
     ] = "orttraining_test_ortmodule_autograd.test_skipped_autograd_function.<locals>.TestSkippedFunction"
 
     m = ORTModule(TestSkippedModel(output_size).to("cuda"))
@@ -1207,4 +1207,4 @@ def test_skipped_autograd_function():
 
     assert not can_run
 
-    del os.environ["SKIPPED_AUTOGRAD_FUNCTIONS"]
+    del os.environ["ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS"]
