@@ -252,8 +252,6 @@ size_t BFCArena::RoundedBytes(size_t bytes) {
       (kMinAllocationSize *
        ((bytes + kMinAllocationSize - 1) / kMinAllocationSize));
   ORT_ENFORCE(size_t{0} == rounded_bytes % kMinAllocationSize);
-  std::cout << rounded_bytes;
-  std::cout << kMinAllocationSize;
   return rounded_bytes;
 }
 
@@ -314,6 +312,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   std::lock_guard<OrtMutex> lock(lock_);
   void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
   if (ptr != nullptr) {
+    ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(left_X_ptr_) % 2048 == 0);
     return ptr;
   }
 
@@ -325,6 +324,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   if (status.IsOK()) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
     if (ptr != nullptr) {
+      ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(left_X_ptr_) % 2048 == 0);
       return ptr;
     } else {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,

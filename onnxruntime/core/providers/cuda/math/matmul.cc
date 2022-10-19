@@ -169,7 +169,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         i =  reinterpret_cast<std::uintptr_t>(right_X_ptr_) % 2048;
         std::cout << i << "\n";
 
-        i = reinterpret_cast<std::uintptr_t>(Y_ptr_) % 2048;
+        i = reinterpret_cast<std::uintptr_t>(Y_ptr_) % 2048;  
         std::cout << i << "\n";
 
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
