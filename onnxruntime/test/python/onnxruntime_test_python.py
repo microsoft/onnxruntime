@@ -385,7 +385,7 @@ class TestInferenceSession(unittest.TestCase):
     def testRunModelFromBytes(self):
         with open(get_name("mul_1.onnx"), "rb") as f:
             content = f.read()
-        sess = create_inference_session(content, providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(content, providers=onnxrt.get_available_providers())
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -742,7 +742,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSequenceConstruct(self):
         sess = create_inference_session(
-            get_name("sequence_construct.onnx"),
+            "sequence_construct.onnx",
             providers=available_providers_without_tvm,
         )
 
