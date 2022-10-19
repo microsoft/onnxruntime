@@ -951,7 +951,7 @@ namespace Dml
                                 FAIL,
                                 "Having memory pattern enabled is not supported "
                                 "while using the DML Execution Provider. "
-                                "So disabling it for this session since it uses the DML Execution Provider.");
+                                "Please disable it for this session by setting 'so.enable_mem_pattern = false;'.");
         }
 
         // Parallel execution mode does not support DML EP
@@ -960,7 +960,7 @@ namespace Dml
                 ONNXRUNTIME,
                 FAIL,
                 "Parallel execution mode does not support the DML Execution Provider. "
-                "Please set the execution mode as sequential for this session since it uses the DML Execution Provider.");
+                "Please set the execution mode as sequential for this session.");
         }
         return onnxruntime::common::Status::OK();
     }
