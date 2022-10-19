@@ -290,6 +290,7 @@ jobs:
           --target_dir training_e2e_test_data \
           --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+    retryCountOnTaskFailure: 2
     displayName: 'Download onnxruntime_training_data.zip data'
 
   - task: CmdLine@2
