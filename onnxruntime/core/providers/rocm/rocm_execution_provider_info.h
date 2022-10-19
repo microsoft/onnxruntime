@@ -3,8 +3,10 @@
 
 #pragma once
 
+#include <functional>
 #include <limits>
 
+#include "core/common/hash_combine.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/provider_options.h"
@@ -37,7 +39,6 @@ struct ROCMExecutionProviderExternalAllocatorInfo {
 namespace rocm {
 struct TunableOpInfo {
   bool enabled{false};
-  int dummy_config{};
 };
 }  // namespace rocm
 
@@ -62,3 +63,12 @@ struct ROCMExecutionProviderInfo {
   static ProviderOptions ToProviderOptions(const ROCMExecutionProviderInfo& info);
 };
 }  // namespace onnxruntime
+
+template<>
+struct std::hash<::onnxruntime::rocm::TunableOpInfo> {
+  size_t operator()(const ::onnxruntime::rocm::TunableOpInfo& info) const {
+    size_t seed_and_value{0xbc9f1d34};
+    onnxruntime::HashCombine(info.enabled, seed_and_value);
+    return seed_and_value;
+  }
+};
