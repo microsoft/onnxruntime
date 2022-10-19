@@ -1174,6 +1174,19 @@ struct OrtApi {
    * Get the current device id of the GPU execution provider (cuda/tensorrt/rocm).
    */
   ORT_API2_STATUS(GetCurrentGpuDeviceId, _In_ int* device_id);
+
+  /**
+  * On windows, set group affinity for intra thread pool threads.
+  * affinity_string is of format:
+  * "group,processor_mask;group,processor_mask;group,processor_mask;..."
+  * where group is the processor group, and processor mask specify which processor the thread should attach to.
+  * for example, processor 1 and 2 in group 1 will be represented as:
+  * 0,3
+  * where processor 2 and 4 in group 2 will have:
+  * 1,10
+  * the number of "group,processor_mask" pairs in the affinity_string should be intra_op_num_threads - 1, since ort will not set affinity for main thread
+  */
+  ORT_API2_STATUS(SetGlobalIntraThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
 };
 
 /*

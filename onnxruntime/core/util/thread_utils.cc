@@ -40,6 +40,44 @@ GroupAffinities GetGroupAffinities() {
 #endif
 
 namespace concurrency {
+
+bool ExtractAffinityFromString(const char* affinity_string, GroupAffinities& group_affinities) {
+  group_affinities.clear();
+  auto Split = [](const std::string& s, char splitor) {
+    std::vector<std::string> ans;
+    std::string tmp;
+    std::stringstream ss;
+    ss << s;
+    while (getline(ss, tmp, splitor)) {
+      if (!tmp.empty()) {
+        ans.push_back(tmp);
+      }
+    }
+    return ans;
+  };
+  auto ReadGroupAffinity = [&](const std::string& s) {
+    auto affinity_strings = Split(s, ',');
+    GroupAffinity group_affinity;
+    group_affinity.first = std::stoull(affinity_strings[0].c_str());
+    group_affinity.second = std::stoull(affinity_strings[1].c_str());
+    return std::move(group_affinity);
+  };
+  auto ReadGroupAffinities = [&](const std::string& s) {
+    auto affinity_strings = Split(s, ';');
+    GroupAffinities group_affinities;
+    for (const auto& iter : affinity_strings) {
+      group_affinities.push_back(ReadGroupAffinity(iter));
+    }
+    return group_affinities;
+  };
+  try {
+    group_affinities = ReadGroupAffinities(affinity_string);
+  } catch (...) {
+    return false;
+  }
+  return true;
+}
+
 static std::unique_ptr<ThreadPool>
 CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (options.thread_pool_size == 1)
@@ -53,7 +91,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
 #ifdef _WIN32
     to.group_affinities = GetGroupAffinities();
     options.thread_pool_size = static_cast<int>(to.group_affinities.size());
-    std::cout << "thread_pool size (including the main thread): " << options.thread_pool_size << std::endl;
+    std::cout << "setting default affinity, thread_pool size (including the main thread): " << options.thread_pool_size << std::endl;
     for (int i = 0; i < options.thread_pool_size - 1; ++i) {
       std::cout << "sub-thread " << i + 1 << " affnity set to: group "
                 << to.group_affinities[i].first << " with processor bitmask "
@@ -71,6 +109,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     ORT_ENFORCE(static_cast<int>(options.group_affinities.size()) == options.thread_pool_size - 1,
                 "Invalid thread options, number of group affinities must equal to options.thread_pool_size - 1");
     to.group_affinities = options.group_affinities;
+    std::cout << "applying non-default affinity:" << std::endl;
     for (int i = 0; i < options.thread_pool_size - 1; ++i) {
       std::cout << "sub-thread " << i + 1 << " affnity set to: group "
                 << to.group_affinities[i].first << " with processor bitmask "
@@ -147,6 +186,19 @@ ORT_API_STATUS_IMPL(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_opt
   }
   tp_options->intra_op_thread_pool_params.set_denormal_as_zero = true;
   tp_options->inter_op_thread_pool_params.set_denormal_as_zero = true;
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(SetGlobalIntraThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string) {
+  if (!tp_options) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null OrtThreadingOptions");
+  }
+  if (!affinity_string) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Received null affinity string");
+  }
+  if (!onnxruntime::concurrency::ExtractAffinityFromString(affinity_string, tp_options->intra_op_thread_pool_params.group_affinities)) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Affinity string invalid, failed to set affinity to intra thread option");
+  }
   return nullptr;
 }
 

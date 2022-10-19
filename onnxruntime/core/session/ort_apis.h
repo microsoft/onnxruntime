@@ -243,6 +243,7 @@ ORT_API_STATUS_IMPL(SessionGetProfilingStartTimeNs, _In_ const OrtSession* sess,
 ORT_API_STATUS_IMPL(SetGlobalIntraOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int intra_op_num_threads);
 ORT_API_STATUS_IMPL(SetGlobalInterOpNumThreads, _Inout_ OrtThreadingOptions* tp_options, int inter_op_num_threads);
 ORT_API_STATUS_IMPL(SetGlobalSpinControl, _Inout_ OrtThreadingOptions* tp_options, int allow_spinning);
+
 ORT_API_STATUS_IMPL(AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
                     _In_ const OrtValue* val);
 
@@ -259,4 +260,6 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_TensorRT,
                     _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptions* tensorrt_options);
 ORT_API_STATUS_IMPL(SetCurrentGpuDeviceId, _In_ int device_id);
 ORT_API_STATUS_IMPL(GetCurrentGpuDeviceId, _In_ int* device_id);
+
+ORT_API_STATUS_IMPL(SetGlobalIntraThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);
 }  // namespace OrtApis

@@ -246,34 +246,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       //////////////////////////// start to read group affinity //////////////////////////////
       auto affinity_string = session_options_.GetConfigOrDefault(kOrtSessionOptionsConfigThreadGroupAffinities, "");
 #ifdef _WIN32
-      auto Split = [](const std::string& s, char splitor) {
-        std::vector<std::string> ans;
-        std::string tmp;
-        std::stringstream ss;
-        ss << s;
-        while (getline(ss, tmp, splitor)) {
-          if (!tmp.empty()) {
-            ans.push_back(tmp);
-          }
-        }
-        return ans;
-      };
-      auto ReadGroupAffinity = [&](const std::string& s) {
-        auto affinity_strings = Split(s, ',');
-        GroupAffinity group_affinity;
-        group_affinity.first = std::stoull(affinity_strings[0].c_str());
-        group_affinity.second = std::stoull(affinity_strings[1].c_str());
-        return std::move(group_affinity);
-      };
-      auto ReadGroupAffinities = [&](const std::string& s) {
-        auto affinity_strings = Split(s, ';');
-        GroupAffinities group_affinities;
-        for (const auto& iter : affinity_strings) {
-          group_affinities.push_back(ReadGroupAffinity(iter));
-        }
-        return group_affinities;
-      };
-      to.group_affinities = ReadGroupAffinities(affinity_string);
+      ORT_ENFORCE(onnxruntime::concurrency::ExtractAffinityFromString(affinity_string.c_str(), to.group_affinities),
+                  "failed to extract affinity, invalid affinity string");
       if (!to.group_affinities.empty()) {
         ORT_ENFORCE((to.thread_pool_size - 1) == static_cast<int>(to.group_affinities.size()),
                     "number of affinities must equal to thread_pool_size minus 1");
