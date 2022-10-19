@@ -31,7 +31,7 @@ struct ConfigOptions {
   std::string GetConfigOrDefault(const std::string& config_key, const std::string& default_value) const noexcept;
 
   // Add a config pair (config_key, config_value) to this instance of ConfigOptions
-  common::Status AddConfigEntry(const char* config_key, const char* config_value) noexcept;
+  Status AddConfigEntry(const char* config_key, const char* config_value) noexcept;
 };
 
 }  // namespace onnxruntime
