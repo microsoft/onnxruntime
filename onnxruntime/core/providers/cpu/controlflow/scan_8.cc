@@ -417,8 +417,9 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
     }
 
     // Call the subgraph for each item in the sequence
-    status = IterateSequence(context_, session_state_, batch_loop_state_variables[static_cast<uint64_t>(b)], scan_input_stream_iterators,
-                             sequence_len, info_.num_loop_state_variables, static_cast<uint64_t>(info_.num_variadic_inputs), info_.num_outputs,
+    status = IterateSequence(context_, session_state_, batch_loop_state_variables[static_cast<uint64_t>(b)],
+                             scan_input_stream_iterators,
+                             sequence_len, info_.num_loop_state_variables, info_.num_variadic_inputs, info_.num_outputs,
                              implicit_inputs_, output_iterators_, ffm);
 
     // zero out any remaining values in the sequence

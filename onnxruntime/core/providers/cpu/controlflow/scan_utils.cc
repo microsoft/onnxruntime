@@ -77,11 +77,11 @@ void ReadDirections(const OpKernelInfo& info, const std::string& attr_name,
   }
 }
 
-Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgraph,
-                      int output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
-                      std::unique_ptr<OutputIterator>& output_iterator,
-                      const scan::detail::DeviceHelpers::CreateMutableSlicer& create_slicer_func,
-                      const scan::detail::DeviceHelpers::ZeroData& zero_data_func,
+Status AllocateOutput(OpKernelContextInternal &context, const GraphViewer &subgraph,
+                      size_t output_index, bool is_loop_state_var, int64_t batch_size, int64_t sequence_len,
+                      std::unique_ptr<OutputIterator> &output_iterator,
+                      const scan::detail::DeviceHelpers::CreateMutableSlicer &create_slicer_func,
+                      const scan::detail::DeviceHelpers::ZeroData &zero_data_func,
                       ScanDirection direction,
                       bool temporary) {
   // use the shape from the subgraph output. we require this to be specified in the model or inferable.

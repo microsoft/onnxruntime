@@ -385,15 +385,15 @@ Status ScanImpl::AllocateOutputTensors() {
     output_iterators_.push_back(std::move(output_iter));
   }
 
-  for (int i = info_.num_loop_state_variables, end = info_.num_outputs; i < end; ++i) {
+  for (auto i = info_.num_loop_state_variables, end = info_.num_outputs; i < end; ++i) {
     ScanDirection direction = ScanDirection::kForward;
-    const int scan_output_index = i - info_.num_loop_state_variables;
-    if (static_cast<size_t>(scan_output_index) < output_directions_.size()) {
-      direction = static_cast<ScanDirection>(output_directions_[(uint64_t)scan_output_index]);
+    auto scan_output_index = i - info_.num_loop_state_variables;
+    if (scan_output_index < output_directions_.size()) {
+      direction = static_cast<ScanDirection>(output_directions_[scan_output_index]);
     }
 
     // if we need to transpose later, we need to use a temporary output buffer when executing the subgraph
-    bool temporary = output_axes_from_attribute_[(uint64_t)scan_output_index] != 0;
+    bool temporary = output_axes_from_attribute_[scan_output_index] != 0;
 
     status = AllocateOutput(context_, info_.subgraph, i, false, -1, sequence_len_, output_iter,
                             device_helpers_.create_mutable_slicer_func, device_helpers_.set_data_to_zero_func,
