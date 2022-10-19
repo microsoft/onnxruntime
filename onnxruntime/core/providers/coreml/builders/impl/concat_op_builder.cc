@@ -74,7 +74,7 @@ bool ConcatOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
   }
 
   NodeAttrHelper helper(node);
-  auto axis = static_cast<size_t>(HandleNegativeAxis(helper.Get("axis", 1), static_cast<int64_t>(rank)));
+          auto axis = static_cast<size_t>(HandleNegativeAxis(helper.Get("axis", 1), rank));
   if (rank != axis + 3) {
     LOGS(logger, VERBOSE) << "Concat only support axis to be -3, actual axis: " << axis
                           << ", actual rank: " << rank;

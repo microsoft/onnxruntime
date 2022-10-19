@@ -72,7 +72,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
         &p);
   } else if (conv_type == OpComputeType::op_compute_type_qs8) {
     const float output_scale = quant_param[2].first[0];
-    const int8_t output_zero_point = static_cast<int8_t>(quant_param[2].second);
+    const int8_t output_zero_point = quant_param[2].second;
     const int8_t output_min = xnn_u8s8_quantize<int8_t>(foutput_min, output_scale, output_zero_point);
     const int8_t output_max = xnn_u8s8_quantize<int8_t>(foutput_max, output_scale, output_zero_point);
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
@@ -95,7 +95,7 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
   } else if (conv_type == OpComputeType::op_compute_type_qs8_per_channel) {
     auto* B_data = Bias ? Bias->Data<int32_t>() : nullptr;
     const float output_scale = quant_param[2].first[0];
-    const int8_t output_zero_point = static_cast<int8_t>(quant_param[2].second);
+    const int8_t output_zero_point = quant_param[2].second;
     const int8_t output_min = xnn_u8s8_quantize<int8_t>(foutput_min, output_scale, output_zero_point);
     const int8_t output_max = xnn_u8s8_quantize<int8_t>(foutput_max, output_scale, output_zero_point);
     status = xnn_create_convolution2d_nhwc_qc8(
@@ -316,7 +316,7 @@ bool Conv::IsConvOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
     // if there's a bias input it must be constant
     int32_t bias_index = qtype == QuantizedOpType::QLinearConv ? 8 : 2;
     if (inputs.size() == size_t(bias_index + 1)) {
-      const auto& bias_arg = node_unit.Inputs()[static_cast<uint64_t>(bias_index)].node_arg;
+      const auto &bias_arg = node_unit.Inputs()[bias_index].node_arg;
       if (bias_arg.Exists() && !graph.IsConstantInitializer(bias_arg.Name(), true)) {
         break;
       }

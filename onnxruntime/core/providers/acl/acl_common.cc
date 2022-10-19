@@ -18,7 +18,7 @@ namespace acl {
 
 arm_compute::TensorShape ACLTensorShape(const TensorShape& tensorShape, unsigned int extDim) {
   arm_compute::TensorShape shape;
-  unsigned int inDim = static_cast<unsigned int>(tensorShape.NumDimensions());
+  unsigned int inDim = tensorShape.NumDimensions();
   unsigned int outDim = (extDim > inDim) ? extDim : inDim;
 
   // arm_compute tensors are in reversed order (width, height, channels, batch).

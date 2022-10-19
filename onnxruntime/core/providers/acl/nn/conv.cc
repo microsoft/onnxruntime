@@ -183,8 +183,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     }
 
     arm_compute::PadStrideInfo aclPadStride = arm_compute::PadStrideInfo(aclStrides[0], aclStrides[1],
-                                                                         aclPads[0], aclPads[1], aclPads[2], aclPads[3], arm_compute::DimensionRoundingType::FLOOR);
-    unsigned int aclDilation0 = (dilations.size() == 2) ? static_cast<uint32_t>(dilations[1]) : 1;
+                                                                         aclPads[0], aclPads[1], aclPads[2], aclPads[3],
+                                                                         arm_compute::DimensionRoundingType::FLOOR);
+    unsigned int aclDilation0 = (dilations.size() == 2) ? dilations[1] : 1;
 
     LOGS_DEFAULT(VERBOSE) << "padding: {" << aclPads[0] << "," << aclPads[1] << "," << aclPads[2] << "," << aclPads[3] << "}";
     LOGS_DEFAULT(VERBOSE) << "strides: {" << aclStrides[0] << "," << aclStrides[1] << "}";

@@ -97,7 +97,7 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
     ORT_RETURN_IF_ERROR(bn_tensor_desc.Set(data_desc, cudnn_batch_norm_mode_));
 
     // Convert the scale, B, mean, var to float
-    const uint64_t C = static_cast<const uint64_t>(x_shape.GetDims()[1]);
+    const int64_t C = x_shape.GetDims()[1];
     auto f_scale = GetScratchBuffer<float>(C);
     auto f_B = GetScratchBuffer<float>(C);
     auto f_mean = GetScratchBuffer<float>(C);

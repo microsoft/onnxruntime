@@ -61,7 +61,7 @@ bool IsDirExists(const std::string& pathname) {
   struct stat info;
   if(stat(pathname.c_str(), &info) != 0) {
     LOGS_DEFAULT(INFO) << log_tag << "cannot access pathname: " << pathname;
-    return false;
+	  return false;
   } else if(info.st_mode & S_IFDIR) {
     LOGS_DEFAULT(INFO) << log_tag << "pathname exists: " << pathname;
     return true;
@@ -125,23 +125,24 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
 
   if (!global_context.is_wholly_supported_graph) {
     std::map<std::string, std::string> result_to_output;
-    for (auto& result : ng_function->get_results()) {
+    for (auto &result: ng_function->get_results()) {
       result_to_output[result->get_friendly_name()] = result->input_value(0).get_node_shared_ptr()->get_friendly_name();
     }
     ngraph::pass::ConstantFolding().run_on_function(ng_function);
-    auto& results = const_cast<::ngraph::ResultVector&>(ng_function->get_results());
+    auto &results = const_cast<::ngraph::ResultVector &>(ng_function->get_results());
     size_t index = results.size() - 1;
 #if defined (OV_API_20)
     for (auto it = results.rbegin(); it != results.rend(); ++it) {
-      if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
-        const_outputs_map[(*it)->get_friendly_name()] = const_node;
-        results.erase(results.begin() + index);
-      }
-      --index;
+    if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
+      const_outputs_map[(*it)->get_friendly_name()] = const_node;
+      results.erase(results.begin() + index);
     }
+    --index;
+  }
 #else
     for (auto it = results.rbegin(); it != results.rend(); ++it) {
-      if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
+      if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>(
+              (*it)->input_value(0).get_node_shared_ptr())) {
         const_outputs_map[result_to_output.at((*it)->get_friendly_name())] = const_node;
         results.erase(results.begin() + index);
       }
@@ -273,67 +274,71 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
   }
 }
 
-Ort::UnownedValue
-GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
-                OVInferRequestPtr infer_request,
-                std::string output_name,
-                std::unordered_map<std::string, int> output_names) {
-
-  auto graph_output_blob = infer_request->GetTensor(output_name);
+        OrtValue *
+        GetOutputTensor(Ort::CustomOpApi &ort, OrtKernelContext *context, size_t batch_size,
+                        OVInferRequestPtr infer_request,
+                        std::string output_name,
+                        std::unordered_map<std::string, int> output_names) {
+          OrtValue *output_tensor;
+          auto graph_output_blob = infer_request->GetTensor(output_name);
 
 #if defined (OV_API_20)
-  auto graph_output_dims = graph_output_blob->get_shape();
+          auto graph_output_dims = graph_output_blob->get_shape();
 #else
-  auto graph_output_dims = graph_output_blob->getTensorDesc().getDims();
+          auto graph_output_dims = graph_output_blob->getTensorDesc().getDims();
 #endif
 
   if (batch_size > 1) {
     // Add the batch size as dim 0.
     graph_output_dims.insert(graph_output_dims.begin(), batch_size);
   }
-  size_t num_dims = graph_output_dims.size();
-  std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
-  for (size_t j = 0; j < num_dims; j++) {
-    output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
-  }
-  auto it = output_names.find(output_name);
-  if (it == output_names.end()) {
-    ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
-  }
-  size_t index = static_cast<size_t>(it->second);
-  return context.GetOutput(index, output_shape.get(), num_dims);
-}
+          size_t num_dims = graph_output_dims.size();
+          std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
+          for (size_t j = 0; j < num_dims; j++) {
+            output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
+          }
+          auto it = output_names.find(output_name);
+          if (it == output_names.end()) {
+            ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
+          }
+          int index = it->second;
+          output_tensor = ort.KernelContext_GetOutput(context, index, output_shape.get(), num_dims);
+          return output_tensor;
+        }
 
-Ort::UnownedValue
-GetOutputTensor(Ort::KernelContext& context,
-                std::string output_name,
-                std::unordered_map<std::string, int> output_names,
-                std::shared_ptr<ngraph::Node> node) {
+        OrtValue *
+        GetOutputTensor(Ort::CustomOpApi &ort, OrtKernelContext *context,
+                        std::string output_name,
+                        std::unordered_map<std::string, int> output_names,
+                        std::shared_ptr<ngraph::Node> node) {
+          OrtValue *output_tensor;
 
 #if (defined OV_API_20)
-  // Find position of '/' in the output_name
-  int pos = output_name.find("/");
-  // Copy the substring from start to pos
-  output_name = output_name.substr(0 , pos);
+          // Find position of '/' in the output_name
+          int pos = output_name.find("/");
+          // Copy the substring from start to pos
+          output_name = output_name.substr(0 , pos);
 #endif
 
-  auto it = output_names.find(output_name);
-  if (it == output_names.end()) {
-    ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
-  }
-  size_t index = static_cast<size_t>(it->second);
-  auto shape = node->get_shape();
+          auto it = output_names.find(output_name);
+          if (it == output_names.end()) {
+            ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
+          }
+          int index = it->second;
+          auto shape = node->get_shape();
 
-  size_t num_dims = shape.size();
-  std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
-  for (size_t j = 0; j < num_dims; j++) {
-    output_shape[j] = static_cast<int64_t>(shape[j]);
-  }
-  return context.GetOutput(index, output_shape.get(), num_dims);
-}
+          size_t num_dims = shape.size();
+          std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
+          for (size_t j = 0; j < num_dims; j++) {
+            output_shape[j] = static_cast<int64_t>(shape[j]);
+          }
+          output_tensor = ort.KernelContext_GetOutput(context, index, output_shape.get(), num_dims);
+
+          return output_tensor;
+        }
 
 int GetFirstAvailableDevice(GlobalContext& global_context) {
-  uint64_t i = 0;
+  int i = 0;
   //Get the first available VAD-M device and set the device to busy
   while (i < 8) {
     bool device = global_context.deviceAvailableList[i];
@@ -348,33 +353,34 @@ int GetFirstAvailableDevice(GlobalContext& global_context) {
   if (i == 8) {
     i = 0;
     global_context.deviceAvailableList[i] = false;
-    for (uint64_t j = 1; j < 8; j++) {
+    for (int j = 1; j < 8; j++) {
       global_context.deviceAvailableList[j] = true;
     }
   }
-  return static_cast<int>(i);
+  return i;
 }
 
-void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::UnownedValue& out_tensor) {
-  switch (node->get_element_type()) {
-    case ngraph::element::Type_t::f32: {
-      FillOutputHelper<float>(out_tensor, node);
-      break;
-    }
-    case ngraph::element::Type_t::boolean: {
-      FillOutputHelper<char>(out_tensor, node);
-      break;
-    }
-    case ngraph::element::Type_t::i32: {
-      FillOutputHelper<int32_t>(out_tensor, node);
+        void
+        FillOutputsWithConstantData(Ort::CustomOpApi &ort, std::shared_ptr<ngraph::Node> node, OrtValue *out_tensor) {
+          switch (node->get_element_type()) {
+            case ngraph::element::Type_t::f32: {
+              FillOutputHelper<float>(ort, out_tensor, node);
+              break;
+            }
+            case ngraph::element::Type_t::boolean: {
+              FillOutputHelper<char>(ort, out_tensor, node);
+              break;
+            }
+            case ngraph::element::Type_t::i32: {
+              FillOutputHelper<int32_t>(ort, out_tensor, node);
       break;
     }
     case ngraph::element::Type_t::i64: {
-      FillOutputHelper<int64_t>(out_tensor, node);
+      FillOutputHelper<int64_t>(ort, out_tensor, node);
       break;
     }
     case ngraph::element::Type_t::f16: {
-      FillOutputHelper<float>(out_tensor, node);
+      FillOutputHelper<float>(ort, out_tensor, node);
       break;
     }
     default:
@@ -382,69 +388,70 @@ void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::Unowne
   }
 }
 
-template <typename T>
-void FillOutputHelper(Ort::UnownedValue& out_tensor, std::shared_ptr<ngraph::Node> node) {
-  auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>(node);
-  auto res = const_node->cast_vector<T>();
-  T* tensor_data = out_tensor.GetTensorMutableData<T>();
-  std::copy(res.begin(), res.end(), tensor_data);
-}
+        template<typename T>
+        void FillOutputHelper(Ort::CustomOpApi &ort, OrtValue *out_tensor, std::shared_ptr<ngraph::Node> node) {
+          auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>(node);
+          auto res = const_node->cast_vector<T>();
+          T *tensor_data = ort.GetTensorMutableData<T>(out_tensor);
+          std::copy(res.begin(), res.end(), tensor_data);
+        }
 
-void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t batch_slice_idx,
-                   std::string input_name, Ort::KernelContext& context,
-                   InferenceEngine::Precision precision, const SubGraphContext& subgraph_context) {
+void FillInputBlob(InferenceEngine::Blob::Ptr &inputBlob, size_t batch_slice_idx,
+                   std::string input_name, Ort::CustomOpApi &ort, OrtKernelContext *context,
+                   InferenceEngine::Precision precision, const SubGraphContext &subgraph_context) {
   auto minput = InferenceEngine::as<InferenceEngine::MemoryBlob>(inputBlob);
   auto minputHolder = minput->wmap();
 
-  auto input_data = minputHolder.as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
+  auto input_data = minputHolder.as<InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type * >();
   size_t input_data_size = inputBlob->byteSize();
 
-  auto tensor = context.GetInput(static_cast<uint64_t>(subgraph_context.input_names.at(input_name)));
-  auto mem_info = tensor.GetTensorMemoryInfo();
-  if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+  const OrtValue *tensor = ort.KernelContext_GetInput(context, subgraph_context.input_names.at(input_name));
+  auto mem_info = ort.GetTensorMemoryInfo(tensor);
+  if (strcmp(mem_info->name, OpenVINO_GPU) == 0) {
     ORT_THROW(log_tag + "IO Buffering is not enabled, Please enable Input on CPU");
   }
-  auto tensor_shape = tensor.GetTensorTypeAndShapeInfo();
-  auto elem_type = tensor_shape.GetElementType();
+  auto tensor_shape = ort.GetTensorTypeAndShape(tensor);
+  auto elem_type = ort.GetTensorElementType(tensor_shape);
 
   if ((elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) &&
       (precision == InferenceEngine::Precision::I32)) {
-    const int64_t* tensor_data_64 = tensor.GetTensorData<int64_t>();
+    const int64_t *tensor_data_64 = ort.GetTensorData<int64_t>(tensor);
     auto data_len = (input_data_size * 2) / sizeof(int64_t);
-    const int64_t* batch_memory_offset = tensor_data_64 + data_len * batch_slice_idx;
+    const int64_t *batch_memory_offset = tensor_data_64 + data_len * batch_slice_idx;
 
-    std::copy(batch_memory_offset, batch_memory_offset + data_len, (uint32_t*)input_data);
+    std::copy(batch_memory_offset, batch_memory_offset + data_len, (uint32_t *) input_data);
   } else {
     // Copy input data into OpenVINO's input buffer
-    const char* tensor_data = tensor.GetTensorData<char>();
-    const char* batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
+    const char *tensor_data = ort.GetTensorData<char>(tensor);
+    const char *batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
     std::memcpy(input_data, batch_memory_offset, input_data_size);
   }
 }
 
-void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, Ort::UnownedValue& output_tensor,
-                    InferenceEngine::Precision precision, size_t batch_slice_idx) {
-  auto moutput = InferenceEngine::as<InferenceEngine::MemoryBlob>(outputBlob);
+        void FillOutputBlob(InferenceEngine::Blob::Ptr &outputBlob, OrtValue *output_tensor,
+                            Ort::CustomOpApi &ort, InferenceEngine::Precision precision, size_t batch_slice_idx) {
+          auto moutput = InferenceEngine::as<InferenceEngine::MemoryBlob>(outputBlob);
 
-  auto moutputHolder = moutput->rmap();
+          auto moutputHolder = moutput->rmap();
 
-  const auto output_data = moutputHolder.as<const InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type*>();
+          const auto output_data = moutputHolder.as<const InferenceEngine::PrecisionTrait<InferenceEngine::Precision::FP32>::value_type *>();
 
-  size_t output_data_size = outputBlob->byteSize();
-  auto tensor_shape = output_tensor.GetTensorTypeAndShapeInfo();
-  const auto elem_type = tensor_shape.GetElementType();
+          size_t output_data_size = outputBlob->byteSize();
+          auto tensor_shape = ort.GetTensorTypeAndShape(output_tensor);
+          auto elem_type = ort.GetTensorElementType(tensor_shape);
 
-  if ((elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) &&
-      (precision == InferenceEngine::Precision::I32)) {
-    int64_t* tensor_data = output_tensor.GetTensorMutableData<int64_t>();
-    auto data_len = output_data_size / sizeof(int32_t);
-    int64_t* batch_memory_offset = tensor_data + data_len * batch_slice_idx;
+          if ((elem_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) &&
+              (precision == InferenceEngine::Precision::I32)) {
+            int64_t *tensor_data = ort.GetTensorMutableData<int64_t>(output_tensor);
+            auto data_len = output_data_size / sizeof(int32_t);
+            int64_t *batch_memory_offset = tensor_data + data_len * batch_slice_idx;
 
-    std::transform((int32_t*)output_data, ((int32_t*)output_data) + data_len, batch_memory_offset, static_cast_int64());
+            std::transform((int32_t *) output_data, ((int32_t *) output_data) + data_len, batch_memory_offset,
+                           static_cast_int64());
 
-  } else {
-    char* tensor_data = output_tensor.GetTensorMutableData<char>();
-    char* batch_memory_offset = tensor_data + output_data_size * batch_slice_idx;
+          } else {
+            char *tensor_data = ort.GetTensorMutableData<char>(output_tensor);
+            char *batch_memory_offset = tensor_data + output_data_size * batch_slice_idx;
 
     std::memcpy(batch_memory_offset, output_data, output_data_size);
   }
@@ -465,73 +472,73 @@ perfCountersSorted(std::map<std::string, InferenceEngine::InferenceEngineProfile
 }
 
 #if defined (OV_API_20)
-void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
-                   std::string input_name, Ort::KernelContext& context,
-                   const SubGraphContext& subgraph_context) {
+        void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
+                           std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
+                           const SubGraphContext& subgraph_context) {
 
-  size_t input_data_size = inputBlob->get_byte_size();
-  auto input_data = inputBlob->data();
-  auto tensor = context.GetInput(subgraph_context.input_names.at(input_name));
-  auto mem_info = tensor.GetTensorMemoryInfo();
-  if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
-    ORT_THROW(log_tag + "IO Buffering is not enabled, Please enable Input on CPU");
-  }
-  // Copy input data into OpenVINO's input buffer
-  const char* tensor_data = tensor.GetTensorData<char>();
-  const char* batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
-  std::memcpy(input_data, batch_memory_offset, input_data_size);
-}
+            size_t input_data_size = inputBlob->get_byte_size();
+            auto input_data = inputBlob->data();
+            const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context.input_names.at(input_name));
+            auto mem_info = ort.GetTensorMemoryInfo(tensor);
+            if (strcmp(mem_info->name, OpenVINO_GPU) == 0) {
+              ORT_THROW(log_tag + "IO Buffering is not enabled, Please enable Input on CPU");
+            }
+            // Copy input data into OpenVINO's input buffer
+            const char* tensor_data = ort.GetTensorData<char>(tensor);
+            const char* batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
+            std::memcpy(input_data, batch_memory_offset, input_data_size);
+        }
 
-void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
-                    size_t batch_slice_idx) {
-  auto output_data = outputBlob->data();
-  size_t output_data_size = outputBlob->get_byte_size();
-  char* tensor_data = output_tensor.GetTensorMutableData<char>();
-  char* batch_memory_offset = tensor_data + output_data_size * batch_slice_idx;
-  std::memcpy(batch_memory_offset, output_data, output_data_size);
-}
+        void FillOutputBlob(OVTensorPtr outputBlob, OrtValue* output_tensor,
+                            Ort::CustomOpApi& ort, size_t batch_slice_idx) {
+          auto output_data = outputBlob->data();
+          size_t output_data_size = outputBlob->get_byte_size();
+          char* tensor_data = ort.GetTensorMutableData<char>(output_tensor);
+          char* batch_memory_offset = tensor_data + output_data_size * batch_slice_idx;
+          std::memcpy(batch_memory_offset, output_data, output_data_size);
+        }
 
-void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
-                            std::ostream& stream, std::string deviceName) {
-  long long totalTime = 0;
-  // Print performance counts
-  stream << std::endl
-         << "performance counts:" << std::endl
-         << std::endl;
+        void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
+                                    std::ostream& stream, std::string deviceName) {
+          long long totalTime = 0;
+          // Print performance counts
+          stream << std::endl
+                 << "performance counts:" << std::endl
+                 << std::endl;
 
-  for (const auto& it : performanceMap) {
-    std::string toPrint(it.node_name);
-    const int maxLayerName = 30;
+          for (const auto& it : performanceMap) {
+            std::string toPrint(it.node_name);
+            const int maxLayerName = 30;
 
-    if (it.node_name.length() >= maxLayerName) {
-      toPrint = it.node_name.substr(0, maxLayerName - 4);
-      toPrint += "...";
-    }
-    stream << std::setw(maxLayerName) << std::left << toPrint;
-    switch (it.status) {
-      case OVProfilingInfo::Status::EXECUTED:
-        stream << std::setw(15) << std::left << "EXECUTED";
-        break;
-      case OVProfilingInfo::Status::NOT_RUN:
-        stream << std::setw(15) << std::left << "NOT_RUN";
-        break;
-      case OVProfilingInfo::Status::OPTIMIZED_OUT:
-        stream << std::setw(15) << std::left << "OPTIMIZED_OUT";
-        break;
-    }
-    stream << std::setw(30) << std::left << "layerType: " + std::string(it.node_type) + " ";
-    stream << std::setw(20) << std::left << "realTime: " + std::to_string(it.real_time.count());
-    stream << std::setw(20) << std::left << "cpu: " + std::to_string(it.cpu_time.count());
-    stream << " execType: " << it.exec_type << std::endl;
-    if (it.real_time.count() > 0) {
-      totalTime += it.real_time.count();
-    }
-  }
-  stream << std::setw(20) << std::left << "Total time: " + std::to_string(totalTime) << " microseconds" << std::endl;
-  std::cout << std::endl;
-  std::cout << "Full device name: " << deviceName << std::endl;
-  std::cout << std::endl;
-}
+            if (it.node_name.length() >= maxLayerName) {
+              toPrint = it.node_name.substr(0, maxLayerName - 4);
+              toPrint += "...";
+            }
+            stream << std::setw(maxLayerName) << std::left << toPrint;
+            switch (it.status) {
+              case OVProfilingInfo::Status::EXECUTED:
+                stream << std::setw(15) << std::left << "EXECUTED";
+                break;
+              case OVProfilingInfo::Status::NOT_RUN:
+                stream << std::setw(15) << std::left << "NOT_RUN";
+                break;
+              case OVProfilingInfo::Status::OPTIMIZED_OUT:
+                stream << std::setw(15) << std::left << "OPTIMIZED_OUT";
+                break;
+            }
+            stream << std::setw(30) << std::left << "layerType: " + std::string(it.node_type) + " ";
+            stream << std::setw(20) << std::left << "realTime: " + std::to_string(it.real_time.count());
+            stream << std::setw(20) << std::left << "cpu: " + std::to_string(it.cpu_time.count());
+            stream << " execType: " << it.exec_type << std::endl;
+            if (it.real_time.count() > 0) {
+              totalTime += it.real_time.count();
+            }
+          }
+          stream << std::setw(20) << std::left << "Total time: " + std::to_string(totalTime) << " microseconds" << std::endl;
+          std::cout << std::endl;
+          std::cout << "Full device name: " << deviceName << std::endl;
+          std::cout << std::endl;
+        }
 #endif
 
 void printPerformanceCounts(const std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>& performanceMap,
