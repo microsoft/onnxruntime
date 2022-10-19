@@ -349,6 +349,7 @@ class TestInferenceSession(unittest.TestCase):
                 # raise OSError("could not load any of: " + ' '.join(libnames))
 
         if "ROCMExecutionProvider" in onnxrt.get_available_providers():
+
             def runRocmOptionsTest():
                 sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["ROCMExecutionProvider"])
                 self.assertIn("ROCMExecutionProvider", sess.get_providers())
