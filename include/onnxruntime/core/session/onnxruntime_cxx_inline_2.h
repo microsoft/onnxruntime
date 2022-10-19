@@ -23,6 +23,33 @@ inline void ThrowOnError(OrtStatus* ort_status) {
     detail::ThrowStatus(*st);
   }
 }
+
+struct StringAllocator : OrtAllocator
+{
+  StringAllocator() : OrtAllocator{}
+  {
+    version = ORT_API_VERSION;
+    OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<StringAllocator*>(this_)->Alloc(size); };
+  }
+
+  void* Alloc(size_t size)
+  {
+    string_.resize(size);
+    return string_.data();
+  }
+
+  operator std::string && ()
+  {
+    string_.resize(string_.size() - 1); // Remove the trailing null
+    return std::move(string_);
+  }
+
+  char* out;
+
+private:
+  std::string string_;
+};
+
 } // namespace Ort
 
 inline std::unique_ptr<OrtStatus> OrtStatus::Create(const Ort::Exception& e) {
@@ -671,28 +698,28 @@ inline size_t OrtSession::GetOverridableInitializerCount() const {
   return out;
 }
 
-inline Ort::AllocatedStringPtr OrtSession::GetInputNameAllocated(size_t index, OrtAllocator& allocator) const {
-  char* out;
-  Ort::ThrowOnError(Ort::GetApi().SessionGetInputName(this, index, &allocator, &out));
-  return Ort::AllocatedStringPtr(out, Ort::detail::AllocatedFree(allocator));
+inline std::string OrtSession::GetInputName(size_t index) const {
+  Ort::StringAllocator string_allocator;
+  Ort::ThrowOnError(Ort::GetApi().SessionGetInputName(this, index, &string_allocator, &string_allocator.out));
+  return string_allocator;
 }
 
-inline Ort::AllocatedStringPtr OrtSession::GetOutputNameAllocated(size_t index, OrtAllocator& allocator) const {
-  char* out;
-  Ort::ThrowOnError(Ort::GetApi().SessionGetOutputName(this, index, &allocator, &out));
-  return Ort::AllocatedStringPtr(out, Ort::detail::AllocatedFree(allocator));
+inline std::string OrtSession::GetOutputName(size_t index) const {
+  Ort::StringAllocator string_allocator;
+  Ort::ThrowOnError(Ort::GetApi().SessionGetOutputName(this, index, &string_allocator, &string_allocator.out));
+  return string_allocator;
 }
 
-inline Ort::AllocatedStringPtr OrtSession::GetOverridableInitializerNameAllocated(size_t index, OrtAllocator& allocator) const {
-  char* out;
-  Ort::ThrowOnError(Ort::GetApi().SessionGetOverridableInitializerName(this, index, &allocator, &out));
-  return Ort::AllocatedStringPtr(out, Ort::detail::AllocatedFree(allocator));
+inline std::string OrtSession::GetOverridableInitializerName(size_t index) const {
+  Ort::StringAllocator string_allocator;
+  Ort::ThrowOnError(Ort::GetApi().SessionGetOverridableInitializerName(this, index, &string_allocator, &string_allocator.out));
+  return string_allocator;
 }
 
-inline Ort::AllocatedStringPtr OrtSession::EndProfilingAllocated(OrtAllocator& allocator) {
-  char* out;
-  Ort::ThrowOnError(Ort::GetApi().SessionEndProfiling(this, &allocator, &out));
-  return Ort::AllocatedStringPtr(out, Ort::detail::AllocatedFree(allocator));
+inline std::string OrtSession::EndProfiling() {
+  Ort::StringAllocator string_allocator;
+  Ort::ThrowOnError(Ort::GetApi().SessionEndProfiling(this, &string_allocator, &string_allocator.out));
+  return string_allocator;
 }
 
 inline uint64_t OrtSession::GetProfilingStartTimeNs() const {
@@ -743,40 +770,40 @@ inline void OrtSession::Run(const OrtRunOptions* run_options, const OrtIoBinding
   Ort::ThrowOnError(Ort::GetApi().RunWithBinding(this, run_options, &io_binding));
 }
 
-inline Ort::AllocatedStringPtr OrtModelMetadata::GetProducerNameAllocated(OrtAllocator& allocator) const {
-  char* out;
-  Ort::ThrowOnError(Ort::GetApi().ModelMetadataGetProducerName(this, &allocator, &out));
-  return Ort::AllocatedStringPtr(out, Ort::detail::AllocatedFree(allocator));
+inline std::string OrtModelMetadata::GetProducerName() const {
+  Ort::StringAllocator string_allocator;
+  Ort::ThrowOnError(Ort::GetApi().ModelMetadataGetProducerName(this, &string_allocator, &string_allocator.out));
+  return string_allocator;
 }
 
-inline Ort::AllocatedStringPtr OrtModelMetadata::GetGraphNameAllocated(OrtAllocator& allocator) const {
-  char* out;
-  Ort::ThrowOnError(Ort::GetApi().ModelMetadataGetGraphName(this, &allocator, &out));
-  return Ort::AllocatedStringPtr(out, Ort::detail::AllocatedFree(allocator));
+inline std::string OrtModelMetadata::GetGraphName() const {
+  Ort::StringAllocator string_allocator;
+  Ort::ThrowOnError(Ort::GetApi().ModelMetadataGetGraphName(this, &string_allocator, &string_allocator.out));
+  return string_allocator;
 }
 
-inline Ort::AllocatedStringPtr OrtModelMetadata::GetDomainAllocated(OrtAllocator& allocator) const {
-  char* out;
-  Ort::ThrowOnError(Ort::GetApi().ModelMetadataGetDomain(this, &allocator, &out));
-  return Ort::AllocatedStringPtr(out, Ort::detail::AllocatedFree(allocator));
+inline std::string OrtModelMetadata::GetDomain() const {
+  Ort::StringAllocator string_allocator;
+  Ort::ThrowOnError(Ort::GetApi().ModelMetadataGetDomain(this, &string_allocator, &string_allocator.out));
+  return string_allocator;
 }
 
-inline Ort::AllocatedStringPtr OrtModelMetadata::GetDescriptionAllocated(OrtAllocator& allocator) const {
-  char* out;
-  Ort::ThrowOnError(Ort::GetApi().ModelMetadataGetDescription(this, &allocator, &out));
-  return Ort::AllocatedStringPtr(out, Ort::detail::AllocatedFree(allocator));
+inline std::string OrtModelMetadata::GetDescription() const {
+  Ort::StringAllocator string_allocator;
+  Ort::ThrowOnError(Ort::GetApi().ModelMetadataGetDescription(this, &string_allocator, &string_allocator.out));
+  return string_allocator;
 }
 
-inline Ort::AllocatedStringPtr OrtModelMetadata::GetGraphDescriptionAllocated(OrtAllocator& allocator) const {
-  char* out;
-  Ort::ThrowOnError(Ort::GetApi().ModelMetadataGetGraphDescription(this, &allocator, &out));
-  return Ort::AllocatedStringPtr(out, Ort::detail::AllocatedFree(allocator));
+inline std::string OrtModelMetadata::GetGraphDescription() const {
+  Ort::StringAllocator string_allocator;
+  Ort::ThrowOnError(Ort::GetApi().ModelMetadataGetGraphDescription(this, &string_allocator, &string_allocator.out));
+  return string_allocator;
 }
 
-inline Ort::AllocatedStringPtr OrtModelMetadata::LookupCustomMetadataMapAllocated(const char* key, OrtAllocator& allocator) const {
-  char* out;
-  Ort::ThrowOnError(Ort::GetApi().ModelMetadataLookupCustomMetadataMap(this, &allocator, key, &out));
-  return Ort::AllocatedStringPtr(out, Ort::detail::AllocatedFree(allocator));
+inline std::string OrtModelMetadata::LookupCustomMetadataMap(const char* key) const {
+  Ort::StringAllocator string_allocator;
+  Ort::ThrowOnError(Ort::GetApi().ModelMetadataLookupCustomMetadataMap(this, &string_allocator, key, &string_allocator.out));
+  return string_allocator;
 }
 
 inline std::vector<Ort::AllocatedStringPtr> OrtModelMetadata::GetCustomMetadataMapKeysAllocated(OrtAllocator& allocator) const {
