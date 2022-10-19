@@ -193,7 +193,7 @@ class BFCArena : public IAllocator {
         : bin_size(bs), free_chunks(ChunkComparator(allocator)) {}
   };
 
-  static const size_t kMinAllocationBits = 8;
+  static const size_t kMinAllocationBits = 11;
   static const size_t kMinAllocationSize = 1 << kMinAllocationBits;
 
   // AllocationRegion maps pointers to ChunkHandles for a single
@@ -432,11 +432,11 @@ class BFCArena : public IAllocator {
   }
 
   size_t BinNumToSize(BinNum index) {
-    return static_cast<size_t>(256) << index;
+    return static_cast<size_t>(2048) << index;
   }
 
   BinNum BinNumForSize(size_t bytes) {
-    uint64_t v = std::max<size_t>(bytes, 256) >> kMinAllocationBits;
+    uint64_t v = std::max<size_t>(bytes, 2048) >> kMinAllocationBits;
     int b = std::min(kNumBins - 1, Log2FloorNonZero(v));
     return b;
   }
