@@ -4,7 +4,6 @@
 #include "core/providers/cpu/tensor/concat.h"
 
 #include "core/framework/element_type_lists.h"
-#include "core/framework/TensorSeq.h"
 #include "core/framework/copy.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
@@ -100,28 +99,28 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   }
 
   // Cannot concatenate scalars (but they can be stacked)
-  if (!is_stack_)
-    ORT_RETURN_IF_NOT(reference_rank > 0, "Cannot concatenate scalars");
+      if (!is_stack_)
+        ORT_RETURN_IF_NOT(reference_rank > 0, "Cannot concatenate scalars");
 
-  // Handle and fix negative axis
-  // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
-  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, !is_stack_
+      // Handle and fix negative axis
+      // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
+      p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, !is_stack_
                                                                ? static_cast<int64_t>(reference_rank)
                                                                : static_cast<int64_t>(reference_rank + 1)));
 
-  // Ensure all of the non concatenated axes match each other
-  for (int index = reference_tensor_index + 1; index < input_count; index++) {
-    const auto* input = input_tensors[static_cast<uint64_t>(index)];
-    ORT_ENFORCE(input != nullptr, "input count mismatch");
-    const auto& input_shape = input->Shape();
-    const auto input_dims = input_shape.GetDims();
+      // Ensure all of the non concatenated axes match each other
+      for (uint64_t index = reference_tensor_index + 1; index < input_count; index++) {
+        const auto *input = input_tensors[index];
+        ORT_ENFORCE(input != nullptr, "input count mismatch");
+        const auto &input_shape = input->Shape();
+        const auto input_dims = input_shape.GetDims();
 
-    // Skip shape/rank validation for inputs that are empty.
-    // The ONNX spec states that all dim values along axes not concatentated on
-    // need to be the same for all inputs (empty inputs are not explicitly exempted).
-    // The model in GH issue 8020 has a bunch of Loop nodes all feeding into
-    // the 'Concat' node and one of these Loops tend to have an iteration
-    // count of 0 for some inputs. If the iteration count for a Loop is zero,
+        // Skip shape/rank validation for inputs that are empty.
+        // The ONNX spec states that all dim values along axes not concatentated on
+        // need to be the same for all inputs (empty inputs are not explicitly exempted).
+        // The model in GH issue 8020 has a bunch of Loop nodes all feeding into
+        // the 'Concat' node and one of these Loops tend to have an iteration
+        // count of 0 for some inputs. If the iteration count for a Loop is zero,
     // we don't execute its subgraph (since the outputs are going to be empty anyway)
     // and we send an "empty" tensor(s) downstream and use ONNX shape inferred shape
     // to "compose" the shape for these empty tensor(s).
