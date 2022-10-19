@@ -162,7 +162,7 @@ std::optional<std::string> LoadEnv(const std::string& name, const std::unordered
   }
 
   LOGS_DEFAULT(WARNING) << "Environment variable "<< name << " is used. It is reserved for internal testing prupose. "
-                           "End users should opt for session options and must not rely ont it.";
+                           "End users should opt for provider options or session options and must not rely on it.";
 
   if (valid_values.find(env) == valid_values.cend()) {
     std::ostringstream oss;
