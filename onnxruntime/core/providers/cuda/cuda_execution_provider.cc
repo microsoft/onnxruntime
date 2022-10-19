@@ -262,7 +262,7 @@ std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
 #pragma warning(disable : 26816)
 #endif
 
-common::Status CUDAExecutionProvider::CheckSessionOptions(const SessionOptions& so) {
+common::Status CUDAExecutionProvider::CheckSessionOptionsAndProcess(const SessionOptions& so) {
   // Parallel execution mode does not support the CUDA EP
   if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Parallel execution mode does not support the CUDA Execution Provider. ",

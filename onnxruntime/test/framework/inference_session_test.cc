@@ -2060,19 +2060,6 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
 
 #ifdef USE_CUDA
 
-TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
-  string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
-
-  SessionOptions so;
-  so.execution_mode = ExecutionMode::ORT_PARALLEL;
-  so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
-  InferenceSession session_object{so, GetEnvironment()};
-
-  auto status = (session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
-
-  ASSERT_FALSE(status.IsOK());
-}
-
 TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   OrtArenaCfg arena_cfg;
   arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested

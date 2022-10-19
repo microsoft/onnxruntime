@@ -44,9 +44,9 @@ available_providers_without_tvm_and_tensorrt = [
 ]
 
 
-def create_inference_session(name, providers=None):
+def create_inference_session(name, providers):
     options = onnxrt.SessionOptions()
-    if providers and "DmlExecutionProvider" in providers:
+    if "DmlExecutionProvider" in providers:
         options.enable_mem_pattern = False
     return onnxrt.InferenceSession(get_name(name), sess_options=options, providers=providers)
 
@@ -1365,6 +1365,43 @@ class TestInferenceSession(unittest.TestCase):
         }
         ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
         verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
+
+    def testCheckSessionOptionsAndProcessWithEPs(self):
+        so = onnxrt.SessionOptions()
+        has_xnnpack = "XnnpackExecutionProvider" in onnxrt.get_available_providers()
+        has_dml = "DmlExecutionProvider" in onnxrt.get_available_providers()
+        has_cuda = "CUDAExecutionProvider" in onnxrt.get_available_providers()
+        # DmlExecutionProvider doesn't compatible with enable_mem_pattern as True
+        # DmlExecutionProvider doesn't compatible with execution_mode as ExecutionMode.ORT_PARALLEL
+        # XnnpackExecutionProvider doesn't compatible with execution_mode as ExecutionMode.ORT_PARALLEL
+        # CUDAExecutionProvider doesn't compatible with execution_mode as ExecutionMode.ORT_PARALLEL
+
+        def exception_test(ep_name, so, err_msg="Parallel execution mode does not support the"):
+            with self.assertRaises(RuntimeError):
+                onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=[ep_name], sess_options=so)
+            try:
+                onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=[ep_name], sess_options=so)
+            except Fail as onnxruntime_error:
+                if str(onnxruntime_error).startswith("[ONNXRuntimeError] : 1 : FAIL : " + err_msg):
+                    pass
+                else:
+                    raise onnxruntime_error
+
+        if has_dml:
+            so.enable_mem_pattern = True
+            exception_test("DmlExecutionProvider", so, "Having memory pattern enabled is not supported")
+
+            so.enable_mem_pattern = False
+            so.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
+            exception_test("DmlExecutionProvider", so)
+
+        if has_xnnpack:
+            so.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
+            exception_test("XnnpackExecutionProvider", so)
+
+        if has_cuda:
+            so.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
+            exception_test("CUDAExecutionProvider", so)
 
 
 if __name__ == "__main__":

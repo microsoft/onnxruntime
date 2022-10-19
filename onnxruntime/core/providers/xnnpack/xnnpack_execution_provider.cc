@@ -96,24 +96,27 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
   }
 }
 
-common::Status XnnpackExecutionProvider::CheckSessionOptions(const SessionOptions& so) {
+common::Status XnnpackExecutionProvider::CheckSessionOptionsAndProcess(const SessionOptions& so) {
   if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Parallel execution mode does not support the Xnnpack Execution Provider. "
                            "Please set the execution mode as sequential for this "
                            "session since it uses the Xnnpack Execution Provider.");
   }
+
   if (so.intra_op_param.allow_spinning && so.intra_op_param.thread_pool_size > 1) {
     LOGS_DEFAULT(WARNING)
-        << "XNNPACK EP utilize pthreadpool for multi-threading. So, if allow_spinning on ORT's"
-           "thread-pool and its pool size is not 1, "
-           "pthreadpool will content with ORT's intra-op thread pool and hurt performance a lot. "
-           "Please Setting intra_op_param.allow_spinning to false or "
-           "setting ort's pool size (intra_thread_num) to 1 and try again.";
+        << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."
+           "If ORT's thread pool size is > 1 and spinning is enabled, "
+           "there will be contention between the two thread pools, and performance will suffer."
+           "Please set either intra_op_param.allow_spinning to 0 in the SessionOption config params,"
+           "or the ORT intra-op threadpool size to 1 and try again.";
   }
+
   // 0 means user didn't set the value.
   if (so.intra_op_param.thread_pool_size > 1 && info_.xnn_thread_pool_size == 0) {
-    LOGS_DEFAULT(INFO) << "XNNPACK pool size is not set. Using ORT's thread-pool size as default:";
+    LOGS_DEFAULT(INFO) << "XNNPACK pool size is not set. Using ORT's thread-pool size as default:"
+                       << so.intra_op_param.thread_pool_size;
     info_.xnn_thread_pool_size = so.intra_op_param.thread_pool_size;
     xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info_.xnn_thread_pool_size));
   }

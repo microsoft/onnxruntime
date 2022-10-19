@@ -300,14 +300,17 @@ class IExecutionProvider {
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
    */
   virtual bool ConcurrentRunSupported() const { return true; }
+
   /** Some session option values (default or user provided) may not work with some EPs.
-   * The EP should alter the SessionOptions object fit its implementation to avoid potential crash.
-   * Rather than put the onus on the user to know these, make the appropriate change while logging the change.
+   * The EP should check and assure the SessionOptions object fit its implementation to avoid potential crash.
+   * we would rather throw errors to user and remind of setting appropriate config.
    *
    * @param session_options The SessionOptions object to be altered.
-   * @param logger The EP write the reason of the altering to it.
+   * @return Status indicating whether the SessionOptions object is valid for the EP or not.
+   * The EP should return an error if it's incompatible with the SessionOptions that specifies
+   * which option is problematic so the user knows what needs to be fixed
    */
-  virtual common::Status CheckSessionOptions(const SessionOptions& /*session_options*/) {
+  virtual common::Status CheckSessionOptionsAndProcess(const SessionOptions& /*session_options*/) {
     return Status::OK();
   }
 
