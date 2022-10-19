@@ -385,7 +385,9 @@ class TestInferenceSession(unittest.TestCase):
     def testRunModelFromBytes(self):
         with open(get_name("mul_1.onnx"), "rb") as f:
             content = f.read()
-        sess = onnxrt.InferenceSession(content, providers=onnxrt.get_available_providers())
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
+        sess = onnxrt.InferenceSession(content, sess_options=so, providers=onnxrt.get_available_providers())
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -977,6 +979,7 @@ class TestInferenceSession(unittest.TestCase):
 
         # Create another SessionOptions instance with the same shared library referenced
         so3 = onnxrt.SessionOptions()
+        so3.enable_mem_pattern = "DmlExecutionProvider" not in available_providers_without_tvm_and_tensorrt
         so3.register_custom_ops_library(shared_library)
         sess3 = onnxrt.InferenceSession(
             custom_op_model, sess_options=so3, providers=available_providers_without_tvm_and_tensorrt
@@ -1193,6 +1196,7 @@ class TestInferenceSession(unittest.TestCase):
 
         # Create a session that will NOT use the registered arena based allocator
         so2 = onnxrt.SessionOptions()
+        so2.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         so2.log_severity_level = 1
         onnxrt.InferenceSession(
             get_name("mul_1.onnx"),
