@@ -109,7 +109,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
     void* new_mem = nullptr;
     ORT_TRY {
       new_mem = device_allocator_->Alloc(alloc_bytes);
-          ORT_ENFORCE(  *reinterpret_cast<uint64_t*>(ptr) % 2048 == 0, "Alert: ", *reinterpret_cast<uint64_t*>(ptr) % 2048);        
+          ORT_ENFORCE(  *reinterpret_cast<uint64_t*>(new_mem) % 2048 == 0, "Alert: ", *reinterpret_cast<uint64_t*>(new_mem) % 2048);        
     }
     ORT_CATCH(const std::bad_alloc&) {
       // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
