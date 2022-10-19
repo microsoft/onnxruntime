@@ -125,9 +125,10 @@ void UpsampleBilinear(const int32_t batch_size,
               T X12 = Xdata[p.input_width_mul_y2[y] + p.in_x1[x]];
               T X22 = Xdata[p.input_width_mul_y2[y] + p.in_x2[x]];
 
-              T ty1 = static_cast<T>(X11 + (X21 - X11) * p.dx1[x]);
-              T ty2 = static_cast<T>(X12 + (X22 - X12) * p.dx1[x]);
-              Ydata[output_offset] = static_cast<T>(ty1 + (ty2 - ty1) * p.dy1[y]);
+              Ydata[output_offset] = static_cast<T>(p.dx2[x] * p.dy2[y] * X11 +
+                                                    p.dx1[x] * p.dy2[y] * X21 +
+                                                    p.dx2[x] * p.dy1[y] * X12 +
+                                                    p.dx1[x] * p.dy1[y] * X22);
             }
           }
         });
@@ -178,15 +179,20 @@ void NhwcUpsampleBilinear(const int32_t batch_size,
                 const int32_t X21_offset = (p.input_width_mul_y1[y] + p.in_x2[x]) * num_channels;
                 const int32_t X12_offset = (p.input_width_mul_y2[y] + p.in_x1[x]) * num_channels;
                 const int32_t X22_offset = (p.input_width_mul_y2[y] + p.in_x2[x]) * num_channels;
+                const float X11_coef = p.dx2[x] * p.dy2[y];
+                const float X21_coef = p.dx1[x] * p.dy2[y];
+                const float X12_coef = p.dx2[x] * p.dy1[y];
+                const float X22_coef = p.dx1[x] * p.dy1[y];
                 for (int32_t c = 0; c < num_channels; ++c) {
                   const T X11 = Xdata[X11_offset + c];
                   const T X21 = Xdata[X21_offset + c];
                   const T X12 = Xdata[X12_offset + c];
                   const T X22 = Xdata[X22_offset + c];
 
-                  T ty1 = static_cast<T>(X11 + (X21 - X11) * p.dx1[x]);
-                  T ty2 = static_cast<T>(X12 + (X22 - X12) * p.dx1[x]);
-                  Ydata[output_offset + c] = static_cast<T>(ty1 + (ty2 - ty1) * p.dy1[y]);
+                  Ydata[output_offset + c] = static_cast<T>(X11_coef * X11 +
+                                                            X21_coef * X21 +
+                                                            X12_coef * X12 +
+                                                            X22_coef * X22);
                 }
               }
             } else {
@@ -194,15 +200,20 @@ void NhwcUpsampleBilinear(const int32_t batch_size,
               const int32_t X21_offset = (p.input_width_mul_y1[y] + p.in_x2[x]) * num_channels;
               const int32_t X12_offset = (p.input_width_mul_y2[y] + p.in_x1[x]) * num_channels;
               const int32_t X22_offset = (p.input_width_mul_y2[y] + p.in_x2[x]) * num_channels;
+              const float X11_coef = p.dx2[x] * p.dy2[y];
+              const float X21_coef = p.dx1[x] * p.dy2[y];
+              const float X12_coef = p.dx2[x] * p.dy1[y];
+              const float X22_coef = p.dx1[x] * p.dy1[y];
               for (int32_t c = 0; c < num_channels; ++c) {
                 const T X11 = Xdata[X11_offset + c];
                 const T X21 = Xdata[X21_offset + c];
                 const T X12 = Xdata[X12_offset + c];
                 const T X22 = Xdata[X22_offset + c];
 
-                T ty1 = static_cast<T>(X11 + (X21 - X11) * p.dx1[x]);
-                T ty2 = static_cast<T>(X12 + (X22 - X12) * p.dx1[x]);
-                Ydata[output_offset + c] = static_cast<T>(ty1 + (ty2 - ty1) * p.dy1[y]);
+                Ydata[output_offset + c] = static_cast<T>(X11_coef * X11 +
+                                                          X21_coef * X21 +
+                                                          X12_coef * X12 +
+                                                          X22_coef * X22);
               }
             }
           }
