@@ -44,8 +44,9 @@ struct MLAS_GEMM_U8U8_KERNEL_AMX {
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = KPACK;
-    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{256, 256, 256};
-    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{256, 256, 256};
+    static constexpr size_t dim = 256;
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{dim, dim, dim};
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{dim, dim, dim};
 };
 
 constexpr size_t MLAS_GEMM_U8U8_KERNEL_AMX::PackedK;

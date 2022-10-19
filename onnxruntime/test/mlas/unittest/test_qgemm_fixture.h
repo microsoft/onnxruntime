@@ -65,7 +65,9 @@ class QgemmShortExecuteTest<AType, BType, int32_t, Packed, Threaded> : public Ml
 
   static size_t RegisterShortExecuteTests() {
     size_t test_registered = 0;
-    
+
+    constexpr size_t dim = 256;
+    test_registered += RegisterSingleTest(dim, dim, dim, 1, 0, 0);
     for (size_t b = 1; b < 16; b++) {
       test_registered += RegisterSingleTest(b, b, b, 1, 14, 211);
       test_registered += RegisterSingleTest(b, b, b, 1, 21);
