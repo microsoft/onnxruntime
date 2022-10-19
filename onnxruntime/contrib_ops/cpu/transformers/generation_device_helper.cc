@@ -105,6 +105,7 @@ Status ExpandBuffer(void* stream,
 
 Status CreateGptInputs(
     const Tensor* original_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     gsl::span<int32_t>& sequence_lengths,
@@ -134,31 +135,55 @@ Status CreateGptInputs(
   Tensor::InitOrtValue(element_type, input_ids_shape, allocator, position_ids);
 
   OrtValue attention_mask;
-  auto mask_type = DataTypeImpl::GetType<int32_t>();
-  Tensor::InitOrtValue(mask_type, input_ids_shape, allocator, attention_mask);
+  if (attn_mask_value != nullptr) {
+    const Tensor& attn_mask = attn_mask_value->Get<Tensor>();
+    Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&attn_mask)->MutableData<int32_t>(),
+                         allocator->Info(), attention_mask);
+    int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+    const int32_t* word_id = original_input_ids->Data<int32_t>();
+    int32_t* position = position_data;
+    for (int i = 0; i < batch_size; i++) {
+      int32_t abs_position = 0;
+      for (int j = 0; j < sequence_length; j++, word_id++, position++) {
+        if (*word_id == pad_token_id) {
+          *position = 0;
+        } else {
+          *position = abs_position;
+          abs_position++;
+        }
+      }
 
-  // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
-  // Set position id to be 0 for pad tokens, and accumulated sum of mask in a batch for other tokens
-  int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
-  int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-  const int32_t* word_id = original_input_ids->Data<int32_t>();
-  int32_t* mask = mask_data;
-  int32_t* position = position_data;
-  for (int i = 0; i < batch_size; i++) {
-    int32_t abs_position = 0;
-    for (int j = 0; j < sequence_length; j++, word_id++, mask++, position++) {
-      if (*word_id == pad_token_id) {
-        *mask = 0;
-        *position = 0;
-      } else {
-        *mask = 1;
-        *position = abs_position;
-        abs_position++;
+      for (int k = 0; k < num_beams; k++) {
+        sequence_lengths[SafeInt<gsl::index>(i) * num_beams + k] = abs_position;
       }
     }
+  } else {
+    auto mask_type = DataTypeImpl::GetType<int32_t>();
+    Tensor::InitOrtValue(mask_type, input_ids_shape, allocator, attention_mask);
 
-    for (int k = 0; k < num_beams; k++) {
-      sequence_lengths[SafeInt<gsl::index>(i) * num_beams + k] = abs_position;
+    // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
+    // Set position id to be 0 for pad tokens, and accumulated sum of mask in a batch for other tokens
+    int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+    int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+    const int32_t* word_id = original_input_ids->Data<int32_t>();
+    int32_t* mask = mask_data;
+    int32_t* position = position_data;
+    for (int i = 0; i < batch_size; i++) {
+      int32_t abs_position = 0;
+      for (int j = 0; j < sequence_length; j++, word_id++, mask++, position++) {
+        if (*word_id == pad_token_id) {
+          *mask = 0;
+          *position = 0;
+        } else {
+          *mask = 1;
+          *position = abs_position;
+          abs_position++;
+        }
+      }
+
+      for (int k = 0; k < num_beams; k++) {
+        sequence_lengths[SafeInt<gsl::index>(i) * num_beams + k] = abs_position;
+      }
     }
   }
 
