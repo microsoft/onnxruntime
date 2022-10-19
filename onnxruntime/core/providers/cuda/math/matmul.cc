@@ -153,13 +153,22 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       if (use_special) {
         std::cout << "\n";
 
-        auto i = reinterpret_cast<std::uintptr_t>(right_X->Data<T>());
+        auto i =  reinterpret_cast<std::uintptr_t>(left_X->Data<T>());
         std::cout << i << "\n";
-        
-        i =  reinterpret_cast<std::uintptr_t>(left_X->Data<T>());
+
+        i = reinterpret_cast<std::uintptr_t>(right_X->Data<T>());
         std::cout << i << "\n";
 
         i =  reinterpret_cast<std::uintptr_t>(Y->MutableData<T>());
+        std::cout << i << "\n";
+
+        i =  reinterpret_cast<std::uintptr_t>(left_X_ptr_);
+        std::cout << i << "\n";
+
+        auto i =  reinterpret_cast<std::uintptr_t>(right_X_ptr_);
+        std::cout << i << "\n";
+
+        i = reinterpret_cast<std::uintptr_t>(Y_ptr_);
         std::cout << i << "\n";
 
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
@@ -172,7 +181,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           &alpha,
           reinterpret_cast<const CudaT*>(right_X->Data<T>()),          
           ldb,
-          reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+          reinterpret_cast<const CudaT*>(left_X_ptr_),
           lda,
           &zero,
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
