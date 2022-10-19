@@ -43,7 +43,7 @@ _CAST_PYTORCH_TO_ONNX = {
 }
 
 
-def full_name(klass):
+def _full_name(klass):
     module = klass.__module__
     if module == "builtins":
         return klass.__qualname__  # avoid outputs like 'builtins.str'
@@ -253,12 +253,12 @@ def _post_process_enabling_autograd_fallback(exported_model):
         ","
     )
     for kclass in torch.autograd.Function.__subclasses__():
-        if full_name(kclass) in skipped_autograd_function_list:
+        full_qualified_name = _full_name(kclass)
+        if full_qualified_name in skipped_autograd_function_list:
             continue
         # Collect mapping of class names to full qualified class names.
         if kclass.__name__ not in registered_name_mappings:
             registered_name_mappings[kclass.__name__] = []
-        full_qualified_name = kclass.__module__ + "." + kclass.__qualname__
         registered_name_mappings[kclass.__name__].append(full_qualified_name)
 
         # Register function with class names.
