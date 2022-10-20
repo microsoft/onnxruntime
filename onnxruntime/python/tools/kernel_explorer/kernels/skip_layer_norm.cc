@@ -63,6 +63,30 @@ class SkipLayerNormRegular : public IKernelExplorer {
 };
 
 template <typename T>
+class SkipLayerNormOriginal : public IKernelExplorer {
+ public:
+  SkipLayerNormOriginal(DeviceArray& output, DeviceArray& input, DeviceArray& skip,
+                        DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
+                        float epsilon, int hidden_size, int element_count)
+      : params_(this->Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
+                static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), static_cast<T*>(beta.ptr()),
+                static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
+
+  void Run() override {
+    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormDisableTuning<T>(&params_)));
+  }
+
+  bool IsSupported() {
+    Status status = contrib::rocm::SkipLayerNormDisableTuning<T>(&params_);
+    return status.IsOK();
+  }
+
+ private:
+  using ParamsT = contrib::rocm::SkipLayerNormParams<T>;
+  ParamsT params_{};
+};
+
+template <typename T>
 class SkipLayerNormTunable : public IKernelExplorer {
  public:
   SkipLayerNormTunable(DeviceArray& output, DeviceArray& input, DeviceArray& skip,
@@ -123,6 +147,16 @@ class SkipLayerNormTunable : public IKernelExplorer {
       .def("Run", &SkipLayerNormTunable<type>::Run)                            \
       .def("IsSupported", &SkipLayerNormTunable<type>::IsSupported);
 
+#define REGISTER_ORIGINAL_OP(type)                                               \
+  py::class_<SkipLayerNormOriginal<type>>(m, "SkipLayerNorm_" #type "_Original") \
+      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&,      \
+                    DeviceArray&, DeviceArray&,                                  \
+                    float, int, int>())                                          \
+      .def("SetRepeats", &SkipLayerNormOriginal<type>::SetRepeats)               \
+      .def("Profile", &SkipLayerNormOriginal<type>::Profile)                     \
+      .def("Run", &SkipLayerNormOriginal<type>::Run)                             \
+      .def("IsSupported", &SkipLayerNormOriginal<type>::IsSupported);
+
 void InitSkipLayerNorm(py::module m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormSmall, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormSmall, float);
@@ -131,6 +165,9 @@ void InitSkipLayerNorm(py::module m) {
 
   REGISTER_TUNABLE_OP(half);
   REGISTER_TUNABLE_OP(float);
+
+  REGISTER_ORIGINAL_OP(half);
+  REGISTER_ORIGINAL_OP(float);
 }
 
 }  // namespace onnxruntime
