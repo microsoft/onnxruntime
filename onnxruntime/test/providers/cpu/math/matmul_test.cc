@@ -13,11 +13,13 @@ namespace test {
 
 namespace {
 
-const onnxruntime::RunOptions run_with_tunable_op = []() {
+const onnxruntime::RunOptions run_options = []() {
   onnxruntime::RunOptions options{};
   ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOpTesterRunOptionsConfigTestTunableOp, "true"));
   return options;
 }();
+
+const constexpr auto run_with_tunable_op = &run_options;
 
 }  // namespace
 

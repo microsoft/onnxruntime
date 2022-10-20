@@ -1023,7 +1023,7 @@ OpTester& OpTester::ConfigExcludeEps(const std::unordered_set<std::string>& excl
   return *this;
 }
 
-OpTester& OpTester::Config(const RunOptions& run_options) {
+OpTester& OpTester::Config(const RunOptions* run_options) {
   ctx_.run_options = run_options;
   return *this;
 }
@@ -1091,15 +1091,10 @@ void OpTester::Run(
     execution_providers->resize(ctx_.execution_providers.size());
   }
 
-  if (run_options == nullptr) {
-    this->Config(RunOptions{});
-  } else {
-    this->Config(*run_options);
-  }
-
   (*this)
       .Config(so)
       .Config(expect_result, expected_failure_string)
+      .Config(run_options)
       .ConfigExcludeEps(excluded_provider_types)
       .Config(options)
       .RunWithConfig(number_of_pre_packed_weights_counter, number_of_shared_pre_packed_weights_counter);
@@ -1186,7 +1181,7 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       ExecuteModelForEps(
           std::move(ctx_.execution_providers), *p_model, ctx_.session_options,
           ctx_.expect_result, ctx_.expected_failure_string,
-          &ctx_.run_options, feeds, output_names,
+          ctx_.run_options, feeds, output_names,
           /*custom_registries=*/nullptr,
           /*assign_ep_for_nodes=*/false,
           allow_released_onnx_opset_only,
@@ -1264,7 +1259,7 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
             }(),
             *p_model, ctx_.session_options,
             ctx_.expect_result, ctx_.expected_failure_string,
-            &ctx_.run_options, feeds, output_names,
+            ctx_.run_options, feeds, output_names,
             &custom_session_registries_,
             /*try_assign_ep_for_nodes=*/true,
             allow_released_onnx_opset_only,
@@ -1272,8 +1267,8 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
             number_of_shared_pre_packed_weights_counter);
 
         // Run Models with subscribed run_options->config_options
-        if (auto cfg = ctx_.run_options.config_options.GetConfigEntry(kOpTesterRunOptionsConfigTestTunableOp);
-            *cfg == "true") {
+        if (ctx_.run_options != nullptr &&
+            *(ctx_.run_options->config_options.GetConfigEntry(kOpTesterRunOptionsConfigTestTunableOp)) == "true") {
           std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
           if (provider_type == onnxruntime::kRocmExecutionProvider) {
             execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
@@ -1283,7 +1278,7 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
             ExecuteModelForEps(
                 std::move(execution_providers), *p_model, ctx_.session_options,
                 ctx_.expect_result, ctx_.expected_failure_string,
-                &ctx_.run_options, feeds, output_names,
+                ctx_.run_options, feeds, output_names,
                 &custom_session_registries_,
                 /*assign_ep_for_nodes=*/true,
                 allow_released_onnx_opset_only,
