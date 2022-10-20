@@ -813,10 +813,14 @@ class TestInferenceSession(unittest.TestCase):
 
     def testLoadingSessionOptionsFromModel(self):
         try:
+            providers = onnxrt.get_available_providers()
+            # DmlExecutionProvider doesn't support memory_pattern
+            if "DmlExecutionProvider" in providers:
+                providers.remove("DmlExecutionProvider")
             os.environ["ORT_LOAD_CONFIG_FROM_MODEL"] = str(1)
-            sess = create_inference_session(
-                "model_with_valid_ort_config_json.onnx",
-                providers=onnxrt.get_available_providers(),
+            sess = onnxrt.InferenceSession(
+                get_name("model_with_valid_ort_config_json.onnx"),
+                providers=providers,
             )
             session_options = sess.get_session_options()
 
@@ -1377,8 +1381,6 @@ class TestInferenceSession(unittest.TestCase):
         # CUDAExecutionProvider doesn't compatible with execution_mode as ExecutionMode.ORT_PARALLEL
 
         def exception_test(ep_name, so, err_msg="Parallel execution mode does not support the"):
-            with self.assertRaises(RuntimeError):
-                onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=[ep_name], sess_options=so)
             try:
                 onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=[ep_name], sess_options=so)
             except Fail as onnxruntime_error:
