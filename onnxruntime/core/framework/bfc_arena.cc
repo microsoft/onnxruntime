@@ -94,6 +94,8 @@ BFCArena::Chunk* BFCArena::ChunkFromHandle(ChunkHandle h) {
 }
 
 Status BFCArena::Extend(size_t rounded_bytes) {
+  std::cout << "Extending" << std::endl;
+  
   size_t available_bytes = memory_limit_ - static_cast<size_t>(stats_.total_allocated_bytes);
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
@@ -109,7 +111,7 @@ Status BFCArena::Extend(size_t rounded_bytes) {
     void* new_mem = nullptr;
     ORT_TRY {
       new_mem = device_allocator_->Alloc(alloc_bytes);
-          ORT_ENFORCE(  *reinterpret_cast<uint64_t*>(new_mem) % 2048 == 0, "Alert: ", *reinterpret_cast<uint64_t*>(new_mem) % 2048);        
+        // ORT_ENFORCE(reinterpret_cast<std::uintptr_t>(new_mem) % 2048 == 0, "Alert: ", *reinterpret_cast<uint64_t*>(new_mem) % 2048);        
     }
     ORT_CATCH(const std::bad_alloc&) {
       // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
@@ -314,7 +316,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   std::lock_guard<OrtMutex> lock(lock_);
   void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
   if (ptr != nullptr) {
-    ORT_ENFORCE(  *reinterpret_cast<uint64_t*>(ptr) % 2048 == 0);
+    // ORT_ENFORCE(  *reinterpret_cast<uint64_t*>(ptr) % 2048 == 0);
     return ptr;
   }
 
@@ -326,7 +328,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   if (status.IsOK()) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
     if (ptr != nullptr) {
-    ORT_ENFORCE(  *reinterpret_cast<uint64_t*>(ptr) % 2048 == 0);
+    // ORT_ENFORCE(  *reinterpret_cast<uint64_t*>(ptr) % 2048 == 0);
       return ptr;
     } else {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
