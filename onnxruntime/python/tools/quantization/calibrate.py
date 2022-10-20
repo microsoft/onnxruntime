@@ -49,12 +49,12 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
 
 class CalibraterBase:
     def __init__(
-            self,
-            model,
-            op_types_to_calibrate: Optional[Sequence[str]] = None,
-            augmented_model_path="augmented_model.onnx",
-            symmetric=False,
-            use_external_data_format=False,
+        self,
+        model,
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
+        augmented_model_path="augmented_model.onnx",
+        symmetric=False,
+        use_external_data_format=False,
     ):
         """
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
@@ -121,9 +121,9 @@ class CalibraterBase:
                     if tensor_name in value_infos.keys():
                         vi = value_infos[tensor_name]
                         if (
-                                vi.type.HasField("tensor_type")
-                                and (vi.type.tensor_type.elem_type in tensor_type_to_calibrate)
-                                and (tensor_name not in initializer)
+                            vi.type.HasField("tensor_type")
+                            and (vi.type.tensor_type.elem_type in tensor_type_to_calibrate)
+                            and (tensor_name not in initializer)
                         ):
                             tensors_to_calibrate.add(tensor_name)
 
@@ -158,14 +158,14 @@ class CalibraterBase:
 
 class MinMaxCalibrater(CalibraterBase):
     def __init__(
-            self,
-            model,
-            op_types_to_calibrate: Optional[Sequence[str]] = None,
-            augmented_model_path="augmented_model.onnx",
-            symmetric=False,
-            use_external_data_format=False,
-            moving_average=False,
-            averaging_constant=0.01,
+        self,
+        model,
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
+        augmented_model_path="augmented_model.onnx",
+        symmetric=False,
+        use_external_data_format=False,
+        moving_average=False,
+        averaging_constant=0.01,
     ):
         """
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
@@ -328,16 +328,16 @@ class MinMaxCalibrater(CalibraterBase):
 
 class HistogramCalibrater(CalibraterBase):
     def __init__(
-            self,
-            model,
-            op_types_to_calibrate: Optional[Sequence[str]] = None,
-            augmented_model_path="augmented_model.onnx",
-            use_external_data_format=False,
-            method="percentile",
-            symmetric=False,
-            num_bins=128,
-            num_quantized_bins=2048,
-            percentile=99.999,
+        self,
+        model,
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
+        augmented_model_path="augmented_model.onnx",
+        use_external_data_format=False,
+        method="percentile",
+        symmetric=False,
+        num_bins=128,
+        num_quantized_bins=2048,
+        percentile=99.999,
     ):
         """
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
@@ -440,15 +440,15 @@ class HistogramCalibrater(CalibraterBase):
 
 class EntropyCalibrater(HistogramCalibrater):
     def __init__(
-            self,
-            model,
-            op_types_to_calibrate: Optional[Sequence[str]] = None,
-            augmented_model_path="augmented_model.onnx",
-            use_external_data_format=False,
-            method="entropy",
-            symmetric=False,
-            num_bins=128,
-            num_quantized_bins=128,
+        self,
+        model,
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
+        augmented_model_path="augmented_model.onnx",
+        use_external_data_format=False,
+        method="entropy",
+        symmetric=False,
+        num_bins=128,
+        num_quantized_bins=128,
     ):
         """
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
@@ -474,15 +474,15 @@ class EntropyCalibrater(HistogramCalibrater):
 
 class PercentileCalibrater(HistogramCalibrater):
     def __init__(
-            self,
-            model,
-            op_types_to_calibrate: Optional[Sequence[str]] = None,
-            augmented_model_path="augmented_model.onnx",
-            use_external_data_format=False,
-            method="percentile",
-            symmetric=False,
-            num_bins=2048,
-            percentile=99.999,
+        self,
+        model,
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
+        augmented_model_path="augmented_model.onnx",
+        use_external_data_format=False,
+        method="percentile",
+        symmetric=False,
+        num_bins=2048,
+        percentile=99.999,
     ):
         """
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
@@ -842,12 +842,12 @@ class HistogramCollector(CalibrationDataCollector):
 
 
 def create_calibrator(
-        model,
-        op_types_to_calibrate: Optional[Sequence[str]] = None,
-        augmented_model_path="augmented_model.onnx",
-        calibrate_method=CalibrationMethod.MinMax,
-        use_external_data_format=False,
-        extra_options={},
+    model,
+    op_types_to_calibrate: Optional[Sequence[str]] = None,
+    augmented_model_path="augmented_model.onnx",
+    calibrate_method=CalibrationMethod.MinMax,
+    use_external_data_format=False,
+    extra_options={},
 ):
 
     calibrator = None
