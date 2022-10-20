@@ -54,7 +54,7 @@ Status LaunchSkipLayerNormKernel(
     return op(&op_params);
   }
 
-  return SkipLayerNormDisableTuning(&op_params);
+  return SkipLayerNormDisableTuning<T>(&op_params);
 }
 
 template Status LaunchSkipLayerNormKernel<float>(hipStream_t stream, float* output, const float* input,
