@@ -486,7 +486,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   // Some session option values (default or user provided) may not work with some EPs.
   // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
-  ORT_RETURN_IF_ERROR(p_exec_provider->ProcessSessionOptions(session_options_));
+  ORT_RETURN_IF_ERROR(p_exec_provider->ValidateSessionOptions(session_options_));
 
   if (provider_type == onnxruntime::kCudaExecutionProvider) {
     auto trt_ep = execution_providers_.Get(kTensorrtExecutionProvider);

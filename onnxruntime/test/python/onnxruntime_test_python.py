@@ -1395,7 +1395,7 @@ class TestInferenceSession(unittest.TestCase):
         ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
         verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
 
-    def testProcessSessionOptionsWithEPs(self):
+    def testValidateSessionOptionsWithEPs(self):
         so = onnxrt.SessionOptions()
         has_dml = "DmlExecutionProvider" in onnxrt.get_available_providers()
         has_cuda = "CUDAExecutionProvider" in onnxrt.get_available_providers()

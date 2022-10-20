@@ -96,7 +96,7 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
   }
 }
 
-common::Status XnnpackExecutionProvider::ProcessSessionOptions(const SessionOptions& so) const {
+common::Status XnnpackExecutionProvider::ValidateSessionOptions(const SessionOptions& so) const {
   if (so.intra_op_param.allow_spinning && so.intra_op_param.thread_pool_size > 1) {
     LOGS_DEFAULT(WARNING)
         << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."

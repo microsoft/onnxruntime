@@ -262,7 +262,7 @@ std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
 #pragma warning(disable : 26816)
 #endif
 
-common::Status CUDAExecutionProvider::ProcessSessionOptions(const SessionOptions& so) const {
+common::Status CUDAExecutionProvider::ValidateSessionOptions(const SessionOptions& so) const {
   if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Parallel execution mode is incompatible with CUDA execution provider ",
                            "Please set the execution mode as sequential for this session ");

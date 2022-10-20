@@ -943,7 +943,7 @@ namespace Dml
         return onnxruntime::common::Status::OK();
     }
 
-    onnxruntime::common::Status ExecutionProviderImpl::ProcessSessionOptions(const onnxruntime::SessionOptions& so) const {
+    onnxruntime::common::Status ExecutionProviderImpl::ValidateSessionOptions(const onnxruntime::SessionOptions& so) const {
         // DML's memory is not byte addressable and hence mem pattern doesn't work.
         if (so.enable_mem_pattern) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
