@@ -37,10 +37,12 @@ class SnpeRuntimeWrapper {
 
   bool IsAvailable() const {
     zdl::DlSystem::RuntimeCheckOption_t runtime_check_option = zdl::DlSystem::RuntimeCheckOption_t::DEFAULT;
+#if defined(_WIN32) && defined(_M_ARM64)
     // check availability, explicitly requiring unsignedpd support
     if (runtime_ == zdl::DlSystem::Runtime_t::DSP) {
       runtime_check_option = zdl::DlSystem::RuntimeCheckOption_t::UNSIGNEDPD_CHECK;
     }
+#endif
     return zdl::SNPE::SNPEFactory::isRuntimeAvailable(runtime_, runtime_check_option);
   }
 

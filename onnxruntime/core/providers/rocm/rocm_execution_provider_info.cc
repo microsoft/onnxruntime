@@ -21,6 +21,7 @@ constexpr const char* kGpuExternalAlloc = "gpu_external_alloc";
 constexpr const char* kGpuExternalFree = "gpu_external_free";
 constexpr const char* kGpuExternalEmptyCache = "gpu_external_empty_cache";
 constexpr const char* kMiopenConvUseMaxWorkspace = "miopen_conv_use_max_workspace";
+constexpr const char* kTunableOpEnabled = "tunable_op_enabled";
 }  // namespace provider_option_names
 }  // namespace rocm
 
@@ -81,6 +82,12 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(rocm::provider_option_names::kMiopenConvExhaustiveSearch, info.miopen_conv_exhaustive_search)
           .AddAssignmentToReference(rocm::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .AddAssignmentToReference(rocm::provider_option_names::kMiopenConvUseMaxWorkspace, info.miopen_conv_use_max_workspace)
+          .AddValueParser(
+              rocm::provider_option_names::kTunableOpEnabled,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.enabled));
+                return Status::OK();
+              })
           .Parse(options));
 
   ROCMExecutionProviderExternalAllocatorInfo alloc_info{alloc, free, empty_cache};
@@ -100,6 +107,7 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
       {rocm::provider_option_names::kMiopenConvExhaustiveSearch, MakeStringWithClassicLocale(info.miopen_conv_exhaustive_search)},
       {rocm::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
       {rocm::provider_option_names::kMiopenConvUseMaxWorkspace, MakeStringWithClassicLocale(info.miopen_conv_use_max_workspace)},
+      {rocm::provider_option_names::kTunableOpEnabled, MakeStringWithClassicLocale(info.tunable_op.enabled)},
   };
 
   return options;

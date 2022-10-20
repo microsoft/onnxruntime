@@ -15,7 +15,7 @@ jobs:
     - name: render
       value: 109
     - name: RocmVersion
-      value: 5.3
+      value: 5.2.3
 
   steps:
   - checkout: self
@@ -57,7 +57,7 @@ jobs:
               --update \
               --build_dir /build \
               --build \
-              --parallel 8 \
+              --parallel 16 \
               --build_wheel \
               --skip_submodule_sync \
               --skip_tests

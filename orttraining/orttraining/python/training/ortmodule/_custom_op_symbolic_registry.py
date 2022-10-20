@@ -663,3 +663,59 @@ def einsum_internal(g, equation, tensor_list):
 
 
 # End of torch.einsum.
+
+
+@register_symbolic("group_norm")
+def group_norm(g, input, num_groups, weight, bias, eps, cudnn_enabled):
+    # Torch's group_norm's weight and bias are optional, its gradient has a bool[3] augment to indicate
+    # whether to compute the gradient for input, weight, bias. For simplicity of the gradient graph builder,
+    # we support only the case that weight and bias are not None.
+    from torch.onnx.symbolic_opset9 import group_norm as group_norm_generic
+
+    if weight is None or sym_help._is_none(weight) or bias is None or sym_help._is_none(bias):
+        return group_norm_generic(g, input, num_groups, weight, bias, eps, cudnn_enabled)
+
+    shape = g.op("Shape", input)
+    size = g.op("Size", input)
+    N = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(0, dtype=torch.long)), axis_i=0)
+    C = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(1, dtype=torch.long)), axis_i=0)
+    HxW = g.op("Div", size, g.op("Mul", N, C))
+    return g.op(
+        "org.pytorch.aten::ATen",
+        input,
+        weight,
+        bias,
+        N,
+        C,
+        HxW,
+        num_groups,
+        g.op("Cast", eps, to_i=1),  # Python's float is float64.
+        operator_s="native_group_norm",
+        outputs=3,
+    )[0]
+
+
+def _upsample_nearest(g, input, output_size, scale_factors, forward_fn):
+    return g.op(
+        "org.pytorch.aten::ATen",
+        input,
+        output_size,
+        scale_factors,
+        operator_s=forward_fn,
+        overload_name_s="vec",
+    )
+
+
+@register_symbolic("upsample_nearest1d")
+def upsample_nearest1d(g, input, output_size, scale_factors):
+    return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest1d")
+
+
+@register_symbolic("upsample_nearest2d")
+def upsample_nearest2d(g, input, output_size, scale_factors):
+    return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest2d")
+
+
+@register_symbolic("upsample_nearest3d")
+def upsample_nearest3d(g, input, output_size, scale_factors):
+    return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest3d")
