@@ -145,7 +145,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       bool use_special = false;
       if (left_X->SizeInBytes() == 196608) {
               use_special = true;
-              //std::cout << "Using special" << "\n";
+              std::cout << "Using special" << "\n";
       }
 
       if (use_special) {
