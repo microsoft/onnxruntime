@@ -159,9 +159,8 @@ class TestInferenceSession(unittest.TestCase):
             so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
             sess = onnxrt.InferenceSession(
                 get_name("mlnet_encoder.onnx"),
-                None,
+                so,
                 ["DmlExecutionProvider", "CPUExecutionProvider"],
-                sess_options=so,
             )
         else:
             sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"), providers=available_providers)
