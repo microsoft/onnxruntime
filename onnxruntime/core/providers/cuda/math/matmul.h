@@ -23,9 +23,11 @@ class MatMul final : public CudaKernel {
         disable_cublaslt_matmul_{!std::is_same<T, MLFloat16>::value ||
                                  ParseEnvironmentVariableWithDefault<bool>(matmul_detail::kDisableCublasLtMatmul, false)} {
 
-      cudaMalloc(&right_X_ptr_, (size_t)(ceil(4718592 / 256.)) * 256);
-      cudaMalloc(&left_X_ptr_, (size_t)(ceil(6291456/ 256.)) * 256);
-      cudaMalloc(&Y_ptr_, (size_t)(ceil(25165824 / 256.)) * 256);                             
+      //cudaMalloc(&right_X_ptr_, (size_t)(ceil(4718592 / 256.)) * 256);
+      //cudaMalloc(&left_X_ptr_, (size_t)(ceil(6291456/ 256.)) * 256);
+      //cudaMalloc(&Y_ptr_, (size_t)(ceil(25165824 / 256.)) * 256);
+
+      cudaMalloc(&left_X_ptr_, (size_t)(ceil(196608/ 256.)) * 256);                          
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
