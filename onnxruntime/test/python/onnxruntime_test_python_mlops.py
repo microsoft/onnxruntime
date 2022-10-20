@@ -156,7 +156,7 @@ class TestInferenceSession(unittest.TestCase):
         # for this test as it breaks with both CUDA and DML registered.
         if "CUDAExecutionProvider" in available_providers and "DmlExecutionProvider" in available_providers:
             so = onnxrt.SessionOptions()
-            so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
+            so.enable_mem_pattern = False
             sess = onnxrt.InferenceSession(
                 get_name("mlnet_encoder.onnx"),
                 so,
