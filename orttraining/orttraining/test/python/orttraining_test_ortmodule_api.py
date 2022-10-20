@@ -777,7 +777,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad, conv_algo_se
         return
 
     if conv_algo_search is not None:
-        os.environ["CONV_ALGO_SEARCH"] = conv_algo_search
+        os.environ["ORTMODULE_CONV_ALGO_SEARCH"] = conv_algo_search
 
     device = "cuda"
     N, seq_len, C_in, C_out, kernel_size = 32, 128, 1536, 1536, 3
@@ -820,7 +820,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad, conv_algo_se
     assert actual_conv_algo_search == expected_conv_algo_search
 
     if conv_algo_search is not None:
-        del os.environ["CONV_ALGO_SEARCH"]
+        del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
 
 
 def _run_gradient_correctness_transpose(perm, shape):
