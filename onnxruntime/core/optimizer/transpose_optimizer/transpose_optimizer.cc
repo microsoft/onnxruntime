@@ -969,6 +969,7 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   gather.SetAttributeInt("axis", 0);
   node.SetInput(i, gather_output);
 }
+
 #if !defined(USE_CUDA) && !defined(USE_ROCM)
 static bool HandleResize(HandlerArgs& args) {
   auto inputs = args.node.Inputs();
@@ -992,7 +993,7 @@ static bool HandleResize(HandlerArgs& args) {
     }
   }
 
-  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  // TransposeFirstInput(args.ctx, args.node, args.perm_inv);
   TransposeOutputs(args.ctx, args.node, args.perm);
 
   return true;
@@ -1755,7 +1756,7 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops
   if (domain == onnxruntime::kOnnxDomain || domain == onnxruntime::kOnnxDomainAlias) {
     key = std::string(op_type);
   } else if (domain == onnxruntime::kMSDomain) {
-    key = onnxruntime::MakeString(onnxruntime::kMSDomain, ".", op_type);
+    key = onnxruntime::MakeString(domain, ".", op_type);
   } else {
     return nullptr;
   }

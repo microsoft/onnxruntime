@@ -87,19 +87,16 @@ const NodeUnit* ClipReluChecker(const NodeUnit& node_unit,
 
 }  // namespace
 
-#define NewChecker(Op) \
-  { "" #Op "", Op::IsOnnxNodeSupported }
-
 bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
   static std::unordered_map<std::string, CheckerFn> checkers{
-      NewChecker(Conv),
-      NewChecker(ConvTranspose),
-      NewChecker(MaxPool),
-      NewChecker(MaxUnpool),
-      NewChecker(AveragePool),
-      NewChecker(Softmax),
-      NewChecker(Resize),
+      {"Conv", Conv::IsOnnxNodeSupported},
+      {"ConvTranspose", ConvTranspose::IsOnnxNodeSupported},
       {"QLinearConv", Conv::IsOnnxNodeSupported},
+      {"MaxPool", MaxPool::IsOnnxNodeSupported},
+      {"AveragePool", AveragePool::IsOnnxNodeSupported},
+      {"Softmax", Softmax::IsOnnxNodeSupported},
+      {"MaxUnpool", MaxUnpool::IsOnnxNodeSupported},
+      {"Resize", Resize::IsOnnxNodeSupported},
   };
 
   bool supported = false;

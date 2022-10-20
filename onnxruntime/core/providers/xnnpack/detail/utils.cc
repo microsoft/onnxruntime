@@ -94,7 +94,7 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QDQSoftmax;
     else if (op_type == "Resize")
       return QuantizedOpType::QDQResize;
-    else if (op_type == "ConcTranspose")
+    else if (op_type == "ConvTranspose")
       return QuantizedOpType::QDQConvTranspose;
 
   } else if (node_unit.OpType() == "QLinearConv") {
@@ -178,6 +178,9 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
                   [&def](const NodeUnitIODef& arg) {
                     def.inputs.push_back(arg.node_arg.Name());
                   });
+    if (qtype == QuantizedOpType::QDQResize) {
+      def.domain = kOnnxDomain;  // QDQResize is not layout sensitive
+    }
   } else {
     // all qdq-types are enumerated
     ORT_ENFORCE(0, "unknown QDQ ops", def.name);
