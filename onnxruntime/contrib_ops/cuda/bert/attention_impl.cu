@@ -21,6 +21,8 @@ limitations under the License.
 // (1) support GPT-2 past state, unidirectional mask and 4D attention mask from Megatron
 // (2) support 2D attention mask
 // (3) allow persistent softmax from PyTorch for debugging purpose.
+// (4) support different input hidden size and model hidden size for pruned model
+// (5) support different hidden sizes of Q/K and V
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -69,8 +71,7 @@ size_t GetAttentionWorkspaceSize(
     size_t v_head_size,
     size_t sequence_length,
     size_t total_sequence_length,
-    void* fused_runner
-    ) {
+    void* fused_runner) {
   const size_t q_size = element_size * batch_size * sequence_length * num_heads * qk_head_size;
   const size_t k_size = q_size;
   const size_t v_size = element_size * batch_size * sequence_length * num_heads * v_head_size;
@@ -82,7 +83,7 @@ size_t GetAttentionWorkspaceSize(
   }
 
   return (q_size + k_size + v_size) + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length,
-    total_sequence_length);
+                                                                  total_sequence_length);
 }
 
 template <typename T>
@@ -92,8 +93,7 @@ Status QkvToContext(
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data,
-    void* fused_runner
-  ) {
+    void* fused_runner) {
   constexpr size_t element_size = sizeof(T);
   const int max_threads_per_block = prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
@@ -175,8 +175,6 @@ Status QkvToContext(
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
                                                sequence_length, total_sequence_length);
   T* scratch2 = scratch1 + (bytes / element_size);
-
-
 
   cublasSetStream(cublas, stream);
 
@@ -284,7 +282,6 @@ Status LaunchAttentionKernel(
     void* present,
     void* fused_runner,
     const int v_head_size) {
-
   contrib::AttentionParameters parameters;
   parameters.batch_size = batch_size;
   parameters.sequence_length = sequence_length;
@@ -292,7 +289,7 @@ Status LaunchAttentionKernel(
   parameters.past_sequence_length = past_sequence_length;
   parameters.total_sequence_length = past_sequence_length + sequence_length;
   parameters.max_sequence_length = (mask_index_dims.size() == 4) ? static_cast<int>(mask_index_dims.at(3)) : 0;
-  parameters.input_hidden_size = 0; // not used here
+  parameters.input_hidden_size = 0;  // not used here
   parameters.hidden_size = qk_head_size * num_heads;
   parameters.head_size = qk_head_size;
   parameters.v_hidden_size = v_head_size * num_heads;
@@ -575,25 +572,21 @@ template struct AttentionData<float>;
 
 template struct AttentionData<half>;
 
-template
-Status QkvToContext<float>(
+template Status QkvToContext<float>(
     const cudaDeviceProp& prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<float>& data,
-    void* fused_runner
-);
+    void* fused_runner);
 
-template
-Status QkvToContext<half>(
+template Status QkvToContext<half>(
     const cudaDeviceProp& prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data,
-    void* fused_runner
-);
+    void* fused_runner);
 
 }  // namespace cuda
 }  // namespace contrib
