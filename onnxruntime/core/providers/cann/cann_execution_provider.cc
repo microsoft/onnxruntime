@@ -747,7 +747,7 @@ void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 }
 
-common::Status CANNExecutionProvider::ProcessSessionOptions(const SessionOptions& so) {
+common::Status CANNExecutionProvider::ProcessSessionOptions(const SessionOptions& so) const {
   if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Parallel execution mode is incompatible with CANN execution provider "
