@@ -172,6 +172,7 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunab
   if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
 #endif
+  ORT_UNUSED_PARAMETER(test_tunable_op);
   return nullptr;
 }
 
