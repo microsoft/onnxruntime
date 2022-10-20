@@ -63,7 +63,7 @@ bool MatchKernelDefTypes(const Node& node,
   // for each type constraint
   //   map type constraint to arg
   //   check arg type against type constraint enabled types
-  const auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
+  const auto& kernel_type_constraints = kernel_def.TypeConstraints();
   for (const auto& [kernel_type_str, enabled_types] : kernel_type_constraints) {
     gsl::span<const ArgTypeAndIndex> constraint_args{};
     ORT_THROW_IF_ERROR(kernel_type_str_resolver.ResolveKernelTypeStr(node, kernel_type_str,

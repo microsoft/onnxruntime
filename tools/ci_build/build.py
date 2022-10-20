@@ -653,6 +653,8 @@ def parse_arguments():
         help="enable cuda kernel profiling, \
         cupti library must be added to PATH beforehand.",
     )
+    parser.add_argument("--use_cann", action="store_true", help="Build with CANN")
+    parser.add_argument("--cann_home", help="Path to CANN installation dir")
 
     parser.add_argument(
         "--enable_rocm_profiling",
@@ -823,6 +825,7 @@ def generate_build_tree(
     armnn_home,
     armnn_libs,
     snpe_root,
+    cann_home,
     path_to_protoc_exe,
     configs,
     cmake_extra_defines,
@@ -929,6 +932,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
         "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
+        "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
@@ -1003,6 +1007,9 @@ def generate_build_tree(
 
     if snpe_root and os.path.exists(snpe_root):
         cmake_args += ["-DSNPE_ROOT=" + snpe_root]
+
+    if cann_home and os.path.exists(cann_home):
+        cmake_args += ["-Donnxruntime_CANN_HOME=" + cann_home]
 
     if args.winml_root_namespace_override:
         cmake_args += ["-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override]
@@ -1367,6 +1374,23 @@ def setup_cuda_vars(args):
             )
 
     return cuda_home, cudnn_home
+
+
+def setup_cann_vars(args):
+    cann_home = ""
+
+    if args.use_cann:
+        cann_home = args.cann_home if args.cann_home else os.getenv("ASCEND_HOME_PATH")
+
+        cann_home_valid = cann_home is not None and os.path.exists(cann_home)
+
+        if not cann_home_valid:
+            raise BuildError(
+                "cann_home paths must be specified and valid.",
+                "cann_home='{}' valid={}.".format(cann_home, cann_home_valid),
+            )
+
+    return cann_home
 
 
 def setup_tensorrt_vars(args):
@@ -2021,6 +2045,7 @@ def build_python_wheel(
     use_acl,
     use_armnn,
     use_dml,
+    use_cann,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -2028,6 +2053,7 @@ def build_python_wheel(
     use_ninja=False,
     build_eager_mode=False,
     enable_training_on_device=False,
+    enable_rocm_profiling=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -2049,6 +2075,8 @@ def build_python_wheel(
             args.append("--enable_training_on_device")
         if build_eager_mode:
             args.append("--disable_auditwheel_repair")
+        if enable_rocm_profiling:
+            args.append("--enable_rocm_profiling")
 
         # The following arguments are mutually exclusive
         if use_cuda:
@@ -2074,6 +2102,8 @@ def build_python_wheel(
             args.append("--use_armnn")
         elif use_dml:
             args.append("--wheel_name_suffix=directml")
+        elif use_cann:
+            args.append("--use_cann")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2478,6 +2508,9 @@ def main():
     # if using rocm, setup rocm paths
     rocm_home = setup_rocm_build(args, configs)
 
+    # if using cann, setup cann paths
+    cann_home = setup_cann_vars(args)
+
     if args.update or args.build:
         for config in configs:
             os.makedirs(get_config_build_dir(build_dir, config), exist_ok=True)
@@ -2676,6 +2709,7 @@ def main():
             armnn_home,
             armnn_libs,
             snpe_root,
+            cann_home,
             path_to_protoc_exe,
             configs,
             cmake_extra_defines,
@@ -2737,6 +2771,7 @@ def main():
                 args.use_acl,
                 args.use_armnn,
                 args.use_dml,
+                args.use_cann,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
@@ -2744,6 +2779,7 @@ def main():
                 use_ninja=(args.cmake_generator == "Ninja"),
                 build_eager_mode=args.build_eager_mode,
                 enable_training_on_device=args.enable_training_on_device,
+                enable_rocm_profiling=args.enable_rocm_profiling,
             )
         if args.build_nuget:
             build_nuget_package(

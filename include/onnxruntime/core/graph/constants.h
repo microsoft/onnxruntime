@@ -27,7 +27,6 @@ constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
-constexpr const char* kNupharExecutionProvider = "NupharExecutionProvider";
 constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kNnapiExecutionProvider = "NnapiExecutionProvider";
@@ -41,6 +40,7 @@ constexpr const char* kCoreMLExecutionProvider = "CoreMLExecutionProvider";
 constexpr const char* kSnpeExecutionProvider = "SNPEExecutionProvider";
 constexpr const char* kTvmExecutionProvider = "TvmExecutionProvider";
 constexpr const char* kXnnpackExecutionProvider = "XnnpackExecutionProvider";
+constexpr const char* kCannExecutionProvider = "CANNExecutionProvider";
 
 constexpr const char* kExecutionProviderSharedLibraryPath = "shared_lib_path";
 constexpr const char* kExecutionProviderSharedLibraryEntry = "provider_factory_entry_point";

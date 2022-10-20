@@ -14,11 +14,12 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
-#include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
-#include "core/optimizer/initializer.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -254,19 +255,6 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
   return true;
 }
 
-void GetFlattenOutputShape(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
-  int32_t rank = static_cast<int>(input_shape.size());
-  NodeAttrHelper helper(node_unit);
-  int32_t axis = helper.Get("axis", 1);
-  // axis == rank is a valid input, but invalid for HandleNegativeAxis
-  // Skip non-negative axis here
-  if (axis < 0)
-    axis = static_cast<int32_t>(HandleNegativeAxis(axis, rank));
-
-  dim_1 = std::accumulate(input_shape.cbegin(), input_shape.cbegin() + axis, 1, std::multiplies<int32_t>());
-  dim_2 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies<int32_t>());
-}
-
 Shape GetShapeInfoFromNodeArg(const GraphViewer& graph_viewer, const std::string& name) {
   // can be applied to both input and output
   Shape shape;
@@ -353,14 +341,14 @@ bool IsInternalQuantizationSupported(const Node& node, const std::unordered_set<
 }
 
 bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
-  const auto& op_support_checkers = GetOpSupportCheckers();
-  const auto op_support_checker_it = op_support_checkers.find(node_unit.OpType());
-  if (op_support_checker_it == op_support_checkers.end()) {
+  const auto& op_builders = GetOpBuilders();
+  const auto op_builder_it = op_builders.find(node_unit.OpType());
+  if (op_builder_it == op_builders.end()) {
     return false;
   }
 
-  const auto* op_support_checker = op_support_checker_it->second;
-  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
+  const auto* op_builder = op_builder_it->second;
+  return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
 }
 
 bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,

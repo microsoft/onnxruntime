@@ -18,7 +18,7 @@ namespace onnxruntime {
  * Utility class for performing kernel lookup.
  * Primary usage pattern is to be created during graph partitioning and passed to IExecutionProvider::GetCapability().
  */
-class KernelLookup : public IExecutionProvider::IKernelLookup {
+class KernelLookup final : public IExecutionProvider::IKernelLookup {
  public:
   KernelLookup(ProviderType provider_type,
                gsl::span<const gsl::not_null<const KernelRegistry*>> kernel_registries,

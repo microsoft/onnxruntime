@@ -22,7 +22,7 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
@@ -118,6 +118,12 @@ struct OrtStatus {
 #define BACKEND_DML ""
 #endif
 
+#if USE_CANN
+#define BACKEND_CANN "-CANN"
+#else
+#define BACKEND_CANN ""
+#endif
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -157,6 +163,10 @@ extern std::string openvino_device_type;
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 #endif
+#ifdef USE_CANN
+#include "core/providers/cann/cann_provider_factory.h"
+#include "core/providers/cann/cann_execution_provider_info.h"
+#endif
 
 #ifdef USE_CUDA
 namespace onnxruntime {
@@ -173,6 +183,13 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace onnxruntime
 #endif
 
+#ifdef USE_CANN
+namespace onnxruntime {
+ProviderInfo_CANN* TryGetProviderInfo_CANN();
+ProviderInfo_CANN& GetProviderInfo_CANN();
+}  // namespace onnxruntime
+#endif
+
 #ifdef USE_ROCM
 namespace onnxruntime {
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
@@ -182,6 +199,8 @@ namespace python {
 extern bool miopen_conv_exhaustive_search;
 // TODO remove deprecated global config
 extern bool do_copy_in_default_stream;
+// TODO remove deprecated global config
+extern onnxruntime::rocm::TunableOpInfo tunable_op;
 extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python

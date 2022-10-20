@@ -56,7 +56,8 @@ namespace Windows::AI::MachineLearning::Adapter
         MLOperatorAttributeType attributeType,
         uint32_t elementCount,
         size_t elementByteSize,
-        void* value) const
+        void* value
+        ) const
     {
         switch (attributeType)
         {
@@ -474,38 +475,39 @@ namespace Windows::AI::MachineLearning::Adapter
     HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetAttributeElementCount(
         _In_z_ const char* name,
         MLOperatorAttributeType type,
-        uint32_t* elementCount) const noexcept
+        uint32_t* elementCount
+        ) const noexcept
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          *elementCount = 0;
+            *elementCount = 0;
 
-          if (IsPrimitiveAttributeType(type))
-          {
-            *elementCount = m_impl->GetPrimitiveAttrElementCount(ToProto(type), std::string(name));
-          }
-          else
-          {
-              // ONNX runtime does not implement OpNodeProtoHelper<Impl_t>::GetPrimitiveAttrElementCount for tensors.
-              // So we need to test presence a different way.
-
-              const onnx::AttributeProto* attributeProto = m_impl->TryGetAttribute(std::string(name));
-              *elementCount = attributeProto ? 1 : 0;
-          }
-
-          // Look for a value in the kernel's registered defaults if one was not found
-          if (*elementCount == 0 && m_defaultAttributes)
-          {
-            auto defaultAttr = m_defaultAttributes->find(name);
-            if (defaultAttr != m_defaultAttributes->end())
+            if (IsPrimitiveAttributeType(type))
             {
-              *elementCount = static_cast<uint32_t>(defaultAttr->second.ElementCount());
+                *elementCount = m_impl->GetPrimitiveAttrElementCount(ToProto(type), std::string(name));
             }
-          }
+            else
+            {
+                // ONNX runtime does not implement OpNodeProtoHelper<Impl_t>::GetPrimitiveAttrElementCount for tensors.
+                // So we need to test presence a different way.
 
-          return S_OK;
+                const onnx::AttributeProto* attributeProto = m_impl->TryGetAttribute(std::string(name));
+                *elementCount = attributeProto ? 1 : 0;
+            }
+
+            // Look for a value in the kernel's registered defaults if one was not found
+            if (*elementCount == 0 && m_defaultAttributes)
+            {
+                auto defaultAttr = m_defaultAttributes->find(name);
+                if (defaultAttr != m_defaultAttributes->end())
+                {
+                    *elementCount = static_cast<uint32_t>(defaultAttr->second.ElementCount());
+                }
+            }
+
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -533,7 +535,8 @@ namespace Windows::AI::MachineLearning::Adapter
         MLOperatorAttributeType type,
         uint32_t elementCount,
         size_t elementByteSize,
-        /*out*/void* attributeValue) const noexcept
+        /*out*/void* attributeValue
+        ) const noexcept
     {
         ORT_TRY
         {
@@ -542,40 +545,40 @@ namespace Windows::AI::MachineLearning::Adapter
             // Look for a value in the kernel's registered defaults if one does not exist otherwise
             if (m_impl->GetPrimitiveAttrElementCount(ToProto(type), name) == 0)
             {
-              if (!m_defaultAttributes)
-              {
-                ORT_THROW_HR(E_FAIL);
-              }
+                if (!m_defaultAttributes)
+                {
+                    ORT_THROW_HR(E_FAIL);
+                }
 
-              auto defaultAttr = m_defaultAttributes->find(name);
-              if (defaultAttr == m_defaultAttributes->end())
-              {
-                ORT_THROW_HR(E_FAIL);
-              }
+                auto defaultAttr = m_defaultAttributes->find(name);
+                if (defaultAttr == m_defaultAttributes->end())
+                {
+                    ORT_THROW_HR(E_FAIL);
+                }
 
-              defaultAttr->second.GetAttribute(type, elementCount, elementByteSize, /*out*/attributeValue);
+                defaultAttr->second.GetAttribute(type, elementCount, elementByteSize, /*out*/attributeValue);
             }
             else
             {
-              switch (type)
-              {
+                switch (type)
+                {
                 case MLOperatorAttributeType::Float:
-                  ML_CHECK_BOOL(elementCount == 1);
-                  return GetAttributeHelper<MLOperatorAttributeType::Float>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
+                    ML_CHECK_BOOL(elementCount == 1);
+                    return GetAttributeHelper<MLOperatorAttributeType::Float>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
 
                 case MLOperatorAttributeType::Int:
-                  ML_CHECK_BOOL(elementCount == 1);
-                  return GetAttributeHelper<MLOperatorAttributeType::Int>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
+                    ML_CHECK_BOOL(elementCount == 1);
+                    return GetAttributeHelper<MLOperatorAttributeType::Int>(name, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
 
                 case MLOperatorAttributeType::FloatArray:
-                  return GetAttributeArrayHelper<MLOperatorAttributeType::FloatArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
+                    return GetAttributeArrayHelper<MLOperatorAttributeType::FloatArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
 
                 case MLOperatorAttributeType::IntArray:
-                  return GetAttributeArrayHelper<MLOperatorAttributeType::IntArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
+                    return GetAttributeArrayHelper<MLOperatorAttributeType::IntArray>(name, elementCount, static_cast<uint32_t>(elementByteSize), /*out*/attributeValue);
 
                 default:
-                  ML_CHECK_BOOL(false);
-                  break;
+                    ML_CHECK_BOOL(false);
+                    break;
               }
             }
 
@@ -587,7 +590,8 @@ namespace Windows::AI::MachineLearning::Adapter
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
     const std::string* OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetStringAttribute(
         _In_z_ const char* name,
-        uint32_t elementIndex) const
+        uint32_t elementIndex
+        ) const
     {
         // Get the proto attribute
         const onnx::AttributeProto* attr = m_impl->TryGetAttribute(std::string(name));
@@ -630,22 +634,23 @@ namespace Windows::AI::MachineLearning::Adapter
     HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetStringAttributeElementLength(
         _In_z_ const char* name,
         uint32_t elementIndex,
-        uint32_t* attributeElementByteLength) const noexcept
+        uint32_t* attributeElementByteLength
+        ) const noexcept
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          *attributeElementByteLength = 0;
-          const std::string* protoString = GetStringAttribute(name, elementIndex);
+            *attributeElementByteLength = 0;
+            const std::string* protoString = GetStringAttribute(name, elementIndex);
 
-          // Check for overflow and casting safety
-          ML_CHECK_BOOL(protoString->size() < protoString->size() + 1);
-          ML_CHECK_BOOL(protoString->size() + 1 <= std::numeric_limits<uint32_t>::max());
+            // Check for overflow and casting safety
+            ML_CHECK_BOOL(protoString->size() < protoString->size() + 1);
+            ML_CHECK_BOOL(protoString->size() + 1 <= std::numeric_limits<uint32_t>::max());
 
-          // Set the length including null termination
-          *attributeElementByteLength = static_cast<uint32_t>(protoString->size() + 1);
-          return S_OK;
+            // Set the length including null termination
+            *attributeElementByteLength = static_cast<uint32_t>(protoString->size() + 1);
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -655,19 +660,20 @@ namespace Windows::AI::MachineLearning::Adapter
         _In_z_ const char* name,
         uint32_t elementIndex,
         uint32_t attributeElementByteLength,
-        char* attributeElement) const noexcept
+        char* attributeElement
+        ) const noexcept
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          const std::string* protoString = GetStringAttribute(name, elementIndex);
+            const std::string* protoString = GetStringAttribute(name, elementIndex);
 
-          size_t stringLength = protoString->size();
-          ML_CHECK_BOOL(stringLength < attributeElementByteLength);
-          memcpy(attributeElement, protoString->c_str(), stringLength + 1);
+            size_t stringLength = protoString->size();
+            ML_CHECK_BOOL(stringLength < attributeElementByteLength);
+            memcpy(attributeElement, protoString->c_str(), stringLength + 1);
 
-          return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -677,7 +683,8 @@ namespace Windows::AI::MachineLearning::Adapter
     HRESULT OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetAttributeHelper(
         _In_z_ const char* name,
         uint32_t elementByteSize,
-        void* value) const
+        void* value
+        ) const
     {
         using elementType_t = typename MLAttributeTypeTraits<T>::Type;
         static_assert(!MLAttributeTypeTraits<T>::IsArray, "This function only works for simple non-array types.");
@@ -689,28 +696,29 @@ namespace Windows::AI::MachineLearning::Adapter
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
     HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetTensorAttribute(
         _In_z_ const char* name,
-        _Outptr_ IMLOperatorTensor** tensor) const noexcept
+        _Outptr_ IMLOperatorTensor** tensor
+        ) const noexcept
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          *tensor = nullptr;
+            *tensor = nullptr;
 
-          // Read the tensor if present, and wrap it in a IMLOperatorTensor.
-          const onnx::AttributeProto* attributeProto = m_impl->TryGetAttribute(std::string(name));
-          if (attributeProto)
-          {
-            if (attributeProto->has_t())
+            // Read the tensor if present, and wrap it in a IMLOperatorTensor.
+            const onnx::AttributeProto* attributeProto = m_impl->TryGetAttribute(std::string(name));
+            if (attributeProto)
             {
-              const onnx::TensorProto* tensorProto = &attributeProto->t();
-              Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto));
-              *tensor = tensorWrapper.Detach();
-              return S_OK;
+                if (attributeProto->has_t())
+                {
+                    const onnx::TensorProto* tensorProto = &attributeProto->t();
+                    Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto));
+                    *tensor = tensorWrapper.Detach();
+                    return S_OK;
+                }
             }
-          }
 
-          return E_INVALIDARG;  // The argument has no valid matching attribute.
+            return E_INVALIDARG;  // The argument has no valid matching attribute.
         }
         ORT_CATCH_RETURN
     }
@@ -720,18 +728,18 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          memset(edgeDesc, 0, sizeof(*edgeDesc));
-          const onnx::TypeProto* type = m_impl->GetInputType(inputIndex);
-          ML_CHECK_BOOL(type != nullptr);
-          *edgeDesc = ToMLEdgeDesc(type);
+            memset(edgeDesc, 0, sizeof(*edgeDesc));
+            const onnx::TypeProto* type = m_impl->GetInputType(inputIndex);
+            ML_CHECK_BOOL(type != nullptr);
+            *edgeDesc = ToMLEdgeDesc(type);
 
-          assert(edgeDesc->edgeType != MLOperatorEdgeType::Undefined);
-          assert((edgeDesc->edgeType != MLOperatorEdgeType::Tensor /*&& edgeDesc->edgeType != MLOperatorEdgeType::TensorSequence*/) ||
-                 edgeDesc->tensorDataType != MLOperatorTensorDataType::Undefined);
+            assert(edgeDesc->edgeType != MLOperatorEdgeType::Undefined);
+            assert((edgeDesc->edgeType != MLOperatorEdgeType::Tensor /*&& edgeDesc->edgeType != MLOperatorEdgeType::TensorSequence*/) ||
+                    edgeDesc->tensorDataType != MLOperatorTensorDataType::Undefined);
 
-          return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -741,14 +749,14 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          memset(edgeDesc, 0, sizeof(*edgeDesc));
-          const onnx::TypeProto* type = m_impl->GetOutputType(outputIndex);
-          ML_CHECK_BOOL(type != nullptr);
-          *edgeDesc = ToMLEdgeDesc(type);
+            memset(edgeDesc, 0, sizeof(*edgeDesc));
+            const onnx::TypeProto* type = m_impl->GetOutputType(outputIndex);
+            ML_CHECK_BOOL(type != nullptr);
+            *edgeDesc = ToMLEdgeDesc(type);
 
-          return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -758,38 +766,38 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
-          if (inputIndex >= GetInputCount())
-          {
-            return E_INVALIDARG;
-          }
-
-          // Input shapes are determined either from the override or from the underlying proto
-          if (m_inputShapesOverride)
-          {
-            if (m_inputShapesOverride->GetShape(inputIndex).size() != dimensionCount)
+            memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
+            if (inputIndex >= GetInputCount())
             {
-              return E_INVALIDARG;
+                return E_INVALIDARG;
             }
 
-            for (uint32_t i = 0; i < dimensionCount; ++i)
+            // Input shapes are determined either from the override or from the underlying proto
+            if (m_inputShapesOverride)
             {
-              dimensions[i] = m_inputShapesOverride->GetShape(inputIndex)[i];
+                if (m_inputShapesOverride->GetShape(inputIndex).size() != dimensionCount)
+                {
+                    return E_INVALIDARG;
+                }
+
+                for (uint32_t i = 0; i < dimensionCount; ++i)
+                {
+                    dimensions[i] = m_inputShapesOverride->GetShape(inputIndex)[i];
+                }
             }
-          }
-          else
-          {
-            const auto* inputType = m_impl->GetInputType(inputIndex);
-            ML_CHECK_BOOL(inputType->has_tensor_type());
-            for (uint32_t i = 0; i < dimensionCount; ++i)
+            else
             {
-                // Shape inference is only done when all dimensions of all inputs have known values,
-                // so the input tensors will always have shapes at this point.
-                assert(inputType->tensor_type().shape().dim(i).has_dim_value());
-                dimensions[i] = static_cast<uint32_t>(inputType->tensor_type().shape().dim(i).dim_value());
-              }
+                const auto* inputType = m_impl->GetInputType(inputIndex);
+                ML_CHECK_BOOL(inputType->has_tensor_type());
+                for (uint32_t i = 0; i < dimensionCount; ++i)
+                {
+                    // Shape inference is only done when all dimensions of all inputs have known values,
+                    // so the input tensors will always have shapes at this point.
+                    assert(inputType->tensor_type().shape().dim(i).has_dim_value());
+                    dimensions[i] = static_cast<uint32_t>(inputType->tensor_type().shape().dim(i).dim_value());
+                }
             }
 
             return S_OK;
@@ -824,33 +832,33 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          *dimensionCount = 0;
+            *dimensionCount = 0;
 
-          if (inputIndex >= GetInputCount())
-          {
-            return E_INVALIDARG;
-          }
+            if (inputIndex >= GetInputCount())
+            {
+                return E_INVALIDARG;
+            }
 
-          // Input shapes are determined either from the override or from the underlying proto
-          if (m_inputShapesOverride)
-          {
-            *dimensionCount = gsl::narrow_cast<uint32_t>(m_inputShapesOverride->GetShape(inputIndex).size());
-          }
-          else
-          {
-            const auto* inputType = m_impl->GetInputType(inputIndex);
-            ML_CHECK_BOOL(inputType->has_tensor_type());
+            // Input shapes are determined either from the override or from the underlying proto
+            if (m_inputShapesOverride)
+            {
+                *dimensionCount = gsl::narrow_cast<uint32_t>(m_inputShapesOverride->GetShape(inputIndex).size());
+            }
+            else
+            {
+                const auto* inputType = m_impl->GetInputType(inputIndex);
+                ML_CHECK_BOOL(inputType->has_tensor_type());
 
-            // Shape inference is only done when all dimensions of all inputs have known values,
-            // so the input tensors will always have shapes at this point.
-            assert(inputType->tensor_type().has_shape());
+                // Shape inference is only done when all dimensions of all inputs have known values,
+                // so the input tensors will always have shapes at this point.
+                assert(inputType->tensor_type().has_shape());
 
-            *dimensionCount = inputType->tensor_type().shape().dim_size();
-          }
+                *dimensionCount = inputType->tensor_type().shape().dim_size();
+            }
 
-          return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -860,19 +868,19 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          bool inputRequiredAsConstant = std::find(
+            bool inputRequiredAsConstant = std::find(
                                              m_requiredConstantCpuInputs.begin(),
                                              m_requiredConstantCpuInputs.end(),
                                              inputIndex) != m_requiredConstantCpuInputs.end();
 
-          ORT_THROW_HR_IF(E_INVALIDARG, !inputRequiredAsConstant);
+            ORT_THROW_HR_IF(E_INVALIDARG, !inputRequiredAsConstant);
 
-          ComPtr<IMLOperatorTensor> tensorWrapper = m_constantInputGetter(inputIndex);
+            ComPtr<IMLOperatorTensor> tensorWrapper = m_constantInputGetter(inputIndex);
 
-          if (tensorWrapper == nullptr)
-          {
-              // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
-              return E_UNEXPECTED;
+            if (tensorWrapper == nullptr)
+            {
+                // This shouldn't happen since kernel creation is deferred and repeated when required constant inputs are not present.
+                return E_UNEXPECTED;
             }
 
             *tensor = tensorWrapper.Detach();
@@ -886,31 +894,31 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
+            memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
 
-          if (!HasOutputShapeDescription())
-          {
-            return E_FAIL;
-          }
+            if (!HasOutputShapeDescription())
+            {
+                return E_FAIL;
+            }
 
-          if (outputIndex >= GetOutputCount())
-          {
-            return E_INVALIDARG;
-          }
+            if (outputIndex >= GetOutputCount())
+            {
+                return E_INVALIDARG;
+            }
 
-          if (m_inferredOutputShapes->GetShape(outputIndex).size() != dimensionCount)
-          {
-            return E_INVALIDARG;
-          }
+            if (m_inferredOutputShapes->GetShape(outputIndex).size() != dimensionCount)
+            {
+                return E_INVALIDARG;
+            }
 
-          for (uint32_t i = 0; i < dimensionCount; ++i)
-          {
-            dimensions[i] = m_inferredOutputShapes->GetShape(outputIndex)[i];
-          }
+            for (uint32_t i = 0; i < dimensionCount; ++i)
+            {
+                dimensions[i] = m_inferredOutputShapes->GetShape(outputIndex)[i];
+            }
 
-          return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -919,23 +927,23 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          *dimensionCount = 0;
+            *dimensionCount = 0;
 
-          if (!HasOutputShapeDescription())
-          {
-            return E_FAIL;
-          }
+            if (!HasOutputShapeDescription())
+            {
+                return E_FAIL;
+            }
 
-          if (outputIndex >= GetOutputCount())
-          {
-            return E_INVALIDARG;
-          }
+            if (outputIndex >= GetOutputCount())
+            {
+                return E_INVALIDARG;
+            }
 
-          *dimensionCount = gsl::narrow_cast<uint32_t>(m_inferredOutputShapes->GetShape(outputIndex).size());
+            *dimensionCount = gsl::narrow_cast<uint32_t>(m_inferredOutputShapes->GetShape(outputIndex).size());
 
-          return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -949,20 +957,20 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          *shapeInfo = nullptr;
-
-          if (!HasTensorShapeDescription())
-          {
             *shapeInfo = nullptr;
-            return E_FAIL;
-            //return MLStatus::REQUIREMENT_NOT_REGISTERED;
-          }
 
-          ComPtr<IMLOperatorTensorShapeDescription> ret = const_cast<OpKernelInfoWrapper*>(this);
-          *shapeInfo = ret.Detach();
-          return S_OK;
+            if (!HasTensorShapeDescription())
+            {
+                *shapeInfo = nullptr;
+                return E_FAIL;
+                //return MLStatus::REQUIREMENT_NOT_REGISTERED;
+            }
+
+            ComPtr<IMLOperatorTensorShapeDescription> ret = const_cast<OpKernelInfoWrapper*>(this);
+            *shapeInfo = ret.Detach();
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -1023,31 +1031,31 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
+            memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
 
-          if (!HasOutputShapeDescription())
-          {
-            return E_FAIL;
-          }
+            if (!HasOutputShapeDescription())
+            {
+                return E_FAIL;
+            }
 
-          if (outputIndex >= GetOutputCount())
-          {
-            return E_INVALIDARG;
-          }
+            if (outputIndex >= GetOutputCount())
+            {
+                return E_INVALIDARG;
+            }
 
-          if (m_inferredOutputShapes->GetShape(outputIndex).size() != dimensionCount)
-          {
-            return E_INVALIDARG;
-          }
+            if (m_inferredOutputShapes->GetShape(outputIndex).size() != dimensionCount)
+            {
+                return E_INVALIDARG;
+            }
 
-          for (uint32_t i = 0; i < dimensionCount; ++i)
-          {
-            dimensions[i] = m_inferredOutputShapes->GetShape(outputIndex)[i];
-          }
+            for (uint32_t i = 0; i < dimensionCount; ++i)
+            {
+                dimensions[i] = m_inferredOutputShapes->GetShape(outputIndex)[i];
+            }
 
-          return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -1056,23 +1064,23 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          *dimensionCount = 0;
+            *dimensionCount = 0;
 
-          if (!HasOutputShapeDescription())
-          {
-            return E_FAIL;
-          }
+            if (!HasOutputShapeDescription())
+            {
+                return E_FAIL;
+            }
 
-          if (outputIndex >= GetOutputCount())
-          {
-            return E_INVALIDARG;
-          }
+            if (outputIndex >= GetOutputCount())
+            {
+                return E_INVALIDARG;
+            }
 
-          *dimensionCount = gsl::narrow_cast<uint32_t>(m_inferredOutputShapes->GetShape(outputIndex).size());
+            *dimensionCount = gsl::narrow_cast<uint32_t>(m_inferredOutputShapes->GetShape(outputIndex).size());
 
-          return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -1086,20 +1094,20 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          *shapeInfo = nullptr;
-
-          if (!HasTensorShapeDescription())
-          {
             *shapeInfo = nullptr;
-            return E_FAIL;
-            //return MLStatus::REQUIREMENT_NOT_REGISTERED;
-          }
 
-          ComPtr<IMLOperatorTensorShapeDescription> ret = const_cast<DmlGraphOpKernelInfoWrapper*>(this);
-          *shapeInfo = ret.Detach();
-          return S_OK;
+            if (!HasTensorShapeDescription())
+            {
+                *shapeInfo = nullptr;
+                return E_FAIL;
+                //return MLStatus::REQUIREMENT_NOT_REGISTERED;
+            }
+
+            ComPtr<IMLOperatorTensorShapeDescription> ret = const_cast<DmlGraphOpKernelInfoWrapper*>(this);
+            *shapeInfo = ret.Detach();
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -1120,57 +1128,60 @@ namespace Windows::AI::MachineLearning::Adapter
         return (m_graphNodeCreateInfo != nullptr);
     }
 
-    void DmlGraphOpKernelInfoWrapper::SetDmlProperties(_In_ const MLOperatorKernelDmlProperties* dmlProperties) const
-    {
-        // Populate the mappings between DML in/outs and kernel in/outs.  By default they are the same.
-        if (dmlProperties && dmlProperties->kernelInputIndices)
-        {
-            m_graphNodeCreateInfo->kernelInputIndices.insert(
-                m_graphNodeCreateInfo->kernelInputIndices.begin(),
-                dmlProperties->kernelInputIndices,
-                dmlProperties->kernelInputIndices + dmlProperties->dmlInputCount);
-        }
-        else
-        {
-            m_graphNodeCreateInfo->kernelInputIndices.resize(dmlProperties ? dmlProperties->dmlInputCount : GetInputCount());
-            std::iota(m_graphNodeCreateInfo->kernelInputIndices.begin(), m_graphNodeCreateInfo->kernelInputIndices.end(), 0);
-        }
-
-        if (dmlProperties && dmlProperties->kernelOutputIndices)
-        {
-            m_graphNodeCreateInfo->kernelOutputIndices.insert(
-                m_graphNodeCreateInfo->kernelOutputIndices.begin(),
-                dmlProperties->kernelOutputIndices,
-                dmlProperties->kernelOutputIndices + dmlProperties->dmlOutputCount);
-        }
-        else
-        {
-            m_graphNodeCreateInfo->kernelOutputIndices.resize(dmlProperties ? dmlProperties->dmlOutputCount : GetOutputCount());
-            std::iota(m_graphNodeCreateInfo->kernelOutputIndices.begin(), m_graphNodeCreateInfo->kernelOutputIndices.end(), 0);
-        }
-
-        m_graphNodeCreateInfo->allowHalfPrecisionComputation = dmlProperties ? dmlProperties->allowHalfPrecisionComputation : true;
-    }
-
     HRESULT STDMETHODCALLTYPE DmlGraphOpKernelInfoWrapper::SetDmlOperator(
-        IDMLOperator* op,
-        _In_ const DML_OPERATOR_DESC* desc,
-        _In_opt_ const MLOperatorKernelDmlProperties* dmlProperties) const noexcept
+        _In_ const MLOperatorGraphDesc* operatorGraphDesc
+        ) const noexcept
     {
         ORT_TRY
         {
-          ML_CHECK_BOOL(op != nullptr);
-          ML_CHECK_BOOL(dmlProperties != nullptr);
+            assert(operatorGraphDesc != nullptr);
+            // Either nodesAsOpDesc or nodesIDMLOperator can be present.
+            assert(operatorGraphDesc->nodeCount == 0 || (!operatorGraphDesc->nodesAsOpDesc ^ !operatorGraphDesc->nodesAsIDMLOperator));
 
-          m_graphNodeCreateInfo->initialized = true;
+            if (operatorGraphDesc->nodesAsOpDesc)
+            {
+                m_graphNodeCreateInfo->nodesAsOperatorDesc = std::vector<std::unique_ptr<AbstractOperatorDesc>>();
+                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++) 
+                {
+                    auto* node = operatorGraphDesc->nodesAsOpDesc[nodeIndex];
+                    assert(node != nullptr);
+                    AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*node);
+                    m_graphNodeCreateInfo->nodesAsOperatorDesc.push_back(std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc)));
+                }
+            }
+            else
+            {
+                m_graphNodeCreateInfo->nodesAsIDMLOperator = std::vector<Microsoft::WRL::ComPtr<IDMLOperator>>();
+                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++) 
+                {
+                    auto* node = operatorGraphDesc->nodesAsIDMLOperator[nodeIndex];
+                    assert(node != nullptr);
+                    m_graphNodeCreateInfo->nodesAsIDMLOperator.push_back(node);
+                }
+            }
 
-          SetDmlProperties(dmlProperties);
+            // There can be operators (or kernels) which don't require any input.
+            assert(operatorGraphDesc->inputEdgeCount == 0 || operatorGraphDesc->inputEdges != nullptr);
+            m_graphNodeCreateInfo->inputEdges.insert(
+                m_graphNodeCreateInfo->inputEdges.begin(),
+                operatorGraphDesc->inputEdges,
+                operatorGraphDesc->inputEdges + operatorGraphDesc->inputEdgeCount);
 
-          m_graphNodeCreateInfo->op = op;
-          AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*desc);
-          m_graphNodeCreateInfo->desc = std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc));
+            // Operators (or kernels), which use single DML API, don't have any intermediate edge.
+            assert(operatorGraphDesc->intermediateEdgeCount == 0 || operatorGraphDesc->intermediateEdges != nullptr);
+            m_graphNodeCreateInfo->intermediateEdges.insert(
+                m_graphNodeCreateInfo->intermediateEdges.begin(),
+                operatorGraphDesc->intermediateEdges,
+                operatorGraphDesc->intermediateEdges + operatorGraphDesc->intermediateEdgeCount);
 
-          return S_OK;
+            assert(operatorGraphDesc->outputEdgeCount == 0 || operatorGraphDesc->outputEdges != nullptr);
+            m_graphNodeCreateInfo->outputEdges.insert(
+                m_graphNodeCreateInfo->outputEdges.begin(),
+                operatorGraphDesc->outputEdges,
+                operatorGraphDesc->outputEdges + operatorGraphDesc->outputEdgeCount);
+
+            m_graphNodeCreateInfo->nodeCount = operatorGraphDesc->nodeCount;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -1230,7 +1241,7 @@ namespace Windows::AI::MachineLearning::Adapter
           VerifyNotClosed();
           return ToMLTensorDataType(static_cast<onnx::TensorProto_DataType>(m_impl->data_type()));
         }
-            ORT_CATCH_GENERIC
+        ORT_CATCH_GENERIC
         {
           return MLOperatorTensorDataType::Undefined;
         }
@@ -1346,7 +1357,7 @@ namespace Windows::AI::MachineLearning::Adapter
           VerifyNotClosed();
           return ToMLTensorDataType(m_impl->DataType());
         }
-            ORT_CATCH_GENERIC
+        ORT_CATCH_GENERIC
         {
           return MLOperatorTensorDataType::Undefined;
         }
@@ -1523,33 +1534,32 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
-          *tensor = nullptr;
+            VerifyNotClosed();
+            *tensor = nullptr;
 
-          ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
+            ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
 
-          auto opKernelContextWrapper = const_cast<OpKernelContextWrapper*>(this);
-          if (m_inputTensors[inputIndex]->GetInterface() == nullptr)
-          {
-            auto inputTensor = m_impl->Input<onnxruntime::Tensor>(inputIndex);
-            if (inputTensor != nullptr)
+            auto opKernelContextWrapper = const_cast<OpKernelContextWrapper*>(this);
+            if (m_inputTensors[inputIndex]->GetInterface() == nullptr)
             {
-              ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
-                  const_cast<onnxruntime::Tensor*>(inputTensor),
-                  IsAllocationInterface(inputTensor->Location()),
-                  m_winmlProvider.Get(),
-                  m_internalOperator);
+                auto inputTensor = m_impl->Input<onnxruntime::Tensor>(inputIndex);
+                if (inputTensor != nullptr)
+                {
+                    ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                        const_cast<onnxruntime::Tensor*>(inputTensor),
+                        IsAllocationInterface(inputTensor->Location()),
+                        m_winmlProvider.Get(),
+                        m_internalOperator);
 
-              opKernelContextWrapper->m_inputTensors[inputIndex] = tensorWrapper;
+                    opKernelContextWrapper->m_inputTensors[inputIndex] = tensorWrapper;
+                }
             }
-          }
 
-
-          if (opKernelContextWrapper->m_inputTensors[inputIndex] != nullptr)
-          {
-            opKernelContextWrapper->m_inputTensors[inputIndex].CopyTo(tensor);
-          }
-          return S_OK;
+            if (opKernelContextWrapper->m_inputTensors[inputIndex] != nullptr)
+            {
+                opKernelContextWrapper->m_inputTensors[inputIndex].CopyTo(tensor);
+            }
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -1558,22 +1568,22 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          *tensor = nullptr;
+            *tensor = nullptr;
 
-          ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
+            ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
 
-          // GetOutputTensor must be called unless a kernel provides shape inferencing,
-          // in which case m_outputShapes will be valid here.
-          if (!m_outputShapes)
-          {
-            return E_FAIL;
-            //return MLStatus::SHAPE_INFERENCE_NOT_REGISTERED;
-          }
+            // GetOutputTensor must be called unless a kernel provides shape inferencing,
+            // in which case m_outputShapes will be valid here.
+            if (!m_outputShapes)
+            {
+                return E_FAIL;
+                //return MLStatus::SHAPE_INFERENCE_NOT_REGISTERED;
+            }
 
-          uint32_t dimensionCount = gsl::narrow_cast<uint32_t>(m_outputShapes->GetShape(outputIndex).size());
-          return GetOutputTensor(outputIndex, dimensionCount, m_outputShapes->GetShape(outputIndex).data(), tensor);
+            uint32_t dimensionCount = gsl::narrow_cast<uint32_t>(m_outputShapes->GetShape(outputIndex).size());
+            return GetOutputTensor(outputIndex, dimensionCount, m_outputShapes->GetShape(outputIndex).data(), tensor);
         }
         ORT_CATCH_RETURN
     }
@@ -1582,45 +1592,45 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
-          *tensor = nullptr;
+            VerifyNotClosed();
+            *tensor = nullptr;
 
-          ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
+            ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
 
-          // Verify that the provided shape matches the shape determined using the kernel's shape inference function.
-          if (m_outputTensors[outputIndex]->GetInterface() == nullptr)
-          {
-            if (m_outputShapes)
+            // Verify that the provided shape matches the shape determined using the kernel's shape inference function.
+            if (m_outputTensors[outputIndex]->GetInterface() == nullptr)
             {
-              if ((m_outputShapes->GetShape(outputIndex).size() != dimensions ||
-                   memcmp(dimensionSizes, m_outputShapes->GetShape(outputIndex).data(), dimensions * sizeof(*dimensionSizes))))
-              {
-                return E_INVALIDARG;
-              }
+                if (m_outputShapes)
+                {
+                    if ((m_outputShapes->GetShape(outputIndex).size() != dimensions ||
+                        memcmp(dimensionSizes, m_outputShapes->GetShape(outputIndex).data(), dimensions * sizeof(*dimensionSizes))))
+                    {
+                        return E_INVALIDARG;
+                    }
+                }
+                std::vector<int64_t> convertedSizes(dimensions);
+                for (size_t i = 0; i < dimensions; ++i)
+                {
+                    convertedSizes[i] = dimensionSizes[i];
+                }
+
+                onnxruntime::TensorShape shape(convertedSizes.data(), dimensions);
+                auto outputTensor = m_impl->Output(outputIndex, shape);
+                if (outputTensor)
+                {
+                    ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                        const_cast<onnxruntime::Tensor*>(outputTensor),
+                        IsAllocationInterface(outputTensor->Location()),
+                        m_winmlProvider.Get(),
+                        m_internalOperator);
+
+                    const_cast<OpKernelContextWrapper*>(this)->m_outputTensors[outputIndex] = tensorWrapper;
+                }
             }
-            std::vector<int64_t> convertedSizes(dimensions);
-            for (size_t i = 0; i < dimensions; ++i)
-            {
-              convertedSizes[i] = dimensionSizes[i];
-            }
 
-            onnxruntime::TensorShape shape(convertedSizes.data(), dimensions);
-            auto outputTensor = m_impl->Output(outputIndex, shape);
-            if (outputTensor)
-            {
-              ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
-                  const_cast<onnxruntime::Tensor*>(outputTensor),
-                  IsAllocationInterface(outputTensor->Location()),
-                  m_winmlProvider.Get(),
-                  m_internalOperator);
+            m_outputTensors[outputIndex].CopyTo(tensor);
 
-              const_cast<OpKernelContextWrapper*>(this)->m_outputTensors[outputIndex] = tensorWrapper;
-            }
-          }
-
-          m_outputTensors[outputIndex].CopyTo(tensor);
-
-          return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -1629,8 +1639,8 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          uint64_t allocId;
-          return AllocateTemporaryData(size, abiAllocation, &allocId);
+            uint64_t allocId;
+            return AllocateTemporaryData(size, abiAllocation, &allocId);
         }
         ORT_CATCH_RETURN
     }
@@ -1639,34 +1649,34 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          *abiAllocation = nullptr;
-          onnxruntime::AllocatorPtr alloc;
-          THROW_IF_NOT_OK(m_impl->GetTempSpaceAllocator(&alloc));
+            *abiAllocation = nullptr;
+            onnxruntime::AllocatorPtr alloc;
+            THROW_IF_NOT_OK(m_impl->GetTempSpaceAllocator(&alloc));
 
-          if (!IsAllocationInterface(alloc->Info()))
-          {
-            return E_FAIL;
-          }
+            if (!IsAllocationInterface(alloc->Info()))
+            {
+                return E_FAIL;
+            }
 
-          ComPtr<IUnknown> allocation;
-          allocation.Attach(static_cast<IUnknown*>(alloc->Alloc(size)));
+            ComPtr<IUnknown> allocation;
+            allocation.Attach(static_cast<IUnknown*>(alloc->Alloc(size)));
 
-          *allocId = m_winmlProvider->TryGetPooledAllocationId(allocation.Get(), 0);
+            *allocId = m_winmlProvider->TryGetPooledAllocationId(allocation.Get(), 0);
 
-          TranslateAllocationDataToAbi(m_winmlProvider.Get(), m_internalOperator, alloc->Info(), allocation.Get(), abiAllocation);
+            TranslateAllocationDataToAbi(m_winmlProvider.Get(), m_internalOperator, alloc->Info(), allocation.Get(), abiAllocation);
 
-          if (m_winmlProvider->TransitionsRequiredForOperator(m_internalOperator))
-          {
-            m_winmlProvider->TransitionResourcesForOperator(true, 1, abiAllocation);
-          }
+            if (m_winmlProvider->TransitionsRequiredForOperator(m_internalOperator))
+            {
+                m_winmlProvider->TransitionResourcesForOperator(true, 1, abiAllocation);
+            }
 
-          // Ensure the allocation is freed and transitioned when the context destructs
-          m_temporaryAllocations.push_back(allocation);
-          m_temporaryAbiAllocations.push_back(*abiAllocation);
+            // Ensure the allocation is freed and transitioned when the context destructs
+            m_temporaryAllocations.push_back(allocation);
+            m_temporaryAbiAllocations.push_back(*abiAllocation);
 
-          return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -2128,23 +2138,23 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          MLOperatorEdgeDescription edgeDesc;
-          ORT_THROW_IF_FAILED(GetOutputEdgeDescription(outputIndex, &edgeDesc));
-          ML_CHECK_BOOL(edgeDesc.edgeType == MLOperatorEdgeType::Undefined || edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
+            MLOperatorEdgeDescription edgeDesc;
+            ORT_THROW_IF_FAILED(GetOutputEdgeDescription(outputIndex, &edgeDesc));
+            ML_CHECK_BOOL(edgeDesc.edgeType == MLOperatorEdgeType::Undefined || edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
 
-          // In the process of calling mutable_tensor_type, the type may switch from undefined to tensor.
-          // This is done here in case the dimension count is zero (scalar)
-          m_context->getOutputType(outputIndex)->mutable_tensor_type();
+            // In the process of calling mutable_tensor_type, the type may switch from undefined to tensor.
+            // This is done here in case the dimension count is zero (scalar)
+            m_context->getOutputType(outputIndex)->mutable_tensor_type();
 
-          for (uint32_t i = 0; i < dimensionCount; ++i)
-          {
-            auto dim = m_context->getOutputType(outputIndex)->mutable_tensor_type()->mutable_shape()->add_dim();
-            dim->set_dim_value(dimensions[i]);
-          }
+            for (uint32_t i = 0; i < dimensionCount; ++i)
+            {
+                auto dim = m_context->getOutputType(outputIndex)->mutable_tensor_type()->mutable_shape()->add_dim();
+                dim->set_dim_value(dimensions[i]);
+            }
 
-          return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -2155,11 +2165,11 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          std::string typeStr = ToTypeString(*edgeDesc);
-          m_context->getOutputType(outputIndex)->CopyFrom(onnx::Utils::DataTypeUtils::ToTypeProto(&typeStr));
-          return S_OK;
+            std::string typeStr = ToTypeString(*edgeDesc);
+            m_context->getOutputType(outputIndex)->CopyFrom(onnx::Utils::DataTypeUtils::ToTypeProto(&typeStr));
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -2171,16 +2181,16 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         ORT_TRY
         {
-          VerifyNotClosed();
+            VerifyNotClosed();
 
-          if (outputIndex >= m_inferredOutputShapes.EdgeCount())
-          {
-            return E_INVALIDARG;
-          }
+            if (outputIndex >= m_inferredOutputShapes.EdgeCount())
+            {
+                return E_INVALIDARG;
+            }
 
-          m_inferredOutputShapes.GetMutableShape(outputIndex).assign(dimensions, dimensions + dimensionCount);
+            m_inferredOutputShapes.GetMutableShape(outputIndex).assign(dimensions, dimensions + dimensionCount);
 
-          return S_OK;
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
@@ -2298,19 +2308,20 @@ namespace Windows::AI::MachineLearning::Adapter
         std::unique_ptr<std::byte[]> unpackedTensor;
         size_t tensorByteSize = 0;
 
-#define CASE_PROTO(X, Y, Z)                                                                        \
-  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X: {                           \
-    size_t elementCount = initializer.##Z();                                                       \
-    tensorByteSize = elementCount * sizeof(Y);                                                     \
-    unpackedTensor.reset(new std::byte[tensorByteSize]);                                           \
-    ORT_THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                     \
-                             initializer,                                                          \
-                             initializer.has_raw_data() ? initializer.raw_data().data() : nullptr, \
-                             initializer.has_raw_data() ? initializer.raw_data().size() : 0,       \
-                             reinterpret_cast<Y*>(unpackedTensor.get()), elementCount)             \
-                             .IsOK());                                                             \
-    break;                                                                                         \
-  }
+#define CASE_PROTO(X, Y, Z)                                                                            \
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                               \
+    {                                                                                                  \
+        size_t elementCount = initializer.##Z();                                                       \
+        tensorByteSize = elementCount * sizeof(Y);                                                     \
+        unpackedTensor.reset(new std::byte[tensorByteSize]);                                           \
+        ORT_THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                     \
+                                 initializer,                                                          \
+                                 initializer.has_raw_data() ? initializer.raw_data().data() : nullptr, \
+                                 initializer.has_raw_data() ? initializer.raw_data().size() : 0,       \
+                                 reinterpret_cast<Y*>(unpackedTensor.get()), elementCount)             \
+                                 .IsOK());                                                             \
+        break;                                                                                         \
+    }
         switch (initializer.data_type())
         {
         CASE_PROTO(FLOAT, float, float_data_size);

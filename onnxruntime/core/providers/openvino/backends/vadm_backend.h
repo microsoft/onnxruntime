@@ -17,14 +17,13 @@ class VADMBackend : public IBackend {
               GlobalContext& global_context,
               const SubGraphContext& subgraph_context);
 
-  void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) override;
+  void Infer(OrtKernelContext* context) override;
 
  private:
-  void StartAsyncInference(Ort::CustomOpApi& ort,
-                           OrtKernelContext* context,
+  void StartAsyncInference(Ort::KernelContext& context,
                            size_t batch_slice_idx, size_t infer_req_idx);
 
-  void CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context,
+  void CompleteAsyncInference(Ort::KernelContext& context,
                               size_t batch_slice_idx, size_t infer_req_idx,
                               size_t batch_size);
 

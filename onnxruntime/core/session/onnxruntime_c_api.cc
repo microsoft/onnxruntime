@@ -51,6 +51,14 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 #include "orttraining/training_api/include/ort_training_apis.h"
 #endif
 
+#ifdef USE_CANN
+#include "core/providers/cann/cann_provider_factory.h"
+#include "core/providers/cann/cann_execution_provider_info.h"
+namespace onnxruntime {
+ProviderInfo_CANN* TryGetProviderInfo_CANN();
+}
+#endif
+
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
@@ -772,6 +780,12 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
   for (size_t i = 0; i != input_len; ++i) {
     if (input_names[i] == nullptr || input_names[i][0] == '\0') {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input name cannot be empty");
+    }
+
+    if (!input[i]) {
+      std::ostringstream ostr;
+      ostr << "NULL input supplied for input " << input_names[i];
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str());
     }
 
     feed_names[i] = input_names[i];
@@ -2579,6 +2593,12 @@ static constexpr OrtApi ort_api_1_to_12 = {
 
     // Start of Version 13 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::GetTrainingApi,
+    &OrtApis::SessionOptionsAppendExecutionProvider_CANN,
+    &OrtApis::CreateCANNProviderOptions,
+    &OrtApis::UpdateCANNProviderOptions,
+    &OrtApis::GetCANNProviderOptionsAsString,
+    &OrtApis::ReleaseCANNProviderOptions,
+    &OrtApis::MemoryInfoGetDeviceType};
     &OrtApis::UpdateEnvWithCustomLogLevel,
 };
 

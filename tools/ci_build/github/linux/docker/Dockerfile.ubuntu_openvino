@@ -12,7 +12,7 @@ RUN /tmp/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} -d EdgeDevice && \
 RUN apt update && apt install -y libnuma1 ocl-icd-libopencl1 && \
     rm -rf /var/lib/apt/lists/* /tmp/scripts
 
-ENV INTEL_OPENVINO_DIR /opt/intel/openvino_${OPENVINO_VERSION}.dev20220829
+ENV INTEL_OPENVINO_DIR /opt/intel/openvino_${OPENVINO_VERSION}
 ENV LD_LIBRARY_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64:$INTEL_OPENVINO_DIR/runtime/3rdparty/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
 ENV InferenceEngine_DIR $INTEL_OPENVINO_DIR/runtime/cmake
 ENV ngraph_DIR $INTEL_OPENVINO_DIR/runtime/cmake
@@ -21,9 +21,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH /usr/local/gradle/bin:$PATH
 
 RUN cd /opt && mkdir -p intel && cd intel && \
-    wget https://storage.openvinotoolkit.org/repositories/openvino/packages/master/2022.2.0.dev20220829/l_openvino_toolkit_ubuntu20_2022.2.0.dev20220829.tgz && \
-    tar xzf l_openvino_toolkit_ubuntu20_2022.2.0.dev20220829.tgz && rm -rf l_openvino_toolkit_ubuntu20_2022.2.0.dev20220829.tgz && \
-    mv l_openvino_toolkit_ubuntu20_2022.2.0.dev20220829 openvino_2022.2.0.dev20220829 && \
+    wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2022.2/linux/l_openvino_toolkit_ubuntu20_2022.2.0.7713.af16ea1d79a_x86_64.tgz && \
+    tar xzf l_openvino_toolkit_ubuntu20_2022.2.0.7713.af16ea1d79a_x86_64.tgz && rm -rf l_openvino_toolkit_ubuntu20_2022.2.0.7713.af16ea1d79a_x86_64.tgz && \
+    mv l_openvino_toolkit_ubuntu20_2022.2.0.7713.af16ea1d79a_x86_64 openvino_2022.2.0 && \
     cd $INTEL_OPENVINO_DIR/install_dependencies && ./install_openvino_dependencies.sh -y
 
 WORKDIR /root

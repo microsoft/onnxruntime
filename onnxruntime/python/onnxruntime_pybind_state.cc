@@ -344,6 +344,18 @@ const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* 
 }
 #endif
 
+#ifdef USE_CANN
+const CANNExecutionProviderInfo GetCannExecutionProviderInfo(ProviderInfo_CANN* cann_provider_info,
+                                                             const ProviderOptionsMap& provider_options_map) {
+  ORT_ENFORCE(cann_provider_info);
+  const auto it = provider_options_map.find(kCannExecutionProvider);
+  CANNExecutionProviderInfo info;
+  if (it != provider_options_map.end())
+    cann_provider_info->CANNExecutionProviderInfo__FromProviderOptions(it->second, info);
+  return info;
+}
+#endif
+
 #ifdef USE_ROCM
 const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* rocm_provider_info,
                                                              const ProviderOptionsMap& provider_options_map) {
@@ -359,6 +371,7 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
     info.miopen_conv_exhaustive_search = miopen_conv_exhaustive_search;
     info.do_copy_in_default_stream = do_copy_in_default_stream;
     info.external_allocator_info = external_allocator_info;
+    info.tunable_op = tunable_op;
   }
   return info;
 }
@@ -750,6 +763,16 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kXnnpackExecutionProvider) {
 #if defined(USE_XNNPACK)
     return onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{})->CreateProvider();
+#endif
+  } else if (type == kCannExecutionProvider) {
+#ifdef USE_CANN
+    if (auto* cann_provider_info = TryGetProviderInfo_CANN()) {
+      const CANNExecutionProviderInfo info = GetCannExecutionProviderInfo(cann_provider_info,
+                                                                          provider_options_map);
+      return cann_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
+    } else {
+      ORT_THROW("create CANN ExecutionProvider fail");
+    }
 #endif
   } else {
     // check whether it is a dynamic load EP:

@@ -66,7 +66,7 @@ jobs:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
   pool:
     vmImage: 'macOS-11'
-  timeoutInMinutes:  240
+  timeoutInMinutes:  300
   steps:
     - template: set-version-number-variables-step.yml
 
@@ -138,7 +138,7 @@ jobs:
     clean: all
   pool:
     vmImage: 'macOS-11'
-  timeoutInMinutes:  180
+  timeoutInMinutes:  300
   steps:
     - template: set-version-number-variables-step.yml
 

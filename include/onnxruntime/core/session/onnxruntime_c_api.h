@@ -267,6 +267,7 @@ ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
+ORT_RUNTIME_CLASS(CANNProviderOptions);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 
@@ -346,6 +347,14 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                ///< The default allocator for execution provider
 } OrtMemType;
 
+/** \brief This mimics OrtDevice type constants so they can be returned in the API
+ */
+typedef enum OrtMemoryInfoDeviceType {
+  OrtMemoryInfoDeviceType_CPU = 0,
+  OrtMemoryInfoDeviceType_GPU = 1,
+  OrtMemoryInfoDeviceType_FPGA = 2
+} OrtMemoryInfoDeviceType;
+
 /** \brief Algorithm to use for cuDNN Convolution Op
 */
 typedef enum OrtCudnnConvAlgoSearch {
@@ -419,7 +428,16 @@ typedef struct OrtCUDAProviderOptions {
 */
 typedef struct OrtROCMProviderOptions {
 #ifdef __cplusplus
-  OrtROCMProviderOptions() : device_id{}, miopen_conv_exhaustive_search{0}, gpu_mem_limit{SIZE_MAX}, arena_extend_strategy{}, do_copy_in_default_stream{1}, has_user_compute_stream{}, user_compute_stream{}, default_memory_arena_cfg{} {}
+  OrtROCMProviderOptions()
+      : device_id{},
+        miopen_conv_exhaustive_search{0},
+        gpu_mem_limit{SIZE_MAX},
+        arena_extend_strategy{},
+        do_copy_in_default_stream{1},
+        has_user_compute_stream{},
+        user_compute_stream{},
+        tunable_op_enabled{false},
+        default_memory_arena_cfg{} {}
 #endif
 
   /** \brief ROCM device Id
@@ -464,6 +482,12 @@ typedef struct OrtROCMProviderOptions {
   *   If provided, please set `has_user_compute_stream` to 1.
   */
   void* user_compute_stream;
+
+  /** \brief Enable TunableOp.
+  *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
+  *   This option can be superseded by environment variable ORT_ROCM_TUNABLE_OP_ENABLED.
+  */
+  int tunable_op_enabled;
 
   /** \brief ROCM memory arena configuration parameters
   */
@@ -3496,7 +3520,77 @@ struct OrtApi {
   */
   const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version) NO_EXCEPTION;
 
-  /* \brief Update log level of an OrtEnv
+  /** \brief Append CANN provider to session options
+  *
+  * If CANN is not available (due to a non CANN enabled build, or if CANN is not installed on the system), this function will return failure.
+  *
+  * \param[in] options
+  * \param[in] cann_options
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CANN,
+                  _In_ OrtSessionOptions* options, _In_ const OrtCANNProviderOptions* cann_options);
+
+  /** \brief Create an OrtCANNProviderOptions
+  *
+  * \param[out] out created ::OrtCANNProviderOptions. Must be released with OrtApi::ReleaseCANNProviderOptions
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(CreateCANNProviderOptions, _Outptr_ OrtCANNProviderOptions** out);
+
+  /** \brief Set options in a CANN Execution Provider.
+  *
+  * \param[in] cann_options
+  * \param[in] provider_options_keys Array of UTF-8 null-terminated string for provider options keys
+  * \param[in] provider_options_values Array of UTF-8 null-terminated string for provider options values
+  * \param[in] num_keys Number of elements in the `provider_option_keys` and `provider_options_values` arrays
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(UpdateCANNProviderOptions, _Inout_ OrtCANNProviderOptions* cann_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /** \brief Get serialized CANN provider options string.
+  *
+  * \param[in] cann_options OrtCANNProviderOptions instance
+  * \param[in] allocator a ptr to an instance of OrtAllocator obtained with CreateAllocator()
+  *                      or GetAllocatorWithDefaultOptions(), the specified allocator will be used to allocate
+  *                      continuous buffers for output strings and lengths.
+  * \param[out] ptr is a UTF-8 null terminated string allocated using 'allocator'.
+  *                 The caller is responsible for using the same allocator to free it.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.13.
+  */
+  ORT_API2_STATUS(GetCANNProviderOptionsAsString, _In_ const OrtCANNProviderOptions* cann_options,
+                  _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+
+  /** \brief Release an OrtCANNProviderOptions
+  *
+  * \param[in] the pointer of OrtCANNProviderOptions which will been deleted
+  *
+  * \since Version 1.13.
+  */
+  void(ORT_API_CALL* ReleaseCANNProviderOptions)(_Frees_ptr_opt_ OrtCANNProviderOptions* input);
+
+ /*  \brief Get OrtDevice type from MemoryInfo
+  *
+  *  \since Version 1.14
+  */
+  void(ORT_API_CALL* MemoryInfoGetDeviceType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
+  
+   /* \brief Update log level of an OrtEnv
    *
    * \param[in] log_severity_level The log severity level.
    * \param[in] ort_env The OrtEnv instance being used
