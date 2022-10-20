@@ -88,7 +88,7 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
     BlasOp transA = transa ? BlasOp::Trans : BlasOp::NonTrans;
     BlasOp transB = transb ? BlasOp::Trans : BlasOp::NonTrans;
     return tunable::blas::column_major::Gemm(
-        false, op->Stream(),
+        op->IsTunableOpEnabled(), op->Stream(),
         op->RocblasHandle(), transB, transA, static_cast<int64_t>(helper.N()),
         static_cast<int64_t>(helper.M()), static_cast<int64_t>(helper.K()), t_alpha,
         reinterpret_cast<const HipT*>(right_x_data), ldb,
