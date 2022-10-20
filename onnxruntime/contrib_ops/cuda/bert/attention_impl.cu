@@ -56,7 +56,7 @@ size_t GetAttentionScratchSize(
     size_t total_sequence_length) {
   const size_t bytes = element_size * batch_size * num_heads * sequence_length * total_sequence_length;
 
-  const size_t alignment = 256;
+  constexpr size_t alignment = 256;
   const size_t bytesAligned = AlignTo(bytes, alignment);
   return bytesAligned;
 }
@@ -66,12 +66,14 @@ size_t GetAttentionWorkspaceSize(
     size_t batch_size,
     size_t num_heads,
     size_t qk_head_size,
+    size_t v_head_size,
     size_t sequence_length,
-    size_t past_sequence_length,
-    void* fused_runner,
-    size_t v_head_size) {
-  size_t q_size = element_size * batch_size * sequence_length * num_heads * qk_head_size;
-  size_t v_size = element_size * batch_size * sequence_length * num_heads * v_head_size;
+    size_t total_sequence_length,
+    void* fused_runner
+    ) {
+  const size_t q_size = element_size * batch_size * sequence_length * num_heads * qk_head_size;
+  const size_t k_size = q_size;
+  const size_t v_size = element_size * batch_size * sequence_length * num_heads * v_head_size;
 
   if (fused_runner != nullptr) {
     // Offsets without padding is B + 1. When we add padding, the size need to increase to 2B + 1.
@@ -79,8 +81,8 @@ size_t GetAttentionWorkspaceSize(
     return 4 * q_size + reinterpret_cast<MHARunner*>(fused_runner)->getWorkspaceSize() + sequenceOffsetBytes;
   }
 
-  return (2 * q_size + v_size) + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length,
-                                                             past_sequence_length + sequence_length);
+  return (q_size + k_size + v_size) + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length,
+    total_sequence_length);
 }
 
 template <typename T>
@@ -117,7 +119,8 @@ Status QkvToContext(
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, qk_head_size, num_heads,
                                          max_threads_per_block, false, data.gemm_buffer, qkv));
     } else {
-      // BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
+      // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
+      // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
       LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block,
                              batch_size, sequence_length, num_heads, qk_head_size,
                              data.gemm_buffer, data.bias, qkv,
@@ -133,6 +136,7 @@ Status QkvToContext(
                            data.query, data.bias, q,
                            true, -1);
 
+    // TODO(tianleiwu): For fused TRT attention, qkv need transpose to BxSxNx3xH
     LaunchAddBiasTranspose(stream, 1, format, max_threads_per_block,
                            batch_size, sequence_length, num_heads, qk_head_size,
                            data.key, data.bias, k,

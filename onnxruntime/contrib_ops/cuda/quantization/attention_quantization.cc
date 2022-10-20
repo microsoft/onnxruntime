@@ -177,8 +177,14 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                       sequence_length, past_sequence_length);
 
   void* fused_runner = nullptr;  // TODO(tianleiwu): use fused kernel to speed up
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, qkv_head_size[0],
-                                                   sequence_length, past_sequence_length, fused_runner, qkv_head_size[2]);
+  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
+                                                   batch_size,
+                                                   num_heads_,
+                                                   qkv_head_size[0],
+                                                   qkv_head_size[2],
+                                                   sequence_length,
+                                                   sequence_length + past_sequence_length,
+                                                   fused_runner);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
   return LaunchAttentionKernel(

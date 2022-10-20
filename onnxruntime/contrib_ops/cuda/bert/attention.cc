@@ -100,6 +100,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
   bool use_fused_runner = (!disable_fused_runner_ &&
+                           nullptr != weights &&
                            nullptr != mask_index && mask_index->Shape().NumDimensions() == 1 &&
                            nullptr == past &&
                            nullptr == present &&
@@ -147,10 +148,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.batch_size,
                                                    parameters.num_heads,
                                                    parameters.head_size,
+                                                   parameters.v_head_size,
                                                    parameters.sequence_length,
-                                                   parameters.past_sequence_length,
-                                                   fused_runner,
-                                                   parameters.v_head_size);
+                                                   parameters.total_sequence_length,
+                                                   fused_runner);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
 

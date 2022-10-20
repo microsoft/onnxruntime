@@ -23,10 +23,10 @@ size_t GetAttentionWorkspaceSize(
     size_t batchsize,
     size_t num_heads,
     size_t qk_head_size,
+    size_t v_head_size,
     size_t sequence_length,
-    size_t past_sequence_length,
-    void* fused_runner,
-    size_t v_head_size);
+    size_t total_sequence_length,
+    void* fused_runner);
 
 Status LaunchAttentionKernel(
     const cudaDeviceProp& prop,                // Device Properties
@@ -50,7 +50,6 @@ Status LaunchAttentionKernel(
     void* present,                             // Present state output
     void* fused_runner,                        // Fused multi-head attention
     const int v_head_size);                    // Hidden size per head for v (H_v)
-
 
 template <typename T>
 struct AttentionData {
@@ -77,8 +76,7 @@ Status QkvToContext(
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& inputs,
-    void* fused_runner
-);
+    void* fused_runner);
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties
