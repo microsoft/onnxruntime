@@ -9,6 +9,8 @@ from packaging.version import Version
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
+from onnxruntime.training import ortmodule
+
 
 class CustomOpSymbolicRegistry:
     _SYMBOLICS = {}
@@ -21,14 +23,23 @@ class CustomOpSymbolicRegistry:
     def register_all(cls):
         for name, fn in cls._SYMBOLICS.items():
             # Symbolic name is in format: domain::name
-            # Exporter will fail to register symbolic with non-empty domain when torch version is < 1.11.0.
-            if Version(torch.__version__) >= Version("1.11.0") or name.startswith("::"):
-                register_custom_op_symbolic(name, fn, 1)
+            register_custom_op_symbolic(
+                name,
+                fn,
+                ortmodule._defined_from_envvar("ORTMODULE_ONNX_OPSET_VERSION", ortmodule.ONNX_OPSET_VERSION),
+            )
 
 
-def register_symbolic(name, domain=""):
+def register_symbolic(name, domain="", torch_version_start=None, torch_version_end=None):
     def symbolic_wrapper(fn):
-        CustomOpSymbolicRegistry.register(name, domain, fn)
+        need_register = True
+        if torch_version_start is not None and Version(torch.__version__) < Version(torch_version_start):
+            need_register = False
+        # torch_version_end is exclusive.
+        if torch_version_end is not None and Version(torch.__version__) >= Version(torch_version_end):
+            need_register = False
+        if need_register:
+            CustomOpSymbolicRegistry.register(name, domain, fn)
         return fn
 
     return symbolic_wrapper
@@ -206,7 +217,8 @@ def squeeze(g, self, dim=None):
 # Exporter's prim::ConstantChunk uses multiple Slice nodes, which is fine for inference.
 # For training, the gradient graph will be multiple SliceGrad and one Sum, which is inefficient compared to
 # exporting to Split with SplitGrad as gradient graph.
-@register_symbolic("ConstantChunk", "prim")
+# Exporter will fail to register symbolic with non-empty domain when torch version is < 1.11.0.
+@register_symbolic("ConstantChunk", "prim", torch_version_start="1.11.0")
 def prim_ConstantChunk(g, self, chunks, dim):
     if chunks == 1:
         return self
@@ -422,9 +434,19 @@ def permute_and_reshape_tensor(
     return new_tensor, shape_tensor
 
 
-@register_symbolic("einsum")
+@register_symbolic("einsum", torch_version_end="1.13.0")
 @parse_args("s", "v")
-def einsum(g, equation, tensor_list):
+def einsum_pre_troch_113(g, equation, tensor_list):
+    return einsum_internal(g, equation, tensor_list)
+
+
+@register_symbolic("einsum", torch_version_start="1.13.0")
+@parse_args("s", "v", "is")
+def einsum_torch_113(g, equation, tensor_list, path=None):
+    return einsum_internal(g, equation, tensor_list)
+
+
+def einsum_internal(g, equation, tensor_list):
     tensors = sym_help._unpack_list(tensor_list)
     num_ops = len(tensors)
     assert num_ops > 0
@@ -641,3 +663,59 @@ def einsum(g, equation, tensor_list):
 
 
 # End of torch.einsum.
+
+
+@register_symbolic("group_norm")
+def group_norm(g, input, num_groups, weight, bias, eps, cudnn_enabled):
+    # Torch's group_norm's weight and bias are optional, its gradient has a bool[3] augment to indicate
+    # whether to compute the gradient for input, weight, bias. For simplicity of the gradient graph builder,
+    # we support only the case that weight and bias are not None.
+    from torch.onnx.symbolic_opset9 import group_norm as group_norm_generic
+
+    if weight is None or sym_help._is_none(weight) or bias is None or sym_help._is_none(bias):
+        return group_norm_generic(g, input, num_groups, weight, bias, eps, cudnn_enabled)
+
+    shape = g.op("Shape", input)
+    size = g.op("Size", input)
+    N = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(0, dtype=torch.long)), axis_i=0)
+    C = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(1, dtype=torch.long)), axis_i=0)
+    HxW = g.op("Div", size, g.op("Mul", N, C))
+    return g.op(
+        "org.pytorch.aten::ATen",
+        input,
+        weight,
+        bias,
+        N,
+        C,
+        HxW,
+        num_groups,
+        g.op("Cast", eps, to_i=1),  # Python's float is float64.
+        operator_s="native_group_norm",
+        outputs=3,
+    )[0]
+
+
+def _upsample_nearest(g, input, output_size, scale_factors, forward_fn):
+    return g.op(
+        "org.pytorch.aten::ATen",
+        input,
+        output_size,
+        scale_factors,
+        operator_s=forward_fn,
+        overload_name_s="vec",
+    )
+
+
+@register_symbolic("upsample_nearest1d")
+def upsample_nearest1d(g, input, output_size, scale_factors):
+    return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest1d")
+
+
+@register_symbolic("upsample_nearest2d")
+def upsample_nearest2d(g, input, output_size, scale_factors):
+    return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest2d")
+
+
+@register_symbolic("upsample_nearest3d")
+def upsample_nearest3d(g, input, output_size, scale_factors):
+    return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest3d")

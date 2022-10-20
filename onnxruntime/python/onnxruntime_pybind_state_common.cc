@@ -34,6 +34,8 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 bool miopen_conv_exhaustive_search = false;
 // TODO remove deprecated global config
 bool do_copy_in_default_stream = true;
+// TODO remove deprecated global config
+onnxruntime::rocm::TunableOpInfo tunable_op{};
 onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
 // TODO remove deprecated global config
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;

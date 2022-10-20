@@ -90,7 +90,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
   template <typename T>
   IAllocatorUniquePtr<T> AllocateBufferOnCPUPinned(size_t count_or_bytes) const {
     // Note that OrtMemTypeCPU and OrtMemTypeCPUOutput are the same. See onnxruntime_c_api.h.
-    // In some CUDA async
+    // In some ROCm async
     if (count_or_bytes == 0)
       return nullptr;
     return IAllocator::MakeUniquePtr<T>(GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput),
@@ -119,6 +119,10 @@ class ROCMExecutionProvider : public IExecutionProvider {
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
+  void EnableTunableOp();
+  void DisableTunableOp();
+  bool IsTunableOpEnabled() const;
+
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
  private:
@@ -128,8 +132,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
   hipStream_t stream_ = nullptr;
 
   // deferred_release_buffer_pool_[my_stream] store all CPU buffers associated with
-  // CUDA kernels running on my_stream (type: cudaStream_t).
-  // Buffers' release is enqueued as a CUDA callback onto the associated stream (aka
+  // HIP kernels running on my_stream (type: hipStream_t).
+  // Buffers' release is enqueued as a HIP callback onto the associated stream (aka
   // stream returned by GetComputeStream when calling AddDeferredReleaseCPUPtr) in OnRunEnd.
   // Those are pointers allocated by AllocateBufferOnCPUPinned and should be released
   // by CPU Allocator's Free function.
