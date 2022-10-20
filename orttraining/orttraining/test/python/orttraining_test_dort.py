@@ -29,7 +29,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 tensor_q = tensor_p.relu()
                 return tensor_q
 
-            @torch._dynamo.optimiz(aot_ort)
+            @torch._dynamo.optimize(aot_ort)
             def optimized_elementwise_model(tensor_x: torch.Tensor):
                 return elementwise_model(tensor_x)
 
@@ -65,13 +65,13 @@ class TestTorchDynamoOrt(unittest.TestCase):
 
                 def forward(self, tensor_x: torch.Tensor):
                     tensor_x = self.conv1(tensor_x)
-                    tensor_x = F.relu(tensor_x)
+                    tensor_x = F.sigmoid(tensor_x)
                     tensor_x = self.conv2(tensor_x)
-                    tensor_x = F.relu(tensor_x)
+                    tensor_x = F.sigmoid(tensor_x)
                     tensor_x = F.max_pool2d(tensor_x, 2)
                     tensor_x = torch.flatten(tensor_x, 1)
                     tensor_x = self.fc1(tensor_x)
-                    tensor_x = F.relu(tensor_x)
+                    tensor_x = F.sigmoid(tensor_x)
                     tensor_x = self.fc2(tensor_x)
                     output = F.log_softmax(tensor_x, dim=1)
                     return output
