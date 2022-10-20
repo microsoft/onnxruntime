@@ -5229,134 +5229,142 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
     ASSERT_EQ(graph.GetAllInitializedTensors().size(), 15U);
   };
 
-  auto post_graph_checker = [&](Graph& graph) {
-    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
-    ASSERT_EQ(initialized_tensor_set.size(), 5U);
-    const NodeArg* add_initializer = nullptr;
-    const NodeArg* clip_min_initializer = nullptr;
-    const NodeArg* clip_max_initializer = nullptr;
-    const NodeArg* sub_initializer = nullptr;
-    const NodeArg* mul_initializer = nullptr;
+  std::vector<int64_t> adders{256, 512};
+  std::vector<int32_t> subers{128, 512};
+  std::vector<int32_t> mulers{64, 512};
+  for (size_t test_data_index = 0; test_data_index < adders.size(); ++test_data_index) {
+    int64_t adder = adders[test_data_index];
+    int32_t suber = subers[test_data_index];
+    int32_t muler = mulers[test_data_index];
+    auto post_graph_checker = [adder, suber, muler](Graph& graph) {
+      const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+      ASSERT_EQ(initialized_tensor_set.size(), 5U);
+      const NodeArg* add_initializer = nullptr;
+      const NodeArg* clip_min_initializer = nullptr;
+      const NodeArg* clip_max_initializer = nullptr;
+      const NodeArg* sub_initializer = nullptr;
+      const NodeArg* mul_initializer = nullptr;
 
-    for (auto& node : graph.Nodes()) {
-      if (node.OpType().compare("Add") == 0) {
-        if (!add_initializer) {
-          add_initializer = node.InputDefs()[1];
-          const TensorShapeProto* s = add_initializer->Shape();
-          ASSERT_EQ(s->dim_size(), 0);
-        } else {
-          ASSERT_EQ(add_initializer, node.InputDefs()[1]);
-          CheckShapeEquality(add_initializer->Shape(), node.InputDefs()[1]->Shape());
-        }
-      } else if (node.OpType().compare("Clip") == 0) {
-        if (!clip_min_initializer && !clip_max_initializer) {
-          clip_min_initializer = node.InputDefs()[1];
-          clip_max_initializer = node.InputDefs()[2];
-          const TensorShapeProto* s1 = clip_min_initializer->Shape();
-          const TensorShapeProto* s2 = clip_max_initializer->Shape();
-          ASSERT_EQ(s1->dim_size(), 0);
-          ASSERT_EQ(s2->dim_size(), 0);
-        } else {
-          ASSERT_EQ(clip_min_initializer, node.InputDefs()[1]);
-          ASSERT_EQ(clip_max_initializer, node.InputDefs()[2]);
-          CheckShapeEquality(clip_min_initializer->Shape(), node.InputDefs()[1]->Shape());
-          CheckShapeEquality(clip_max_initializer->Shape(), node.InputDefs()[2]->Shape());
-        }
-      } else if (node.OpType().compare("Sub") == 0) {
-        if (!sub_initializer) {
-          sub_initializer = node.InputDefs()[1];
-          ASSERT_EQ(sub_initializer->Shape()->dim_size(), 0);
-        } else {
-          ASSERT_EQ(sub_initializer, node.InputDefs()[1]);
-          CheckShapeEquality(sub_initializer->Shape(), node.InputDefs()[1]->Shape());
-        }
-      } else if (node.OpType().compare("Mul") == 0) {
-        if (!mul_initializer) {
-          mul_initializer = node.InputDefs()[1];
-          const TensorShapeProto* s = mul_initializer->Shape();
-          ASSERT_EQ(s->dim_size(), 1);
-          auto dim1 = s->dim(0);
-          ASSERT_TRUE(s->dim(0).has_dim_value());
-          ASSERT_EQ(s->dim(0).dim_value(), 1);
-        } else {
-          ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
-          CheckShapeEquality(mul_initializer->Shape(), node.InputDefs()[1]->Shape());
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType().compare("Add") == 0) {
+          if (!add_initializer) {
+            add_initializer = node.InputDefs()[1];
+            const TensorShapeProto* s = add_initializer->Shape();
+            ASSERT_EQ(s->dim_size(), 0);
+          } else {
+            ASSERT_EQ(add_initializer, node.InputDefs()[1]);
+            CheckShapeEquality(add_initializer->Shape(), node.InputDefs()[1]->Shape());
+          }
+        } else if (node.OpType().compare("Clip") == 0) {
+          if (!clip_min_initializer && !clip_max_initializer) {
+            clip_min_initializer = node.InputDefs()[1];
+            clip_max_initializer = node.InputDefs()[2];
+            const TensorShapeProto* s1 = clip_min_initializer->Shape();
+            const TensorShapeProto* s2 = clip_max_initializer->Shape();
+            ASSERT_EQ(s1->dim_size(), 0);
+            ASSERT_EQ(s2->dim_size(), 0);
+          } else {
+            ASSERT_EQ(clip_min_initializer, node.InputDefs()[1]);
+            ASSERT_EQ(clip_max_initializer, node.InputDefs()[2]);
+            CheckShapeEquality(clip_min_initializer->Shape(), node.InputDefs()[1]->Shape());
+            CheckShapeEquality(clip_max_initializer->Shape(), node.InputDefs()[2]->Shape());
+          }
+        } else if (node.OpType().compare("Sub") == 0) {
+          if (!sub_initializer) {
+            sub_initializer = node.InputDefs()[1];
+            ASSERT_EQ(sub_initializer->Shape()->dim_size(), 0);
+          } else {
+            ASSERT_EQ(sub_initializer, node.InputDefs()[1]);
+            CheckShapeEquality(sub_initializer->Shape(), node.InputDefs()[1]->Shape());
+          }
+        } else if (node.OpType().compare("Mul") == 0) {
+          if (!mul_initializer) {
+            mul_initializer = node.InputDefs()[1];
+            const TensorShapeProto* s = mul_initializer->Shape();
+            ASSERT_EQ(s->dim_size(), 1);
+            auto dim1 = s->dim(0);
+            ASSERT_TRUE(s->dim(0).has_dim_value());
+            ASSERT_EQ(s->dim(0).dim_value(), 1);
+          } else {
+            ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+            CheckShapeEquality(mul_initializer->Shape(), node.InputDefs()[1]->Shape());
+          }
         }
       }
-    }
 
-    for (const auto& entry : initialized_tensor_set) {
-      InlinedVector<int64_t> values;
-      const bool require_constant = true;
-      NodeArg* initializer_node_arg = graph.GetNodeArg(entry.first);
-      ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
-      if (entry.first.compare(add_initializer->Name()) == 0) {
-        ASSERT_EQ(values.size(), 1U);
-        ASSERT_EQ(values[0], 256);
-      } else if (entry.first.compare(clip_min_initializer->Name()) == 0) {
-        ASSERT_EQ(values.size(), 1U);
-        ASSERT_EQ(values[0], 0);
-      } else if (entry.first.compare(clip_max_initializer->Name()) == 0) {
-        ASSERT_EQ(values.size(), 1U);
-        ASSERT_EQ(values[0], 511);
-      } else if (entry.first.compare(sub_initializer->Name()) == 0) {
-        ASSERT_EQ(values.size(), 1U);
-        ASSERT_EQ(values[0], 128);
-      } else if (entry.first.compare(mul_initializer->Name()) == 0) {
-        ASSERT_EQ(values.size(), 1U);
-        ASSERT_EQ(values[0], 64);
+      for (const auto& entry : initialized_tensor_set) {
+        InlinedVector<int64_t> values;
+        const bool require_constant = true;
+        NodeArg* initializer_node_arg = graph.GetNodeArg(entry.first);
+        ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+        if (entry.first.compare(add_initializer->Name()) == 0) {
+          ASSERT_EQ(values.size(), 1U);
+          ASSERT_EQ(values[0], adder);
+        } else if (entry.first.compare(clip_min_initializer->Name()) == 0) {
+          ASSERT_EQ(values.size(), 1U);
+          ASSERT_EQ(values[0], 0);
+        } else if (entry.first.compare(clip_max_initializer->Name()) == 0) {
+          ASSERT_EQ(values.size(), 1U);
+          ASSERT_EQ(values[0], 511);
+        } else if (entry.first.compare(sub_initializer->Name()) == 0) {
+          ASSERT_EQ(values.size(), 1U);
+          ASSERT_EQ(values[0], suber);
+        } else if (entry.first.compare(mul_initializer->Name()) == 0) {
+          ASSERT_EQ(values.size(), 1U);
+          ASSERT_EQ(values[0], muler);
+        }
       }
+
+      auto op_count = CountOpsInGraph(graph);
+      ASSERT_EQ(op_count.size(), 6U);
+      ASSERT_EQ(op_count["Add"], 3);
+      ASSERT_EQ(op_count["Clip"], 3);
+      ASSERT_EQ(op_count["Sub"], 3);
+      ASSERT_EQ(op_count["Mul"], 3);
+      ASSERT_EQ(op_count["Neg"], 1);
+      ASSERT_EQ(op_count["Cast"], 1);
+    };
+
+    auto build_test_case = [adder, suber, muler](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<int64_t>({{1, 1, 256, 256}});
+      auto* neg_out = builder.MakeIntermediate();
+      builder.AddNode("Neg", {input_arg}, {neg_out});
+
+      // test scalar int64_t values.
+      for (size_t i = 0; i < 3; ++i) {
+        auto* add_initializer = builder.MakeScalarInitializer<int64_t>(adder);
+        auto* add_out = builder.MakeIntermediate();
+        auto* clip_out = builder.MakeOutput();
+        auto* clip_min_initializer = builder.MakeScalarInitializer<int64_t>(0);
+        auto* clip_max_initializer = builder.MakeScalarInitializer<int64_t>(511);
+        builder.AddNode("Add", {neg_out, add_initializer}, {add_out});
+        builder.AddNode("Clip", {add_out, clip_min_initializer, clip_max_initializer}, {clip_out});
+      }
+      auto* cast_out = builder.MakeIntermediate();
+      builder.AddNode("Cast", {neg_out}, {cast_out})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
+
+      // test scalar int32_t values.
+      for (size_t i = 0; i < 3; ++i) {
+        auto* sub_initializer = builder.MakeScalarInitializer<int32_t>(suber);
+        auto* sub_out = builder.MakeOutput();
+        builder.AddNode("Sub", {cast_out, sub_initializer}, {sub_out});
+      }
+
+      // test 1-D int32_t values.
+      for (size_t i = 0; i < 3; ++i) {
+        auto* mul_initializer = builder.MakeInitializer<int32_t>({1}, {muler});
+        auto* mul_out = builder.MakeOutput();
+        builder.AddNode("Mul", {cast_out, mul_initializer}, {mul_out});
+      }
+    };
+
+    const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
+    for (auto& opset_version : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+      TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1,
+                           1, pre_graph_checker, post_graph_checker);
     }
-
-    auto op_count = CountOpsInGraph(graph);
-    ASSERT_EQ(op_count.size(), 6U);
-    ASSERT_EQ(op_count["Add"], 3);
-    ASSERT_EQ(op_count["Clip"], 3);
-    ASSERT_EQ(op_count["Sub"], 3);
-    ASSERT_EQ(op_count["Mul"], 3);
-    ASSERT_EQ(op_count["Neg"], 1);
-    ASSERT_EQ(op_count["Cast"], 1);
-  };
-
-  auto build_test_case = [&](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<int64_t>({{1, 1, 256, 256}});
-    auto* neg_out = builder.MakeIntermediate();
-    builder.AddNode("Neg", {input_arg}, {neg_out});
-
-    // test scalar int64_t values.
-    for (size_t i = 0; i < 3; ++i) {
-      auto* add_initializer = builder.MakeScalarInitializer<int64_t>(256);
-      auto* add_out = builder.MakeIntermediate();
-      auto* clip_out = builder.MakeOutput();
-      auto* clip_min_initializer = builder.MakeScalarInitializer<int64_t>(0);
-      auto* clip_max_initializer = builder.MakeScalarInitializer<int64_t>(511);
-      builder.AddNode("Add", {neg_out, add_initializer}, {add_out});
-      builder.AddNode("Clip", {add_out, clip_min_initializer, clip_max_initializer}, {clip_out});
-    }
-    auto* cast_out = builder.MakeIntermediate();
-    builder.AddNode("Cast", {neg_out}, {cast_out})
-        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
-
-    // test scalar int32_t values.
-    for (size_t i = 0; i < 3; ++i) {
-      auto* sub_initializer = builder.MakeScalarInitializer<int32_t>(128);
-      auto* sub_out = builder.MakeOutput();
-      builder.AddNode("Sub", {cast_out, sub_initializer}, {sub_out});
-    }
-
-    // test 1-D int32_t values.
-    for (size_t i = 0; i < 3; ++i) {
-      auto* mul_initializer = builder.MakeInitializer<int32_t>({1}, {64});
-      auto* mul_out = builder.MakeOutput();
-      builder.AddNode("Mul", {cast_out, mul_initializer}, {mul_out});
-    }
-  };
-
-  const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
-  for (auto& opset_version : opsets) {
-    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
-    TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                         pre_graph_checker, post_graph_checker);
   }
 }
 
@@ -5396,7 +5404,7 @@ Test graph include multiple equivalent subgraphs as below.
 Be noted:
  the Mul's input initializer 1.0f is a scalar float/MLFloat16.
 */
-TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatTypedInitializer) {
+TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitializer) {
   auto pre_graph_checker = [&](Graph& graph) {
     auto op_count_pre = CountOpsInGraph(graph);
     ASSERT_EQ(op_count_pre.size(), 2U);
@@ -5466,6 +5474,113 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatTypedInitializer) {
   for (auto& opset_version : opsets) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
     TestGraphTransformer(build_test_case_mlfloat16, opset_version, *logger_, std::move(transformer),
+                         TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [1, 1, 256, 256] (float)
+                 |
+                Div ______________________________
+            /    |                 |              |
+           /     |  1.0float       |  1.0half     |  1.0half
+          / ...  |  / ...          |  /   ...     |  /   ...
+        Mul      Mul              Add            Add
+         |       |                     \          /
+ graph out [1, 1, 256, 256](float)   graph out [1, 1, 256, 256](MLFloat16)
+
+Be noted:
+ the Mul's input initializer 1.0f is a scalar float.
+ the Add's input initializer 1.0f is a scalar MLFloat16.
+*/
+TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializer) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_pre = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count_pre.size(), 4U);
+    ASSERT_EQ(op_count_pre["Div"], 1);
+    ASSERT_EQ(op_count_pre["Cast"], 1);
+    ASSERT_EQ(op_count_pre["Mul"], 3);
+    ASSERT_EQ(op_count_pre["Add"], 3);
+    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 6U);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    ASSERT_EQ(initialized_tensor_set.size(), 2U);
+    const NodeArg* mul_initializer = nullptr;
+    const NodeArg* add_initializer = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Mul") == 0) {
+        if (!mul_initializer) {
+          mul_initializer = node.InputDefs()[1];
+          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
+        } else {
+          ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+        }
+      } else if (node.OpType().compare("Add") == 0) {
+        if (!add_initializer) {
+          add_initializer = node.InputDefs()[1];
+          ASSERT_EQ(add_initializer->Shape()->dim_size(), 0);
+        } else {
+          ASSERT_EQ(add_initializer, node.InputDefs()[1]);
+        }
+      }
+    }
+
+    for (const auto& entry : initialized_tensor_set) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+      int32_t data_type = tensor_proto->data_type();
+      onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
+      if (entry.first.compare(mul_initializer->Name()) == 0) {
+        ASSERT_EQ(float_const.size(), 1);
+        ASSERT_EQ(data_type, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        float float_const_value = *(float_const.data<float>());
+        ASSERT_EQ(float_const_value, 1.0f);
+      } else if (entry.first.compare(add_initializer->Name()) == 0) {
+        ASSERT_EQ(float_const.size(), 1);
+        ASSERT_EQ(data_type, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+        float float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
+        ASSERT_EQ(float_const_value, 1.0f);
+      }
+    }
+
+    auto op_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count.size(), 4U);
+    ASSERT_EQ(op_count["Div"], 1);
+    ASSERT_EQ(op_count["Mul"], 3);
+    ASSERT_EQ(op_count["Cast"], 1);
+    ASSERT_EQ(op_count["Add"], 3);
+  };
+
+  const std::vector<int> opsets{12, 13, 14};
+
+  auto build_test_case_float = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+    auto* input1_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+    auto* div_out = builder.MakeIntermediate();
+    builder.AddNode("Div", {input0_arg, input1_arg}, {div_out});
+
+    for (size_t i = 0; i < 3; ++i) {
+      NodeArg* mul_initializer = builder.MakeScalarInitializer<float>(1.0f);
+
+      auto* mul_out = builder.MakeOutput();
+      builder.AddNode("Mul", {div_out, mul_initializer}, {mul_out});
+    }
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {div_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+    for (size_t i = 0; i < 3; ++i) {
+      NodeArg* add_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(math::floatToHalf(1.0f)));
+      auto* add_out = builder.MakeOutput();
+      builder.AddNode("Add", {cast_out, add_initializer}, {add_out});
+    }
+  };
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+    TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
                          TransformerLevel::Level1, 1,
                          pre_graph_checker, post_graph_checker);
   }

@@ -1,7 +1,18 @@
 trigger:
   branches:
     include:
-    - master
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+pr:
+  branches:
+    include:
+    - main
     - rel-*
   paths:
     exclude:

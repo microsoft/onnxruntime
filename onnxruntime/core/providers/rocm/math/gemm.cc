@@ -2,12 +2,17 @@
 // Licensed under the MIT License.
 
 #include "core/providers/rocm/math/gemm.h"
+
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
+#include "core/providers/rocm/tunable/gemm.h"
+
 
 namespace onnxruntime {
 namespace rocm {
+
+using tunable::blas::BlasOp;
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
@@ -122,24 +127,21 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  HipT alpha = ToHipType<T>::FromFloat(alpha_);
-  HipT beta = ToHipType<T>::FromFloat(beta_);
-  // Gemm, note that HIP assumes col-major, so Y(N,M) = alpha * op(W) x op(X) + beta * Y
-  ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
+  return tunable::blas::column_major::Gemm(
+      IsTunableOpEnabled(), Stream(),
       RocblasHandle(),
-      trans_B_ ? rocblas_operation_transpose : rocblas_operation_none,
-      trans_A_ ? rocblas_operation_transpose : rocblas_operation_none,
+      trans_B_ ? BlasOp::Trans : BlasOp::NonTrans,
+      trans_A_ ? BlasOp::Trans : BlasOp::NonTrans,
       N, M, K,
-      &alpha,
+      alpha_,
       reinterpret_cast<const HipT*>(W->Data<T>()),
       (trans_B_ ? K : N),
       reinterpret_cast<const HipT*>(X->Data<T>()),
       (trans_A_ ? M : K),
       // ideally we need to set the output buffer contents to 0 if bias is missing,
       // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
-      B != nullptr ? &beta : &zero,
-      out_data, N));
-  return Status::OK();
+      B != nullptr ? beta_ : 0.0f,
+      out_data, N);
 }
 
 }  // namespace rocm
