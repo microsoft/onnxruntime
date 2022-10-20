@@ -11,7 +11,8 @@
 namespace onnxruntime {
 
 struct XnnpackProviderFactoryCreator {
-  static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& provider_options);
+  static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& provider_options,
+                                                           const SessionOptions* session_options = nullptr);
 };
 
 }  // namespace onnxruntime

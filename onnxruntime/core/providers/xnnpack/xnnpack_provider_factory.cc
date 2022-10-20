@@ -23,7 +23,7 @@ struct XnnpackProviderFactory : IExecutionProviderFactory {
 };
 
 std::shared_ptr<IExecutionProviderFactory> XnnpackProviderFactoryCreator::Create(
-    const ProviderOptions& provider_options, const SessionOptions* session_options = nullptr) {
+    const ProviderOptions& provider_options, const SessionOptions* session_options) {
   return std::make_shared<XnnpackProviderFactory>(provider_options, session_options);
 }
 
