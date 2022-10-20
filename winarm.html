@@ -61,24 +61,20 @@
                 </nav>
             </header>
 
-			<div role="main" id="skipMain" tabindex="-1">
+		<div role="main" id="skipMain" tabindex="-1">
 			
 	            <div class="container px-md-4 px-lg-5 pt-5 mx-auto text-center">
 					<h1 class="pt-3 pb-3 pt-md-5 pb-lg-3 px-md-4 px-lg-5 mt-5 mb-0">ONNX Runtime + Windows Dev Kit 2023 = NPU powered AI</h1>
 				</div>
 
                 <div class="outer-container mx-auto">
-	                
-
                     <section class="pt-4 blue-title-columns">
                         <div class="container-fluid">
                             <div class="row">
                                 <div class="col-12 col-md-12 pr-5">
                                     <h2 class="blue-text">Delivering NPU powered AI capabilities in your apps</h2>
-                                    <p>Windows Dev Kit 2023, aka Project Volterra, enables developers to build apps that unlock the power of the NPU hardware to accelerate AI/ML workloads delivering AI-enhanced features & experiences without compromising app performance.                                     
-                                    </p>
-                                    <p>
-                                        You can get started now and access the power of the NPU through the open source and cross-platform ONNX Runtime inference engine making it easy to run AI/ML models from popular machine learning frameworks like PyTorch and TensorFlow.                                     </p>
+                                    <p>Windows Dev Kit 2023, aka Project Volterra, enables developers to build apps that unlock the power of the NPU hardware to accelerate AI/ML workloads delivering AI-enhanced features & experiences without compromising app performance.</p>
+                                    <p>You can get started now and access the power of the NPU through the open source and cross-platform ONNX Runtime inference engine making it easy to run AI/ML models from popular machine learning frameworks like PyTorch and TensorFlow.</p>
                                 </div>
                             </div>
                         </div>
@@ -101,7 +97,7 @@
                                                     <li>Select the SNPE link which takes you to a Qualcomm login and download page. </li>
                                                     <li>Select the <i>Snapdragon_NPE_SDK.WIN.1.0 Installer</i> link, download and install.</li>
                                                 </ol>                                                 
-                                            <li>Download and install the ONNX Runtime with SNPE package (in Preview)</a>
+                                            <li>Download and install the ONNX Runtime with SNPE package</a>
 					        <ul>
 						    <li>For C and C++: <a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Snpe" target="_blank">nuget<a></li>
 						    <li>For C#: coming soon</li>
@@ -110,13 +106,24 @@
                                             <li>Start using the ONNX Runtime API in your application.</li>
                                         </ol>
                                     </p><br/>
-                                    <h2>Tutorials: </h2> 
-                                    <ul>
-                                        <li><a href="https://github.com/onnx/tutorials#onnx-tutorials" target="_blank">Convert your model to use with ORT on Windows ARM</a></li>
-                                        <li><a href="" target="_blank">Deploy your model on Windows ARM with ONNX Runtime</a></li>
-                                    </ul>
+				    <h2 class="blue-text">Optimizing models for the NPU</h2>
+				    <p>ONNX Runtime can run any ONNX model, however to make use of the NPU, you currently need to use the following steps:
+					 <ul>
+					    <li>Run the tools provided in the SNPE SDK on your model to generate a binary file.</li>
+					    <li>Include the contents of the binary file as a node in the ONNX graph.</li>
+				         </ul>
+				    <p>See our <a href="" target="_blank">tutorial</a> for an example of how this is done.</p>
+				    <p>Many PyTorch, TensorFlow, and ONNX models can be optimized for the NPU using this process. Even if a model cannot be optimized for NPU by the SNPE SDK, it can still be run by ONNX Runtime on the CPU.</p>
+				    <br/>
                                     <h2 class="blue-text">Getting help</h2>
 				    <p>For help with ONNX Runtime, you can <a href="https://github.com/microsoft/onnxruntime/discussions" target="_blank">start a discussion</a> on GitHub or <a href="https://github.com/microsoft/onnxruntime/issues" target="_blank">file an issue</a>.<p>
+				    <br/>
+                                    <h2 class="blue-text">Tutorials: </h2> 
+                                    <ul>
+                                        <li><a href="" target="_blank">Convert your model to use with ONNX Runtime with SNPE</a></li>
+                                        <li><a href="" target="_blank">Deploy your model on Windows Arm with ONNX Runtime</a></li>
+                                    </ul>
+				    <br/>
                                 </div>
                             </div>
                         </div>
