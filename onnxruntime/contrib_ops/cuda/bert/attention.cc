@@ -153,27 +153,23 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.v_head_size);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
-  ORT_RETURN_IF_ERROR(LaunchAttentionKernel(
-      device_prop,
-      Stream(),
-      cublas,
-      &parameters,
-      element_size,
-      nullptr == weights ? nullptr : reinterpret_cast<const void*>(gemm_buffer.get()),
-      nullptr != weights ? nullptr : input->Data<T>(),
-      nullptr == key ? nullptr : key->Data<T>(),
-      nullptr == value ? nullptr : value->Data<T>(),
-      bias->Data<T>(),
-      nullptr == mask_index ? nullptr : mask_index->Data<int>(),
-      nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
-      nullptr == past ? nullptr : past->Data<T>(),
-      nullptr == extra_add_qk ? nullptr : extra_add_qk->Data<T>(),
-      work_space.get(),
-      output->MutableData<T>(),
-      nullptr == present ? nullptr : present->MutableData<T>(),
-      fused_runner));
 
-  return Status::OK();
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  AttentionData<CudaT> data;
+  data.gemm_buffer = (nullptr == weights) ? nullptr : reinterpret_cast<const CudaT*>(gemm_buffer.get());
+  data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
+  data.query = (nullptr != weights) ? nullptr : reinterpret_cast<const CudaT*>(input->Data<T>());
+  data.key = (nullptr == key) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
+  data.value = (nullptr == value) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.mask_index = (nullptr == mask_index) ? nullptr : mask_index->Data<int>();
+  data.mask_index_dims = (nullptr == mask_index) ? gsl::span<const int64_t>() : mask_index->Shape().GetDims();
+  data.past = (nullptr == past) ? nullptr : reinterpret_cast<const CudaT*>(past->Data<T>());
+  data.extra_add_qk = (nullptr == extra_add_qk) ? nullptr : reinterpret_cast<const CudaT*>(extra_add_qk->Data<T>());
+  data.workspace = reinterpret_cast<CudaT*>(work_space.get());
+  data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
+  data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
+
+  return QkvToContext<CudaT>(device_prop, cublas, Stream(), parameters, data, reinterpret_cast<void*>(fused_runner));
 }
 
 }  // namespace cuda

@@ -5,6 +5,7 @@
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
+#include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -38,7 +39,7 @@ Status LaunchAttentionKernel(
     const int qk_head_size,                    // Hidden size per head for q and k (H)
     int past_sequence_length,                  // Sequence length in past state
     bool is_unidirectional,                    // Whether there is unidirecitonal mask.
-    const void* input,                         // Input tensor
+    const void* gemm_buffer,                   // Buffer of GEMM output with merged query, key and value.
     const void* bias,                          // Bias tensor
     const int* mask_index,                     // Attention mask raw data or index. NULL means no mask.
     gsl::span<const int64_t> mask_index_dims,  // Mask index shape
@@ -50,25 +51,34 @@ Status LaunchAttentionKernel(
     void* fused_runner,                        // Fused multi-head attention
     const int v_head_size);                    // Hidden size per head for v (H_v)
 
-Status LaunchAttentionKernel(
+
+template <typename T>
+struct AttentionData {
+  const T* gemm_buffer;
+  const T* bias;
+
+  const T* query;
+  const T* key;
+  const T* value;
+  const int* mask_index;
+  gsl::span<const int64_t> mask_index_dims;
+  const T* past;
+  const T* extra_add_qk;
+
+  T* workspace;
+  T* output;
+  T* present;
+};
+
+template <typename T>
+Status QkvToContext(
     const cudaDeviceProp& prop,
-    cudaStream_t stream,
     cublasHandle_t& cublas,
-    const void* parameters,
-    const size_t element_size,
-    const void* input,
-    const void* bias,
-    const void* query,
-    const void* key,
-    const void* value,
-    const int* mask_index,
-    gsl::span<const int64_t> mask_index_dims,
-    const void* past,
-    const void* extra_add_qk,
-    void* workspace,
-    void* output,
-    void* present,
-    void* fused_runner);
+    cudaStream_t stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<T>& inputs,
+    void* fused_runner
+);
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties
