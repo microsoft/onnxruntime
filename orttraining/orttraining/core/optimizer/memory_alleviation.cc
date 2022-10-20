@@ -43,6 +43,56 @@ bool IsForwardPassOperator(int64_t op_order_in_topological_sort, int64_t boundar
   return op_order_in_topological_sort <= boundary_op_order_in_topological_sort;
 }
 
+/**
+ * enum TensorProto_DataType : int {
+  TensorProto_DataType_UNDEFINED = 0,
+  TensorProto_DataType_FLOAT = 1,
+  TensorProto_DataType_UINT8 = 2,
+  TensorProto_DataType_INT8 = 3,
+  TensorProto_DataType_UINT16 = 4,
+  TensorProto_DataType_INT16 = 5,
+  TensorProto_DataType_INT32 = 6,
+  TensorProto_DataType_INT64 = 7,
+  TensorProto_DataType_STRING = 8,
+  TensorProto_DataType_BOOL = 9,
+  TensorProto_DataType_FLOAT16 = 10,
+  TensorProto_DataType_DOUBLE = 11,
+  TensorProto_DataType_UINT32 = 12,
+  TensorProto_DataType_UINT64 = 13,
+  TensorProto_DataType_COMPLEX64 = 14,
+  TensorProto_DataType_COMPLEX128 = 15,
+  TensorProto_DataType_BFLOAT16 = 16
+};
+ *
+ *
+*/
+
+static size_t GetElementSize(const ONNX_NAMESPACE::DataType& tensor_type) {
+  const ONNX_NAMESPACE::TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
+  MLDataType ml_data_type = DataTypeImpl::TypeFromProto(type_proto);
+  const TensorTypeBase* tensor_type_base = ml_data_type->AsTensorType();
+  ORT_ENFORCE(nullptr != tensor_type_base);
+  MLDataType elt_type = tensor_type_base->GetElementType();
+  return elt_type->Size();
+}
+
+float InputOutputSizeRatio(const Node* node) {
+  if (node->OpType().compare("Cast") == 0) {
+    const NodeArg* input = node->InputDefs()[0];
+    const NodeArg* output = node->OutputDefs()[0];
+    if (input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING ||
+        output->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+      return 1.0f;
+    }
+    const auto& ptype1 = input->Type();
+    const auto& ptype2 = output->Type();
+    float ratio = float(GetElementSize(ptype1)) / (float)GetElementSize(ptype2);
+    return ratio;
+  }
+
+  return 1.0f;
+}
+
 }  // namespace
 
 Status MemoryAlleviation::ParseConfigFromString(const std::string& enable_memory_alleviation,
@@ -66,7 +116,7 @@ Status MemoryAlleviation::ParseConfigFromString(const std::string& enable_memory
 
       // At this point, subgraph_string_representation is a pattern graph string representation.
       pattern_subgraph_to_user_alleviation_config_map_[subgraph_string_representation] =
-         UserAlleviationConfig{static_cast<AlleviationType>(alleviation_type_int), alleviation_freq};
+          UserAlleviationConfig{static_cast<AlleviationType>(alleviation_type_int), alleviation_freq};
     }
   }
 
@@ -193,7 +243,11 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
                                                   const InlinedHashMap<NodeIndex, size_t>&
                                                       node_index_to_its_order_in_topological_sort_map,
                                                   InlinedVector<const Node*>& nodes,
-                                                  const logging::Logger& logger) const {
+                                                  const logging::Logger& logger,
+                                                  bool compromise_stashed_activation,
+                                                  bool& can_compromise_stashed_activation) const {
+  can_compromise_stashed_activation = false;
+
   LOGS(logger, VERBOSE) << "Enter SelectRecomputeSubgraph for Node " << node.Name() << "(" << node.OpType() << ")";
   nodes.clear();
 
@@ -234,7 +288,7 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
       // If current op is NOT in allowed list:
       // 1). the output does not exist in backward, we cannot find a good solution for so, search terminates.
       // 2). the output is used in backward, we don't need trace back further, continue searching.
-      auto entry_operator_config_it = recomputable_op_type_to_input_arg_index_map_.find(curr_node->OpType());
+      auto op_recompute_config_it = recomputable_op_type_to_input_arg_index_map_.find(curr_node->OpType());
       auto cur_output_arg_name = curr_node->OutputDefs()[p.second]->Name();
       if (is_entry_node_output_arg) {
         // We handle the entry node outputs differently because, we don't want this case falls into and succeed one of
@@ -242,15 +296,14 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
         // 1. "op is not in recompute op list, but its output is used in backward"
         // 2. "op is in recompute op list, but its output is used in backward"
         // (either of the above checks is true for entry node outputs)
-        if (entry_operator_config_it == recomputable_op_type_to_input_arg_index_map_.end()) {
+        if (op_recompute_config_it == recomputable_op_type_to_input_arg_index_map_.end()) {
           early_stop = true;
           LOGS(logger, VERBOSE) << "Entry Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** "
-                                << "in recompute op list, and its output [" << cur_output_arg_name
-                                << "] does not exist in backward, search terminates.";
+                                << "in recompute op list, search terminates.";
           break;
         }
       } else {
-        if (entry_operator_config_it == recomputable_op_type_to_input_arg_index_map_.end()) {
+        if (op_recompute_config_it == recomputable_op_type_to_input_arg_index_map_.end()) {
           if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
             LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is **NOT** in "
                                   << "recompute op list, but its output [" << cur_output_arg_name
@@ -280,8 +333,23 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
                               << ") is added in selected subgraph  ";
       }
 
+      float ratio = InputOutputSizeRatio(curr_node);
+      float is_current_node_compromisable = (ratio < 1.f);
+      can_compromise_stashed_activation = can_compromise_stashed_activation || is_current_node_compromisable;
+      if (is_current_node_compromisable) {
+        LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType()
+                              << ") has input/output size " << ratio << " < 1.f, can compromise stashed activation";
+      }
+
+      if (is_current_node_compromisable && compromise_stashed_activation) {
+        LOGS(logger, VERBOSE) << "Node " << curr_node->Name() << "(" << curr_node->OpType() << ") is in "
+                              << "recompute op list, and its output [" << cur_output_arg_name
+                              << "] does not exist in backward, while it meet compromised check, we don't need trace buttom-up further.";
+        continue;
+      }
+
       // Iterate all input nodes according to allowed input arg index of the entry node.
-      const auto& input_arg_indices = entry_operator_config_it->second.input_arg_indices;
+      const auto& input_arg_indices = op_recompute_config_it->second.input_arg_indices;
       for (auto it = curr_node->InputEdgesBegin(), end = curr_node->InputEdgesEnd(); it != end; ++it) {
         const Node::EdgeEnd& input_edge = *it;
         const auto& parent_node = input_edge.GetNode();
@@ -318,6 +386,57 @@ Status MemoryAlleviation::SelectRecomputeSubgraph(const Node& node,
               });
   }
   return Status::OK();
+}
+
+bool MemoryAlleviation::IsNodeRecomputable(const Node& node,
+                                           const ActivationUsedMap& fw_op_output_arg_used_map,
+                                           const InlinedHashMap<NodeIndex, size_t>&
+                                               node_index_to_its_order_in_topological_sort_map,
+                                           const InlinedHashMap<const Node*, InlinedVector<size_t>>&
+                                               candidate_output_args_map,
+                                           AlleviationSubGraphStores& subgraph_stores,
+                                           const logging::Logger& logger,
+                                           bool compromise_stashed_activation,
+                                           bool& can_compromise_stashed_activation) const {
+  InlinedVector<const Node*> nodes_in_topological_order;
+  ORT_ENFORCE(SelectRecomputeSubgraph(node, candidate_output_args_map.at(&node),
+                                      fw_op_output_arg_used_map,
+                                      node_index_to_its_order_in_topological_sort_map,
+                                      nodes_in_topological_order, logger,
+                                      compromise_stashed_activation,
+                                      can_compromise_stashed_activation)
+                  .IsOK());
+  if (nodes_in_topological_order.size() == 0) {
+    return false;
+  }
+
+  std::string subgraph_str_representation, log_info;
+  NodesInTypoOrderToString(nodes_in_topological_order, subgraph_str_representation, log_info);
+  LOGS(logger, VERBOSE) << "Node " << node.Name() << "(" << node.OpType() << ") can be recomputed" << log_info;
+
+  // Update the subgraph alleviation config map - key is the subgraph string representation, value is user config.
+  UserAlleviationConfig alleviation_config{AlleviationType::None, 0};
+  if (pattern_subgraph_to_user_alleviation_config_map_.find(subgraph_str_representation) !=
+      pattern_subgraph_to_user_alleviation_config_map_.end()) {
+    alleviation_config = pattern_subgraph_to_user_alleviation_config_map_.at(subgraph_str_representation);
+  }
+
+  AlleviationSubGraphDesc& subgraph_desc =
+      subgraph_stores.Contains(subgraph_str_representation)
+          ? subgraph_stores.GetSubGraphDesc(subgraph_str_representation)
+          : subgraph_stores.CreateSubGraphDesc(subgraph_str_representation, alleviation_config);
+
+  subgraph_desc.total_frequency += 1;
+
+  // Update the subgraph frequency map - key is the subgraph string representation, value is number of apperances.
+  for (size_t output_index : candidate_output_args_map.at(&node)) {
+    auto shape_str = TensorShapeProtoToString(node.OutputDefs()[output_index]->Shape());
+    subgraph_desc.shape_str_frequency[shape_str]++;
+  }
+
+  subgraph_stores.AddRecomputeSubGraphInstance(&node, nodes_in_topological_order, subgraph_desc);
+
+  return true;
 }
 
 Status MemoryAlleviation::GetStashedActivationCandidates(const Graph& graph,
@@ -419,15 +538,87 @@ Status MemoryAlleviation::CreateRecomputeGraph(Graph& graph,
   return Status::OK();
 }
 
-Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
-                                    const logging::Logger& logger) const {
+bool MemoryAlleviation::ModifyGraphForRecompute(Graph& graph,
+                                                const InlinedHashMap<NodeIndex, size_t>& node_index_to_its_order_in_topological_sort_map,
+                                                const InlinedHashMap<const Node*, InlinedVector<size_t>>& candidate_output_args_map,
+                                                const logging::Logger& logger,
+                                                int64_t boundary_op_order_in_topological_sort,
+                                                AlleviationSubGraphStores& subgraph_stores, Node* node) const {
+  bool graph_is_modified = false;
+  if (subgraph_stores.SubGraphCount() == 0) {
+    return graph_is_modified;
+  }
+
+  AlleviationSubGraphStores::GraphInstanceInfo& sub_graph_instance_info =
+      subgraph_stores.GetRecomputeSubGraphInstance(node);
+
+  AlleviationSubGraphDesc& subgraph_desc = subgraph_stores.GetSubGraphDesc(sub_graph_instance_info.second);
+  UserAlleviationConfig alleviation_config = subgraph_desc.user_alleviation_config;
+  int skip_count = (alleviation_config.requested_count == -1)
+                       ? 0
+                       : std::max(0, subgraph_desc.total_frequency - alleviation_config.requested_count);
+
+  subgraph_desc.skip_count += 1;
+
+  if (alleviation_config.type != AlleviationType::None && subgraph_desc.skip_count > skip_count) {
+    subgraph_desc.applied_count += 1;
+    Node* replacement_node = nullptr;
+    LOGS(logger, WARNING) << "[Modify Graph] Node " << node->Name() << "(" << node->OpType() << ") is recomputed";
+    ORT_ENFORCE(CreateRecomputeGraph(graph, sub_graph_instance_info.first, replacement_node).IsOK());
+    ORT_ENFORCE(replacement_node);
+
+    graph_is_modified = true;
+
+    for (size_t output_index : candidate_output_args_map.at(node)) {
+      // Collect output edges (connecting to backward ops), to remove.
+      std::vector<graph_utils::GraphEdge> output_edges;
+      for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+        size_t src_output_idx = static_cast<size_t>(it->GetSrcArgIndex());
+        if (src_output_idx != output_index) {
+          continue;
+        }
+
+        auto tid = node_index_to_its_order_in_topological_sort_map.find(it->GetNode().Index());
+        // It is possible the consumer node is newly added as the recompute node, so we need a check here.
+        // For those kind of ops, we can treat them as backward ops.
+        if (tid == node_index_to_its_order_in_topological_sort_map.end() ||
+            !IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(tid->first),
+                                   boundary_op_order_in_topological_sort)) {
+          // Remove the edge only connecting to backward op.
+          output_edges.push_back(graph_utils::GraphEdge::CreateGraphEdge(*node, *it, false));
+        }
+      }
+
+      if (!output_edges.empty()) {
+        // Remove the output edges of the node first
+        graph_utils::GraphEdge::RemoveGraphEdges(graph, output_edges);
+
+        // Create connections between the replacement node and the outgoing nodes.
+        for (const auto& output_edge : output_edges) {
+          graph.RemoveConsumerNode(node->MutableOutputDefs()[output_index]->Name(), node);
+
+          // Add new edge connecting the input with the output nodes directly.
+          // This also updates the destination node's input node args
+          graph.AddEdge(replacement_node->Index(), output_edge.dst_node, static_cast<int>(output_index),
+                        output_edge.dst_arg_index);
+        }
+      }
+    }
+  }
+
+  return graph_is_modified;
+}
+
+Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& logger)
+    const {
   LOGS(logger, VERBOSE) << "Memory alleviation config: " << memory_alleviation_config_ << ", probe level: "
                         << static_cast<int>(level_);
 
   InlinedHashMap<std::string, std::pair<bool, bool>> fw_op_output_arg_used_map;
   InlinedHashMap<NodeIndex, size_t> node_index_to_its_order_in_topological_sort_map;
-  int64_t boundary_op_order_in_topological_sort =
-      PrepareForTransformation(graph, fw_op_output_arg_used_map, node_index_to_its_order_in_topological_sort_map);
+  int64_t boundary_op_order_in_topological_sort = PrepareForTransformation(graph,
+                                                                           fw_op_output_arg_used_map,
+                                                                           node_index_to_its_order_in_topological_sort_map);
   if (boundary_op_order_in_topological_sort < 0) {
     LOGS(logger, VERBOSE) << "No boundary op found. Skip memory alleviation.";
     return Status::OK();
@@ -437,109 +628,71 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
   ORT_RETURN_IF_ERROR(GetStashedActivationCandidates(graph, fw_op_output_arg_used_map, candidate_output_args_map,
                                                      logger));
 
-  InlinedHashMap<std::string, InlinedHashMap<std::string, int>> stashed_activation_statistics;
-  InlinedHashMap<std::string, UserAlleviationConfig> subgraph_str_to_user_alleviation_config;
+  AlleviationSubGraphStores recompute_subgraph_stores;
+  AlleviationSubGraphStores recompute_with_compromise_subgraph_stores;
   GraphViewer graph_viewer(graph);
   const auto& node_ids = graph_viewer.GetNodesInTopologicalOrder();
 
-  // Iterate through the nodes in reversed topological order and find the subgraph that can be alleviated.
-  // The reason we do reversed topological order is that we want the later layers' recompute nodes can be appended
-  // earlier than the earlier layers, in this way, the execution order of later layers will be in front of the earlier
-  // layers.
+  // The first pass - find the candidate subgraphs.
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
     Node* p_node = graph.GetNode(node_ids[i]);
     if (p_node == nullptr) {
       continue;
     }
 
-    Node& node = *p_node;
-    if (candidate_output_args_map.find(&node) == candidate_output_args_map.end()) {
+    if (candidate_output_args_map.find(p_node) == candidate_output_args_map.end()) {
       continue;
     }
 
-    InlinedVector<const Node*> nodes_in_topological_order;
-    ORT_RETURN_IF_ERROR(SelectRecomputeSubgraph(node, candidate_output_args_map[p_node],
-                                                fw_op_output_arg_used_map,
-                                                node_index_to_its_order_in_topological_sort_map,
-                                                nodes_in_topological_order, logger));
-    if (nodes_in_topological_order.size() == 0) {
-      continue;
+    bool can_compromise_stashed_activation = false;
+    IsNodeRecomputable(*p_node, fw_op_output_arg_used_map, node_index_to_its_order_in_topological_sort_map,
+                       candidate_output_args_map,
+                       recompute_subgraph_stores, logger, false,
+                       can_compromise_stashed_activation);
+
+    if (can_compromise_stashed_activation) {
+      LOGS(logger, VERBOSE) << "Searching Node " << p_node->Name() << "(" << p_node->OpType()
+                            << ") for compromised recompute";
+      // If the subgraph recompute can save memory by comprising the assumption - recompute graphs' input must exist
+      // during backward pass, then we can try to compromise the assumption.
+      IsNodeRecomputable(*p_node, fw_op_output_arg_used_map, node_index_to_its_order_in_topological_sort_map,
+                         candidate_output_args_map,
+                         recompute_with_compromise_subgraph_stores, logger, true,
+                         can_compromise_stashed_activation);
     }
-
-    std::string subgraph_str_representation, log_info;
-    NodesInTypoOrderToString(nodes_in_topological_order, subgraph_str_representation, log_info);
-    LOGS(logger, VERBOSE) << "Node " << node.Name() << "(" << node.OpType() << ") can be recomputed" << log_info;
-
-    Node* replacement_node = nullptr;
-
-    UserAlleviationConfig alleviation_config{AlleviationType::None, 0};
-    if (pattern_subgraph_to_user_alleviation_config_map_.find(subgraph_str_representation) !=
-        pattern_subgraph_to_user_alleviation_config_map_.end()) {
-      alleviation_config = pattern_subgraph_to_user_alleviation_config_map_.at(subgraph_str_representation);
-    }
-    bool modify_graph = (alleviation_config.type != AlleviationType::None);
-
-    if (subgraph_str_to_user_alleviation_config.find(subgraph_str_representation) == subgraph_str_to_user_alleviation_config.end()) {
-      subgraph_str_to_user_alleviation_config[subgraph_str_representation] = alleviation_config;
-    }
-
-    auto& current_alleviation_config = subgraph_str_to_user_alleviation_config[subgraph_str_representation];
-    if (current_alleviation_config.skip_count > 0) {
-      current_alleviation_config.skip_count--;
-      modify_graph = false;
-    }
-
-    if (modify_graph) {
-      LOGS(logger, WARNING) << "[Modify Graph] Node " << node.Name() << "(" << node.OpType() << ") is recomputed";
-      ORT_RETURN_IF_ERROR(CreateRecomputeGraph(graph, nodes_in_topological_order, replacement_node));
-      ORT_ENFORCE(replacement_node);
-    }
-
-    for (size_t output_index : candidate_output_args_map[&node]) {
-      if (modify_graph) {
-        // Collect output edges (connecting to backward ops), to remove.
-        std::vector<graph_utils::GraphEdge> output_edges;
-        for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-          size_t src_output_idx = static_cast<size_t>(it->GetSrcArgIndex());
-          if (src_output_idx != output_index) {
-            continue;
-          }
-
-          auto tid = node_index_to_its_order_in_topological_sort_map.find(it->GetNode().Index());
-          // It is possible the consumer node is newly added as the recompute node, so we need a check here.
-          // For those kind of ops, we can treat them as backward ops.
-          if (tid == node_index_to_its_order_in_topological_sort_map.end() ||
-              !IsForwardPassOperator(node_index_to_its_order_in_topological_sort_map.at(tid->first),
-                                     boundary_op_order_in_topological_sort)) {
-            // Remove the edge only connecting to backward op.
-            output_edges.push_back(graph_utils::GraphEdge::CreateGraphEdge(node, *it, false));
-          }
-        }
-
-        if (!output_edges.empty()) {
-          // Remove the output edges of the node first
-          graph_utils::GraphEdge::RemoveGraphEdges(graph, output_edges);
-
-          // Create connections between the replacement node and the outgoing nodes.
-          for (const auto& output_edge : output_edges) {
-            graph.RemoveConsumerNode(node.MutableOutputDefs()[output_index]->Name(), &node);
-
-            // Add new edge connecting the input with the output nodes directly.
-            // This also updates the destination node's input node args
-            graph.AddEdge(replacement_node->Index(), output_edge.dst_node, static_cast<int>(output_index),
-                          output_edge.dst_arg_index);
-          }
-        }
-      }
-
-      auto shape_str = TensorShapeProtoToString(node.OutputDefs()[output_index]->Shape());
-      stashed_activation_statistics[subgraph_str_representation][shape_str]++;
-    }
-
-    modified = modify_graph;
   }
 
-  PrintSummary(stashed_activation_statistics, subgraph_str_to_user_alleviation_config, logger);
+  // The second pass - apply the transformation.
+  // Iterate through the nodes in reversed topological order and find the subgraph that can be alleviated.
+  // The reason we do reversed topological order is that we want the later layers' recompute nodes can be appended
+  // earlier than the earlier layers, in this way, the execution order of later layers will be in front of the earlier
+  // layers.
+  // InlinedHashMap<std::string, int> subgraph_str_to_applied_frequency;
+  for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
+    Node* p_node = graph.GetNode(node_ids[i]);
+    if (p_node == nullptr) {
+      continue;
+    }
+
+    bool has_been_modified = false;
+    if (recompute_subgraph_stores.ContainsRecomputeSubGraphInstance(p_node)) {
+      has_been_modified = ModifyGraphForRecompute(graph, node_index_to_its_order_in_topological_sort_map,
+                                                  candidate_output_args_map, logger,
+                                                  boundary_op_order_in_topological_sort, recompute_subgraph_stores, p_node);
+    }
+
+    // If there are other recompute plan for this node, we skip them because the graph is already modified.
+    if (!has_been_modified && recompute_with_compromise_subgraph_stores.ContainsRecomputeSubGraphInstance(p_node)) {
+      has_been_modified = ModifyGraphForRecompute(graph, node_index_to_its_order_in_topological_sort_map,
+                                                  candidate_output_args_map, logger,
+                                                  boundary_op_order_in_topological_sort,
+                                                  recompute_with_compromise_subgraph_stores, p_node);
+    }
+
+    modified = modified || has_been_modified;
+  }
+
+  PrintSummary(recompute_subgraph_stores, recompute_with_compromise_subgraph_stores, logger);
 
   return Status::OK();
 }
@@ -570,10 +723,10 @@ std::string MemoryAlleviation::UserAlleviationConfigToString(const UserAlleviati
   std::string type_str;
   switch (config.type) {
     case AlleviationType::None: {
-      type_str =  "Disabled" ;
+      type_str = "Disabled";
     } break;
     case AlleviationType::Recompute: {
-      type_str =  "Recompute" ;
+      type_str = "Recompute";
     } break;
     default: {
       type_str = "Unknown";
@@ -582,12 +735,10 @@ std::string MemoryAlleviation::UserAlleviationConfigToString(const UserAlleviati
   return type_str;
 }
 
-void MemoryAlleviation::PrintSummary(const InlinedHashMap<std::string, InlinedHashMap<std::string, int>>&
-                                         stashed_activation_statistics,
-                                     const InlinedHashMap<std::string, UserAlleviationConfig>&
-                                         subgraph_str_to_user_alleviation_config,
+void MemoryAlleviation::PrintSummary(const AlleviationSubGraphStores& recompute_stores,
+                                     const AlleviationSubGraphStores& recompute_with_compromise_stores,
                                      const logging::Logger& logger) const {
-  if (stashed_activation_statistics.size() == 0) {
+  if (recompute_stores.subgraph_descs.size() == 0 && recompute_with_compromise_stores.subgraph_descs.size() == 0) {
     return;
   }
 
@@ -596,19 +747,32 @@ void MemoryAlleviation::PrintSummary(const InlinedHashMap<std::string, InlinedHa
   summary << "\tUser config:\n\t" << memory_alleviation_config_ << "\n";
   summary << "\t=================================\n";
 
-  for (auto subgraph_it = stashed_activation_statistics.begin(); subgraph_it != stashed_activation_statistics.end();
-       ++subgraph_it) {
-    summary << "\tSubgraph: " << subgraph_it->first << "\n"
-            << "\t\tAlleviationType: "
-            << UserAlleviationConfigToString(subgraph_str_to_user_alleviation_config.at(subgraph_it->first)) << "\n"
-            << "\t\tPatterns: \n";
-    for (auto shape_stat_it = subgraph_it->second.begin(); shape_stat_it != subgraph_it->second.end();
-         ++shape_stat_it) {
-      summary << "\t\t\tPatternShape:" << shape_stat_it->first << "\tFrequency:" << shape_stat_it->second << "\n";
+  auto print_info_from_stores = [&summary, this](std::string store_name, const AlleviationSubGraphStores& stores) {
+    summary << "\t########" << store_name << "########\n";
+    for (auto subgraph_it = stores.subgraph_descs.begin(); subgraph_it != stores.subgraph_descs.end();
+         ++subgraph_it) {
+      std::string freq_info;
+      if (subgraph_it->second.user_alleviation_config.type != AlleviationType::None &&
+          subgraph_it->second.user_alleviation_config.requested_count != -1)
+        freq_info = " (requested_count=" + std::to_string(subgraph_it->second.user_alleviation_config.requested_count) +
+                    ", actual applied_count=" +
+                    std::to_string(subgraph_it->second.applied_count) + ")";
+      summary << "\tSubgraph: " << subgraph_it->first << "\n"
+              << "\t\tAlleviationType: "
+              << UserAlleviationConfigToString(subgraph_it->second.user_alleviation_config) << freq_info << "\n"
+              << "\t\tPatterns: \n";
+      for (auto shape_stat_it = subgraph_it->second.shape_str_frequency.begin(); shape_stat_it != subgraph_it->second.shape_str_frequency.end();
+           ++shape_stat_it) {
+        summary << "\t\t\tPatternShape:" << shape_stat_it->first << "\tFrequency:" << shape_stat_it->second << "\n";
+      }
+      summary << "\t--------------------------------\n";
     }
-    summary << "\t--------------------------------\n";
-  }
-  summary << "\t=================================\n";
+    summary << "\t=================================\n";
+  };
+
+  print_info_from_stores("Recompute", recompute_stores);
+  print_info_from_stores("RecomputeWithCompromise", recompute_with_compromise_stores);
+
   LOGS(logger, WARNING) << summary.str() << "\n";
 }
 

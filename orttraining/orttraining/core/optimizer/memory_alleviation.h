@@ -43,17 +43,79 @@ class MemoryAlleviation : public GraphTransformer {
   /**
    * @brief Type of user config.
    * type: type of memory reduction techniques.
-   * skip_count: the number of occurrences of a subgraph pattern to ignore for alleviation. 0 means don't skip any.
-   *   One example: if a subgraph pattern is found 3 times, and skip_count is set 2, then the 2nd and 3rd subgraph in
-   *   typological order will be ignored for alleviation. This is useful to avoid alleviating more memory than needed.
+   * requested_count: the number of occurrences of a subgraph pattern for alleviation. -1 means apply all.
+   *   One example: if a subgraph pattern is found 3 times, and requested_count is set 2, then the 1st and 2nd subgraph in
+   *   typological order will be applied for alleviation. This is useful to avoid alleviating more memory than needed.
    */
   struct UserAlleviationConfig {
     AlleviationType type;
-    int skip_count;
+    int requested_count;
+    int stride{1};
   };
 
   struct EntryOperatorConfig {
     InlinedVector<int> input_arg_indices;  // input index to iterate further (bottom up)
+  };
+
+  struct AlleviationSubGraphDesc {
+    AlleviationSubGraphDesc() = default;
+
+    InlinedHashMap<std::string, int> shape_str_frequency;  // shape string to frequency
+    UserAlleviationConfig user_alleviation_config;
+    std::string subgraph_representative_str;  // a string to represent the subgraph.
+    int total_frequency{0};
+    int applied_count{0};
+    int skip_count{0};
+    float saving_ratio{1.0f};
+  };
+
+  struct AlleviationSubGraphStores {
+    // nodes in typo order, and a string to represent the subgraph.
+    using GraphInstanceInfo = std::pair<InlinedVector<const Node*>, std::string>;
+
+    size_t SubGraphCount() const {
+      return subgraph_descs.size();
+    }
+
+    bool Contains(std::string_view subgraph_str) const {
+      return subgraph_descs.find(subgraph_str) != subgraph_descs.end();
+    }
+
+    AlleviationSubGraphDesc& GetSubGraphDesc(std::string_view subgraph_string) {
+      ORT_ENFORCE(Contains(subgraph_string), "Subgraph string not found.", subgraph_string);
+      return subgraph_descs.at(subgraph_string);
+    }
+
+    AlleviationSubGraphDesc& CreateSubGraphDesc(const std::string& subgraph_string,
+                                                UserAlleviationConfig& config) {
+      ORT_ENFORCE(!Contains(subgraph_string), "Subgraph string already exists.", subgraph_string);
+      std::cout << "CreateSubGraphDesc for " << subgraph_string << std::endl;
+      subgraph_descs[subgraph_string].user_alleviation_config = config;
+      subgraph_descs[subgraph_string].subgraph_representative_str = subgraph_string;
+      return subgraph_descs[subgraph_string];
+    }
+
+    void AddRecomputeSubGraphInstance(const Node* node,
+                                      const InlinedVector<const Node*>& nodes_in_topological_order,
+                                      const AlleviationSubGraphDesc& subgraph_desc) {
+      ORT_ENFORCE(recompute_graphs.find(node) == recompute_graphs.end());
+      std::cout << "AddRecomputeSubGraphInstance for " << subgraph_desc.subgraph_representative_str << std::endl;
+      recompute_graphs[node] = std::make_pair(nodes_in_topological_order, subgraph_desc.subgraph_representative_str);
+    }
+
+    // GetSubGraphInstanceFromStashedActivationProducer
+
+    bool ContainsRecomputeSubGraphInstance(const Node* node) const {
+      return recompute_graphs.find(node) != recompute_graphs.end();
+    }
+
+    GraphInstanceInfo& GetRecomputeSubGraphInstance(const Node* node) {
+      ORT_ENFORCE(recompute_graphs.find(node) != recompute_graphs.end());
+      return recompute_graphs[node];
+    }
+
+    InlinedHashMap<std::string /*subgraph_representative_str*/, AlleviationSubGraphDesc> subgraph_descs;
+    InlinedHashMap<const Node*, GraphInstanceInfo> recompute_graphs;
   };
 
  public:
@@ -109,7 +171,20 @@ class MemoryAlleviation : public GraphTransformer {
                                  const ActivationUsedMap& fw_op_output_arg_used_map,
                                  const InlinedHashMap<NodeIndex, size_t>& node_index_to_its_order_in_topological_sort_map,
                                  InlinedVector<const Node*>& nodes_in_topological_order,
-                                 const logging::Logger& logger) const;
+                                 const logging::Logger& logger,
+                                 bool compromise_stashed_activation,
+                                 bool& can_compromise_stashed_activation) const;
+
+  bool IsNodeRecomputable(const Node& node,
+                          const ActivationUsedMap& fw_op_output_arg_used_map,
+                          const InlinedHashMap<NodeIndex, size_t>&
+                              node_index_to_its_order_in_topological_sort_map,
+                          const InlinedHashMap<const Node*, InlinedVector<size_t>>&
+                              candidate_output_args_map,
+                          AlleviationSubGraphStores& subgraph_stores,
+                          const logging::Logger& logger,
+                          bool compromise_stashed_activation,
+                          bool& can_compromise_stashed_activation) const;
 
   /**
    * @brief Duplicate nodes to create a recompute subgraph.
@@ -122,6 +197,14 @@ class MemoryAlleviation : public GraphTransformer {
   Status CreateRecomputeGraph(Graph& graph,
                               const InlinedVector<const Node*>& nodes_in_topological_order,
                               Node*& recompute_subgraph_output_node) const;
+
+  bool ModifyGraphForRecompute(Graph& graph,
+                               const InlinedHashMap<NodeIndex, size_t>& node_index_to_its_order_in_topological_sort_map,
+                               const InlinedHashMap<const Node*, InlinedVector<size_t>>& candidate_output_args_map,
+                               const logging::Logger& logger,
+                               int64_t boundary_op_order_in_topological_sort,
+                               AlleviationSubGraphStores& subgraph_stores,
+                               Node* node) const;
 
   /**
    * @brief Convert the recompute subgraph to its string representation.
@@ -148,10 +231,8 @@ class MemoryAlleviation : public GraphTransformer {
    * @param stashed_activation_statistics statistics around stashed activation memory saving.
    * @return void
    */
-  void PrintSummary(const InlinedHashMap<std::string, InlinedHashMap<std::string, int>>&
-                        stashed_activation_statistics,
-                    const InlinedHashMap<std::string, UserAlleviationConfig>&
-                        subgraph_str_to_user_alleviation_config,
+  void PrintSummary(const AlleviationSubGraphStores& recompute_stores,
+                    const AlleviationSubGraphStores& recompute_with_compromise_stores,
                     const logging::Logger& logger) const;
 
   // The op types that are supported predefined.
