@@ -252,6 +252,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseKernelInfo;
 
         public IntPtr GetTrainingApi;
+        public IntPtr UpdateEnvWithCustomLogLevel;
     }
 
     internal static class NativeMethods
@@ -427,6 +428,7 @@ namespace Microsoft.ML.OnnxRuntime
                 = (DSessionOptionsAppendExecutionProvider)Marshal.GetDelegateForFunctionPointer(
                     api_.SessionOptionsAppendExecutionProvider,
                     typeof(DSessionOptionsAppendExecutionProvider));
+            OrtUpdateEnvWithCustomLogLevel = (DOrtUpdateEnvWithCustomLogLevel)Marshal.GetDelegateForFunctionPointer(api_.UpdateEnvWithCustomLogLevel, typeof(DOrtUpdateEnvWithCustomLogLevel));
         }
 
         internal class NativeLib
@@ -466,9 +468,13 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /* OrtStatus* */DOrtDisableTelemetryEvents(IntPtr /*(OrtEnv*)*/ env);
         public static DOrtDisableTelemetryEvents OrtDisableTelemetryEvents;
 
-#endregion Runtime/Environment API
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */DOrtUpdateEnvWithCustomLogLevel(LogLevel custom_log_level, IntPtr /*(OrtEnv*)*/ env);
+        public static DOrtUpdateEnvWithCustomLogLevel OrtUpdateEnvWithCustomLogLevel;
 
-#region Provider Options API
+        #endregion Runtime/Environment API
+
+        #region Provider Options API
 
         /// <summary>
         /// Creates native OrtTensorRTProviderOptions instance

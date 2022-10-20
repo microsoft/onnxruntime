@@ -3513,6 +3513,15 @@ struct OrtApi {
   * \since Version 1.12.
   */
   ORT_CLASS_RELEASE(KernelInfo);
+  
+  /* \brief Update the OrtEnv instance with custom log severity level
+   *
+   * \param[in] log_severity_level The log severity level.
+   * \param[in] ort_env The OrtEnv instance being used
+   *
+   * \since Version 1.13.
+   */
+  ORT_API2_STATUS(UpdateEnvWithCustomLogLevel, OrtLoggingLevel log_severity_level, _In_ const OrtEnv* ort_env);
 
   /* \brief: Get the training C Api
   *
