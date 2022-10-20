@@ -133,8 +133,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
-  cudaStreamSynchronize(Stream());
-  auto start = high_resolution_clock::now();
+  //cudaStreamSynchronize(Stream());
+  //auto start = high_resolution_clock::now();
 
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
@@ -143,12 +143,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
 
-    cudaStreamSynchronize(Stream());
-    auto stop = high_resolution_clock::now();
+    //cudaStreamSynchronize(Stream());
+    //auto stop = high_resolution_clock::now();
 
-    auto duration = duration_cast<microseconds>(stop - start);
+    //auto duration = duration_cast<microseconds>(stop - start);
 
-    std::cout << "QKV Gemm: " << duration.count() << std::endl;
+    //std::cout << "QKV Gemm: " << duration.count() << std::endl;
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
@@ -158,8 +158,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    past_sequence_length,
                                                    fused_runner);
 
-  cudaStreamSynchronize(Stream());
-  start = high_resolution_clock::now();
+  //cudaStreamSynchronize(Stream());
+  //start = high_resolution_clock::now();
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
   ORT_RETURN_IF_ERROR(LaunchAttentionKernel(
@@ -184,12 +184,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       nullptr == present ? nullptr : present->MutableData<T>(),
       fused_runner));
 
-    cudaStreamSynchronize(Stream());
-    stop = high_resolution_clock::now();
+    //cudaStreamSynchronize(Stream());
+    //stop = high_resolution_clock::now();
 
-    duration = duration_cast<microseconds>(stop - start);
+    //duration = duration_cast<microseconds>(stop - start);
   
-    std::cout << "Rest of Attention: " << duration.count() << std::endl;
+    //std::cout << "Rest of Attention: " << duration.count() << std::endl;
 
   return Status::OK();
 }

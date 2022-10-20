@@ -323,8 +323,8 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
     if (returnedResults == 0) throw std::runtime_error("Unable to find any suitable algorithms");
     */
 
-      cudaStreamSynchronize(stream);
-      auto start = high_resolution_clock::now();
+      // cudaStreamSynchronize(stream);
+      // auto start = high_resolution_clock::now();
 
   // TODO (hasesh): Allow CublasLtMatmul tuning for clients by allowing them to pass in the
   // workspace and algo of their choice.
@@ -343,12 +343,12 @@ inline cublasStatus_t cublasLtMatmulHelper(cublasLtHandle_t handle,
       workspace_memory, workspace_size,
       stream);
 
-      cudaStreamSynchronize(stream);
-      auto stop = high_resolution_clock::now();
+      //cudaStreamSynchronize(stream);
+      //auto stop = high_resolution_clock::now();
 
-      auto duration = duration_cast<microseconds>(stop - start);
+      //auto duration = duration_cast<microseconds>(stop - start);
     
-      std::cout << duration.count() << std::endl;
+      //std::cout << duration.count() << std::endl;
 
       return status;
 }

@@ -37,8 +37,8 @@ FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel
 
 template <typename T>
 Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
-  cudaStreamSynchronize(Stream());
-  auto start = high_resolution_clock::now();
+  //cudaStreamSynchronize(Stream());
+  //auto start = high_resolution_clock::now();
 
   ORT_RETURN_IF_ERROR(bias_gelu_helper::CheckInputs(context));
 
@@ -64,12 +64,12 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
 
 
 
-    cudaStreamSynchronize(Stream());
-    auto stop = high_resolution_clock::now();
+    //cudaStreamSynchronize(Stream());
+    //auto stop = high_resolution_clock::now();
 
-    auto duration = duration_cast<microseconds>(stop - start);
+    //auto duration = duration_cast<microseconds>(stop - start);
 
-    std::cout << "Bias Gelu: " << duration.count() << std::endl;
+    //std::cout << "Bias Gelu: " << duration.count() << std::endl;
 
     return status;
 }
