@@ -215,7 +215,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
         private static Func<DirectoryInfo, IEnumerable<DirectoryInfo>> getOpsetDirectories = delegate (DirectoryInfo modelsDirInfo)
         {
-            return modelsDirInfo.EnumerateDirectories("opset*", new EnumerationOptions(){RecurseSubdirectories = true});
+            return modelsDirInfo.EnumerateDirectories("opset*", SearchOption.AllDirectories);
         };
 
         private static Dictionary<string, string> GetSkippedModels(DirectoryInfo modelsDirInfo)

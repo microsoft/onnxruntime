@@ -1,0 +1,65 @@
+# --------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------
+# Dockerfile to run ONNXRuntime with TensorRT installed from provided binaries
+
+FROM nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04
+
+
+# ONNX Runtime Variables
+ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
+ARG ONNXRUNTIME_BRANCH=main
+ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
+
+# Must provide version numbers used to build the name of the tar file containing TensorRT binaries.
+# See: https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-tar
+ARG TAR_TRT_VERSION
+ARG TAR_CUDA_VERSION
+ARG TAR_CUDNN_VERSION
+
+# Directory containing TensorRT tar.gz installation package
+ARG TRT_BINS_DIR=.
+
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.21.0-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY ${TRT_BINS_DIR}/TensorRT-${TAR_TRT_VERSION}.Linux.x86_64-gnu.cuda-${TAR_CUDA_VERSION}.cudnn${TAR_CUDNN_VERSION}.tar.gz /TensorRT-${TAR_TRT_VERSION}.tar.gz
+
+RUN apt-get update &&\
+    apt-get install -y sudo git bash unattended-upgrades wget
+RUN unattended-upgrade
+
+# Install python3
+RUN apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-dev \
+    python3-wheel &&\
+    cd /usr/local/bin &&\
+    ln -s /usr/bin/python3 python &&\
+    ln -s /usr/bin/pip3 pip;
+
+RUN pip install --upgrade pip 
+RUN pip install setuptools>=41.0.0
+
+# Install TensorRT from tar.gz
+RUN tar -xzvf /TensorRT-${TAR_TRT_VERSION}.tar.gz
+
+RUN cd /TensorRT-${TAR_TRT_VERSION}/python &&\
+    python3 -m pip install tensorrt-${TAR_TRT_VERSION}-cp38-none-linux_x86_64.whl
+
+RUN cp -r /TensorRT-${TAR_TRT_VERSION}/lib/* /usr/lib/x86_64-linux-gnu/
+RUN cp /TensorRT-${TAR_TRT_VERSION}/include/* /usr/local/include/
+RUN cp /TensorRT-${TAR_TRT_VERSION}/bin/* /usr/local/bin/
+
+WORKDIR /code
+
+# Prepare onnxruntime repository & build onnxruntime with TensorRT
+RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
+    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
+    cd onnxruntime &&\
+    /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --use_tensorrt_builtin_parser --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"' &&\
+    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
+    cd .. 
