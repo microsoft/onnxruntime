@@ -9,6 +9,7 @@
 #include "core/providers/providers.h"
 
 namespace onnxruntime {
+struct SessionOptions;
 
 struct XnnpackProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& provider_options,
