@@ -8,6 +8,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
+#include "core/framework/session_options.h"
 
 struct pthreadpool;
 namespace onnxruntime {
@@ -16,9 +17,12 @@ struct XnnpackExecutionProviderInfo {
   int xnn_thread_pool_size{0};
   XnnpackExecutionProviderInfo() = default;
 
-  XnnpackExecutionProviderInfo(const ProviderOptions& po) {
+  XnnpackExecutionProviderInfo(const ProviderOptions& po, const SessionOptions* sess_option) {
     if (auto it = po.find("intra_op_num_threads"); it != po.end()) {
       xnn_thread_pool_size = std::stoi(it->second);
+    }
+    else if(sess_option && sess_option->intra_op_param.thread_pool_size > 0) {
+      xnn_thread_pool_size = sess_option->intra_op_param.thread_pool_size;
     }
   }
 };
