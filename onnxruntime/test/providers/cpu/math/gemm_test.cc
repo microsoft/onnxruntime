@@ -629,7 +629,8 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
 
   // Session 1
   {
-    test.ConfigEps(cpu_ep())
+    test.Config(so)
+        .ConfigEps(cpu_ep())
         .Config(run_with_tunable_op)
         .RunWithConfig(&number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
     // Assert that no pre-packed weights have been shared thus far
@@ -651,7 +652,8 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
   // Session 2
   {
     size_t number_of_pre_packed_weights_counter_session_2 = 0;
-    test.ConfigEps(cpu_ep())
+    test.Config(so)
+        .ConfigEps(cpu_ep())
         .Config(run_with_tunable_op)
         .RunWithConfig(&number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
 
