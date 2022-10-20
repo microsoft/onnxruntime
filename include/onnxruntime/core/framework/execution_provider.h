@@ -310,7 +310,7 @@ class IExecutionProvider {
    * The EP should return an error if it's incompatible with the SessionOptions that specifies
    * which option is problematic so the user knows what needs to be fixed
    */
-  virtual common::Status CheckSessionOptionsAndProcess(const SessionOptions& /*session_options*/) {
+  virtual common::Status ProcessSessionOptions(const SessionOptions& /*session_options*/) {
     return Status::OK();
   }
 

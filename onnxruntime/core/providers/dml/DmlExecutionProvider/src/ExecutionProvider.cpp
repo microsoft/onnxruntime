@@ -943,7 +943,7 @@ namespace Dml
         return onnxruntime::common::Status::OK();
     }
 
-    onnxruntime::common::Status ExecutionProviderImpl::CheckSessionOptionsAndProcess(const onnxruntime::SessionOptions& so) {
+    onnxruntime::common::Status ExecutionProviderImpl::ProcessSessionOptions(const onnxruntime::SessionOptions& so) {
         // DML's memory is not byte addressable and hence mem pattern doesn't work.
         if (so.enable_mem_pattern) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -955,7 +955,7 @@ namespace Dml
         // Parallel execution mode does not support DML EP
         if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                   "Parallel execution mode does not support the DML Execution Provider. "
+                                   "Parallel execution mode is incompatible with DML Execution Provider. "
                                    "Please set the execution mode as sequential for this session.");
         }
         return onnxruntime::common::Status::OK();

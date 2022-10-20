@@ -36,7 +36,7 @@ class XnnpackExecutionProvider : public IExecutionProvider {
 
   void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
 
-  common::Status CheckSessionOptionsAndProcess(const SessionOptions& session_options) override;
+  common::Status ProcessSessionOptions(const SessionOptions& session_options) override;
 
   DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
 

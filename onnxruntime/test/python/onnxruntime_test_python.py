@@ -1370,9 +1370,8 @@ class TestInferenceSession(unittest.TestCase):
         ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
         verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
 
-    def testCheckSessionOptionsAndProcessWithEPs(self):
+    def testProcessSessionOptionsWithEPs(self):
         so = onnxrt.SessionOptions()
-        has_xnnpack = "XnnpackExecutionProvider" in onnxrt.get_available_providers()
         has_dml = "DmlExecutionProvider" in onnxrt.get_available_providers()
         has_cuda = "CUDAExecutionProvider" in onnxrt.get_available_providers()
         # DmlExecutionProvider doesn't compatible with enable_mem_pattern as True
@@ -1389,6 +1388,10 @@ class TestInferenceSession(unittest.TestCase):
                 else:
                     raise onnxruntime_error
 
+        if has_cuda:
+            so.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
+            exception_test("CUDAExecutionProvider", so)
+
         if has_dml:
             so.enable_mem_pattern = True
             exception_test("DmlExecutionProvider", so, "Having memory pattern enabled is not supported")
@@ -1396,14 +1399,6 @@ class TestInferenceSession(unittest.TestCase):
             so.enable_mem_pattern = False
             so.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
             exception_test("DmlExecutionProvider", so)
-
-        if has_xnnpack:
-            so.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
-            exception_test("XnnpackExecutionProvider", so)
-
-        if has_cuda:
-            so.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
-            exception_test("CUDAExecutionProvider", so)
 
 
 if __name__ == "__main__":

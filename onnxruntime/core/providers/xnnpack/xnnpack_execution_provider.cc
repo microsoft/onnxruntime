@@ -96,14 +96,7 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
   }
 }
 
-common::Status XnnpackExecutionProvider::CheckSessionOptionsAndProcess(const SessionOptions& so) {
-  if (so.execution_mode != ExecutionMode::ORT_SEQUENTIAL) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Parallel execution mode does not support the Xnnpack Execution Provider. "
-                           "Please set the execution mode as sequential for this "
-                           "session since it uses the Xnnpack Execution Provider.");
-  }
-
+common::Status XnnpackExecutionProvider::ProcessSessionOptions(const SessionOptions& so) {
   if (so.intra_op_param.allow_spinning && so.intra_op_param.thread_pool_size > 1) {
     LOGS_DEFAULT(WARNING)
         << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."
