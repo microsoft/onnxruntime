@@ -3590,6 +3590,14 @@ struct OrtApi {
   */
   void(ORT_API_CALL* MemoryInfoGetDeviceType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
 
+  /* \brief Update the OrtEnv instance with custom log severity level
+   *
+   * \param[in] log_severity_level The log severity level.
+   * \param[in] ort_env The OrtEnv instance being used
+   *
+   * \since Version 1.13.
+   */
+  ORT_API2_STATUS(UpdateEnvWithCustomLogLevel, OrtLoggingLevel log_severity_level, _In_ const OrtEnv* ort_env);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
