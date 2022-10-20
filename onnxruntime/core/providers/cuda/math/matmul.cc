@@ -145,11 +145,12 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       bool use_special = false;
       if (left_X->SizeInBytes() == 196608) {
               use_special = true;
-              std::cout << "Using special" << "\n";
+              //std::cout << "Using special" << "\n";
       }
 
       if (use_special) {
 
+        /*
         std::cout << "\n";
 
         auto i =  reinterpret_cast<std::uintptr_t>(left_X->Data<T>()) % 2048;
@@ -169,6 +170,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
         i = reinterpret_cast<std::uintptr_t>(Y_ptr_) % 2048;  
         std::cout << i << "\n";
+        */
 
       /*
       auto s = (size_t)(ceil(6291456/ 256.)) * 256 / 4;
@@ -185,7 +187,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       }
       */
 
-      cudaMemcpyAsync(const_cast<T*>(left_X->Data<T>()), left_X_ptr_ , left_X->SizeInBytes(),  cudaMemcpyDeviceToDevice, Stream()); 
+      // cudaMemcpyAsync(const_cast<T*>(left_X->Data<T>()), left_X_ptr_ , left_X->SizeInBytes(),  cudaMemcpyDeviceToDevice, Stream()); 
       
       //const void* ptr = left_X->Data<T>();
       //ORT_IGNORE_RETURN_VALUE(ptr);
@@ -201,7 +203,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           &alpha,
           reinterpret_cast<const CudaT*>(right_X->Data<T>()),          
           ldb,
-          reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+          reinterpret_cast<const CudaT*>(left_X_ptr_),
           lda,
           &zero,
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),

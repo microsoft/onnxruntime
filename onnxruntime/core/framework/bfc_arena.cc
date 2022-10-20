@@ -94,8 +94,8 @@ BFCArena::Chunk* BFCArena::ChunkFromHandle(ChunkHandle h) {
 }
 
 Status BFCArena::Extend(size_t rounded_bytes) {
-  std::cout << "Extending" << std::endl;
-  
+  //std::cout << "Extending" << std::endl;
+
   size_t available_bytes = memory_limit_ - static_cast<size_t>(stats_.total_allocated_bytes);
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
@@ -376,7 +376,7 @@ void* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         // max_dead_bytes_per_chunk bytes on padding this alloc.
         if (chunk->size >= rounded_bytes * 2 ||
             static_cast<int64_t>(chunk->size) - static_cast<int64_t>(rounded_bytes) >= max_dead_bytes_per_chunk_) {
-          std::cout << "Split" << std::endl;
+          // std::cout << "Split" << std::endl;
           SplitChunk(h, rounded_bytes);
           chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
         }
