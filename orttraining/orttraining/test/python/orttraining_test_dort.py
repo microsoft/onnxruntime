@@ -4,7 +4,6 @@
 import unittest
 
 import torch
-import torchdynamo
 from torch import nn
 from torch.nn import functional as F
 
@@ -30,7 +29,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 tensor_q = tensor_p.relu()
                 return tensor_q
 
-            @torchdynamo.optimize(aot_ort)
+            @torch._dynamo.optimiz(aot_ort)
             def optimized_elementwise_model(tensor_x: torch.Tensor):
                 return elementwise_model(tensor_x)
 
@@ -97,7 +96,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
             # Baseline.
             loss, grads = run(model, tensor_x, tensor_y)
             # ORT result.
-            compiled_model = torchdynamo.optimize(aot_ort)(model)
+            compiled_model = torch._dynamo.optimize(aot_ort)(model)
             loss_new, grads_new = run(compiled_model, tensor_x, tensor_y)
 
             print(f"MNIST loss: {loss} (pytorch), {loss_new} (ort).")

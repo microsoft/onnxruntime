@@ -366,7 +366,7 @@ class OrtBackend:
         self.onnx_output_devices = {}
         self.assert_allclose_to_baseline = False
 
-    def lower_to_prims_and_execute(self, graph_module: torch.fx.GraphModule, *args, **kwargs):
+    def ort_acclerated_call(self, graph_module: torch.fx.GraphModule, *args, **kwargs):
         if graph_module in self.onnx_sessions:
             onnx_session = self.onnx_sessions[graph_module]
             input_names = self.onnx_input_names[graph_module]
@@ -461,12 +461,14 @@ class OrtBackend:
             partitioned_prim_graph_module = partitioner.partition_and_fuse()
             self.partitioner_cache[graph_module] = partitioned_prim_graph_module
 
-            # Overriding fused_module's __call__() function with lower_to_prims_and_execute()
+            # Overriding fused_module's __call__() function with ort_acclerated_call()
             for node in partitioned_prim_graph_module.graph.nodes:
                 # TODO: use a better way to identify fused submodule
                 if node.op == "call_module" and "fused_" in node.name:
                     fused_module = getattr(partitioned_prim_graph_module, node.name)
-                    fused_module._wrapped_call = self.lower_to_prims_and_execute
+                    # self.ort_acclerated_call is responsible for exporting graph to ONNX,
+                    # creating ORT session, and running ORT session.
+                    fused_module._wrapped_call = self.ort_acclerated_call
 
         return partitioned_prim_graph_module
 

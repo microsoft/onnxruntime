@@ -5,8 +5,8 @@
 
 import torch
 from functorch.compile import min_cut_rematerialization_partition
-from torchdynamo.optimizations.backends import BACKENDS
-from torchdynamo.optimizations.training import AotAutogradStrategy
+from torch._dynamo.optimizations.backends import BACKENDS
+from torch._dynamo.optimizations.training import AotAutogradStrategy
 
 from .ort_backend import OrtBackend
 
