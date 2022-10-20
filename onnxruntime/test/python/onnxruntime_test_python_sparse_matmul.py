@@ -21,8 +21,11 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         that comes from the initializer
         """
         # The below values are a part of the model
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         sess = onnxrt.InferenceSession(
             get_name("sparse_initializer_as_output.onnx"),
+            sess_options=so,
             providers=onnxrt.get_available_providers(),
         )
         res = sess._sess.run_with_ort_values({}, ["values"], RunOptions())
@@ -38,8 +41,11 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         dense_shape = [3, 3]
         values = np.array([1.764052391052246, 0.40015721321105957, 0.978738009929657], np.float)
         indices = np.array([2, 3, 5], np.int64)
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         sess = onnxrt.InferenceSession(
             get_name("sparse_initializer_as_output.onnx"),
+            sess_options=so,
             providers=onnxrt.get_available_providers(),
         )
         res = sess.run_with_ort_values(["values"], {})
@@ -407,8 +413,11 @@ class TestSparseToDenseMatmul(unittest.TestCase):
             np.float,
         ).reshape(common_shape)
 
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         sess = onnxrt.InferenceSession(
             get_name("sparse_to_dense_matmul.onnx"),
+            sess_options=so,
             providers=onnxrt.get_available_providers(),
         )
         res = sess.run_with_ort_values(["dense_Y"], {"sparse_A": A_ort_value, "dense_B": B_ort_value})
