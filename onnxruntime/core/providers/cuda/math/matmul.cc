@@ -172,7 +172,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         i = reinterpret_cast<std::uintptr_t>(Y_ptr_) % 2048;  
         std::cout << i << "\n";
 
-      // cudaMemcpyAsync(left_X_ptr_ , left_X->Data<T>(), left_X->SizeInBytes(),  cudaMemcpyDeviceToDevice, Stream()); 
+      cudaMemcpyAsync(left_X_ptr_ , left_X->Data<T>(), left_X->SizeInBytes(),  cudaMemcpyDeviceToDevice, Stream()); 
       const void* ptr = left_X->Data<T>();
       ORT_IGNORE_RETURN_VALUE(ptr);
       std::cout << "Here" ;
