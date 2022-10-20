@@ -3496,6 +3496,15 @@ struct OrtApi {
   */
   const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version) NO_EXCEPTION;
 
+  /* \brief Update log level of an OrtEnv
+   *
+   * \param[in] log_severity_level The log severity level.
+   * \param[in] ort_env The OrtEnv instance being used
+   *
+   * \since Version 1.13.
+   */
+  ORT_API2_STATUS(UpdateEnvWithCustomLogLevel, OrtLoggingLevel log_severity_level, _In_ const OrtEnv* ort_env);
+
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
 #endif
