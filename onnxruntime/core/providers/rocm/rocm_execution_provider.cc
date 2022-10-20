@@ -154,6 +154,40 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
   }
 }
 
+std::optional<std::string> LoadEnv(const std::string& name, const std::unordered_set<std::string>& valid_values) {
+  ORT_ENFORCE(!valid_values.empty());
+  auto env = onnxruntime::GetEnvironmentVar(name);
+  if (env.empty()) {
+    return std::nullopt;
+  }
+
+  LOGS_DEFAULT(WARNING) << "Environment variable "<< name << " is used. It is reserved for internal testing prupose. "
+                           "End users should opt for provider options or session options and must not rely on it.";
+
+  if (valid_values.find(env) == valid_values.cend()) {
+    std::ostringstream oss;
+    auto it = valid_values.cbegin();
+    oss << *it++;
+    while(it != valid_values.cend()) {
+      oss << ", " << *it++;
+    }
+    ORT_THROW("Value of environment variable ", name," must be ",oss.str(), ", but got ", env);
+  }
+
+  return env;
+}
+
+void OverrideTunableOpInfoByEnv(ROCMExecutionProviderInfo& info) {
+  std::optional<std::string> env;
+
+  env = LoadEnv("ORT_ROCM_TUNABLE_OP_ENABLED", {"0", "1"});
+  const bool env_tunable_op_enabled = env == "1";
+  if (env.has_value() && env_tunable_op_enabled != info.tunable_op.enabled) {
+    LOGS_DEFAULT(INFO) << "ORT_ROCM_TUNABLE_OP_ENABLED is set to " << env_tunable_op_enabled;
+    info.tunable_op.enabled = env_tunable_op_enabled;
+  }
+}
+
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
       info_{info} {
@@ -180,6 +214,8 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
   size_t free = 0;
   size_t total = 0;
   HIP_CALL_THROW(hipMemGetInfo(&free, &total));
+
+  OverrideTunableOpInfoByEnv(info_);
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
@@ -200,6 +236,20 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   if (!external_stream_ && stream_) {
     HIP_CALL_THROW(hipStreamDestroy(stream_));
   }
+}
+
+void ROCMExecutionProvider::EnableTunableOp() {
+  LOGS_DEFAULT(INFO) << "Enable TunableOp for ROCm Execution Provider";
+  info_.tunable_op.enabled = true;
+}
+
+void ROCMExecutionProvider::DisableTunableOp() {
+  LOGS_DEFAULT(INFO) << "Disable TunableOp for ROCm Execution Provider";
+  info_.tunable_op.enabled = false;
+}
+
+bool ROCMExecutionProvider::IsTunableOpEnabled() const {
+  return info_.tunable_op.enabled;
 }
 
 std::unique_ptr<profiling::EpProfiler> ROCMExecutionProvider::GetProfiler() {
