@@ -88,7 +88,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
-    : IExecutionProvider{kXnnpackExecutionProvider, true}, info_(info) {
+    : IExecutionProvider{kXnnpackExecutionProvider, true} {
   if (info.xnn_thread_pool_size > 1) {
     // pthreadpool is independent of ort-threadpoool, so we have to disable cpu spinning for ort-threadpool.
     // otherwise, the pthreadpool will be starved and harm performance a lot.

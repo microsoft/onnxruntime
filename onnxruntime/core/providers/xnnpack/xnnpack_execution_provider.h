@@ -54,7 +54,6 @@ class XnnpackExecutionProvider : public IExecutionProvider {
   }
 
  private:
-  XnnpackExecutionProviderInfo info_;
   pthreadpool* xnnpack_thread_pool_{nullptr};
 };
 
