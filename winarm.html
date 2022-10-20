@@ -93,16 +93,24 @@
                                 </div>
                                 <div class="col-12 col-md-6 pr-5">
                                     <h2 class="blue-text">Get started on your Windows Dev Kit 2023 today</h2>
-                                    <p>Follow these steps to setup your device to use ONNX runtime with the built in NPU: 
+                                    <p>Follow these steps to setup your device to use ONNX Runtime (ORT) with the built in NPU: 
                                         <ol>
-                                            <li>Request SNPE for Windows from Qualcomm <a href="https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk/windows-on-snapdragon" target="_blank">here</a>.</li>
-                                            <li>Qualcomm will reach out to you via email with any further registration instructions for approval. </li>
-                                            <li>Once approved, you will have links to download SNPE.</li>
-                                            <li>Download and install the <a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Snpe" target="_blank">ORT-NPU Nuget package.</a></li>
+                                            <li><a href="https://developer.qualcomm.com/software/qualcomm-neural-processing-sdk/windows-on-snapdragon" target="_blank">Request access</a> to the Neural Processing SDK for Windows on Snapdragon. Qualcomm may reach out to you via email with further registration instructions for approval. </li>
+                                            <li>Once approved, you will receive an email with links to download SNPE.
+                                                <ol type="a">
+                                                    <li>Select the SNPE link which takes you to a Qualcomm login and download page. </li>
+                                                    <li>Select the <i>Snapdragon_NPE_SDK.WIN.1.0 Installer</i> link, download and install.</li>
+                                                </ol>                                                 
+                                            <li>Download and install the <a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Snpe" target="_blank">ORT-NPU Nuget package</a>  for C and C++.</li>
+                                            <li>Start using the ONNX Runtime API in your application.</li>
                                         </ol>
                                     </p><br/>
-                                    <h2>Try these models on your device: </h2> 
-                                        <a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/Snpe_EP" class="link">Image classification >></a></p>
+                                    <h2>Tutorials: </h2> 
+                                    <ul>
+                                        <li><a href="https://github.com/onnx/tutorials#onnx-tutorials" target="_blank">Convert your model to use with ORT on Windows ARM</a></li>
+                                        <li><a href="" target="_blank">Deploy your model on Windows ARM with ONNX Runtime</a></li>
+                                    </ul>
+                                  
                                 </div>
                             </div>
                         </div>
