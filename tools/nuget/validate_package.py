@@ -93,7 +93,7 @@ def download_and_verify_directml_dlls(zip_file, platform, package_folder):
     dml_nuget_package_version = '1.9.1'
     dml_dependency_string = '<dependency id="' + dml_nuget_package_name + '" version="' + dml_nuget_package_version + '" />'
 
-    dml_related_dlls = [
+    dml_related_filenames = [
         "DirectML.Debug.dll",
         "DirectML.Debug.pdb",
         "DirectML.dll",
@@ -124,12 +124,12 @@ def download_and_verify_directml_dlls(zip_file, platform, package_folder):
             header_folder = "include"
 
             check_if_headers_are_present(dml_related_header_files, header_folder, dml_zip_file_list, platform)
-            for dll in dml_related_dlls:
-                path = folder + "/" + dll
+            for filename in dml_related_filenames:
+                path = folder + "/" + filename
                 print("Checking path: " + path)
                 if path not in dml_zip_file_list:
-                    print(dll + " not found for " + platform)
-                    raise Exception(dll + " not found for " + platform)
+                    print(filename + " not found for " + platform)
+                    raise Exception(filename + " not found for " + platform)
         else:
             print(dml_dependency_string + " not found for " + platform)
             raise Exception(dml_dependency_string + " not found for " + platform)
