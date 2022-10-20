@@ -1379,7 +1379,7 @@ class TestInferenceSession(unittest.TestCase):
         # XnnpackExecutionProvider doesn't compatible with execution_mode as ExecutionMode.ORT_PARALLEL
         # CUDAExecutionProvider doesn't compatible with execution_mode as ExecutionMode.ORT_PARALLEL
 
-        def exception_test(ep_name, so, err_msg="Parallel execution mode does not support the"):
+        def exception_test(ep_name, so, err_msg="Parallel execution mode is incompatible with"):
             try:
                 onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=[ep_name], sess_options=so)
             except Fail as onnxruntime_error:
