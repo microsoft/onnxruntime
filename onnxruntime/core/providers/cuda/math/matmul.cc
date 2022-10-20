@@ -173,9 +173,10 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         std::cout << i << "\n";
 
       // cudaMemcpyAsync(left_X_ptr_ , left_X->Data<T>(), left_X->SizeInBytes(),  cudaMemcpyDeviceToDevice, Stream()); 
-      void* ptr = left_X->Data<T>();
+      const void* ptr = left_X->Data<T>();
+      ORT_IGNORE_RETURN_VALUE(ptr);
       std::cout << "Here";
-      
+
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
           transB,
