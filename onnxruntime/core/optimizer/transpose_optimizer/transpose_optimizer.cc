@@ -993,7 +993,7 @@ static bool HandleResize(HandlerArgs& args) {
     }
   }
 
-  // TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
   TransposeOutputs(args.ctx, args.node, args.perm);
 
   return true;
