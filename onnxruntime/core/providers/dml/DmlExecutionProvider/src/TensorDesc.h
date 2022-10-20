@@ -51,6 +51,23 @@ namespace Dml
             return m_bufferTensorDesc.TotalTensorSizeInBytes;
         }
 
+        static TensorDesc ConstructDefaultTensorDesc(
+            const MLOperatorTensorDataType dataType,
+            gsl::span<const uint32_t> desiredTensorShape,
+            gsl::span<const uint32_t> actualTensorShape)
+        {
+            return TensorDesc(
+                        dataType,
+                        desiredTensorShape,
+                        actualTensorShape,
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        1, // minDimensionCount
+                        0
+                    );
+        }
+
     private:
         DML_TENSOR_TYPE m_tensorType = DML_TENSOR_TYPE_INVALID;
         MLOperatorTensorDataType m_mlOperatorTensorDataType = MLOperatorTensorDataType::Undefined;
