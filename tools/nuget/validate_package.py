@@ -7,7 +7,6 @@ import os
 import re
 import sys
 import zipfile  # Available Python 3.2 or higher
-from urllib import request
 
 linux_gpu_package_libraries = [
     "libonnxruntime_providers_shared.so",
@@ -35,10 +34,6 @@ dmlep_related_header_files = [
     "onnxruntime_cxx_api.h",
     "onnxruntime_cxx_inline.h",
     "dml_provider_factory.h",
-]
-dml_related_header_files = [
-    "DirectML.h",
-    "DirectMLConfig.h"
 ]
 
 def parse_arguments():
@@ -87,54 +82,6 @@ def check_if_headers_are_present(
             print(header + " not found for " + platform)
             raise Exception(header + " not found for " + platform)
 
-def download_and_verify_directml_dlls(zip_file, platform, package_folder):
-    dml_nuget_spec_file_name = "Microsoft.ML.OnnxRuntime.DirectML.nuspec"
-    dml_nuget_package_name = 'Microsoft.AI.DirectML'
-    dml_nuget_package_version = '1.9.1'
-    dml_dependency_string = '<dependency id="' + dml_nuget_package_name + '" version="' + dml_nuget_package_version + '" />'
-
-    dml_related_filenames = [
-        "DirectML.Debug.dll",
-        "DirectML.Debug.pdb",
-        "DirectML.dll",
-        "DirectML.lib",
-        "DirectML.pdb",
-    ]
-
-    with zip_file.open(dml_nuget_spec_file_name, 'r') as file:
-        content = file.read().decode('UTF-8')
-        if dml_dependency_string in content:
-            dml_nupkg_zip = package_folder + '/' + dml_nuget_package_name + '.' + dml_nuget_package_version + '.zip'
-
-            if not check_exists(dml_nupkg_zip):
-                dml_nuget_url = 'https://api.nuget.org/v3-flatcontainer/' + dml_nuget_package_name + '/' + dml_nuget_package_version + '/' + dml_nuget_package_name + '.' + dml_nuget_package_version + '.nupkg'
-                try:
-                    request.urlretrieve(dml_nuget_url, dml_nupkg_zip)
-                except Exception as e:
-                    print(e)
-                    raise Exception("Unable to download" + dml_nuget_url+  "NuGet package")
-
-            dml_zip_file_list = zipfile.ZipFile(dml_nupkg_zip).namelist()
-
-            # ORT accepts win-x64 as platform, whereas DirectML accepts x64-win
-            platform_split = platform.strip().split("-")
-            platform = platform_split[1] + "-" + platform_split[0]
-
-            folder = "bin/" + platform
-            header_folder = "include"
-
-            check_if_headers_are_present(dml_related_header_files, header_folder, dml_zip_file_list, platform)
-            for filename in dml_related_filenames:
-                path = folder + "/" + filename
-                print("Checking path: " + path)
-                if path not in dml_zip_file_list:
-                    print(filename + " not found for " + platform)
-                    raise Exception(filename + " not found for " + platform)
-        else:
-            print(dml_dependency_string + " not found for " + platform)
-            raise Exception(dml_dependency_string + " not found for " + platform)
-
-
 def check_if_dlls_are_present(
     package_type, is_windows_ai_package, is_gpu_package, is_dml_package, platforms_supported, zip_file, package_path
 ):
@@ -174,7 +121,6 @@ def check_if_dlls_are_present(
 
             if is_dml_package:
                 check_if_headers_are_present(dmlep_related_header_files, header_folder, file_list_in_package, platform)
-                download_and_verify_directml_dlls(zip_file, platform, package_path)
 
         elif platform.startswith("linux"):
             if package_type == "nuget":
@@ -327,7 +273,7 @@ def validate_nuget(args):
         print("Checking if the Nuget contains relevant dlls")
         is_windows_ai_package = os.path.basename(full_nuget_path).startswith("Microsoft.AI.MachineLearning")
         check_if_dlls_are_present(
-            args.package_type, is_windows_ai_package, is_gpu_package, is_dml_package, args.platforms_supported, zip_file, args.package_path
+            args.package_type, is_windows_ai_package, is_gpu_package, is_dml_package, args.platforms_supported, zip_file, None
         )
 
         verify_nuget_signing = args.verify_nuget_signing.lower()
