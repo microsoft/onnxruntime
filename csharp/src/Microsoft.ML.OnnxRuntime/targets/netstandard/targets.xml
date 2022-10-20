@@ -6,7 +6,7 @@
     the PlatformTarget is empty, and you don't know until runtime (i.e. which dotnet.exe)
     what processor architecture will be used.
   -->
-    <Error Condition="('$(PlatformTarget)' != 'x64' AND '$(PlatformTarget)' != 'arm64' '$(PlatformTarget)' != 'x86' AND '$(PlatformTarget)' != 'AnyCPU') AND
+    <Error Condition="('$(PlatformTarget)' != 'x64' AND '$(PlatformTarget)' != 'arm64' AND '$(PlatformTarget)' != 'x86' AND '$(PlatformTarget)' != 'AnyCPU') AND
                       ('$(OutputType)' == 'Exe' OR '$(OutputType)'=='WinExe') AND
                       !('$(TargetFrameworkIdentifier)' == '.NETCoreApp' AND '$(PlatformTarget)' == '') AND
                       ('$(TargetFrameworkIdentifier)' != 'Xamarin.iOS' AND
