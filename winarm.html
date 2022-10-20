@@ -107,15 +107,15 @@
                                         </ol>
                                     </p><br/>
 				    <h2 class="blue-text">Optimizing models for the NPU</h2>
-				    <p>ONNX Runtime can run any ONNX model, however to make use of the NPU, you currently need to use the following steps:
+				    <p><a href="https://onnx.ai" target="_blank">ONNX</a> is a standard format for representing ML models authored in frameworks like PyTorch, TensorFlow, and others. ONNX Runtime can run any ONNX model, however to make use of the NPU, you currently need to use the following steps:
 					 <ul>
 					    <li>Run the tools provided in the SNPE SDK on your model to generate a binary file.</li>
 					    <li>Include the contents of the binary file as a node in the ONNX graph.</li>
 				         </ul>
 				    <p>See our <a href="" target="_blank">tutorial</a> for an example of how this is done.</p>
-				    <p>Many PyTorch, TensorFlow, and ONNX models can be optimized for the NPU using this process. Even if a model cannot be optimized for NPU by the SNPE SDK, it can still be run by ONNX Runtime on the CPU.</p>
+				    <p>Many models can be optimized for the NPU using this process. Even if a model cannot be optimized for NPU by the SNPE SDK, it can still be run by ONNX Runtime on the CPU.</p>
 				    <br/>
-                                    <h2 class="blue-text">Tutorials: </h2> 
+                                    <h2 class="blue-text">Tutorials</h2> 
                                     <ul>
                                         <li><a href="" target="_blank">Convert your model to use with ONNX Runtime with SNPE</a></li>
                                         <li><a href="" target="_blank">Deploy your model on Windows Arm with ONNX Runtime</a></li>
