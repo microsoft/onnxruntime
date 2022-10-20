@@ -172,6 +172,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         i = reinterpret_cast<std::uintptr_t>(Y_ptr_) % 2048;  
         std::cout << i << "\n";
 
+      /*
       auto s = (size_t)(ceil(6291456/ 256.)) * 256 / 4;
       std::vector<float> v;
       v.reserve(s);
@@ -184,13 +185,13 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       for(size_t i=0; i<s; ++i) {
         std::cout << v[i] << std::endl;
       }
+      */
 
-
-
-      cudaMemcpyAsync(left_X_ptr_ , left_X->Data<T>(), left_X->SizeInBytes(),  cudaMemcpyDeviceToDevice, Stream()); 
-      const void* ptr = left_X->Data<T>();
-      ORT_IGNORE_RETURN_VALUE(ptr);
-      std::cout << "Here" ;
+      cudaMemcpyAsync(const_cast<T*>(left_X->Data<T>()), left_X_ptr_ , left_X->SizeInBytes(),  cudaMemcpyDeviceToDevice, Stream()); 
+      
+      //const void* ptr = left_X->Data<T>();
+      //ORT_IGNORE_RETURN_VALUE(ptr);
+      //std::cout << "Here" ;
 
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
@@ -202,7 +203,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           &alpha,
           reinterpret_cast<const CudaT*>(right_X->Data<T>()),          
           ldb,
-          reinterpret_cast<const CudaT*>(left_X_ptr_),
+          reinterpret_cast<const CudaT*>(left_X->Data<T>()),
           lda,
           &zero,
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
