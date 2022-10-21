@@ -32,7 +32,7 @@ class MatMul final : public CudaKernel {
   const bool trans_batch_a_;
   const bool trans_batch_b_;
   void* left_X_ptr_ = nullptr;
-  bool use_data_ptr_ = false;
+  bool use_data_ptr_ = true;
 };
 }  // namespace cuda
 }  // namespace onnxruntime
