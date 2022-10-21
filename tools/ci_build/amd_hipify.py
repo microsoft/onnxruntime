@@ -1,232 +1,18 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import concurrent.futures
-import fnmatch
-import functools
+import argparse
 import os
-import shutil
 import subprocess
 
-from logger import get_logger
 
-log = get_logger("amd_hipify")
-
-
-def path_in_repo(path):
-    repo_root = os.path.relpath(os.path.join(os.path.dirname(__file__), "../.."))
-    return os.path.join(repo_root, path)
-
-
-contrib_ops_path = path_in_repo("onnxruntime/contrib_ops")
-providers_path = path_in_repo("onnxruntime/core/providers")
-training_ops_path = path_in_repo("orttraining/orttraining/training_ops")
-
-
-def is_excluded(f, excluded_patterns):
-    return any([fnmatch.fnmatch(f, pat) for pat in excluded_patterns])
-
-
-contrib_ops_excluded_files = [
-    "bert/attention.cc",
-    "bert/attention.h",
-    "bert/attention_impl.cu",
-    "bert/attention_softmax.h",
-    "bert/embed_layer_norm.cc",
-    "bert/embed_layer_norm.h",
-    "bert/embed_layer_norm_impl.cu",
-    "bert/embed_layer_norm_impl.h",
-    "bert/fast_gelu_impl.cu",
-    "bert/fast_gelu_impl.h",
-    "bert/fast_gelu.cc",
-    "bert/fast_gelu.h",
-    "bert/skip_layer_norm.cc",
-    "bert/skip_layer_norm.h",
-    "bert/skip_layer_norm_impl.cu",
-    "bert/skip_layer_norm_impl.h",
-    "bert/tensorrt_fused_multihead_attention/*",
-    "bert/transformer_common.h",
-    "bert/transformer_common.cc",
-    "math/complex_mul.cc",
-    "math/complex_mul.h",
-    "math/complex_mul_impl.cu",
-    "math/complex_mul_impl.h",
-    "math/cufft_plan_cache.h",
-    "math/fft_ops.cc",
-    "math/fft_ops.h",
-    "math/fft_ops_impl.cu",
-    "math/fft_ops_impl.h",
-    "quantization/attention_quantization.cc",
-    "quantization/attention_quantization.h",
-    "quantization/attention_quantization_impl.cu",
-    "quantization/attention_quantization_impl.cuh",
-    "quantization/quantize_dequantize_linear.cc",
-    "quantization/qordered_ops/qordered_attention_impl.cu",
-    "quantization/qordered_ops/qordered_attention_impl.h",
-    "quantization/qordered_ops/qordered_attention_input_enum.h",
-    "quantization/qordered_ops/qordered_attention.cc",
-    "quantization/qordered_ops/qordered_attention.h",
-    "quantization/qordered_ops/qordered_common.cuh",
-    "quantization/qordered_ops/qordered_layer_norm.h",
-    "quantization/qordered_ops/qordered_layer_norm.cc",
-    "quantization/qordered_ops/qordered_layer_norm_impl.h",
-    "quantization/qordered_ops/qordered_layer_norm_impl.cu",
-    "quantization/qordered_ops/qordered_longformer_attention.cc",
-    "quantization/qordered_ops/qordered_longformer_attention.h",
-    "quantization/qordered_ops/qordered_matmul.h",
-    "quantization/qordered_ops/qordered_matmul.cc",
-    "quantization/qordered_ops/qordered_matmul_utils.h",
-    "quantization/qordered_ops/qordered_matmul_utils.cc",
-    "quantization/qordered_ops/qordered_qdq_impl.cu",
-    "quantization/qordered_ops/qordered_qdq_impl.h",
-    "quantization/qordered_ops/qordered_qdq.cc",
-    "quantization/qordered_ops/qordered_qdq.h",
-    "quantization/qordered_ops/qordered_unary_ops.h",
-    "quantization/qordered_ops/qordered_unary_ops.cc",
-    "quantization/qordered_ops/qordered_unary_ops_impl.h",
-    "quantization/qordered_ops/qordered_unary_ops_impl.cu",
-    "tensor/crop.cc",
-    "tensor/crop.h",
-    "tensor/crop_impl.cu",
-    "tensor/crop_impl.h",
-    "tensor/dynamicslice.cc",
-    "tensor/image_scaler.cc",
-    "tensor/image_scaler.h",
-    "tensor/image_scaler_impl.cu",
-    "tensor/image_scaler_impl.h",
-    "transformers/beam_search.cc",
-    "transformers/beam_search.h",
-    "transformers/generation_device_helper.cc",
-    "transformers/generation_device_helper.h",
-    "transformers/beam_search_impl.cu",
-    "transformers/beam_search_impl.h",
-    "transformers/greedy_search.cc",
-    "transformers/greedy_search.h",
-    "transformers/dump_cuda_tensor.cc",
-    "transformers/dump_cuda_tensor.h",
-    "conv_transpose_with_dynamic_pads.cc",
-    "conv_transpose_with_dynamic_pads.h",
-    "cuda_contrib_kernels.cc",
-    "cuda_contrib_kernels.h",
-    "inverse.cc",
-    "fused_conv.cc",
-]
-
-provider_excluded_files = [
-    "atomic/common.cuh",
-    "controlflow/if.cc",
-    "controlflow/if.h",
-    "controlflow/loop.cc",
-    "controlflow/loop.h",
-    "controlflow/scan.cc",
-    "controlflow/scan.h",
-    "cu_inc/common.cuh",
-    "math/einsum_utils/einsum_auxiliary_ops.cc",
-    "math/einsum_utils/einsum_auxiliary_ops.h",
-    "math/einsum_utils/einsum_auxiliary_ops_diagonal.cu",
-    "math/einsum_utils/einsum_auxiliary_ops_diagonal.h",
-    "math/einsum.cc",
-    "math/einsum.h",
-    "math/gemm.cc",
-    "math/matmul.cc",
-    "math/softmax_impl.cu",
-    "math/softmax_warpwise_impl.cuh",
-    "math/softmax_common.cc",
-    "math/softmax.cc",
-    "nn/conv.cc",
-    "nn/conv.h",
-    "nn/conv_transpose.cc",
-    "nn/conv_transpose.h",
-    "reduction/reduction_ops.cc",
-    "rnn/cudnn_rnn_base.cc",
-    "rnn/cudnn_rnn_base.h",
-    "rnn/gru.cc",
-    "rnn/gru.h",
-    "rnn/lstm.cc",
-    "rnn/lstm.h",
-    "rnn/rnn.cc",
-    "rnn/rnn.h",
-    "rnn/rnn_impl.cu",
-    "rnn/rnn_impl.h",
-    "shared_inc/cuda_call.h",
-    "shared_inc/fpgeneric.h",
-    "cuda_allocator.cc",
-    "cuda_allocator.h",
-    "cuda_call.cc",
-    "cuda_common.cc",
-    "cuda_common.h",
-    "cuda_execution_provider_info.cc",
-    "cuda_execution_provider_info.h",
-    "cuda_execution_provider.cc",
-    "cuda_execution_provider.h",
-    "cuda_memory_check.cc",
-    "cuda_memory_check.h",
-    "cuda_fence.cc",
-    "cuda_fence.h",
-    "cuda_fwd.h",
-    "cuda_kernel.h",
-    "cuda_pch.cc",
-    "cuda_pch.h",
-    "cuda_profiler.cc",
-    "cuda_profiler.h",
-    "cuda_provider_factory.cc",
-    "cuda_provider_factory.h",
-    "cuda_utils.cu",
-    "cudnn_common.cc",
-    "cudnn_common.h",
-    "fpgeneric.cu",
-    "gpu_data_transfer.cc",
-    "gpu_data_transfer.h",
-    "integer_gemm.cc",
-    "symbols.txt",
-]
-
-training_ops_excluded_files = [
-    "activation/gelu_grad_impl_common.cuh",  # uses custom tanh
-    "collective/adasum_kernels.cc",
-    "collective/adasum_kernels.h",
-    "math/div_grad.cc",  # miopen API differs from cudnn, no double type support
-    "nn/batch_norm_grad.cc",  # no double type support
-    "nn/batch_norm_grad.h",  # miopen API differs from cudnn
-    "nn/batch_norm_internal.cc",  # miopen API differs from cudnn, no double type support
-    "nn/batch_norm_internal.h",  # miopen API differs from cudnn, no double type support
-    "nn/conv_grad.cc",
-    "nn/conv_grad.h",
-    "reduction/reduction_all.cc",  # deterministic = true, ignore ctx setting
-    "reduction/reduction_ops.cc",  # no double type support
-    "cuda_training_kernels.cc",
-    "cuda_training_kernels.h",
-]
-
-
-@functools.lru_cache(maxsize=1)
-def get_hipify_path():
-    # prefer the hipify-perl in PATH
-    HIPIFY_PERL = shutil.which("hipify-perl")
-    # if not found, attempt hard-coded location 1
-    if HIPIFY_PERL is None:
-        print("hipify-perl not found, trying default location 1")
-        hipify_path = "/opt/rocm/hip/bin/hipify-perl"
-        HIPIFY_PERL = hipify_path if os.access(hipify_path, os.X_OK) else None
-    # if not found, attempt hard-coded location 2
-    if HIPIFY_PERL is None:
-        print("hipify-perl not found, trying default location 2")
-        hipify_path = "/opt/rocm/bin/hipify-perl"
-        HIPIFY_PERL = hipify_path if os.access(hipify_path, os.X_OK) else None
-    # fail
-    if HIPIFY_PERL is None:
-        raise RuntimeError("Could not locate hipify-perl script")
-    return HIPIFY_PERL
-
-
-def hipify(src_file_path, dst_file_path):
-    dst_file_path = dst_file_path.replace("cuda", "rocm")
+def hipify(hipify_perl_path, src_file_path, dst_file_path):
     dir_name = os.path.dirname(dst_file_path)
     if not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
     # Run hipify-perl first, capture output
     s = subprocess.run(
-        [get_hipify_path(), "-roc", src_file_path], stdout=subprocess.PIPE, universal_newlines=True, check=False
+        [hipify_perl_path, "-roc", src_file_path], stdout=subprocess.PIPE, universal_newlines=True, check=False
     ).stdout
 
     # Additional exact-match replacements.
@@ -374,71 +160,15 @@ def hipify(src_file_path, dst_file_path):
     # Deletions
     s = s.replace('#include "device_atomic_functions.h"', "")  # HIP atomics in main hip header already
 
-    do_write = True
-    if os.path.exists(dst_file_path):
-        with open(dst_file_path, "r", encoding="utf-8") as fout_old:
-            do_write = fout_old.read() != s
-    if do_write:
-        with open(dst_file_path, "w") as f:
-            f.write(s)
-        return 'Hipified: "{}" -> "{}"'.format(src_file_path, dst_file_path)
-    else:
-        return 'Repeated: "{}" -> "{}"'.format(src_file_path, dst_file_path)
-
-
-def list_files(prefix, path):
-    all_files = []
-    curr_path = os.path.join(prefix, path)
-    for root, dirs, files in os.walk(curr_path):
-        for file in files:
-            full_path = os.path.join(root, file)
-            all_files.append(os.path.relpath(full_path, curr_path))
-    return all_files
-
-
-def amd_hipify(config_build_dir):
-    # determine hipify script path now to avoid doing so concurrently in the thread pool
-    print("Using %s" % get_hipify_path())
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        cuda_path = os.path.join(contrib_ops_path, "cuda")
-        rocm_path = os.path.join(config_build_dir, "amdgpu", contrib_ops_path, "rocm")
-        contrib_files = list_files(cuda_path, "")
-        contrib_results = [
-            executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
-            for f in contrib_files
-            if not is_excluded(f, contrib_ops_excluded_files)
-        ]
-
-        cuda_path = os.path.join(providers_path, "cuda")
-        rocm_path = os.path.join(config_build_dir, "amdgpu", providers_path, "rocm")
-        provider_files = list_files(cuda_path, "")
-        provider_results = [
-            executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
-            for f in provider_files
-            if not is_excluded(f, provider_excluded_files)
-        ]
-
-        cuda_path = os.path.join(training_ops_path, "cuda")
-        rocm_path = os.path.join(config_build_dir, "amdgpu", training_ops_path, "rocm")
-        training_files = list_files(cuda_path, "")
-        training_results = [
-            executor.submit(hipify, os.path.join(cuda_path, f), os.path.join(rocm_path, f))
-            for f in training_files
-            if not is_excluded(f, training_ops_excluded_files)
-        ]
-        # explicitly wait so that hipify warnings finish printing before logging the hipify statements
-        concurrent.futures.wait(contrib_results)
-        concurrent.futures.wait(provider_results)
-        concurrent.futures.wait(training_results)
-        for result in contrib_results:
-            log.debug(result.result())
-        for result in provider_results:
-            log.debug(result.result())
-        for result in training_results:
-            log.debug(result.result())
+    with open(dst_file_path, "w") as f:
+        f.write(s)
 
 
 if __name__ == "__main__":
-    import sys
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--hipify_perl", required=True)
+    parser.add_argument("--output", "-o", help="output file")
+    parser.add_argument("src", help="src")
+    args = parser.parse_args()
 
-    amd_hipify(sys.argv[1])
+    hipify(args.hipify_perl, args.src, args.output)
