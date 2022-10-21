@@ -7,9 +7,7 @@
 #include "core/framework/allocator.h"
 #include "core/providers/cpu/math/gemm_base.h"
 #include "core/providers/xnnpack/detail/utils.h"
-#include "xnnpack.h"
 #include "core/common/common.h"
-#include "core/util/math.h"
 
 namespace onnxruntime {
 class GraphViewer;

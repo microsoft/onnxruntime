@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "matmul.h"
-#include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/transpose_helper.h"
@@ -129,6 +128,10 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
       a->Data<float>(),
       y_data,
       t_pool);
+  
+  if (status != xnn_status_success) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_f32 returned ", status);
+  }
 
   status = xnn_run_operator(op0_.get(), nullptr);
   if (status != xnn_status_success) {
