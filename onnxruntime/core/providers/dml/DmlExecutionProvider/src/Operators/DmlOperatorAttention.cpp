@@ -65,8 +65,8 @@ public:
         const uint32_t sequenceLength = inputTensorShape[1];
         const uint32_t hiddenSize = biasTensorShape[0] / 3;
         const uint32_t numHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::NumHeads));
-        ML_CHECK_VALID_ARGUMENT(hiddenSize % numHeads == 0);
         ML_CHECK_VALID_ARGUMENT(numHeads > 0); // to avoid process crash because of division by zero.
+        ML_CHECK_VALID_ARGUMENT(hiddenSize % numHeads == 0);
         const uint32_t headSize = hiddenSize / numHeads;
 
         uint32_t desiredWeightTensorShape[3] = {batchSize, weightTensorShape[0], 3 * hiddenSize};
