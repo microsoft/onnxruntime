@@ -135,6 +135,11 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
               std::cout << "Using special" << "\n";
       }
 
+      cudaMemcpyAsync(left_X_ptr_ ,
+                      const_cast<T*>(left_X->Data<T>()), 
+                      left_X->SizeInBytes(),  
+                      cudaMemcpyDeviceToDevice, Stream()); 
+
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
           transB,

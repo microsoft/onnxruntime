@@ -19,7 +19,7 @@ class MatMul final : public CudaKernel {
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0},
         trans_batch_a_{info.GetAttrOrDefault<int64_t>("transBatchA", 0) != 0},
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0} {
-          use_data_ptr_ = info.node().Name() == "MatMul_194";
+          //use_data_ptr_ = info.node().Name() == "MatMul_194";
           cudaMalloc(&left_X_ptr_, (size_t)(ceil(6291456/ 256.)) * 256);
         }
 
