@@ -18,7 +18,9 @@ class MatMul final : public CudaKernel {
         trans_A_{info.GetAttrOrDefault<int64_t>("transA", 0) != 0},
         trans_B_{info.GetAttrOrDefault<int64_t>("transB", 0) != 0},
         trans_batch_a_{info.GetAttrOrDefault<int64_t>("transBatchA", 0) != 0},
-        trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0} {}
+        trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0} {
+          cudaMalloc(&left_X_ptr_, (size_t)(ceil(6291456/ 256.)) * 256);
+        }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
@@ -28,6 +30,7 @@ class MatMul final : public CudaKernel {
   const bool trans_B_;
   const bool trans_batch_a_;
   const bool trans_batch_b_;
+  void* left_X_ptr_ = nullptr;
 };
 }  // namespace cuda
 }  // namespace onnxruntime

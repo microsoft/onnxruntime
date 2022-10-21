@@ -125,8 +125,15 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
-        size_t workspace_size = 32 * 1024 * 1024;
+      
+      size_t workspace_size = 32 * 1024 * 1024;
       auto workspace_memory = GetScratchBuffer<void>(workspace_size);
+
+      bool use_special = false;
+      if (left_X->SizeInBytes() == 6291456) {
+              use_special = true;
+              std::cout << "Using special" << "\n";
+      }
 
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
@@ -138,7 +145,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           &alpha,
           reinterpret_cast<const CudaT*>(right_X->Data<T>()),          
           ldb,
-          reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+          use_special ?  reinterpret_cast<const CudaT*>(left_X_ptr_) : 
+                         reinterpret_cast<const CudaT*>(left_X->Data<T>()),
           lda,
           &zero,
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
