@@ -277,10 +277,10 @@ class PosixEnv : public Env {
   int GetNumCpuCores() const override {
 #ifdef CPUINFO_SUPPORTED
     if(cpuinfo_available_) {
-      return gsl::narrow<int>(cpuinfo_get_processors_count());
+      return gsl::narrow<int>(cpuinfo_get_cores_count());
     }
 #endif
-    return static_cast<int>(std::thread::hardware_concurrency());
+    return static_cast<int>(std::thread::hardware_concurrency()/2);
   }
 
   std::vector<ThreadOptions::ThreadAffinity> GetThreadAffinityMasks() const override {
