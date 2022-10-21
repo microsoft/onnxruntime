@@ -53,6 +53,22 @@ namespace Dml
 
         static TensorDesc ConstructDefaultTensorDesc(
             const MLOperatorTensorDataType dataType,
+            gsl::span<const uint32_t> tensorShape)
+        {
+            return TensorDesc(
+                        dataType,
+                        tensorShape, // desired
+                        tensorShape, // actual
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        1, // minDimensionCount
+                        0
+                    );
+        }
+
+        static TensorDesc ConstructBroadcastedTensorDesc(
+            const MLOperatorTensorDataType dataType,
             gsl::span<const uint32_t> desiredTensorShape,
             gsl::span<const uint32_t> actualTensorShape)
         {
