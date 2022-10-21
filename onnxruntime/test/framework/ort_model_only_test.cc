@@ -18,11 +18,10 @@
 #include "flatbuffers/idl.h"
 #include "flatbuffers/util.h"
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-using namespace std;
 using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::logging;
 
 namespace onnxruntime {
 namespace test {
@@ -301,7 +300,7 @@ TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
   test_info.configs.push_back(std::make_pair(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
 
   OrtValue ml_value;
-  vector<float> data(28 * 28, 0.0);
+  std::vector<float> data(28 * 28, 0.0);
   CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), {1, 1, 28, 28}, data,
                        &ml_value);
   test_info.inputs.insert(std::make_pair("Input3", ml_value));
@@ -372,7 +371,7 @@ TEST(OrtModelOnlyTests, MetadataSerialization) {
 }
 
 // test we can load an old ORT format model and run it in a full build.
-// we changed from using kernel hashes to kernel type constraints in v5, so any old model should be able to be loaded
+// we changed from using kernel hashes to kernel type constraints in v5, so an old model should be able to be loaded
 // in a full build if we add the kernel type constraints during loading. this also means we can save the updated
 // ORT format model to effectively upgrade it to v5.
 TEST(OrtModelOnlyTests, UpdateOrtModelVersion) {
@@ -425,6 +424,28 @@ TEST(OrtModelOnlyTests, UpdateOrtModelVersion) {
 
   CompareTensors(orig_out, v4_out);
   CompareTensors(v4_out, v5_out);
+}
+
+// test that updating v4 ORT format model with saved runtime optimizations is unsupported
+TEST(OrtModelOnlyTests, UpdateOrtModelVersionWithRuntimeOptimizationsUnsupported) {
+  const auto ort_file_v4 = ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.runtime_optimizations.v4.ort");
+  const auto ort_file_v5 =
+      ORT_TSTR("testdata/transform/runtime_optimizations/qdq_convs.runtime_optimizations.v5.test_output.ort");
+
+  // update v4 model and save as v5. do not run optimizations in order to preserve the model as-is.
+  SessionOptions so{};
+  so.session_logid = "SerializeToOrtFormat";
+  so.graph_optimization_level = TransformerLevel::Default;
+  so.optimized_model_filepath = ort_file_v5;
+
+  // not strictly necessary - type should be inferred from the filename
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT"));
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  // Loading a v4 ORT format model with saved runtime optimizations should be unsupported
+  const auto load_status = session_object.Load(ort_file_v4);
+  ASSERT_STATUS_NOT_OK(load_status);
+  ASSERT_THAT(load_status.ErrorMessage(), testing::HasSubstr("The ORT format model version [4] is not supported"));
 }
 
 #if !defined(DISABLE_ML_OPS)

@@ -1039,14 +1039,35 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
                 "] is not supported in this build ", ORT_VERSION, ". ",
                 kOrtFormatVersion5BreakingChangeNote);
 #else
-  // models prior to v5 can be handled by inserting the kernel constraints in a full build
-  bool is_supported_with_update = !is_supported && model_version < 5;
+  const auto has_runtime_optimizations = [](const fbs::InferenceSession& fbs_session) -> bool {
+    if (const auto* fbs_model = fbs_session.model()) {
+      if (const auto* fbs_graph = fbs_model->graph()) {
+        if (const auto* fbs_runtime_opts = fbs_graph->runtime_optimizations()) {
+          if (const auto* fbs_runtime_opt_records = fbs_runtime_opts->records()) {
+            return fbs_runtime_opt_records->size() > 0;
+          }
+        }
+      }
+    }
+    return false;
+  };
 
-  // currently this means the model is using a future version
-  // i.e. attempted load of model created with future version of ORT
+  // models prior to v5 with no saved runtime optimizations can be handled by inserting the kernel constraints in a
+  // full build
+  const bool is_supported_with_update = [&]() {
+    if (model_version >= 5) {
+      return false;
+    }
+    if (has_runtime_optimizations(*fbs_session)) {
+      LOGS(*session_logger_, WARNING) << "Unable to load old ORT format model with saved runtime optimizations.";
+      return false;
+    }
+    return true;
+  }();
+
   ORT_RETURN_IF_NOT(is_supported || is_supported_with_update,
                     "The ORT format model version [", fbs_ort_model_version->string_view(),
-                    "] is not supported in this build ", ORT_VERSION, ". ");
+                    "] is not supported in this build ", ORT_VERSION, ".");
 #endif
 
   const auto* fbs_model = fbs_session->model();
