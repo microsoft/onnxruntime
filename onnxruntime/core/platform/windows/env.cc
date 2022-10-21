@@ -284,6 +284,11 @@ class WindowsEnv : public Env {
       // physical core.
       num_logical_proc = std::clamp(num_logical_proc, 1U, 64U);
       std::vector<ThreadOptions::ThreadAffinity> ret;
+      if (num_logical_proc == 1U) {
+        ThreadOptions::ThreadAffinity th_aff{{0}};
+        ret.push_back(std::move(th_aff));
+        return ret;
+      }
       ret.reserve(num_logical_proc / 2);
       for (unsigned int c = 0; c < num_logical_proc; c += 2) {
         ThreadOptions::ThreadAffinity th_aff{{static_cast<int>(c), static_cast<int>(c + 1)}};
