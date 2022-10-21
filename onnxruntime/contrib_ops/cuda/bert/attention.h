@@ -18,6 +18,7 @@ template <typename T>
 class Attention final : public CudaKernel, public AttentionBase {
  public:
   Attention(const OpKernelInfo& info);
+  ~Attention();
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
