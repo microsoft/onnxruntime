@@ -8,7 +8,7 @@ esac
 done
 
 OPENVINO_VERSION=${OPENVINO_VERSION:=2019_R1.1}
-git clone https://github.com/opencv/dldt.git /data/dldt/openvino_2019.1.144
+git clone --branch releases/2019/3 https://github.com/opencv/dldt.git /data/dldt/openvino_2019.1.144
 
 export INTEL_CVSDK_DIR=/data/dldt/openvino_2019.1.144
 apt-get update && apt-get -y  install libusb-1.0-0-dev
