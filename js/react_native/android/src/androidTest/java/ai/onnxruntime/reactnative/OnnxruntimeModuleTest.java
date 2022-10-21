@@ -211,10 +211,9 @@ public class OnnxruntimeModuleTest {
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
 
-      InputStream modelStream =
-          reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
-      JavaOnlyMap options = new JavaOnlyMap();
-      try {
+      try (InputStream modelStream =
+               reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float)) {
+        JavaOnlyMap options = new JavaOnlyMap();
         ReadableMap loadMap = ortModule.loadModel("test", modelStream, options);
 
         int[] dims = new int[] {1, 7};
@@ -267,10 +266,9 @@ public class OnnxruntimeModuleTest {
 
       OnnxruntimeModule ortModule = new OnnxruntimeModule(reactContext);
 
-      InputStream modelStream =
-          reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float);
       JavaOnlyMap options = new JavaOnlyMap();
-      try {
+      try (InputStream modelStream =
+               reactContext.getResources().openRawResource(ai.onnxruntime.reactnative.test.R.raw.test_types_float)){
         ReadableMap loadMap = ortModule.loadModel("test", modelStream, options);
 
         int[] dims = new int[] {1, 1, 7};

@@ -462,12 +462,12 @@ public class InferenceTest {
       container.put("wrong_name", OnnxTensor.createTensor(env, tensor));
       try {
         session.run(container);
-        OnnxValue.close(container.values());
         fail("Should throw exception for incorrect name.");
       } catch (OrtException e) {
-        OnnxValue.close(container.values());
         String msg = e.getMessage();
         assertTrue(msg.contains("Unknown input name"));
+      } finally {
+        OnnxValue.close(container.values());
       }
     }
   }
@@ -489,12 +489,12 @@ public class InferenceTest {
       container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
       try {
         session.run(container);
-        OnnxValue.close(container.values());
         fail("Should throw exception for incorrect type.");
       } catch (OrtException e) {
-        OnnxValue.close(container.values());
         String msg = e.getMessage();
         assertTrue(msg.contains("Unexpected input data type"));
+      } finally {
+        OnnxValue.close(container.values());
       }
     }
   }
@@ -512,12 +512,12 @@ public class InferenceTest {
       container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
       try {
         session.run(container);
-        OnnxValue.close(container.values());
         fail("Should throw exception for incorrect size.");
       } catch (OrtException e) {
-        OnnxValue.close(container.values());
         String msg = e.getMessage();
         assertTrue(msg.contains("Got invalid dimensions for input"));
+      } finally {
+        OnnxValue.close(container.values());
       }
     }
   }
@@ -534,12 +534,12 @@ public class InferenceTest {
       container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
       try {
         session.run(container);
-        OnnxValue.close(container.values());
         fail("Should throw exception for incorrect size.");
       } catch (OrtException e) {
-        OnnxValue.close(container.values());
         String msg = e.getMessage();
         assertTrue(msg.contains("Invalid rank for input"));
+      } finally {
+        OnnxValue.close(container.values());
       }
     }
   }
@@ -562,12 +562,12 @@ public class InferenceTest {
       container.put("extra", OnnxTensor.createTensor(env, tensor));
       try {
         session.run(container);
-        OnnxValue.close(container.values());
         fail("Should throw exception for too many inputs.");
       } catch (OrtException e) {
-        OnnxValue.close(container.values());
         String msg = e.getMessage();
         assertTrue(msg.contains("Unexpected number of inputs"));
+      } finally {
+        OnnxValue.close(container.values());
       }
     }
   }
@@ -577,12 +577,11 @@ public class InferenceTest {
     int numThreads = 10;
     int loop = 10;
     SqueezeNetTuple tuple = openSessionSqueezeNet();
+    Map<String, OnnxTensor> container = new HashMap<>();
     try (OrtSession session = tuple.session) {
-
       float[] inputData = tuple.inputData;
       float[] expectedOutput = tuple.outputData;
       NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
-      Map<String, OnnxTensor> container = new HashMap<>();
       long[] inputShape = ((TensorInfo) inputMeta.getInfo()).shape;
       Object tensor = OrtUtil.reshape(inputData, inputShape);
       container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
@@ -604,8 +603,9 @@ public class InferenceTest {
       }
       executor.shutdown();
       executor.awaitTermination(1, TimeUnit.MINUTES);
-      OnnxValue.close(container.values());
       assertTrue(executor.isTerminated());
+    } finally {
+      OnnxValue.close(container.values());
     }
   }
 
