@@ -36,6 +36,7 @@ dmlep_related_header_files = [
     "dml_provider_factory.h",
 ]
 
+
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Validate ONNX Runtime native nuget containing native shared library artifacts spec script",
@@ -63,6 +64,7 @@ def parse_arguments():
 def check_exists(path):
     return os.path.exists(path)
 
+
 def remove_residual_files(path):
     if check_exists(path):
         os.remove(path)
@@ -72,15 +74,14 @@ def is_windows():
     return sys.platform.startswith("win")
 
 
-def check_if_headers_are_present(
-    header_files, header_folder, file_list_in_package, platform
-):
+def check_if_headers_are_present(header_files, header_folder, file_list_in_package, platform):
     for header in header_files:
         path = header_folder + "/" + header
         print("Checking path: " + path)
         if path not in file_list_in_package:
             print(header + " not found for " + platform)
             raise Exception(header + " not found for " + platform)
+
 
 def check_if_dlls_are_present(
     package_type, is_windows_ai_package, is_gpu_package, is_dml_package, platforms_supported, zip_file, package_path
@@ -199,7 +200,13 @@ def validate_tarball(args):
     zip_file = None
     is_dml_package = False
     check_if_dlls_are_present(
-        args.package_type, is_windows_ai_package, is_gpu_package, is_dml_package, args.platforms_supported, zip_file, package_folder
+        args.package_type,
+        is_windows_ai_package,
+        is_gpu_package,
+        is_dml_package,
+        args.platforms_supported,
+        zip_file,
+        package_folder
     )
 
 
@@ -222,7 +229,13 @@ def validate_zip(args):
     is_dml_package = False
     zip_file = zipfile.ZipFile(package_name)
     check_if_dlls_are_present(
-        args.package_type, is_windows_ai_package, is_gpu_package, is_dml_package, args.platforms_supported, zip_file, package_folder
+        args.package_type,
+        is_windows_ai_package,
+        is_gpu_package,
+        is_dml_package,
+        args.platforms_supported,
+        zip_file,
+        package_folder
     )
 
 
@@ -273,7 +286,13 @@ def validate_nuget(args):
         print("Checking if the Nuget contains relevant dlls")
         is_windows_ai_package = os.path.basename(full_nuget_path).startswith("Microsoft.AI.MachineLearning")
         check_if_dlls_are_present(
-            args.package_type, is_windows_ai_package, is_gpu_package, is_dml_package, args.platforms_supported, zip_file, None
+            args.package_type,
+            is_windows_ai_package,
+            is_gpu_package,
+            is_dml_package,
+            args.platforms_supported,
+            zip_file,
+            None
         )
 
         verify_nuget_signing = args.verify_nuget_signing.lower()
