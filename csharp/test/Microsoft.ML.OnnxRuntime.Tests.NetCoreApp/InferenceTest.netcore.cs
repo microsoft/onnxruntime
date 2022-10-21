@@ -428,7 +428,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
                     if (!skipModels.ContainsKey(modelDir.Name))
 #else
-                    if (!(skipModels.ContainsKey(modelDir.Name) || modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) || modelDir.Name.Contains("fp16", StringComparison.OrdinalIgnoreCase)))
+                    if (!(skipModels.ContainsKey(modelDir.Name) || modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) ||
+                        modelDir.Name.Contains("fp16", StringComparison.OrdinalIgnoreCase) || modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase)))
 #endif
                     {
                         yield return new object[] { modelDir.Parent.FullName, modelDir.Name };
@@ -450,7 +451,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 #if USE_CUDA
                     if (skipModels.ContainsKey(modelDir.Name))
 #else
-                    if (skipModels.ContainsKey(modelDir.Name) || modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) || modelDir.Name.Contains("fp16", StringComparison.OrdinalIgnoreCase))
+                    if (skipModels.ContainsKey(modelDir.Name) || modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) ||
+                        modelDir.Name.Contains("fp16", StringComparison.OrdinalIgnoreCase) || modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase))
 #endif
                     {
                         //Console.WriteLine("Model {0} is skipped due to the error: {1}", modelDir.FullName, skipModels[modelDir.Name]);
