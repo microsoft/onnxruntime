@@ -50,6 +50,9 @@ enum class ThreadPoolType : uint8_t {
   INTRA_OP,
   INTER_OP
 };
+
+bool ExtractAffinityFromString(const char*, GroupAffinities&);
+
 std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
                                              ThreadPoolType tpool_type);
 }  // namespace concurrency
