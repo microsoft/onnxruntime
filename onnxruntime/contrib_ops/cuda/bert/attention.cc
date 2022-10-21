@@ -64,7 +64,7 @@ template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   
-  if (use_data_ptr_ && data_ptr_) {
+  if (use_data_ptr_ && !data_ptr_) {
     std::cout << "Allocating data ptr" << std::endl;
     cudaMalloc(&data_ptr_, (size_t)(ceil(input->SizeInBytes()/ 256.)) * 256);
   }
@@ -159,7 +159,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
-      reinterpret_cast<const CudaT*>(input->Data<T>()), k,
+      use_data_ptr_ ? reinterpret_cast<const CudaT*>(data_ptr_) : reinterpret_cast<const CudaT*>(input->Data<T>()), 
+      k,
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
