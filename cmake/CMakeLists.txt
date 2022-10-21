@@ -1871,6 +1871,10 @@ if (onnxruntime_USE_ROCM)
     set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
   endif()
 
+  if (NOT onnxruntime_HIPIFY_PERL)
+    set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
+  endif()
+
   # NOTE: HIP language is added in 3.21 and there are bugs before 3.23.1
   cmake_minimum_required(VERSION 3.23.1 FATAL_ERROR)
   find_package(HIP)
