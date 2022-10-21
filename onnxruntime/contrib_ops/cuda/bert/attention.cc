@@ -64,7 +64,7 @@ template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   
-  if (use_data_ptr_ && !data_ptr_) {
+  if (use_data_ptr_ && data_ptr_ == nullptr) {
     std::cout << "Allocating data ptr" << std::endl;
     cudaMalloc(&data_ptr_, (size_t)(ceil(input->SizeInBytes()/ 256.)) * 256);
   }
