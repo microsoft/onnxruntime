@@ -23,7 +23,7 @@ class Attention final : public CudaKernel, public AttentionBase {
  protected:
   bool disable_fused_runner_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
-  mutable void* data_ptr_;
+  mutable void* data_ptr_ = nullptr;
   bool use_data_ptr_ = false;
 };
 
