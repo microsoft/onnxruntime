@@ -2583,6 +2583,7 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::UpdateCANNProviderOptions,
     &OrtApis::GetCANNProviderOptionsAsString,
     &OrtApis::ReleaseCANNProviderOptions,
+    // End of Version 13 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
@@ -2598,10 +2599,13 @@ static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContain
 static_assert(offsetof(OrtApi, GetSparseTensorIndices) / sizeof(void*) == 191, "Size of version 9 API cannot change");
 static_assert(offsetof(OrtApi, SynchronizeBoundOutputs) / sizeof(void*) == 203, "Size of version 10 API cannot change");
 static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) / sizeof(void*) == 209, "Size of version 11 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size of version 12 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void *) == 218, "Size of version 12 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void *) == 224,
+              "Size of version 13 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.13.0", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
+static_assert(std::string_view(ORT_VERSION) == "1.13.1",
+              "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 // 2. If there were any APIs added to ort_api_1_to_13 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
