@@ -27,7 +27,9 @@ class MatMul final : public CudaKernel {
       //cudaMalloc(&left_X_ptr_, (size_t)(ceil(6291456/ 256.)) * 256);
       //cudaMalloc(&Y_ptr_, (size_t)(ceil(25165824 / 256.)) * 256);
 
-      cudaMalloc(&left_X_ptr_, (size_t)(ceil(196608/ 256.)) * 256);                          
+      cudaMalloc(&left_X_ptr_, (size_t)(ceil(196608/ 256.)) * 256);
+      //cudaMalloc(&left_X_ptr_, (size_t)(ceil(6291456/ 256.)) * 256);
+
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
