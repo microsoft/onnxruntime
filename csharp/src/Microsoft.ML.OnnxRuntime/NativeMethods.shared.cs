@@ -15,6 +15,7 @@ namespace Microsoft.ML.OnnxRuntime
 
     // NOTE: The order of the APIs in this struct should match exactly that in
     // OrtApi ort_api_1_to_<latest_version> (onnxruntime/core/session/onnxruntime_c_api.cc)
+    // If syncing your new C API, any other C APIs before yours also need to be synced here if haven't
     [StructLayout(LayoutKind.Sequential)]
     public struct OrtApi
     {
@@ -252,6 +253,12 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseKernelInfo;
 
         public IntPtr GetTrainingApi;
+        public IntPtr SessionOptionsAppendExecutionProvider_CANN;
+        public IntPtr CreateCANNProviderOptions;
+        public IntPtr UpdateCANNProviderOptions;
+        public IntPtr GetCANNProviderOptionsAsString;
+        public IntPtr ReleaseCANNProviderOptions;
+        public IntPtr MemoryInfoGetDeviceType;
         public IntPtr UpdateEnvWithCustomLogLevel;
     }
 
