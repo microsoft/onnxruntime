@@ -114,9 +114,11 @@ struct TensorCheck<uint8_t> {
       output = output_tensor.Data<uint8_t>();
     }
 
-    // For uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
+    // For uint8_t results, we only allow NNAPI/XNNPACK EP to have an error tolerance, see below for the reason
+    // XNNPACK EP will always round to larger. For example, 0.1 will be rounded to 1.0
     // For any other EPs, we still expect an exact match for the results
-    if (provider_type == kNnapiExecutionProvider && (has_abs_err || has_rel_err)) {
+    if ((provider_type == kNnapiExecutionProvider || provider_type == kXnnpackExecutionProvider) &&
+        (has_abs_err || has_rel_err)) {
       double threshold = has_abs_err
                              ? *(params.absolute_error_)
                              : 0.0;

@@ -288,9 +288,9 @@ Status Resize::Compute(OpKernelContext* ctx) const {
 }
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kOnnxDomain, 10, 10, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
-                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
-                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
+                                  KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<uint8_t>(),
+                                                                          DataTypeImpl::GetTensorType<int8_t>()}),
                                   Resize);
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Resize, kOnnxDomain, 11, 12, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),
