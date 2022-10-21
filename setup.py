@@ -492,6 +492,7 @@ if enable_training:
         ]
     )
     if enable_training_on_device:
+        packages.append("onnxruntime.training.api")
         packages.append("onnxruntime.training.onnxblock")
         packages.append("onnxruntime.training.onnxblock.loss")
         packages.append("onnxruntime.training.onnxblock.optim")

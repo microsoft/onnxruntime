@@ -485,15 +485,15 @@ bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats
   return g_host_cpu.TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
 }
 
-Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                    const gsl::span<const int64_t>& raw_ends,
-                                    const gsl::span<const int64_t>& raw_axes,
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                    gsl::span<const int64_t> raw_ends,
+                                    gsl::span<const int64_t> raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) { return g_host_cpu.SliceBase__PrepareForCompute(raw_starts, raw_ends, raw_axes, reinterpret_cast<SliceOp__PrepareForComputeMetadata&>(compute_metadata)); }
 
-Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                    const gsl::span<const int64_t>& raw_ends,
-                                    const gsl::span<const int64_t>& raw_axes,
-                                    const gsl::span<const int64_t>& raw_steps,
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                    gsl::span<const int64_t> raw_ends,
+                                    gsl::span<const int64_t> raw_axes,
+                                    gsl::span<const int64_t> raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) { return g_host_cpu.SliceBase__PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, reinterpret_cast<SliceOp__PrepareForComputeMetadata&>(compute_metadata)); }
 
 Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
