@@ -129,7 +129,7 @@ struct ExtentAxisCounters {
  private:
   bool running_{true};
   size_t axis_;
-  TensorShapeVector indices_;      // There is no index for innermost axis since it's a special case
+  TensorShapeVector indices_;         // There is no index for innermost axis since it's a special case
   gsl::span<const int64_t> extents_;  // The extents of each axis
 };
 
@@ -177,22 +177,52 @@ struct SliceIteratorBase {
 
   // Initialize initial skip and inner_extent.
   void Init(gsl::span<const int64_t> dims, gsl::span<const int64_t> starts, gsl::span<const int64_t> steps) {
-    ORT_ENFORCE(dims.size() == starts.size() &&
-                dims.size() == extents_.size() &&
-                dims.size() >= steps.size());
+    const auto dims_size = dims.size();
+    ORT_ENFORCE(dims_size == starts.size() &&
+                dims_size == extents_.size() &&
+                dims_size >= steps.size());
 
     SafeInt<size_t> pitch = 1;
     // Initial skip, so that input_ points to the first element to copy
-    for (size_t i = dims.size(); i-- > 0;) {
+    for (size_t i = dims_size; i-- > 0;) {
       input_ += pitch * starts[i] * element_size_;
       pitch *= static_cast<size_t>(dims[i]);
     }
 
-    inner_extent_ = static_cast<size_t>(extents_[dims.size() - 1]);
-    //It could be -1
-    inner_step_ = static_cast<ptrdiff_t>(dims.size() == steps.size()
-                                             ? steps[dims.size() - 1]
+    inner_extent_ = static_cast<size_t>(extents_[dims_size - 1]);
+    const auto steps_size = steps.size();
+    // It could be -1
+    inner_step_ = static_cast<ptrdiff_t>(dims_size == steps_size
+                                             ? steps[steps_size - 1]
                                              : 1);
+
+    // This block serves to maximize the amount of data that is copied
+    // in one shot when trailing axis are not being sliced and, therefore,
+    // more data can be copied in one shot. The inner dimension with step = 1
+    // can always copy with more than one element unless its extent is 1.
+    // However, when more than one trailing dimensions have steps one and copied
+    // in its entirety, we can copy bigger blocks at the same time and start skipping
+    // them as the skips are expected to be zero then for them.
+    SafeInt<int64_t> max_copyable_elements = (inner_step_ == 1) ? inner_extent_ : 1;
+    last_batching_axis_ = dims_size - 1;
+
+    // Check if inner dimension is copied as a block in its entirety
+    if (dims_size > 1 && inner_step_ == 1 && inner_extent_ == gsl::narrow<size_t>(dims[dims_size - 1])) {
+      for (size_t dim = dims_size - 2;; dim--) {
+        if (dim < steps_size && steps[dim] != 1) {
+          break;
+        }
+        max_copyable_elements *= extents_[dim];
+        last_batching_axis_ = dim;
+        if (extents_[dim] != dims[dim]) {
+          break;
+        }
+        if (dim == 0) {
+          break;
+        }
+      }
+    }
+    max_copying_elements_block_ = max_copyable_elements;
   }
 
  protected:
@@ -226,6 +256,10 @@ struct SliceIteratorBase {
 
   void AdvanceOverInnerExtent() {
     size_t axis = skips_.size() - 1;
+    AdvanceOverExtent(axis);
+  }
+
+  void AdvanceOverExtent(size_t axis) {
     input_ += skips_[axis] * element_size_;
     while (axis-- && ++indices_[axis] == extents_[axis]) {
       indices_[axis] = 0;
@@ -247,11 +281,12 @@ struct SliceIteratorBase {
 
   // Assumes SolitaryInnerStep() == true
   void* CopyInnermostAxisSolitaryInnerStep(void* output) {
+
     byte* out_bytes = reinterpret_cast<byte*>(output);
     auto bytes_to_copy = inner_extent_ * element_size_;
 
     if (!is_string_tensor_) {
-      std::copy(input_, input_ + bytes_to_copy, out_bytes);
+      memcpy(output, input_, bytes_to_copy);
     } else {
       const std::string* input = reinterpret_cast<const std::string*>(input_);
       std::string* out = reinterpret_cast<std::string*>(output);
@@ -262,6 +297,27 @@ struct SliceIteratorBase {
     out_bytes += bytes_to_copy;
     AdvanceOverInnerExtent();
 
+    return out_bytes;
+  }
+
+  void* CopyContiguousInnermostAxes(void* output) {
+    byte* out_bytes = nullptr;
+    const auto bytes_to_copy = max_copying_elements_block_ * element_size_;
+    if (SolitaryInnerStep()) {
+      if (!is_string_tensor_) {
+        memcpy(output, input_, bytes_to_copy);
+      } else {
+        const std::string* input = reinterpret_cast<const std::string*>(input_);
+        std::string* out = reinterpret_cast<std::string*>(output);
+        std::copy(input, input + max_copying_elements_block_, out);
+      }
+      input_ += bytes_to_copy;
+      out_bytes = reinterpret_cast<byte*>(output);
+      out_bytes += bytes_to_copy;
+      AdvanceOverExtent(last_batching_axis_);
+    } else {
+      out_bytes = reinterpret_cast<byte*>(CopyInnermostAxisNonSolitaryInnerStep(output));
+    }
     return out_bytes;
   }
 
@@ -322,6 +378,12 @@ struct SliceIteratorBase {
   gsl::span<const int64_t> extents_;
   size_t inner_counter_{}, inner_extent_;
   ptrdiff_t inner_step_;
+  // Max copyable continuous block in elements
+  int64_t max_copying_elements_block_;
+  // The last slicing axis with step 1 that can combines continuous copyable blocks.
+  // Used for skipping the max copyable block. If it is equal to the most inner dimension
+  // then no extents can be combined for copying
+  size_t last_batching_axis_;
   SliceSkips skips_;
   TensorShapeVector indices_;  // There is no index for innermost axis since it's a special case
 };
@@ -371,6 +433,11 @@ struct SliceIterator : public SliceIteratorBase {
     void* new_output = SliceIteratorBase::CopyInnermostAxisNonSolitaryInnerStep(output);
     return static_cast<T*>(new_output);
   }
+
+  T* CopyContiguousInnermostAxes(void* output) {
+    void* new_output = SliceIteratorBase::CopyContiguousInnermostAxes(output);
+    return static_cast<T*>(new_output);
+  }
 };
 
 inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
@@ -378,12 +445,14 @@ inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
   const void* source = src->DataRaw();
 
   if (target != source) {
-    auto is_string_type = utils::IsDataTypeString(src->DataType());
-    if (is_string_type) {
-      for (int64_t i = 0; i < src->Shape().Size(); ++i)
-        static_cast<std::string*>(target)[i] = static_cast<const std::string*>(source)[i];
+    if (src->IsDataTypeString()) {
+      auto src_span = src->DataAsSpan<std::string>();
+      auto* dst_string = tgt->MutableData<std::string>();
+      std::copy(src_span.begin(), src_span.end(), dst_string);
     } else {
-      memcpy(target, source, static_cast<size_t>(src->Shape().Size() * src->DataType()->Size()));
+      const auto element_size = src->DataType()->Size();
+      const auto elements = src->Shape().Size();
+      memcpy(target, source, elements * element_size);
     }
   }
 }

@@ -21,8 +21,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
-using RangeDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Range, Input, 0);
 using EnabledRangeDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Range, Input, 0);
 
@@ -41,7 +39,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<RangeDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledRangeDataTypes>()),
     Range);
 
@@ -54,7 +51,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     11,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<RangeDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledRangeDataTypes>()),
     Range);
 

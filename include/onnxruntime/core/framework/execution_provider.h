@@ -239,7 +239,7 @@ class IExecutionProvider {
   };
 
   virtual FusionStyle GetFusionStyle() const {
-    // All the ORT build in EP has migrate to FilteredGraphViewer style except Nuphar.
+    // All the ORT build in EP has migrate to FilteredGraphViewer style.
     // For newer EPs, please avoid use Function style as it is deprecated.
     return FusionStyle::FilteredGraphViewer;
   }

@@ -51,23 +51,15 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow,
 //
 // reduce the supported type lists to what's allowed in this build
 //
-using Max8Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0);
-using Max12Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0);
 using EnabledMax8Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0);
 using EnabledMax12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0);
 
-using Min8Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0);
-using Min12Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0);
 using EnabledMin8Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0);
 using EnabledMin12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0);
 
-using ModTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Mod, Input, 0);
 using EnabledModTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Mod, Input, 0);
 
-using Pow7Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0);
-using Pow12BaseTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 0);
-using Pow12ExpTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 1);
 using EnabledPow7Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0);
 using EnabledPow12BaseTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain,
                                                                   Pow, 12, Input, 0);
@@ -119,45 +111,45 @@ void Exp<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                                           \
       KERNEL_CLASS<TYPE>);
 
-#define REG_ELEMENTWISE_KERNEL_NONT(OP_TYPE, VERSION, KERNEL_CLASS, CONSTRAINTS, ENABLED_TYPES_CONSTRAINTS) \
-  ONNX_CPU_OPERATOR_KERNEL(                                                                                 \
-      OP_TYPE,                                                                                              \
-      VERSION,                                                                                              \
-      KernelDefBuilder()                                                                                    \
-          .TypeConstraint("T", CONSTRAINTS, ENABLED_TYPES_CONSTRAINTS),                                     \
+#define REG_ELEMENTWISE_KERNEL_NONT(OP_TYPE, VERSION, KERNEL_CLASS, CONSTRAINTS) \
+  ONNX_CPU_OPERATOR_KERNEL(                                                      \
+      OP_TYPE,                                                                   \
+      VERSION,                                                                   \
+      KernelDefBuilder()                                                         \
+          .TypeConstraint("T", CONSTRAINTS),                                     \
       KERNEL_CLASS);
 
 #define REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, \
-                                              CONSTRAINTS, ENABLED_TYPES_CONSTRAINTS)          \
+                                              CONSTRAINTS)                                     \
   ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                          \
       OP_TYPE,                                                                                 \
       VERSION_FROM,                                                                            \
       VERSION_TO,                                                                              \
       KernelDefBuilder()                                                                       \
-          .TypeConstraint("T", CONSTRAINTS, ENABLED_TYPES_CONSTRAINTS),                        \
+          .TypeConstraint("T", CONSTRAINTS),                                                   \
       KERNEL_CLASS);
 
-#define REG_ELEMENTWISE_KERNEL_NONT_2(OP_TYPE, VERSION, KERNEL_CLASS,               \
-                                      T1_CONSTRAINTS, T1_ENABLED_TYPES_CONSTRAINTS, \
-                                      T2_CONSTRAINTS, T2_ENABLED_TYPES_CONSTRAINTS) \
-  ONNX_CPU_OPERATOR_KERNEL(                                                         \
-      OP_TYPE,                                                                      \
-      VERSION,                                                                      \
-      KernelDefBuilder()                                                            \
-          .TypeConstraint("T", T1_CONSTRAINTS, T1_ENABLED_TYPES_CONSTRAINTS)        \
-          .TypeConstraint("T1", T2_CONSTRAINTS, T2_ENABLED_TYPES_CONSTRAINTS),      \
+#define REG_ELEMENTWISE_KERNEL_NONT_2(OP_TYPE, VERSION, KERNEL_CLASS, \
+                                      T1_CONSTRAINTS,                 \
+                                      T2_CONSTRAINTS)                 \
+  ONNX_CPU_OPERATOR_KERNEL(                                           \
+      OP_TYPE,                                                        \
+      VERSION,                                                        \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T", T1_CONSTRAINTS)                        \
+          .TypeConstraint("T1", T2_CONSTRAINTS),                      \
       KERNEL_CLASS);
 
 #define REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, \
-                                                T1_CONSTRAINTS, T1_ENABLED_TYPES_CONSTRAINTS,    \
-                                                T2_CONSTRAINTS, T2_ENABLED_TYPES_CONSTRAINTS)    \
+                                                T1_CONSTRAINTS,                                  \
+                                                T2_CONSTRAINTS)                                  \
   ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                            \
       OP_TYPE,                                                                                   \
       VERSION_FROM,                                                                              \
       VERSION_TO,                                                                                \
       KernelDefBuilder()                                                                         \
-          .TypeConstraint("T", T1_CONSTRAINTS, T1_ENABLED_TYPES_CONSTRAINTS)                     \
-          .TypeConstraint("T1", T2_CONSTRAINTS, T2_ENABLED_TYPES_CONSTRAINTS),                   \
+          .TypeConstraint("T", T1_CONSTRAINTS)                                                   \
+          .TypeConstraint("T1", T2_CONSTRAINTS),                                                 \
       KERNEL_CLASS);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Add, 7, 12, float, Add);
@@ -262,25 +254,18 @@ REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, float, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, double, Sqrt);
 
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow,
-                                      BuildKernelDefConstraintsFromTypeList<Pow7Types>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledPow7Types>());
 
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(Pow, 12, 12, Pow,
-                                        BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(),
                                         BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
-                                        BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(),
                                         BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
 
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(Pow, 13, 14, Pow,
-                                        BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(),
                                         BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
-                                        BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(),
                                         BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
 
 REG_ELEMENTWISE_KERNEL_NONT_2(Pow, 15, Pow,
-                              BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(),
                               BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
-                              BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(),
                               BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Exp, 6, 12, float, Exp);
@@ -303,16 +288,16 @@ REG_ELEMENTWISE_TYPED_KERNEL(Sum, 13, double, Sum_8);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Max, 6, 7, float, Max_6);
 
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 8, 11, Max_8, BuildKernelDefConstraintsFromTypeList<Max8Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMax8Types>());
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 12, 12, Max_8, BuildKernelDefConstraintsFromTypeList<Max12Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMax12Types>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 8, 11, Max_8, BuildKernelDefConstraintsFromTypeList<EnabledMax8Types>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 12, 12, Max_8, BuildKernelDefConstraintsFromTypeList<EnabledMax12Types>());
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
-REG_ELEMENTWISE_KERNEL_NONT(Max, 13, Max_8, BuildKernelDefConstraintsFromTypeList<Max12Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMax12Types>());
+REG_ELEMENTWISE_KERNEL_NONT(Max, 13, Max_8, BuildKernelDefConstraintsFromTypeList<EnabledMax12Types>());
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Min, 6, 7, float, Min_6);
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 8, 11, Min_8, BuildKernelDefConstraintsFromTypeList<Min8Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMin8Types>());
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 12, 12, Min_8, BuildKernelDefConstraintsFromTypeList<Min12Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMin12Types>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 8, 11, Min_8, BuildKernelDefConstraintsFromTypeList<EnabledMin8Types>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 12, 12, Min_8, BuildKernelDefConstraintsFromTypeList<EnabledMin12Types>());
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
-REG_ELEMENTWISE_KERNEL_NONT(Min, 13, Min_8, BuildKernelDefConstraintsFromTypeList<Min12Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMin12Types>());
+REG_ELEMENTWISE_KERNEL_NONT(Min, 13, Min_8, BuildKernelDefConstraintsFromTypeList<EnabledMin12Types>());
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, float, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, double, Less);
@@ -1585,7 +1570,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint(
             "T",
-            BuildKernelDefConstraintsFromTypeList<ModTypes>(),
             BuildKernelDefConstraintsFromTypeList<EnabledModTypes>()),
     Mod);
 
@@ -1595,7 +1579,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint(
             "T",
-            BuildKernelDefConstraintsFromTypeList<ModTypes>(),
             BuildKernelDefConstraintsFromTypeList<EnabledModTypes>()),
     Mod);
 

@@ -33,8 +33,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     element_type_lists::All);
 }
 
-using ReverseSequenceDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, ReverseSequence, Input, 0);
 using EnabledReverseSequenceDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ReverseSequence, Input, 0);
 
@@ -44,7 +42,6 @@ ONNX_OPERATOR_KERNEL_EX(ReverseSequence,
                         kCpuExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T",
-                                            BuildKernelDefConstraintsFromTypeList<ReverseSequenceDataTypes>(),
                                             BuildKernelDefConstraintsFromTypeList<EnabledReverseSequenceDataTypes>()),
                         ReverseSequenceOp);
 

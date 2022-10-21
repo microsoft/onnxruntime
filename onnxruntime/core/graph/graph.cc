@@ -171,9 +171,9 @@ static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
 }
 
 static std::string GenerateSchemaKey(const IndexedSubGraph& subgraph_ptr) {
-    return MakeString(subgraph_ptr.GetMetaDef()->domain, "_",
-                      subgraph_ptr.GetMetaDef()->name, "_",
-                      subgraph_ptr.GetMetaDef()->since_version);
+  return MakeString(subgraph_ptr.GetMetaDef()->domain, "_",
+                    subgraph_ptr.GetMetaDef()->name, "_",
+                    subgraph_ptr.GetMetaDef()->since_version);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -2710,6 +2710,11 @@ Status Graph::Resolve(const ResolveOptions& options) {
 
   // perform the final steps for this graph and all subgraphs
   auto finalize_func = [&options](Graph& graph) {
+            // we don't need the resolve context any more. call Clear first to workaround bug in
+            // MSVC std::unordered_set<std::string_view>.clear() when the underlying string is invalidated.
+            // this can happen to ResolveContext.inputs_and_initializers during CleanUnusedInitializersAndNodeArgs.
+            graph.resolve_context_.Clear();
+
             graph.CleanUnusedInitializersAndNodeArgs(options.initializer_names_to_preserve);
             graph.GraphResolveNeeded(false);
 
@@ -2718,8 +2723,6 @@ Status Graph::Resolve(const ResolveOptions& options) {
             if (options.no_proto_sync_required) {
                 graph.GraphProtoSyncNeeded(false);
             }
-
-            graph.resolve_context_.Clear();
 
             return Status::OK(); };
 

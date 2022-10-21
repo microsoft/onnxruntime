@@ -61,7 +61,7 @@ struct SyntheticSampleBatch {
   void AddFloatInput(gsl::span<const int64_t> shape);
   void AddBoolInput(gsl::span<const int64_t> shape);
 
-  bool GetBatch(std::vector<OrtValue*>& batches);
+  void GetBatch(std::vector<Ort::Value>& batches);
 
  private:
   template <typename T>
@@ -77,7 +77,7 @@ struct SyntheticDataLoader {
     sample_batch_collections_.emplace_back(samples);
   }
 
-  bool GetNextSampleBatch(std::vector<OrtValue*>& batches);
+  bool GetNextSampleBatch(std::vector<Ort::Value>& batches);
 
   size_t NumOfSampleBatches() const {
     return sample_batch_collections_.size();

@@ -2476,24 +2476,6 @@ Example 4:
         propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SinGrad)
-      .SetDomain(kOnnxDomain)
-      .SinceVersion(9)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("Gradient function for Sin")
-      .AllowUncheckedAttributes()
-      .Input(0, "dY", "Sin output's grad", "T")
-      .Input(1, "X", "Input tensor", "T")
-      .Output(0, "dX", "Sin input's grad", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to all numeric tensors.")
-      .FunctionBody(ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes(
-          {// nodes: {outputs, op, inputs, attributes}
-           {{"X_1"}, "Cos", {"X"}},
-           {{"dX"}, "Mul", {"X_1", "dY"}}}));
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(SummaryScalar)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

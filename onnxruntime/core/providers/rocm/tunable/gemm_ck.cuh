@@ -31,6 +31,11 @@ struct DataTypeAdaptor<half> {
   using type = ck::half_t;
 };
 
+template <>
+struct DataTypeAdaptor<BFloat16> {
+  using type = ck::bhalf16_t;
+};
+
 using Row = ck::tensor_layout::gemm::RowMajor;
 using Col = ck::tensor_layout::gemm::ColumnMajor;
 
@@ -48,8 +53,25 @@ auto GetCKGemmTypeStringAndOps() {
   std::vector<std::pair<std::string, Op<GemmParams<T>>>> ret;
   for (auto&& impl : InstanceFactory::GetInstances()) {
     auto type_string = impl->GetTypeString();
+
+    // FIXME: ck upstream have bugs in some input shapes coupled with specific impls. The `IsSupportedArgument` is not
+    // sound, we exclude those implementation here for now. Check back later when AMD fixed them.
+    //
+    // The DeviceGemmXdl<256, 128, 144, 8, 8, 16, 16, 2, 9> and DeviceGemmXdl<256, 128, 144, 4, 8, 16, 16, 2, 9> only
+    // occurs in DeviceGemm<Row, Col> for FP16. When k < 8, the result is wrong.
+    if (type_string == "DeviceGemmXdl<256, 128, 144, 8, 8, 16, 16, 2, 9>" ||
+        type_string == "DeviceGemmXdl<256, 128, 144, 4, 8, 16, 16, 2, 9>") {
+      continue;
+    }
+
     auto invoker = impl->MakeInvokerPointer();
     auto ck_gemm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GemmParams<T>* params) -> Status {
+      auto one = ToHipType<T>::FromFloat(1.0f);
+      auto zero = ToHipType<T>::FromFloat(0.0f);
+      TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(
+          params->alpha != one || params->beta != zero,
+          impl->GetTypeString(), " only supports alpha == 1 and beta == 0", params->Signature());
+
       auto nop = Nop{};
       auto arg = impl->MakeArgumentPointer(params->a, params->b, params->c,
                                            params->m, params->n, params->k,

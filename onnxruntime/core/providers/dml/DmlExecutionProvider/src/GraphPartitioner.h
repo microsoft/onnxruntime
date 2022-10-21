@@ -49,22 +49,4 @@ namespace Dml
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
         std::function<void(const onnxruntime::Node&)> onNodeUnsupportedInGraph = nullptr);
-
-    std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
-    PartitionGraph(
-        const onnxruntime::GraphViewer& graph,
-        const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap& internalRegInfoMap,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
-        uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
-        onnxruntime::KernelRegistry* registryForPartitionKernels,
-        const std::string& partitionKernelPrefix
-    );
-
-    bool IsNodeSupportedByDml(
-        const onnxruntime::Node& node,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
-        uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
-        const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap& internalRegInfoMap
-    );
-
 } // namespace Dml

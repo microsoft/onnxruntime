@@ -22,7 +22,7 @@ parameters:
 - name: python_version
   displayName: 'Python version used for build'
   type: object
-  default: ["'3.7'", "'3.8'", "'3.9'"]
+  default: ["'3.8'"]
 
 - name: cpu_build_py_parameters
   displayName: 'Extra parameters to pass to build.py for CPU package.'
@@ -66,7 +66,7 @@ stages:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_openvino
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: "--build-arg PYTHON_VERSION=$(PythonVersion) --build-arg UBUNTU_VERSION=$(UbuntuVersion)"
-          Repository: onnxruntimecpubuild
+          Repository: onnxruntimeubuntupython$(PythonVersion)cpubuild
 
       - task: CmdLine@2
         displayName: 'Build Python Wheel'
@@ -80,7 +80,7 @@ stages:
               --volume /data/models:/build/models:ro \
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e BUILD_BUILDNUMBER \
-              onnxruntimecpubuild \
+              onnxruntimeubuntupython$(PythonVersion)cpubuild \
                 python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
                   --config Release --update --build \
@@ -251,6 +251,7 @@ stages:
       - powershell: |
          python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --force-reinstall --upgrade $_.fullname tabulate}
+         python -m pip install protobuf==3.18.1
          Remove-Item -Recurse -Force onnxruntime
          python onnx_backend_test_series.py
         workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
@@ -285,7 +286,7 @@ stages:
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
     - job: Linux_py_GPU_Wheels
-      timeoutInMinutes: 180
+      timeoutInMinutes: 300
       workspace:
         clean: all
       pool: Onnxruntime-Linux-GPU
@@ -320,7 +321,7 @@ stages:
               --volume /data/models:/build/models:ro \
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e BUILD_BUILDNUMBER \
-              onnxruntimecuda1146trt84build \
+              onnxruntimecuda116xtrt84build \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
                   --config Release --update --build \
@@ -357,7 +358,7 @@ stages:
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
-                  --enable_onnx_tests --use_tensorrt --cuda_version=11.6 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
+                  --enable_onnx_tests --use_tensorrt --cuda_version=11.4 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4  \
                   ${{ parameters.gpu_build_py_parameters }} --ctest_path '' \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
 
