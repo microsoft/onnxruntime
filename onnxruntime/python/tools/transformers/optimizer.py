@@ -71,6 +71,7 @@ def optimize_by_onnxruntime(
     """
     assert opt_level in [1, 2, 99]
     import onnxruntime
+    from torch import version as torch_version
 
     if use_gpu and not any(gpu_ep in onnxruntime.get_available_providers() for gpu_ep in ["CUDAExecutionProvider","ROCMExecutionProvider"]):
         logger.error("There is no gpu for onnxruntime to do optimization.")
@@ -99,8 +100,15 @@ def optimize_by_onnxruntime(
             onnx_model_path, sess_options, providers=["CPUExecutionProvider"], **kwargs
         )
     else:
+        gpu_ep = []
+
+        if torch_version.cuda:
+            gpu_ep.append("CUDAExecutionProvider")
+        elif torch_version.hip:
+            gpu_ep.append("ROCMExecutionProvider")
+
         session = onnxruntime.InferenceSession(
-            onnx_model_path, sess_options, providers=["CUDAExecutionProvider", "ROCMExecutionProvider"], **kwargs
+            onnx_model_path, sess_options, providers=gpu_ep, **kwargs
         )
         assert any(gpu_ep in session.get_providers() for gpu_ep in ["CUDAExecutionProvider","ROCMExecutionProvider"]) # Make sure there is GPU
 
