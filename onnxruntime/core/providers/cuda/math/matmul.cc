@@ -125,22 +125,24 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-        Base::CublasHandle(),
-        transB,
-        transA,
-        static_cast<int>(helper.N()),
-        static_cast<int>(helper.M()),
-        static_cast<int>(helper.K()),
-        &alpha,
-        reinterpret_cast<const CudaT*>(right_X->Data<T>()),
-        ldb,
-        reinterpret_cast<const CudaT*>(left_X->Data<T>()),
-        lda,
-        &zero,
-        reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-        ldc,
-        device_prop));
+      CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
+          CublasLtHandle(),
+          transB,
+          transA,
+          static_cast<int>(helper.N()),
+          static_cast<int>(helper.M()),
+          static_cast<int>(helper.K()),
+          &alpha,
+          reinterpret_cast<const CudaT*>(right_X->Data<T>()),          
+          ldb,
+          reinterpret_cast<const CudaT*>(left_X_ptr_),
+          lda,
+          &zero,
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          ldc,
+          NULL, false,
+          workspace_memory.get(), workspace_size,
+          Stream()));
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
                                       transa, transb, trans_batch_a_, trans_batch_b_, stride_A, stride_B, stride_C, batch_count)) {
