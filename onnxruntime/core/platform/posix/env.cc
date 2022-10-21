@@ -280,14 +280,20 @@ class PosixEnv : public Env {
       return gsl::narrow<int>(cpuinfo_get_cores_count());
     }
 #endif
-    return static_cast<int>(std::thread::hardware_concurrency()/2);
+    return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
   }
 
   std::vector<ThreadOptions::ThreadAffinity> GetThreadAffinityMasks() const override {
     auto generate_vector_of_n = [](unsigned int num_logical_proc) {
       std::vector<ThreadOptions::ThreadAffinity> ret;
       ret.reserve(num_logical_proc / 2);
-      for (unsigned int c = 0; c < num_logical_proc; c += 2) {
+      num_logical_proc = std::max(1U, num_logical_proc);
+      if (num_logical_proc == 1U) {
+        ThreadOptions::ThreadAffinity th_aff{{0}};
+        ret.push_back(std::move(th_aff));
+        return ret;
+      }
+      for (unsigned int c = 0; c + 1 < num_logical_proc; c += 2) {
         ThreadOptions::ThreadAffinity th_aff{{static_cast<int>(c), static_cast<int>(c + 1)}};
         ret.push_back(std::move(th_aff));
       }

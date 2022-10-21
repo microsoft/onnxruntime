@@ -249,14 +249,29 @@ class WindowsEnv : public Env {
   }
 
   int GetNumCpuCores() const override {
-    // try GetSystemInfo
-    SYSTEM_INFO sysInfo;
-    GetSystemInfo(&sysInfo);
-    if (sysInfo.dwNumberOfProcessors <= 0) {
-      return std::thread::hardware_concurrency();
+    auto logical_processor_info = FetchLogicalProcessorInfo();
+    if (!logical_processor_info.has_value()) {
+      // On failure assume two logical processor per phys core.
+      // try GetSystemInfo
+      SYSTEM_INFO sysInfo;
+      GetSystemInfo(&sysInfo);
+      if (sysInfo.dwNumberOfProcessors <= 0) {
+        return std::max(1, static_cast<int>(std::thread::hardware_concurrency()/2));
+      }
+      // This is the number of logical processors in the current group
+      return std::max(1, static_cast<int>(sysInfo.dwNumberOfProcessors/2));
     }
-    // This is the number of logical processors in the current group
-    return sysInfo.dwNumberOfProcessors;
+
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION* buffer =
+        reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(logical_processor_info->buffer_.get());
+    const size_t count = logical_processor_info->count_;
+    int phys_cores = 0;
+    for (size_t i = 0; i < count; ++i) {
+      if (buffer[i].Relationship == RelationProcessorCore) {
+        phys_cores++;
+      }
+    }
+    return std::max(1, phys_cores);
   }
 
   std::vector<ThreadOptions::ThreadAffinity> GetThreadAffinityMasks() const override {
