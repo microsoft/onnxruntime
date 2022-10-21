@@ -2589,10 +2589,13 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::UpdateCANNProviderOptions,
     &OrtApis::GetCANNProviderOptionsAsString,
     &OrtApis::ReleaseCANNProviderOptions,
-    &OrtApis::MemoryInfoGetDeviceType};
-// End of Version 13 - DO NOT MODIFY ABOVE (see above text for more information)
+        // End of Version 13 - DO NOT MODIFY ABOVE (see above text for more information)
 
-// Start of Version 14 API in progress, safe to modify/rename/rearrange until we ship
+        // Start of Version 14 API in progress, safe to modify/rename/rearrange until we ship
+    &OrtApis::MemoryInfoGetDeviceType};
+
+
+
 
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
@@ -2611,7 +2614,8 @@ static_assert(offsetof(OrtApi, GetSparseTensorIndices) / sizeof(void*) == 191, "
 static_assert(offsetof(OrtApi, SynchronizeBoundOutputs) / sizeof(void*) == 203, "Size of version 10 API cannot change");
 static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) / sizeof(void*) == 209, "Size of version 11 API cannot change");
 static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void *) == 218, "Size of version 12 API cannot change");
-static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void *) == 224, "Size of version 13 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void *) == 224,
+              "Size of version 13 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.14.0",
