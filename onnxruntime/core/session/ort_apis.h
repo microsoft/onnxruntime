@@ -388,8 +388,6 @@ ORT_API_STATUS_IMPL(CopyKernelInfo, _In_ const OrtKernelInfo* info, _Outptr_ Ort
 
 ORT_API(void, ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy);
 
-ORT_API_STATUS_IMPL(UpdateEnvWithCustomLogLevel, OrtLoggingLevel log_severity_level, _In_ const OrtEnv* ort_env);
-
 ORT_API(const OrtTrainingApi*, GetTrainingApi, uint32_t version);
 
 ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_CANN,
@@ -405,4 +403,5 @@ ORT_API(void, ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProviderOptions
 
 ORT_API(void, MemoryInfoGetDeviceType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
 
+ORT_API_STATUS_IMPL(UpdateEnvWithCustomLogLevel, OrtLoggingLevel log_severity_level, _In_ const OrtEnv* ort_env);
 }  // namespace OrtApis

@@ -171,7 +171,8 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateEnvWithCustomLogLevel, OrtLoggingLevel log_se
                     _In_ const OrtEnv* ort_env) {
   API_IMPL_BEGIN
   LoggingManager* default_logging_manager = ort_env->GetLoggingManager();
-  default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(log_severity_level));
+  int severity_level = static_cast<int>(log_severity_level);
+  default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity_level));
   return nullptr;
   API_IMPL_END
 }
@@ -2599,7 +2600,9 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::UpdateCANNProviderOptions,
     &OrtApis::GetCANNProviderOptionsAsString,
     &OrtApis::ReleaseCANNProviderOptions,
-    &OrtApis::MemoryInfoGetDeviceType};
+    &OrtApis::MemoryInfoGetDeviceType,
+    &OrtApis::UpdateEnvWithCustomLogLevel,
+};
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
 // If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'
