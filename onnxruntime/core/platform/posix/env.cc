@@ -16,25 +16,31 @@ limitations under the License.
 
 #include "core/platform/env.h"
 
-#include <unistd.h>
+
+#include <assert.h>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <ftw.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdio.h>
-#include <fcntl.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
-#include <fcntl.h>
-#include <dlfcn.h>
-#include <ftw.h>
+#include <unistd.h>
+
+#include <iostream>
 #include <optional>
-#include <string.h>
 #include <thread>
 #include <utility>  // for std::forward
 #include <vector>
-#include <assert.h>
 
 #include <gsl/gsl>
+
+#ifdef CPUINFO_SUPPORTED
+#include <cpuinfo.h>
+#endif
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -143,7 +149,7 @@ class PosixThread : public EnvThread {
     int index;
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
-    std::optional<size_t> affinity_mask;
+    std::optional<ThreadOptions::ThreadAffinity> affinity;
 
     Param(const ORTCHAR_T* name_prefix1,
           int index1,
@@ -166,7 +172,7 @@ class PosixThread : public EnvThread {
 
     auto param_ptr = std::make_unique<Param>(name_prefix, index, start_address, param);
     if (gsl::narrow<size_t>(index) < thread_options.affinity.size()) {
-      param_ptr->affinity_mask = thread_options.affinity[index];
+      param_ptr->affinity = thread_options.affinity[index];
     }
 
     if (custom_create_thread_fn) {
@@ -220,17 +226,22 @@ class PosixThread : public EnvThread {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
     ORT_TRY {
 #if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
-      if (p->affinity_mask.has_value()) {
+      if (p->affinity.has_value() && !p->affinity->logical_proc_ids.empty()) {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
-        CPU_SET(*p->affinity_mask, &cpuset);
+        for(auto id : p->affinity->logical_proc_ids) {
+          CPU_SET(id, &cpuset);
+        }
         // pthread_setaffinity_np() does not set errno, it returns it.
         auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
         if (ret != 0) {
           auto [err_no, err_msg] = GetSystemError(ret);
+          const auto masks = Env::Default().GetThreadAffinityMasks();
+          std::ostringstream os;
+          os << *p->affinity;
           LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
                               << ", index: " << p->index
-                              << ", mask: " << *p->affinity_mask
+                              << ", mask: " << os.str()
                               << ", error code: " << err_no << " error msg: " << err_msg
                               << ". Specify the number of threads explicitly so the affinity is not set.";
         }
@@ -264,22 +275,51 @@ class PosixEnv : public Env {
   }
 
   int GetNumCpuCores() const override {
-    // TODO if you need the number of physical cores you'll need to parse
-    // /proc/cpuinfo and grep for "cpu cores".
-    // However, that information is not always available(output of 'grep -i core /proc/cpuinfo' is empty)
-    return std::thread::hardware_concurrency();
+#ifdef CPUINFO_SUPPORTED
+    if(cpuinfo_available_) {
+      return gsl::narrow<int>(cpuinfo_get_processors_count());
+    }
+#endif
+    return static_cast<int>(std::thread::hardware_concurrency());
   }
 
-  std::vector<size_t> GetThreadAffinityMasks() const override {
-    // Assumed two logical processors per physical  core
-    // add masks of 1 logical process per physical core.
-    const auto logical_processors = std::thread::hardware_concurrency();
-    std::vector<size_t> ret;
-    ret.reserve(logical_processors/2);
-    for (unsigned int c = 1; c < logical_processors; c += 2) {
-      ret.push_back(c);
+  std::vector<ThreadOptions::ThreadAffinity> GetThreadAffinityMasks() const override {
+    auto generate_vector_of_n = [](unsigned int num_logical_proc) {
+      std::vector<ThreadOptions::ThreadAffinity> ret;
+      ret.reserve(num_logical_proc / 2);
+      for (unsigned int c = 0; c < num_logical_proc; c += 2) {
+        ThreadOptions::ThreadAffinity th_aff{{static_cast<int>(c), static_cast<int>(c + 1)}};
+        ret.push_back(std::move(th_aff));
+      }
+      return ret;
+    };
+
+    std::vector<ThreadOptions::ThreadAffinity> ret;
+#ifdef CPUINFO_SUPPORTED
+    if (cpuinfo_available_) {
+      // We currently do not implement affinity on more than 64 cores.
+      auto num_phys_cores = cpuinfo_get_cores_count();
+      ret.reserve(num_phys_cores);
+      for (uint32_t i = 0; i < num_phys_cores; ++i) {
+        const auto* core = cpuinfo_get_core(i);
+        ThreadOptions::ThreadAffinity th_aff;
+        // Processor count will never exceed 64 in a given group.
+        // TBD: Processor groups are currently not taken into account.
+        th_aff.logical_proc_ids.reserve(core->processor_count);
+        auto log_proc_idx = core->processor_start;
+        for (uint32_t count = 0; count < core->processor_count; count++, ++log_proc_idx) {
+          const auto* log_proc = cpuinfo_get_processor(log_proc_idx);
+          th_aff.logical_proc_ids.push_back(log_proc->linux_id);
+        }
+        ret.push_back(std::move(th_aff));
+      }
+    }
+#endif // CPUINFO_SUPPORTED
+    if(ret.empty()) {
+      ret = generate_vector_of_n(std::thread::hardware_concurrency());
     }
     return ret;
+
   }
 
   void SleepForMicroseconds(int64_t micros) const override {
@@ -544,8 +584,18 @@ class PosixEnv : public Env {
   }
 
  private:
-  PosixEnv() = default;
+  PosixEnv()  {
+#ifdef CPUINFO_SUPPORTED
+    cpuinfo_available_ = cpuinfo_initialize();
+    if(!cpuinfo_available_) {
+      LOGS_DEFAULT(ERROR) << "cpuinfo_initialize failed to initialize";
+    }
+#endif
+  }
   Telemetry telemetry_provider_;
+#ifdef CPUINFO_SUPPORTED
+  bool cpuinfo_available_{false};
+#endif
 };
 
 }  // namespace
