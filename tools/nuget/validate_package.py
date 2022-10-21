@@ -206,7 +206,7 @@ def validate_tarball(args):
         is_dml_package,
         args.platforms_supported,
         zip_file,
-        package_folder
+        package_folder,
     )
 
 
@@ -235,7 +235,7 @@ def validate_zip(args):
         is_dml_package,
         args.platforms_supported,
         zip_file,
-        package_folder
+        package_folder,
     )
 
 
@@ -292,7 +292,7 @@ def validate_nuget(args):
             is_dml_package,
             args.platforms_supported,
             zip_file,
-            None
+            None,
         )
 
         verify_nuget_signing = args.verify_nuget_signing.lower()
