@@ -47,7 +47,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     typedef typename onnxruntime::cuda::ToCudaType<T>::MappedType CudaT;
     const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
     const auto beta = onnxruntime::cuda::Consts<CudaT>::Zero;
-    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
+    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace(this->OrtStream(context));
     auto cudnn_status = cudnnConvolutionBiasActivationForward(cudnnHandle,
                                                               &alpha,
                                                               Base::s_.x_tensor,
@@ -85,15 +85,15 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                              &alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
       if (has_z) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.z_tensor, Base::s_.z_data,
+        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(cudnnHandle, &alpha, Base::s_.z_tensor, Base::s_.z_data,
                                              &alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
-      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(Base::CudnnHandle(), activation_desc_, &alpha, Base::s_.y_tensor,
+      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(cudnnHandle, activation_desc_, &alpha, Base::s_.y_tensor,
                                                    Base::s_.y_data, &beta, Base::s_.y_tensor, Base::s_.y_data));
     }
     if (Base::s_.post_slicing_required) {
       ORT_RETURN_IF_ERROR(onnxruntime::cuda::SliceOutUnwantedOutputSection(
-          this->Stream(), Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(),
+          this->Stream(context), Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(),
           Base::s_.y_dims.GetDims(), Base::s_.slice_starts, Base::s_.slice_ends, Base::s_.slice_axes, Base::s_.element_size));
     }
     return Status::OK();

@@ -251,7 +251,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
         s_.b_zero = nullptr;
       }
       CUDA_CALL_THROW(cudaMalloc(&s_.b_zero, malloc_size));
-      CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero, 0, malloc_size, Stream()));
+      CUDA_CALL_THROW(cudaMemsetAsync(s_.b_zero, 0, malloc_size, Stream(context)));
     }
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
