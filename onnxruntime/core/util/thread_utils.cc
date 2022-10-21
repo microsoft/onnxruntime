@@ -17,19 +17,25 @@ static std::unique_ptr<ThreadPool>
 CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (options.thread_pool_size == 1)
     return nullptr;
-  std::vector<size_t> cpu_list;
   ThreadOptions to;
+
   if (options.affinity_vec_len != 0) {
-    to.affinity.assign(options.affinity_vec, options.affinity_vec + options.affinity_vec_len);
+    to.affinity.reserve(options.affinity_vec_len);
+    std::transform(options.affinity_vec, options.affinity_vec + options.affinity_vec_len, std::back_inserter(to.affinity),
+                   [](size_t affinity) {
+                     return ThreadOptions::ThreadAffinity{{static_cast<int>(affinity)}};
+                   });
   }
+
   if (options.thread_pool_size <= 0) {  // default
-    cpu_list = Env::Default().GetThreadAffinityMasks();
+    auto cpu_list = Env::Default().GetThreadAffinityMasks();
     if (cpu_list.empty() || cpu_list.size() == 1)
       return nullptr;
     options.thread_pool_size = static_cast<int>(cpu_list.size());
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
   }
+
   to.set_denormal_as_zero = options.set_denormal_as_zero;
 
   // set custom thread management members

@@ -70,7 +70,15 @@ struct ThreadOptions {
   // to the logical processor with id of affinity[0]. If the vector is empty, the thread can run on all the processors
   // its process can run on. NOTE: When hyperthreading is enabled, for example, on a 4 cores 8 physical threads CPU,
   // processor group [0,1,2,3] may only contain half of the physical cores.
-  std::vector<size_t> affinity;
+
+  /// <summary>
+  /// A set of logical processors per-thread
+  /// </summary>
+  struct ThreadAffinity {
+    std::vector<int> logical_proc_ids;
+  };
+
+  std::vector<ThreadAffinity> affinity;
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
@@ -120,7 +128,7 @@ class Env {
   virtual int GetNumCpuCores() const = 0;
 
   // This function doesn't support systems with more than 64 logical processors
-  virtual std::vector<size_t> GetThreadAffinityMasks() const = 0;
+  virtual std::vector<ThreadOptions::ThreadAffinity> GetThreadAffinityMasks() const = 0;
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64_t NowMicros() const {
