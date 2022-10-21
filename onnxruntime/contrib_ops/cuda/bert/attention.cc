@@ -54,11 +54,21 @@ static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
   disable_fused_runner_ = sizeof(T) != 2 || ParseEnvironmentVariableWithDefault<bool>(kDisableFusedAttention, false);
+  use_data_ptr_ = info.node().Name() == "Attention_0";
+  if (use_data_ptr_) {
+    std::cout << "Using data pointer instead of input" << std::endl;
+  }
 }
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
+  
+  if (use_data_ptr_ && data_ptr_) {
+    std::cout << "Allocating data ptr" << std::endl;
+    cudaMalloc(&data_ptr_, (size_t)(ceil(input->SizeInBytes()/ 256.)) * 256);
+  }
+
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
