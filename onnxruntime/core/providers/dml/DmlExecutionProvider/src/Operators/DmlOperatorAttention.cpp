@@ -8,7 +8,7 @@ Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
                N is number of attention heads, H is head size, and W=N*H
                M is mask_index tensor
 
-     M               A  B  C    // M, A, B and C are Inputs
+     M               A  B  C    // M, A, B, and C are Inputs
      |                \ |  /
     Cast               Gemm
      |                / |   \
@@ -34,7 +34,7 @@ Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
                         Output  // Final output
 
  This kernel creates a DML_GRAPH, as mentioned above.
- For refernce refer to this Doc: 
+ For reference, refer to this Doc:
  https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#com.microsoft.Attention
  */
 namespace Dml
@@ -69,8 +69,8 @@ public:
         ML_CHECK_VALID_ARGUMENT(numHeads > 0); // to avoid process crash because of division by zero.
         const uint32_t headSize = hiddenSize / numHeads;
 
-        uint32_t desiredWeightTensorShape[3] {batchSize, weightTensorShape[0], 3 * hiddenSize};
-        uint32_t desiredBiasTensorShape[3] {batchSize, sequenceLength, 3 * hiddenSize};
+        uint32_t desiredWeightTensorShape[3] = {batchSize, weightTensorShape[0], 3 * hiddenSize};
+        uint32_t desiredBiasTensorShape[3] = {batchSize, sequenceLength, 3 * hiddenSize};
         MLOperatorTensorDataType dataType = kernelCreationContext.GetInputEdgeDescription(0).tensorDataType;
 
         // overwrite weightTensorDesc
@@ -87,8 +87,8 @@ public:
         m_inputTensorDescs[3] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, maskIndexTensorShape);
 
         // overwrite output tensor desc
-        uint32_t outputTensorShape[4] {batchSize, sequenceLength, numHeads, headSize};
-        uint32_t outputTensorStrides[4] {sequenceLength * numHeads * headSize, headSize, headSize * sequenceLength, 1};
+        uint32_t outputTensorShape[4] = {batchSize, sequenceLength, numHeads, headSize};
+        uint32_t outputTensorStrides[4] = {sequenceLength * numHeads * headSize, headSize, headSize * sequenceLength, 1};
         m_outputTensorDescs[0] = TensorDesc(GetDmlDataTypeFromMlDataType(dataType), outputTensorShape, outputTensorStrides, 0);
 
         TensorDesc firstGemmOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, desiredBiasTensorShape);
@@ -114,11 +114,11 @@ public:
         TensorDesc querySlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, querySlicedTensorShape);
         DML_TENSOR_DESC namedQuerySlicedInputTensorDesc = querySlicedInputTensorDesc.GetDmlDesc();
 
-        std::array<uint32_t, 3> querySliceOffset {0, 0, 0};
-        std::array<uint32_t, 3> keySliceOffset {0, 0, hiddenSize};
-        std::array<uint32_t, 3> valueSliceOffset {0, 0, 2 * hiddenSize};
-        std::array<uint32_t, 3> sliceSize {batchSize, sequenceLength, hiddenSize};
-        std::array<int32_t, 3> strides {1, 1, 1};
+        std::array<uint32_t, 3> querySliceOffset = {0, 0, 0};
+        std::array<uint32_t, 3> keySliceOffset = {0, 0, hiddenSize};
+        std::array<uint32_t, 3> valueSliceOffset = {0, 0, 2 * hiddenSize};
+        std::array<uint32_t, 3> sliceSize = {batchSize, sequenceLength, hiddenSize};
+        std::array<int32_t, 3> strides = {1, 1, 1};
         DML_SLICE1_OPERATOR_DESC querySlicedOperatorDesc = {};
         querySlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
         querySlicedOperatorDesc.OutputTensor = &namedQuerySlicedInputTensorDesc;
@@ -154,7 +154,7 @@ public:
         castMaskIndexOperatorDesc.OutputTensor = &namedCastedMaskIndexTensorDesc;
         const DML_OPERATOR_DESC castMaskIndexDesc = {DML_OPERATOR_CAST, &castMaskIndexOperatorDesc};
 
-        // The attention fusion in ORT expects this to be number to -10000. 
+        // The attention fusion in ORT expects this to be number to -10000.
         // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/optimizer/attention_fusion_helper.h#L604
         // The decomposed Attention performs: (M - 1.0) * -10000.0, where M is the 4th input of the Attention node.
         // Above equation can be written as (M * -1000) + 10000.0
@@ -169,18 +169,18 @@ public:
 
         // original reshaped shape: [batchSize, seqenceLength, numHeads, headSize]
         // transposed shape to [0, 2, 1, 3] -> [batchSize, numHeads, sequenceLength, headSize]
-        uint32_t reshapedTransposedQueryTensorShape[4] {batchSize, numHeads, sequenceLength, headSize};
-        uint32_t reshapedTransposedQueryTensorStrides[4] {sequenceLength * numHeads * headSize, headSize, numHeads * headSize, 1};
+        uint32_t reshapedTransposedQueryTensorShape[4] = {batchSize, numHeads, sequenceLength, headSize};
+        uint32_t reshapedTransposedQueryTensorStrides[4] = {sequenceLength * numHeads * headSize, headSize, numHeads * headSize, 1};
         TensorDesc reshapedTransposedQueryTensorDesc = TensorDesc(
-                                                            GetDmlDataTypeFromMlDataType(dataType), 
-                                                            reshapedTransposedQueryTensorShape, 
-                                                            reshapedTransposedQueryTensorStrides, 
+                                                            GetDmlDataTypeFromMlDataType(dataType),
+                                                            reshapedTransposedQueryTensorShape,
+                                                            reshapedTransposedQueryTensorStrides,
                                                             0 // guaranteedBaseOffsetAlignment
                                                         );
         DML_TENSOR_DESC namedReshapedTransposedQueryTensorDesc = reshapedTransposedQueryTensorDesc.GetDmlDesc();
 
-        uint32_t reshapedTransposedKeyTensorShape[4] {batchSize, numHeads, headSize, sequenceLength};
-        uint32_t reshapedTransposedKeyTensorStrides[4] {sequenceLength * numHeads * headSize, headSize, 1, numHeads * headSize};
+        uint32_t reshapedTransposedKeyTensorShape[4] = {batchSize, numHeads, headSize, sequenceLength};
+        uint32_t reshapedTransposedKeyTensorStrides[4] = {sequenceLength * numHeads * headSize, headSize, 1, numHeads * headSize};
         TensorDesc reshapedTransposedKeyTensorDesc = TensorDesc(
                                                             GetDmlDataTypeFromMlDataType(dataType),
                                                             reshapedTransposedKeyTensorShape,
@@ -188,8 +188,8 @@ public:
                                                             0 // guaranteedBaseOffsetAlignment
                                                         );
         DML_TENSOR_DESC namedReshapedTransposedKeyTensorDesc = reshapedTransposedKeyTensorDesc.GetDmlDesc();
-        
-        uint32_t queryKeyTensorShape[4] {batchSize, numHeads, sequenceLength, sequenceLength};
+
+        uint32_t queryKeyTensorShape[4] = {batchSize, numHeads, sequenceLength, sequenceLength};
         TensorDesc queryKeyTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, queryKeyTensorShape);
         DML_TENSOR_DESC namedQueryKeyTensorDesc = queryKeyTensorDesc.GetDmlDesc();
 
@@ -265,19 +265,30 @@ public:
             output,
             count,
         };
+
         MLOperatorGraphDesc operatorGraphDesc = {};
-        std::array<const DML_OPERATOR_DESC*, NodeIndex::count> opDescs{&xWeightDesc,         &querySlicedDesc,    &keySlicedDesc,
-                                                                       &valueSlicedDesc,     &attentionScoreDesc, &softmaxDesc,
-                                                                       &attentionWeightDesc, &castMaskIndexDesc,  &maskDesc,
-                                                                       &outputDesc};
+        std::array<const DML_OPERATOR_DESC*, NodeIndex::count> opDescs = {
+            &xWeightDesc,
+            &querySlicedDesc,
+            &keySlicedDesc,
+            &valueSlicedDesc,
+            &attentionScoreDesc,
+            &softmaxDesc,
+            &attentionWeightDesc,
+            &castMaskIndexDesc,
+            &maskDesc,
+            &outputDesc
+        };
         operatorGraphDesc.nodeCount = NodeIndex::count;
         operatorGraphDesc.nodesAsOpDesc = opDescs.data();
 
         // set input edges
-        std::pair<uint32_t, uint32_t> nodeToNodeInputIndex[4] {{NodeIndex::xWeight, 0},
-                                                               {NodeIndex::xWeight, 1},
-                                                               {NodeIndex::xWeight, 2},
-                                                               {NodeIndex::castMaskIndex, 0}};
+        std::pair<uint32_t, uint32_t> nodeToNodeInputIndex[4] {
+            {NodeIndex::xWeight, 0},
+            {NodeIndex::xWeight, 1},
+            {NodeIndex::xWeight, 2},
+            {NodeIndex::castMaskIndex, 0}
+        };
         std::array<DML_INPUT_GRAPH_EDGE_DESC, 4> inputEdges;
         for (uint32_t inputIndex = 0; inputIndex < inputEdges.size(); inputIndex++)
         {
@@ -292,7 +303,7 @@ public:
 
         // set intermediate edges
         std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
-        
+
         DML_INTERMEDIATE_GRAPH_EDGE_DESC gemmToQuerySliceEdge = {};
         gemmToQuerySliceEdge.FromNodeIndex = NodeIndex::xWeight;
         gemmToQuerySliceEdge.FromNodeOutputIndex = 0;
@@ -403,7 +414,7 @@ void CALLBACK QueryAttention(IMLOperatorSupportQueryContextPrivate* context, /*o
     {
         return;
     }
-    // Fall back to CPU if attibute 'qkv_hidden_sizes' is present or 
+    // Fall back to CPU if attibute 'qkv_hidden_sizes' is present or
     // if value of attribute 'unidirectional' is 1, because of same reason as above.
     MLOperatorAttributes attributes(context);
     if (attributes.HasAttribute(AttrName::QkvHiddenSizes, MLOperatorAttributeType::IntArray))
