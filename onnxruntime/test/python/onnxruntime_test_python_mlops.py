@@ -149,21 +149,20 @@ class TestInferenceSession(unittest.TestCase):
 
     def test_run_model_mlnet(self):
         available_providers = onnxrt.get_available_providers()
-
+        so = onnxrt.SessionOptions()
+        so.enable_mem_pattern = "DmlExecutionProvider" not in available_providers
         # The Windows GPU CI pipeline builds the wheel with both CUDA and DML enabled and ORT does not support cases
         # where one node is assigned to CUDA and one node to DML, as it doesn't have the data transfer capabilities to
         # deal with potentially different device memory. Hence, use a session with only DML and CPU (excluding CUDA)
         # for this test as it breaks with both CUDA and DML registered.
         if "CUDAExecutionProvider" in available_providers and "DmlExecutionProvider" in available_providers:
-            so = onnxrt.SessionOptions()
-            so.enable_mem_pattern = False
             sess = onnxrt.InferenceSession(
                 get_name("mlnet_encoder.onnx"),
                 so,
                 ["DmlExecutionProvider", "CPUExecutionProvider"],
             )
         else:
-            sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"), providers=available_providers)
+            sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"), so, providers=available_providers)
 
         names = [_.name for _ in sess.get_outputs()]
         self.assertEqual(["C00", "C12"], names)
