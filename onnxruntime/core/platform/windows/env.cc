@@ -41,20 +41,6 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 
 namespace onnxruntime {
 
-std::ostream& operator<<(std::ostream& os, const ThreadOptions::ThreadAffinity& aff) {
-  os << "{";
-  std::copy(aff.logical_proc_ids.cbegin(), aff.logical_proc_ids.cend(), std::ostream_iterator<int>(os, " "));
-  return os << "}";
-}
-
-std::ostream& operator<<(std::ostream& os, gsl::span<const ThreadOptions::ThreadAffinity> affs) {
-  os << "{";
-  for (const auto& aff : affs) {
-    os << aff;
-  }
-  return os << "}";
-}
-
 namespace {
 
 class UnmapFileParam {
