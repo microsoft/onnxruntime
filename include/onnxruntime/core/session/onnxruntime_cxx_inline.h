@@ -948,17 +948,36 @@ inline std::vector<int64_t> TensorTypeAndShapeInfoImpl<T>::GetShape() const {
 
 }  // namespace detail
 
-inline ConstTensorTypeAndShapeInfo TypeInfo::GetTensorTypeAndShapeInfo() const {
+namespace detail {
+template <typename T>
+inline ConstTensorTypeAndShapeInfo TypeInfoImpl<T>::GetTensorTypeAndShapeInfo() const {
   const OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(GetApi().CastTypeInfoToTensorInfo(this->p_, &out));
   return ConstTensorTypeAndShapeInfo{out};
 }
 
-inline ConstSequenceTypeInfo TypeInfo::GetSequenceTypeInfo() const {
+template <typename T>
+inline ConstSequenceTypeInfo TypeInfoImpl<T>::GetSequenceTypeInfo() const {
   const OrtSequenceTypeInfo* out;
   ThrowOnError(GetApi().CastTypeInfoToSequenceTypeInfo(this->p_, &out));
   return ConstSequenceTypeInfo{out};
 }
+
+template <typename T>
+inline ConstMapTypeInfo TypeInfoImpl<T>::GetMapTypeInfo() const {
+  const OrtMapTypeInfo* out;
+  ThrowOnError(GetApi().CastTypeInfoToMapTypeInfo(p_, &out));
+  return ConstMapTypeInfo{out};
+}
+
+template <typename T>
+inline ONNXType TypeInfoImpl<T>::GetONNXType() const {
+  ONNXType out;
+  ThrowOnError(GetApi().GetOnnxTypeFromTypeInfo(this->p_, &out));
+  return out;
+}
+
+}  // namespace detail
 
 namespace detail {
 template <typename T>
@@ -969,12 +988,6 @@ inline TypeInfo SequenceTypeInfoImpl<T>::GetSequenceElementType() const {
 }
 
 }  // namespace detail
-
-inline ConstMapTypeInfo TypeInfo::GetMapTypeInfo() const {
-  const OrtMapTypeInfo* out;
-  ThrowOnError(GetApi().CastTypeInfoToMapTypeInfo(p_, &out));
-  return ConstMapTypeInfo{out};
-}
 
 namespace detail {
 template <typename T>
@@ -991,12 +1004,6 @@ inline TypeInfo MapTypeInfoImpl<T>::GetMapValueType() const {
   return TypeInfo{output};
 }
 }  // namespace detail
-
-inline ONNXType TypeInfo::GetONNXType() const {
-  ONNXType out;
-  ThrowOnError(GetApi().GetOnnxTypeFromTypeInfo(this->p_, &out));
-  return out;
-}
 
 namespace detail {
 
@@ -1344,6 +1351,26 @@ inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType
 
 namespace detail {
 template <typename T>
+inline std::string KernelIOInfoImpl<T>::GetName() const {
+  const char* out = nullptr;
+  size_t length = 0;
+  Ort::ThrowOnError(GetApi().KernelIOInfo_GetName(this->p_, &out, &length));
+  return std::string(out, length);  // TODO: Return a std::string_view (C++17)
+}
+
+template <typename T>
+inline ConstTypeInfo KernelIOInfoImpl<T>::GetTypeInfo() const {
+  const OrtTypeInfo* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelIOInfo_GetTypeInfo(this->p_, &out));
+  return ConstTypeInfo{out};
+}
+
+}  // namespace detail
+
+inline KernelIOInfo::KernelIOInfo(OrtKernelIOInfo* io_info) : detail::KernelIOInfoImpl<OrtKernelIOInfo>{io_info} {}
+
+namespace detail {
+template <typename T>
 inline KernelInfo KernelInfoImpl<T>::Copy() const {
   OrtKernelInfo* info_copy = nullptr;
   Ort::ThrowOnError(GetApi().CopyKernelInfo(this->p_, &info_copy));
@@ -1353,15 +1380,29 @@ inline KernelInfo KernelInfoImpl<T>::Copy() const {
 template <typename T>
 inline size_t KernelInfoImpl<T>::GetInputCount() const {
   size_t out = 0;
-  ThrowOnError(GetApi().KernelInfo_GetInputCount(p_, &out));
+  ThrowOnError(GetApi().KernelInfo_GetInputCount(this->p_, &out));
   return out;
 }
 
 template <typename T>
 inline size_t KernelInfoImpl<T>::GetOutputCount() const {
   size_t out = 0;
-  ThrowOnError(GetApi().KernelInfo_GetOutputCount(p_, &out));
+  ThrowOnError(GetApi().KernelInfo_GetOutputCount(this->p_, &out));
   return out;
+}
+
+template <typename T>
+inline KernelIOInfo KernelInfoImpl<T>::GetInputInfo(size_t index) const {
+  OrtKernelIOInfo* out = nullptr;
+  ThrowOnError(GetApi().KernelInfo_GetInputInfo(this->p_, index, &out));
+  return KernelIOInfo{out};
+}
+
+template <typename T>
+inline KernelIOInfo KernelInfoImpl<T>::GetOutputInfo(size_t index) const {
+  OrtKernelIOInfo* out = nullptr;
+  ThrowOnError(GetApi().KernelInfo_GetOutputInfo(this->p_, index, &out));
+  return KernelIOInfo{out};
 }
 
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {

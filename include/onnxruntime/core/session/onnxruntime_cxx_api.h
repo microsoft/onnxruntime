@@ -205,6 +205,7 @@ ORT_DEFINE_RELEASE(Status);
 ORT_DEFINE_RELEASE(OpAttr);
 ORT_DEFINE_RELEASE(Op);
 ORT_DEFINE_RELEASE(KernelInfo);
+ORT_DEFINE_RELEASE(KernelIOInfo);
 
 #undef ORT_DEFINE_RELEASE
 
@@ -782,19 +783,31 @@ struct MapTypeInfo : detail::MapTypeInfoImpl<OrtMapTypeInfo> {
   ConstMapTypeInfo GetConst() const { return ConstMapTypeInfo{this->p_}; }
 };
 
-/// <summary>
-/// Type information that may contain either TensorTypeAndShapeInfo or
-/// the information about contained sequence or map depending on the ONNXType.
-/// </summary>
-struct TypeInfo : detail::Base<OrtTypeInfo> {
-  explicit TypeInfo(std::nullptr_t) {}                         ///< Create an empty TypeInfo object, must be assigned a valid one to be used
-  explicit TypeInfo(OrtTypeInfo* p) : Base<OrtTypeInfo>{p} {}  ///< C API Interop
+namespace detail {
+template <typename T>
+struct TypeInfoImpl : detail::Base<T> {
+  using B = Base<T>;
+  using B::B;
 
   ConstTensorTypeAndShapeInfo GetTensorTypeAndShapeInfo() const;  ///< Wraps OrtApi::CastTypeInfoToTensorInfo
   ConstSequenceTypeInfo GetSequenceTypeInfo() const;              ///< Wraps OrtApi::CastTypeInfoToSequenceTypeInfo
   ConstMapTypeInfo GetMapTypeInfo() const;                        ///< Wraps OrtApi::CastTypeInfoToMapTypeInfo
 
   ONNXType GetONNXType() const;
+};
+}  // namespace detail
+
+using ConstTypeInfo = detail::TypeInfoImpl<detail::Unowned<const OrtTypeInfo>>;
+
+/// <summary>
+/// Type information that may contain either TensorTypeAndShapeInfo or
+/// the information about contained sequence or map depending on the ONNXType.
+/// </summary>
+struct TypeInfo : detail::TypeInfoImpl<OrtTypeInfo> {
+  explicit TypeInfo(std::nullptr_t) {}                                 ///< Create an empty TypeInfo object, must be assigned a valid one to be used
+  explicit TypeInfo(OrtTypeInfo* p) : TypeInfoImpl<OrtTypeInfo>{p} {}  ///< C API Interop
+
+  ConstTypeInfo GetConst() const { return ConstTypeInfo{this->p_}; }
 };
 
 namespace detail {
@@ -1377,16 +1390,30 @@ struct KernelInfo;
 
 namespace detail {
 
-/*template <typename T>
+template <typename T>
 struct KernelIOInfoImpl : Base<T> {
   using B = Base<T>;
   using B::B;
 
+  // TODO: Return a std::string_view when C++17 support is added (avoid string copy).
   std::string GetName() const;
   ConstTypeInfo GetTypeInfo() const;
+};
 
-};*/
+}  // namespace detail
 
+/// <summary>
+/// This struct owns the OrtKernelIOInfo* pointer.
+/// Provides convenience functions to retrieve type, shape, and name information
+/// for KernelInfo inputs and outputs. Can be used in a custom op kernel's construction
+/// function to initialize kernel state during ORT session creation.
+/// </summary>
+struct KernelIOInfo : detail::KernelIOInfoImpl<OrtKernelIOInfo> {
+  explicit KernelIOInfo(std::nullptr_t) {}       ///< Create an empty instance to initialize later
+  explicit KernelIOInfo(OrtKernelIOInfo* io_info);  ///< Take ownership of the instance
+};
+
+namespace detail {
 namespace attr_utils {
 void GetAttr(const OrtKernelInfo* p, const char* name, float&);
 void GetAttr(const OrtKernelInfo* p, const char* name, int64_t&);
@@ -1418,6 +1445,9 @@ struct KernelInfoImpl : Base<T> {
 
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
+
+  KernelIOInfo GetInputInfo(size_t index) const;
+  KernelIOInfo GetOutputInfo(size_t index) const;
 };
 
 }  // namespace detail
