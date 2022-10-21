@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 import logging
-from typing import Any, Callable, Dict, List, Mapping, Set, Tuple, Type
+from typing import Any, Callable, Dict, List, Mapping, Set, Tuple
 
 import numpy as np
 import onnx
@@ -187,14 +187,10 @@ def _jit_graph_to_onnx_model(graph, operator_export_type):
     r"""
     This function exports torch::jit::Graph object
     to serialized ONNX ModelProto.
-    This function is for testing purpose.
     It only keeps the essential parts for IR graph conversions.
     It also does not interact with actual PyTorch modules nor
     PyTorch tensor inputs.
     """
-
-    # Shape inference is required because some ops' symbolic functions
-    # generate sub-graphs based on inputs' types.
 
     graph = torch.onnx.utils._optimize_graph(graph, operator_export_type, params_dict={})
     proto, _, _, _ = graph._export_onnx(
@@ -214,6 +210,12 @@ def _jit_graph_to_onnx_model(graph, operator_export_type):
 
 
 def _move_placeholder_to_front(graph_module: torch.fx.GraphModule) -> None:
+    """
+    In torch.fx.Graph, placehoder is a special assignment node. If it's not
+    executed in the beginning, it could overwrite values computed by upstream
+    nodes.
+    """
+
     graph = graph_module.graph
     placeholders = []
     first_not_placeholder = None
