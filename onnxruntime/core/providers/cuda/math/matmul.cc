@@ -130,7 +130,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       auto workspace_memory = GetScratchBuffer<void>(workspace_size);
 
       bool use_special = false;
-      if (left_X->SizeInBytes() == 196608) {
+      if (use_data_ptr_ && left_X->SizeInBytes() == 6291456) {
               use_special = true;
               std::cout << "Using special" << "\n";
       }
