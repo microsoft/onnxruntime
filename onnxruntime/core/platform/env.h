@@ -16,6 +16,7 @@ limitations under the License.
 
 #pragma once
 
+#include <iosfwd>
 #include <functional>
 #include <memory>
 #include <string>
@@ -88,6 +89,10 @@ struct ThreadOptions {
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
   int dynamic_block_base_ = 0;
 };
+
+std::ostream& operator<<(std::ostream& os, const ThreadOptions::ThreadAffinity&);
+std::ostream& operator<<(std::ostream& os, gsl::span<const ThreadOptions::ThreadAffinity>);
+
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
 ///
