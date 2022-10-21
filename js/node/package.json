@@ -13,7 +13,7 @@
       3
     ]
   },
-  "version": "1.13.1",
+  "version": "1.14.0",
   "dependencies": {
     "onnxruntime-common": "file:../common"
   },
