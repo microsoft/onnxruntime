@@ -1345,9 +1345,23 @@ inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType
 namespace detail {
 template <typename T>
 inline KernelInfo KernelInfoImpl<T>::Copy() const {
-  OrtKernelInfo* info_copy;
+  OrtKernelInfo* info_copy = nullptr;
   Ort::ThrowOnError(GetApi().CopyKernelInfo(this->p_, &info_copy));
   return KernelInfo{info_copy};
+}
+
+template <typename T>
+inline size_t KernelInfoImpl<T>::GetInputCount() const {
+  size_t out = 0;
+  ThrowOnError(GetApi().KernelInfo_GetInputCount(p_, &out));
+  return out;
+}
+
+template <typename T>
+inline size_t KernelInfoImpl<T>::GetOutputCount() const {
+  size_t out = 0;
+  ThrowOnError(GetApi().KernelInfo_GetOutputCount(p_, &out));
+  return out;
 }
 
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {

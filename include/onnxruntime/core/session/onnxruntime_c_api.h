@@ -270,6 +270,7 @@ ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(CANNProviderOptions);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
+ORT_RUNTIME_CLASS(KernelIOInfo);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -3574,7 +3575,95 @@ struct OrtApi {
   *  \since Version 1.14
   */
   void(ORT_API_CALL* MemoryInfoGetDeviceType)(_In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
-  
+
+  /// @}
+  /// \name OrtKernelInfo
+  /// @{
+
+  /** \brief Returns the number of inputs from ::OrtKernelInfo.
+  *
+  * \param[in]  info Instance of ::OrtKernelInfo.
+  * \param[out] out  Pointer to variable assigned with the result on success.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.14
+  */
+  ORT_API2_STATUS(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
+
+  /** \brief Returns the number of outputs from ::OrtKernelInfo.
+  *
+  * \param[in]  info Instance of ::OrtKernelInfo.
+  * \param[out] out  Pointer to variable assigned with the result on success.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.14
+  */
+  ORT_API2_STATUS(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
+
+  /** \brief  Returns information (e.g., type, shape, and name) for an input from ::OrtKernelInfo.
+  *
+  * \param[in]  info     An instance of ::OrtKernelInfo.
+  * \param[in]  index    The index of the input info to get.
+  *                      Returns a failure status if out-of-bounds.
+  * \param[out] out      Pointer set to instance of ::OrtKernelIOInfo on success.
+  *                      Must be released with OrtApi::ReleaseKernelIOInfo
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.14
+  */
+  ORT_API2_STATUS(KernelInfo_GetInputInfo, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                  _Outptr_ OrtKernelIOInfo** out);
+
+  /** \brief  Returns information (e.g., type, shape, and name) for an output from ::OrtKernelInfo.
+  *
+  * \param[in]  info     An instance of ::OrtKernelInfo.
+  * \param[in]  index    The index of the output info to get.
+  *                      Returns a failure status if out-of-bounds.
+  * \param[out] out      Pointer set to instance of ::OrtKernelIOInfo on success.
+  *                      Must be released with OrtApi::ReleaseIOInfo
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.14
+  */
+  ORT_API2_STATUS(KernelInfo_GetOutputInfo, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                  _Outptr_ OrtKernelIOInfo** out);
+
+  /// @}
+  /// \name OrtKernelIOInfo
+  /// @{
+
+  /* \brief: Release ::OrtKernelIOInfo
+  *
+  * \param[in] OrtIOInfo
+  *
+  * \since Version 1.14
+  */
+  ORT_CLASS_RELEASE(KernelIOInfo);
+
+  /** \brief Returns the name of a KernelInfo's input or output.
+  *
+  * \param[in]     io_info  An instance of ::OrtKernelIOInfo.
+  * \param[out]    out      Pointer set to the non-modifiable UTF-8 null-terminated string representing the 
+  *                         input or output name. Do not free, as this is owned by the ::OrtKernelIOInfo object.
+  * \param[in,out] length   Optional pointer set to the name's length (not counting the null-terminator).
+  *                         Ignored if NULL.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.14
+  */
+  ORT_API2_STATUS(KernelIOInfo_GetName, _In_ const OrtKernelIOInfo* io_info, _Outptr_ const char** out,
+                  _Out_opt_ size_t* length);
+
+  /** \brief Returns the type information for a KenerlInfo input or output.
+  *
+  * \param[in]  io_info   An instance of ::OrtKernelIOInfo.
+  * \param[out] type_info Pointer set to a non-modifiable ::OrtTypeInfo.
+  *                       Do not free, as this is owned by the ::OrtKernelIOInfo object.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.14
+  */
+  ORT_API2_STATUS(KernelIOInfo_GetTypeInfo, _In_ const OrtKernelIOInfo* io_info, _Outptr_ const OrtTypeInfo** type_info);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
@@ -3593,9 +3682,9 @@ struct OrtApi {
 // 1) Non-optional (input/output must be present in the node)
 // 2) Optional (input/output may be absent in the node)
 typedef enum OrtCustomOpInputOutputCharacteristic {
-  // TODO: Support 'Variadic' inputs/outputs
   INPUT_OUTPUT_REQUIRED = 0,
   INPUT_OUTPUT_OPTIONAL,
+  INPUT_OUTPUT_VARIADIC,
 } OrtCustomOpInputOutputCharacteristic;
 
 /*

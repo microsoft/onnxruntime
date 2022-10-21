@@ -1377,6 +1377,16 @@ struct KernelInfo;
 
 namespace detail {
 
+/*template <typename T>
+struct KernelIOInfoImpl : Base<T> {
+  using B = Base<T>;
+  using B::B;
+
+  std::string GetName() const;
+  ConstTypeInfo GetTypeInfo() const;
+
+};*/
+
 namespace attr_utils {
 void GetAttr(const OrtKernelInfo* p, const char* name, float&);
 void GetAttr(const OrtKernelInfo* p, const char* name, int64_t&);
@@ -1405,6 +1415,9 @@ struct KernelInfoImpl : Base<T> {
     attr_utils::GetAttrs(this->p_, name, result);
     return result;
   }
+
+  size_t GetInputCount() const;
+  size_t GetOutputCount() const;
 };
 
 }  // namespace detail

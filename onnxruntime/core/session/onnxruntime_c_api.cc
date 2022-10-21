@@ -2589,7 +2589,15 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::UpdateCANNProviderOptions,
     &OrtApis::GetCANNProviderOptionsAsString,
     &OrtApis::ReleaseCANNProviderOptions,
-    &OrtApis::MemoryInfoGetDeviceType};
+    &OrtApis::MemoryInfoGetDeviceType,
+    &OrtApis::KernelInfo_GetInputCount,
+    &OrtApis::KernelInfo_GetOutputCount,
+    &OrtApis::KernelInfo_GetInputInfo,
+    &OrtApis::KernelInfo_GetOutputInfo,
+    &OrtApis::ReleaseKernelIOInfo,
+    &OrtApis::KernelIOInfo_GetName,
+    &OrtApis::KernelIOInfo_GetTypeInfo,
+};
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
 // If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'

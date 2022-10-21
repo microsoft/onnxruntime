@@ -403,4 +403,16 @@ ORT_API(void, ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProviderOptions
 
 ORT_API(void, MemoryInfoGetDeviceType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
 
+ORT_API_STATUS_IMPL(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
+ORT_API_STATUS_IMPL(KernelInfo_GetInputInfo, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                    _Outptr_ OrtKernelIOInfo** out);
+ORT_API_STATUS_IMPL(KernelInfo_GetOutputInfo, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                    _Outptr_ OrtKernelIOInfo** out);
+ORT_API(void, ReleaseKernelIOInfo, _Frees_ptr_opt_ OrtKernelIOInfo* io_info);
+ORT_API_STATUS_IMPL(KernelIOInfo_GetName, _In_ const OrtKernelIOInfo* io_info, _Outptr_ const char** out,
+                    _Out_opt_ size_t* length);
+ORT_API_STATUS_IMPL(KernelIOInfo_GetTypeInfo, _In_ const OrtKernelIOInfo* io_info,
+                    _Outptr_ const OrtTypeInfo** type_info);
+
 }  // namespace OrtApis
