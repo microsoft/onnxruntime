@@ -693,3 +693,29 @@ def group_norm(g, input, num_groups, weight, bias, eps, cudnn_enabled):
         operator_s="native_group_norm",
         outputs=3,
     )[0]
+
+
+def _upsample_nearest(g, input, output_size, scale_factors, forward_fn):
+    return g.op(
+        "org.pytorch.aten::ATen",
+        input,
+        output_size,
+        scale_factors,
+        operator_s=forward_fn,
+        overload_name_s="vec",
+    )
+
+
+@register_symbolic("upsample_nearest1d")
+def upsample_nearest1d(g, input, output_size, scale_factors):
+    return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest1d")
+
+
+@register_symbolic("upsample_nearest2d")
+def upsample_nearest2d(g, input, output_size, scale_factors):
+    return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest2d")
+
+
+@register_symbolic("upsample_nearest3d")
+def upsample_nearest3d(g, input, output_size, scale_factors):
+    return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest3d")
