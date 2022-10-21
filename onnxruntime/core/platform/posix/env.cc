@@ -38,7 +38,10 @@ limitations under the License.
 
 #include <gsl/gsl>
 
+#ifdef CPUINFO_SUPPORTED
 #include <cpuinfo.h>
+#endif
+
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/platform/scoped_resource.h"
@@ -223,7 +226,7 @@ class PosixThread : public EnvThread {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
     ORT_TRY {
 #if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
-      if (p->affinity.has_value()) {
+      if (p->affinity.has_value() && !p->affinity->logical_proc_ids.empty()) {
         cpu_set_t cpuset;
         CPU_ZERO(&cpuset);
         for(auto id : p->affinity->logical_proc_ids) {
@@ -235,10 +238,7 @@ class PosixThread : public EnvThread {
           auto [err_no, err_msg] = GetSystemError(ret);
           const auto masks = Env::Default().GetThreadAffinityMasks();
           std::ostringstream os;
-          os << "{";
-          std::copy(p->affinity->logical_proc_ids.cbegin(), p->affinity->logical_proc_ids.cend(),
-            std::ostream_iterator<int>(os, ","));
-          os << "}";
+          os << *p->affinity;
           LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
                               << ", index: " << p->index
                               << ", mask: " << os.str()
@@ -275,9 +275,11 @@ class PosixEnv : public Env {
   }
 
   int GetNumCpuCores() const override {
+#ifdef CPUINFO_SUPPORTED
     if(cpuinfo_available_) {
       return gsl::narrow<int>(cpuinfo_get_processors_count());
     }
+#endif
     return static_cast<int>(std::thread::hardware_concurrency());
   }
 
@@ -293,6 +295,7 @@ class PosixEnv : public Env {
     };
 
     std::vector<ThreadOptions::ThreadAffinity> ret;
+#ifdef CPUINFO_SUPPORTED
     if (cpuinfo_available_) {
       // We currently do not implement affinity on more than 64 cores.
       auto num_phys_cores = cpuinfo_get_cores_count();
@@ -310,7 +313,9 @@ class PosixEnv : public Env {
         }
         ret.push_back(std::move(th_aff));
       }
-    } else {
+    }
+#endif // CPUINFO_SUPPORTED
+    if(ret.empty()) {
       ret = generate_vector_of_n(std::thread::hardware_concurrency());
     }
     return ret;
@@ -580,13 +585,17 @@ class PosixEnv : public Env {
 
  private:
   PosixEnv()  {
+#ifdef CPUINFO_SUPPORTED
     cpuinfo_available_ = cpuinfo_initialize();
     if(!cpuinfo_available_) {
       LOGS_DEFAULT(ERROR) << "cpuinfo_initialize failed to initialize";
     }
+#endif
   }
   Telemetry telemetry_provider_;
+#ifdef CPUINFO_SUPPORTED
   bool cpuinfo_available_{false};
+#endif
 };
 
 }  // namespace
