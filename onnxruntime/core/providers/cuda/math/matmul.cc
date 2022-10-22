@@ -129,18 +129,28 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       size_t workspace_size = 32 * 1024 * 1024;
       auto workspace_memory = GetScratchBuffer<void>(workspace_size);
 
+      /*
       bool use_special = false;
-      if (use_data_ptr_ && left_X->SizeInBytes() == 6291456) {
+      if (left_X->SizeInBytes() == 6291456) {
               use_special = true;
               std::cout << "Using special" << "\n";
       }
-
+      
       if (use_special) {
         cudaMemcpyAsync(left_X_ptr_ ,
                         const_cast<T*>(left_X->Data<T>()), 
                         left_X->SizeInBytes(),  
                         cudaMemcpyDeviceToDevice, Stream()); 
       }
+      */
+
+      void* weight_ptr = right_X->Data<T>();
+      if (right_X->SizeInBytes() == 1179648) {    
+          weight_ptr = right_X_ptr_1_;
+      } else if (right_X->SizeInBytes() == 4718592) {
+          weight_ptr = right_X_ptr_2_;
+      }
+
 
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
@@ -150,10 +160,13 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           static_cast<int>(helper.M()),
           static_cast<int>(helper.K()),
           &alpha,
-          reinterpret_cast<const CudaT*>(right_X->Data<T>()),          
+          //reinterpret_cast<const CudaT*>(right_X->Data<T>()),
+          reinterpret_cast<const CudaT*>(weight_ptr),          
           ldb,
-          use_special ?  reinterpret_cast<const CudaT*>(left_X_ptr_) : 
-                         reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+          //use_special ?  reinterpret_cast<const CudaT*>(left_X_ptr_) : 
+          //               reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+          reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+
           lda,
           &zero,
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
