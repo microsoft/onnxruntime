@@ -9,6 +9,7 @@
 #include "core/framework/error_code_helper.h"
 #include <cstring>
 #include <cassert>
+#include <sstream>
 #include "core/session/inference_session.h"
 #include "abi_session_options_impl.h"
 
@@ -174,6 +175,50 @@ ORT_API_STATUS_IMPL(OrtApis::DisablePerSessionThreads, _In_ OrtSessionOptions* o
 ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                     _In_z_ const char* config_key, _In_z_ const char* config_value) {
   return onnxruntime::ToOrtStatus(options->value.config_options.AddConfigEntry(config_key, config_value));
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntrySize, _In_ const OrtSessionOptions* options,
+                    _In_z_ const char* config_key, _Out_ size_t* size) {
+  API_IMPL_BEGIN
+  auto value_opt = options->value.config_options.GetConfigEntry(config_key);
+
+  if (value_opt) {
+    *size = value_opt->size() + 1;
+  } else {
+    *size = 0;
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
+                    _In_z_ const char* config_key, _Out_writes_z_(size) char* config_value, _Inout_ size_t* size) {
+  API_IMPL_BEGIN
+  auto value_opt = options->value.config_options.GetConfigEntry(config_key);
+
+  if (!value_opt) {
+    std::ostringstream err_msg;
+    err_msg << "Session config entry '" << config_key << "' was not found.";
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, err_msg.str().c_str());
+  }
+
+  const std::string& value = *value_opt;
+
+  if (config_value == nullptr) {  // User is querying the true size of the config value.
+    *size = value.size() + 1;
+    return nullptr;
+  } else if (*size >= value.size() + 1) {  // User provided a buffer that is large enough.
+    std::memcpy(config_value, value.data(), value.size());
+    config_value[value.size()] = '\0';
+    *size = value.size() + 1;
+    return nullptr;
+  }
+
+  // User has provided a buffer that is not large enough.
+  *size = value.size() + 1;
+  return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Result buffer is not large enough for session config entry");
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,

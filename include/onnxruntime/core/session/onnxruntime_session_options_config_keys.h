@@ -142,3 +142,6 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // "0": in some cases warnings will be logged but processing will continue. The default.
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
+
+// TODO: Documentation
+static const char* const kOrtSessionOptionsConfigCustomOpConfigPrefix = "custom_op.";

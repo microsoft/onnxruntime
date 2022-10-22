@@ -483,10 +483,48 @@ inline RunOptions& RunOptions::UnsetTerminate() {
 namespace detail {
 
 template <typename T>
-inline Ort::SessionOptions SessionOptionsImpl<T>::Clone() const {
+inline Ort::SessionOptions ConstSessionOptionsImpl<T>::Clone() const {
   OrtSessionOptions* out;
   ThrowOnError(GetApi().CloneSessionOptions(this->p_, &out));
   return SessionOptions{out};
+}
+
+template <typename T>
+inline std::string ConstSessionOptionsImpl<T>::GetConfigEntry(const char* config_key) const {
+  size_t size = 0;
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().GetSessionConfigEntry(this->p_, config_key, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().GetSessionConfigEntry(this->p_, config_key, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
+}
+
+template <typename T>
+inline size_t ConstSessionOptionsImpl<T>::GetConfigEntrySize(const char* config_key) const {
+  size_t size = 0;
+  Ort::ThrowOnError(GetApi().GetSessionConfigEntrySize(this->p_, config_key, &size));
+  return size;
+}
+
+template <typename T>
+std::string ConstSessionOptionsImpl<T>::GetConfigEntryOrDefault(const char* config_key, const std::string& def) {
+  size_t size = 0;
+  Ort::ThrowOnError(GetApi().GetSessionConfigEntrySize(this->p_, config_key, &size));
+
+  if (size == 0) {
+    return def;  // Return default value
+  }
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().GetSessionConfigEntry(this->p_, config_key, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
 }
 
 template <typename T>
@@ -1719,5 +1757,24 @@ inline std::vector<std::string> GetAvailableProviders() {
 }
 
 SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
+
+template <typename TOp, typename TKernel>
+std::unordered_map<std::string, std::string> CustomOpBase<TOp, TKernel>::GetSessionConfigs(ConstSessionOptions options) const {
+  std::vector<std::string> keys = this->GetSessionConfigKeys();
+  std::unordered_map<std::string, std::string> map;
+
+  map.reserve(keys.size());
+
+  std::string config_entry_key = std::string("custom_op.") + this->GetName() + ".";
+  const size_t prefix_size = config_entry_key.length();
+
+  for (const auto& key : keys) {
+    config_entry_key.resize(prefix_size);
+    config_entry_key.append(key);
+    map[key] = options.GetConfigEntryOrDefault(config_entry_key.c_str(), "");
+  }
+
+  return map;
+}
 
 }  // namespace Ort

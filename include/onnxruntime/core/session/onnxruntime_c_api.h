@@ -59,6 +59,7 @@ extern "C" {
 #define _Out_writes_all_(X)
 #define _Success_(X)
 #define _Outptr_result_buffer_maybenull_(X)
+#define _Outptr_result_z_
 #define ORT_ALL_ARGS_NONNULL __attribute__((nonnull))
 #else
 #include <specstrings.h>
@@ -3580,7 +3581,7 @@ struct OrtApi {
   /// \name OrtKernelInfo
   /// @{
 
-  /** \brief Returns the number of inputs from ::OrtKernelInfo.
+  /** \brief Get the number of inputs from ::OrtKernelInfo.
   *
   * \param[in]  info Instance of ::OrtKernelInfo.
   * \param[out] out  Pointer to variable assigned with the result on success.
@@ -3590,7 +3591,7 @@ struct OrtApi {
   */
   ORT_API2_STATUS(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 
-  /** \brief Returns the number of outputs from ::OrtKernelInfo.
+  /** \brief Get the number of outputs from ::OrtKernelInfo.
   *
   * \param[in]  info Instance of ::OrtKernelInfo.
   * \param[out] out  Pointer to variable assigned with the result on success.
@@ -3600,7 +3601,7 @@ struct OrtApi {
   */
   ORT_API2_STATUS(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
 
-  /** \brief  Returns information (e.g., type, shape, and name) for an input from ::OrtKernelInfo.
+  /** \brief Get information (e.g., type, shape, and name) for an input from ::OrtKernelInfo.
   *
   * \param[in]  info     An instance of ::OrtKernelInfo.
   * \param[in]  index    The index of the input info to get.
@@ -3614,7 +3615,7 @@ struct OrtApi {
   ORT_API2_STATUS(KernelInfo_GetInputInfo, _In_ const OrtKernelInfo* info, _In_ size_t index,
                   _Outptr_ OrtKernelIOInfo** out);
 
-  /** \brief  Returns information (e.g., type, shape, and name) for an output from ::OrtKernelInfo.
+  /** \brief Get information (e.g., type, shape, and name) for an output from ::OrtKernelInfo.
   *
   * \param[in]  info     An instance of ::OrtKernelInfo.
   * \param[in]  index    The index of the output info to get.
@@ -3640,7 +3641,7 @@ struct OrtApi {
   */
   ORT_CLASS_RELEASE(KernelIOInfo);
 
-  /** \brief Returns the name of a KernelInfo's input or output.
+  /** \brief Get the name of a KernelInfo's input or output.
   *
   * \param[in]     io_info  An instance of ::OrtKernelIOInfo.
   * \param[out]    out      Pointer set to the non-modifiable UTF-8 null-terminated string representing the 
@@ -3651,10 +3652,10 @@ struct OrtApi {
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
   */
-  ORT_API2_STATUS(KernelIOInfo_GetName, _In_ const OrtKernelIOInfo* io_info, _Outptr_ const char** out,
+  ORT_API2_STATUS(KernelIOInfo_GetName, _In_ const OrtKernelIOInfo* io_info, _Outptr_result_z_ const char** out,
                   _Out_opt_ size_t* length);
 
-  /** \brief Returns the type information for a KenerlInfo input or output.
+  /** \brief Get the type information for a KenerlInfo input or output.
   *
   * \param[in]  io_info   An instance of ::OrtKernelIOInfo.
   * \param[out] type_info Pointer set to a non-modifiable ::OrtTypeInfo.
@@ -3663,7 +3664,55 @@ struct OrtApi {
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
   */
-  ORT_API2_STATUS(KernelIOInfo_GetTypeInfo, _In_ const OrtKernelIOInfo* io_info, _Outptr_ const OrtTypeInfo** type_info);
+  ORT_API2_STATUS(KernelIOInfo_GetTypeInfo, _In_ const OrtKernelIOInfo* io_info,
+                  _Outptr_ const OrtTypeInfo** type_info);
+
+  /// @}
+  /// \name OrtSessionOptions
+  /// @{
+
+  /** \brief Get the size of the value of a session configuration entry.
+  *
+  * Can be used to query for the existence of a session configuration entry.
+  * Sets the size to 0 if the configuration entry does not exist. Otherwise, sets the size to
+  * the size of the value string, which includes the null-terminator.
+  *
+  * \param[in] options The session options.
+  * \param[in] config_key A null-terminated UTF-8 string representation of the configuration key.
+  * \param[out] size Pointer set to the size of the configuration entry's value. See above comments for details.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.14
+  */
+  ORT_API2_STATUS(GetSessionConfigEntrySize, _In_ const OrtSessionOptions* options,
+                  _In_z_ const char* config_key, _Out_ size_t* size);
+
+  /** \brief Get a session configuration value.
+  *
+  * Returns a failure status if the configuration key does not exist.
+  * The config_key and the format of config_value are defined in onnxruntime_session_options_config_keys.h
+  *
+  * If `config_value` is nullptr, the value of `size` is set to the true size of the string
+  * value (including null-terminator), and a success status is returned.
+  *
+  * If the `size` parameter is greater than or equal to the actual string value's size,
+  * the value of `size` is set to the true size of the string value, the provided memory
+  * is filled with the value's contents, and a success status is returned.
+  *
+  * If the `size` parameter is less than the actual string value's size and `config_value`
+  * is not nullptr, the value of `size` is set to the true size of the string value
+  * and a failure status is returned.
+  *
+  * \param[in] options The session options.
+  * \param[in] config_key A null-terminated UTF-8 string representation of the config key
+  * \param[in] config_value Pointer to memory where the null-terminated UTF-8 string value will be stored.
+  * \param[in,out] size Pointer to the size of the `config_value` buffer. See above comments for details.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  * \since Version 1.14
+  */
+  ORT_API2_STATUS(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
+                  _In_z_ const char* config_key, _Out_writes_z_(size) char* config_value, _Inout_ size_t* size);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&)=delete; // Prevent users from accidentally copying the API structure, it should always be passed as a pointer

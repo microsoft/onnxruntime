@@ -224,8 +224,8 @@ ORT_API(void, OrtApis::ReleaseKernelIOInfo, _Frees_ptr_opt_ OrtKernelIOInfo* io_
   }
 }
 
-ORT_API_STATUS_IMPL(OrtApis::KernelIOInfo_GetName, _In_ const OrtKernelIOInfo* io_info, _Outptr_ const char** out,
-                    _Out_opt_ size_t* length) {
+ORT_API_STATUS_IMPL(OrtApis::KernelIOInfo_GetName, _In_ const OrtKernelIOInfo* io_info,
+                    _Outptr_result_z_ const char** out, _Out_opt_ size_t* length) {
   API_IMPL_BEGIN
   const auto* actual_io_info = reinterpret_cast<const onnxruntime::KernelIOInfo*>(io_info);
   const std::string& name = actual_io_info->GetName();

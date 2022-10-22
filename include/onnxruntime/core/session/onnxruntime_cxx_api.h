@@ -424,12 +424,24 @@ struct RunOptions : detail::Base<OrtRunOptions> {
 struct SessionOptions;
 
 namespace detail {
+// we separate const-only methods because passing const ptr to non-const methods
+// is only discovered when inline methods are compiled which is counter-intuitive
 template <typename T>
-struct SessionOptionsImpl : Base<T> {
+struct ConstSessionOptionsImpl : Base<T> {
   using B = Base<T>;
   using B::B;
 
   Ort::SessionOptions Clone() const;  ///< Creates and returns a copy of this SessionOptions object. Wraps OrtApi::CloneSessionOptions
+
+  std::string GetConfigEntry(const char* config_key) const;  ///< Wraps OrtApi::GetSessionConfigEntry
+  size_t GetConfigEntrySize(const char* config_key) const;   ///< Wraps OrtApi::GetSessionConfigEntrySize
+  std::string GetConfigEntryOrDefault(const char* config_key, const std::string& def);
+};
+
+template <typename T>
+struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
+  using B = ConstSessionOptionsImpl<T>;
+  using B::B;
 
   SessionOptionsImpl& SetIntraOpNumThreads(int intra_op_num_threads);                              ///< Wraps OrtApi::SetIntraOpNumThreads
   SessionOptionsImpl& SetInterOpNumThreads(int inter_op_num_threads);                              ///< Wraps OrtApi::SetInterOpNumThreads
@@ -457,7 +469,8 @@ struct SessionOptionsImpl : Base<T> {
 
   SessionOptionsImpl& DisablePerSessionThreads();  ///< Wraps OrtApi::DisablePerSessionThreads
 
-  SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);                                      ///< Wraps OrtApi::AddSessionConfigEntry
+  SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
+
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
 
@@ -480,7 +493,7 @@ struct SessionOptionsImpl : Base<T> {
 };
 }  // namespace detail
 
-// No const version required
+using ConstSessionOptions = detail::ConstSessionOptionsImpl<detail::Unowned<const OrtSessionOptions>>;
 using UnownedSessionOptions = detail::SessionOptionsImpl<detail::Unowned<OrtSessionOptions>>;
 
 /** \brief Wrapper around ::OrtSessionOptions
@@ -491,6 +504,7 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   SessionOptions();                                                                            ///< Wraps OrtApi::CreateSessionOptions
   explicit SessionOptions(OrtSessionOptions* p) : SessionOptionsImpl<OrtSessionOptions>{p} {}  ///< Used for interop with the C API
   UnownedSessionOptions GetUnowned() const { return UnownedSessionOptions{this->p_}; }
+  ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
 };
 
 /** \brief Wrapper around ::OrtModelMetadata
@@ -1721,6 +1735,15 @@ struct CustomOpBase : OrtCustomOp {
   OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
   }
+
+  // Declare list of session config entries used by this Custom Op.
+  std::vector<std::string> GetSessionConfigKeys() const {
+    return std::vector<std::string>{};
+  }
+
+ protected:
+  // Helper function that returns a map of session config entries specified by CustomOpBase::GetSessionConfigKeys.
+  std::unordered_map<std::string, std::string> GetSessionConfigs(ConstSessionOptions options) const;
 };
 
 }  // namespace Ort
