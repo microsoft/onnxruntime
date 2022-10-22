@@ -99,8 +99,10 @@
                                                 </ol>                                                 
                                             <li>Download and install the ONNX Runtime with SNPE package</a>
 					        <ul>
-						    <li>For C and C++: <a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Snpe" target="_blank">nuget<a></li>
-						    <li>For C#: Coming Soon</li>
+						    <li>For C and C++: Coming Soon <li>
+						    <li>For C#: Coming Soon <li>	
+						    <!--<li>For C and C++: <a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Snpe" target="_blank">C/C++ Nuget package<a></li>
+						    <li>For C#: <a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Snpe" target="_blank"> C# Nuget package<a></li>-->
 						</ul>
 					    </li>
                                             <li>Start using the ONNX Runtime API in your application.</li>
@@ -112,14 +114,14 @@
 					    <li>Run the tools provided in the SNPE SDK on your model to generate a binary file.</li>
 					    <li>Include the contents of the binary file as a node in the ONNX graph.</li>
 				         </ul>
-				    <p>See our tutorial (Coming Soon) for an example of how this is done.</p>
+				    <p>See our <a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_sharp/Snpe_EP/vgg16_image_classification" target="_blank">C# tutorial<a> for an example of how this is done.</p>
 				    <p>Many models can be optimized for the NPU using this process. Even if a model cannot be optimized for NPU by the SNPE SDK, it can still be run by ONNX Runtime on the CPU.</p>
 				    <br/>
                                     <h2 class="blue-text">Tutorials</h2> 
                                     <ul>
-                                        <li>Convert your model to use with ONNX Runtime with SNPE (Coming Soon)</li>
-                                        <li>Deploy your model on Windows Arm with ONNX Runtime (Coming Soon)</li>
-                                    </ul>
+                                        <li><a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_sharp/Snpe_EP/vgg16_image_classification" target="_blank">C# Image classification with VGG16 using ONNX Runtime with SNPE<a></li>
+					<li><a href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/Snpe_EP" target="_blank">C++ image classification with Inception v3 using ONNX Runtime with SNPE<a></li>
+                                     </ul>
 				    <br/>
                                     <h2 class="blue-text">Getting help</h2>
 				    <p>For help with ONNX Runtime, you can <a href="https://github.com/microsoft/onnxruntime/discussions" target="_blank">start a discussion</a> on GitHub or <a href="https://github.com/microsoft/onnxruntime/issues" target="_blank">file an issue</a>.<p>
