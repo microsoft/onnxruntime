@@ -12,8 +12,9 @@
 
 #include "core/common/common.h"
 #include "core/common/gsl.h"
-#include "core/common/logging/logging.h"
 #include "core/common/inlined_containers.h"
+#include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensor_shape.h"
@@ -690,7 +691,7 @@ Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   nb.add_doc_string(doc_string);
   nb.add_domain(domain);
   nb.add_since_version(since_version_);
-  nb.add_index(gsl::narrow<uint32_t>(index_));
+  nb.add_index(narrow<uint32_t>(index_));
   nb.add_op_type(op_type);
   nb.add_type(static_cast<fbs::NodeType>(node_type_));
   nb.add_execution_provider_type(ep);
@@ -708,7 +709,7 @@ flatbuffers::Offset<fbs::NodeEdge> Node::SaveEdgesToOrtFormat(flatbuffers::FlatB
     std::vector<fbs::EdgeEnd> edges;
     edges.reserve(edge_set.size());
     for (const auto& edge : edge_set)
-      edges.push_back(fbs::EdgeEnd(gsl::narrow<uint32_t>(edge.GetNode().Index()),
+      edges.push_back(fbs::EdgeEnd(narrow<uint32_t>(edge.GetNode().Index()),
                                    edge.GetSrcArgIndex(), edge.GetDstArgIndex()));
 
     return edges;
@@ -716,7 +717,7 @@ flatbuffers::Offset<fbs::NodeEdge> Node::SaveEdgesToOrtFormat(flatbuffers::FlatB
 
   const auto input_edges = get_edges(relationships_.input_edges);
   const auto output_edges = get_edges(relationships_.output_edges);
-  return fbs::CreateNodeEdgeDirect(builder, gsl::narrow<uint32_t>(index_), &input_edges, &output_edges);
+  return fbs::CreateNodeEdgeDirect(builder, narrow<uint32_t>(index_), &input_edges, &output_edges);
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -2802,7 +2803,7 @@ static void RemoveRepeatedFieldEntry(T& repeated_field, const TIter& entry_to_re
     // we do this so we don't have to move all the entries past the one being deleted down one.
     auto slot = entry_to_remove - repeated_field.begin();
     auto last_entry = repeated_field.end() - 1;
-    repeated_field.SwapElements(gsl::narrow<int>(slot), gsl::narrow<int>(num_entries - 1));
+    repeated_field.SwapElements(narrow<int>(slot), narrow<int>(num_entries - 1));
     repeated_field.erase(last_entry);
   } else {
     repeated_field.erase(entry_to_remove);

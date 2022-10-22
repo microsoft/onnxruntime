@@ -281,9 +281,9 @@ Status DeepCpuGruOp::ComputeImpl(OpKernelContext& context) const {
 
   auto& X_shape = X.Shape();
 
-  int seq_length = gsl::narrow<int>(X_shape[0]);
-  int batch_size = gsl::narrow<int>(X_shape[1]);
-  int input_size = gsl::narrow<int>(X_shape[2]);
+  int seq_length = narrow<int>(X_shape[0]);
+  int batch_size = narrow<int>(X_shape[1]);
+  int input_size = narrow<int>(X_shape[2]);
 
   auto status = ValidateCommonRnnInputs(X, W.Shape(), R.Shape(), B, 3, sequence_lens, initial_h, num_directions_, hidden_size_);
   ORT_RETURN_IF_ERROR(status);

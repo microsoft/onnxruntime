@@ -4,6 +4,7 @@
 #include "core/providers/cpu/reduction/reduction_ops.h"
 
 #include "core/common/inlined_containers.h"
+#include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/providers/common.h"
 //TODO: fix the warnings
@@ -558,7 +559,7 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
   }
 
   InlinedHashSet<int64_t> axes;
-  const auto input_shape_size = gsl::narrow<int64_t>(input_shape.size());
+  const auto input_shape_size = narrow<int64_t>(input_shape.size());
   if (reduced_axes.size() == 0 && !noop_with_empty_axes) {
     for (int64_t i = 0; i < input_shape_size; ++i) {
       axes.insert(i);

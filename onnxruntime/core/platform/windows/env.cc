@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <gsl/gsl>
 #include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
 #include "core/platform/windows/telemetry.h"
@@ -91,7 +92,7 @@ class WindowsThread : public EnvThread {
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
 
     std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param);
-    if (gsl::narrow<size_t>(index) < thread_options.affinity.size()) {
+    if (narrow<size_t>(index) < thread_options.affinity.size()) {
       local_param->affinity_mask = thread_options.affinity[index];
     }
 

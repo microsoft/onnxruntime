@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/math/element_wise_ops.h"
 
+#include "core/common/narrow.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/math.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -1330,8 +1331,8 @@ class Asinh final : public OpKernel {
     auto X_data = X.Data<float>();
     auto Y_data = Y.MutableData<float>();
 
-    auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
-    auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
+    auto in = gsl::make_span(X_data, narrow<ptrdiff_t>(X.Shape().Size()));
+    auto out = gsl::make_span(Y_data, narrow<ptrdiff_t>(Y.Shape().Size()));
 
     for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::asinh(in[index]);
@@ -1362,8 +1363,8 @@ class Acosh final : public OpKernel {
     auto X_data = X.Data<float>();
     auto Y_data = Y.MutableData<float>();
 
-    auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
-    auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
+    auto in = gsl::make_span(X_data, narrow<ptrdiff_t>(X.Shape().Size()));
+    auto out = gsl::make_span(Y_data, narrow<ptrdiff_t>(Y.Shape().Size()));
 
     for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::acosh(in[index]);
@@ -1394,8 +1395,8 @@ class Atanh final : public OpKernel {
     auto X_data = X.Data<float>();
     auto Y_data = Y.MutableData<float>();
 
-    auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
-    auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
+    auto in = gsl::make_span(X_data, narrow<ptrdiff_t>(X.Shape().Size()));
+    auto out = gsl::make_span(Y_data, narrow<ptrdiff_t>(Y.Shape().Size()));
 
     for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::atanh(in[index]);

@@ -4,9 +4,8 @@
 //https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
 #include <type_traits>
 
-#include "core/common/gsl.h"
-
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_type_control_utils.h"
@@ -205,7 +204,7 @@ Status ScatterData(
   const auto input_elements = input_data_shape.Size();
   const auto total_input_bytes = data_input->SizeInBytes();
 
-  const auto num_indices = gsl::narrow<int64_t>(indices_data.size());
+  const auto num_indices = narrow<int64_t>(indices_data.size());
 
   const auto* src_base = static_cast<const Tdata*>(data_input->DataRaw());
   auto* dst_base = static_cast<Tdata*>(data_output->MutableDataRaw());

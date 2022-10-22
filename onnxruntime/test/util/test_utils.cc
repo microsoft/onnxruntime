@@ -3,6 +3,7 @@
 
 #include "test/util/include/test_utils.h"
 
+#include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/onnx_protobuf.h"
@@ -172,7 +173,7 @@ void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl:
   gsl::span<const int64_t> ind_span;
   std::vector<int64_t> converted_indices;
   TensorShape ind_shape(indices_proto.dims().data(), indices_proto.dims().size());
-  const auto elements = gsl::narrow<size_t>(ind_shape.Size());
+  const auto elements = narrow<size_t>(ind_shape.Size());
   const bool has_raw_data = indices_proto.has_raw_data();
   switch (indices_proto.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64: {

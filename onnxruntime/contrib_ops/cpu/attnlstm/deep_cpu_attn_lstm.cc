@@ -8,6 +8,7 @@
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 #include "core/framework/allocator.h"
 //TODO: fix the warnings
@@ -95,9 +96,9 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
 
   auto& X_shape = X.Shape();
 
-  int seq_length = gsl::narrow<int>(X_shape[0]);
-  int batch_size = gsl::narrow<int>(X_shape[1]);
-  int input_size = gsl::narrow<int>(X_shape[2]);
+  int seq_length = narrow<int>(X_shape[0]);
+  int batch_size = narrow<int>(X_shape[1]);
+  int input_size = narrow<int>(X_shape[2]);
 
   // Processing attention wrapper
   constexpr int first_attn_input = 8;
@@ -113,12 +114,12 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
       am_query_layer_weights, am_memory_layer_weights, am_v_weights, attn_memory, attn_memory_seq_lens, attn_layer_weights);
   ORT_RETURN_IF_ERROR(status);
 
-  const int max_memory_step = gsl::narrow<int>(attn_memory.Shape()[1]);
-  const int memory_depth = gsl::narrow<int>(am_memory_layer_weights.Shape()[1]);
-  const int am_attn_size = gsl::narrow<int>(am_memory_layer_weights.Shape()[2]);
-  const int query_depth = gsl::narrow<int>(am_query_layer_weights.Shape()[1]);  // it is equal to hidden_size
+  const int max_memory_step = narrow<int>(attn_memory.Shape()[1]);
+  const int memory_depth = narrow<int>(am_memory_layer_weights.Shape()[1]);
+  const int am_attn_size = narrow<int>(am_memory_layer_weights.Shape()[2]);
+  const int query_depth = narrow<int>(am_query_layer_weights.Shape()[1]);  // it is equal to hidden_size
   const bool has_attention_layer = attn_layer_weights != nullptr;
-  const int attn_layer_depth = has_attention_layer ? gsl::narrow<int>(attn_layer_weights->Shape()[2]) : 0;
+  const int attn_layer_depth = has_attention_layer ? narrow<int>(attn_layer_weights->Shape()[2]) : 0;
   const int attention_size = has_attention_layer ? attn_layer_depth : memory_depth;
 
   const gsl::span<const T> attn_layer_weights_span = (has_attention_layer) ? attn_layer_weights->DataAsSpan<T>() : gsl::span<const T>();
@@ -461,8 +462,8 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
                            "Attention mechanism memory shape error! Expected: {", batch_size,
                            "}, actural: ", memory_shape);
   }
-  const int max_memory_step = gsl::narrow<int>(memory_shape[1]);
-  const int memory_depth = gsl::narrow<int>(memory_shape[2]);
+  const int max_memory_step = narrow<int>(memory_shape[1]);
+  const int memory_depth = narrow<int>(memory_shape[2]);
   if (attn_memory_seq_lens != nullptr) {
     auto memory_seq_lens_shape = attn_memory_seq_lens->Shape();
     if (memory_seq_lens_shape.NumDimensions() != 1 || memory_seq_lens_shape[0] != batch_size) {
@@ -490,7 +491,7 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
                            "Attention memory layer weight shape error! Expected:{",
                            num_directions_, ",", memory_depth, ", am_attn_size}, Got:", memory_layer_shape);
   }
-  const int am_attn_size = gsl::narrow<int>(memory_layer_shape[2]);
+  const int am_attn_size = narrow<int>(memory_layer_shape[2]);
 
   // check query layer weights of [num_directions, query_depth(hidden_size of lstm), am_attn_size]
   auto query_layer_shape = am_query_layer_weights.Shape();
@@ -525,7 +526,7 @@ Status DeepCpuAttnLstmOp::ValidateInputs(
                              "Attention layer weight shape error! Expected: {", num_directions_, ", ",
                              memory_depth + hidden_size_, ", aw_attn_size}. Got:", attn_layer_shape);
     }
-    aw_attn_size = gsl::narrow<int>(attn_layer_shape[2]);
+    aw_attn_size = narrow<int>(attn_layer_shape[2]);
   }
 
   auto status = ValidateRnnInputsWithExtraInputFromState(

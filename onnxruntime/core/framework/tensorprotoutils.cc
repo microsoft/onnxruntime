@@ -9,6 +9,7 @@
 
 #include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/endian_utils.h"
@@ -620,7 +621,7 @@ Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
 
     SafeInt<FileOffsetType> end_of_read(file_offset);
     end_of_read += raw_data_safe_len;
-    ORT_RETURN_IF(file_offset < 0 || end_of_read > gsl::narrow<FileOffsetType>(file_length),
+    ORT_RETURN_IF(file_offset < 0 || end_of_read > narrow<FileOffsetType>(file_length),
                   "External initializer: ", tensor_proto.name(),
                   " offset: ", file_offset, " size to read: ", static_cast<size_t>(raw_data_safe_len),
                   " given file_length: ", file_length, " are out of bounds or can not be read in full.");
@@ -898,7 +899,7 @@ static Status CopySparseData(size_t n_sparse_elements,
                              std::function<void(size_t from_idx, size_t to_idx)> copier) {
   Status status = Status::OK();
   TensorShape indices_shape(indices.dims().data(), indices.dims().size());
-  const auto elements = gsl::narrow<size_t>(indices_shape.Size());
+  const auto elements = narrow<size_t>(indices_shape.Size());
 
   std::vector<int64_t> indices_values;  // used for conversion of smaller size indices
   std::vector<uint8_t> unpack_buffer;
@@ -972,7 +973,7 @@ static Status CopySparseData(size_t n_sparse_elements,
   if (indices_shape.NumDimensions() == 1) {
     // flattened indexes
     for (size_t i = 0; i < n_sparse_elements; ++i) {
-      copier(i, gsl::narrow<size_t>(indices_data[i]));
+      copier(i, narrow<size_t>(indices_data[i]));
     }
   } else if (indices_shape.NumDimensions() == 2) {
     // entries in format {NNZ, rank}

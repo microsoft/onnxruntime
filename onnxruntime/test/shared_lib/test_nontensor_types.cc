@@ -61,18 +61,16 @@ TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type
   size_t num_values = seq_ort.GetCount();
   ASSERT_EQ(num_values, N);
 
+#if !defined(ORT_NO_EXCEPTIONS)
   // test negative case
   bool failed = false;
-  ORT_TRY {
+  try {
     auto temp = seq_ort.GetValue(999, default_allocator.get());
+  } catch (const Ort::Exception& e) {
+    failed = e.GetOrtErrorCode() == ORT_RUNTIME_EXCEPTION;
   }
-  ORT_CATCH(const Ort::Exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      failed = e.GetOrtErrorCode() == ORT_RUNTIME_EXCEPTION;
-    });
-  }
-
   ASSERT_EQ(failed, true);
+#endif  // !defined(ORT_NO_EXCEPTIONS)
 
   // Fetch
   for (size_t idx = 0; idx < N; ++idx) {

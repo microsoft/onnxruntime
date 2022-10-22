@@ -10,6 +10,7 @@
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/common/type_list.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/data_types.h"
@@ -174,7 +175,7 @@ struct TensorCaster {
     using SrcEigenCastType = typename EigenCastType<SrcType>::type;
     using DstEigenCastType = typename EigenCastType<DstType>::type;
 
-    const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
     const auto in_vector =
         ConstEigenVectorMap<SrcEigenCastType>(reinterpret_cast<const SrcEigenCastType*>(in.Data<SrcType>()), shape_size);
     auto out_vector =
@@ -187,7 +188,7 @@ struct TensorCaster {
 template <typename SrcType>
 struct TensorCaster<SrcType, std::string> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
     auto* out_data = out.MutableData<std::string>();
     for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
@@ -200,7 +201,7 @@ struct TensorCaster<SrcType, std::string> {
 template <typename DstType>
 struct TensorCaster<std::string, DstType> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<std::string>();
     auto* out_data = out.MutableData<DstType>();
     for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
@@ -219,7 +220,7 @@ struct TensorCaster<MLFloat16, float> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     auto out_data = out.MutableData<float>();
     auto in_data = in.Data<MLFloat16>();
-    const size_t shape_size = gsl::narrow<size_t>(shape.Size());
+    const size_t shape_size = narrow<size_t>(shape.Size());
     MlasConvertHalfToFloatBuffer(&in_data[0].val, out_data, shape_size);
   }
 };
