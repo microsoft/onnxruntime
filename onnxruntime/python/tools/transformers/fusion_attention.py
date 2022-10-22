@@ -299,8 +299,8 @@ class FusionAttention(Fusion):
         self.model.add_initializer(bias, self.this_graph_name)
 
         attention_inputs = [
-            input,
-            attention_node_name + "_qkv_weight" if not self.exclude_matmul else q_matmul.output[0],
+            input if not self.exclude_matmul else q_matmul.output[0],
+            attention_node_name + "_qkv_weight" if not self.exclude_matmul else "",
             attention_node_name + "_qkv_bias",
         ]
         if mask_index is not None:
