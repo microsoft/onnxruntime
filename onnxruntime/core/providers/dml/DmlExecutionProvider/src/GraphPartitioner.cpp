@@ -247,12 +247,12 @@ namespace Dml
 
     bool IsNodeSupportedByDml(
         const onnxruntime::Node& node,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernelLookup,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         const InternalRegistrationInfoMap& internalRegInfoMap
         )
     {
-        const onnxruntime::KernelCreateInfo* createInfo = kernel_lookup.LookUpKernel(node);
+        const onnxruntime::KernelCreateInfo* createInfo = kernelLookup.LookUpKernel(node);
         if (!createInfo)
         {
             return false;
@@ -283,7 +283,7 @@ namespace Dml
     void GetRegistrationProperties(
         const onnxruntime::GraphViewer& graph,
         const onnxruntime::Node& node,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernelLookup,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         const InternalRegistrationInfoMap& internalRegInfoMap,
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap,
@@ -299,7 +299,7 @@ namespace Dml
         // Find the highest priority DML registry supporting this node, and get its highest-priority
         // registration.  Determine if that registration supports usage as a graph node.
 
-        if (IsNodeSupportedByDml(node, kernel_lookup, supportedDeviceDataTypeMask,
+        if (IsNodeSupportedByDml(node, kernelLookup, supportedDeviceDataTypeMask,
                                  internalRegInfoMap))
         {
             *isDmlNode = true;
@@ -310,7 +310,7 @@ namespace Dml
 
             // Ensure that shape information is known statically for the inputs and outputs of the node,
             // which is required for MLGraph compilation.
-            const onnxruntime::KernelCreateInfo* createInfo = kernel_lookup.LookUpKernel(node);
+            const onnxruntime::KernelCreateInfo* createInfo = kernelLookup.LookUpKernel(node);
             assert(createInfo != nullptr);  // since IsNodeSupportedByDml() returned true
 
             auto regInfoIter = internalRegInfoMap.find(createInfo->kernel_def.get());
@@ -600,7 +600,7 @@ namespace Dml
     BuildPartitions(
         const onnxruntime::GraphViewer& graph,
         const InternalRegistrationInfoMap& internalRegInfoMap,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernelLookup,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
@@ -641,9 +641,24 @@ namespace Dml
         // Check whether this graph is a subgraph, or contains any node with a subgraph.
         bool modelUsesSubgraph = ModelUsesSubgraph(graph);
 
+        // Get the list of nodes that should stay on the CPU
+        InlinedVector<NodeIndex> candidates;
+        for (size_t nodeIndex : toplogicalOrder)
+        {
+            const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
+            candidates.push_back(node.Index());
+        }
+
+        auto cpuNodes = GetCpuPreferredNodes(graph, kernelLookup, candidates);
+
         // Build up partitions while traversing the graph.
         for (size_t nodeIndex : toplogicalOrder)
         {
+            if (cpuNodes.count(node_index) > 0)
+            {
+                continue;
+            }
+
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
 
             // Whether the node is implemented through DML.
@@ -657,7 +672,7 @@ namespace Dml
             GetRegistrationProperties(
                 graph,
                 node,
-                kernel_lookup,
+                kernelLookup,
                 supportedDeviceDataTypeMask,
                 internalRegInfoMap,
                 &nodeNameToPartitionMap,
@@ -777,7 +792,7 @@ namespace Dml
     PartitionGraph(
         const onnxruntime::GraphViewer& graph,
         const InternalRegistrationInfoMap& internalRegInfoMap,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernelLookup,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         onnxruntime::KernelRegistry* registryForPartitionKernels,
         const std::string& partitionKernelPrefix
@@ -792,7 +807,7 @@ namespace Dml
         std::vector<std::unique_ptr<GraphPartition>> partitions = BuildPartitions(
             graph,
             internalRegInfoMap,
-            kernel_lookup,
+            kernelLookup,
             supportedDeviceDataTypeMask,
             graphNodePropertyMap,
             requiredInitializerMap);
