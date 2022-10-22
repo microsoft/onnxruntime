@@ -48,6 +48,13 @@ class AttentionBase {
     require_weights_ = require_weights;
   }
 
+  Status CheckMask(const Tensor* mask_index,
+                   bool& is_dummy,                // output: whether the mask is dummy with shape (1 or batch_size, 1)
+                   int64_t& max_sequence_length,  // output: max_sequence_length when mask_index is 4D tensor
+                   int64_t batch_size,
+                   int64_t sequence_length,
+                   int64_t total_sequence_length) const;
+
   Status CheckInputs(const TensorShape& input_shape,
                      const TensorShape* weights_shape,
                      const TensorShape& bias_shape,

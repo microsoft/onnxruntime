@@ -52,7 +52,7 @@ static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length
 }
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false, true) {
+Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false, false) {
   disable_fused_runner_ = sizeof(T) != 2 || ParseEnvironmentVariableWithDefault<bool>(kDisableFusedAttention, false);
 }
 
