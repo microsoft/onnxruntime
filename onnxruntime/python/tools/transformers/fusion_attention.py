@@ -99,6 +99,7 @@ class FusionAttention(Fusion):
         self.num_heads = num_heads
         self.attention_mask = attention_mask
 
+        self.exclude_matmul = False
         # Flags to show warning only once
         self.num_heads_warning = True
         self.hidden_size_warning = True
@@ -274,17 +275,18 @@ class FusionAttention(Fusion):
 
         attention_node_name = self.model.create_node_name("Attention")
 
-        weight = helper.make_tensor(
-            name=attention_node_name + "_qkv_weight",
-            data_type=TensorProto.FLOAT,
-            dims=[qw_in_size, qkv_weight_dim],
-            vals=qkv_weight.flatten().tolist(),
-        )
+        if not self.exclude_matmul:
+            weight = helper.make_tensor(
+                name=attention_node_name + "_qkv_weight",
+                data_type=TensorProto.FLOAT,
+                dims=[qw_in_size, qkv_weight_dim],
+                vals=qkv_weight.flatten().tolist(),
+            )
 
-        # Sometimes weights and bias are stored in fp16
-        if q_weight.data_type == 10:
-            weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
-        self.model.add_initializer(weight, self.this_graph_name)
+            # Sometimes weights and bias are stored in fp16
+            if q_weight.data_type == 10:
+                weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
+            self.model.add_initializer(weight, self.this_graph_name)
 
         bias = helper.make_tensor(
             name=attention_node_name + "_qkv_bias",
@@ -298,7 +300,7 @@ class FusionAttention(Fusion):
 
         attention_inputs = [
             input,
-            attention_node_name + "_qkv_weight",
+            attention_node_name + "_qkv_weight" if not self.exclude_matmul else q_matmul.output[0],
             attention_node_name + "_qkv_bias",
         ]
         if mask_index is not None:
@@ -307,8 +309,12 @@ class FusionAttention(Fusion):
             attention_inputs.append("")
 
         if add_qk_str is not None:
-            attention_inputs.append("")
+            attention_inputs.append("")  # no past
             attention_inputs.append(add_qk_str)
+
+        if self.exclude_matmul:
+            attention_inputs.append(k_matmul.output[0])  # key
+            attention_inputs.append(v_matmul.output[0])  # value
 
         attention_node = helper.make_node(
             "Attention",
@@ -562,9 +568,9 @@ class FusionAttention(Fusion):
 
             self.nodes_to_remove.extend([attention_last_node, transpose_qkv, matmul_qkv])
             self.nodes_to_remove.extend(qk_nodes)
-            self.nodes_to_remove.extend(q_nodes)
-            self.nodes_to_remove.extend(k_nodes)
-            self.nodes_to_remove.extend(v_nodes)
+            self.nodes_to_remove.extend(q_nodes[:-1] if self.exclude_matmul else q_nodes)
+            self.nodes_to_remove.extend(k_nodes[:-1] if self.exclude_matmul else k_nodes)
+            self.nodes_to_remove.extend(v_nodes[:-1] if self.exclude_matmul else v_nodes)
 
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
             # self.nodes_to_remove.extend(mask_nodes)

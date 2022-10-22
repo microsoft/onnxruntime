@@ -383,6 +383,7 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_attention:
             if options is not None:
                 self.attention_mask.set_mask_format(options.attention_mask_format)
+            self.attention_fusion.exclude_matmul = not options.enable_attention_weights
             self.fuse_attention()
 
         # Perform the MatMul fusion after the Attention fusion as we do not
