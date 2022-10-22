@@ -27,6 +27,58 @@ float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
   return static_cast<float>((s ? -1 : 1) * pow(2.0, e) * (m + 1.0));
 }
 
+typedef std::pair<std::vector<size_t>, bool> SubGraph_t;
+
+//! \typedef SubGraphCollection_t
+//!
+//! \brief The data structure containing all SubGraph_t partitioned
+//! out of an ONNX graph.
+//!
+typedef std::vector<SubGraph_t> SubGraphCollection_t;
+
+bool WriteSupportedList(const std::string file_name, std::vector<std::pair<std::vector<size_t>, bool>>& supported_nodes_vector) {//SubGraphCollection_t
+  std::ofstream outfile(file_name, std::ios::out | std::ios::trunc | std::ios::binary);
+  if (!outfile) {
+    return false;
+  }
+
+  for (const auto& group : supported_nodes_vector) {
+    if (!group.first.empty()) {
+      for (const auto& index : group.first) {
+        outfile << index << " ";
+      }
+      outfile << std::endl;
+    }
+  }
+  outfile.close();
+  return true;
+}
+
+bool ReadSupportedList(const std::string file_name, std::vector<std::pair<std::vector<size_t>, bool>>& supported_nodes_vector) {//SubGraphCollection_t
+  std::ifstream infile(file_name, std::ios::binary | std::ios::in);
+  if (!infile) {
+    return false;
+  }
+
+  std::string line;
+  //char delim = ' ';
+  while (std::getline(infile, line)) {
+    std::istringstream in_line(line);
+    int index;
+    std::vector<size_t> node_list;
+    while (!in_line.eof()) {
+      in_line >> index;
+      node_list.push_back(index);            
+    }
+    for (auto idx : node_list)
+      std::cout << idx << " ";
+    std::cout << std::endl;
+    supported_nodes_vector.push_back({node_list, true});
+  }
+  infile.close();
+  return true;
+}
+
 /*
 * Read calibration table for INT8 quantization
 * Two kind of calibration tables are supported,
