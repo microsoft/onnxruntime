@@ -308,9 +308,12 @@ class FusionAttention(Fusion):
         else:
             attention_inputs.append("")
 
+        attention_inputs.append("")  # no past
+
         if add_qk_str is not None:
-            attention_inputs.append("")  # no past
             attention_inputs.append(add_qk_str)
+        else:
+            attention_inputs.append("")
 
         if self.exclude_matmul:
             attention_inputs.append(k_matmul.output[0])  # key
