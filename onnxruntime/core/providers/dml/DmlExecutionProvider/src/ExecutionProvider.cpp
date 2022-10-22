@@ -190,7 +190,7 @@ namespace Dml
         m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
 
-        // CPU Allocator used to create buffers for the MemcpyFromHost operator.
+        // CPU Allocator used to create buffers for the MemcpyFromHost / Shape operator.
         m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
         m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
 

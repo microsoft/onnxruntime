@@ -609,7 +609,7 @@ namespace OperatorHelper
         // `transBatch` needs to be applied first and then `transpose`.
         if (transBatch)
         {
-            ML_CHECK_VALID_ARGUMENT(dimensionCount > 2, 
+            ML_CHECK_VALID_ARGUMENT(dimensionCount > 2,
                 "FusedMatMul operator: Tensor size should be more than 2, if attribute transBatch is true");
 
             std::rotate(newSizes.begin(), newSizes.end() - 2, newSizes.end() - 1);
@@ -702,7 +702,7 @@ namespace OperatorHelper
         if (inputShape0 != inputShape1)
         {
             ML_CHECK_VALID_ARGUMENT(
-                inputShape0.size() == inputShape1.size() && 
+                inputShape0.size() == inputShape1.size() &&
                 inputShape0.size() == inputStride0.size() &&
                 inputStride0.size() == inputStride1.size(),
                 "Size of inputShape0, inputStride0, inputShape1 and inputStride1 should be same while broadcasting");
@@ -715,7 +715,7 @@ namespace OperatorHelper
 
             auto inStride0Iter = inputStride0.rbegin();
             auto inStride1Iter = inputStride1.rbegin();
-            
+
             while (rank-- > 0)
             {
                 DimensionType inDimension0 = *inDim0Iter;
@@ -2475,6 +2475,13 @@ namespace OperatorHelper
             outputDimensionsList.push_back(EdgeShapes(shapeInformation.GetInputTensorShape(4))); // running_variance.shape = input_variance.shape
         }
         return outputDimensionsList;
+    }
+
+    std::vector<EdgeShapes> ShapeHelper::GetOutputShapes(const MLShapeInferenceContext & shapeInfo) const
+    {
+        std::vector<EdgeShapes> edgeShapes(1);
+        edgeShapes[0] = { shapeInfo.GetInputTensorDimensionCount(0) };
+        return edgeShapes;
     }
 
 } // namespace OperatorHelper

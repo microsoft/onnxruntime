@@ -261,6 +261,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(DynamicQuantizeLinear);
 DML_OP_EXTERN_CREATION_FUNCTION(MatMulInteger);
 DML_OP_EXTERN_CREATION_FUNCTION(ConvInteger);
 DML_OP_EXTERN_CREATION_FUNCTION(Trilu);
+DML_OP_EXTERN_CREATION_FUNCTION(Shape);
 
 DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
 DML_OP_EXTERN_QUERY_FUNCTION(Slice);
@@ -330,6 +331,7 @@ constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListIntege
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRoiAlign = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64 };
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListArgMinMax = {SupportedTensorDataTypes::Float16to32|SupportedTensorDataTypes::Ints8to64};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLayerNormalization = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float32};
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListShape = {SupportedTensorDataTypes::All, SupportedTensorDataTypes::Int64};
 
 constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListQLinearMatMul = {
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
@@ -682,7 +684,9 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 11,  TopK,                               typeNameListTopK,               supportedTypeListTopK,                  DmlGraphSupport::Supported, requiredConstantCpuInputs(1))},
     {REG_INFO(      9,  OneHot,                             typeNameListThree,              supportedTypeListOneHot,                DmlGraphSupport::Supported, requiredConstantCpuInputs(1))},
     {REG_INFO(     11,  OneHot,                             typeNameListThree,              supportedTypeListOneHot,                DmlGraphSupport::Supported, requiredConstantCpuInputs(1))},
-    // Shape-1, Shape-13, Shape-15 rely on CPU.
+    {REG_INFO(      7,  Shape,                              typeNameListTwo,                supportedTypeListShape,                 DmlGraphSupport::Supported)},
+    {REG_INFO(     13,  Shape,                              typeNameListTwo,                supportedTypeListShape,                 DmlGraphSupport::Supported)},
+    {REG_INFO(     15,  Shape,                              typeNameListTwo,                supportedTypeListShape,                 DmlGraphSupport::Supported)},
     // Size-1 relies on CPU.
 
     // DmlFused operators

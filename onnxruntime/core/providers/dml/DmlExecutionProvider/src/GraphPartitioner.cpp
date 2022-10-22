@@ -10,6 +10,7 @@
 #include "GraphDescBuilder.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/fallback_cpu_capability.h"
 #include <wil/wrl.h>
 #ifndef _GAMING_XBOX
 #include <dxgi1_6.h>
@@ -642,7 +643,7 @@ namespace Dml
         bool modelUsesSubgraph = ModelUsesSubgraph(graph);
 
         // Get the list of nodes that should stay on the CPU
-        InlinedVector<NodeIndex> candidates;
+        std::vector<size_t> candidates;
         for (size_t nodeIndex : toplogicalOrder)
         {
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
@@ -654,7 +655,8 @@ namespace Dml
         // Build up partitions while traversing the graph.
         for (size_t nodeIndex : toplogicalOrder)
         {
-            if (cpuNodes.count(node_index) > 0)
+            // Skip nodes that should stay on the CPU (e.g. CPU subgraphs or small initializers)
+            if (cpuNodes.count(nodeIndex) > 0)
             {
                 continue;
             }
