@@ -40,6 +40,7 @@ class MatMul final : public CudaKernel {
   void* right_X_ptr_1_ = nullptr;
   void* right_X_ptr_2_ = nullptr;
 
- ;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime
