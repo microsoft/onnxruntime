@@ -144,7 +144,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       }
       */
 
-      void* weight_ptr = right_X->Data<T>();
+      const void* weight_ptr = right_X->Data<T>();
       if (right_X->SizeInBytes() == 1179648) {    
           weight_ptr = right_X_ptr_1_;
       } else if (right_X->SizeInBytes() == 4718592) {
