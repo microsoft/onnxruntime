@@ -72,7 +72,7 @@ class TestBackend(unittest.TestCase):
         model = load(name)
 
         inputs = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        enable_mem_pattern = "GPU" not in get_device()
+        enable_mem_pattern = False
         outputs = ort_backend.run_model(model, inputs, enable_mem_pattern=enable_mem_pattern)
 
         output_expected = np.array([0, 0, 0], dtype=np.float32)
