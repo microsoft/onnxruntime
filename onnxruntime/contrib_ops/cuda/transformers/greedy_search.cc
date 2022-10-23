@@ -21,6 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 1)    // 'max_length' needs to be on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 2)    // 'min_length' needs to be on CPU
         .InputMemoryType(OrtMemTypeCPUInput, 3)    // 'repetition_penalty' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 6)    // 'custom_attention_mask' needs to be on CPU
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)  // 'sequences' output on CPU
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<MLFloat16>()}),

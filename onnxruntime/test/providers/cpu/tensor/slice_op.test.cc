@@ -650,6 +650,37 @@ TEST(SliceTest, Slice5D_LargeStep) {
                       {});
 }
 
+TEST(SliceTest, Slice5D_CopyAxis2LargeBlock) {
+  // We are trying to accomplish two things
+  // 1) we still need to copy multiple slices because of the axis 1 (slices 0,1)
+  // 2) we are combining axis 2 slices(1,2) in one copy because its step is 1 and
+  //    dims below it are copied as a whole
+  RunSliceTest<float>({1, 3, 4, 2, 2},
+                      {1.f, 2.f, 3.f, 4.f,
+                       5.f, 6.f, 7.f, 8.f,
+                       -1.f, -2.f, -3.f, -4.f,
+                       -5.f, -6.f, -7.f, -8.f,
+                       1.f, 2.f, 3.f, 4.f,
+                       5.f, 6.f, 7.f, 8.f,
+                       -1.f, -2.f, -3.f, -4.f,
+                       -5.f, -6.f, -7.f, -8.f,
+                       1.f, 2.f, 3.f, 4.f,
+                       5.f, 6.f, 7.f, 8.f,
+                       -1.f, -2.f, -3.f, -4.f,
+                       -5.f, -6.f, -7.f, -8.f},
+                      {0, 1},  // starts
+                      {2, 3},  // ends
+                      {1, 2},  // axis
+                      {},      // steps defaults to 1
+                      {1, 2, 2, 2, 2},
+                      {5.f, 6.f, 7.f, 8.f,
+                       -1.f, -2.f, -3.f, -4.f,
+                        5.f, 6.f, 7.f, 8.f,
+                       -1.f, -2.f, -3.f, -4.f},
+                      true,
+                      {});
+}
+
 TEST(SliceTest, EmptyDim) {
   RunSliceTest<float>({0, 6},  // empty dim in shape
                       {},
