@@ -34,7 +34,7 @@ def check_list_of_map_to_float(testcase, expected_rows, actual_rows):
 class TestBackend(unittest.TestCase):
     def testRunModelNonTensor(self):
         name = get_name("pipeline_vectorize.onnx")
-        enable_mem_pattern = "DmlExecutionProvider" not in get_device()
+        enable_mem_pattern = "GPU" not in get_device()
         rep = backend.prepare(name, enable_mem_pattern=enable_mem_pattern)
         x = {0: 25.0, 1: 5.13, 2: 0.0, 3: 0.453, 4: 5.966}
         res = rep.run(x)
@@ -45,7 +45,7 @@ class TestBackend(unittest.TestCase):
         name = datasets.get_example("logreg_iris.onnx")
         model = load(name)
 
-        enable_mem_pattern = "DmlExecutionProvider" not in get_device()
+        enable_mem_pattern = "GPU" not in get_device()
         rep = backend.prepare(model, enable_mem_pattern=enable_mem_pattern)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         res = rep.run(x)
@@ -72,7 +72,7 @@ class TestBackend(unittest.TestCase):
         model = load(name)
 
         inputs = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        enable_mem_pattern = "DmlExecutionProvider" not in get_device()
+        enable_mem_pattern = "GPU" not in get_device()
         outputs = ort_backend.run_model(model, inputs, enable_mem_pattern=enable_mem_pattern)
 
         output_expected = np.array([0, 0, 0], dtype=np.float32)
