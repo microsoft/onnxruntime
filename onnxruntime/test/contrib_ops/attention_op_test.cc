@@ -2023,7 +2023,7 @@ TEST(AttentionTest, AttentionBatch1_No_Weights) {
   std::vector<float> value_data = {0.6f, 0.5f, 0.4f, 0.3f, 0.2f, 0.1f};
 
   // (batch_size, sequence_length, v_hidden_size)
-  std::vector<float> output_data = {-0.0056508128f, 0.0f - 0.011265674f, 0.94572037f};
+  std::vector<float> output_data = {-0.0056508128f, 0.0f, -0.011265674f, 0.94572037f};
 
   bool use_float16 = false;
   bool is_unidirectional = false;

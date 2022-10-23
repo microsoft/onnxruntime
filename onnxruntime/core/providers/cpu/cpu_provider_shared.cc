@@ -102,15 +102,15 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) override { return onnxruntime::PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
 
   // From cpu/tensor/slice.h (direct)
-  Status SliceBase__PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                      const gsl::span<const int64_t>& raw_ends,
-                                      const gsl::span<const int64_t>& raw_axes,
+  Status SliceBase__PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                      gsl::span<const int64_t> raw_ends,
+                                      gsl::span<const int64_t> raw_axes,
                                       SliceOp__PrepareForComputeMetadata& compute_metadata) override { return SliceBase::PrepareForCompute(raw_starts, raw_ends, raw_axes, reinterpret_cast<SliceOp::PrepareForComputeMetadata&>(compute_metadata)); }
 
-  Status SliceBase__PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                      const gsl::span<const int64_t>& raw_ends,
-                                      const gsl::span<const int64_t>& raw_axes,
-                                      const gsl::span<const int64_t>& raw_steps,
+  Status SliceBase__PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                      gsl::span<const int64_t> raw_ends,
+                                      gsl::span<const int64_t> raw_axes,
+                                      gsl::span<const int64_t> raw_steps,
                                       SliceOp__PrepareForComputeMetadata& compute_metadata) override { return SliceBase::PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, reinterpret_cast<SliceOp::PrepareForComputeMetadata&>(compute_metadata)); }
 
   Status SliceBase__FillVectorsFromInput(const Tensor& start_tensor,

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cxxabi.h>
 #include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
 
@@ -136,11 +137,24 @@ class TunableOp {
     return true;
   }
 
+  std::string OpSignature() const {
+    const auto* name = typeid(*this).name();
+    char buf[256];
+    size_t buf_len = 256;
+    abi::__cxa_demangle(name, buf, &buf_len, nullptr);
+    buf[255] = '\0';
+    return buf;
+  }
+
   int FindFastest(const ParamsT* params) {
+    auto op_sig = OpSignature();
+    auto param_sig = params->Signature();
+    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ')';
     auto min_time = std::numeric_limits<double>::infinity();
     int id = -1;
     for (size_t i = 0; i < this->ops_.size(); i++) {
       if (!IsSupported(ops_[i], params)) {
+        LOGS_DEFAULT(VERBOSE) << "FindFastest found unsupported " << op_sig << '(' << param_sig << ") id=" << i;
         continue;
       }
 
@@ -152,6 +166,7 @@ class TunableOp {
       }
     }
     ORT_ENFORCE(id >= 0, "Cannot found viable op");
+    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ") found fastest with id=" << id;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return id;
   }
