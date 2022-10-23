@@ -36,7 +36,8 @@ class QAttention<T, int8_t> final : public CudaKernel, public AttentionBase {
                      const Tensor*& mask_index,
                      const Tensor* i_zp_tensor,
                      const Tensor* w_zp_tensor,
-                     const Tensor* past_tensor) const;
+                     const Tensor* past_tensor,
+                     void* parameters) const;
 };
 
 }  // namespace cuda

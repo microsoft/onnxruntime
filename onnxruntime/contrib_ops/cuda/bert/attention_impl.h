@@ -25,31 +25,9 @@ size_t GetAttentionWorkspaceSize(
     size_t qk_head_size,
     size_t v_head_size,
     size_t sequence_length,
+    size_t kv_sequence_length,
     size_t total_sequence_length,
     void* fused_runner);
-
-Status LaunchAttentionKernel(
-    const cudaDeviceProp& prop,                // Device Properties
-    cudaStream_t stream,                       // cuda stream
-    cublasHandle_t& cublas,                    // Cublas handle
-    const size_t element_size,                 // Element size of input tensor
-    int batch_size,                            // Batch size (B)
-    int sequence_length,                       // Sequence length (S)
-    int num_heads,                             // Number of attention heads (N)
-    const int qk_head_size,                    // Hidden size per head for q and k (H)
-    int past_sequence_length,                  // Sequence length in past state
-    bool is_unidirectional,                    // Whether there is unidirecitonal mask.
-    const void* gemm_buffer,                   // Buffer of GEMM output with merged query, key and value.
-    const void* bias,                          // Bias tensor
-    const int* mask_index,                     // Attention mask raw data or index. NULL means no mask.
-    gsl::span<const int64_t> mask_index_dims,  // Mask index shape
-    const void* past,                          // Past state input
-    const void* extra_add_qk,                  // Additional Add
-    void* workspace,                           // Temporary buffer
-    void* output,                              // Output tensor
-    void* present,                             // Present state output
-    void* fused_runner,                        // Fused multi-head attention
-    const int v_head_size);                    // Hidden size per head for v (H_v)
 
 template <typename T>
 struct AttentionData {
@@ -75,7 +53,7 @@ Status QkvToContext(
     cublasHandle_t& cublas,
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
-    AttentionData<T>& inputs,
+    AttentionData<T>& data,
     void* fused_runner);
 
 Status LaunchDecoderAttentionKernel(

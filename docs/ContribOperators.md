@@ -85,14 +85,27 @@ Do not modify directly.*
 ## com.microsoft
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
-  Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
-  The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length)
-  or (batch_size, sequence_length, past_sequence_length + sequence_length) with value 0 for masked and 1 otherwise,
-  we also support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
+  Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
+  
+  The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension, its shape
+  is (input_hidden_size, num_heads * q_head_size + num_heads * q_head_size + num_heads * v_head_size).
+  
+  The mask_index is optional. Besides raw attention mask with shape (batch_size, total_sequence_length)
+  or (batch_size, sequence_length, total_sequence_length) with value 0 for masked and 1 otherwise,
+  we support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
   where value of each element is the end position, or valid length of actual sequence excluding padding. When input has
   left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
-  the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
-  and present state are optional. Present state could appear in output even when past state is not in input.
+  the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. Both
+  past and present state are optional.
+  
+  When weights is not provided, key and value are required. In this situation, MatMul for input projection is excluded,
+  and input is the query after projection. Add bias is included for performance consideration.
+  
+  The qkv_hidden_sizes is required only when K and V has different hidden size.
+  
+  When there is past state, hidden dimension for Q, K and V shall be the same.
+  
+  The total_sequence_length is past_sequence_length + kv_sequence_length.
 
 #### Version
 
@@ -104,35 +117,39 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 <dt><tt>qkv_hidden_sizes</tt> : list of ints</dt>
-<dd>Hidden layer sizes of Q, K, V paths in Attention</dd>
+<dd>Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size</dd>
 <dt><tt>unidirectional</tt> : int</dt>
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
-#### Inputs (3 - 6)
+#### Inputs (3 - 8)
 
 <dl>
-<dt><tt>input</tt> : T</dt>
-<dd>3D input tensor with shape (batch_size, sequence_length, input_hidden_size)</dd>
-<dt><tt>weight</tt> : T</dt>
-<dd>2D input tensor with shape (input_hidden_size, 3 * hidden_size), where hidden_size = num_heads * head_size</dd>
+<dt><tt>input</tt> (optional) : T</dt>
+<dd>Input tensor with shape (batch_size, sequence_length, input_hidden_size) when weights is avaiable, or query tensor with shape (batch_size, sequence_length, hidden_size) when weights is not avaiable.</dd>
+<dt><tt>weights</tt> (optional) : T</dt>
+<dd>Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)</dd>
 <dt><tt>bias</tt> : T</dt>
-<dd>1D input tensor with shape (3 * hidden_size)</dd>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
-<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
+<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
 <dt><tt>past</tt> (optional) : T</dt>
 <dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
 <dt><tt>extra_add</tt> (optional) : T</dt>
 <dd>additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Input for key with shape (batch_size, kv_sequence_length, hidden_size). Required when weights is not avaiable</dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>Input for key with shape (batch_size, kv_sequence_length, v_hidden_size). Required when weights is not avaiable</dd>
 </dl>
 
 #### Outputs (1 - 2)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
 <dt><tt>present</tt> (optional) : T</dt>
-<dd>present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)</dd>
+<dd>past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size)</dd>
 </dl>
 
 #### Type Constraints
@@ -927,7 +944,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.DecoderAttention"></a><a name="com.microsoft.decoderattention">**com.microsoft.DecoderAttention**</a>
 
-  This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask. The attention mask is not support at the moment.
+  This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask.
+  The attention mask is not support at the moment.
   Some boolean parameters are passed by runtime input for generic purpose
 
 #### Version
@@ -945,7 +963,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>query</tt> : T</dt>
-<dd>3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size</dd>
+<dd>3D input tensor with shape (sequence_length, batch_size, hidden_size)</dd>
 <dt><tt>key</tt> : T</dt>
 <dd>3D input tensor with shape (total_sequence_length, batch_size, hidden_size)</dd>
 <dt><tt>q_weight</tt> : T</dt>
@@ -957,9 +975,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>key_padding_mask</tt> (optional) : B</dt>
 <dd>2D input tensor with shape (batch_size, total_sequence_length)</dd>
 <dt><tt>key_cache</tt> (optional) : T</dt>
-<dd>input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)</dd>
+<dd>key cache with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)</dd>
 <dt><tt>value_cache</tt> (optional) : T</dt>
-<dd>input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)</dd>
+<dd>value cache with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)</dd>
 <dt><tt>static_kv</tt> : B</dt>
 <dd>If static_kv = true, cross-attention; else self-attention</dd>
 <dt><tt>use_past</tt> : B</dt>
@@ -1252,10 +1270,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.EmbedLayerNormalization"></a><a name="com.microsoft.embedlayernormalization">**com.microsoft.EmbedLayerNormalization**</a>
 
   EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
-  The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
-  and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors.
-  The last input mask is optional. If mask is provided, mask index (that is position of first 0 in mask, or number of words)
-  will be calculated.
+  The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding,
+  position_embedding, and segment_emedding; the embeddings are added then applied layer normalization using gamma
+  and beta tensors.
+  The last input mask is optional.
+  If mask is provided, mask index (that is position of first 0 in mask, or number of words) will be calculated.
 
 #### Version
 
@@ -1346,7 +1365,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.FastGelu"></a><a name="com.microsoft.fastgelu">**com.microsoft.FastGelu**</a>
 
-  GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.
+  GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X))
+  with an optional input of bias that will be added to X before GELU.
 
 #### Version
 
@@ -1864,7 +1884,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input</tt> : T</dt>
-<dd>3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size</dd>
+<dd>3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>weight</tt> : T</dt>
 <dd>2D input tensor with shape (hidden_size, 3 * hidden_size)</dd>
 <dt><tt>bias</tt> : T</dt>
@@ -2112,7 +2132,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.NGramRepeatBlock"></a><a name="com.microsoft.ngramrepeatblock">**com.microsoft.NGramRepeatBlock**</a>
 
-  Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.
+  Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram
+  if added to the back of the input_ids.
 
 #### Version
 

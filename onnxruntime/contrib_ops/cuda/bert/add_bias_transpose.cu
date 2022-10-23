@@ -124,11 +124,11 @@ __global__ void AddBiasTransposeQKV(const T* input, const T* biases, T* output, 
   // Output: MxBxNxSxH
   // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
 
-  int n = threadIdx.y;          // head_num_id
-  int s = blockIdx.x;           // sequence_id
-  int b = blockIdx.y;           // batch_id
-  int m = blockIdx.z;           // matrix id (Q=0, K=1, V=2)
-  const int h = threadIdx.x;    // head_element_id
+  int n = threadIdx.y;        // head_num_id
+  int s = blockIdx.x;         // sequence_id
+  int b = blockIdx.y;         // batch_id
+  int m = blockIdx.z;         // matrix id (Q=0, K=1, V=2)
+  const int h = threadIdx.x;  // head_element_id
 
   const int qk_head_size = blockDim.x;
   const int num_heads = blockDim.y;
@@ -155,12 +155,12 @@ __global__ void AddBiasTransposeQKV(const T* input, const T* biases, T* output, 
                s * (qkv_head_sizes[m]) +                                        // S
                h;                                                               // H
 
-  bias_offset = m * (num_heads * qk_head_size)+  // QKV
-                n * (qkv_head_sizes[m]) +        // N
-                h;                               // H
+  bias_offset = m * (num_heads * qk_head_size) +  // QKV
+                n * (qkv_head_sizes[m]) +         // N
+                h;                                // H
 
   if (h < qkv_head_sizes[m]) {
-      output[out_offset] = input[in_offset] + biases[bias_offset];
+    output[out_offset] = input[in_offset] + biases[bias_offset];
   }
 }
 
@@ -270,7 +270,11 @@ void InvokeAddBiasTranspose(
     if (format == 2) {
       AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output);
     } else if (format == 1) {
-      AddBiasTransposeQKVLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output);
+      if ((v_head_size == -1) || (qk_head_size == v_head_size)) {
+        AddBiasTransposeQKVLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output);
+      } else {
+        ORT_THROW("AddBiasTransposeQKVLarge CUDA kernel not implemented for hidden_size > max_threads_per_block");
+      }
     } else {
       AddBiasTransposeLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output);
     }

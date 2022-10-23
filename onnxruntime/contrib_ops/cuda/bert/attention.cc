@@ -52,7 +52,7 @@ static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length
 }
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false, true) {
+Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false, false) {
   disable_fused_runner_ = sizeof(T) != 2 || ParseEnvironmentVariableWithDefault<bool>(kDisableFusedAttention, false);
 }
 
@@ -89,13 +89,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  int past_sequence_length = 0;
-  // This assumes Q, K and V has same hidden size
-  Tensor* present = GetPresent(context, past,
-                               parameters.batch_size,
-                               parameters.head_size,
-                               parameters.sequence_length,
-                               past_sequence_length);
+  std::vector<int64_t> present_dims{2, parameters.batch_size, parameters.num_heads,
+                                    parameters.total_sequence_length, parameters.head_size};
+  TensorShape present_shape(present_dims);
+  Tensor* present = context->Output(1, present_shape);
 
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
@@ -150,6 +147,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.head_size,
                                                    parameters.v_head_size,
                                                    parameters.sequence_length,
+                                                   parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
                                                    fused_runner);
 

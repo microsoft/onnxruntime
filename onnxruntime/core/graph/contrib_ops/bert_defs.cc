@@ -82,8 +82,7 @@ The total_sequence_length is past_sequence_length + kv_sequence_length.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    Attention,
-    1,
+    Attention, 1,
     OpSchema()
         .SetDoc(Attention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
@@ -98,12 +97,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, sequence_length, input_hidden_size) when weights is avaiable, "
-               "or query tensor with shape (batch_size, sequence_length, hidden_size) when weights is not avaiable."
+               "or query tensor with shape (batch_size, sequence_length, hidden_size) when weights is not avaiable.",
                "T",
                OpSchema::Optional)
         .Input(1,
                "weights",
-               "Merged Q/K/V weights with shape (input_hidden_size, q_hidden_size + k_hidden_size + v_hidden_size)",
+               "Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)",
                "T",
                OpSchema::Optional)
         .Input(2,
