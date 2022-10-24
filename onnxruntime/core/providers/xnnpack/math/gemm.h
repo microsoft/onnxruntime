@@ -27,9 +27,6 @@ class Gemm : protected GemmBase, public XnnpackKernel {
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
  private:
-
-  TensorShape b_shape_;
-  BufferUniquePtr packed_b_;
   Tensor B_;
 
   int64_t M=-1;

@@ -23,9 +23,15 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
   do {
     const auto& input_defs = node.InputDefs();
 
-    if (input_defs.size() < 2) {
+    if (input_defs.size() <= 2) {
       break;
     }
+
+    const auto alpha = node.GetAttributes().find("alpha");
+    if ((*alpha).second.f() != 1.0) break;
+
+    const auto beta = node.GetAttributes().find("beta");
+    if ((*beta).second.has_f() && (*beta).second.f() != 1.0) break;
 
     const auto& A_arg = *input_defs[0];
     const auto& B_arg = *input_defs[1];

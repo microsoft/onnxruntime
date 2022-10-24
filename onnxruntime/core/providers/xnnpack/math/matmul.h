@@ -7,6 +7,7 @@
 #include "core/framework/allocator.h"
 #include "core/providers/xnnpack/detail/utils.h"
 #include "core/common/common.h"
+#include "core/util/math.h"
 
 namespace onnxruntime {
 class GraphViewer;
@@ -29,9 +30,8 @@ private:
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;
   AllocatorPtr myAlloc;
-  float alpha_attr_;
-  int64_t trans_a_attr_;
-  int64_t trans_b_attr_;
+  int64_t trans_A_;
+  int64_t trans_B_;
 
   std::optional<std::pair<float, float>> clip_min_max_;
   XnnpackOperator op0_ = nullptr;
