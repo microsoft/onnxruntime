@@ -43,6 +43,7 @@ using TopkFunc = std::function<Status(
 // Create subgraph inputs: input_ids, position_ids and attention_mask (for GPT-2).
 using CreateGptInputsFunc = std::function<Status(
     const Tensor* original_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     gsl::span<int32_t>& sequence_lengths,
@@ -227,6 +228,7 @@ Status DeviceCopy(gsl::span<T> target,
 
 Status CreateGptInputs(
     const Tensor* original_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     gsl::span<int32_t>& sequence_lengths,
