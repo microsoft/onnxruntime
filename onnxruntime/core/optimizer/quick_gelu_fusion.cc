@@ -13,7 +13,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 /**
-Rewrite x*sigmoid(alpha*x) x*sigmoid(x) to QuickGelu.
+Rewrite x*sigmoid(alpha*x) or x*sigmoid(x) to QuickGelu.
 */
 Status QuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
