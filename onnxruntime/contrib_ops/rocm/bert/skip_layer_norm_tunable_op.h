@@ -167,7 +167,7 @@ class SkipLayerNormTunableOp : public onnxruntime::rocm::tunable::TunableOp<Skip
     ADD_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormSmallOp)
     ADD_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormRegularOp)
 
-    // NOTE: the 0-th kernel is SkipLayerNorm Original implementation.
+    // NOTE: the 1st kernel is SkipLayerNorm Original implementation.
     this->SetDefaultId(0);
   }
 };

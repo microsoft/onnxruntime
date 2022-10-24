@@ -47,14 +47,14 @@ Status LaunchSkipLayerNormKernel(
   assert(element_count % ld == 0);
 
   SkipLayerNormParams<T> op_params(stream, output, input, skip, gamma, beta, bias, epsilon, ld, element_count);
+  static SkipLayerNormTunableOp<T> op;
 
+  // If disable tuning, the default implementation is SkipLayerNormStaticSelection.
   if (tuning) {
-    static SkipLayerNormTunableOp<T> op;
     op.EnableTuning();
-    return op(&op_params);
   }
 
-  return SkipLayerNormStaticSelection<T>(&op_params);
+  return op(&op_params);
 }
 
 template Status LaunchSkipLayerNormKernel<float>(hipStream_t stream, float* output, const float* input,
