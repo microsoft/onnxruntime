@@ -4,10 +4,13 @@
 
 #pragma once
 
+#include <memory>
 #include "core/framework/allocatormgr.h"
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
+
+#include "xnnpack.h"
 
 struct pthreadpool;
 namespace onnxruntime {
@@ -49,6 +52,7 @@ class XnnpackExecutionProvider : public IExecutionProvider {
 
  private:
   pthreadpool* xnnpack_thread_pool_{nullptr};
+  xnn_allocator xnn_default_allocator_;
 };
 
 }  // namespace onnxruntime

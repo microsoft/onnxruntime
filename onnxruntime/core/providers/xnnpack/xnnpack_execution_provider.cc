@@ -93,8 +93,6 @@ static void* xnn_reallocate(void* context, void* pointer, size_t size) {
     return xnn_allocate(context, size);
   }
   ORT_NOT_IMPLEMENTED("xnn_reallocate is not implemented");
-  // it will lead to crash when free memory with context->Free, but luckily it is not used in xnnpack temporary
-  return realloc(pointer, size);
 }
 
 static void xnn_deallocate(void* context, void* pointer) {
@@ -106,7 +104,6 @@ static void xnn_deallocate(void* context, void* pointer) {
 static void* xnn_aligned_allocate(void* context, size_t alignment, size_t size) {
 #if defined(__wasm__) && !defined(__wasm_relaxed_simd__) && !defined(__wasm_simd128__)
   ORT_ENFORCE(alignment <= 2 * sizeof(void*));
-  printf("xnn_aligned_allocate: alignment=%zu, size=%zu\n", alignment, size);
   return xnn_allocate(context, size);
 #else
   void* ptr = xnn_allocate(context, size);
@@ -124,7 +121,13 @@ static void xnn_aligned_deallocate(void* context, void* pointer) {
 using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
-    : IExecutionProvider{kXnnpackExecutionProvider, true} {
+    : IExecutionProvider{kXnnpackExecutionProvider, true},
+      xnn_default_allocator_{nullptr,
+                             xnn_allocate,
+                             xnn_reallocate,
+                             xnn_deallocate,
+                             xnn_aligned_allocate,
+                             xnn_aligned_deallocate} {
   if (info.xnn_thread_pool_size > 1) {
     // pthreadpool is independent of ort-threadpoool, so we have to disable cpu spinning for ort-threadpool.
     // otherwise, the pthreadpool will be starved and harm performance a lot.
@@ -158,15 +161,8 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
     InsertAllocator(cpu_alloc);
   }
 
-  static const xnn_allocator xnn_default_allocator = {
-      cpu_alloc.get(),
-      xnn_allocate,
-      xnn_reallocate,
-      xnn_deallocate,
-      xnn_aligned_allocate,
-      xnn_aligned_deallocate,
-  };
-  xnn_status st = xnn_initialize(&xnn_default_allocator);
+  xnn_default_allocator_.context = cpu_alloc.get();
+  xnn_status st = xnn_initialize(&xnn_default_allocator_);
   if (st != xnn_status_success) {
     ORT_THROW("XNNPACK initialization failed with status ", st);
   }
