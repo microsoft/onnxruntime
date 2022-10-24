@@ -388,6 +388,46 @@ TEST(XnnpackEP, TestConvTranspose) {
   RunModelTestWithPath(ort_model_path, "test_conv_follow_convtrans", nullptr);
 }
 
+TEST(XnnpackEP, TestConvTranspose_With_Outputpadding) {
+  const std::vector<int64_t> input_shape = {1, 4, 15, 15};
+  auto modelBuilder = [&input_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape, -127.f, 127.f);
+    auto* weight_arg = builder.MakeInitializer<float>(std::vector<int64_t>{4, 2, 3, 3}, -2.0F, 2.0F);
+
+    auto* output_arg = builder.MakeOutput();
+    Node& pool_node = builder.AddNode("ConvTranspose", {input_arg, weight_arg}, {output_arg});
+    pool_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    pool_node.AddAttribute("output_padding", std::vector<int64_t>{1, 1});
+    pool_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
+    pool_node.AddAttribute("group", int64_t(2));
+  };
+  RunModelTest(modelBuilder, "xnnpack_test_graph_convtranpose_outpad",
+               {
+                   ExpectedEPNodeAssignment::Some,
+                   1e-2f /* fp32_abs_err */,
+               });
+}
+
+TEST(XnnpackEP, TestConvTranspose_With_OutputShape) {
+  const std::vector<int64_t> input_shape = {1, 4, 15, 15};
+  auto modelBuilder = [&input_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape, -127.f, 127.f);
+    auto* weight_arg = builder.MakeInitializer<float>(std::vector<int64_t>{4, 2, 3, 3}, -2.0F, 2.0F);
+
+    auto* output_arg = builder.MakeOutput();
+    Node& pool_node = builder.AddNode("ConvTranspose", {input_arg, weight_arg}, {output_arg});
+    pool_node.AddAttribute("pads", std::vector<int64_t>{2, 2, 2, 2});
+    pool_node.AddAttribute("output_shape", std::vector<int64_t>{1, 4, 28, 29});
+    pool_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
+    pool_node.AddAttribute("group", int64_t(2));
+  };
+  RunModelTest(modelBuilder, "xnnpack_test_graph_convtranpose_sp",
+               {
+                   ExpectedEPNodeAssignment::Some,
+                   1e-2f /* fp32_abs_err */,
+               });
+}
+
 /*
 // unfortunately, ONNX doesn't support the QLinearConvTranspose op yet
 TEST(XnnpackEP, TestConvTranspose_s8) {
