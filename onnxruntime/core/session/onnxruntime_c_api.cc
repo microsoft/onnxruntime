@@ -168,7 +168,7 @@ ORT_API_STATUS_IMPL(OrtApis::DisableTelemetryEvents, _In_ const OrtEnv* ort_env)
 }
 
 ORT_API_STATUS_IMPL(OrtApis::UpdateEnvWithCustomLogLevel, OrtLoggingLevel log_severity_level,
-                    _In_ const OrtEnv* ort_env) {
+                    _In_ OrtEnv* ort_env) {
   API_IMPL_BEGIN
   LoggingManager* default_logging_manager = ort_env->GetLoggingManager();
   int severity_level = static_cast<int>(log_severity_level);
@@ -2599,6 +2599,9 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::UpdateCANNProviderOptions,
     &OrtApis::GetCANNProviderOptionsAsString,
     &OrtApis::ReleaseCANNProviderOptions,
+    // End of Version 13 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Start of Version 14 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::MemoryInfoGetDeviceType,
     &OrtApis::UpdateEnvWithCustomLogLevel,
 };
