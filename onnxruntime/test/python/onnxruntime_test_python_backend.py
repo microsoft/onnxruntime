@@ -41,10 +41,10 @@ class TestBackend(unittest.TestCase):
         This case is handled specifically in ExecutionFrame::AllocateAsPerAllocationPlan().
         This test is to ensure that the case is covered.
         """
-        so = onnxrt.SessionOptions()
-        so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
+        sess_option = onnxrt.SessionOptions()
+        sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         name = get_name("alloc_tensor_reuse.onnx")
-        sess = onnxrt.InferenceSession(name, so, providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(name, sess_option, providers=onnxrt.get_available_providers())
 
         run_options = onnxrt.RunOptions()
         run_options.only_execute_path_to_fetches = True

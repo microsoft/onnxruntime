@@ -68,16 +68,16 @@ class TestInferenceSession(unittest.TestCase):
 
     def testModelSerialization(self):
         try:
-            so = onnxrt.SessionOptions()
-            so.log_severity_level = 1
-            so.logid = "TestModelSerialization"
-            so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
+            sess_option = onnxrt.SessionOptions()
+            sess_option.log_severity_level = 1
+            sess_option.logid = "TestModelSerialization"
+            sess_option.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
             onnxrt.InferenceSession(
                 get_name("mul_1.onnx"),
-                sess_options=so,
+                sess_options=sess_option,
                 providers=["CPUExecutionProvider"],
             )
-            self.assertTrue(os.path.isfile(so.optimized_model_filepath))
+            self.assertTrue(os.path.isfile(sess_option.optimized_model_filepath))
         except Fail as onnxruntime_error:
             if (
                 str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
@@ -410,9 +410,9 @@ class TestInferenceSession(unittest.TestCase):
     def testRunModelFromBytes(self):
         with open(get_name("mul_1.onnx"), "rb") as f:
             content = f.read()
-        so = onnxrt.SessionOptions()
-        so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
-        sess = onnxrt.InferenceSession(content, sess_options=so, providers=onnxrt.get_available_providers())
+        sess_option = onnxrt.SessionOptions()
+        sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
+        sess = onnxrt.InferenceSession(content, sess_options=sess_option, providers=onnxrt.get_available_providers())
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -470,12 +470,12 @@ class TestInferenceSession(unittest.TestCase):
                 " on different threads using the same session object."
             )
         else:
-            so = onnxrt.SessionOptions()
-            so.log_verbosity_level = 1
-            so.logid = "MultiThreadsTest"
+            sess_option = onnxrt.SessionOptions()
+            sess_option.log_verbosity_level = 1
+            sess_option.logid = "MultiThreadsTest"
             sess = onnxrt.InferenceSession(
                 get_name("mul_1.onnx"),
-                sess_options=so,
+                sess_options=sess_option,
                 providers=available_providers_without_tvm,
             )
             ro1 = onnxrt.RunOptions()
@@ -687,12 +687,12 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual("", modelmeta.graph_description)
 
     def testProfilerWithSessionOptions(self):
-        so = onnxrt.SessionOptions()
-        so.enable_profiling = True
-        so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
+        sess_option = onnxrt.SessionOptions()
+        sess_option.enable_profiling = True
+        sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         sess = onnxrt.InferenceSession(
             get_name("mul_1.onnx"),
-            sess_options=so,
+            sess_options=sess_option,
             providers=onnxrt.get_available_providers(),
         )
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -710,12 +710,12 @@ class TestInferenceSession(unittest.TestCase):
 
     def testProfilerGetStartTimeNs(self):
         def getSingleSessionProfilingStartTime():
-            so = onnxrt.SessionOptions()
-            so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
-            so.enable_profiling = True
+            sess_option = onnxrt.SessionOptions()
+            sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
+            sess_option.enable_profiling = True
             sess = onnxrt.InferenceSession(
                 get_name("mul_1.onnx"),
-                sess_options=so,
+                sess_options=sess_option,
                 providers=onnxrt.get_available_providers(),
             )
             return sess.get_profiling_start_time_ns()
@@ -872,13 +872,13 @@ class TestInferenceSession(unittest.TestCase):
             os.environ["ORT_LOAD_CONFIG_FROM_MODEL"] = str(0)
 
     def testSessionOptionsAddFreeDimensionOverrideByDenotation(self):
-        so = onnxrt.SessionOptions()
-        so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
-        so.add_free_dimension_override_by_denotation("DATA_BATCH", 3)
-        so.add_free_dimension_override_by_denotation("DATA_CHANNEL", 5)
+        sess_option = onnxrt.SessionOptions()
+        sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
+        sess_option.add_free_dimension_override_by_denotation("DATA_BATCH", 3)
+        sess_option.add_free_dimension_override_by_denotation("DATA_CHANNEL", 5)
         sess = onnxrt.InferenceSession(
             get_name("abs_free_dimensions.onnx"),
-            sess_options=so,
+            sess_options=sess_option,
             providers=onnxrt.get_available_providers(),
         )
         input_name = sess.get_inputs()[0].name
@@ -888,13 +888,13 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(input_shape, [3, 5, 5])
 
     def testSessionOptionsAddFreeDimensionOverrideByName(self):
-        so = onnxrt.SessionOptions()
-        so.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
-        so.add_free_dimension_override_by_name("Dim1", 4)
-        so.add_free_dimension_override_by_name("Dim2", 6)
+        sess_option = onnxrt.SessionOptions()
+        sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
+        sess_option.add_free_dimension_override_by_name("Dim1", 4)
+        sess_option.add_free_dimension_override_by_name("Dim2", 6)
         sess = onnxrt.InferenceSession(
             get_name("abs_free_dimensions.onnx"),
-            sess_options=so,
+            sess_options=sess_option,
             providers=onnxrt.get_available_providers(),
         )
         input_name = sess.get_inputs()[0].name
@@ -904,36 +904,36 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(input_shape, [4, 6, 5])
 
     def testSessionOptionsAddConfigEntry(self):
-        so = onnxrt.SessionOptions()
+        sess_option = onnxrt.SessionOptions()
         key = "CONFIG_KEY"
         val = "CONFIG_VAL"
-        so.add_session_config_entry(key, val)
-        self.assertEqual(so.get_session_config_entry(key), val)
+        sess_option.add_session_config_entry(key, val)
+        self.assertEqual(sess_option.get_session_config_entry(key), val)
 
     def testInvalidSessionOptionsConfigEntry(self):
-        so = onnxrt.SessionOptions()
+        sess_option = onnxrt.SessionOptions()
         invalide_key = "INVALID_KEY"
         with self.assertRaises(RuntimeError) as context:
-            so.get_session_config_entry(invalide_key)
+            sess_option.get_session_config_entry(invalide_key)
         self.assertTrue(
             "SessionOptions does not have configuration with key: " + invalide_key in str(context.exception)
         )
 
     def testSessionOptionsAddInitializer(self):
         # Create an initializer and add it to a SessionOptions instance
-        so = onnxrt.SessionOptions()
+        sess_option = onnxrt.SessionOptions()
         # This initializer is different from the actual initializer in the model for "W"
         ortvalue_initializer = onnxrt.OrtValue.ortvalue_from_numpy(
             np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32)
         )
         # The user should manage the life cycle of this OrtValue and should keep it in scope
         # as long as any session that is going to be reliant on it is in scope
-        so.add_initializer("W", ortvalue_initializer)
+        sess_option.add_initializer("W", ortvalue_initializer)
 
         # Create an InferenceSession that only uses the CPU EP and validate that it uses the
         # initializer provided via the SessionOptions instance (overriding the model initializer)
         # We only use the CPU EP because the initializer we created is on CPU and we want the model to use that
-        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=sess_option, providers=["CPUExecutionProvider"])
         res = sess.run(
             ["Y"],
             {"X": np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)},
@@ -949,12 +949,12 @@ class TestInferenceSession(unittest.TestCase):
         # Create an external initializer data in OrtValue
         # This initializer will replace the initializer with external data reference in the graph
         ortvalue_initializer = onnxrt.OrtValue.ortvalue_from_numpy(np.array([0, 0, 1, 1]).astype(np.int64))
-        so = onnxrt.SessionOptions()
-        so.add_external_initializers(["Pads_not_on_disk"], [ortvalue_initializer])
+        sess_option = onnxrt.SessionOptions()
+        sess_option.add_external_initializers(["Pads_not_on_disk"], [ortvalue_initializer])
         # This should not throw
         onnxrt.InferenceSession(
             get_name("model_with_external_initializer_come_from_user.onnx"),
-            sess_options=so,
+            sess_options=sess_option,
             providers=["CPUExecutionProvider"],
         )
 
@@ -1396,7 +1396,7 @@ class TestInferenceSession(unittest.TestCase):
         verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
 
     def testValidateSessionOptionsWithEPs(self):
-        so = onnxrt.SessionOptions()
+        sess_option = onnxrt.SessionOptions()
         has_dml = "DmlExecutionProvider" in onnxrt.get_available_providers()
         has_cuda = "CUDAExecutionProvider" in onnxrt.get_available_providers()
         # DmlExecutionProvider doesn't compatible with enable_mem_pattern as True
@@ -1404,9 +1404,9 @@ class TestInferenceSession(unittest.TestCase):
         # XnnpackExecutionProvider doesn't compatible with execution_mode as ExecutionMode.ORT_PARALLEL
         # CUDAExecutionProvider doesn't compatible with execution_mode as ExecutionMode.ORT_PARALLEL
 
-        def exception_test(ep_name, so, err_msg="Parallel execution mode is incompatible with"):
+        def exception_test(ep_name, sess_option, err_msg="Parallel execution mode is incompatible with"):
             try:
-                onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=[ep_name], sess_options=so)
+                onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=[ep_name], sess_options=sess_option)
             except Fail as onnxruntime_error:
                 if str(onnxruntime_error).startswith("[ONNXRuntimeError] : 1 : FAIL : " + err_msg):
                     pass
@@ -1414,16 +1414,16 @@ class TestInferenceSession(unittest.TestCase):
                     raise onnxruntime_error
 
         if has_cuda:
-            so.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
-            exception_test("CUDAExecutionProvider", so)
+            sess_option.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
+            exception_test("CUDAExecutionProvider", sess_option)
 
         if has_dml:
-            so.enable_mem_pattern = True
-            exception_test("DmlExecutionProvider", so, "Having memory pattern enabled is not supported")
+            sess_option.enable_mem_pattern = True
+            exception_test("DmlExecutionProvider", sess_option, "Having memory pattern enabled is not supported")
 
-            so.enable_mem_pattern = False
-            so.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
-            exception_test("DmlExecutionProvider", so)
+            sess_option.enable_mem_pattern = False
+            sess_option.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
+            exception_test("DmlExecutionProvider", sess_option)
 
 
 if __name__ == "__main__":
