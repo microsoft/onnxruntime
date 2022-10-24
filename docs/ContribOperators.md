@@ -149,133 +149,133 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Computes an one-layer RNN where its RNN Cell is an AttentionWrapper wrapped a LSTM Cell. The RNN layer
   contains following basic component: LSTM Cell, Bahdanau Attention Mechanism, AttentionWrapp.
-
+  
   Activation functions:
-
+  
     Relu(x)                - max(0, x)
-
+  
     Tanh(x)                - (1 - e^{-2x})/(1 + e^{-2x})
-
+  
     Sigmoid(x)             - 1/(1 + e^{-x})
-
+  
     (NOTE: Below are optional)
-
+  
     Affine(x)              - alpha*x + beta
-
+  
     LeakyRelu(x)           - x if x >= 0 else alpha * x
-
+  
     ThresholdedRelu(x)     - x if x >= alpha else 0
-
+  
     ScaledTanh(x)          - alpha*Tanh(beta*x)
-
+  
     HardSigmoid(x)         - min(max(alpha*x + beta, 0), 1)
-
+  
     Elu(x)                 - x if x >= 0 else alpha*(e^x - 1)
-
+  
     Softsign(x)            - x/(1 + |x|)
-
+  
     Softplus(x)            - log(1 + e^x)
-
+  
     Softmax(x)             - exp(x) / sum(exp(x))
-
+  
   Bahdanau Attention Mechanism:
       `M` -  Memory tensor.
-
+  
       `VALUES` - masked Memory by its real sequence length.
-
+  
       `MW` - Memory layer weight.
-
+  
       `KEYS` - Processed memory tensor by the memory layer.
                KEYS = M * MW
-
+  
       `Query` - Query tensor, normally at specific time step in sequence.
-
+  
       `QW` - Query layer weight in the attention mechanism
-
+  
       `PQ` - processed query,  = `Query` * `QW`
-
+  
       `V' - attention vector
-
+  
       `ALIGN` - calculated alignment based on Query and KEYS
           ALIGN = softmax(reduce_sum(`V` * Tanh(`KEYS` + `PQ`)))
-
+  
       `CONTEXT` - context based on `ALIGN` and `VALUES`
           CONTEXT = `ALIGN` * `VALUES`
-
-
+  
+  
   LSTM Cell:
     `X` - input tensor concat with attention state in the attention wrapper
-
+  
     `i` - input gate
-
+  
     `o` - output gate
-
+  
     `f` - forget gate
-
+  
     `c` - cell gate
-
+  
     `t` - time step (t-1 means previous time step)
-
+  
     `W[iofc]` - W parameter weight matrix for input, output, forget, and cell gates
-
+  
     `R[iofc]` - R recurrence weight matrix for input, output, forget, and cell gates
-
+  
     `Wb[iofc]` - W bias vectors for input, output, forget, and cell gates
-
+  
     `Rb[iofc]` - R bias vectors for input, output, forget, and cell gates
-
+  
     `P[iof]`  - P peephole weight vector for input, output, and forget gates
-
+  
     `WB[iofc]` - W parameter weight matrix for backward input, output, forget, and cell gates
-
+  
     `RB[iofc]` - R recurrence weight matrix for backward input, output, forget, and cell gates
-
+  
     `WBb[iofc]` - W bias vectors for backward input, output, forget, and cell gates
-
+  
     `RBb[iofc]` - R bias vectors for backward input, output, forget, and cell gates
-
+  
     `PB[iof]`  - P peephole weight vector for backward input, output, and forget gates
-
+  
     `H` - Hidden state
-
+  
     `num_directions` - 2 if direction == bidirectional else 1
-
+  
     Equations (Default: f=Sigmoid, g=Tanh, h=Tanh):
-
+  
       - it = f(Xt*(Wi^T) + Ht-1*(Ri^T) + Pi (.) Ct-1 + Wbi + Rbi)
-
+  
       - ft = f(Xt*(Wf^T) + Ht-1*(Rf^T) + Pf (.) Ct-1 + Wbf + Rbf)
-
+  
       - ct = g(Xt*(Wc^T) + Ht-1*(Rc^T) + Wbc + Rbc)
-
+  
       - Ct = ft (.) Ct-1 + it (.) ct
-
+  
       - ot = f(Xt*(Wo^T) + Ht-1*(Ro^T) + Po (.) Ct + Wbo + Rbo)
-
+  
       - Ht = ot (.) h(Ct)
-
-
+  
+  
   AttentionWrapp Notations:
     `lstm()' - wrapped inner cell.
              Ht, Ct = lstm(concat(Xt, ATTNt-1), Ct-1)
-
+  
     `am()` - attention mechanism the wrapper used.
              CONTEXTt, ALIGNt = am(Ht, ALIGNt-1)
-
+  
     `AW` - attention layer weights, optional.
-
+  
     `ATTN` - attention state, initial is zero. If `AW` provided, it is the output of the attention layer,
                   ATTNt = concat(Ht, CONTEXTt) * AW
              otherwise,
                   ATTNt = CONTEXTt
-
+  
   RNN layer output:
     `Y` - if needed is the sequence of Ht from lstm cell.
-
+  
     `Y_h` - is the last valid H from lstm cell.
-
+  
     `Y_c` - is the last valid C from lstm cell.
-
+  
 
 #### Version
 
@@ -485,7 +485,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.BiasGelu"></a><a name="com.microsoft.biasgelu">**com.microsoft.BiasGelu**</a>
 
   Bias Gelu.
-  It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation.
+  It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. 
 
 #### Version
 
@@ -677,7 +677,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   ```
   scale = 1. / (1. - ratio).
   ```
-
+  
   This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
 
 #### Version
@@ -1728,7 +1728,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         which are used to interpolate the output value `output[n, :, h, w]`.
         The GridSample operator is often used in doing grid generator and sampler in the [Spatial Transformer Networks](https://arxiv.org/abs/1506.02025).
         See also in [torch.nn.functional.grid_sample](https://pytorch.org/docs/master/generated/torch.nn.functional.grid_sample.html#torch-nn-functional-grid-sample).
-
+        
 
 #### Version
 
@@ -1843,10 +1843,10 @@ This version of the operator has been available since version 1 of the 'com.micr
   Longformer Self Attention with a local context and a global context. Tokens attend locally: Each token
   attends to its W previous tokens and W succeeding tokens with W being the window length. A selected few tokens
   attend globally to all other tokens.
-
+  
   The attention mask is of shape (batch_size, sequence_length), where sequence_length is a multiple of 2W after padding.
   Mask value < 0 (like -10000.0) means the token is masked, 0 otherwise.
-
+  
   Global attention flags have value 1 for the tokens attend globally and 0 otherwise.
 
 #### Version
@@ -2031,11 +2031,11 @@ This version of the operator has been available since version 1 of the 'com.micr
   Performs element-wise binary quantized multiplication (with Numpy-style broadcasting support).
   "This operator supports **multidirectional (i.e., Numpy-style) broadcasting**"
   The output of this op is the int32 accumulated result of the mul operation
-
+  
   ```
   C (int32) = (A - A_zero_point) * (B - B_zero_point)
   ```
-
+  
 
 #### Version
 
@@ -2265,7 +2265,7 @@ This version of the operator has been available since version 1 of the 'com.micr
                       [0.0, 0.0, 4.5, 5.7],
                       ],
                       ]
-
+              
 
 #### Version
 
@@ -2437,7 +2437,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.QLinearAdd"></a><a name="com.microsoft.qlinearadd">**com.microsoft.QLinearAdd**</a>
 
   Performs element-wise binary addition on 8 bit data types (with Numpy-style broadcasting support).
-
+  
   C = (A_scale * (A - A_zero_point) + B_scale * (B - B_zero_point))/C_scale + C_zero_point
 
 #### Version
@@ -2495,11 +2495,11 @@ This version of the operator has been available since version 1 of the 'com.micr
    output_spatial_shape[i] = ceil((input_spatial_shape[i] + pad_shape[i] - kernel_spatial_shape[i]) / strides_spatial_shape[i] + 1)
    ```
    if ceil_mode is enabled
-
+  
    ```
    * pad_shape[i] is sum of pads along axis i
    ```
-
+  
    `auto_pad` is a DEPRECATED attribute. If you are using them currently, the output spatial shape will be following:
    ```
    VALID: output_spatial_shape[i] = ceil((input_spatial_shape[i] - kernel_spatial_shape[i] + 1) / strides_spatial_shape[i])
@@ -2509,9 +2509,9 @@ This version of the operator has been available since version 1 of the 'com.micr
    ```
    pad_shape[i] = (output_spatial_shape[i] - 1) * strides_spatial_shape[i] + kernel_spatial_shape[i] - input_spatial_shape[i]
    ```
-
+  
   The output of each pooling window is divided by the number of elements (exclude pad when attribute count_include_pad is zero).
-
+  
   Input and output scales and zero points are used to convert the output to a new quantization range.
   Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
 
@@ -2779,7 +2779,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.QLinearMul"></a><a name="com.microsoft.qlinearmul">**com.microsoft.QLinearMul**</a>
 
   Performs element-wise binary multiplication on 8 bit data types (with Numpy-style broadcasting support).
-
+  
   C = ((A - A_zero_point) * (B - B_zero_point)) * (A_scale * B_scale)/C_scale + C_zero_point
 
 #### Version
@@ -2830,10 +2830,10 @@ This version of the operator has been available since version 1 of the 'com.micr
   with the exception that numpy default keepdims to False instead of True.
   Input and Output scales and zero points are used to requantize the output in a new range.
   This helps to improve accuracy as after ReduceMean operation the range of the output is expected to decrease.
-
+  
   ```
   "Output = Dequantize(Input) -> ReduceMean on fp32 data -> Quantize(output)",
-
+  
   ```
 
 #### Version
@@ -2883,7 +2883,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data
   (Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
-  Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))`
+  Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` 
 
 #### Version
 
@@ -3817,7 +3817,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Based on Torch operator Embedding, creates a lookup table of embedding vectors of fixed size,
          for a dictionary of fixed size.
-
+        
 
 #### Version
 
@@ -3907,7 +3907,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         the main diagonal. A negative k value includes as many diagonals below the main diagonal.
         If upper is set to false, a positive k retains the lower triangular matrix including k diagonals above
         the main diagonal. A negative k value excludes as many diagonals below the main diagonal.
-
+        
 
 #### Version
 
@@ -3958,7 +3958,7 @@ This version of the operator has been available since version 1 of the 'com.micr
                   output_uniques = [2, 1, 3, 4]
                   output_idx = [0, 1, 1, 2, 3, 2]
                   output_counts = [1, 2, 2, 1]
-
+                
 
 #### Version
 
@@ -4157,3 +4157,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+
