@@ -831,7 +831,7 @@ namespace layout_transformer {
 const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   static std::unordered_set<std::string_view> ort_layout_senstive_ops = []() {
     const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
-    std::unordered_set<std::string_view> ort_specific_ops = {"Resize", "FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
+    std::unordered_set<std::string_view> ort_specific_ops = {"FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
     ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
     return ort_specific_ops;
   }();
@@ -849,10 +849,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
       if (node->GetExecutionProviderType() != execution_provider.Type()) {
         continue;
       }
-      if (node->OpType() == "Resize" && node->GetExecutionProviderType() == kNnapiExecutionProvider) {
-        // NNAPI takes Resize as layout insensitive
-        continue;
-      }
+
       auto domain = node->Domain();
       // Skip if domain is incorrect
       if (domain != kOnnxDomain && domain != kMSDomain) {
@@ -886,28 +883,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
       auto input_perm = onnx_layout_transformation::ChannelFirstToLastPerm(rank);
       auto output_perm = onnx_layout_transformation::ChannelLastToFirstPerm(rank);
 
-      // Except for resize and convolution ops, all the other layout sensitive ops only require layout transformation
-      // for 0th input and output. For resize, add the other relevant inputs which need conversion. For Conv - layout
-      // transformer only converts layout for 0th input, weights should be handled by every EP.
-      if (node->OpType() == "Resize") {
-        // Older versions of resize have a bug where ROI and Scales cannot be made empty inputs. To handle this case,
-        // we need to jump a few extra hoops to make sure its inputs are correctly handled. Current code skips
-        // layout conversion for ROI because it needs special handling as ROI size is 2*rank.
-        // Enable passing in ROI for layout conversion when an EP which supports ROI starts using layout transformer.
-        // NNAPI which currently uses layout transformer does not support it.
-        std::vector<const std::vector<int64_t>*> input_perms{&input_perm, nullptr};
-        for (size_t i = 2; i < node->Inputs().size(); i++) {
-          auto constant = api_graph->GetConstant(node->Inputs()[i]);
-          if (constant != nullptr && constant->Data().size() > 0) {
-            input_perms.push_back(&input_perm);
-          } else {
-            input_perms.push_back(nullptr);
-          }
-        }
-        onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, input_perms, {&output_perm});
-      } else {
-        onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
-      }
+      onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
 
       onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
       modified = true;
