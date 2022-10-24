@@ -9,9 +9,9 @@
 
 #include <string>
 
-#include "core/providers/rocm/tunable/tunable.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 #include "python/tools/kernel_explorer/kernel_explorer_interface.h"
-#include "python/tools/kernel_explorer/kernels/vector_add_kernel.h"
+#include "python/tools/kernel_explorer/kernels/vector_add_kernel.cuh"
 
 namespace py = pybind11;
 
@@ -65,12 +65,6 @@ class VectorAddTunableOp : public rocm::tunable::TunableOp<VectorAddParams<T>> {
     ADD_OP(384);
     ADD_OP(448);
     ADD_OP(512);
-  }
-
- private:
-  // This Op is always tunable, you generally don't need to implement it.
-  virtual bool Condition(const VectorAddParams<T>* /*params*/) {
-    return true;
   }
 };
 

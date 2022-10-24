@@ -3,59 +3,76 @@
 
 #pragma once
 
+#ifndef _WIN32
 #include <cxxabi.h>
-#include <hip/hip_runtime.h>
-#include <hip/hip_fp16.h>
+#endif
 
 #include <chrono>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <string>
+#include <thread>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "core/common/common.h"
-#include "core/providers/rocm/rocm_common.h"
-#include "core/providers/rocm/tunable/util.h"
+#ifndef SHARED_PROVIDER
+#include "core/common/logging/logging.h"
+#endif
 
 namespace onnxruntime {
-namespace rocm {
 namespace tunable {
 
+template <typename StreamT>
 struct OpParams {
   OpParams() : stream{} {}
-  explicit OpParams(hipStream_t stream) : stream(stream) {}
+  explicit OpParams(StreamT stream) : stream(stream) {}
   virtual ~OpParams() = default;
   virtual std::string Signature() const = 0;
-  hipStream_t stream;
+  virtual StreamT Stream() const { return stream; }
+  StreamT stream;
 };
 
-// A type erased Callable wrapper. We could have used std::function<Status<const ParamT*>> here. However, std::function
+template <typename StreamT>
+class Timer {
+ public:
+  explicit Timer(StreamT stream) : stream_{stream} {}
+  virtual ~Timer() = default;
+
+  virtual void Start() = 0;
+  virtual void End() = 0;
+  virtual float Duration() = 0;
+
+ protected:
+  StreamT stream_;
+};
+
+// A type erased Callable wrapper. We could have used std::function<Status<const ParamsT*>> here. However, std::function
 // requires the callable object to be CopyConstructible and CopyAssignable. This is not suitable for move only functor
 // or move captured lambda. So we create a simple wrapper for our purpose here.
 //
-// Then an Op is Status(const ParamT*), that is, a callable accepts a const ParamT* and returns a Status.
+// Then an Op is Status(const ParamsT*), that is, a callable accepts a const ParamsT* and returns a Status.
 // This means that it can be either a free function, a functor or a lambda.
-template <typename ParamT>
+template <typename ParamsT>
 class Op {
  public:
   template <typename T>
   explicit Op(T&& c) : callable_{std::make_unique<CallableImpl<T>>(std::forward<T>(c))} {}
-  Status operator()(const ParamT* param) { return (*callable_)(param); }
+  Status operator()(const ParamsT* param) { return (*callable_)(param); }
 
  private:
   struct ICallbale {
     virtual ~ICallbale() = default;
-    virtual Status operator()(const ParamT*) = 0;
+    virtual Status operator()(const ParamsT*) = 0;
   };
 
   template <typename T>
   struct CallableImpl : ICallbale {
     explicit CallableImpl(T&& c) : c_{std::move(c)} {}
-    Status operator()(const ParamT* param) override { return c_(param); }
+    Status operator()(const ParamsT* param) override { return c_(param); }
 
    private:
     T c_;
@@ -74,7 +91,7 @@ class Op {
     }                                                              \
   } while (false)
 
-template <typename ParamsT>
+template <typename ParamsT, typename TimerT>
 class TunableOp {
  public:
   Status operator()(const ParamsT* params) {
@@ -120,7 +137,7 @@ class TunableOp {
  protected:
   // set the default op to be used in non-tuning scenario
   void SetDefaultId(int id) {
-    ORT_ENFORCE(id < ops_.size(), "TunableOp id out of bound");
+    ORT_ENFORCE(id < static_cast<int>(ops_.size()), "TunableOp id out of bound");
     default_id_ = id;
   }
 
@@ -134,7 +151,7 @@ class TunableOp {
 
   static double Profile(Op<ParamsT>& op, const ParamsT* param) {
     const int num_iter = 100;
-    Timer timer{param->stream};
+    TimerT timer{param->Stream()};
     timer.Start();
     for (int i = 0; i < num_iter; i++) {
       ORT_THROW_IF_ERROR(op(param));
@@ -153,12 +170,16 @@ class TunableOp {
   }
 
   std::string OpSignature() const {
+#ifndef _WIN32
     const auto* name = typeid(*this).name();
     char buf[256];
     size_t buf_len = 256;
     abi::__cxa_demangle(name, buf, &buf_len, nullptr);
     buf[255] = '\0';
     return buf;
+#else
+    return typeid(*this).name();
+#endif
   }
 
   int FindFastest(const ParamsT* params) {
@@ -200,5 +221,4 @@ class TunableOp {
 };
 
 }  // namespace tunable
-}  // namespace rocm
 }  // namespace onnxruntime

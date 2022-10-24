@@ -4,7 +4,7 @@
 #pragma once
 
 #include <hip/hip_runtime.h>
-#include "core/providers/rocm/tunable/tunable.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 #include "core/providers/rocm/tunable/util.h"
 
 using onnxruntime::rocm::tunable::Timer;

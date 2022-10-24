@@ -7,9 +7,9 @@
 #include <type_traits>
 
 #include "core/providers/rocm/tunable/gemm_common.h"
-#include "python/tools/kernel_explorer/kernels/gemm_ck.h"
-#include "python/tools/kernel_explorer/kernels/gemm_rocblas.h"
-#include "python/tools/kernel_explorer/kernels/gemm_tunable.h"
+#include "python/tools/kernel_explorer/kernels/rocm/gemm_ck.h"
+#include "python/tools/kernel_explorer/kernels/rocm/gemm_rocblas.h"
+#include "python/tools/kernel_explorer/kernels/rocm/gemm_tunable.h"
 
 using BlasOp = onnxruntime::rocm::tunable::blas::BlasOp;
 

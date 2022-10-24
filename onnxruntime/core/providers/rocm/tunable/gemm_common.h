@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "core/providers/rocm/rocm_common.h"
-#include "core/providers/rocm/tunable/tunable.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -27,6 +27,9 @@ inline std::string BlasOpToString(BlasOp op) {
       return "N";
     case BlasOp::T:
       return "T";
+    // following is unreachable, compiler is producing false-positive warning, unfortunately.
+    default:
+      return "_";
   }
 }
 

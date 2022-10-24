@@ -10,7 +10,7 @@
 
 #include "contrib_ops/rocm/bert/skip_layer_norm_impl_kernel.h"
 #include "core/providers/rocm/cu_inc/common.cuh"
-#include "core/providers/rocm/tunable/tunable.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 
 using onnxruntime::rocm::CeilDiv;
 

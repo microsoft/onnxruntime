@@ -19,12 +19,22 @@ include(composable_kernel)
 set(KERNEL_EXPLORER_ROOT ${ONNXRUNTIME_ROOT}/python/tools/kernel_explorer)
 set(BERT_DIR ${ONNXRUNTIME_ROOT}/contrib_ops/rocm/bert)
 
-file(GLOB kernel_explorer_srcs CONFIGURE_DEPENDS "${KERNEL_EXPLORER_ROOT}/*.cc")
-# NOTE: This should not be necessary, but hip* symbols are hiding by some ifdef in LANGUAGE CXX mode, weird...
-set_source_files_properties(${kernel_explorer_srcs} PROPERTIES LANGUAGE HIP)
+file(GLOB kernel_explorer_srcs CONFIGURE_DEPENDS
+  "${KERNEL_EXPLORER_ROOT}/*.cc"
+  "${KERNEL_EXPLORER_ROOT}/*.h"
+)
 
-file(GLOB kernel_explorer_kernel_srcs CONFIGURE_DEPENDS "${KERNEL_EXPLORER_ROOT}/kernels/*.cc")
-set_source_files_properties(${kernel_explorer_kernel_srcs} PROPERTIES LANGUAGE HIP)
+file(GLOB kernel_explorer_kernel_srcs CONFIGURE_DEPENDS
+  "${KERNEL_EXPLORER_ROOT}/kernels/*.cc"
+  "${KERNEL_EXPLORER_ROOT}/kernels/*.h"
+  "${KERNEL_EXPLORER_ROOT}/kernels/*.cu"
+  "${KERNEL_EXPLORER_ROOT}/kernels/*.cuh"
+  "${KERNEL_EXPLORER_ROOT}/kernels/rocm/*.cc"
+  "${KERNEL_EXPLORER_ROOT}/kernels/rocm/*.h"
+  "${KERNEL_EXPLORER_ROOT}/kernels/rocm/*.cu"
+  "${KERNEL_EXPLORER_ROOT}/kernels/rocm/*.cuh"
+)
+auto_set_source_files_hip_language(${kernel_explorer_kernel_srcs})
 
 onnxruntime_add_shared_library_module(kernel_explorer
   ${kernel_explorer_srcs}
@@ -42,7 +52,6 @@ target_link_libraries(kernel_explorer
     # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
     device_gemm_instance)
 target_compile_definitions(kernel_explorer
-  PUBLIC ROCM_USE_FLOAT16
   PRIVATE $<TARGET_PROPERTY:onnxruntime_pybind11_state,COMPILE_DEFINITIONS>)
 target_compile_options(kernel_explorer PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
 
