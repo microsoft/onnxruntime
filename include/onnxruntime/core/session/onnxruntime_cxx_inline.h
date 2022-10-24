@@ -1759,11 +1759,10 @@ inline std::vector<std::string> GetAvailableProviders() {
 SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
 
 template <typename TOp, typename TKernel>
-std::unordered_map<std::string, std::string> CustomOpBase<TOp, TKernel>::GetSessionConfigs(ConstSessionOptions options) const {
+void CustomOpBase<TOp, TKernel>::GetSessionConfigs(std::unordered_map<std::string, std::string>& out, ConstSessionOptions options) const {
   std::vector<std::string> keys = this->GetSessionConfigKeys();
-  std::unordered_map<std::string, std::string> map;
 
-  map.reserve(keys.size());
+  out.reserve(keys.size());
 
   std::string config_entry_key = std::string("custom_op.") + this->GetName() + ".";
   const size_t prefix_size = config_entry_key.length();
@@ -1771,10 +1770,8 @@ std::unordered_map<std::string, std::string> CustomOpBase<TOp, TKernel>::GetSess
   for (const auto& key : keys) {
     config_entry_key.resize(prefix_size);
     config_entry_key.append(key);
-    map[key] = options.GetConfigEntryOrDefault(config_entry_key.c_str(), "");
+    out[key] = options.GetConfigEntryOrDefault(config_entry_key.c_str(), "");
   }
-
-  return map;
 }
 
 }  // namespace Ort

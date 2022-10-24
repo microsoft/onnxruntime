@@ -1743,7 +1743,7 @@ struct CustomOpBase : OrtCustomOp {
 
  protected:
   // Helper function that returns a map of session config entries specified by CustomOpBase::GetSessionConfigKeys.
-  std::unordered_map<std::string, std::string> GetSessionConfigs(ConstSessionOptions options) const;
+  void GetSessionConfigs(std::unordered_map<std::string, std::string>& out, ConstSessionOptions options) const;
 };
 
 }  // namespace Ort
