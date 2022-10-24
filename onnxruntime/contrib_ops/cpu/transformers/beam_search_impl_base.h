@@ -217,7 +217,7 @@ Status BeamSearchBase<T>::Initialize() {
   if (!IsCuda()) {
     // Logits processor is used in CPU only. In CUDA, cuda kernels are used instead.
     // Initialize processors after CheckInputs so that parameters_->vocab_mask is ready.
-    logits_processors_.Init(*parameters_);
+    logits_processors_.Init(*parameters_, thread_pool_);
   }
 
   return Status::OK();

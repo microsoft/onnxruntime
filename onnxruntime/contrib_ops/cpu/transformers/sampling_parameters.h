@@ -10,13 +10,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-struct SamplingParameters : public GreadySearchParameters {
+struct SamplingParameters : public GreedySearchParameters {
   void ParseFromAttributes(const OpKernelInfo& info);
-
-  float presence_penalty;
-  float temperature;
-  float top_p;
-  gsl::span<const int32_t> presence_mask;
 };
 
 }  // namespace transformers

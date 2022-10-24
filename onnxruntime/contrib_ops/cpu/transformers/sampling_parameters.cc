@@ -16,6 +16,7 @@ void SamplingParameters::ParseFromAttributes(const OpKernelInfo& info) {
   no_repeat_ngram_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_repeat_ngram_size", 0));
   temperature = info.GetAttrOrDefault<float>("temperature", 1.0f);
   top_p = info.GetAttrOrDefault<float>("top_p", 0.0f);
+  filter_value = info.GetAttrOrDefault<float>("filter_value", -std::numeric_limits<float>::infinity());
   presence_penalty = info.GetAttrOrDefault<float>("presence_penalty", 0.0f);
 }
 

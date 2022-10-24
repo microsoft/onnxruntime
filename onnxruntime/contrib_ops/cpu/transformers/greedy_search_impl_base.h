@@ -68,7 +68,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
 };
 
 // Base class of gready search implementation that is common for both GPT-2 and Bart/T5.
-template <typename T>
+template <typename T, typename ParametersT>
 class GreedySearchBase : public GenerateBase {
  public:
   GreedySearchBase(OpKernelContextInternal& context,
@@ -76,7 +76,7 @@ class GreedySearchBase : public GenerateBase {
                    concurrency::ThreadPool* thread_pool,
                    void* cuda_stream,
                    IConsoleDumper* cuda_dumper,
-                   GreedySearchParameters& params,
+                   ParametersT& params,
                    const GenerationDeviceHelper::TopkFunc& topk_func,
                    const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<T>& process_logits_func,
                    const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func)
@@ -114,14 +114,14 @@ class GreedySearchBase : public GenerateBase {
                        AllocatorPtr& allocator,
                        int counter);
 
-  GreedySearchParameters* parameters_;
+  ParametersT* parameters_;
 
   // Device specific functions
   GenerationDeviceHelper::GreedySearchProcessLogitsFunc<T> process_logits_func_;
 };
 
-template <typename T>
-Status GreedySearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
+template <typename T, typename ParametersT>
+Status GreedySearchBase<T, ParametersT>::CheckInputs(const OpKernelContextInternal& context) {
   // Input shapes:
   //   input_ids  : (batch_size, sequence_length)
   //   vocab_mask : (vocab_size) or nullptr
@@ -134,8 +134,8 @@ Status GreedySearchBase<T>::CheckInputs(const OpKernelContextInternal& context) 
   return Status::OK();
 }
 
-template <typename T>
-Status GreedySearchBase<T>::Initialize() {
+template <typename T, typename ParametersT>
+Status GreedySearchBase<T, ParametersT>::Initialize() {
   ORT_RETURN_IF_ERROR(this->context_.GetTempSpaceAllocator(&this->temp_space_allocator_));
 
   ORT_RETURN_IF_ERROR(CheckScalarInput("max_length", 1, true));
@@ -149,14 +149,14 @@ Status GreedySearchBase<T>::Initialize() {
   if (!this->IsCuda()) {
     // Logits processor is used in CPU only. In CUDA, cuda kernels are used instead.
     // Initialize processors after CheckInputs so that parameters_->vocab_mask is ready.
-    this->logits_processors_.Init(*parameters_);
+    this->logits_processors_.Init(*parameters_, thread_pool_);
   }
 
   return Status::OK();
 }
 
-template <typename T>
-Status GreedySearchBase<T>::ProcessLogits(
+template <typename T, typename ParametersT>
+Status GreedySearchBase<T, ParametersT>::ProcessLogits(
     const OrtValue& logits,
     GreedySearchState<T>& greedy_state,
     AllocatorPtr& allocator,
@@ -166,8 +166,8 @@ Status GreedySearchBase<T>::ProcessLogits(
                               parameters_, counter, this->cuda_stream_, this->GetConsoleDumper());
 }
 
-template <typename T>
-Status GreedySearchBase<T>::GenerateNextToken(
+template <typename T, typename ParametersT>
+Status GreedySearchBase<T, ParametersT>::GenerateNextToken(
     const OrtValue& logits,
     gsl::span<int32_t>& next_tokens,
     GreedySearchState<T>& greedy_state,

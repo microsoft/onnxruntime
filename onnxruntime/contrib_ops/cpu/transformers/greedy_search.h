@@ -21,7 +21,6 @@ namespace transformers {
 
 using namespace onnxruntime::controlflow;  // namespace of IControlFlowKernel
 
-// bugbug: refactor
 class GreedySearch : public IControlFlowKernel {
  public:
   explicit GreedySearch(const OpKernelInfo& info)
@@ -70,7 +69,7 @@ class GreedySearch : public IControlFlowKernel {
     update_gpt_feeds_fp16_func_ = update_gpt_feeds_fp16_func;
   }
 
- private:
+ protected:
   // Device specific functions
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::TopkFunc topk_func_;

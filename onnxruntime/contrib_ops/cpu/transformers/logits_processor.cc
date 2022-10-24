@@ -203,14 +203,15 @@ void TemperatureLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
   }
 
   T* p = next_token_scores.scores.data();
-  for (int i = 0; i < next_token_scores.scores.size(); i++) {
+  for (size_t i = 0; i < next_token_scores.scores.size(); i++) {
     *p /= temperature_;
   }
 }
 
 template <typename T>
-TopPLogitsProcessor<T>::TopPLogitsProcessor(float top_p, float filter_value, int min_tokens_to_keep)
-    : top_p_(top_p), filter_value_(filter_value), min_tokens_to_keep_(min_tokens_to_keep) {
+TopPLogitsProcessor<T>::TopPLogitsProcessor(float top_p, float filter_value,
+                                            onnxruntime::concurrency::ThreadPool* thread_pool)
+    : top_p_(top_p), filter_value_(filter_value), thread_pool_(thread_pool) {
 }
 
 template <typename T>
@@ -238,18 +239,19 @@ void TopPLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 
     std::sort(sorted_scores.begin(), sorted_scores.end());
     std::vector<T> cumulative_probs(vocab_size);
-    ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(1,
-                                      vocab_size,
-                                      sorted_scores.data(),
-                                      cumulative_probs.data(),
-                                      false,
-                                      thread_pool));
+    // bugbug
+    ORT_UNUSED_PARAMETER(SoftmaxCPU<T>(1,
+                                       vocab_size,
+                                       sorted_scores.data(),
+                                       cumulative_probs.data(),
+                                       false,
+                                       thread_pool_));
 
     std::unordered_set<size_t> sorted_indices_to_remove;
     if (cumulative_probs[0] > top_p_) {
       sorted_indices_to_remove.insert(1);
     }
-    for (size_t j = 1; j < vocab_size - 1; j++) {
+    for (size_t j = 1; j < static_cast<size_t>(vocab_size) - 1; j++) {
       cumulative_probs[j] += cumulative_probs[j - 1];
       if (cumulative_probs[j] > top_p_) {
         sorted_indices_to_remove.insert(j + 1);
@@ -270,7 +272,7 @@ PresencePenaltyLogitsProcessor<T>::PresencePenaltyLogitsProcessor(const gsl::spa
 }
 
 template <typename T>
-void PresencePenaltyLogitsProcessor<T>::Process(const ISequences* sequences,
+void PresencePenaltyLogitsProcessor<T>::Process(const ISequences*,
                                                 NextTokenScores<T>& next_token_scores) {
   if (presence_penalty_ == 0.0f) {
     return;
@@ -279,21 +281,24 @@ void PresencePenaltyLogitsProcessor<T>::Process(const ISequences* sequences,
   assert(!presence_mask_.empty());
 
   T* p = next_token_scores.scores.data();
-  for (int i = 0; i < next_token_scores.scores.size(); i++) {
+  for (size_t i = 0; i < next_token_scores.scores.size(); i++) {
     *p -= presence_mask_[i] * presence_penalty_;
   }
 }
 
-void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
-  LogitsProcessorInitImpl<BeamSearchParameters>(parameters);
+void LogitsProcessorList::Init(const BeamSearchParameters& parameters,
+                               onnxruntime::concurrency::ThreadPool* thread_pool) {
+  LogitsProcessorInitImpl<BeamSearchParameters>(parameters, thread_pool);
 }
 
-void LogitsProcessorList::Init(const GreedySearchParameters& parameters) {
-  LogitsProcessorInitImpl<GreedySearchParameters>(parameters);
+void LogitsProcessorList::Init(const GreedySearchParameters& parameters,
+                               onnxruntime::concurrency::ThreadPool* thread_pool) {
+  LogitsProcessorInitImpl<GreedySearchParameters>(parameters, thread_pool);
 }
 
-void LogitsProcessorList::Init(const BeamSamplingParameters& parameters) {
-  LogitsProcessorInitImpl<BeamSamplingParameters>(parameters);
+void LogitsProcessorList::Init(const SamplingParameters& parameters,
+                               onnxruntime::concurrency::ThreadPool* thread_pool) {
+  LogitsProcessorInitImpl<SamplingParameters>(parameters, thread_pool);
 }
 
 void LogitsProcessorList::Process(const ISequences* sequences,

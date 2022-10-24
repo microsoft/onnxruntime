@@ -212,7 +212,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
                      transformers::ILogitsProcessorList* logits_processors,  // logits processors
                      transformers::IBeamScorer* beam_scorer,                 // beam scorer
-                     const transformers::IBeamSearchParameters* parameters,  // parameters
+                     const transformers::IGenerationParameters* parameters,  // parameters
                      int step,                                               // iteration counter
                      void* stream,                                           // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper) {           // tensor dumper
@@ -456,7 +456,7 @@ Status GreedySearchProcessLogits(
     AllocatorPtr& allocator,                                // default allocator
     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
     transformers::ILogitsProcessorList* logits_processors,  // logits processors
-    const transformers::IBeamSearchParameters* parameters,  // parameters
+    const transformers::IGenerationParameters* parameters,  // parameters
     int step,                                               // iteration counter
     void* stream,                                           // cuda stream (for CUDA only)
     const transformers::IConsoleDumper* dumper) {           // tensor dumper
@@ -885,7 +885,7 @@ template Status ProcessLogits<float>(
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
     transformers::IBeamScorer* beam_scorer,
-    const transformers::IBeamSearchParameters* parameters,
+    const transformers::IGenerationParameters* parameters,
     int step,
     void* stream,
     const transformers::IConsoleDumper* dumper);
@@ -897,7 +897,7 @@ template Status GreedySearchProcessLogits<float>(
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
-    const transformers::IBeamSearchParameters* parameters,
+    const transformers::IGenerationParameters* parameters,
     int step,
     void* stream,
     const transformers::IConsoleDumper* dumper);
@@ -950,7 +950,7 @@ template Status ProcessLogits<MLFloat16>(
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
     transformers::IBeamScorer* beam_scorer,
-    const transformers::IBeamSearchParameters* parameters,
+    const transformers::IGenerationParameters* parameters,
     int step,
     void* stream,
     const transformers::IConsoleDumper* dumper);
@@ -962,7 +962,7 @@ template Status GreedySearchProcessLogits<MLFloat16>(
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
-    const transformers::IBeamSearchParameters* parameters,
+    const transformers::IGenerationParameters* parameters,
     int step,
     void* stream,
     const transformers::IConsoleDumper* dumper);

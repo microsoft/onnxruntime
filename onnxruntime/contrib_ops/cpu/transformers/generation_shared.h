@@ -96,7 +96,7 @@ class IBeamScorer {
                         Tensor* output_sequence_scores) = 0;
 };
 
-struct IBeamSearchParameters {
+struct IGenerationParameters {
   static constexpr int kModelTypeGpt = 0;
   static constexpr int kModelTypeT5 = 1;
 
@@ -107,6 +107,10 @@ struct IBeamSearchParameters {
   int decoder_start_token_id;
   int no_repeat_ngram_size;
   bool early_stopping;
+  float presence_penalty;
+  float temperature;
+  float top_p;
+  float filter_value;
 
   // Parameters from inputs
   int min_length;
@@ -120,6 +124,7 @@ struct IBeamSearchParameters {
 
   gsl::span<const int32_t> vocab_mask;
   gsl::span<const int32_t> prefix_vocab_mask;
+  gsl::span<const int32_t> presence_mask;
 
   // Parameters from outputs.
   bool output_scores;  // whether scores existed in output

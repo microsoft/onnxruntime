@@ -14,8 +14,8 @@ namespace contrib {
 namespace transformers {
 
 // Beam search implementation for GPT-2 model.
-template <typename T>
-class GreedySearchGpt : public GreedySearchBase<T> {
+template <typename T, typename ParametersT>
+class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
  public:
   GreedySearchGpt(OpKernelContextInternal& context,
                   const SessionState& decoder_session_state,
@@ -23,7 +23,7 @@ class GreedySearchGpt : public GreedySearchBase<T> {
                   concurrency::ThreadPool* thread_pool,
                   void* cuda_stream,
                   IConsoleDumper* cuda_dumper,
-                  GreedySearchParameters& params,
+                  ParametersT& params,
                   const GenerationDeviceHelper::CreateGptInputsFunc& create_inputs_func,
                   const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
                   const GenerationDeviceHelper::TopkFunc& topk_func,
@@ -31,15 +31,15 @@ class GreedySearchGpt : public GreedySearchBase<T> {
                   const GenerationDeviceHelper::InitGreedyStateFunc<T>& init_greedy_state_func,
                   const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
                   const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func)
-      : GreedySearchBase<T>(context,
-                            decoder_session_state,
-                            thread_pool,
-                            cuda_stream,
-                            cuda_dumper,
-                            params,
-                            topk_func,
-                            process_logits_func,
-                            device_copy_func),
+      : GreedySearchBase<T, ParametersT>(context,
+                                         decoder_session_state,
+                                         thread_pool,
+                                         cuda_stream,
+                                         cuda_dumper,
+                                         params,
+                                         topk_func,
+                                         process_logits_func,
+                                         device_copy_func),
         gpt_subgraph_(gpt_subgraph),
         create_inputs_func_(create_inputs_func),
         add_to_feeds_func_(add_to_feeds_func),
@@ -76,8 +76,8 @@ class GreedySearchGpt : public GreedySearchBase<T> {
   GenerationDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
 };
 
-template <typename T>
-Status GreedySearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths,
+template <typename T, typename ParametersT>
+Status GreedySearchGpt<T, ParametersT>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths,
                                               OrtValue& expanded_input_ids,
                                               std::vector<OrtValue>& feeds,
                                               IAllocatorUniquePtr<char>& buffer) {
@@ -97,8 +97,8 @@ Status GreedySearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengt
                                           buffer);
 }
 
-template <typename T>
-Status GreedySearchGpt<T>::UpdateFeeds(
+template <typename T, typename ParametersT>
+Status GreedySearchGpt<T, ParametersT>::UpdateFeeds(
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
@@ -120,10 +120,10 @@ Status GreedySearchGpt<T>::UpdateFeeds(
                             gpt_subgraph_.GetFirstPresentOutputIndex());
 }
 
-template <typename T>
-Status GreedySearchGpt<T>::Execute(const FeedsFetchesManager& feeds_fetches_manager) {
+template <typename T, typename ParametersT>
+Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager& feeds_fetches_manager) {
   auto status = Status::OK();
-  const GreedySearchParameters* parameters = this->parameters_;
+  const ParametersT* parameters = this->parameters_;
 
   // Allocate output tensors.
   int64_t sequences_dims[] = {parameters->batch_size, parameters->max_length};

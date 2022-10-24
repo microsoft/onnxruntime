@@ -7,6 +7,7 @@
 #include "contrib_ops/cpu/transformers/sequences.h"
 #include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 #include "contrib_ops/cpu/transformers/greedy_search_parameters.h"
+#include "contrib_ops/cpu/transformers/sampling_parameters.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
@@ -99,7 +100,7 @@ class PrefixVocabMaskLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class TemperatureLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  TemperatureLogitsProcessor(int temperature);
+  TemperatureLogitsProcessor(float temperature);
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override;
@@ -111,7 +112,8 @@ class TemperatureLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class TopPLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  TopPLogitsProcessor(float top_p, float filter_value, int min_tokens_to_keep);
+  TopPLogitsProcessor(float top_p, float filter_value,
+                      onnxruntime::concurrency::ThreadPool* thread_pool);
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override;
@@ -120,6 +122,7 @@ class TopPLogitsProcessor : public ILogitsProcessor<T> {
   float top_p_;
   float filter_value_;
   int min_tokens_to_keep_;
+  onnxruntime::concurrency::ThreadPool* thread_pool_;
 };
 
 template <typename T>
@@ -139,14 +142,15 @@ class PresencePenaltyLogitsProcessor : public ILogitsProcessor<T> {
 class LogitsProcessorList : public ILogitsProcessorList {
  public:
   LogitsProcessorList() = default;
-  void Init(const BeamSearchParameters& parameters);
-  void Init(const GreedySearchParameters& parameters);
-  void Init(const BeamSamplingParameters& parameters);
+  void Init(const BeamSearchParameters& parameters, onnxruntime::concurrency::ThreadPool* thread_pool);
+  void Init(const GreedySearchParameters& parameters, onnxruntime::concurrency::ThreadPool* thread_pool);
+  void Init(const SamplingParameters& parameters, onnxruntime::concurrency::ThreadPool* thread_pool);
   void Process(const ISequences* sequences, gsl::span<float>& next_token_scores, int step);
 
  private:
   template<typename GenerationParametersT>
-  void LogitsProcessorInitImpl(const GenerationParametersT& parameters) {
+  void LogitsProcessorInitImpl(const GenerationParametersT& parameters,
+                               onnxruntime::concurrency::ThreadPool* thread_pool) {
     processor_list_.clear();
 
     if (parameters.repetition_penalty != 1.0f) {  // 1.0 means no penalty
@@ -189,8 +193,16 @@ class LogitsProcessorList : public ILogitsProcessorList {
     if (parameters.top_p > 0) {
       top_p_processor_ = std::make_unique<TopPLogitsProcessor<float>>(parameters.top_p,
                                                                       parameters.filter_value,
-                                                                      parameters.min_tokens_to_keep);
+                                                                      thread_pool);
       processor_list_.push_back(top_p_processor_.get());
+    }
+
+    if (!parameters.presence_mask.empty()) {
+      presence_penalty_processor_ = std::make_unique<
+                                     PresencePenaltyLogitsProcessor<float>
+                                   >(parameters.presence_mask,
+                                     parameters.presence_penalty);
+      processor_list_.push_back(presence_penalty_processor_.get());
     }
 
     batch_beam_size_ = parameters.BatchBeamSize();
@@ -201,8 +213,6 @@ class LogitsProcessorList : public ILogitsProcessorList {
   int vocab_size_;
   InlinedVector<ILogitsProcessor<float>*> processor_list_;
 
-  onnxruntime::concurrency::ThreadPool* thread_pool_;
-
   std::unique_ptr<RepetitionPenaltyLogitsProcessor<float>> repetition_penalty_processor_;
   std::unique_ptr<NoRepeatNGramLogitsProcessor<float>> no_repeat_ngram_processor_;
   std::unique_ptr<VocabMaskLogitsProcessor<float>> vocab_mask_processor_;
@@ -210,6 +220,7 @@ class LogitsProcessorList : public ILogitsProcessorList {
   std::unique_ptr<MinLengthLogitsProcessor<float>> min_length_processor_;
   std::unique_ptr<TemperatureLogitsProcessor<float>> temperature_processor_;
   std::unique_ptr<TopPLogitsProcessor<float>> top_p_processor_;
+  std::unique_ptr<PresencePenaltyLogitsProcessor<float>> presence_penalty_processor_;
 };
 
 }  // namespace transformers
