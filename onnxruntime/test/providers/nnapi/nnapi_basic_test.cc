@@ -325,26 +325,22 @@ TEST(NnapiExecutionProviderTest, TestQDQResizeNCHW) {
   // NNAPI EP does not support the default setting of Resize Op
   // Use bi-linear and asymmetric for NNAPI EP only
   // Setting verify_entire_graph_use_ep for this test as false. This is because layout transformation adds
-  // Transpose (NCHW -> NHWC) nodes. Post tranformation graph looks like this Transpose -> DQ -> Resize -> Q -> Transpose
-  // NNAPI does not pick the first Transpose as its input is graph/partition input
-  // See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/helper.cc#L305
-  // onnxruntime::nnapi::IsInternalQuantizationSupported
-  RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
-                                         {1, 3, 32, 32} /* sizes_data */,
-                                         "linear" /* mode */,
-                                         "asymmetric" /* coordinate_transformation_mode */),
-                  "nnapi_qdq_test_graph_resize",
-                  {ExpectedEPNodeAssignment::Some});
+#if defined(__ANDROID__)
+  const auto* nnapi = NnApiImplementation();
+  if (nnapi->nnapi_runtime_feature_level >= ANEURALNETWORKS_FEATURE_LEVEL_3) {
+    RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
+                                           {1, 3, 32, 32} /* sizes_data */,
+                                           "linear" /* mode */,
+                                           "asymmetric" /* coordinate_transformation_mode */),
+                    "nnapi_qdq_test_graph_resize",
+                    {ExpectedEPNodeAssignment::Some});
+  }
+#endif
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQResizeNHWC) {
   // NNAPI EP does not support the default setting of Resize Op
   // Use bi-linear and asymmetric for NNAPI EP only
-  // Setting verify_entire_graph_use_ep for this test as false. This is because layout transformation adds
-  // Transpose (NCHW -> NHWC) nodes. Post tranformation graph looks like this Transpose -> DQ -> Resize -> Q -> Transpose
-  // NNAPI does not pick the first Transpose as its input is graph/partition input
-  // See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/helper.cc#L305
-  // onnxruntime::nnapi::IsInternalQuantizationSupported
   RunQDQModelTest(BuildQDQResizeTestCase({1, 64, 64, 3} /* input_shape */,
                                          {1, 32, 32, 3} /* sizes_data */,
                                          "linear" /* mode */,
@@ -354,10 +350,15 @@ TEST(NnapiExecutionProviderTest, TestQDQResizeNHWC) {
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSettingNCHW) {
-  RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
-                                         {1, 3, 32, 32} /* sizes_data */),
-                  "nnapi_qdq_test_graph_resize_unsupported",
-                  {ExpectedEPNodeAssignment::None});
+#if defined(__ANDROID__)
+  const auto* nnapi = NnApiImplementation();
+  if (nnapi->nnapi_runtime_feature_level >= ANEURALNETWORKS_FEATURE_LEVEL_3) {
+    RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
+                                           {1, 3, 32, 32} /* sizes_data */),
+                    "nnapi_qdq_test_graph_resize_unsupported",
+                    {ExpectedEPNodeAssignment::None});
+  }
+#endif
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSettingNHWC) {
@@ -429,29 +430,29 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
                   {ExpectedEPNodeAssignment::All});
 }
 
-// This is to verify when Nnapi required scale and zero point are not satisfied
-// the model can work as expected. (no nodes should be handled by Nnapi)
-TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
-  RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
-                      {1, 32} /* input_shape */,
-                      static_cast<int64_t>(1) /* axis */,
-                      0.002f /* output_scales */,
-                      1 /* output_zp */),
-                  "nnapi_qdq_test_graph_softmax_unsupported",
-                  {ExpectedEPNodeAssignment::None});
-}
+  // This is to verify when Nnapi required scale and zero point are not satisfied
+  // the model can work as expected. (no nodes should be handled by Nnapi)
+  TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
+    RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
+                        {1, 32} /* input_shape */,
+                        static_cast<int64_t>(1) /* axis */,
+                        0.002f /* output_scales */,
+                        1 /* output_zp */),
+                    "nnapi_qdq_test_graph_softmax_unsupported",
+                    {ExpectedEPNodeAssignment::None});
+  }
 
-TEST(NnapiExecutionProviderTest, TestQDQConcat) {
-  RunQDQModelTest(BuildQDQConcatTestCase(
-                      {
-                          {1, 6, 36},
-                          {1, 6, 8},
-                          {1, 6, 2},
-                      } /* input_shapes */,
-                      2 /* axis */),
-                  "nnapi_qdq_test_graph_concat",
-                  {ExpectedEPNodeAssignment::All});
-}
+  TEST(NnapiExecutionProviderTest, TestQDQConcat) {
+    RunQDQModelTest(BuildQDQConcatTestCase(
+                        {
+                            {1, 6, 36},
+                            {1, 6, 8},
+                            {1, 6, 2},
+                        } /* input_shapes */,
+                        2 /* axis */),
+                    "nnapi_qdq_test_graph_concat",
+                    {ExpectedEPNodeAssignment::All});
+  }
 
 #if defined(__ANDROID__)
 TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {

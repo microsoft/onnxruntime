@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/constants.h"
 #include "optimizer_api.h"
 #include "optimizer_utils.h"
 
