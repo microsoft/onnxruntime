@@ -29,6 +29,7 @@ limitations under the License.
 
 #include <gsl/gsl>
 #include "core/common/logging/logging.h"
+#include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
 #include "core/platform/windows/telemetry.h"
@@ -71,7 +72,7 @@ class WindowsThread : public EnvThread {
     int index;
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
-    std::optional<ThreadOptions::ThreadAffinity> affinity;
+    std::optional<LogicalProcessors> affinity;
     Param(const ORTCHAR_T* name_prefix1,
           int index1,
           unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
@@ -160,20 +161,17 @@ class WindowsThread : public EnvThread {
     unsigned ret = 0;
     ORT_TRY {
       // TODO: should I try to use SetThreadSelectedCpuSets?
-      if (p->affinity.has_value() && !p->affinity->logical_proc_ids.empty()) {
+      if (p->affinity.has_value() && !p->affinity->empty()) {
         DWORD_PTR mask = 0;
-        for (auto id : p->affinity->logical_proc_ids) {
+        for (auto id : *p->affinity) {
           mask |= DWORD_PTR{1} << id;
         }
         auto rc = SetThreadAffinityMask(GetCurrentThread(), mask);
         if (!rc) {
           const auto error_code = GetLastError();
-          const auto masks = Env::Default().GetThreadAffinityMasks();
-          std::ostringstream os;
-          os << *p->affinity;
           LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
                               << ", index: " << p->index
-                              << ", mask: " << os.str()
+                              << ", mask: " << *p->affinity
                               << ", error code: " << error_code
                               << ", error msg: " << std::system_category().message(error_code)
                               << ". Specify the number of threads explicitly so the affinity is not set.";
@@ -223,7 +221,7 @@ class WindowsEnv : public Env {
 
   struct LogicalProcessorInformation {
     std::unique_ptr<char[]> buffer_;
-    size_t count_;
+    gsl::span<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION> logical_processors;
   };
 
   std::optional<LogicalProcessorInformation> FetchLogicalProcessorInfo() const {
@@ -232,6 +230,10 @@ class WindowsEnv : public Env {
     DWORD returnLength = 0;
     if (GetLogicalProcessorInformation(NULL, &returnLength) == FALSE) {
       if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+        auto last_error = GetLastError();
+        LOGS_DEFAULT(ERROR) << "GetLogicalProcessorInformation failed to obtain buffer length. error code: "
+                            << last_error
+                            << " error msg: " << std::system_category().message(last_error);
         return {};
       }
     }
@@ -239,81 +241,52 @@ class WindowsEnv : public Env {
     auto allocation = std::make_unique<char[]>(returnLength);
     SYSTEM_LOGICAL_PROCESSOR_INFORMATION* buffer = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(allocation.get());
     if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
+      auto last_error = GetLastError();
+      LOGS_DEFAULT(ERROR) << "GetLogicalProcessorInformation failed to retrieve SYSTEM_LOGICAL_PROCESSOR_INFORMATION. error code: "
+                          << last_error
+                          << " error msg: " << std::system_category().message(last_error);
       return {};
     }
 
-    size_t count = gsl::narrow<size_t>(returnLength) / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+    const size_t count = gsl::narrow<size_t>(returnLength) / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
     std::optional<LogicalProcessorInformation> result;
-    result = {std::move(allocation), count};
+    result = {std::move(allocation), gsl::make_span(buffer, count)};
     return result;
   }
 
   int GetNumCpuCores() const override {
     auto logical_processor_info = FetchLogicalProcessorInfo();
     if (!logical_processor_info.has_value()) {
-      // On failure assume two logical processor per phys core.
-      // try GetSystemInfo
-      SYSTEM_INFO sysInfo;
-      GetSystemInfo(&sysInfo);
-      if (sysInfo.dwNumberOfProcessors <= 0) {
-        return std::max(1, static_cast<int>(std::thread::hardware_concurrency()/2));
-      }
-      // This is the number of logical processors in the current group
-      return std::max(1, static_cast<int>(sysInfo.dwNumberOfProcessors/2));
+      ORT_THROW("Fatal error: Unable to get number of physical cores on the system");
     }
 
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION* buffer =
-        reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(logical_processor_info->buffer_.get());
-    const size_t count = logical_processor_info->count_;
     int phys_cores = 0;
-    for (size_t i = 0; i < count; ++i) {
-      if (buffer[i].Relationship == RelationProcessorCore) {
+    for (const auto& processor_info : logical_processor_info->logical_processors) {
+      if (processor_info.Relationship == RelationProcessorCore) {
         phys_cores++;
       }
     }
-    return std::max(1, phys_cores);
+
+    ORT_ENFORCE(phys_cores > 0, "Expecting to have at least one CPU core available");
+
+    return phys_cores;
   }
 
-  std::vector<ThreadOptions::ThreadAffinity> GetThreadAffinityMasks() const override {
-    // Default mask generation if everything else fails.
-    auto generate_vector_of_n = [](unsigned int num_logical_proc) {
-      // The return values will be converted into a 64-bit
-      // mask at the site of the SetThreadAffinityMask() call, so we need to make sure
-      // that num_logical_proc does not exceed 64, which is the max number of processors
-      // supported by SetThreadAffinityMask(). We assume two logical processors per
-      // physical core.
-      num_logical_proc = std::clamp(num_logical_proc, 1U, 64U);
-      std::vector<ThreadOptions::ThreadAffinity> ret;
-      if (num_logical_proc == 1U) {
-        ThreadOptions::ThreadAffinity th_aff{{0}};
-        ret.push_back(std::move(th_aff));
-        return ret;
-      }
-      ret.reserve(num_logical_proc / 2);
-      for (unsigned int c = 0; c < num_logical_proc; c += 2) {
-        ThreadOptions::ThreadAffinity th_aff{{static_cast<int>(c), static_cast<int>(c + 1)}};
-        ret.push_back(std::move(th_aff));
-      }
-      return ret;
-    };
-
-    std::vector<ThreadOptions::ThreadAffinity> ret;
+  std::vector<LogicalProcessors> GetThreadAffinityMasks() const override {
+    std::vector<LogicalProcessors> ret;
 
     auto logical_processor_info = FetchLogicalProcessorInfo();
     if (!logical_processor_info.has_value()) {
-      return generate_vector_of_n(std::thread::hardware_concurrency());
+      ORT_THROW("Fatal error: Unable to get processor information on the system");
     }
-
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION* buffer =
-        reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(logical_processor_info->buffer_.get());
 
     // Convert mask to a vector of ints
     auto mask_to_vector = [](uint64_t mask) {
-      ThreadOptions::ThreadAffinity aff;
+      LogicalProcessors aff;
       int bit = 0;
       while (mask != 0) {
         if ((mask & 0x1) != 0) {
-          aff.logical_proc_ids.push_back(bit);
+          aff.push_back(bit);
         }
         mask >>= 0x1;
         ++bit;
@@ -321,22 +294,17 @@ class WindowsEnv : public Env {
       return aff;
     };
 
-    const size_t count = logical_processor_info->count_;
-    ret.reserve(count);
-    for (size_t i = 0; i < count; ++i) {
-      if (buffer[i].Relationship == RelationProcessorCore) {
+    for (const auto& processor_info : logical_processor_info->logical_processors) {
+      if (processor_info.Relationship == RelationProcessorCore) {
         // A single core can host multiple logical processors
         // so the mask returned can have more than one bit set.
-        // In the past customers complained that threads jump from
-        // one logical process to another, we want to take just one
-        // bit per physical core.
-        ret.push_back(mask_to_vector(buffer[i].ProcessorMask));
+        // We allow threads to be ran on any logical CPU within a given
+        // physical core.
+        ret.push_back(mask_to_vector(processor_info.ProcessorMask));
       }
     }
 
-    if (ret.empty()) {
-      ret = generate_vector_of_n(std::thread::hardware_concurrency());
-    }
+    ORT_ENFORCE(!ret.empty(), "Expecting to have at least one CPU core available");
     return ret;
   }
 

@@ -20,10 +20,16 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   ThreadOptions to;
 
   if (options.affinity_vec_len != 0) {
+    // Currently, the affinities are passed in as bit masks and they need to be converted to integers.
+    // We when create a public API, bit-masks must be done away with because of the following reasons:
+    // 1) integers have a limited number of bits
+    // 2) bit-masks of integers can only represent numbers 0 -63, but on VMs the actual logical processor numbering
+    //    may not start with zero for a given core and may be way beyond 63.
+    // 3) Customers would be forced to concoct bit-masks which is far less convenient than simply an array of processor integers. 
     to.affinity.reserve(options.affinity_vec_len);
     std::transform(options.affinity_vec, options.affinity_vec + options.affinity_vec_len, std::back_inserter(to.affinity),
                    [](size_t affinity) {
-                     return ThreadOptions::ThreadAffinity{{static_cast<int>(affinity)}};
+                     return LogicalProcessors{static_cast<int>(affinity)};
                    });
   }
 

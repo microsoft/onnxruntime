@@ -19,13 +19,13 @@ limitations under the License.
 
 namespace onnxruntime {
 
-std::ostream& operator<<(std::ostream& os, const ThreadOptions::ThreadAffinity& aff) {
+std::ostream& operator<<(std::ostream& os, const LogicalProcessors& aff) {
   os << "{";
-  std::copy(aff.logical_proc_ids.cbegin(), aff.logical_proc_ids.cend(), std::ostream_iterator<int>(os, " "));
+  std::copy(aff.cbegin(), aff.cend(), std::ostream_iterator<int>(os, ", "));
   return os << "}";
 }
 
-std::ostream& operator<<(std::ostream& os, gsl::span<const ThreadOptions::ThreadAffinity> affs) {
+std::ostream& operator<<(std::ostream& os, gsl::span<const LogicalProcessors> affs) {
   os << "{";
   for (const auto& aff : affs) {
     os << aff;
