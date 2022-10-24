@@ -14,8 +14,6 @@ import sys
 from distutils.version import LooseVersion
 from pathlib import Path
 
-from amd_hipify import amd_hipify
-
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
 
@@ -1467,24 +1465,17 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
             run_subprocess(cmd_args)
 
 
-def setup_rocm_build(args, configs):
-
+def setup_rocm_build(args):
     rocm_home = None
-
     if args.use_rocm:
         print("rocm_home = {}".format(args.rocm_home))
         rocm_home = args.rocm_home or None
-
         rocm_home_not_valid = rocm_home and not os.path.exists(rocm_home)
-
         if rocm_home_not_valid:
             raise BuildError(
                 "rocm_home paths must be specified and valid.",
                 "rocm_home='{}' valid={}.".format(rocm_home, rocm_home_not_valid),
             )
-
-        for config in configs:
-            amd_hipify(get_config_build_dir(args.build_dir, config))
     return rocm_home or ""
 
 
@@ -2053,6 +2044,7 @@ def build_python_wheel(
     use_ninja=False,
     build_eager_mode=False,
     enable_training_on_device=False,
+    enable_rocm_profiling=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -2074,6 +2066,8 @@ def build_python_wheel(
             args.append("--enable_training_on_device")
         if build_eager_mode:
             args.append("--disable_auditwheel_repair")
+        if enable_rocm_profiling:
+            args.append("--enable_rocm_profiling")
 
         # The following arguments are mutually exclusive
         if use_cuda:
@@ -2503,7 +2497,7 @@ def main():
     migraphx_home = setup_migraphx_vars(args)
 
     # if using rocm, setup rocm paths
-    rocm_home = setup_rocm_build(args, configs)
+    rocm_home = setup_rocm_build(args)
 
     # if using cann, setup cann paths
     cann_home = setup_cann_vars(args)
@@ -2776,6 +2770,7 @@ def main():
                 use_ninja=(args.cmake_generator == "Ninja"),
                 build_eager_mode=args.build_eager_mode,
                 enable_training_on_device=args.enable_training_on_device,
+                enable_rocm_profiling=args.enable_rocm_profiling,
             )
         if args.build_nuget:
             build_nuget_package(

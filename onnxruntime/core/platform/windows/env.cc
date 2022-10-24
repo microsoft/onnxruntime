@@ -19,12 +19,14 @@ limitations under the License.
 #include <Windows.h>
 
 #include <fstream>
+#include <optional>
 #include <string>
 #include <thread>
 #include <process.h>
 #include <fcntl.h>
 #include <io.h>
 
+#include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
@@ -68,31 +70,53 @@ class WindowsThread : public EnvThread {
     int index;
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
-    const ThreadOptions& thread_options;
+    std::optional<size_t> affinity_mask;
     Param(const ORTCHAR_T* name_prefix1,
           int index1,
           unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
-          Eigen::ThreadPoolInterface* param1,
-          const ThreadOptions& thread_options1) : name_prefix(name_prefix1), index(index1), start_address(start_address1), param(param1), thread_options(thread_options1) {}
+          Eigen::ThreadPoolInterface* param1) 
+      : name_prefix(name_prefix1),
+      index(index1),
+      start_address(start_address1),
+      param(param1) {}
   };
 
  public:
   WindowsThread(const ORTCHAR_T* name_prefix, int index,
                 unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
                 const ThreadOptions& thread_options) {
+    ORT_ENFORCE(index >= 0, "Negative thread index is not allowed");
     custom_create_thread_fn = thread_options.custom_create_thread_fn;
     custom_thread_creation_options = thread_options.custom_thread_creation_options;
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
-    std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param, thread_options);
+
+    std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param);
+    if (gsl::narrow<size_t>(index) < thread_options.affinity.size()) {
+      local_param->affinity_mask = thread_options.affinity[index];
+    }
+
     if (custom_create_thread_fn) {
-      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.release());
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.get());
       if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
+      local_param.release();
     } else {
-      hThread.reset(reinterpret_cast<HANDLE>(_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
-                                                            local_param.release(), 0,
-                                                            &threadID)));
+      _set_errno(0);
+      _set_doserrno(0);
+      auto th_handle = _beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
+                                      local_param.get(), 0,
+                                      &threadID);
+      if (th_handle == 0) {
+        auto err = errno;
+        auto dos_error = _doserrno;
+        char message_buf[256];
+        strerror_s(message_buf, sizeof(message_buf), err);
+        ORT_THROW("WindowThread:_beginthreadex failed with message: ", message_buf, " doserrno: ", dos_error);
+      }
+      local_param.release();
+      hThread.reset(reinterpret_cast<HANDLE>(th_handle));
+      // Do not throw beyond this point so we do not lose thread handle and then not being able to join it.
     }
   }
 
@@ -112,10 +136,7 @@ class WindowsThread : public EnvThread {
 #pragma warning(push)
 #pragma warning(disable : 6387)
   static unsigned __stdcall ThreadMain(void* param) {
-    std::unique_ptr<Param> p((Param*)param);
-    // TODO: should I try to use SetThreadSelectedCpuSets?
-    if (!p->thread_options.affinity.empty())
-      SetThreadAffinityMask(GetCurrentThread(), p->thread_options.affinity[p->index]);
+    std::unique_ptr<Param> p(static_cast<Param*>(param));
 #if WINVER >= _WIN32_WINNT_WIN10
     constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
@@ -137,9 +158,22 @@ class WindowsThread : public EnvThread {
     }
     unsigned ret = 0;
     ORT_TRY {
+      // TODO: should I try to use SetThreadSelectedCpuSets?
+      if (p->affinity_mask.has_value()) {
+        auto rc = SetThreadAffinityMask(GetCurrentThread(), *p->affinity_mask);
+        if (!rc) {
+          const auto error_code = GetLastError();
+          LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
+                              << ", mask: " << *p->affinity_mask
+                              << ", error code: " << error_code
+                              << ", error msg: " << std::system_category().message(error_code)
+                              << ". Specify the number of threads explicitly so the affinity is not set.";
+        }
+      }
+
       ret = p->start_address(p->index, p->param);
     }
-    ORT_CATCH(const std::exception&) {
+    ORT_CATCH(...) {
       p->param->Cancel();
       ret = 1;
     }
@@ -148,11 +182,11 @@ class WindowsThread : public EnvThread {
 #pragma warning(pop)
 
   static void __stdcall CustomThreadMain(void* param) {
-    std::unique_ptr<Param> p((Param*)param);
+    std::unique_ptr<Param> p(static_cast<Param*>(param));
     ORT_TRY {
       p->start_address(p->index, p->param);
     }
-    ORT_CATCH(const std::exception&) {
+    ORT_CATCH(...) {
       p->param->Cancel();
     }
   }
@@ -222,7 +256,7 @@ class WindowsEnv : public Env {
         ret.push_back(buffer[i].ProcessorMask);
       }
     }
-    if (ret.empty()){
+    if (ret.empty()) {
       return generate_vector_of_n(std::thread::hardware_concurrency());
     }
     return ret;
@@ -363,9 +397,9 @@ class WindowsEnv : public Env {
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
       const auto error_code = GetLastError();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-          "open file ", ToUTF8String(Basename(file_path)),
-          " fail, errcode = ", error_code,
-          " - ", std::system_category().message(error_code));
+                             "open file ", ToUTF8String(Basename(file_path)),
+                             " fail, errcode = ", error_code,
+                             " - ", std::system_category().message(error_code));
     }
 
 #if NTDDI_VERSION >= NTDDI_WIN10_RS5 && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
@@ -391,9 +425,9 @@ class WindowsEnv : public Env {
     if (file_mapping_handle.get() == INVALID_HANDLE_VALUE) {
       const auto error_code = GetLastError();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-          "open file mapping ", ToUTF8String(Basename(file_path)),
-          " fail, errcode = ", error_code,
-          " - ", std::system_category().message(error_code));
+                             "open file mapping ", ToUTF8String(Basename(file_path)),
+                             " fail, errcode = ", error_code,
+                             " - ", std::system_category().message(error_code));
     }
 
     SYSTEM_INFO sysinfo;
@@ -407,11 +441,11 @@ class WindowsEnv : public Env {
     if (mapped_offset % allocation_granularity != 0) {
       const auto error_code = GetLastError();
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-          "mapped offset must be a multiple of the allocation granularity",
-          " , mapped_offset = ", mapped_offset,
-          " , allocation_granularity = ", allocation_granularity,
-          " , errcode = ", error_code,
-          " - ", std::system_category().message(error_code));
+                             "mapped offset must be a multiple of the allocation granularity",
+                             " , mapped_offset = ", mapped_offset,
+                             " , allocation_granularity = ", allocation_granularity,
+                             " , errcode = ", error_code,
+                             " - ", std::system_category().message(error_code));
     }
 
     void* const mapped_base = MapViewOfFile(file_mapping_handle.get(),
@@ -650,7 +684,7 @@ class WindowsEnv : public Env {
       static constexpr DWORD bufferLength = 64 * 1024;
       std::wstring s(bufferLength, '\0');
       FormatMessageW(
-              FORMAT_MESSAGE_FROM_SYSTEM |
+          FORMAT_MESSAGE_FROM_SYSTEM |
               FORMAT_MESSAGE_IGNORE_INSERTS,
           NULL,
           error_code,
@@ -682,7 +716,7 @@ class WindowsEnv : public Env {
       static constexpr DWORD bufferLength = 64 * 1024;
       std::wstring s(bufferLength, '\0');
       FormatMessageW(
-              FORMAT_MESSAGE_FROM_SYSTEM |
+          FORMAT_MESSAGE_FROM_SYSTEM |
               FORMAT_MESSAGE_IGNORE_INSERTS,
           NULL,
           error_code,

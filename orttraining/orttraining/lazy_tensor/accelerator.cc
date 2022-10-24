@@ -10,8 +10,7 @@
 #include <string>
 #include <vector>
 // Pytorch.
-#include <torch/csrc/jit/passes/onnx.h>
-#include <torch/csrc/jit/passes/shape_analysis.h>
+#include <torch/csrc/onnx/onnx.h>
 #include <torch/torch.h>
 // ORT friends.
 #include "core/common/logging/sinks/clog_sink.h"
