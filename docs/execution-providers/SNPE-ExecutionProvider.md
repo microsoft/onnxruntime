@@ -63,3 +63,9 @@ Ort::Session session(env, model_path, session_options);
 ```
 
 The C API details are [here](../get-started/with-c.md).
+
+### Inference example
+
+[Image classification with Inception v3 in CPP using SNPE Execution Provider](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/Snpe_EP)
+
+[Image classification with VGG16 in C# using SNPE Execution Provider](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_sharp/Snpe_EP/vgg16_image_classification)
