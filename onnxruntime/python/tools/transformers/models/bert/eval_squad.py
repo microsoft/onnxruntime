@@ -2,6 +2,15 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+#
+# This script evaluates accuracy of ONNX models for question-answering task on SQuAD data set.
+# Example to evaluate raw and optimized model for CUDA in Linux:
+#   pip3 install datasets evaluate optimum transformers onnxruntime-gpu
+#   python3 eval_squad.py -m distilbert-base-cased-distilled-squad --use_gpu
+#   python3 -m onnxruntime.transformers.optimizer --output optimized.onnx --num_heads 12 --hidden_size 768 \
+#           --input /home/$USER/.cache/huggingface/hub/distilbert-base-cased-distilled-squad/model.onnx
+#   python3 eval_squad.py -m distilbert-base-cased-distilled-squad --use_gpu --onnx optimized.onnx
+
 import argparse
 import csv
 import os
@@ -15,8 +24,6 @@ from evaluate import evaluator
 from optimum.onnxruntime import ORTModelForQuestionAnswering
 from optimum.onnxruntime.modeling_ort import ORTModel
 from transformers import AutoTokenizer, pipeline
-
-# This script is used to evaluate accuracy of ONNX models for question-answering task on SQuAD data set.
 
 PRETRAINED_SQUAD_MODELS = [
     "bert-large-uncased-whole-word-masking-finetuned-squad",
