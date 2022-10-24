@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
-import {Graph} from '../../../graph';
-import {Tensor} from '../../../tensor';
-import {MAX_CLIP, MIN_CLIP} from '../../../util';
+import {TensorView} from '../../tensor';
+import {MAX_CLIP, MIN_CLIP, ShapeUtil} from '../../util';
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
 import {WebGpuInferenceHandler} from '../inference-handler';
-import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
 import {WORKGROUP_SIZE} from './common';
 
@@ -46,14 +45,14 @@ const createElementwiseProgramShader =
     };
 
 const createElementwiseProgramInfo =
-    (metadata: ProgramMetadata, input: Tensor, funcCall: ElementwiseFunctionCall, additionalImplementation?: string):
-        ProgramInfo => ({
-          ...metadata,
-          shaderSource: createElementwiseProgramShader(input.size, funcCall, additionalImplementation),
-          outputs: [{dims: input.dims, type: input.type, gpuDataType: GpuDataType.default}],
-          dispatchGroup: (inputTensors) =>
-              ({x: Math.ceil(inputTensors[0].size / 64 /* workgroup size */ / 4 /* vec size */)})
-        });
+    (metadata: ProgramMetadata, input: TensorView, funcCall: ElementwiseFunctionCall,
+     additionalImplementation?: string): ProgramInfo => ({
+      ...metadata,
+      shaderSource: createElementwiseProgramShader(ShapeUtil.size(input.dims), funcCall, additionalImplementation),
+      outputs: [{dims: input.dims, type: input.type, gpuDataType: GpuDataType.default}],
+      dispatchGroup: (inputTensors) =>
+          ({x: Math.ceil(inputTensors[0].size / 64 /* workgroup size */ / 4 /* vec size */)})
+    });
 
 const createElementwiseProgramInfoLoader =
     (input: Tensor, name: string, funcCall: ElementwiseFunctionCall, additionalImplementation?: string,
@@ -65,8 +64,8 @@ const createElementwiseProgramInfoLoader =
       };
     };
 
-export const abs = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
-    handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Abs', 'abs'), inputs);
+export const abs = (context: ComputeContext): number =>
+    context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Abs', 'abs'));
 
 export const acos = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'Acos', 'acos'), inputs);
