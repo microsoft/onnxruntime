@@ -85,7 +85,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const auto& output_shape = shaper[output];
   const auto& input_shape = shaper[input];
 
-  const bool input_is_nchw = output_shape[3] != input_shape[3];  // not Channel last
+  const bool input_is_nchw = output_shape[1] == input_shape[1];  // not Channel last
 
   // Check if the quantization scale and ZP is correct
   if (IsQuantizedOp(node_unit)) {
