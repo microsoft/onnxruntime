@@ -324,17 +324,19 @@ TEST(NnapiExecutionProviderTest, TestQDQConv) {
 TEST(NnapiExecutionProviderTest, TestQDQResizeNCHW) {
   // NNAPI EP does not support the default setting of Resize Op
   // Use bi-linear and asymmetric for NNAPI EP only
+  auto Mode = ExpectedEPNodeAssignment::None;
 #if defined(__ANDROID__)
   const auto* nnapi = NnApiImplementation();
   if (nnapi->nnapi_runtime_feature_level >= ANEURALNETWORKS_FEATURE_LEVEL_3) {
-    RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
-                                           {1, 3, 32, 32} /* sizes_data */,
-                                           "linear" /* mode */,
-                                           "asymmetric" /* coordinate_transformation_mode */),
-                    "nnapi_qdq_test_graph_resize",
-                    {ExpectedEPNodeAssignment::All});
+    Mode = ExpectedEPNodeAssignment::All;
   }
 #endif
+  RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
+                                         {1, 3, 32, 32} /* sizes_data */,
+                                         "linear" /* mode */,
+                                         "asymmetric" /* coordinate_transformation_mode */),
+                  "nnapi_qdq_test_graph_resize",
+                  {Mode});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQResizeNHWC) {
@@ -349,15 +351,10 @@ TEST(NnapiExecutionProviderTest, TestQDQResizeNHWC) {
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSettingNCHW) {
-#if defined(__ANDROID__)
-  const auto* nnapi = NnApiImplementation();
-  if (nnapi->nnapi_runtime_feature_level >= ANEURALNETWORKS_FEATURE_LEVEL_3) {
-    RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
-                                           {1, 3, 32, 32} /* sizes_data */),
-                    "nnapi_qdq_test_graph_resize_unsupported",
-                    {ExpectedEPNodeAssignment::None});
-  }
-#endif
+  RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
+                                         {1, 3, 32, 32} /* sizes_data */),
+                  "nnapi_qdq_test_graph_resize_unsupported",
+                  {ExpectedEPNodeAssignment::None});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSettingNHWC) {
