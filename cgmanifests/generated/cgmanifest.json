@@ -92,6 +92,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "a3534567187d2edc428efd3f13466ff75fe5805c",
+          "repositoryUrl": "https://github.com/microsoft/GSL.git"
+        },
+        "comments": "git submodule at cmake/external/GSL"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "ff15c6ada150a5018c5ef2172401cb4529eac9c0",
           "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
         },
@@ -162,7 +172,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c220895fd1163c01f0a8b44229fb9e4fe0ae0958",
+          "commitHash": "fc645b7626ebf86530dbd82fbece74d457e7ae07",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -192,7 +202,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "53495a2a7d6ba7e0691a7f3602e9a5324bba6e45",
+          "commitHash": "58d77fa8070e8cec2dc1ed015d66b454c8d78850",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "git submodule at cmake/external/googletest"
@@ -252,7 +262,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5a5f8a5935762397aa68429b5493084ff970f774",
+          "commitHash": "f7ee1ac60d06abe8e26c9b6bbe1e3db5286b614b",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -342,7 +352,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a902b39270841beafc307dfa709610aa1cac2f06",
+          "commitHash": "0dab03ba7bc438d7ba3eac2b2c1eb39ed520f928",
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
         "comments": "git submodule at cmake/external/protobuf"
