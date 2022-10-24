@@ -11,6 +11,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "gsl/gsl-lite.hpp"
 
+
 namespace onnxruntime {
 namespace xnnpack {
 
@@ -25,12 +26,6 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
     if (input_defs.size() < 2) {
       break;
     }
-
-    const auto alpha = node.GetAttributes().find("alpha");
-    if ((*alpha).second.f() != 1.0) break;
-
-    const auto beta = node.GetAttributes().find("beta");
-    if ((*beta).second.has_f() && (*beta).second.f() != 1.0) break;
 
     const auto& A_arg = *input_defs[0];
     const auto& B_arg = *input_defs[1];
@@ -87,20 +82,6 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
 
 Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info) {
   const auto& node{Node()};
-
-  // get values from any fusion with an activation
-  if (std::string activation; info.GetAttr<std::string>("activation", &activation).IsOK()) {
-    if (activation == "Clip" || activation == "Relu") {
-      std::vector<float> activation_params;
-
-      // min/max could be from Clip or Relu
-      if (info.GetAttrs<float>("activation_params", activation_params).IsOK()) {
-        if (activation_params.size() == 2) {
-          clip_min_max_ = {activation_params[0], activation_params[1]};
-        }
-      }
-    }
-  }
 
   ORT_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());
   info.GetAttrOrDefault<float>("beta", &beta_, 1.f);

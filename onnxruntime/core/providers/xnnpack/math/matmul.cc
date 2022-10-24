@@ -62,20 +62,6 @@ MatMul::MatMul(const OpKernelInfo& info) : XnnpackKernel(info) {
   info.GetAttrOrDefault<int64_t>("transA", &trans_a_attr_, 0);
   info.GetAttrOrDefault<int64_t>("transB", &trans_b_attr_, 0);
   info.GetAttrOrDefault<float>("alpha", &alpha_attr_, 1.0);
-
-    // get values from any fusion with an activation
-  if (std::string activation; info.GetAttr<std::string>("activation", &activation).IsOK()) {
-    if (activation == "Clip" || activation == "Relu") {
-      std::vector<float> activation_params;
-
-      // min/max could be from Clip or Relu
-      if (info.GetAttrs<float>("activation_params", activation_params).IsOK()) {
-        if (activation_params.size() == 2) {
-          clip_min_max_ = {activation_params[0], activation_params[1]};
-        }
-      }
-    }
-  }
 }
 
 Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,

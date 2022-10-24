@@ -42,7 +42,7 @@ const NodeUnit* ClipReluChecker(const NodeUnit& node_unit,
                                 const GraphViewer& graph,
                                 const std::unordered_map<const Node*, const NodeUnit*>& supported_node_unit_map) {
   const NodeUnit* fuse_with{nullptr};
-  std::unordered_set<std::string> node_to_be_fuse = {"Conv", "MaxPool", "AveragePool", "Gemm", "MatMul"};
+  static const std::unordered_set<std::string> node_to_be_fuse = {"Conv", "MaxPool", "AveragePool"};
   const Node& node = node_unit.GetNode();
   do {
     // input 0 must come from a node we support
