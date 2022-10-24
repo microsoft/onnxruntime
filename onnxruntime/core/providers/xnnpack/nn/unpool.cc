@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "unpool.h"
-#include <algorithm>
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers_fwd.h"
@@ -208,9 +207,9 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   auto out_x32 = gsl::make_span(reinterpret_cast<int32_t*>(Y->MutableDataRaw()), Y->Shape().Size());
   auto out_x8 = gsl::make_span(reinterpret_cast<int8_t*>(Y->MutableDataRaw()), Y->Shape().Size());
   if (op_type_ != OpComputeType::op_compute_type_fp32) {
-    std::fill_n(out_x8.data(), out_x8.size(), 0);
+    std::fill_n(out_x8.data(), out_x8.size(), int8_t(0));
   } else {
-    std::fill_n(out_x32.data(), out_x32.size(), 0);
+    std::fill_n(out_x32.data(), out_x32.size(), int32_t(0));
   }
 
   using onnxruntime::TensorOpCost;
