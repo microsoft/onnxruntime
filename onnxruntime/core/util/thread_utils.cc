@@ -30,6 +30,8 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
   }
+  ORT_ENFORCE(to.affinity.empty() || static_cast<int>(to.affinity.size()) == options.thread_pool_size, 
+    "length of thread affinity vector must match thread pool size");
   to.set_denormal_as_zero = options.set_denormal_as_zero;
 
   // set custom thread management members
