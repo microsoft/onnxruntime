@@ -60,25 +60,30 @@ void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx
 constexpr const char* Attention_ver1_doc = R"DOC(
 Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
 
-The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension, its shape
-is (input_hidden_size, num_heads * q_head_size + num_heads * q_head_size + num_heads * v_head_size).
+The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
+is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
+and v_hidden_size is that of V.
 
 The mask_index is optional. Besides raw attention mask with shape (batch_size, total_sequence_length)
 or (batch_size, sequence_length, total_sequence_length) with value 0 for masked and 1 otherwise,
 we support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
-where value of each element is the end position, or valid length of actual sequence excluding padding. When input has
-left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
-the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. Both
-past and present state are optional.
+where value is actual sequence length excluding padding. When input has left-side padding, mask_index has
+shape (2 * batch_size), where the values are the exclusive end positions followed by the inclusive start positions.
+
+When unidirectional is 1, each token only attends to previous tokens.
+
+Both past and present state are optional. They shall be used together, and not allowed to use only one of them.
 
 When weights is not provided, key and value are required. In this situation, MatMul for input projection is excluded,
-and input is the query after projection. Add bias is included for performance consideration.
+and input is the query after projection. The bias is included for performance consideration.
 
-The qkv_hidden_sizes is required only when K and V has different hidden size.
+The qkv_hidden_sizes is required only when K and V have different hidden sizes.
 
 When there is past state, hidden dimension for Q, K and V shall be the same.
 
-The total_sequence_length is past_sequence_length + kv_sequence_length.
+The total_sequence_length is past_sequence_length + kv_sequence_length. Here kv_sequence_length is the length of K or V.
+For self attention, kv_sequence_length equals to sequence_length (sequence length of Q).
+For cross attention, query and key might have different lengths.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -96,8 +101,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               OPTIONAL_VALUE)
         .Input(0,
                "input",
-               "Input tensor with shape (batch_size, sequence_length, input_hidden_size) when weights is avaiable, "
-               "or query tensor with shape (batch_size, sequence_length, hidden_size) when weights is not avaiable.",
+               "Input tensor with shape (batch_size, sequence_length, input_hidden_size) when weights is available, "
+               "or query tensor with shape (batch_size, sequence_length, hidden_size) when weights is not available.",
                "T",
                OpSchema::Optional)
         .Input(1,
@@ -118,24 +123,24 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "past",
-               "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).",
+               "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
         .Input(5,
                "extra_add",
-               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).",
+               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
         .Input(6,
                "key",
                "Input for key with shape (batch_size, kv_sequence_length, hidden_size). "
-               "Required when weights is not avaiable",
+               "Required when weights is not available.",
                "T",
                OpSchema::Optional)
         .Input(7,
                "value",
                "Input for key with shape (batch_size, kv_sequence_length, v_hidden_size). "
-               "Required when weights is not avaiable",
+               "Required when weights is not available.",
                "T",
                OpSchema::Optional)
         .Output(0,
