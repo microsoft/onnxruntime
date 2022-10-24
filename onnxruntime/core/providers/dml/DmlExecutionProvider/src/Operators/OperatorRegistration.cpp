@@ -287,6 +287,7 @@ constexpr static std::array<const char*, 1> typeNameListScatterGatherND = { "T" 
 constexpr static std::array<const char*, 2> typeNameListSlice10 = { "T", "Tind" };
 constexpr static std::array<const char*, 2> typeNameListWhere = { "B", "T" };
 constexpr static std::array<const char*, 2> typeNameListEyeLike = { "T1", "T2" };
+constexpr static std::array<const char*, 2> typeNameShape = { "T", "T1" };
 
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListAll = {SupportedTensorDataTypes::All};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListFloat32 = {SupportedTensorDataTypes::Float32};
@@ -684,9 +685,9 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 11,  TopK,                               typeNameListTopK,               supportedTypeListTopK,                  DmlGraphSupport::Supported, requiredConstantCpuInputs(1))},
     {REG_INFO(      9,  OneHot,                             typeNameListThree,              supportedTypeListOneHot,                DmlGraphSupport::Supported, requiredConstantCpuInputs(1))},
     {REG_INFO(     11,  OneHot,                             typeNameListThree,              supportedTypeListOneHot,                DmlGraphSupport::Supported, requiredConstantCpuInputs(1))},
-    {REG_INFO(      7,  Shape,                              typeNameListTwo,                supportedTypeListShape,                 DmlGraphSupport::Supported)},
-    {REG_INFO(     13,  Shape,                              typeNameListTwo,                supportedTypeListShape,                 DmlGraphSupport::Supported)},
-    {REG_INFO(     15,  Shape,                              typeNameListTwo,                supportedTypeListShape,                 DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::Supported)},
+    {REG_INFO(     13,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::Supported)},
+    {REG_INFO(     15,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::Supported)},
     // Size-1 relies on CPU.
 
     // DmlFused operators

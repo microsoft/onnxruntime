@@ -290,6 +290,7 @@ namespace Dml
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap,
         _Inout_ std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& dmlNodePropertyMap,
         _Inout_ std::unordered_set<std::string>& requiredInitializerMap,
+        const std::unordered_set<size_t> cpuPreferredNodes,
         _Out_ bool* isDmlNode,
         _Out_ bool* isDmlGraphNode
         )
@@ -299,9 +300,9 @@ namespace Dml
 
         // Find the highest priority DML registry supporting this node, and get its highest-priority
         // registration.  Determine if that registration supports usage as a graph node.
-
-        if (IsNodeSupportedByDml(node, kernelLookup, supportedDeviceDataTypeMask,
-                                 internalRegInfoMap))
+        // Also, skip nodes that should stay on the CPU (e.g. CPU subgraphs or small initializers).
+        if (IsNodeSupportedByDml(node, kernelLookup, supportedDeviceDataTypeMask, internalRegInfoMap)
+            && cpuPreferredNodes.find(node.Index()) == cpuPreferredNodes.end())
         {
             *isDmlNode = true;
 
@@ -647,20 +648,17 @@ namespace Dml
         for (size_t nodeIndex : toplogicalOrder)
         {
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
-            candidates.push_back(node.Index());
+            if (kernelLookup.LookUpKernel(node))
+            {
+                candidates.push_back(node.Index());
+            }
         }
 
-        auto cpuNodes = GetCpuPreferredNodes(graph, kernelLookup, candidates);
+        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernelLookup, candidates);
 
         // Build up partitions while traversing the graph.
         for (size_t nodeIndex : toplogicalOrder)
         {
-            // Skip nodes that should stay on the CPU (e.g. CPU subgraphs or small initializers)
-            if (cpuNodes.count(nodeIndex) > 0)
-            {
-                continue;
-            }
-
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
 
             // Whether the node is implemented through DML.
@@ -680,6 +678,7 @@ namespace Dml
                 &nodeNameToPartitionMap,
                 graphNodePropertyMap,
                 requiredInitializerMap,
+                cpuPreferredNodes,
                 /*out*/ &isDmlNode,
                 /*out*/ &isDmlGraphNode
             );
