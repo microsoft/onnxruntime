@@ -324,7 +324,6 @@ TEST(NnapiExecutionProviderTest, TestQDQConv) {
 TEST(NnapiExecutionProviderTest, TestQDQResizeNCHW) {
   // NNAPI EP does not support the default setting of Resize Op
   // Use bi-linear and asymmetric for NNAPI EP only
-  // Setting verify_entire_graph_use_ep for this test as false. This is because layout transformation adds
 #if defined(__ANDROID__)
   const auto* nnapi = NnApiImplementation();
   if (nnapi->nnapi_runtime_feature_level >= ANEURALNETWORKS_FEATURE_LEVEL_3) {
