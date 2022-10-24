@@ -3651,6 +3651,74 @@ TEST_F(GraphTransformationTests, QuickGelu) {
     TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                          pre_graph_checker, post_graph_checker);
   }
+
+  // Sigmoid(x)*x, float
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* sigmoid_out = builder.MakeIntermediate();
+      auto* mul_out = builder.MakeOutput();
+
+      builder.AddNode("Sigmoid", {input_arg}, {sigmoid_out});
+      builder.AddNode("Mul", {sigmoid_out, input_arg}, {mul_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 1);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 1);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "QuickGelu") {
+          auto& attrs = node.GetAttributes();
+          ASSERT_TRUE(attrs.find("alpha") != attrs.end());
+          ASSERT_EQ(1.0f, attrs.at("alpha").f());
+        }
+      }
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // x*Sigmoid(x), MLFloat16
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+      auto* sigmoid_out = builder.MakeIntermediate();
+      auto* mul_out = builder.MakeOutput();
+
+      builder.AddNode("Sigmoid", {input_arg}, {sigmoid_out});
+      builder.AddNode("Mul", {input_arg, sigmoid_out}, {mul_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 1);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 1);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "QuickGelu") {
+          auto& attrs = node.GetAttributes();
+          ASSERT_TRUE(attrs.find("alpha") != attrs.end());
+          ASSERT_EQ(1.0f, attrs.at("alpha").f());
+        }
+      }
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
 }
 
 struct BiasSoftmaxFusionTester {

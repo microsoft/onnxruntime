@@ -222,6 +222,19 @@ TEST(QuickGeluGradTest, Basic) {
         {{"alpha", alpha}}, 1, kMSDomain);
   }
 
+  // Silu = x*sigmoid(x), i.e., alpha = 1.0f.
+  {
+    const float alpha = 1.0f;
+    TestElementwiseGradientOp(
+        "QuickGeluGrad", {{"dY", dY}, {"X", x_vals}},
+        [alpha](const std::vector<float>& params) {
+          ORT_ENFORCE(params.size() == 2);
+          const auto dy = params[0], x = params[1];
+          return QuickGeluGrad(dy, x, alpha);
+        },
+        {{"alpha", alpha}}, 1, kMSDomain);
+  }
+
   // Negative alpha.
   {
     const float alpha = -1.702f;

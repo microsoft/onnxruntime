@@ -13,7 +13,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 /**
-Rewrite x*sigmoid(alpha*x) to QuickGelu.
+Rewrite x*sigmoid(alpha*x) x*sigmoid(x) to QuickGelu.
 */
 Status QuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
@@ -26,46 +26,52 @@ Status QuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     InlinedVector<std::reference_wrapper<Node>> nodes_to_fuse;
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7, 13, 14}) ||
-        !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) || node.GetOutputEdgesCount() != 1) {
-      continue;
-    }
 
     int alpha_index = -1;
-    float alpha = 0.f;
-    for (auto i = 0; i < 2; ++i) {
-      const NodeArg& input_arg = *(node.InputDefs()[i]);
-      if (!optimizer_utils::IsScalar(input_arg)) continue;
-      const TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
-      if (!tensor_proto) continue;
-      Initializer init_const{*tensor_proto, graph.ModelPath()};
-      const auto data_type = tensor_proto->data_type();
-      if (data_type == TensorProto_DataType_FLOAT) {
-        alpha = *(init_const.data<float>());
-        alpha_index = i;
-        break;
-      } else if (data_type == TensorProto_DataType_DOUBLE) {
-        alpha = static_cast<float>(*(init_const.data<double>()));
-        alpha_index = i;
-        break;
-      } else if (data_type == TensorProto_DataType_FLOAT16) {
-        alpha = math::halfToFloat(init_const.data<MLFloat16>()->val);
-        alpha_index = i;
-        break;
+    float alpha = 1.0f;
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7, 13, 14}) &&
+        graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) && node.GetOutputEdgesCount() == 1) {
+      for (auto i = 0; i < 2; ++i) {
+        const NodeArg& input_arg = *(node.InputDefs()[i]);
+        if (!optimizer_utils::IsScalar(input_arg)) continue;
+        const TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
+        if (!tensor_proto) continue;
+        Initializer init_const{*tensor_proto, graph.ModelPath()};
+        const auto data_type = tensor_proto->data_type();
+        if (data_type == TensorProto_DataType_FLOAT) {
+          alpha = *(init_const.data<float>());
+          alpha_index = i;
+          break;
+        } else if (data_type == TensorProto_DataType_DOUBLE) {
+          alpha = static_cast<float>(*(init_const.data<double>()));
+          alpha_index = i;
+          break;
+        } else if (data_type == TensorProto_DataType_FLOAT16) {
+          alpha = math::halfToFloat(init_const.data<MLFloat16>()->val);
+          alpha_index = i;
+          break;
+        }
       }
     }
 
-    if (alpha_index == -1) continue;
-    NodeArg* quick_gelu_input_arg = node.MutableInputDefs()[(alpha_index + 1) % 2];
-    nodes_to_fuse.emplace_back(node);
+    NodeArg* quick_gelu_input_arg = nullptr;
+    Node* p_sigmoid_node = p_node;
+    if (alpha_index != -1) {
+      quick_gelu_input_arg = node.MutableInputDefs()[(alpha_index + 1) % 2];
+      nodes_to_fuse.emplace_back(node);
+      p_sigmoid_node = graph.GetNode(node.OutputNodesBegin()->Index());
+    }
 
-    Node& sigmoid_node = *graph.GetNode(node.OutputNodesBegin()->Index());
+    Node& sigmoid_node = *p_sigmoid_node;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(sigmoid_node, "Sigmoid", {6, 13}) ||
         !graph_utils::IsSupportedProvider(sigmoid_node, GetCompatibleExecutionProviders()) ||
         sigmoid_node.GetOutputEdgesCount() != 1) {
       continue;
     }
     nodes_to_fuse.emplace_back(sigmoid_node);
+    if (!quick_gelu_input_arg) {
+      quick_gelu_input_arg = sigmoid_node.MutableInputDefs()[0];
+    }
 
     Node& mul_node = *graph.GetNode(sigmoid_node.OutputNodesBegin()->Index());
     int sigmoid_output_index = optimizer_utils::IndexOfNodeInput(mul_node, *sigmoid_node.MutableOutputDefs()[0]);

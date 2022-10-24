@@ -8,7 +8,7 @@
 namespace onnxruntime {
 
 /**
- * @brief Rewrite graph fusing x*sigmoid(alpha*x) to QuickGelu.
+ * @brief Rewrite graph fusing x*sigmoid(alpha*x) or x*sigmoid(x) to QuickGelu.
  */
 class QuickGeluFusion : public GraphTransformer {
  public:
