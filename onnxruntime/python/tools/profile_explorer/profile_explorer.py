@@ -106,9 +106,9 @@ def _print_cpu_top_hitters(df, args):
     df1['cumulative_pct'] = df1['pct'].cumsum()
     df1['cumulative_dur'] = df1['duration'].cumsum()
     print('\n------ Top CPU Kernel Times ------')
-    print(df1.to_string(index=False))
+    print(df1.round(2).to_string(index=False))
     if args.csv:
-        df1.to_csv(f'{args.csv}_cpu_kernel_times.csv')
+        df1.to_csv(f'{args.csv}_cpu_kernel_times.csv', index=False)
 
 def _print_gpu_top_hitters(df, args):
     top = args.count
@@ -122,9 +122,9 @@ def _print_gpu_top_hitters(df, args):
     df1['cumulative_dur'] = df1['duration'].cumsum()
     df1['name'] = df1['name'].apply(lambda x: _demangle(x, args.demangler))
     print('\n------ Top GPU Kernel Times ------')
-    print(df1.to_string(index=False))
+    print(df1.round(2).to_string(index=False))
     if args.csv:
-        df1.to_csv(f'{args.csv}_gpu_kernel_times.csv')
+        df1.to_csv(f'{args.csv}_gpu_kernel_times.csv', index=False)
 
 def main():
     args = _get_args()
@@ -135,35 +135,6 @@ def main():
     pd.set_option('display.max_colwidth', 120)
     _print_cpu_top_hitters(cpu_df, args)
     _print_gpu_top_hitters(gpu_df, args)
-
-    # digits = 1
-    # top = args.count
-
-    # df2 = df[['dur', 'count']].sum()
-    # df['pct'] = (100 * df['dur'] / df2['dur'])
-    # df['csum'] = df['pct'].cumsum()
-
-    # print(df.to_string())
-
-    # if args.shape_sensitive:
-    #     group_key = ['op_name', 'input_shape']
-    # else:
-    #     group_key = ['op_name']
-    
-    # for sort_key in ['e2e_duration', 'gpu_duration']:
-    #     df2 = df[[sort_key, 'count']].sum()
-    #     df['pct'] = 100 * (df[sort_key] / df2[sort_key])
-    #     df['csum'] = df['pct'].cumsum()
-    #     fields = ["op_name", sort_key, "pct", "count"]
-    #     df1 = df[fields].groupby(group_key).sum().reset_index()
-    #     df1 = df1.sort_values(by=sort_key, ascending=False)[:top]
-    #     df1['avg'] = df1[sort_key] / df1['count']
-    #     df1['op_name'] = df1['op_name'].apply(demangle)
-    #     print(f"\n--Top ops by {sort_key}")
-    #     print(df1.round(digits).to_string(index=False))
-
-    #     if args.csv:
-    #         df1.to_csv(f'{args.csv}_{sort_key}.csv')
 
 
 if __name__ == '__main__':
