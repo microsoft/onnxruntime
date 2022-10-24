@@ -303,6 +303,7 @@ class PosixEnv : public Env {
     std::vector<ThreadOptions::ThreadAffinity> ret;
 #ifdef CPUINFO_SUPPORTED
     if (cpuinfo_available_) {
+#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
       // We currently do not implement affinity on more than 64 cores.
       auto num_phys_cores = cpuinfo_get_cores_count();
       ret.reserve(num_phys_cores);
@@ -318,14 +319,17 @@ class PosixEnv : public Env {
           th_aff.logical_proc_ids.push_back(log_proc->linux_id);
         }
         ret.push_back(std::move(th_aff));
-      }
+       }
+#else
+      // We do not set affinity on these platforms, so we just generate an vector sized for cores
+      ret.resize(cpuinfo_get_cores_count());
+#endif
     }
 #endif // CPUINFO_SUPPORTED
     if(ret.empty()) {
       ret = generate_vector_of_n(std::thread::hardware_concurrency());
     }
     return ret;
-
   }
 
   void SleepForMicroseconds(int64_t micros) const override {
