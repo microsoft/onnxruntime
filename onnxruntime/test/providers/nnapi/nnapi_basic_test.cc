@@ -426,29 +426,29 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
                   {ExpectedEPNodeAssignment::All});
 }
 
-  // This is to verify when Nnapi required scale and zero point are not satisfied
-  // the model can work as expected. (no nodes should be handled by Nnapi)
-  TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
-    RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
-                        {1, 32} /* input_shape */,
-                        static_cast<int64_t>(1) /* axis */,
-                        0.002f /* output_scales */,
-                        1 /* output_zp */),
-                    "nnapi_qdq_test_graph_softmax_unsupported",
-                    {ExpectedEPNodeAssignment::None});
-  }
+// This is to verify when Nnapi required scale and zero point are not satisfied
+// the model can work as expected. (no nodes should be handled by Nnapi)
+TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
+  RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
+                      {1, 32} /* input_shape */,
+                      static_cast<int64_t>(1) /* axis */,
+                      0.002f /* output_scales */,
+                      1 /* output_zp */),
+                  "nnapi_qdq_test_graph_softmax_unsupported",
+                  {ExpectedEPNodeAssignment::None});
+}
 
-  TEST(NnapiExecutionProviderTest, TestQDQConcat) {
-    RunQDQModelTest(BuildQDQConcatTestCase(
-                        {
-                            {1, 6, 36},
-                            {1, 6, 8},
-                            {1, 6, 2},
-                        } /* input_shapes */,
-                        2 /* axis */),
-                    "nnapi_qdq_test_graph_concat",
-                    {ExpectedEPNodeAssignment::All});
-  }
+TEST(NnapiExecutionProviderTest, TestQDQConcat) {
+  RunQDQModelTest(BuildQDQConcatTestCase(
+                      {
+                          {1, 6, 36},
+                          {1, 6, 8},
+                          {1, 6, 2},
+                      } /* input_shapes */,
+                      2 /* axis */),
+                  "nnapi_qdq_test_graph_concat",
+                  {ExpectedEPNodeAssignment::All});
+}
 
 #if defined(__ANDROID__)
 TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
