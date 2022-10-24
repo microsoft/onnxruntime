@@ -742,6 +742,13 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Ope
   return *this;
 }
 
+template <typename T>
+void* SessionOptionsImpl<T>::RegisterCustomOpsLibrary(const char* library_path) {
+  void* library_handle = nullptr;
+  ThrowOnError(GetApi().RegisterCustomOpsLibrary(this->p_, library_path, &library_handle));
+  return library_handle;
+}
+
 /// Session
 template <typename T>
 inline size_t ConstSessionImpl<T>::GetInputCount() const {
@@ -1648,7 +1655,7 @@ inline const OrtMemoryInfo* CustomOpApi::GetTensorMemoryInfo(_In_ const OrtValue
 
 template <typename T>
 inline const T* CustomOpApi::GetTensorData(_Inout_ const OrtValue* value) {
-  return GetTensorData<T>(value);
+  return GetTensorMutableData<T>(const_cast<OrtValue*>(value));
 }
 
 inline std::vector<int64_t> CustomOpApi::GetTensorShape(const OrtTensorTypeAndShapeInfo* info) {
@@ -1759,12 +1766,13 @@ inline std::vector<std::string> GetAvailableProviders() {
 SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
 
 template <typename TOp, typename TKernel>
-void CustomOpBase<TOp, TKernel>::GetSessionConfigs(std::unordered_map<std::string, std::string>& out, ConstSessionOptions options) const {
-  std::vector<std::string> keys = this->GetSessionConfigKeys();
+void CustomOpBase<TOp, TKernel>::GetSessionConfigs(std::unordered_map<std::string, std::string>& out,
+                                                   ConstSessionOptions options) const {
+  std::vector<std::string> keys = static_cast<const TOp*>(this)->GetSessionConfigKeys();
 
   out.reserve(keys.size());
 
-  std::string config_entry_key = std::string("custom_op.") + this->GetName() + ".";
+  std::string config_entry_key = std::string("custom_op.") + static_cast<const TOp*>(this)->GetName() + ".";
   const size_t prefix_size = config_entry_key.length();
 
   for (const auto& key : keys) {

@@ -88,6 +88,7 @@ template <typename T>
 #ifdef ORT_API_MANUAL_INIT
 const OrtApi* Global<T>::api_{};
 inline void InitApi() { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
+inline void InitApi(const OrtApi* api) { Global<void>::api_ = api; }
 #else
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
@@ -490,11 +491,18 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptionsImpl& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
   SessionOptionsImpl& SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetCustomJoinThreadFn
+
+  void* RegisterCustomOpsLibrary(const char* library_path);  ///< Wraps OrtApi::RegisterCustomOpsLibrary
 };
 }  // namespace detail
 
 using ConstSessionOptions = detail::ConstSessionOptionsImpl<detail::Unowned<const OrtSessionOptions>>;
-using UnownedSessionOptions = detail::SessionOptionsImpl<detail::Unowned<OrtSessionOptions>>;
+
+struct UnownedSessionOptions : detail::SessionOptionsImpl<detail::Unowned<OrtSessionOptions>> {
+  explicit UnownedSessionOptions(std::nullptr_t) {}  ///< Create an empty UnownedSessionOptions object, must be assigned a valid one to be used
+  explicit UnownedSessionOptions(OrtSessionOptions* p) : SessionOptionsImpl<detail::Unowned<OrtSessionOptions>>{p} {}  ///< Used for interop with the C API
+  ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
+};
 
 /** \brief Wrapper around ::OrtSessionOptions
  *
@@ -1416,6 +1424,8 @@ struct KernelIOInfoImpl : Base<T> {
 
 }  // namespace detail
 
+using ConstKernelIOInfo = detail::KernelIOInfoImpl<detail::Unowned<const OrtKernelIOInfo>>;
+
 /// <summary>
 /// This struct owns the OrtKernelIOInfo* pointer.
 /// Provides convenience functions to retrieve type, shape, and name information
@@ -1425,6 +1435,8 @@ struct KernelIOInfoImpl : Base<T> {
 struct KernelIOInfo : detail::KernelIOInfoImpl<OrtKernelIOInfo> {
   explicit KernelIOInfo(std::nullptr_t) {}       ///< Create an empty instance to initialize later
   explicit KernelIOInfo(OrtKernelIOInfo* io_info);  ///< Take ownership of the instance
+
+  ConstKernelIOInfo GetConst() const { return ConstKernelIOInfo{this->p_}; }
 };
 
 namespace detail {
