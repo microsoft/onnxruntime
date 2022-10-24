@@ -966,8 +966,6 @@ Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
                                                  {output}, {output_operand_type}));
 
   return Status::OK();
-
-  return Status::OK();
 }
 
 // We can skip the Reshape if all the output edges satisfies both the following conditions
