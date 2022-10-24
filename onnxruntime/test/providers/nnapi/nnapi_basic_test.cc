@@ -332,7 +332,7 @@ TEST(NnapiExecutionProviderTest, TestQDQResizeNCHW) {
                                            "linear" /* mode */,
                                            "asymmetric" /* coordinate_transformation_mode */),
                     "nnapi_qdq_test_graph_resize",
-                    {ExpectedEPNodeAssignment::Some});
+                    {ExpectedEPNodeAssignment::All});
   }
 #endif
 }
@@ -345,7 +345,7 @@ TEST(NnapiExecutionProviderTest, TestQDQResizeNHWC) {
                                          "linear" /* mode */,
                                          "asymmetric" /* coordinate_transformation_mode */),
                   "nnapi_qdq_test_graph_resize",
-                  {ExpectedEPNodeAssignment::Some});
+                  {ExpectedEPNodeAssignment::All});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSettingNCHW) {
