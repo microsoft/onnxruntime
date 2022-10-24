@@ -1610,6 +1610,12 @@ if (onnxruntime_USE_CLOUD)
           RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
           FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   
+  target_include_directories(onnxruntime_providers_cloud PRIVATE ${TRITON_ROOT}/include)
+  target_link_directories(onnxruntime_providers_cloud PRIVATE ${TRITON_ROOT}/include)
+  target_link_libraries(onnxruntime_providers_cloud PRIVATE httpclient_static)
+  if (WIN32)
+    target_link_libraries(onnxruntime_providers_cloud PRIVATE ws2_32 crypt32 Wldap32)
+  endif()
   #add_dependencies(onnxruntime_providers_cloud onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   #onnxruntime_add_include_to_target(onnxruntime_providers_cloud onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   #target_include_directories(onnxruntime_providers_cloud PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})

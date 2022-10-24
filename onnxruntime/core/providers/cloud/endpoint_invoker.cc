@@ -1,89 +1,149 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "curl/curl.h"
+#include "http_client.h"
 #include "core/common/common.h"
 #include "core/providers/cloud/endpoint_invoker.h"
 
 namespace onnxruntime {
 namespace cloud {
 
-EndPointType EndPointInvoker::MapType(const std::string& type) {
-  if (type == "Rest") return EndPointType::Rest;
-  return EndPointType::Unknown;
-}
+EndPointInvoker::~EndPointInvoker() {}
 
-std::unique_ptr<EndPointInvoker> EndPointInvoker::CreateInvoker(EndPointType type, const EndPointConfig& config) {
-  std::unique_ptr<EndPointInvoker> invoker;
-  switch (type) {
-    case onnxruntime::cloud::Rest:
-      invoker = std::make_unique<RestInvoker>(config);
-      break;
-    default:
-      break;
-  }
-  return invoker;
-}
+namespace tc = triton::client;
 
-static size_t RecvCallback(void* raw_data, size_t size, size_t nmemb, void* userp) {
-  size_t realsize = size * nmemb;
-  Data* recv_data = static_cast<Data*>(userp);
-
-  char* ptr = (char*)realloc(recv_data->content, recv_data->size_in_byte + realsize + 1);
-  if (ptr == NULL) {
-    return 0;
-  }
-
-  recv_data->content = ptr;
-  memcpy(&(recv_data->content[recv_data->size_in_byte]), raw_data, realsize);
-  recv_data->size_in_byte += realsize;
-  recv_data->content[recv_data->size_in_byte] = 0;
-
-  return realsize;
-}
-
-static size_t SendCallback(char* dest, size_t size, size_t nmemb, void* userp) {
-  auto send_data = static_cast<Data*>(userp);
-  size_t buffer_size = size * nmemb;
-
-  if (send_data->size_in_byte) {
-    size_t copy_this_much = send_data->size_in_byte;
-    if (copy_this_much > buffer_size) {
-      copy_this_much = buffer_size;
+TritonInvokder::TritonInvokder(const EndPointConfig& config) : EndPointInvoker(config) {
+  if (ReadConfig("uri", uri_) &&
+      ReadConfig("key", key_) &&
+      ReadConfig("model_name", model_name_) &&
+      ReadConfig("model_ver", model_ver_) &&
+      ReadConfig("input_names", input_names_) &&
+      ReadConfig("output_names", output_names_)) {
+    if (tc::InferenceServerHttpClient::Create(&triton_client_, uri_, true).IsOk()) {
+      cpu_allocator_ = std::make_shared<CPUAllocator>();
+    } else {
+      status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to initialize triton client");
     }
-    memcpy(dest, send_data->content, copy_this_much);
-    send_data->size_in_byte -= copy_this_much;
-    return copy_this_much;
   }
-  return 0;
 }
 
-RestInvoker::RestInvoker(const EndPointConfig& config) : config_(config) {}
+TensorPtrArray TritonInvokder::Send(ConstTensorPtrArray ort_inputs) const {
+  if (!status_.IsOK()) return {};
 
-Data RestInvoker::Send(Data request) const {
-  CURL* curl = {};
-  CURLcode res = {};
-  ORT_ENFORCE(config_.contains("uri"), "must specify uri for sending the data");
-  curl_easy_setopt(curl, CURLOPT_URL, config_.at("uri").c_str());
-  if (config_.contains("key")) {
-    curl_easy_setopt(curl, CURLOPT_XOAUTH2_BEARER, config_.at("key").c_str());
-    //todo - make this configurable
-    curl_easy_setopt(curl, CURLOPT_HTTPAUTH, CURLAUTH_BEARER);
+  if (ort_inputs.size() != input_names_.size()) {
+    status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                              "Number of inputs mismatch with number of input names for triton invoker: ",
+                              ort_inputs.size(), " != ", input_names_.size());
+    return {};
   }
-  curl_easy_setopt(curl, CURLOPT_POST, 1L);
-  curl_easy_setopt(curl, CURLOPT_READFUNCTION, SendCallback);
-  curl_easy_setopt(curl, CURLOPT_READDATA, &request);
-  curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, request.size_in_byte);
 
-  Data response;
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, RecvCallback);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-  //todo - allow for http failures
-  ORT_ENFORCE(curl_easy_perform(curl) == CURLE_OK,
-              "Failed to send http request, curl report error:",
-              curl_easy_strerror(res));
-  return response;
+  std::vector<std::unique_ptr<tc::InferInput>> triton_inputs_uptr;
+  std::vector<tc::InferInput*> triton_inputs;
+  std::vector<std::unique_ptr<const tc::InferRequestedOutput>> triton_outputs_uptr;
+  std::vector<const tc::InferRequestedOutput*> triton_outputs;
+
+  try {
+    //assemble triton inputs
+    auto iter = input_names_.begin();
+    for (const auto* ort_input : ort_inputs) {
+      const auto& ort_input_shape = ort_input->Shape();
+      std::vector<int64_t> dims;
+      dims.reserve(ort_input_shape.NumDimensions());
+      for (auto dim : ort_input_shape.GetDims()) {
+        dims.push_back(dim);
+      }
+      tc::InferInput* triton_input{};
+      //todo - support types other than fp32
+      if (!tc::InferInput::Create(&triton_input, *iter, dims, "FP32").IsOk()) {
+        status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create triton input for ", *iter);
+        return {};
+      }
+      triton_inputs_uptr.emplace_back(triton_input);
+      triton_inputs.push_back(triton_input);
+      triton_input->AppendRaw(static_cast<const uint8_t*>(ort_input->DataRaw()), ort_input->SizeInBytes());
+      ++iter;
+    }  //for
+    // assemble trition outputs
+    iter = output_names_.begin();
+    while (iter != output_names_.end()) {
+      tc::InferRequestedOutput* triton_output;
+      if (!tc::InferRequestedOutput::Create(&triton_output, *iter).IsOk()) {
+        status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create triton output for ", *iter);
+        return {};
+      }
+      triton_outputs_uptr.emplace_back(triton_output);
+      triton_outputs.push_back(triton_output);
+      ++iter;
+    }
+
+    tc::Headers http_headers;  //todo - move this out of Send()
+    http_headers["Authorization"] = std::string{"Bearer "} + key_;
+
+    tc::InferResult* results;
+    tc::InferOptions options(model_name_);
+    options.model_version_ = model_ver_;
+    options.client_timeout_ = 0;
+
+    auto request_compression_algorithm = tc::InferenceServerHttpClient::CompressionType::NONE;
+    auto response_compression_algorithm = tc::InferenceServerHttpClient::CompressionType::NONE;
+
+    if (!triton_client_->Infer(&results, options, triton_inputs, triton_outputs,
+                               http_headers, tc::Parameters(), request_compression_algorithm, response_compression_algorithm)
+             .IsOk()) {
+      status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to infer inputs by triton client");
+      return {};
+    }
+
+    TensorPtrArray output_tensor_ptr;
+    std::unique_ptr<tc::InferResult> results_ptr;
+    results_ptr.reset(results);
+    iter = output_names_.begin();
+    while (iter != output_names_.end()) {
+      std::vector<int64_t> dims;
+      if (!results_ptr->Shape(*iter, &dims).IsOk()) {
+        status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get shape for output: ", *iter);
+        return {};
+      }
+
+      int32_t* output0_data;
+      size_t output0_byte_size;
+      if (!results_ptr->RawData(iter->c_str(), (const uint8_t**)&output0_data, &output0_byte_size).IsOk()) {
+        status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get raw data for output", *iter);
+      }
+      TensorShape tensor_shape(dims);
+      output_tensor_ptr.push_back(std::make_unique<Tensor>(onnxruntime::DataTypeImpl::GetType<float>(), tensor_shape, cpu_allocator_));
+      //todo - can we skip data copy?
+      memcpy(output_tensor_ptr.back()->MutableDataRaw(), output0_data, output0_byte_size);
+      ++iter;
+    }
+    return output_tensor_ptr;
+  } catch (...) {
+    status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Caught exception in TritonInvokder::Send");
+  }
+  return {};
+}
+
+bool TritonInvokder::ReadConfig(const char* config_name, std::string& config_val) {
+  if (config_.contains(config_name)) {
+    config_val = config_[config_name];
+  } else {
+    status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Triton invoker failed to initialize due to missing config: ", config_name);
+  }
+  return status_.IsOK();
+}
+
+bool TritonInvokder::ReadConfig(const char* config_name, onnxruntime::InlinedVector<std::string>& config_vals) {
+  if (config_.contains(config_name)) {
+    std::stringstream ss;
+    ss << config_[config_name];
+    std::string tmp;
+    while (std::getline(ss, tmp, ',')) {
+      config_vals.push_back(std::move(tmp));
+    }
+  } else {
+    status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Triton invoker failed to initialize due to missing config: ", config_name);
+  }
+  return status_.IsOK();
 }
 
 }  // namespace cloud
