@@ -216,6 +216,10 @@ TopPLogitsProcessor<T>::TopPLogitsProcessor(float top_p, float filter_value, int
 template <typename T>
 void TopPLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
                                      NextTokenScores<T>& next_token_scores) {
+  if (top_p_ == 0.0f) {
+    return;
+  }
+
   const int batch_beam_size = next_token_scores.batch_beam_size;
   const int vocab_size = next_token_scores.vocab_size;
 
@@ -234,8 +238,8 @@ void TopPLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 
     std::sort(sorted_scores.begin(), sorted_scores.end());
     std::vector<T> cumulative_probs(vocab_size);
-    ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(1,                // rows
-                                      vocab_size,       // elements per row
+    ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(1,
+                                      vocab_size,
                                       sorted_scores.data(),
                                       cumulative_probs.data(),
                                       false,
@@ -268,6 +272,10 @@ PresencePenaltyLogitsProcessor<T>::PresencePenaltyLogitsProcessor(const gsl::spa
 template <typename T>
 void PresencePenaltyLogitsProcessor<T>::Process(const ISequences* sequences,
                                                 NextTokenScores<T>& next_token_scores) {
+  if (presence_penalty_ == 0.0f) {
+    return;
+  }
+
   assert(!presence_mask_.empty());
 
   T* p = next_token_scores.scores.data();
