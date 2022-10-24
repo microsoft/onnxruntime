@@ -666,6 +666,12 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     ORT_THROW("Xnnpack is not supported in this build\n");
 #endif
+  } else if (provider_name == onnxruntime::kVitisAIExecutionProvider) {
+#ifdef USE_VITISAI
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_VITISAI(session_options, nullptr));
+#else
+    ORT_THROW("VitisAI is not supported in this build\n");
+#endif
   } else if (!provider_name.empty() && provider_name != onnxruntime::kCpuExecutionProvider) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }

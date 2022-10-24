@@ -1,7 +1,7 @@
-// Copyright (c) Xilinx Inc.
+// Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 
-#include "onnxruntime_c_api.h"
+#include "core/session/onnxruntime_c_api.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -10,9 +10,12 @@ extern "C" {
 /**
  * \param use_arena zero: false. non-zero: true.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_VITISAI, _In_ OrtSessionOptions* options,
-               const char* backend_type, int device_id, const char* export_runtime_module,
-               const char* load_runtime_module);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_VITISAI, _In_ OrtSessionOptions* options, _In_ const char* opt_str);
+
+/**
+ *  initialize the vitis ai execution providers.
+ */
+ORT_API_STATUS(OrtExecutionProviderInitialize_VITISAI);
 
 #ifdef __cplusplus
 }
