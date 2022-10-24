@@ -26,7 +26,7 @@ def _get_args():
                         help='Perform a kernel launch dimension sensitive analysis of kernel execution times')
 
     parser.add_argument('--filter', type=str, nargs='+', action='extend', help='Restrict analysis to the specified identifiers, i.e., specify a filter list')
-    parser.add_argument('--csv', help='save intermidiate data to csv')
+    parser.add_argument('--csv', help='save data to csv')
     parser.add_argument('-c', '--count', type=int, default=40, help='list top N items')
     parser.add_argument('-v', '--verbose', action='store_true', help='verbose')
     args = parser.parse_args()
