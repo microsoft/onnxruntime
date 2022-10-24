@@ -28,11 +28,8 @@ class MaxUnpool : public XnnpackKernel {
  private:
   PoolAttributes pool_attrs_;
   TensorShapeVector output_dims_;
-  int64_t num_inputs_;
-
-  XnnpackOperator op0_ = nullptr;
+  size_t num_inputs_;
   OpComputeType op_type_ = OpComputeType::op_compute_type_invalid;
-  int64_t is_indice_produced_by_xnnpack_ = 0;
 };
 
 }  // namespace xnnpack
