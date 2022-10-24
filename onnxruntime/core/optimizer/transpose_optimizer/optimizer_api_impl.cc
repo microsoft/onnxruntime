@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/graph/constants.h"
 #include "optimizer_api.h"
 #include "optimizer_utils.h"
 
@@ -848,7 +849,10 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
       if (node->GetExecutionProviderType() != execution_provider.Type()) {
         continue;
       }
-
+      if (node->OpType() == "Resize" && node->GetExecutionProviderType() == kNnapiExecutionProvider) {
+        // NNAPI takes Resize as layout insensitive
+        continue;
+      }
       auto domain = node->Domain();
       // Skip if domain is incorrect
       if (domain != kOnnxDomain && domain != kMSDomain) {
