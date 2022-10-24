@@ -19,10 +19,10 @@ import {ComputeContext} from './types';
 // import {parseUnsqueezeAttributes, unsqueeze, unsqueezeV13} from './ops/unsqueeze';
 
 type RunFunction = (context: ComputeContext) => number;
-type InitFunction = (attribute: unknown) => void;
-type ResolveRule = RunFunction|[RunFunction, InitFunction];
+type ParseAttributeFunction = (attributeRaw: unknown) => unknown;
+type OperatorImplementation = [RunFunction]|[RunFunction, ParseAttributeFunction];
 
-export const WEBGPU_OP_RESOLVE_RULES: Map<string, ResolveRule> = new Map([
+export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new Map([
   ['abs', [unaryOps.abs]],
   //, ['Acos', '', '7+', unaryOps.acos], ['Add', '', '7+', binaryOps.add],
   // ['And', '', '7+', binaryOps.and],

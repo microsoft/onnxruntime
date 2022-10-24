@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from './tensor';
+import {Tensor, TensorView} from './tensor';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
@@ -25,7 +25,7 @@ export class WebGpuBackend {
   gpuDataManager: GpuDataManager;
   programManager: ProgramManager;
 
-  kernelAttributes: Map<number, [(context: ComputeContext) => number, unknown]>;
+  kernels: Map<number, [(context: ComputeContext) => number, unknown]>;
 
   commandEncoder: GPUCommandEncoder|null = null;
   computePassEncoder: GPUComputePassEncoder|null = null;
@@ -44,7 +44,7 @@ export class WebGpuBackend {
     this.device = await adapter.requestDevice();
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
-    this.kernelAttributes = new Map();
+    this.kernels = new Map();
     // TODO: set up flags
 
     this.device.onuncapturederror = ev => {
@@ -96,7 +96,7 @@ export class WebGpuBackend {
     return this.dataManager.createGpuTensor(type, dims, gpuDataType);
   }
 
-  run(program: ProgramInfoLoader|ProgramInfo, inputs: readonly Tensor[]): Tensor[] {
+  run(program: ProgramInfoLoader|ProgramInfo, inputs: readonly TensorView[]): number {
     if (inputs.length !== program.inputTypes.length) {
       throw new Error(`Input size must be equal to ${program.inputTypes.length}.`);
     }
@@ -151,21 +151,25 @@ export class WebGpuBackend {
     return this.gpuDataManager.release(ptr);
   }
 
-  createKernel(name: string, kernelId: number, attribute: unknown) {
-    const lookup = WEBGPU_OP_RESOLVE_RULES.get(name);
-    if (!lookup) {
+  createKernel(name: string, kernelId: number, attribute: unknown): void {
+    const op = WEBGPU_OP_RESOLVE_RULES.get(name);
+    if (!op) {
       throw new Error(`kernel not implemented: ${name}`);
     }
 
-    if (Array.isArray(lookup)) {
-      const init = lookup[1];
+    let processedAttribute = attribute;
+    if (op.length > 1 && typeof op[1] !== 'undefined') {
+      processedAttribute = op[1](attribute);
     }
-    this.kernelAttributes.set(kernelId)
+    this.kernels.set(kernelId, [op[0], processedAttribute]);
   }
 
-  releaseKernel(kernelId: number) {}
+  releaseKernel(kernelId: number): void {
+    this.kernels.delete(kernelId);
+  }
 
   computeKernel(kernelId: number, context: ComputeContext): number {
+    const kernel = this.kernels
     throw new Error('Method not implemented.');
   }
 }

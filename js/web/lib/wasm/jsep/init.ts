@@ -5,46 +5,54 @@ import {OrtWasmModule} from '../binding/ort-wasm';
 
 import {WebGpuBackend} from './backend-webgpu';
 import {TensorView} from './tensor';
-import {ComputeContext} from './webgpu/types';
+import {ComputeContext, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 
 /* eslint-disable no-bitwise */
-const output = (module: OrtWasmModule, pointer: number, index: number, dims: readonly number[]): number => {
-  const stack = module.stackSave();
-  try {
-    const data = module.stackAlloc((1 + dims.length) * 4 /* sizeof(size_t) */);
-    let offset = data >> 2;
-    module.HEAPU32[offset++] = dims.length;
-    for (let i = 0; i < dims.length; i++) {
-      module.HEAPU32[offset++] = dims[i];
+
+class OpKernelContext implements ComputeContext {
+  readonly opKernelContext: number;
+  readonly inputs: readonly TensorView[];
+  constructor(private module: OrtWasmModule, private backend: WebGpuBackend, contextDataOffset: number) {
+    const heapU32 = module.HEAPU32;
+
+    // extract context data
+    let dataIndex = (contextDataOffset >> 2);
+    this.opKernelContext = heapU32[dataIndex++];
+    const inputCount = heapU32[dataIndex++];
+
+    const inputs: TensorView[] = [];
+    for (let i = 0; i < inputCount; i++) {
+      const dataType = heapU32[dataIndex++];
+      const data = heapU32[dataIndex++];
+      const dim = heapU32[dataIndex++];
+      const dims: number[] = [];
+      for (let d = 0; d < dim; d++) {
+        dims.push(heapU32[dataIndex++]);
+      }
+      inputs.push({dataType, data, dims});
     }
-    return module._JsepOutput(pointer, index, data);
-  } finally {
-    module.stackRestore(stack);
-  }
-};
-
-const makeContext = (module: OrtWasmModule, contextDataOffset: number): ComputeContext => {
-  const heapU32 = module.HEAPU32;
-
-  // extract context data
-  let dataIndex = (contextDataOffset >> 2);
-  const pointer = heapU32[dataIndex++];
-  const inputCount = heapU32[dataIndex++];
-
-  const inputs: TensorView[] = [];
-  for (let i = 0; i < inputCount; i++) {
-    const dataType = heapU32[dataIndex++];
-    const data = heapU32[dataIndex++];
-    const dim = heapU32[dataIndex++];
-    const dims: number[] = [];
-    for (let d = 0; d < dim; d++) {
-      dims.push(heapU32[dataIndex++]);
-    }
-    inputs.push({dataType, data, dims});
+    this.inputs = inputs;
   }
 
-  return {pointer, inputs, output: (index: number, dims: readonly number[]) => output(module, pointer, index, dims)};
-};
+  compute(program: ProgramInfoLoader|ProgramInfo): number {
+    return this.backend.run(program, this.inputs);
+  }
+
+  output(index: number, dims: readonly number[]): number {
+    const stack = this.module.stackSave();
+    try {
+      const data = this.module.stackAlloc((1 + dims.length) * 4 /* sizeof(size_t) */);
+      let offset = data >> 2;
+      this.module.HEAPU32[offset++] = dims.length;
+      for (let i = 0; i < dims.length; i++) {
+        this.module.HEAPU32[offset++] = dims[i];
+      }
+      return this.module._JsepOutput(this.opKernelContext, index, data);
+    } finally {
+      this.module.stackRestore(stack);
+    }
+  }
+}
 
 export const init = async(module: OrtWasmModule): Promise<void> => {
   // init JSEP if available
@@ -91,7 +99,7 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
         (kernel: number, contextDataOffset: number) => {
           // eslint-disable-next-line no-console
           console.log('jsepRun');
-          const context = makeContext(module, contextDataOffset);
+          const context = new OpKernelContext(module, backend, contextDataOffset);
           return backend.computeKernel(kernel, context);
         });
   }

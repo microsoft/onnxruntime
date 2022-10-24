@@ -509,3 +509,6 @@ export class ShapeUtil {
     return outputDims;
   }
 }
+
+export const MIN_CLIP = -3.4028234663852886e+38;
+export const MAX_CLIP = 3.4028234663852886e+38;
