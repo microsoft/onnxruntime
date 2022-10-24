@@ -46,3 +46,15 @@ stages:
     enable_mac_cpu: false
     enable_mac_silicon: false
     enable_linux_arm: false
+
+- template: templates/py-packaging-stage.yml
+  parameters:
+    build_py_parameters: --enable_training_on_device
+    enable_linux_gpu: false
+    enable_ubuntu_cpu: false
+    enable_linux_cpu: false
+    enable_windows_cpu: true
+    enable_windows_gpu: false
+    enable_mac_cpu: false
+    enable_mac_silicon: false
+    enable_linux_arm: false
