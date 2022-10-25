@@ -74,11 +74,18 @@ def _json_to_df(profile_path, filter_set):
         if cat != 'Kernel' and not name.endswith('kernel_time'):
             continue
 
+        block_x = arg.get('block_x', -1)
+        block_y = arg.get('block_y', -1)
+        block_z = arg.get('block_z', -1)
+        grid_x = arg.get('grid_x', -1)
+        grid_y = arg.get('grid_y', -1)
+        grid_z = arg.get('grid_z', -1)
+
         if cat == 'Kernel':
             gpu_entries.append({
                 'name': name,
                 'duration': dur,
-                'dimensions': f'{item["args"]["block_x"]}_{item["args"]["block_y"]}_{item["args"]["block_z"]}_{item["args"]["grid_x"]}_{item["args"]["grid_y"]}_{item["args"]["grid_z"]}',
+                'dimensions': f'{block_x}_{block_y}_{block_z}_{grid_x}_{grid_y}_{grid_z}',
                 'op_name': op_name,
             })
         else:
