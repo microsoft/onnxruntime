@@ -854,10 +854,6 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
         continue;
       }
 
-      if (node->OpType() == "Resize" && node->GetExecutionProviderType() != kNnapiExecutionProvider) {
-        continue;
-      }
-
       auto domain = node->Domain();
       // Skip if domain is incorrect
       if (domain != kOnnxDomain && domain != kMSDomain) {
@@ -894,7 +890,12 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
       // Except for resize and convolution ops, all the other layout sensitive ops only require layout transformation
       // for 0th input and output. For resize, add the other relevant inputs which need conversion. For Conv - layout
       // transformer only converts layout for 0th input, weights should be handled by every EP.
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
       if (node->OpType() == "Resize") {
+#else
+      // xnnpack can't handle resize in kInternalNHWCDomain
+      if (node->OpType() == "Resize" && node->GetExecutionProviderType() != kXnnpackExecutionProvider) {
+#endif
         // Older versions of resize have a bug where ROI and Scales cannot be made empty inputs. To handle this case,
         // we need to jump a few extra hoops to make sure its inputs are correctly handled. Current code skips
         // layout conversion for ROI because it needs special handling as ROI size is 2*rank.
