@@ -143,7 +143,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                         cudaMemcpyDeviceToDevice, Stream()); 
       }
       */
-     
+
       /*
       const void* weight_ptr = right_X->Data<T>();
       if (right_X->SizeInBytes() == 1179648) {    
@@ -164,9 +164,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           reinterpret_cast<const CudaT*>(right_X->Data<T>()),
           //reinterpret_cast<const CudaT*>(weight_ptr),          
           ldb,
-          //use_special ?  reinterpret_cast<const CudaT*>(left_X_ptr_) : 
-          //               reinterpret_cast<const CudaT*>(left_X->Data<T>()),
-          reinterpret_cast<const CudaT*>(left_X_ptr_),
+          use_special ?  reinterpret_cast<const CudaT*>(left_X_ptr_) : 
+                         reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+          //reinterpret_cast<const CudaT*>(left_X_ptr_),
 
           lda,
           &zero,
