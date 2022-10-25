@@ -129,9 +129,8 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       size_t workspace_size = 32 * 1024 * 1024;
       auto workspace_memory = GetScratchBuffer<void>(workspace_size);
 
-      /*
       bool use_special = false;
-      if (left_X->SizeInBytes() == 6291456) {
+      if (left_X->SizeInBytes() == 4718592) {
               use_special = true;
               std::cout << "Using special" << "\n";
       }
@@ -142,15 +141,15 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                         left_X->SizeInBytes(),  
                         cudaMemcpyDeviceToDevice, Stream()); 
       }
-      */
 
+      /*
       const void* weight_ptr = right_X->Data<T>();
       if (right_X->SizeInBytes() == 1179648) {    
           weight_ptr = right_X_ptr_1_;
       } else if (right_X->SizeInBytes() == 4718592) {
           weight_ptr = right_X_ptr_2_;
       }
-
+      */
 
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),

@@ -62,7 +62,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
 
 template<typename T>
 Attention<T>::~Attention() {
-  if (use_data_ptr_ && data_ptr_ == nullptr) {
+  if (use_data_ptr_ && data_ptr_ != nullptr) {
     std::cout << "Deallocating data ptr" << std::endl;
     cudaFree(data_ptr_);
   }
