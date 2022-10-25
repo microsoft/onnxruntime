@@ -29,7 +29,7 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : RocmKernel(info), AttentionBase(info) {}
+Attention<T>::Attention(const OpKernelInfo& info) : RocmKernel(info), AttentionBase(info, true, true) {}
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
@@ -40,9 +40,20 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past = context->Input<Tensor>(4);
   const Tensor* extra_add_qk = context->Input<Tensor>(5);
 
+  const Tensor* key = context->Input<Tensor>(6);
+  const Tensor* value = context->Input<Tensor>(7);
+
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
-                                  mask_index, past, extra_add_qk, device_prop.maxThreadsPerBlock));
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
+                                  weights == nullptr ? nullptr : &(weights->Shape()),
+                                  bias->Shape(),
+                                  mask_index,
+                                  past,
+                                  extra_add_qk,
+                                  key,
+                                  value,
+                                  nullptr,
+                                  device_prop.maxThreadsPerBlock));
 
   // input shape (batch_size, sequence_length, input_hidden_size)
   const auto& shape = input->Shape();
@@ -99,24 +110,24 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize);
   return LaunchAttentionKernel(
-          device_prop,
-          Stream(),
-          rocblas,
-          element_size,
-          batch_size,
-          sequence_length,
-          num_heads_,
-          head_size,
-          past_sequence_length,
-          is_unidirectional_,
-          reinterpret_cast<const void*>(gemm_buffer.get()),
-          nullptr == mask_index ? nullptr : mask_index->Data<int>(),
-          nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
-          nullptr == past ? nullptr : past->Data<T>(),
-          nullptr == extra_add_qk ? nullptr : extra_add_qk->Data<T>(),
-          work_space.get(),
-          output->MutableData<T>(),
-          nullptr == present ? nullptr : present->MutableData<T>());
+      device_prop,
+      Stream(),
+      rocblas,
+      element_size,
+      batch_size,
+      sequence_length,
+      num_heads_,
+      head_size,
+      past_sequence_length,
+      is_unidirectional_,
+      reinterpret_cast<const void*>(gemm_buffer.get()),
+      nullptr == mask_index ? nullptr : mask_index->Data<int>(),
+      nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
+      nullptr == past ? nullptr : past->Data<T>(),
+      nullptr == extra_add_qk ? nullptr : extra_add_qk->Data<T>(),
+      work_space.get(),
+      output->MutableData<T>(),
+      nullptr == present ? nullptr : present->MutableData<T>());
 }
 
 }  // namespace rocm
