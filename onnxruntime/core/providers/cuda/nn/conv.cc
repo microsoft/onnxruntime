@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/span_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/nn/conv.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -81,7 +82,7 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
   ORT_THROW_IF_ERROR(SliceBase::PrepareForCompute(starts, ends, axes, compute_metadata));
 
   // As a sanity check, ensure that the slice operator's output shape matches with the expected output shape
-  ORT_ENFORCE(gsl::make_span(compute_metadata.output_dims_) == output_dims);
+  ORT_ENFORCE(SpanEq(gsl::make_span(compute_metadata.output_dims_), output_dims));
 
   return SliceCuda::Impl(stream, input_data, input_dims, output_data, compute_metadata, element_size);
 }
