@@ -106,7 +106,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   ORT_ENFORCE(total_bytes > 0);
 
   AllocatorPtr pinned_allocator = provider->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   auto pinned_buffer = IAllocator::MakeUniquePtr<void>(pinned_allocator, total_bytes);
   char* pinned_data = static_cast<char*>(pinned_buffer.get());
 
@@ -172,7 +172,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    int num_beams,
                    Stream* ort_stream) {
   // TODO(tianleiwu): we can use another stream to avoid blocking subgraph execution.
-  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr ;
+  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   cudaMemsetAsync(beam_state->next_token_logits.data(), 0, beam_state->next_token_logits.size_bytes(), cuda_stream);
   cudaMemsetAsync(beam_state->next_token_scores.data(), 0, beam_state->next_token_scores.size_bytes(), cuda_stream);
   cudaMemsetAsync(beam_state->next_tokens.data(), 0, beam_state->next_tokens.size_bytes(), cuda_stream);
@@ -193,7 +193,7 @@ template <typename T>
 void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
                      gsl::span<int32_t>& sequence_lengths,
                      Stream* ort_stream) {
-  cudaStream_t cuda_stream = ort_stream ? reinterpret_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t cuda_stream = ort_stream ? reinterpret_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   cudaMemsetAsync(greedy_state->next_token_scores.data(), 0, greedy_state->next_token_scores.size_bytes(), cuda_stream);
   cudaMemsetAsync(greedy_state->next_positions.data(), 0, greedy_state->next_positions.size_bytes(), cuda_stream);
 
@@ -238,7 +238,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   auto input_length = logits_shape[1];
   auto logits_batch_size = logits_shape[0];
 
-  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
   // Get logits for the last token:
   //    next_token_logits = logits[:, -1, :], and the result shape is (batch_size * num_beams, vocab_size)
@@ -441,7 +441,7 @@ Status GreedySearchProcessLogits(
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
   auto input_length = logits_shape[1];
 
-  cudaStream_t cuda_stream = stream ? reinterpret_cast<cudaStream_t>(stream->handle) : nullptr;
+  cudaStream_t cuda_stream = stream ? reinterpret_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   // Get logits for the last token:
   //    next_token_logits = logits[:, -1, :], and the result shape is (batch_size, vocab_size)
@@ -543,12 +543,11 @@ Status GreedySearchProcessLogits(
 template <typename T>
 Status DeviceCopy(gsl::span<T> target, gsl::span<const T> source, Stream* ort_stream, int copyDirection) {
   assert(copyDirection >= 0 && copyDirection <= 3);
-  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   if (cuda_stream == nullptr) {
     CUDA_RETURN_IF_ERROR(cudaMemcpy(target.data(), source.data(), source.size_bytes(),
                                     static_cast<cudaMemcpyKind>(copyDirection)));
   } else {
-    
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), source.size_bytes(),
                                          static_cast<cudaMemcpyKind>(copyDirection), cuda_stream));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
@@ -578,7 +577,7 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
     OrtValue past;
     auto past_type = DataTypeImpl::GetType<T>();
     Tensor::InitOrtValue(past_type, past_shape, allocator, past);
-    cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+    cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
@@ -612,7 +611,7 @@ Status PickT5PastState(const std::vector<OrtValue>& last_outputs,
                        int t5_decoder_first_past_input_idx,
                        int t5_decoder_first_present_output_idx,
                        Stream* ort_stream) {
-  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   for (int i = 0; i < num_present_tensors; ++i) {
     const OrtValue& present = last_outputs[t5_decoder_first_present_output_idx + i];
 
@@ -663,7 +662,7 @@ Status UpdateGptFeeds(
   OrtValue input_ids;
   Tensor::InitOrtValue(element_type, input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(),
                                        cudaMemcpyHostToDevice, cuda_stream));
   next_inputs[0] = input_ids;
@@ -744,7 +743,7 @@ Status UpdateDecoderFeeds(
   OrtValue input_ids;
   Tensor::InitOrtValue(element_type, input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(),
                                        cudaMemcpyHostToDevice, cuda_stream));
   next_inputs[0] = input_ids;
@@ -797,7 +796,7 @@ Status ExpandBuffer(Stream* ort_stream,
     return Status::OK();
   }
 
-  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
   const T* input_data = input.Get<Tensor>().Data<T>();
   T* expanded_data = expanded.GetMutable<Tensor>()->MutableData<T>();

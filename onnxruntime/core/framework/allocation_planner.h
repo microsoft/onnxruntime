@@ -28,6 +28,7 @@ class ExecutionProviders;
 struct KernelCreateInfo;
 class KernelRegistryManager;
 class OrtValueNameIdxMap;
+class IStreamCommandHandleRegistry;
 
 using KernelCreateInfoMap = std::unordered_map<onnxruntime::NodeIndex, gsl::not_null<const KernelCreateInfo*>>;
 using SubgraphsKernelCreateInfoMaps = std::unordered_map<std::string, KernelCreateInfoMap>;
@@ -86,7 +87,7 @@ class INodePartitioner {
     DummyPartition = 0,
     Unknown,
   };
-  virtual ~INodePartitioner() {};
+  virtual ~INodePartitioner(){};
   static std::unique_ptr<INodePartitioner> CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file = "");
   virtual void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) = 0;
   Status GetStatus() const { return status_; }

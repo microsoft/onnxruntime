@@ -161,7 +161,7 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
     wait_handle(*ctx->GetDeviceStream(stream_idx), *ctx->GetNotification(notification_idx));
     // update streams clock status
     if (ctx->GetDeviceStream(stream_idx)) {
-      ctx->GetDeviceStream(stream_idx)->UpdateStreamClock(ctx->GetNotification(notification_idx)->stream_clock_);
+      ctx->GetDeviceStream(stream_idx)->UpdateStreamClock(ctx->GetNotification(notification_idx)->GetStreamSyncTable());
     }
     LOGS(ctx->GetLogger(), INFO) << "stream " << stream_idx << " wait on Notification with id: " << notification_idx;
     continue_flag = true;

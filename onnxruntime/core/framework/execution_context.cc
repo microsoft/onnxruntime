@@ -40,7 +40,7 @@ class DeviceStreamCollectionImpl {
         for (auto& ep : eps_) {
           auto& allocators = ep->GetAllocators();
           for (auto& alloc : allocators) {
-            if (alloc->Info().device == stream->device &&
+            if (alloc->Info().device == stream->GetDevice() &&
                 alloc->Info().alloc_type == OrtArenaAllocator) {
               auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
               auto* stream_aware_alloc = arena_alloc->AsStreamAwareAreana();

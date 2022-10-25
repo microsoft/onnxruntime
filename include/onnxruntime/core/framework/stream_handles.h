@@ -1,8 +1,11 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 #pragma once
 
 #include <functional>
 #include <unordered_map>
 #include "core/framework/ortdevice.h"
+#include "core/common/status.h"
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -19,53 +22,80 @@ namespace synchronize {
 struct Notification;
 }
 
-struct Stream {
-  StreamHandle handle;
-  const OrtDevice& device;
-  uint64_t timestamp{0};
-  // TODO: do we really need it to be a dynamic map?
-  std::unordered_map<Stream*, uint64_t> other_stream_clock;
-
-  Stream(StreamHandle h, const OrtDevice& d) : handle(h), device(d) {}
-
-  uint64_t BumpTimeStampAndReturn() {
-    return ++timestamp;
-  }
-
-  void UpdateStreamClock(const std::unordered_map<Stream*, uint64_t>& clock) {
-    for (auto& kv : clock) {
-      auto it = other_stream_clock.find(kv.first);
-      if (it == other_stream_clock.end())
-        other_stream_clock.insert(kv);
-      else
-        other_stream_clock[kv.first] = std::max(it->second, kv.second);
-    }
-  }
+class Stream {
+ public:
+  Stream(StreamHandle h, const OrtDevice& d) : handle_(h), device_(d) {}
 
   virtual ~Stream() {}
   virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) {
     return {};
   };
   virtual void Flush(){};
-  virtual Status CleanUpOnRunEnd() = 0;
+  virtual Status CleanUpOnRunEnd() { return Status::OK(); };
+
+  StreamHandle GetHandle() const { return handle_; }
+
+  const OrtDevice& GetDevice() const { return device_; }
+
+  uint64_t GetCurrentTimestamp() const { return timestamp_; }
+
+  uint64_t GetLastSyncTimestampWithTargetStream(Stream* target_stream) const {
+    auto it = other_stream_clock_.find(target_stream);
+    return it == other_stream_clock_.end() ? 0 : it->second;
+  }
+
+  void CloneCurrentStreamSyncTable(std::unordered_map<Stream*, uint64_t>& output) const {
+    std::copy(other_stream_clock_.begin(), other_stream_clock_.end(), std::inserter(output, output.end()));
+  }
+
+  uint64_t BumpTimeStampAndReturn() {
+    return ++timestamp_;
+  }
+
+  void UpdateStreamClock(const std::unordered_map<Stream*, uint64_t>& clock) {
+    for (auto& kv : clock) {
+      auto it = other_stream_clock_.find(kv.first);
+      if (it == other_stream_clock_.end())
+        other_stream_clock_.insert(kv);
+      else
+        other_stream_clock_[kv.first] = std::max(it->second, kv.second);
+    }
+  }
+
+ protected:
+  StreamHandle handle_;
+  const OrtDevice& device_;
+  uint64_t timestamp_{0};
+  // TODO: use inline container.
+  // currently this class is header only, but abseil doesn't compile with nvcc
+  // we need to add new symbol to provider_bridge and hide abseil from the header.
+  std::unordered_map<Stream*, uint64_t> other_stream_clock_;
 };
 
 namespace synchronize {
-struct Notification {
-  // which stream create this notificaiton.
-  Stream* stream;
-  std::unordered_map<Stream*, uint64_t> stream_clock_;
-
-  Notification(Stream* s) : stream(s) {}
+class Notification {
+ public:
+  Notification(Stream* s) : stream_(s) {}
   virtual ~Notification() {}
 
   void ActivateAndUpdate() {
     Activate();
-    stream_clock_ = stream->other_stream_clock;
-    stream_clock_[stream] = stream->BumpTimeStampAndReturn();
+    stream_->CloneCurrentStreamSyncTable(stream_clock_);
+    stream_clock_[stream_] = stream_->BumpTimeStampAndReturn();
   }
 
+  const std::unordered_map<Stream*, uint64_t>& GetStreamSyncTable() {
+    return stream_clock_;
+  }
+
+ protected:
   virtual void Activate() = 0;
+  // which stream create this notificaiton.
+  Stream* stream_;
+  // TODO: use inline container.
+  // currently this class is header only, but abseil doesn't compile with nvcc
+  // we need to add new symbol to provider_bridge and hide abseil from the header.
+  std::unordered_map<Stream*, uint64_t> stream_clock_;
 };
 }  // namespace synchronize
 

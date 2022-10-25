@@ -54,7 +54,7 @@ Status GatherNDBase::PrepareCompute(
   const auto num_batches = input_shape.SizeToDimension(batch_dims);
   const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims);
   const auto num_slices_per_batch = num_slices / num_batches;
-  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->handle) : nullptr;
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   const TIndex* const indices_data = indices_tensor->Data<TIndex>();
 

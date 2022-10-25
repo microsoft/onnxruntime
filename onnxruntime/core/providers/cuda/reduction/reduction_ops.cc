@@ -168,7 +168,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   cudnnDataType_t cudnn_type_X = CudnnTensor::GetDataType<CudaT>();
   const auto rank = input_shape.NumDimensions();
 
-  auto cuda_stream = stream ? static_cast<cudaStream_t>(stream->handle) : nullptr;
+  auto cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
   // Block of fast matrix reduction.
   if (fast_reduction_) {
     int m{}, n{};
@@ -451,7 +451,7 @@ Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& inp
                          const TensorShape* input_shape_override) {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const TensorShape& input_shape = input_shape_override ? *input_shape_override : input.Shape();
-  cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
   int64_t input_count = prepare_reduce_metadata.input_count;
   int64_t output_count = prepare_reduce_metadata.output_count;

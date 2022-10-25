@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
+
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_common.h"
 
@@ -60,22 +61,22 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
   if (dst_device.Type() == OrtDevice::GPU) {
     if (src_device.Type() == OrtDevice::CPU) {
       // copy from pinned memory to GPU, this is non-blocking
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, static_cast<cudaStream_t>(stream->handle)));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyHostToDevice, static_cast<cudaStream_t>(stream->GetHandle())));
     } else if (src_device.Type() == OrtDevice::GPU) {
       // copying between GPU, this is non-blocking
       if (dst_data != src_data) {
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice, static_cast<cudaStream_t>(stream->handle)));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToDevice, static_cast<cudaStream_t>(stream->GetHandle())));
       }
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
     if (dst_device.Type() == OrtDevice::CPU) {
       // copying from GPU to pinned memory, this is non-blocking
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, static_cast<cudaStream_t>(stream->handle)));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost, static_cast<cudaStream_t>(stream->GetHandle())));
     }
   } else {
     if (src_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
       // sync the stream first to make sure the data arrived
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(stream->handle)));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(stream->GetHandle())));
     }
     memcpy(dst_data, src_data, bytes);
   }

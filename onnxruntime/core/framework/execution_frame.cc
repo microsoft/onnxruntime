@@ -483,9 +483,9 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, i
   return AllocateMLValueTensorSelfOwnBufferHelper(ort_value, ort_value_index, element_type, location, shape);
 }
 
-Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const{
-  //auto& value_to_stream_map = session_state_.GetConstParalllelExecutionPlan().GetValueToStreamMap();
-  //auto& value_to_stream_map = const_cast<SessionState&>(session_state_).GetTheExecutionPlan()->GetValueToStreamMap();
+Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const {
+  // auto& value_to_stream_map = session_state_.GetConstParalllelExecutionPlan().GetValueToStreamMap();
+  // auto& value_to_stream_map = const_cast<SessionState&>(session_state_).GetTheExecutionPlan()->GetValueToStreamMap();
   const auto& value_to_stream_map = const_cast<SessionState&>(session_state_).GetExecutionPlan()->GetValueToStreamMap();
   auto it = value_to_stream_map.find(ort_value_idx);
   if (it != value_to_stream_map.end() && device_streams_ && it->second < device_streams_->size()) {
@@ -561,7 +561,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     if (stream_aware_alloc && current_stream) {
       // the reused memory must from same EP
       auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
-          current_stream->device.Type(), current_stream->device.Type());
+          current_stream->GetDevice().Type(), current_stream->GetDevice().Type());
       return stream_aware_alloc->AllocOnStream(len, current_stream, wait_handle);
     } else {
       return alloc->Alloc(len);
@@ -840,7 +840,7 @@ void ExecutionFrame::VerifyOutputSizes(int output_index, const Node& node, const
   }
 }
 
-//do not call this in ParallExecutionPlan
+// do not call this in ParallExecutionPlan
 Status ExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
   ORT_RETURN_IF_ERROR(IExecutionFrame::ReleaseMLValueImpl(ort_value_idx));
   TraceFree(ort_value_idx);
@@ -873,7 +873,7 @@ void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {
   }
 }
 
-//do not call this in ParallExecutionPlan
+// do not call this in ParallExecutionPlan
 void ExecutionFrame::TraceFree(int ort_value_idx) {
   // don't trace free on output tensors.
   if (planner_.has_value() && !IsOutput(ort_value_idx)) {

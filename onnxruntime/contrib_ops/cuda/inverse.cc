@@ -75,7 +75,7 @@ struct Inverse::ComputeImpl {
     auto info_cpu = std::make_unique<int[]>(num_batches);
     const auto dim = static_cast<int>(rows);
     const auto n_batches = static_cast<int>(num_batches);
-    cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+    cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
 
     // Make a copy of the input which will serve as a workspace as well.
     if (std::is_same<T, float>::value || std::is_same<T, MLFloat16>::value) {

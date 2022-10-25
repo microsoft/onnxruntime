@@ -579,9 +579,9 @@ static void UpdateWithParentStream(DeviceStreamCollection& device_stream_collect
         // if current logic stream is not on the same EP instance as parent stream
         // and the EP instance does have async streams (not EP like CPU)
         // throw error as we don't have the code to setup the dependency at this moment.
-        if (stream->device != parent_stream->device) {
-          ORT_THROW("Subgraph has nodes running on device: ", stream->device.Type(),
-                    " while parent graph node running on device: ", parent_stream->device.Type(),
+        if (stream->GetDevice() != parent_stream->GetDevice()) {
+          ORT_THROW("Subgraph has nodes running on device: ", stream->GetDevice().Type(),
+                    " while parent graph node running on device: ", parent_stream->GetDevice().Type(),
                     ", this is not supported yet.");
         }
         device_stream_collection.SetDeviceStream(i, parent_stream);
@@ -646,7 +646,7 @@ ExecuteGraphImpl(const SessionState& session_state,
         auto& streams = device_stream_collection.GetStreams();
         bool found = false;
         for (auto* stream : streams) {
-          if (stream && stream->device.Type() == device.Type()) {
+          if (stream && stream->GetDevice().Type() == device.Type()) {
             feed_streams.push_back(stream);
             found = true;
             break;
@@ -776,7 +776,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
         auto& streams = device_stream_collection.GetStreams();
         bool found = false;
         for (auto* stream : streams) {
-          if (stream && stream->device.Type() == device.Type()) {
+          if (stream && stream->GetDevice().Type() == device.Type()) {
             feed_streams.push_back(stream);
             found = true;
             break;

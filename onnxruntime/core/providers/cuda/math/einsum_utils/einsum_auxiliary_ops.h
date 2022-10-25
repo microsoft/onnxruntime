@@ -27,7 +27,7 @@ struct EinsumCudaAssets {
                                                   ort_stream_(ort_stream) {}
 
   cudaStream_t GetCudaStream() {
-    return ort_stream_ ? static_cast<cudaStream_t>(ort_stream_->handle) : nullptr;
+    return ort_stream_ ? static_cast<cudaStream_t>(ort_stream_->GetHandle()) : nullptr;
   }
 
   cublasHandle_t cublas_handle_;

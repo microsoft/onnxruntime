@@ -327,7 +327,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
       notificaiton->ActivateAndUpdate();
       if (wait_fn)
         wait_fn(*stream, *notificaiton);
-      stream->UpdateStreamClock(notificaiton->stream_clock_);
+      stream->UpdateStreamClock(notificaiton->GetStreamSyncTable());
       // it should be ok to release the notification now, as the wait is already launch to stream.
     }
   }
@@ -336,7 +336,7 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
     if (chunk->stream == nullptr) {
       chunk->stream = stream;
       if (stream)
-        chunk->stream_timestamp = stream->timestamp;
+        chunk->stream_timestamp = stream->GetCurrentTimestamp();
     }
     return chunk->ptr;
   }
@@ -352,7 +352,6 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
       // if it is on default stream (the new allocate chunk), assign to current stream
       if (chunk->stream == nullptr && stream) {
         chunk->stream = stream;
-        chunk->stream->timestamp = stream->timestamp;
       }
       return chunk->ptr;
     } else {
@@ -397,8 +396,7 @@ BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
       if (!enable_cross_stream_reusing && chunk->stream != stream && chunk->stream != nullptr) {
         if (!stream)
           continue;
-        auto it = stream->other_stream_clock.find(chunk->stream);
-        if (it == stream->other_stream_clock.end() || chunk->stream_timestamp >= it->second)
+        if (chunk->stream_timestamp >= stream->GetLastSyncTimestampWithTargetStream(chunk->stream))
           continue;
       }
 

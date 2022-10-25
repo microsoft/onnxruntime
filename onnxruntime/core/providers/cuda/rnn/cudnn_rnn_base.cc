@@ -102,7 +102,7 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   // the buffer unintialized. non-zero garbage data leads to wrong result
   // in call to cudnnRNNForwardInference()
   // TODO! refine allocation size for each case.
-  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   cudaMemsetAsync(reorganized_w_data.get(), 0, w_size * sizeof(T), cuda_stream);
 
   const T* W_data = W->Data<T>();
@@ -339,10 +339,10 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   IAllocatorUniquePtr<T> y_reorganized_data;
   if (reverse_ || num_directions_ == 2) {
-    //reverse output
+    // reverse output
     y_reorganized_data = GetScratchBuffer<T>(output_size, OrtStream(ctx));
     if (reverse_) {
-      //reverse output data
+      // reverse output data
       ReverseBySequence(Stream(ctx),
                         gsl::narrow_cast<int32_t>(seq_length),
                         gsl::narrow_cast<int32_t>(batch_size),
@@ -401,7 +401,7 @@ void CudnnRnnBase<T>::SetZeroSequences(const int64_t zero_seq_index_cache_size,
   CudaAsyncBuffer<int32_t> zero_seq_index_cache_async_buffer(this, zero_seq_index_cache_size);
   memcpy(zero_seq_index_cache_async_buffer.CpuPtr(), zero_seq_index_cache.data(), zero_seq_index_cache_size * sizeof(int32_t));
   ORT_THROW_IF_ERROR(zero_seq_index_cache_async_buffer.CopyToGpu(ort_stream));
-  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   MaskZeroSequences(cuda_stream,
                     gsl::narrow_cast<int32_t>(hidden_size_),
                     reinterpret_cast<CudaT*>(y_data),

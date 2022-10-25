@@ -16,13 +16,13 @@ struct CudaNotification : public synchronize::Notification {
 
   void Activate() override {
     // record event with cudaEventBlockingSync so we can support sync on host with out busy wait.
-    CUDA_CALL_THROW(cudaEventRecord(event_, static_cast<cudaStream_t>(stream->handle)));
+    CUDA_CALL_THROW(cudaEventRecord(event_, static_cast<cudaStream_t>(stream_->GetHandle())));
   }
 
   void wait_on_device(Stream& device_stream) {
-    ORT_ENFORCE(device_stream.device.Type() == OrtDevice::GPU);
+    ORT_ENFORCE(device_stream.GetDevice().Type() == OrtDevice::GPU);
     // launch a wait command to the cuda stream
-    CUDA_CALL_THROW(cudaStreamWaitEvent(static_cast<cudaStream_t>(device_stream.handle),
+    CUDA_CALL_THROW(cudaStreamWaitEvent(static_cast<cudaStream_t>(device_stream.GetHandle()),
                                         event_));
   };
 
@@ -62,8 +62,8 @@ CudaStream::~CudaStream() {
   if (own_stream_) {
     cublasDestroy(cublas_handle_);
     cudnnDestroy(cudnn_handle_);
-    if (handle)
-      cudaStreamDestroy(static_cast<cudaStream_t>(handle));
+    if (handle_)
+      cudaStreamDestroy(static_cast<cudaStream_t>(handle_));
   }
 }
 
@@ -75,7 +75,7 @@ void CudaStream::Flush() {
   // A temp fix: when use cuda graph, we can't flush it before cuda graph capture end
   // only flush when we own the stream (not external, not EP unified stream)
   if (own_stream_)
-    CUDA_CALL_THROW(cudaStreamSynchronize(static_cast<cudaStream_t>(handle)));
+    CUDA_CALL_THROW(cudaStreamSynchronize(static_cast<cudaStream_t>(handle_)));
 }
 
 void CudaStream::EnqueDeferredCPUBuffer(void* cpu_buffer) {
@@ -130,13 +130,13 @@ Status CudaStream::CleanUpOnRunEnd() {
       cpu_buffers_info->buffers[i] = deferred_cpu_buffers_.at(i);
     }
     cpu_buffers_info->n_buffers = deferred_cpu_buffers_.size();
-    CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(static_cast<cudaStream_t>(handle), ReleaseCpuBufferCallback, cpu_buffers_info));
+    CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(static_cast<cudaStream_t>(handle_), ReleaseCpuBufferCallback, cpu_buffers_info));
   } else {
     // for cuda graph case, if we launch the host function to cuda stream
     // it seems be captured in cuda graph and replay, which cause wrong deletion.
     // so in this mode, we manually sync the stream to make sure the copy is done
     // then delete the buffers
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(handle)));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(handle_)));
     for (auto* buffer : deferred_cpu_buffers_) {
       cpu_allocator_->Free(buffer);
     }
@@ -175,7 +175,7 @@ void RegisterCudaStreamHandles(IStreamCommandHandleRegistry& stream_handle_regis
     stream_handle_registry.RegisterCreateStreamFn(device_type, [cpu_allocator, release_cpu_buffer_on_cuda_stream](const OrtDevice& device) {
       cudaStream_t stream = nullptr;
       CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-      //CUDA_CALL_THROW(cudaStreamCreate(&stream));
+      // CUDA_CALL_THROW(cudaStreamCreate(&stream));
       return std::make_unique<CudaStream>(stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, true, nullptr, nullptr);
     });
   else

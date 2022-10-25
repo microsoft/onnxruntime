@@ -470,7 +470,7 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_outp
   Tensor* output = context_.Output(output_index, output_shape);
 
   Stream* ort_stream = context_.GetComputeStream();
-  ORT_RETURN_IF_ERROR(concat_output_func_(ort_stream ? ort_stream->handle : nullptr, per_iteration_output, output->MutableDataRaw(), output->SizeInBytes()));
+  ORT_RETURN_IF_ERROR(concat_output_func_(ort_stream ? ort_stream->GetHandle() : nullptr, per_iteration_output, output->MutableDataRaw(), output->SizeInBytes()));
 
   return Status::OK();
 }
