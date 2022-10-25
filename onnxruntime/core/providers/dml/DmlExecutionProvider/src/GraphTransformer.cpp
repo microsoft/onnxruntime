@@ -17,15 +17,6 @@
 
 namespace Dml
 {
-    GraphTransformer::GraphTransformer(
-        const std::string& name,
-        const onnxruntime::IExecutionProvider* provider
-    )
-        : onnxruntime::GraphTransformer(name),
-          m_providerImpl(static_cast<const ExecutionProvider* >(provider)->GetImpl())
-    {
-    }
-
     onnxruntime::common::Status GraphTransformer::ApplyImpl(
         onnxruntime::Graph& graph,
         bool& modified,
@@ -37,10 +28,6 @@ namespace Dml
       {
         bool transformModifiedGraph = false;
         PerformOperatorFusion(&graph, &transformModifiedGraph);
-        modified |= transformModifiedGraph;
-
-        transformModifiedGraph = false;
-        PerformQuantizedOperatorDecomposition(&graph, &transformModifiedGraph);
         modified |= transformModifiedGraph;
 
         if (modified)
@@ -84,24 +71,10 @@ namespace Dml
         // graph while iterating over it
         std::vector<NodeToAdd> nodesToAdd;
 
-        onnxruntime::ProviderType provider_type = onnxruntime::kDmlExecutionProvider;
-        const gsl::not_null<const onnxruntime::KernelRegistry*> registry = m_providerImpl->GetKernelRegistry().get();
-        const auto kernel_type_str_resolver = onnxruntime::OpSchemaKernelTypeStrResolver{};
-        const auto kernel_lookup = onnxruntime::KernelLookup{provider_type,
-                                                             gsl::make_span(&registry, 1),
-                                                             kernel_type_str_resolver};
-
         for (auto& node : graph->Nodes())
         {
-            // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
-            // which occurs in IExecutionProvider::GetCapability.
-
-            if (!IsNodeSupportedByDml(
-                node,
-                kernel_lookup,
-                m_providerImpl->GetSupportedDeviceDataTypeMask(),
-                *m_providerImpl->GetInternalRegistrationInfoMap().get()
-                ))
+            // Ignore the nodes which were not assigned to the DML by ORT during IExecutionProvider::GetCapability()
+            if (!onnxruntime::graph_utils::IsSupportedProvider(node, {onnxruntime::kDmlExecutionProvider}))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;
@@ -119,9 +92,8 @@ namespace Dml
 
             const auto& outputNode = *node.OutputNodesBegin();
 
-            // We need to predict whether the nodes will be assigned to the DML transformer by Lotus,
-            // which occurs in IExecutionProvider::GetCapability.
-            if (!kernel_lookup.LookUpKernel(outputNode))
+            // Can't fuse if outputNode was not assigned to the DML by ORT during IExecutionProvider::GetCapability()
+            if (!onnxruntime::graph_utils::IsSupportedProvider(outputNode, GetCompatibleExecutionProviders()))
             {
                 // Can't fuse nodes that don't belong to this execution provider
                 continue;
@@ -207,7 +179,8 @@ namespace Dml
                 nodeToAdd.outputs,
                 &nodeToAdd.attributes,
                 nodeToAdd.domain);
-
+            
+            node.SetExecutionProviderType(onnxruntime::kDmlExecutionProvider);
             // Add a dynamic attribute to the fuseable operator to specify activation
             node.AddAttribute(AttrName::FusedActivation, nodeToAdd.activationOpType);
             node.AddAttribute(AttrName::FusedActivationDomain, nodeToAdd.activationOpDomain);
@@ -221,105 +194,6 @@ namespace Dml
                 attribute.second.set_name(fusedAttributeName);
                 node.AddAttributeProto(attribute.second);
             }
-        }
-    }
-
-    // Converts certain QLinear operations unsupported by the DML API into a sequence of DeQuantizeLinear, 32-bit operator, QuantizeLinear
-    void GraphTransformer::PerformQuantizedOperatorDecomposition(onnxruntime::Graph* graph, bool* modified) const
-    {
-        struct NodeToAdd
-        {
-            std::string name;
-            std::string description;
-            std::string opType;
-            std::string domain;
-            onnxruntime::NodeAttributes attributes;
-            std::vector<onnxruntime::NodeArg*> inputs;
-            std::vector<onnxruntime::NodeArg*> outputs;
-        };
-
-        // Defer adding and removing nodes in the graph until after we're done iterating over it, because we can't mutate the
-        // graph while iterating over it
-        std::vector<NodeToAdd> nodesToAdd;
-        std::vector<onnxruntime::NodeIndex> nodesToRemove;
-
-        for (auto& node : graph->Nodes())
-        {
-            // For now, only QLinearSigmoid is handled
-            if (node.Domain() == onnxruntime::kMSDomain &&
-                node.OpType() == "QLinearSigmoid")
-            {
-                // Intermediate node arg type proto with floating point format
-                onnx::TypeProto floatTensorProto;
-                floatTensorProto.mutable_tensor_type()->set_elem_type(onnx::TensorProto_DataType_FLOAT);
-
-                // Add intermediate graph edges for the input and output of the FP32 sigmoid operator
-                auto* sigmoidInputArg = &graph->GetOrCreateNodeArg("decomposed_QLinearSigmoid_input_" + GetUniqueNodeName(&node), &floatTensorProto);
-                auto* sigmoidOutputArg = &graph->GetOrCreateNodeArg("decomposed_QLinearSigmoid_output_" + GetUniqueNodeName(&node), &floatTensorProto);
-
-                {
-                    NodeToAdd dequantizeNode;
-                    dequantizeNode.name = "decomposed_QLinearSigmoid_DequantizeLinear_" + GetUniqueNodeName(&node);
-                    dequantizeNode.description = "";
-                    dequantizeNode.opType = "DequantizeLinear";
-                    dequantizeNode.domain = "";
-
-                    dequantizeNode.inputs.push_back(graph->GetNodeArg(node.InputDefs()[0]->Name()));
-                    dequantizeNode.inputs.push_back(graph->GetNodeArg(node.InputDefs()[1]->Name()));
-                    dequantizeNode.inputs.push_back(graph->GetNodeArg(node.InputDefs()[2]->Name()));
-                    dequantizeNode.outputs.push_back(sigmoidInputArg);
-
-                    nodesToAdd.push_back(std::move(dequantizeNode));
-                }
-
-                {
-                    NodeToAdd sigmoidNode;
-                    sigmoidNode.name = "decomposed_QLinearSigmoid_Sigmoid_" + GetUniqueNodeName(&node);
-                    sigmoidNode.description = "";
-                    sigmoidNode.opType = "Sigmoid";
-                    sigmoidNode.domain = "";
-                    sigmoidNode.inputs.push_back(sigmoidInputArg);
-                    sigmoidNode.outputs.push_back(sigmoidOutputArg);
-                    nodesToAdd.push_back(std::move(sigmoidNode));
-                }
-
-                {
-                    NodeToAdd quantizeNode;
-                    quantizeNode.name = "decomposed_QLinearSigmoid_QuantizeLinear_" + GetUniqueNodeName(&node);
-                    quantizeNode.description = "";
-                    quantizeNode.opType = "QuantizeLinear";
-                    quantizeNode.domain = "";
-
-                    quantizeNode.inputs.push_back(sigmoidOutputArg);
-                    quantizeNode.inputs.push_back(graph->GetNodeArg(node.InputDefs()[3]->Name()));
-                    quantizeNode.inputs.push_back(graph->GetNodeArg(node.InputDefs()[4]->Name()));
-                    quantizeNode.outputs.push_back(graph->GetNodeArg(node.OutputDefs()[0]->Name()));
-
-                    nodesToAdd.push_back(std::move(quantizeNode));
-                }
-
-                nodesToRemove.push_back(node.Index());
-                *modified = true;
-            }
-        }
-
-        for (auto& nodeToAdd : nodesToAdd)
-        {
-            graph->AddNode(
-                nodeToAdd.name,
-                nodeToAdd.opType,
-                nodeToAdd.description,
-                nodeToAdd.inputs,
-                nodeToAdd.outputs,
-                &nodeToAdd.attributes,
-                nodeToAdd.domain);
-        }
-
-        for (const auto& nodeIndex : nodesToRemove)
-        {
-            onnxruntime::Node* node = graph->GetNode(nodeIndex);
-            onnxruntime::graph_utils::RemoveNodeOutputEdges(*graph, *node);
-            graph->RemoveNode(node->Index());
         }
     }
 

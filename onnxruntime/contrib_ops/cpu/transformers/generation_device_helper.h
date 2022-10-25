@@ -43,6 +43,7 @@ using TopkFunc = std::function<Status(
 // Create subgraph inputs: input_ids, position_ids and attention_mask (for GPT-2).
 using CreateGptInputsFunc = std::function<Status(
     const Tensor* original_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     gsl::span<int32_t>& sequence_lengths,
@@ -146,7 +147,7 @@ using UpdateDecoderFeedsFunc = std::function<Status(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper)>;
@@ -227,6 +228,7 @@ Status DeviceCopy(gsl::span<T> target,
 
 Status CreateGptInputs(
     const Tensor* original_input_ids,
+    const OrtValue* attn_mask_value,
     int num_beams,
     int pad_token_id,
     gsl::span<int32_t>& sequence_lengths,
@@ -276,7 +278,7 @@ Status UpdateDecoderFeeds(
     int num_beams,
     int t5_decoder_first_past_input_idx,
     int t5_decoder_first_present_output_idx,
-    bool has_hidden_state,
+    bool use_sequence_as_input_ids,
     int current_length,
     transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper);

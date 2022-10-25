@@ -2,12 +2,27 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
+
+#include "core/framework/run_options.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/providers/provider_test_utils.h"
+#include "test/providers/run_options_config_keys.h"
 #include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
+
+namespace {
+
+const onnxruntime::RunOptions run_options = []() {
+  onnxruntime::RunOptions options{};
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOpTesterRunOptionsConfigTestTunableOp, "true"));
+  return options;
+}();
+
+const constexpr auto run_with_tunable_op = &run_options;
+
+}  // namespace
 
 template <typename T>
 void TestGemmNoTrans() {
@@ -27,7 +42,8 @@ void TestGemmNoTrans() {
     test.AddOutput<T>("Y", {2, 3},
                       {11.0f, 11.0f, 11.0f,
                        -9.0f, -9.0f, -9.0f});
-    test.Run();
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
   };
 
   run_test(false, false);
@@ -82,7 +98,9 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   test.AddInput<MLFloat16>("B", {4, 3}, f_B);
   test.AddInput<MLFloat16>("C", {2, 3}, f_C);
   test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: fp16 is not supported
+  test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 #endif
 
@@ -105,12 +123,19 @@ TEST(GemmOpTest, GemmNoTrans_bfloat16) {
   test.AddInput<BFloat16>("C", {2, 3}, MakeBFloat16({1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
   test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  test.Config(run_with_tunable_op);
 #ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+
+  execution_providers.clear();
+  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
+#endif
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
 }
 #endif
 
@@ -133,10 +158,10 @@ void TestGemmBroadcast() {
                       {11.0f, 12.0f, 13.0f,
                        -9.0f, -8.0f, -7.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO : Temporarily disabled due to accuracy issues
-#else
-    test.Run();
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
   };
 
   run_test(false, false);
@@ -171,10 +196,10 @@ static void TestGemmTrans() {
                     {11.0f, 11.0f, 11.0f,
                      -9.0f, -9.0f, -9.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
-#else
-  test.Run();
+  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 TEST(GemmOpTest, GemmTrans) {
@@ -203,10 +228,10 @@ static void TestGemmTransB() {
                       {11.0f, 11.0f, 11.0f,
                        -9.0f, -9.0f, -9.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
-#else
-    test.Run();
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
   };
   run_test(false, false);
   // CoreML EP requires weight and bias both to be initializers
@@ -239,10 +264,10 @@ static void TestGemmTransB_1() {
                       {11.0f, 11.0f, 11.0f,
                        -9.0f, -9.0f, -9.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
-#else
-    test.Run();
+    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
   };
   run_test(false, false);
   // CoreML EP requires weight and bias both to be initializers
@@ -271,14 +296,16 @@ void TestGemmAlpha() {
   test.AddOutput<T>("Y", {2, 3},
                     {6.0f, 6.0f, 6.0f,
                      -4.0f, -4.0f, -4.0f});
-  //test.AddOutput<T>("Y", {2, 3},
-  //                  {5.0f, 5.0f, 5.0f,
-  //                   -5.0f, -5.0f, -5.0f});
+  // test.AddOutput<T>("Y", {2, 3},
+  //                   {5.0f, 5.0f, 5.0f,
+  //                    -5.0f, -5.0f, -5.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Seg fault in parser
+  test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
 #endif
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 TEST(GemmOpTest, GemmAlpha) {
@@ -304,10 +331,12 @@ void TestGemmBeta() {
                     {12.0f, 12.0f, 12.0f,
                      -8.0f, -8.0f, -8.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Seg fault in parser
+  test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
 #endif
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 TEST(GemmOpTest, GemmBeta) {
@@ -333,10 +362,12 @@ void TestGemmAlphaBeta() {
                     {7.0f, 7.0f, 7.0f,
                      -3.0f, -3.0f, -3.0f});
 #if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+  test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Seg fault in parser
+  test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
 #endif
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 TEST(GemmOpTest, GemmAlphaBeta) {
@@ -361,7 +392,11 @@ void TestGemmNaN() {
   test.AddOutput<T>("Y", {2, 3},
                     {10.0f, 10.0f, 10.0f,
                      -10.0f, -10.0f, -10.0f});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Seg fault in parser
+
+  // TensorRT: Seg fault in parser
+  test.ConfigExcludeEps({kTensorrtExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 TEST(GemmOpTest, GemmNaN) {
@@ -386,7 +421,8 @@ void TestGemmScalarBroadcast() {
   test.AddOutput<T>("Y", {2, 3},
                     {11.0f, 11.0f, 11.0f,
                      -9.0f, -9.0f, -9.0f});
-  test.Run();
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 TEST(GemmOpTest, GemmScalarBroadcast) {
@@ -411,7 +447,8 @@ void TestGemm2DBroadcast_1() {
   test.AddOutput<T>("Y", {2, 3},
                     {11.0f, 11.0f, 11.0f,
                      -8.0f, -8.0f, -8.0f});
-  test.Run();
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 TEST(GemmOpTest, Gemm2DBroadcast_1) {
@@ -437,7 +474,8 @@ void TestGemm2DBroadcast_2() {
   test.AddOutput<T>("Y", {2, 3},
                     {11.0f, 12.0f, 13.0f,
                      -9.0f, -8.0f, -7.0f});
-  test.Run();
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 TEST(GemmOpTest, Gemm2DBroadcast_2) {
@@ -462,7 +500,8 @@ void TestGemmFalseBroadcast() {
   test.AddOutput<T>("Y", {2, 3},
                     {11.0f, 11.0f, 11.0f,
                      -8.0f, -8.0f, -8.0f});
-  test.Run();
+  test.Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 TEST(GemmOpTest, GemmFalseBroadcast) {
@@ -485,7 +524,10 @@ void TestGemmEmptyTensor() {
   test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
   test.AddOutput<T>("Y", {0, 3},
                     {});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kDnnlExecutionProvider});  //TensorRT: doesn't support dynamic shape yet
+  // TensorRT: doesn't support dynamic shape yet
+  test.ConfigExcludeEps({kTensorrtExecutionProvider, kDnnlExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 TEST(GemmOpTest, GemmEmptyTensor) {
@@ -510,7 +552,9 @@ static void TestGemmNoBiasOpset11() {
                     {10.0f, 10.0f, 10.0f,
                      -10.0f, -10.0f, -10.0f});
   // tensorRT don't seem to support missing bias
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.ConfigExcludeEps({kTensorrtExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 TEST(GemmOpTest, GemmNoBiasOpset11) {
@@ -530,7 +574,9 @@ static void TestGemmWithAlphaOpset11() {
   test.AddOutput<T>("Y", {2, 2},
                     {6.0f, 6.0f, 14.0f, 14.0f});
   // tensorRT don't seem to support missing bias
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.ConfigExcludeEps({kTensorrtExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 TEST(GemmOpTest, GemmWithAlphaOpset11) {
@@ -583,9 +629,10 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
 
   // Session 1
   {
-    auto ep_vec = cpu_ep();
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+    test.Config(so)
+        .ConfigEps(cpu_ep())
+        .Config(run_with_tunable_op)
+        .RunWithConfig(&number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
     // Assert that no pre-packed weights have been shared thus far
     ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
   }
@@ -605,9 +652,10 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
   // Session 2
   {
     size_t number_of_pre_packed_weights_counter_session_2 = 0;
-    auto ep_vec = cpu_ep();
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+    test.Config(so)
+        .ConfigEps(cpu_ep())
+        .Config(run_with_tunable_op)
+        .RunWithConfig(&number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
 
     // Assert that the same number of weights were pre-packed in both sessions
     ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);

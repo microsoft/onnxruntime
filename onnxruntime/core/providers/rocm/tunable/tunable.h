@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cxxabi.h>
 #include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
 
@@ -27,6 +28,7 @@ namespace tunable {
 struct OpParams {
   OpParams() : stream{} {}
   explicit OpParams(hipStream_t stream) : stream(stream) {}
+  virtual ~OpParams() = default;
   virtual std::string Signature() const = 0;
   hipStream_t stream;
 };
@@ -79,7 +81,9 @@ class TunableOp {
     int id;
     if (tuning_) {
       if (kernel_map_.find(params->Signature()) == kernel_map_.end()) {
-        id = FindFastest(params);
+        auto maybe_proxy_params = this->PreTuning(params);
+        id = FindFastest(maybe_proxy_params);
+        PostTuning(maybe_proxy_params);
         kernel_map_.insert({params->Signature(), id});
       } else {
         id = kernel_map_[params->Signature()];
@@ -97,6 +101,18 @@ class TunableOp {
 
   void DisableTuning() {
     tuning_ = false;
+  }
+
+  // We might want to do some tricks to the `params`, e.g., some op will use a buffer for input and output at the same
+  // time, so it will do inplace update to it. If we blindly tune over the `params`, there will be accumulated update
+  // to that buffer during FindFastest, which is an undesired side effect. In this case, we must prepare a new (proxy)
+  // params struct for the tuning to avoid this side effect.
+  virtual const ParamsT* PreTuning(const ParamsT* params) {
+    return params;
+  }
+
+  virtual void PostTuning(const ParamsT* /*params*/) {
+    // Do nothing if we are not playing around with params
   }
 
   virtual ~TunableOp() = default;
@@ -136,11 +152,24 @@ class TunableOp {
     return true;
   }
 
+  std::string OpSignature() const {
+    const auto* name = typeid(*this).name();
+    char buf[256];
+    size_t buf_len = 256;
+    abi::__cxa_demangle(name, buf, &buf_len, nullptr);
+    buf[255] = '\0';
+    return buf;
+  }
+
   int FindFastest(const ParamsT* params) {
+    auto op_sig = OpSignature();
+    auto param_sig = params->Signature();
+    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ')';
     auto min_time = std::numeric_limits<double>::infinity();
     int id = -1;
     for (size_t i = 0; i < this->ops_.size(); i++) {
       if (!IsSupported(ops_[i], params)) {
+        LOGS_DEFAULT(VERBOSE) << "FindFastest found unsupported " << op_sig << '(' << param_sig << ") id=" << i;
         continue;
       }
 
@@ -152,6 +181,7 @@ class TunableOp {
       }
     }
     ORT_ENFORCE(id >= 0, "Cannot found viable op");
+    LOGS_DEFAULT(VERBOSE) << "FindFastest for " << op_sig << '(' << param_sig << ") found fastest with id=" << id;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return id;
   }
