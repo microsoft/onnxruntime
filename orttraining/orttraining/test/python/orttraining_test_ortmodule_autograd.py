@@ -4,7 +4,7 @@
 # pylint: disable=missing-docstring
 # pylint: disable=C0103
 
-from distutils.version import LooseVersion
+from packaging.version import Version
 
 import pytest
 import torch
@@ -15,14 +15,14 @@ from torch.nn.parameter import Parameter
 
 # Import external libraries.
 import onnxruntime
-from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule
+from onnxruntime.training.ortmodule import ORTModule
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
 
 
 def torch_version_lower_than(v):
-    return LooseVersion(torch.__version__) < LooseVersion(v)
+    return Version(torch.__version__) < Version(v)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -1106,6 +1106,8 @@ def test_non_differentiable_autograd_function():
     run()
 
 
+# There is bug in exporter side since 1.13 that will throw "RuntimeError: _Map_base::at" for this test.
+@pytest.mark.skipif(Version(torch.__version__) >= Version("1.13.0"), reason="PyTorch 1.13+ incompatible")
 def test_checkpoint_function():
     class A(torch.nn.Module):
         # A supported module.
