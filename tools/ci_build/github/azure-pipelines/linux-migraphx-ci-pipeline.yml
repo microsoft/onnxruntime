@@ -2,11 +2,11 @@ trigger: none
 
 name: 'linux_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 jobs:
-- job: AMDMIGraphX_CI
+- job: AMDMIGraphX_CI_Build
   workspace:
     clean: all
-  pool: 'AMD-GPU'
-  timeoutInMinutes: 180
+  pool: Linux-CPU-2019
+  timeoutInMinutes: 60
 
   # gid of video and render group on gcr-openpai-35 and -36
   variables:
@@ -57,12 +57,52 @@ jobs:
               --update \
               --build_dir /build \
               --build \
-              --parallel 16 \
+              --parallel 8 \
               --build_wheel \
               --skip_submodule_sync \
               --skip_tests
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime'
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/RelWithDebInfo'
+
+  - template: templates/clean-agent-build-directory-step.yml
+
+- job: AMDMIGraphX_CI_Test
+  timeoutInMinutes: 30
+
+  # gid of video and render group on gcr-openpai-35 and -36
+  variables:
+    - name: video
+      value: 44
+    - name: render
+      value: 109
+    - name: RocmVersion
+      value: 5.2.3
+
+  workspace:
+    clean: all
+
+  pool: 'AMD-GPU'
+  dependsOn:
+  - AMDMIGraphX_CI_Build
+  steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/RelWithDebInfo'
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/pai/migraphx-ci-pipeline-env.Dockerfile
+      Context: tools/ci_build/github/pai
+      Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
     inputs:
