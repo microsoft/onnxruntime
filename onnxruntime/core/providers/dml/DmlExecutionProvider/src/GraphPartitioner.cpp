@@ -440,14 +440,15 @@ namespace Dml
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
 
             // Whether the node is implemented through DML.
-            bool isDmlNode = node.GetExecutionProviderType() == onnxruntime::kDmlExecutionProvider;
+            bool isDmlNode = node.GetExecutionProviderType() == onnxruntime::kDmlExecutionProvider
+                && cpuPreferredNodes.find(nodeIndex) == cpuPreferredNodes.end();
 
             // Whether the node is implemented through DML and as a graph node, meaning it
             // can generate DML operations through a private interface for use as an MLGraph node.
             bool isDmlGraphNode = false;
 
             // Get the registration properties above and populate nodeNameToPartitionMap.
-            if (isDmlNode && cpuPreferredNodes.find(nodeIndex) == cpuPreferredNodes.end())
+            if (isDmlNode)
             {
                 printf("*************Node %s is placed on DML\n", node.Name().c_str());
                 GetRegistrationProperties(
