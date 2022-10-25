@@ -6,6 +6,7 @@
 #include <memory>
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/cpu/math/softmax_shared.h"
+#include "core/providers/cpu/generator/random.h"
 #include "core/common/safeint.h"
 #include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
@@ -404,6 +405,7 @@ Status GreedySearchProcessLogits(
   onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
   transformers::ILogitsProcessorList* logits_processors,      // logits processors
   const transformers::IGenerationParameters* parameters,      // parameters
+  bool do_sampling,                                           // whether to do sampling
   int step,                                                   // iteration counter
   void* stream,                                               // cuda stream (for CUDA only)
   const transformers::IConsoleDumper* dumper) {               // tensor dumper
@@ -447,44 +449,81 @@ Status GreedySearchProcessLogits(
   dumper->Print("next_token_scores after logits processor", next_token_scores.data(), batch_size, 1, vocab_size);
 #endif
 
-  // next_tokens = torch.argmax(scores, dim=-1)
-  int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
-  TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
-  auto element_type = DataTypeImpl::GetType<T>();
-  OrtValue next_token_scores_value;
-  Tensor::InitOrtValue(element_type,
-                       next_token_scores_shape,
-                       next_token_scores.data(),
-                       allocator->Info(),
-                       next_token_scores_value);
-  const Tensor& input = next_token_scores_value.Get<Tensor>();
+  if (do_sampling) {
+    // bugbug: is this Softmax really needed?
+    gsl::span<T>& next_token_probs = greedy_state->next_token_probs;
+    ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(batch_size,
+                                      vocab_size,
+                                      next_token_scores.data(),
+                                      next_token_probs.data(),
+                                      false,
+                                      thread_pool));
 
-  constexpr int axis = 1;
-  constexpr unsigned top_k = 1;
-  constexpr bool largest = true;
-  constexpr bool sorted = false;
+    // torch.multinomial()
+    int64_t next_token_probs_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
+    TensorShape next_token_probs_shape(&next_token_probs_dims[0], 2);
+    auto element_type = DataTypeImpl::GetType<T>();
+    OrtValue next_token_probs_value;
+    Tensor::InitOrtValue(element_type,
+                         next_token_probs_shape,
+                         next_token_probs.data(),
+                         allocator->Info(),
+                         next_token_probs_value);
+    const Tensor& input = next_token_probs_value.Get<Tensor>();
 
-  Tensor topk_scores;
-  Tensor topk_indices;
-  ORT_RETURN_IF_ERROR(
-    TopK(&input,
-         axis,
-         top_k,
-         largest,
-         sorted,
-         allocator,
-         stream,
-         thread_pool,
-         topk_scores,
-         topk_indices));
+    float seed = 0.f;
+    std::default_random_engine generator = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
+    Tensor sampled_idx;
+    ORT_RETURN_IF_ERROR(MultinomialComputeShared<int64_t>(allocator,
+                                                          input,
+                                                          batch_size,
+                                                          vocab_size,
+                                                          1,
+                                                          generator,
+                                                          sampled_idx));
+
+    gsl::span<const int64_t> next_token_indices = sampled_idx.DataAsSpan<int64_t>();
+    gsl::copy(next_token_indices, greedy_state->next_tokens_cpu);
+  } else {
+    // next_tokens = torch.argmax(scores, dim=-1)
+    int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
+    TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
+    auto element_type = DataTypeImpl::GetType<T>();
+    OrtValue next_token_scores_value;
+    Tensor::InitOrtValue(element_type,
+                         next_token_scores_shape,
+                         next_token_scores.data(),
+                         allocator->Info(),
+                         next_token_scores_value);
+    const Tensor& input = next_token_scores_value.Get<Tensor>();
+
+    constexpr int axis = 1;
+    constexpr unsigned top_k = 1;
+    constexpr bool largest = true;
+    constexpr bool sorted = false;
+
+    Tensor topk_scores;
+    Tensor topk_indices;
+    ORT_RETURN_IF_ERROR(TopK(&input,
+                             axis,
+                             top_k,
+                             largest,
+                             sorted,
+                             allocator,
+                             stream,
+                             thread_pool,
+                             topk_scores,
+                             topk_indices));
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", topk_scores);
-  dumper->Print("topk_indices", topk_indices);
+    dumper->Print("topk_scores", topk_scores);
+    dumper->Print("topk_indices", topk_indices);
 #endif
 
-  gsl::span<const int64_t> next_token_indices = topk_indices.DataAsSpan<int64_t>();
-  gsl::copy(next_token_indices, greedy_state->next_tokens_cpu);
+    gsl::span<const int64_t> next_token_indices = topk_indices.DataAsSpan<int64_t>();
+    gsl::copy(next_token_indices, greedy_state->next_tokens_cpu);
+  }
+
 
 #ifdef DEBUG_GENERATION
   gsl::span<const int64_t> next_tokens(greedy_state->next_tokens_cpu.data(),
@@ -834,6 +873,7 @@ template Status GreedySearchProcessLogits<float>(
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
     const transformers::IGenerationParameters* parameters,
+    bool do_sampling,
     int step,
     void* stream,
     const transformers::IConsoleDumper* dumper);

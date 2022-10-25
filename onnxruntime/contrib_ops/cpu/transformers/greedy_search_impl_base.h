@@ -41,6 +41,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
     // below buffers are on cpu or cuda
     size_t next_token_size = SafeInt<size_t>(batch_size) * vocab_size;
     this->next_token_scores = AllocateBuffer<T>(allocator, next_token_scores_buffer_, next_token_size);
+    this->next_token_probs = AllocateBuffer<T>(allocator, next_token_probs_buffer_, next_token_size);
     this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_size);
   }
 
@@ -61,6 +62,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
   BufferUniquePtr sequences_space_buffer_;
   BufferUniquePtr sequence_lengths_buffer_;
   BufferUniquePtr next_token_scores_buffer_;
+  BufferUniquePtr next_token_probs_buffer_;
   BufferUniquePtr next_tokens_buffer_;
   BufferUniquePtr next_tokens_cpu_buffer_;
   BufferUniquePtr next_positions_buffer_;
@@ -161,9 +163,10 @@ Status GreedySearchBase<T, ParametersT>::ProcessLogits(
     GreedySearchState<T>& greedy_state,
     AllocatorPtr& allocator,
     int counter) {
+  bool use_sampling = std::is_same<ParametersT, SamplingParameters>::value;
   return process_logits_func_(logits, &greedy_state, &(greedy_state.sequences), allocator,
-                              this->thread_pool_, &this->logits_processors_,
-                              parameters_, counter, this->cuda_stream_, this->GetConsoleDumper());
+                              this->thread_pool_, &this->logits_processors_, parameters_,
+                              use_sampling, counter, this->cuda_stream_, this->GetConsoleDumper());
 }
 
 template <typename T, typename ParametersT>

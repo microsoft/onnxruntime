@@ -457,11 +457,12 @@ Status GreedySearchProcessLogits(
     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
     transformers::ILogitsProcessorList* logits_processors,  // logits processors
     const transformers::IGenerationParameters* parameters,  // parameters
+    bool do_sampling,                                       // whether to do sampling
     int step,                                               // iteration counter
     void* stream,                                           // cuda stream (for CUDA only)
     const transformers::IConsoleDumper* dumper) {           // tensor dumper
   ORT_UNUSED_PARAMETER(logits_processors);
-
+  ORT_UNUSED_PARAMETER(do_sampling);
 #ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
@@ -898,6 +899,7 @@ template Status GreedySearchProcessLogits<float>(
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
     const transformers::IGenerationParameters* parameters,
+    bool do_sampling,
     int step,
     void* stream,
     const transformers::IConsoleDumper* dumper);
@@ -963,6 +965,7 @@ template Status GreedySearchProcessLogits<MLFloat16>(
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
     const transformers::IGenerationParameters* parameters,
+    bool do_sampling,
     int step,
     void* stream,
     const transformers::IConsoleDumper* dumper);

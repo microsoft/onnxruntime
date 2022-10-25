@@ -67,6 +67,7 @@ Status GreedySearchProcessLogits(const OrtValue& logits,                        
                                  onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
                                  transformers::ILogitsProcessorList* logits_processors,  // logits processors
                                  const transformers::IGenerationParameters* parameters,  // parameters
+                                 bool do_sampling,                                       // whether to do sampling
                                  int step,                                               // iteration counter
                                  void* stream,                                           // cuda stream (for CUDA only)
                                  const transformers::IConsoleDumper* dumper);            // tensor dumper
