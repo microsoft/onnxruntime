@@ -254,7 +254,7 @@ ORT_API_STATUS_IMPL(winmla::CloneModel, _In_ const OrtModel* in, _Outptr_ OrtMod
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::SaveModel, const OrtModel* in, const wchar_t* const file_name, size_t len) {
+ORT_API_STATUS_IMPL(winmla::SaveModel, _In_ const OrtModel* in, _In_ const wchar_t* const file_name, _In_ size_t len) {
   API_IMPL_BEGIN
   int fd;
   std::wstring file_path = file_name;
@@ -485,7 +485,7 @@ ORT_API_STATUS_IMPL(winmla::ModelEnsureNoFloat16, _In_ const OrtModel* model) {
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(winmla::CreateModel, int64_t opset, OrtModel** out) {
+ORT_API_STATUS_IMPL(winmla::CreateModel, _In_ int64_t opset, _Outptr_ OrtModel** out) {
   API_IMPL_BEGIN
   return OrtModel::CreateEmptyModel(opset, out);
   API_IMPL_END

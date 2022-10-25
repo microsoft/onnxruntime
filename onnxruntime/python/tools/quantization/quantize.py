@@ -5,7 +5,6 @@
 # --------------------------------------------------------------------------
 import logging
 import tempfile
-from enum import Enum, auto
 from pathlib import Path
 
 from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
@@ -15,39 +14,31 @@ from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model, m
 from .registry import IntegerOpsRegistry, QLinearOpsRegistry
 
 
-class ExecutionProvider(Enum):
-    CPU = auto
-    TRT = auto
-    NNAPI = auto
-    SNE = auto
-
-
 class QuantConfig:
     def __init__(
         self,
-        op_types_to_quantize=None,
-        per_channel=False,
-        reduce_range=False,
+        activation_type=QuantType.QUInt8,
         weight_type=QuantType.QInt8,
+        op_types_to_quantize=None,
         nodes_to_quantize=None,
         nodes_to_exclude=None,
+        per_channel=False,
+        reduce_range=False,
         optimize_model=True,
         use_external_data_format=False,
-        execution_provider: ExecutionProvider = ExecutionProvider.CPU,
     ):
         """
         This is the Base class for both Static and Dynamic Quantize Configuration
         Args:
-            op_types_to_quantize:
-                specify the types of operators to quantize, like ['Conv'] to quantize Conv only.
-                It quantizes all supported operators by default.
-            per_channel: quantize weights per channel
-            reduce_range:
-                quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine,
-                especially for per-channel mode
+            activation_type:
+                quantization data type of activation. Please refer to
+                https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
             weight_type:
                 quantization data type of weight. Please refer to
                 https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
+            op_types_to_quantize:
+                specify the types of operators to quantize, like ['Conv'] to quantize Conv only.
+                It quantizes all supported operators by default.
             nodes_to_quantize:
                 List of nodes names to quantize. When this list is not None only the nodes in this list
                 are quantized.
@@ -59,11 +50,13 @@ class QuantConfig:
             nodes_to_exclude:
                 List of nodes names to exclude. The nodes in this list will be excluded from quantization
                 when it is not None.
+            per_channel: quantize weights per channel
+            reduce_range:
+                quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine,
+                especially for per-channel mode
             optimize_model: Deprecating Soon! Optimize model before quantization. NOT recommended, optimization will
                 change the computation graph, making debugging of quantization loss difficult.
             use_external_data_format: option used for large size (>2GB) model. Set to False by default.
-            execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
-
         """
 
         nodes_to_exclude = nodes_to_exclude or []
@@ -73,43 +66,41 @@ class QuantConfig:
         self.per_channel = per_channel
         self.reduce_range = reduce_range
         self.weight_type = weight_type
+        self.activation_type = activation_type
         self.nodes_to_quantize = nodes_to_quantize
         self.nodes_to_exclude = nodes_to_exclude
         self.optimize_model = optimize_model
         self.use_external_data_format = use_external_data_format
-        self.execution_provider = execution_provider
 
 
 class StaticQuantConfig(QuantConfig):
     def __init__(
         self,
-        op_types_to_quantize=None,
-        per_channel=False,
-        reduce_range=False,
-        weight_type=QuantType.QInt8,
-        nodes_to_quantize=None,
-        nodes_to_exclude=None,
-        optimize_model=True,
-        use_external_data_format=False,
+        calibration_data_reader: CalibrationDataReader,
+        calibrate_method=CalibrationMethod.MinMax,
         quant_format=QuantFormat.QDQ,
         activation_type=QuantType.QInt8,
-        calibrate_method=CalibrationMethod.MinMax,
+        weight_type=QuantType.QInt8,
+        op_types_to_quantize=None,
+        nodes_to_quantize=None,
+        nodes_to_exclude=None,
+        per_channel=False,
+        reduce_range=False,
+        optimize_model=True,
+        use_external_data_format=False,
         extra_options=None,
-        execution_provider: ExecutionProvider = ExecutionProvider.CPU,
     ):
         """
         This is the derived class for static Quantize Configuration
 
         Args:
+            calibration_data_reader:
+                a calibration data reader. It enumerates calibration data and generates inputs for the original model.
+            calibrate_method:
+                Current calibration methods supported are MinMax, Entropy and Percentile.
             quant_format: QuantFormat{QOperator, QDQ}.
                 QOperator format quantizes the model with quantized operators directly.
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
-            activation_type:
-                quantization data type of activation. Please refer to
-                https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
-            calibrate_method:
-                Current calibration methods supported are MinMax and Entropy.
-                Please use CalibrationMethod.MinMax or CalibrationMethod.Entropy as options.
             extra_options:
                 key value pair dictionary for various options in different case. Current used:
                     extra.Sigmoid.nnapi = True/False  (Default is False)
@@ -127,7 +118,7 @@ class StaticQuantConfig(QuantConfig):
                         Default is False which quantizes floating-point weight and feeds it to solely inserted
                         DeQuantizeLinear node. If True, it remains floating-point weight and inserts both
                         QuantizeLinear/DeQuantizeLinear nodes to weight.
-                    OpTypesToExcludeOutputQuantizatioin = list of op type :
+                    OpTypesToExcludeOutputQuantization = list of op type :
                         Default is []. If any op type is specified, it won't quantize the output of ops with this
                         specific op types.
                     DedicatedQDQPair = True/False :
@@ -154,35 +145,34 @@ class StaticQuantConfig(QuantConfig):
         """
 
         super().__init__(
-            op_types_to_quantize=op_types_to_quantize,
-            per_channel=per_channel,
-            reduce_range=reduce_range,
+            activation_type=activation_type,
             weight_type=weight_type,
+            op_types_to_quantize=op_types_to_quantize,
             nodes_to_quantize=nodes_to_quantize,
             nodes_to_exclude=nodes_to_exclude,
+            per_channel=per_channel,
+            reduce_range=reduce_range,
             optimize_model=optimize_model,
             use_external_data_format=use_external_data_format,
-            execution_provider=execution_provider,
         )
-        self.quant_format = quant_format
-        self.activation_type = activation_type
+        self.calibration_data_reader = calibration_data_reader
         self.calibrate_method = calibrate_method
+        self.quant_format = quant_format
         self.extra_options = extra_options or {}
 
 
 class DynamicQuantConfig(QuantConfig):
     def __init__(
         self,
-        op_types_to_quantize=None,
-        per_channel=False,
-        reduce_range=False,
         weight_type=QuantType.QInt8,
+        op_types_to_quantize=None,
         nodes_to_quantize=None,
         nodes_to_exclude=None,
+        per_channel=False,
+        reduce_range=False,
         optimize_model=True,
         use_external_data_format=False,
         extra_options=None,
-        execution_provider: ExecutionProvider = ExecutionProvider.CPU,
     ):
         """
         This is a class for dynamic Quant Configuration
@@ -215,127 +205,8 @@ class DynamicQuantConfig(QuantConfig):
             nodes_to_exclude=nodes_to_exclude,
             optimize_model=optimize_model,
             use_external_data_format=use_external_data_format,
-            execution_provider=execution_provider,
         )
         self.extra_options = extra_options or {}
-
-
-# TODO: update quantization options
-DEFAULT_CPU_STATIC_QUANTIZATION_CONFIG = StaticQuantConfig(
-    op_types_to_quantize=None,
-    per_channel=False,
-    reduce_range=False,
-    weight_type=QuantType.QInt8,
-    nodes_to_quantize=None,
-    nodes_to_exclude=None,
-    optimize_model=True,
-    use_external_data_format=False,
-    quant_format=QuantFormat.QDQ,
-    activation_type=QuantType.QInt8,
-    calibrate_method=CalibrationMethod.MinMax,
-    extra_options=None,
-    execution_provider=ExecutionProvider.CPU,
-)
-
-DEFAULT_CPU_DYNAMIC_QUANTIZATION_CONFIG = DynamicQuantConfig(
-    op_types_to_quantize=None,
-    per_channel=False,
-    reduce_range=False,
-    weight_type=QuantType.QInt8,
-    nodes_to_quantize=None,
-    nodes_to_exclude=None,
-    optimize_model=True,
-    use_external_data_format=False,
-    extra_options=None,
-    execution_provider=ExecutionProvider.CPU,
-)
-
-DEFAULT_TRT_STATIC_QUANTIZATION_CONFIG = StaticQuantConfig(
-    op_types_to_quantize=None,
-    per_channel=False,
-    reduce_range=False,
-    weight_type=QuantType.QInt8,
-    nodes_to_quantize=None,
-    nodes_to_exclude=None,
-    optimize_model=True,
-    use_external_data_format=False,
-    quant_format=QuantFormat.QDQ,
-    activation_type=QuantType.QInt8,
-    calibrate_method=CalibrationMethod.MinMax,
-    extra_options=None,
-    execution_provider=ExecutionProvider.TRT,
-)
-
-DEFAULT_TRT_DYNAMIC_QUANTIZATION_CONFIG = DynamicQuantConfig(
-    op_types_to_quantize=None,
-    per_channel=False,
-    reduce_range=False,
-    weight_type=QuantType.QInt8,
-    nodes_to_quantize=None,
-    nodes_to_exclude=None,
-    optimize_model=True,
-    use_external_data_format=False,
-    extra_options=None,
-    execution_provider=ExecutionProvider.TRT,
-)
-
-DEFAULT_NNAPI_STATIC_QUANTIZATION_CONFIG = StaticQuantConfig(
-    op_types_to_quantize=None,
-    per_channel=False,
-    reduce_range=False,
-    weight_type=QuantType.QInt8,
-    nodes_to_quantize=None,
-    nodes_to_exclude=None,
-    optimize_model=True,
-    use_external_data_format=False,
-    quant_format=QuantFormat.QDQ,
-    activation_type=QuantType.QInt8,
-    calibrate_method=CalibrationMethod.MinMax,
-    extra_options=None,
-    execution_provider=ExecutionProvider.NNAPI,
-)
-
-DEFAULT_NNAPI_DYNAMIC_QUANTIZATION_CONFIG = DynamicQuantConfig(
-    op_types_to_quantize=None,
-    per_channel=False,
-    reduce_range=False,
-    weight_type=QuantType.QInt8,
-    nodes_to_quantize=None,
-    nodes_to_exclude=None,
-    optimize_model=True,
-    use_external_data_format=False,
-    extra_options=None,
-    execution_provider=ExecutionProvider.NNAPI,
-)
-
-DEFAULT_SNE_STATIC_QUANTIZATION_CONFIG = StaticQuantConfig(
-    op_types_to_quantize=None,
-    per_channel=False,
-    reduce_range=False,
-    weight_type=QuantType.QInt8,
-    nodes_to_quantize=None,
-    nodes_to_exclude=None,
-    optimize_model=True,
-    use_external_data_format=False,
-    quant_format=QuantFormat.QDQ,
-    activation_type=QuantType.QInt8,
-    calibrate_method=CalibrationMethod.MinMax,
-    extra_options=None,
-    execution_provider=ExecutionProvider.SNE,
-)
-
-DEFAULT_SNE_DYNAMIC_QUANTIZATION_CONFIG = DynamicQuantConfig(
-    op_types_to_quantize=None,
-    per_channel=False,
-    reduce_range=False,
-    weight_type=QuantType.QInt8,
-    nodes_to_quantize=None,
-    nodes_to_exclude=None,
-    optimize_model=True,
-    use_external_data_format=False,
-    extra_options=None,
-    execution_provider=ExecutionProvider.SNE,
-)
 
 
 def check_static_quant_arguments(quant_format: QuantFormat, activation_type: QuantType, weight_type: QuantType):
@@ -433,7 +304,7 @@ def quantize_static(
                     Default is False which quantizes floating-point weight and feeds it to solely inserted
                     DeQuantizeLinear node. If True, it remains floating-point weight and inserts both
                     QuantizeLinear/DeQuantizeLinear nodes to weight.
-                OpTypesToExcludeOutputQuantizatioin = list of op type :
+                OpTypesToExcludeOutputQuantization = list of op type :
                     Default is []. If any op type is specified, it won't quantize the output of ops with this
                     specific op types.
                 DedicatedQDQPair = True/False :
@@ -634,60 +505,32 @@ def quantize_dynamic(
 def quantize(
     model_input: Path,
     model_output: Path,
-    calibration_data_reader: CalibrationDataReader = None,
-    is_dynamic: bool = False,
-    execution_provider: ExecutionProvider = ExecutionProvider.CPU,
-    **kwargs,
+    quant_config: QuantConfig,
 ):
-    """Quantize a model.
+    """Quantize a model with QuantConfig.
 
     Args:
         model_input (Path): Path to the model to quantize.
         model_output (Path): Path to save the quantized model.
-        is_dynamic (bool): Whether to quantize the model dynamically.
-        calibration_data_reader (DataReader): The data reader to use for quantization.
-        execution_provider (ExecutionProvider): The execution provider to use for quantization.
-        **kwargs (Any): Additional arguments for quantization.
+        quant_config (QuantConfig): Quantization Configuration.
     """
-    if kwargs.get("quant_config"):
-        quant_config = kwargs.get("quant_config")
-    elif is_dynamic:
-        if execution_provider == ExecutionProvider.TRT:
-            quant_config = DEFAULT_TRT_DYNAMIC_QUANTIZATION_CONFIG
-        elif execution_provider == ExecutionProvider.NNAPI:
-            quant_config = DEFAULT_NNAPI_DYNAMIC_QUANTIZATION_CONFIG
-        elif execution_provider == ExecutionProvider.SNE:
-            quant_config = DEFAULT_SNE_DYNAMIC_QUANTIZATION_CONFIG
-        else:
-            quant_config = DEFAULT_CPU_DYNAMIC_QUANTIZATION_CONFIG
-    else:
-        if execution_provider == ExecutionProvider.TRT:
-            quant_config = DEFAULT_TRT_STATIC_QUANTIZATION_CONFIG
-        elif execution_provider == ExecutionProvider.NNAPI:
-            quant_config = DEFAULT_NNAPI_STATIC_QUANTIZATION_CONFIG
-        elif execution_provider == ExecutionProvider.SNE:
-            quant_config = DEFAULT_SNE_STATIC_QUANTIZATION_CONFIG
-        else:
-            quant_config = DEFAULT_CPU_STATIC_QUANTIZATION_CONFIG
 
     if isinstance(quant_config, StaticQuantConfig):
-        if calibration_data_reader is None:
-            raise ValueError("calibration_data_reader must be provided for static quantization.")
         quantize_static(
             model_input,
             model_output,
-            calibration_data_reader,
+            quant_config.calibration_data_reader,
+            calibrate_method=quant_config.calibrate_method,
             quant_format=quant_config.quant_format,
-            op_types_to_quantize=quant_config.op_types_to_quantize,
-            per_channel=quant_config.per_channel,
-            reduce_range=quant_config.reduce_range,
             activation_type=quant_config.activation_type,
             weight_type=quant_config.weight_type,
+            op_types_to_quantize=quant_config.op_types_to_quantize,
             nodes_to_quantize=quant_config.nodes_to_quantize,
             nodes_to_exclude=quant_config.nodes_to_exclude,
+            per_channel=quant_config.per_channel,
+            reduce_range=quant_config.reduce_range,
             optimize_model=quant_config.optimize_model,
             use_external_data_format=quant_config.use_external_data_format,
-            calibrate_method=quant_config.calibrate_method,
             extra_options=quant_config.extra_options,
         )
 
@@ -695,12 +538,12 @@ def quantize(
         quantize_dynamic(
             model_input,
             model_output,
-            op_types_to_quantize=quant_config.op_types_to_quantize,
-            per_channel=quant_config.per_channel,
-            reduce_range=quant_config.reduce_range,
             weight_type=quant_config.weight_type,
+            op_types_to_quantize=quant_config.op_types_to_quantize,
             nodes_to_quantize=quant_config.nodes_to_quantize,
             nodes_to_exclude=quant_config.nodes_to_exclude,
+            per_channel=quant_config.per_channel,
+            reduce_range=quant_config.reduce_range,
             optimize_model=quant_config.optimize_model,
             use_external_data_format=quant_config.use_external_data_format,
             extra_options=quant_config.extra_options,

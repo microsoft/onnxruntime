@@ -213,6 +213,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 #endif
 
+        private static Func<DirectoryInfo, IEnumerable<DirectoryInfo>> getOpsetDirectories = delegate (DirectoryInfo modelsDirInfo)
+        {
+            return modelsDirInfo.EnumerateDirectories("opset*", SearchOption.AllDirectories);
+        };
+
         private static Dictionary<string, string> GetSkippedModels(DirectoryInfo modelsDirInfo)
         {
             var skipModels = new Dictionary<string, string>() {
@@ -229,7 +234,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" },
-                { "cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose" },    
+                { "cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose" },
                 { "coreml_Imputer-LogisticRegression_sklearn_load_breast_cancer", "Can't determine model file name" },
                 { "mask_rcnn_keras", "Model should be edited to remove the extra outputs" },
                 { "test_strnormalizer_export_monday_casesensintive_lower", "ElementType not currently supported"},
@@ -354,7 +359,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_sequence_map_extract_shapes_expanded", "sequence type is not supported in test infra." },
                 { "test_sequence_map_add_1_sequence_1_tensor_expanded", "sequence type is not supported in test infra." },
                 { "test_sequence_map_add_2_sequences", "sequence type is not supported in test infra." },
-                { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." }
+                { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." },
+                { "BERT-Squad-int8", "training domain"},
+                { "YOLOv3-12-int8", "training_domain"}
             };
 
             // The following models fails on nocontribops win CI
@@ -371,7 +378,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var isMlOpsDisabled = (disableMlOpsEnvVar != null) ? disableMlOpsEnvVar.Equals("ON") : false;
             if (isMlOpsDisabled)
             {
-                foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+                foreach (var opsetDir in getOpsetDirectories(modelsDirInfo))
                 {
                     foreach (var modelDir in opsetDir.EnumerateDirectories())
                     {
@@ -402,6 +409,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["coreml_VGG16_ImageNet"] = "System out of memory";
                 skipModels["test_ssd"] = "System out of memory";
                 skipModels["roberta_sequence_classification"] = "System out of memory";
+                // models from model zoo
+                skipModels["VGG 19"] = "bad allocation";
+                skipModels["VGG 19-caffe2"] = "bad allocation";
+                skipModels["VGG 19-bn"] = "bad allocation";
+                skipModels["VGG 16"] = "bad allocation";
+                skipModels["VGG 16-bn"] = "bad allocation";
+                skipModels["VGG 16-fp32"] = "bad allocation";
             }
 
             return skipModels;
@@ -413,14 +427,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var modelsDirInfo = new DirectoryInfo(modelsDir);
             var skipModels = GetSkippedModels(modelsDirInfo);
 
-            foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+            foreach (var opsetDir in getOpsetDirectories(modelsDirInfo))
             {
                 //var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
                 foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
+#if USE_CUDA
                     if (!skipModels.ContainsKey(modelDir.Name))
+#else
+                    if (!(skipModels.ContainsKey(modelDir.Name) || modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) || modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase)))
+#endif
                     {
-                        yield return new object[] { modelDir.Parent.Name, modelDir.Name };
+                        yield return new object[] { modelDir.Parent.FullName, modelDir.Name };
                     }
                 } //model
             } //opset
@@ -432,15 +450,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var modelsDirInfo = new DirectoryInfo(modelsDir);
             var skipModels = GetSkippedModels(modelsDirInfo);
 
-            foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+            foreach (var opsetDir in getOpsetDirectories(modelsDirInfo))
             {
-                var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
-                foreach (var modelDir in modelRoot.EnumerateDirectories())
+                foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
+#if USE_CUDA
                     if (skipModels.ContainsKey(modelDir.Name))
+#else
+                    if (skipModels.ContainsKey(modelDir.Name) || modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) || modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase))
+#endif
                     {
                         //Console.WriteLine("Model {0} is skipped due to the error: {1}", modelDir.FullName, skipModels[modelDir.Name]);
-                        yield return new object[] { modelDir.Parent.Name, modelDir.Name };
+                        yield return new object[] { modelDir.Parent.FullName, modelDir.Name };
                     }
 
                 }
@@ -450,12 +471,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Theory(DisplayName = "TestPreTrainedModels")]
         [MemberData(nameof(GetModelsForTest))]
         [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
-        private void TestPreTrainedModels(string opset, string modelName)
+        private void TestPreTrainedModels(string opsetDir, string modelName)
         {
-            var modelsDir = GetTestModelsDir();
+            var opsetDirInfo = new DirectoryInfo(opsetDir);
+            var opset = opsetDirInfo.Name;
             string onnxModelFileName = null;
 
-            var modelDir = new DirectoryInfo(Path.Combine(modelsDir, opset, modelName));
+            var modelDir = new DirectoryInfo(Path.Combine(opsetDir, modelName));
 
             try
             {

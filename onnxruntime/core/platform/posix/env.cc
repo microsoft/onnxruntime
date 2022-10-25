@@ -26,11 +26,14 @@ limitations under the License.
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <ftw.h>
+#include <optional>
 #include <string.h>
 #include <thread>
 #include <utility>  // for std::forward
 #include <vector>
 #include <assert.h>
+
+#include <gsl/gsl>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -54,8 +57,7 @@ class UnmapFileParam {
  *
  * @return a pair of {errno, error message}
  */
-static std::pair<int, std::string> GetSystemError() {
-  auto e = errno;
+static std::pair<int, std::string> GetSystemError(int e) {
   char buf[1024];
   const char* msg = "";
   if (e > 0) {
@@ -71,6 +73,11 @@ static std::pair<int, std::string> GetSystemError() {
   }
 
   return std::make_pair(e, msg);
+}
+
+static std::pair<int, std::string> GetSystemError() {
+  auto e = errno;
+  return GetSystemError(e);
 }
 
 static void UnmapFile(void* param) noexcept {
@@ -128,6 +135,7 @@ struct Freer {
 
 using MallocdStringPtr = std::unique_ptr<char, Freer<char> >;
 
+
 class PosixThread : public EnvThread {
  private:
   struct Param {
@@ -135,22 +143,38 @@ class PosixThread : public EnvThread {
     int index;
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
-    const ThreadOptions& thread_options;
+    std::optional<size_t> affinity_mask;
+
+    Param(const ORTCHAR_T* name_prefix1,
+          int index1,
+          unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
+          Eigen::ThreadPoolInterface* param1) 
+      : name_prefix(name_prefix1),
+      index(index1),
+      start_address(start_address1), 
+      param(param1) {}
   };
 
  public:
   PosixThread(const ORTCHAR_T* name_prefix, int index,
               unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
               const ThreadOptions& thread_options) {
+    ORT_ENFORCE(index >= 0, "Negative thread index is not allowed");
     custom_create_thread_fn = thread_options.custom_create_thread_fn;
     custom_thread_creation_options = thread_options.custom_thread_creation_options;
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
 
+    auto param_ptr = std::make_unique<Param>(name_prefix, index, start_address, param);
+    if (gsl::narrow<size_t>(index) < thread_options.affinity.size()) {
+      param_ptr->affinity_mask = thread_options.affinity[index];
+    }
+
     if (custom_create_thread_fn) {
-      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, new Param{name_prefix, index, start_address, param, thread_options});
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, param_ptr.get());
       if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
+      param_ptr.release();
     } else {
       pthread_attr_t attr;
       int s = pthread_attr_init(&attr);
@@ -165,24 +189,14 @@ class PosixThread : public EnvThread {
           ORT_THROW("pthread_attr_setstacksize failed, error code: ", err_no, " error msg: ", err_msg);
         }
       }
-      s = pthread_create(&hThread, &attr, ThreadMain,
-                         new Param{name_prefix, index, start_address, param, thread_options});
+
+      s = pthread_create(&hThread, &attr, ThreadMain, param_ptr.get());
       if (s != 0) {
         auto [err_no, err_msg] = GetSystemError();
         ORT_THROW("pthread_create failed, error code: ", err_no, " error msg: ", err_msg);
       }
-#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
-      if (!thread_options.affinity.empty()) {
-        cpu_set_t cpuset;
-        CPU_ZERO(&cpuset);
-        CPU_SET(thread_options.affinity[index], &cpuset);
-        s = pthread_setaffinity_np(hThread, sizeof(cpu_set_t), &cpuset);
-        if (s != 0) {
-          auto [err_no, err_msg] = GetSystemError();
-          ORT_THROW("pthread_setaffinity_np failed, error code: ", err_no, " error msg: ", err_msg);
-        }
-      }
-#endif
+      param_ptr.release();
+      // Do not throw beyond this point so we do not lose thread handle and then not being able to join it.
     }
   }
 
@@ -203,13 +217,29 @@ class PosixThread : public EnvThread {
 
  private:
   static void* ThreadMain(void* param) {
-    std::unique_ptr<Param> p((Param*)param);
+    std::unique_ptr<Param> p(static_cast<Param*>(param));
     ORT_TRY {
+#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
+      if (p->affinity_mask.has_value()) {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(*p->affinity_mask, &cpuset);
+        // pthread_setaffinity_np() does not set errno, it returns it.
+        auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+        if (ret != 0) {
+          auto [err_no, err_msg] = GetSystemError(ret);
+          LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << pthread_self()
+                              << ", mask: " << *p->affinity_mask
+                              << ", error code: " << err_no << " error msg: " << err_msg
+                              << ". Specify the number of threads explicitly so the affinity is not set.";
+        }
+      }
+#endif
       // Ignore the returned value for now
       p->start_address(p->index, p->param);
     }
-    ORT_CATCH(const std::exception&) {
-      //ignore any exceptions
+    ORT_CATCH(...) {
+      // Ignore exceptions
     }
     return nullptr;
   }
@@ -440,7 +470,7 @@ class PosixEnv : public Env {
   common::Status GetCanonicalPath(
       const PathString& path,
       PathString& canonical_path) const override {
-    MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr)};
+    MallocdStringPtr canonical_path_cstr{realpath(path.c_str(), nullptr), Freer<char>()};
     if (!canonical_path_cstr) {
       return ReportSystemError("realpath", path);
     }

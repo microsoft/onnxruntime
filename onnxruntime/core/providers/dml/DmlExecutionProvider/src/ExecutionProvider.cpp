@@ -518,22 +518,165 @@ namespace Dml
         return Dml::GetSupportedDeviceDataTypeMask(m_dmlDevice.Get());
     }
 
+    bool TryGetTensorDataType(
+        const onnxruntime::NodeArg& nodeArg,
+        _Out_ MLOperatorTensorDataType* onnxElementType
+    )
+    {
+        *onnxElementType = MLOperatorTensorDataType::Undefined;
+
+        const ::onnx::TypeProto* typeProto = nodeArg.TypeAsProto();
+        if (typeProto != nullptr && typeProto->has_tensor_type())
+        {
+            const ::onnx::TypeProto_Tensor& tensorTypeProto = typeProto->tensor_type();
+            if (tensorTypeProto.has_elem_type())
+            {
+                *onnxElementType = static_cast<MLOperatorTensorDataType>(tensorTypeProto.elem_type());
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool DoesNodeContainSupportedDataTypes(
+        const onnxruntime::Node& node,
+        _In_opt_ const InternalRegistrationInfo* regInfo,
+        uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
+        )
+    {
+        std::vector<onnxruntime::NodeArg const*> constantCpuInputs;
+
+        if (regInfo != nullptr)
+        {
+            // Collect the list of CPU-bound input tensors, needed when checking 64-bit fallback
+            // or for other data types like int-8 which may be supported for CPU inputs but not
+            // GPU inputs.
+            auto inputDefinitions = node.InputDefs();
+            for (uint32_t i : regInfo->requiredConstantCpuInputs)
+            {
+                if (i < inputDefinitions.size())
+                {
+                    constantCpuInputs.push_back(inputDefinitions[i]);
+                }
+            }
+        }
+
+        // Assume data types are supported until proven otherwise.
+        bool nodeContainsSupportedDataTypes = true;
+
+        // Callback to check each node's data type against registered operator support.
+        std::function<void(const onnxruntime::NodeArg& nodeArg, bool isInput)> nodeCallback = [&](const onnxruntime::NodeArg& nodeArg, bool isInput) -> void
+        {
+            // Get the tensor element data type for this node, comparing against what the device actually supports.
+            // Use the enumeration from the proto instead of nodeArg.Type() which returns a string.
+
+            // Reject node if undefined data type or non-tensor, as DML cannot handle it.
+            MLOperatorTensorDataType onnxElementType;
+            if (!TryGetTensorDataType(nodeArg, &onnxElementType))
+            {
+                // We shouldn't have arrived here because (1) no DML operators should have been
+                // registered which use non-tensor types (2) ONNX validation should have already
+                // been done, checking for the right kind of inputs and attributes. In theory,
+                // this branch could be reached with a bad custom operator or malformed file. If
+                // a legitimate case reaches here and DML needs to support a new input/output type
+                // besides tensors, then remove the assert.
+                assert(false);
+                nodeContainsSupportedDataTypes = false;
+                return;
+            }
+
+            // Reject node for unknown DML data types.
+            DML_TENSOR_DATA_TYPE dmlElementType = GetDmlDataTypeFromMlDataTypeNoThrow(onnxElementType);
+            if (dmlElementType == DML_TENSOR_DATA_TYPE_UNKNOWN)
+            {
+                nodeContainsSupportedDataTypes = false;
+                return;
+            }
+
+            // Succeed if the tensor is CPU-bound, as the CPU-side reading code is generic enough
+            // to handle multiple types regardless of GPU capability (typically these are just
+            // scalars or simple 1D arrays).
+            bool isConstantCpuInput = isInput && std::find(constantCpuInputs.begin(), constantCpuInputs.end(), &nodeArg) != constantCpuInputs.end();
+            if (isConstantCpuInput)
+            {
+                // Leave nodeContainsSupportedDataTypes alone.
+                return;
+            }
+
+            bool isDataTypeSupported = (1 << dmlElementType) & supportedDeviceDataTypeMask;
+
+            // Reject node if the data type is unsupported by the device.
+            if (!isDataTypeSupported)
+            {
+                nodeContainsSupportedDataTypes = false;
+                return;
+            }
+
+            // Otherwise the node supports the tensor data type.
+        };
+
+        // Check whether the node uses any data types which are unsupported by the device.
+        node.ForEachDef(nodeCallback);
+
+        return nodeContainsSupportedDataTypes;
+    }
+
+    bool ExecutionProviderImpl::IsNodeSupportedByDml(
+        const onnxruntime::Node& node,
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
+        ) const
+    {
+        const onnxruntime::KernelCreateInfo* createInfo = kernel_lookup.LookUpKernel(node);
+        if (!createInfo)
+        {
+            return false;
+        }
+
+        auto regInfoIter = m_internalRegInfoMap->find(createInfo->kernel_def.get());
+        std::shared_ptr<InternalRegistrationInfo> internalRegInfo;
+        if (regInfoIter != m_internalRegInfoMap->end())
+        {
+            internalRegInfo = regInfoIter->second;
+            if (internalRegInfo->supportQuery && !internalRegInfo->supportQuery(node))
+            {
+                return false;
+            }
+        }
+
+        // Check whether the node uses any data types which are unsupported by the device.
+        if (!DoesNodeContainSupportedDataTypes(node, internalRegInfo.get(), supportedDeviceDataTypeMask))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     ExecutionProviderImpl::GetCapability(
         const onnxruntime::GraphViewer& graph,
         const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const
     {
-        std::string partitionKernelPrefix = std::to_string(m_partitionKernelPrefixVal++) + "_";
-        uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask();
+        uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask(); // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
 
-        return PartitionGraph(
-            graph,
-            *m_internalRegInfoMap,
-            kernel_lookup,
-            deviceDataTypeMask,
-            m_kernelRegistry.get(),
-            partitionKernelPrefix
-        );
+        std::vector<std::unique_ptr<onnxruntime::ComputeCapability>> result;
+        
+        // Get the list of node indices in toplogical order, so nodes are visited before
+        // downstream nodes consuming them.
+        const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
+        for (size_t nodeIndex : toplogicalOrder) 
+        {
+            const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
+            if (IsNodeSupportedByDml(node, kernel_lookup, deviceDataTypeMask))
+            {
+                std::unique_ptr<onnxruntime::IndexedSubGraph> subGraph = std::make_unique<onnxruntime::IndexedSubGraph>();
+                subGraph->nodes = {nodeIndex};
+                result.push_back(std::make_unique<onnxruntime::ComputeCapability>(std::move(subGraph)));
+            }
+        }
+        return result;
     }
 
     bool IsGpuTensor(const onnxruntime::Tensor& tensor)
