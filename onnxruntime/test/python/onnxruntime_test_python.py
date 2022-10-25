@@ -1395,9 +1395,6 @@ class TestInferenceSession(unittest.TestCase):
             exception_test("CUDAExecutionProvider", sess_option)
 
         if has_dml:
-            sess_option.enable_mem_pattern = True
-            exception_test("DmlExecutionProvider", sess_option, "Having memory pattern enabled is not supported")
-
             sess_option.enable_mem_pattern = False
             sess_option.execution_mode = onnxrt.ExecutionMode.ORT_PARALLEL
             exception_test("DmlExecutionProvider", sess_option)
