@@ -174,6 +174,7 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseQDQGroup(const NodeUnit& node_unit
     }
   } else if (qtype == QuantizedOpType::QDQMaxPool || qtype == QuantizedOpType::QDQResize) {
     // Don't care about the quantization parameters for MaxPool, Resize
+    // where the two ops don't ask for quantization parameters in computation.
     std::for_each(inputs.cbegin(), inputs.cend(),
                   [&def](const NodeUnitIODef& arg) {
                     def.inputs.push_back(arg.node_arg.Name());

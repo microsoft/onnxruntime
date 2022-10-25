@@ -45,7 +45,6 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     }
 
     // Refer to onnxruntime/core/providers/cpu/tensor/upsamplebase.h,
-    // besides, opset 18 is too complicated, so we don't support it temperately.
     size_t scale_idx = 2;
     size_t size_idx = 3;
     auto opset_version = node_unit.SinceVersion();
@@ -84,7 +83,7 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     if (extrapolation_value != 0.0F) {
       break;
     }
-    //
+    ///////////
 
     // Coordinate transformation mode attr was introduced in version 11.
     // before that asymmetric mode was the only available transformation mode

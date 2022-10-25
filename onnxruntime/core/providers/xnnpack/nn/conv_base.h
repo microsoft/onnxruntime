@@ -21,6 +21,7 @@ class ConvBase : public XnnpackKernel {
   // converted to NHWC by ORT.
   static bool IsOnnxNodeSupported(const NodeUnit& nchw_nodeunit, const GraphViewer& graph);
 
+ protected:
   Status CreateKernel();
 
  protected:
