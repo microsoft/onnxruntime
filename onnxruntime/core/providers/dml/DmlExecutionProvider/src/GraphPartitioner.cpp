@@ -450,7 +450,6 @@ namespace Dml
             // Get the registration properties above and populate nodeNameToPartitionMap.
             if (isDmlNode)
             {
-                printf("*************Node %s is placed on DML\n", node.Name().c_str());
                 GetRegistrationProperties(
                     graph,
                     node,

@@ -2483,9 +2483,6 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
     if (cpu_nodes.count(node_index) > 0)
       continue;
 
-    const Node* node = graph.GetNode(node_index);
-    printf("*************Node %s is placed on CUDA\n", node->Name().c_str());
-
     auto sub_graph = IndexedSubGraph::Create();
     sub_graph->Nodes().push_back(node_index);
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
