@@ -271,15 +271,20 @@ class PosixEnv : public Env {
     return new PosixThread(name_prefix, index, start_address, param, thread_options);
   }
 
+  // we are guessing the number of phys cores based on a popular HT case.
+  static int DefaultNumCores() {
+    return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
+  }
+
   // Return the number of physical cores
-  int GetNumCpuCores() const override {
+  int GetNumPhysicalCpuCores() const override {
 #ifdef CPUINFO_SUPPORTED
     if(cpuinfo_available_) {
       return gsl::narrow<int>(cpuinfo_get_cores_count());
     }
 #endif
     // We guess the number of cores
-    return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
+    return DefaultNumCores();
   }
 
   std::vector<LogicalProcessors> GetThreadAffinityMasks() const override {
@@ -304,17 +309,12 @@ class PosixEnv : public Env {
         }
         ret.push_back(std::move(th_aff));
        }
-#else
-      // We do not set affinity on these platforms, so we just generate an vector sized for cores
-      ret.resize(cpuinfo_get_cores_count());
 #endif
     }
 #endif // CPUINFO_SUPPORTED
-    // We do not know what the affinities should be, so we just guess that HT is 2 logical
-    // processors per physical cores, but do not guess the affinities as we do not know the
-    // actual processor IDs.
+    // Just the size of the thread-pool
     if(ret.empty()) {
-      ret.resize(std::thread::hardware_concurrency()/2);
+      ret.resize(GetNumPhysicalCpuCores());
     }
     return ret;
   }
