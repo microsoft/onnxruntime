@@ -1,12 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <queue>
-
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/framework/execution_provider.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 
@@ -26,8 +23,9 @@ const std::string ACCUMULATE_GRAD_CONTROL_INPUT_NAME{"lazy_reset_grad"};
 
 std::unordered_set<const Node*> GetReverseReachableNodes(Graph& inference_graph,
                                                          InlinedVector<const NodeArg*>& output_node_args) {
-  // Perform a bfs from the graph outputs to collect all reachable nodes from the outputs
-  std::queue<const Node*> node_queue;
+  // Perform a graph traversal from the graph outputs to collect all reachable nodes from the outputs
+  InlinedVector<NodeIndex> nodes;
+  nodes.reserve((output_node_args.size()));
   std::unordered_set<const Node*> visited_nodes;
   for (auto node_arg : output_node_args) {
     auto* node = inference_graph.GetProducerNode(node_arg->Name());
@@ -35,21 +33,11 @@ std::unordered_set<const Node*> GetReverseReachableNodes(Graph& inference_graph,
       continue;
     }
 
-    node_queue.push(node);
+    nodes.push_back(node->Index());
     visited_nodes.insert(node);
   }
 
-  while (!node_queue.empty()) {
-    auto* node = node_queue.front();
-    node_queue.pop();
-
-    for (auto node_iter = node->InputNodesBegin(); node_iter != node->InputNodesEnd(); ++node_iter) {
-      if (!visited_nodes.count(&(*node_iter))) {
-        node_queue.push(&(*node_iter));
-        visited_nodes.insert(&(*node_iter));
-      }
-    }
-  }
+  inference_graph.ReverseDFSFrom(nodes, [&visited_nodes](const Node* node) { visited_nodes.insert(node); }, {});
 
   return visited_nodes;
 }
@@ -68,13 +56,15 @@ Status RemoveUnusedNodes(Graph& inference_graph, InlinedVector<const NodeArg*>& 
   return Status::OK();
 }
 
-Status TransformModelOutputsForInference(std::shared_ptr<Model> inference_model, const InlinedVector<std::string_view>& inference_graph_outputs) {
+Status TransformModelOutputsForInference(Graph& inference_graph,
+                                         const InlinedVector<std::string_view>& inference_graph_outputs) {
+  // Model is updated to remove any outputs that are not defined in inference_graph_outputs. Nodes
+  // producing these unused model outputs are also subsequently removed.
+
   if (inference_graph_outputs.empty()) {
     // The outputs are not decipherable, so don't transform the graph outputs.
     return Status::OK();
   }
-
-  auto& inference_graph = inference_model->MainGraph();
 
   InlinedVector<const NodeArg*> inference_graph_output_node_args;
   inference_graph_output_node_args.reserve(inference_graph_outputs.size());
@@ -95,41 +85,39 @@ Status TransformModelOutputsForInference(std::shared_ptr<Model> inference_model,
 }
 
 InlinedVector<std::string_view> ParseInferenceGraphOutputsFromMetadata(const ONNX_NAMESPACE::ModelProto& model_proto) {
-  std::string inference_graph_outputs_string;
   for (const auto& model_metadata : model_proto.metadata_props()) {
     if (model_metadata.key() == Module::InferenceGraphOutputsMetadataString) {
-      inference_graph_outputs_string = model_metadata.value();
-      break;
+      return onnxruntime::utils::SplitString(model_metadata.value(), ",");
     }
   }
 
-  return onnxruntime::utils::SplitString(inference_graph_outputs_string, ",");
+  return {};
 }
 
-Status TransformModelInputsForInference(std::shared_ptr<Model> inference_model, const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters, const DataTransferManager& data_transfer_manager) {
+Status TransformModelInputsForInference(Graph& inference_graph,
+                                        const std::unordered_map<
+                                            std::string, std::shared_ptr<Parameter>>& named_parameters,
+                                        const DataTransferManager& data_transfer_manager) {
   std::vector<const NodeArg*> user_graph_inputs;
-  for (auto& graph_input_node_arg : inference_model->MainGraph().GetInputs()) {
+  for (auto& graph_input_node_arg : inference_graph.GetInputs()) {
     auto named_parameter_it = named_parameters.find(graph_input_node_arg->Name());
     if (named_parameter_it == named_parameters.end()) {
-      if (inference_model->MainGraph().GetConsumerNodes(graph_input_node_arg->Name()).empty()) {
+      if (inference_graph.GetConsumerNodes(graph_input_node_arg->Name()).empty()) {
         continue;
       }
       user_graph_inputs.emplace_back(graph_input_node_arg);
     } else {
-      const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
-      const Tensor& src_tensor = named_parameter_it->second->Data().Get<onnxruntime::Tensor>();
-      InlinedVector<char> tensor_data_buffer{};
-      tensor_data_buffer.resize(src_tensor.SizeInBytes());
-      gsl::span<char> dst_span = gsl::make_span(tensor_data_buffer);
-      ORT_RETURN_IF_NOT(src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()), "src size != dst size");
-      Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), dst_span.data(), cpu_alloc_info};
-      ORT_RETURN_IF_ERROR(data_transfer_manager.CopyTensor(src_tensor, dst_tensor));
-      inference_model->MainGraph().AddInitializedTensor(onnxruntime::utils::TensorToTensorProto(dst_tensor, named_parameter_it->first));
+      ORT_ENFORCE(!inference_graph.IsInitializedTensor(named_parameter_it->first),
+                  "The eval graph is invalid. Expected model parameter ",
+                  named_parameter_it->first, " to be a graph input, not a graph initializer.");
+      inference_graph.AddInitializedTensor(utils::CopyTensorToTensorProto(
+          named_parameter_it->second->Data().Get<onnxruntime::Tensor>(),
+          named_parameter_it->first, data_transfer_manager));
     }
   }
 
-  inference_model->MainGraph().SetInputs(user_graph_inputs);
-  ORT_RETURN_IF_ERROR(inference_model->MainGraph().Resolve());
+  inference_graph.SetInputs(user_graph_inputs);
+  ORT_RETURN_IF_ERROR(inference_graph.Resolve());
 
   return Status::OK();
 }
@@ -276,6 +264,9 @@ Module::Module(const std::string& train_model_path_or_bytes,
   if (eval_model_path_or_bytes.has_value()) {
     eval_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
     ORT_THROW_IF_ERROR(eval_sess_->Load(eval_model_path_or_bytes.value()));
+    for (const auto& provider : providers) {
+      ORT_THROW_IF_ERROR(eval_sess_->RegisterExecutionProvider(provider));
+    }
     ORT_THROW_IF_ERROR(eval_sess_->Initialize());
     utils::GetGraphInputOutputNames(eval_sess_, eval_input_names_, eval_output_names_);
 
@@ -300,9 +291,9 @@ Module::Module(const std::string& train_model_path_or_bytes,
     eval_input_names_ = eval_user_input_names;
     eval_input_names_.insert(eval_input_names_.end(), eval_param_input_names.begin(), eval_param_input_names.end());
 
-    // Keep a copy of the eval model to be able to later export the model for inferencing.
+    // Keep a copy of the eval model path to be able to later export the model for inferencing.
     // The inference model will be reconstructed from the eval model.
-    ORT_THROW_IF_ERROR(Model::Load(ToPathString(eval_model_path_or_bytes.value()), eval_model_));
+    eval_model_path_ = eval_model_path_or_bytes.value();
   }
 }
 
@@ -477,18 +468,21 @@ Status Module::GetStateDict(ModuleCheckpointState& module_checkpoint_state) {
 Status Module::ExportModelForInferencing(const std::string& inference_model_path) const {
   ORT_RETURN_IF_NOT(eval_sess_, "Eval model was not provided. Cannot export a model for inferencing.");
 
+  ONNX_NAMESPACE::ModelProto eval_model;
+  ORT_THROW_IF_ERROR(Model::Load(ToPathString(eval_model_path_), eval_model));
+
   // Clone the eval mode into an inference onnxruntime::Model.
   std::shared_ptr<Model> inference_model;
-  ORT_RETURN_IF_ERROR(Model::Load(eval_model_, inference_model, nullptr, logging::LoggingManager::DefaultLogger()));
+  ORT_RETURN_IF_ERROR(Model::Load(eval_model, inference_model, nullptr, logging::LoggingManager::DefaultLogger()));
 
   // The cloned model's outputs are transformed such that the model has outputs as defined by the metadata_props
   // defined in the eval model. Any nodes not contributing to the inference outputs will be pruned.
-  ORT_THROW_IF_ERROR(TransformModelOutputsForInference(inference_model,
-                                                       ParseInferenceGraphOutputsFromMetadata(eval_model_)));
+  ORT_THROW_IF_ERROR(TransformModelOutputsForInference(inference_model->MainGraph(),
+                                                       ParseInferenceGraphOutputsFromMetadata(eval_model)));
 
   // The cloned model's inputs are transformed such that the model has only user defined inputs. All parameters
   // are moved to be constant initializers for the model.
-  ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_model, named_parameters_,
+  ORT_RETURN_IF_ERROR(TransformModelInputsForInference(inference_model->MainGraph(), named_parameters_,
                                                        eval_sess_->GetDataTransferManager()));
 
   // Save the model at desired location.
