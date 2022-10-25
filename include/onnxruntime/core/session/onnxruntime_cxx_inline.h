@@ -1018,7 +1018,7 @@ inline ConstSequenceTypeInfo TypeInfoImpl<T>::GetSequenceTypeInfo() const {
 template <typename T>
 inline ConstMapTypeInfo TypeInfoImpl<T>::GetMapTypeInfo() const {
   const OrtMapTypeInfo* out;
-  ThrowOnError(GetApi().CastTypeInfoToMapTypeInfo(p_, &out));
+  ThrowOnError(GetApi().CastTypeInfoToMapTypeInfo(this->p_, &out));
   return ConstMapTypeInfo{out};
 }
 
