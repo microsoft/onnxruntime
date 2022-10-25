@@ -609,7 +609,7 @@ namespace OperatorHelper
         // `transBatch` needs to be applied first and then `transpose`.
         if (transBatch)
         {
-            ML_CHECK_VALID_ARGUMENT(dimensionCount > 2, 
+            ML_CHECK_VALID_ARGUMENT(dimensionCount > 2,
                 "FusedMatMul operator: Tensor size should be more than 2, if attribute transBatch is true");
 
             std::rotate(newSizes.begin(), newSizes.end() - 2, newSizes.end() - 1);
@@ -702,7 +702,7 @@ namespace OperatorHelper
         if (inputShape0 != inputShape1)
         {
             ML_CHECK_VALID_ARGUMENT(
-                inputShape0.size() == inputShape1.size() && 
+                inputShape0.size() == inputShape1.size() &&
                 inputShape0.size() == inputStride0.size() &&
                 inputStride0.size() == inputStride1.size(),
                 "Size of inputShape0, inputStride0, inputShape1 and inputStride1 should be same while broadcasting");
@@ -715,7 +715,7 @@ namespace OperatorHelper
 
             auto inStride0Iter = inputStride0.rbegin();
             auto inStride1Iter = inputStride1.rbegin();
-            
+
             while (rank-- > 0)
             {
                 DimensionType inDimension0 = *inDim0Iter;
@@ -1503,18 +1503,21 @@ namespace OperatorHelper
         };
 
         const RecognizedOperatorInfo recognizedOperators[] = {
-            {RecognizedOperatorType::MatMul,           {2,2,2},{0,1, 1,2, 0,2}}, // ij,jk->ik
-            {RecognizedOperatorType::MatMul,           {3,3,3},{0,1,2, 0,2,3, 0,1,3}}, // bij,bjk->bik
-            {RecognizedOperatorType::MatMul,           {4,4,4},{0,1,2,3, 0,1,3,4, 0,1,2,4}}, // abij,abjk->abik
-            {RecognizedOperatorType::MatMulTransposeA, {2,2,2},{0,1, 0,2, 1,2}}, // ji,jk->ik
-            {RecognizedOperatorType::MatMulTransposeA, {3,3,3},{0,1,2, 0,1,3, 0,2,3}}, // bji,bjk->bik
-            {RecognizedOperatorType::MatMulTransposeA, {4,4,4},{0,1,2,3, 0,1,2,4, 0,1,3,4}}, // abji,abjk->abik
-            {RecognizedOperatorType::MatMulTransposeB, {2,2,2},{0,1, 2,1, 0,2}}, // ij,kj->ik
-            {RecognizedOperatorType::MatMulTransposeB, {3,3,3},{0,1,2, 0,3,2, 0,1,3}}, // bij,bkj->bik
-            {RecognizedOperatorType::MatMulTransposeB, {4,4,4},{0,1,2,3, 0,1,4,3, 0,1,2,4}}, // abij,abkj->abik
-            {RecognizedOperatorType::MatMulTransposeB, {1,1,0},{0,0,}}, // i,i-> (1D inner_prod)
-            {RecognizedOperatorType::ReduceSum,        {2,1  },{0,1, 0}}, // ij->i
-            {RecognizedOperatorType::ReduceSum,        {2,1  },{0,1, 1}}, // ij->j
+            {RecognizedOperatorType::MatMul,               {2,2,2},{0,1, 1,2, 0,2}}, // ij,jk->ik
+            {RecognizedOperatorType::MatMul,               {3,3,3},{0,1,2, 0,2,3, 0,1,3}}, // bij,bjk->bik
+            {RecognizedOperatorType::MatMul,               {4,4,4},{0,1,2,3, 0,1,3,4, 0,1,2,4}}, // abij,abjk->abik
+            {RecognizedOperatorType::MatMulTransposeA,     {2,2,2},{0,1, 0,2, 1,2}}, // ji,jk->ik
+            {RecognizedOperatorType::MatMulTransposeA,     {3,3,3},{0,1,2, 0,1,3, 0,2,3}}, // bji,bjk->bik
+            {RecognizedOperatorType::MatMulTransposeA,     {4,4,4},{0,1,2,3, 0,1,2,4, 0,1,3,4}}, // abji,abjk->abik
+            {RecognizedOperatorType::MatMulTransposeB,     {2,2,2},{0,1, 2,1, 0,2}}, // ij,kj->ik
+            {RecognizedOperatorType::MatMulTransposeB,     {3,3,3},{0,1,2, 0,3,2, 0,1,3}}, // bij,bkj->bik
+            {RecognizedOperatorType::MatMulTransposeB,     {4,4,4},{0,1,2,3, 0,1,4,3, 0,1,2,4}}, // abij,abkj->abik
+            {RecognizedOperatorType::MatMulTransposeB,     {1,1,0},{0,0,}}, // i,i-> (1D inner_prod)
+            {RecognizedOperatorType::MatMulNhcw,           {4,4,4},{0,1,2,3, 0,3,2,4, 0,1,2,4}}, // aibj,ajbk->aibk
+            {RecognizedOperatorType::MatMulNhcwTransposeA, {4,4,4},{0,1,2,3, 0,1,2,4, 0,3,2,4}}, // ajbi,ajbk->aibk
+            {RecognizedOperatorType::MatMulNhcwTransposeB, {4,4,4},{0,1,2,3, 0,4,2,3, 0,1,2,4}}, // aibj,akbj->aibk
+            {RecognizedOperatorType::ReduceSum,            {2,1  },{0,1, 0}}, // ij->i
+            {RecognizedOperatorType::ReduceSum,            {2,1  },{0,1, 1}}, // ij->j
         };
 
         // For each recognized operator, compare the labels-per-component and label indices.
@@ -1595,7 +1598,10 @@ namespace OperatorHelper
     {
         return m_recognizedOperatorType == RecognizedOperatorType::MatMul ||
             m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeA ||
-            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB;
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulTransposeB ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcw ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeA ||
+            m_recognizedOperatorType == RecognizedOperatorType::MatMulNhcwTransposeB;
     }
 
     std::vector<EdgeShapes> MatMulHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
