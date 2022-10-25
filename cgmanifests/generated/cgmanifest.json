@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/component-detection-manifest.json",
   "Version": 1,
   "Registrations": [
     {
@@ -162,7 +163,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c220895fd1163c01f0a8b44229fb9e4fe0ae0958",
+          "commitHash": "fc645b7626ebf86530dbd82fbece74d457e7ae07",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -252,7 +253,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5a5f8a5935762397aa68429b5493084ff970f774",
+          "commitHash": "f7ee1ac60d06abe8e26c9b6bbe1e3db5286b614b",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -342,7 +343,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a902b39270841beafc307dfa709610aa1cac2f06",
+          "commitHash": "0dab03ba7bc438d7ba3eac2b2c1eb39ed520f928",
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
         "comments": "git submodule at cmake/external/protobuf"
