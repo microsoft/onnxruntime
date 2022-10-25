@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'onnxruntime-tensorrt8-winbuild'
+  pool: 'onnxruntime-tensorrt8-winbuild-T4'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -11,6 +11,7 @@ jobs:
     setVcvars: true
     BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+    skipComponentGovernanceDetection: true
   timeoutInMinutes: 150
   workspace:
     clean: all
@@ -47,7 +48,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.2.1.8.Windows10.x86_64.cuda-11.4.cudnn8.2" --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_placeholder_builder --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -77,12 +78,8 @@ jobs:
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
      set PATH=$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig);%PATH%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.2.1.8.Windows10.x86_64.cuda-11.4.cudnn8.2" --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_placeholder_builder --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
 
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'
 
-
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'

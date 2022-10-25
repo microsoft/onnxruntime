@@ -50,21 +50,16 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  if (!LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
+  return LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
                                    Stream(),
                                    static_cast<int>(input_length),
                                    static_cast<int>(bias_length),
-                                   reinterpret_cast<const CudaT*>(input->template Data<T>()),
-                                   (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->template Data<T>()) : nullptr,
-                                   reinterpret_cast<CudaT*>(output->template MutableData<T>()),
-                                   use_half2_)) {
-    CUDA_CALL(cudaGetLastError());
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  }
-
-  return Status::OK();
+                                   reinterpret_cast<const CudaT*>(input->Data<T>()),
+                                   (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
+                                   reinterpret_cast<CudaT*>(output->MutableData<T>()),
+                                   use_half2_);
 }
 
-}  //namespace cuda
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

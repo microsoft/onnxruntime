@@ -118,7 +118,7 @@ class Gemm : public onnxruntime::Gemm<T> {
       tGEMM.c->allocator()->init(arm_compute::TensorInfo(cShape, arm_compute::Format::F32));
       // dimensions are stored in the opposite order to ACL's
       tGEMM.d->allocator()->init(arm_compute::TensorInfo(arm_compute::TensorShape(N, M), arm_compute::Format::F32));
-      
+
       tGEMM.mm_layer = ACLCreateMemoryManager();
 
       if(FC) {
@@ -139,14 +139,14 @@ class Gemm : public onnxruntime::Gemm<T> {
       pGEMM = &it->second;
     }
 
-    const T* a_data = A->template Data<T>();
-    const T* b_data = B->template Data<T>();
-    T* d_data = D->template MutableData<T>();
+    const T* a_data = A->Data<T>();
+    const T* b_data = B->Data<T>();
+    T* d_data = D->MutableData<T>();
 
     ACLImportMemory(pGEMM->a->allocator(), (void*)a_data, A->Shape().Size() * 4);
     ACLImportMemory(pGEMM->b->allocator(), (void*)b_data, B->Shape().Size() * 4);
     if(useC){
-      const T* c_data = C->template Data<T>();
+      const T* c_data = C->Data<T>();
       ACLImportMemory(pGEMM->c->allocator(), (void*)c_data, C->Shape().Size() * 4);
     }
 

@@ -42,16 +42,16 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
   LOGS_DEFAULT(VERBOSE) << "params " << S->Shape().ToString().c_str();
   LOGS_DEFAULT(VERBOSE) << std::endl;
 
-  const T* x_data = X->template Data<T>();
+  const T* x_data = X->Data<T>();
 
   Tensor* Y = context->Output(0, X->Shape());
 
-  T* y_data = Y->template MutableData<T>();
+  T* y_data = Y->MutableData<T>();
 
   armnn::NetworkId* pNetworkId;
   BatchNormLayersIterator it = BatchNorm::batchNormLayers.find((OpKernel*)this);
   if (it == BatchNorm::batchNormLayers.end()) {
-    
+
     armnn::NetworkId networkId;
     armnn::INetworkPtr myNetwork = armnn::INetwork::Create();
 
@@ -62,10 +62,10 @@ Status BatchNorm<T>::Compute(OpKernelContext* context) const {
     desc.m_Eps = epsilon_;
     desc.m_DataLayout  = armnn::DataLayout::NCHW;
 
-    const T* mean_data = M->template Data<T>();
-    const T* var_data = V->template Data<T>();
-    const T* b_data = B->template Data<T>();
-    const T* scale_data = S->template Data<T>();
+    const T* mean_data = M->Data<T>();
+    const T* var_data = V->Data<T>();
+    const T* b_data = B->Data<T>();
+    const T* scale_data = S->Data<T>();
 
     armnn::TensorInfo meanDesc(ArmNNTensorShape(M->Shape()), armnn::DataType::Float32);
     armnn::ConstTensor mean(meanDesc, mean_data);

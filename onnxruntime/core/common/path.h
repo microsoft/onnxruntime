@@ -10,6 +10,12 @@
 
 namespace onnxruntime {
 
+#ifdef _WIN32
+constexpr PathChar k_preferred_path_separator = ORT_TSTR('\\');
+#else  // POSIX
+constexpr PathChar k_preferred_path_separator = ORT_TSTR('/');
+#endif
+
 // Note: We should use the std::filesystem library after upgrading to C++17.
 
 /** A filesystem path. */

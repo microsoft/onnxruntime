@@ -43,7 +43,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
   auto x_dims = x_shape.AsShapeVector();
-  auto x_data = reinterpret_cast<const HipT*>(X->template Data<T>());
+  auto x_data = reinterpret_cast<const HipT*>(X->Data<T>());
 
   auto x_dimensions = X->Shape().NumDimensions();
   if (x_dimensions < 3 || x_dimensions > 5) {
@@ -54,7 +54,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
   auto w_dims = w_shape.AsShapeVector();
-  auto w_data = reinterpret_cast<const HipT*>(W->template Data<T>());
+  auto w_data = reinterpret_cast<const HipT*>(W->Data<T>());
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
@@ -126,7 +126,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, MiopenTensor::GetDataType<HipT>()));
       }
 
-      y_data = reinterpret_cast<HipT*>(p.Y->template MutableData<T>());
+      y_data = reinterpret_cast<HipT*>(p.Y->MutableData<T>());
 
       if (!s_.cached_benchmark_bwd_results.contains(x_dims)) {
         IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
@@ -164,7 +164,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         y_dims.erase(y_dims.begin() + 2);
       }
       Tensor* Y = context->Output(0, TensorShape(y_dims));
-      y_data = reinterpret_cast<HipT*>(Y->template MutableData<T>());
+      y_data = reinterpret_cast<HipT*>(Y->MutableData<T>());
 
       // Bail out early if one of the output dimensions is zero.
       if (Y->Shape().Size() == 0) {
@@ -195,7 +195,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
     if (has_bias) {
       const Tensor* B = dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2);
-      auto b_data = reinterpret_cast<const HipT*>(B->template Data<T>());
+      auto b_data = reinterpret_cast<const HipT*>(B->Data<T>());
       MIOPEN_RETURN_IF_ERROR((miopenConvolutionForwardBias(MiopenHandle(), &alpha, s_.b_tensor, b_data, &beta, s_.y_tensor, y_data)));
     }
   }

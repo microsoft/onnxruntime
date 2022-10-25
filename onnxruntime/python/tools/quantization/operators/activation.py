@@ -1,7 +1,7 @@
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 
@@ -17,9 +17,9 @@ class QLinearActivation(QuantOperatorBase):
         # When mode is QLinearOps, the output quantization params are calculated based on outputs from
         # activation nodes, therefore these nodes can be removed from the graph if they follow a quantized op.
         # If input to this node is not quantized then keep this node
-        if node.input[0] not in self.quantizer.quantized_value_map:
-            self.quantizer.new_nodes += [node]
-            return
+        # If activation is symmetric, not quantize the op and simply return
+        if node.input[0] not in self.quantizer.quantized_value_map or self.quantizer.is_activation_symmetric:
+            return super().quantize()
 
         quantized_value = self.quantizer.quantized_value_map[node.input[0]]
         self.quantizer.quantized_value_map[node.output[0]] = quantized_value
@@ -53,11 +53,11 @@ class QLinearActivation(QuantOperatorBase):
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [0])
+        ) = self.quantizer.quantize_activation(node, [0])
         if not data_found or quantized_input_names is None:
             return super().quantize()
 
-        qlinear_activation_output = node.output[0] + "_quantized"
+        qlinear_activation_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         qlinear_activation_name = ""
         if node.name != "":
             qlinear_activation_name = node.name + "_quant"
@@ -103,10 +103,16 @@ class QDQRemovableActivation(QDQOperatorBase):
     def quantize(self):
         node = self.node
 
-        if self.quantizer.try_replacing_upstream_output(node.input[0], node.output[0]):
+        # If input to this node is not quantized then keep this node
+        if not self.quantizer.is_tensor_quantized(node.input[0]):
+            return
+
+        if not self.quantizer.is_activation_symmetric and self.quantizer.try_replacing_upstream_output(
+            node.input[0], node.output[0]
+        ):
             self.quantizer.remove_node(self.node)
         else:
-            self.quantizer.quantize_tensor(node.input[0])
+            self.quantizer.quantize_activation_tensor(node.input[0])
 
         if not self.disable_qdq_for_node_output:
-            self.quantizer.quantize_tensor(node.output[0])
+            self.quantizer.quantize_activation_tensor(node.output[0])

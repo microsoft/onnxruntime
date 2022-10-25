@@ -4,20 +4,19 @@
 #include <random>
 
 #include "gtest/gtest.h"
-#include "test/providers/provider_test_utils.h"
-#include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "core/framework/execution_providers.h"
-#include "test/util/include/default_providers.h"
+#include "core/providers/provider_factory_creators.h"
 #include "core/session/environment.h"
-#include "orttraining/models/runner/training_runner.h"
-#include "test/framework/test_utils.h"
-#include "test/test_environment.h"
+#include "core/session/onnxruntime_c_api.h"
 
-#ifdef USE_CUDA
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
-}
-#endif
+#include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/models/runner/training_runner.h"
+
+#include "test/framework/test_utils.h"
+#include "test/providers/provider_test_utils.h"
+#include "test/test_environment.h"
+#include "test/util/include/default_providers.h"
+
 
 namespace onnxruntime {
 namespace test {
@@ -50,6 +49,7 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensors) {
 
   allreduce_test.Run(OpTester::ExpectResult::kExpectSuccess /*expect_result*/, "" /*expected_failure_string*/,
                      {} /*excluded_provider_types*/, nullptr /*run_options*/, &providers /*execution_providers*/,
+                     ExecutionMode::ORT_SEQUENTIAL /*execution_mode*/,
                      {} /*resolve_options*/);
 }
 
@@ -92,6 +92,7 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestReduceTwoTensorsFP16) {
 
   allreduce_test.Run(OpTester::ExpectResult::kExpectSuccess /*expect_result*/, "" /*expected_failure_string*/,
                      {} /*excluded_provider_types*/, nullptr /*run_options*/, &providers /*execution_providers*/,
+                     ExecutionMode::ORT_SEQUENTIAL /*execution_mode*/,
                      {} /*resolve_options*/);
 }
 
@@ -117,6 +118,7 @@ TEST(AllreduceTest, CPUAdasumAllreduceTestFailTensorCountMismatch) {
 
   allreduce_test.Run(OpTester::ExpectResult::kExpectFailure /*expect_result*/, "" /*expected_failure_string*/,
                      {} /*excluded_provider_types*/, nullptr /*run_options*/, &providers /*execution_providers*/,
+                     ExecutionMode::ORT_SEQUENTIAL /*execution_mode*/,
                      {} /*resolve_options*/);
 }
 
@@ -398,7 +400,7 @@ std::unique_ptr<IExecutionProvider> create_cuda_execution_provider() {
   OrtCUDAProviderOptions options{};
   options.device_id = device_id;
   options.gpu_mem_limit = gpu_mem_limit;
-  auto factory = CreateExecutionProviderFactory_Cuda(&options);
+  auto factory = CudaProviderFactoryCreator::Create(&options);
   return factory->CreateProvider();
 }
 

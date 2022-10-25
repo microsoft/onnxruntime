@@ -40,13 +40,14 @@ jobs:
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true    
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+    skipComponentGovernanceDetection: true
   workspace:
     clean: all
   pool: 'Win-CPU-2019'
-  timeoutInMinutes:  300  
+  timeoutInMinutes:  300
   steps:
   - task: UsePythonVersion@0
     inputs:
@@ -77,10 +78,10 @@ jobs:
   - script: |
      set ORT_DOXY_SRC=$(Build.SourcesDirectory)
      set ORT_DOXY_OUT=$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}
-     mkdir %ORT_DOXY_SRC% 
+     mkdir %ORT_DOXY_SRC%
      mkdir %ORT_DOXY_OUT%
      "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
-     
+
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'API Documentation Check and generate'
 
@@ -118,7 +119,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
+      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --build_csharp --update --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -152,7 +153,7 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: MSBuild@1
-    displayName: 'Build C#'    
+    displayName: 'Build C#'
     inputs:
       solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: '${{ parameters.BuildConfig }}'
@@ -160,6 +161,11 @@ jobs:
       msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+  # C# test isn't launched by build.py, so models link has to be added.
+  - script: |
+     mklink /D /J models C:\local\models
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Create models link'
 
   - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true)) }}:
       - task: DotNetCoreCLI@2
@@ -167,7 +173,7 @@ jobs:
         inputs:
           command: test
           projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
-          configuration: '${{ parameters.BuildConfig }}'          
+          configuration: '${{ parameters.BuildConfig }}'
           arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) --blame'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
@@ -175,14 +181,14 @@ jobs:
       - powershell: |
          python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-       
+
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
         displayName: 'Install onnxruntime wheel'
 
   - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
       - powershell: |
          python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
-       
+
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
         displayName: 'Run tests'
 
@@ -197,8 +203,8 @@ jobs:
            **/*.pdb
            **/*.dll
 
-      #Manually set msBuildCommandline so that we can also set CAExcludePath
-      #build_dir must be a sub folder of $(Build.SourcesDirectory)
+      # Manually set msBuildCommandline so that we can also set CAExcludePath
+      # build_dir must be a sub folder of $(Build.SourcesDirectory)
       - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
         inputs:
@@ -213,7 +219,7 @@ jobs:
         displayName: 'Create Security Analysis Report'
         inputs:
           SDLNativeRules: true
-          
+
       - task: PublishSecurityAnalysisLogs@3
         displayName: 'Publish Security Analysis Logs'
         continueOnError: true
@@ -233,7 +239,3 @@ jobs:
           searchFolder: '$(Build.BinariesDirectory)/${{ parameters.BuildConfig }}'
           testRunTitle: 'Unit Test Run'
         condition: succeededOrFailed()
-
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'

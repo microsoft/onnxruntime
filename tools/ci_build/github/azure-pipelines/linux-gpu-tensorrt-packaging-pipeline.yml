@@ -23,23 +23,28 @@ jobs:
   timeoutInMinutes:  180
   pool: 'Onnxruntime-Linux-GPU'
   variables:
-    CUDA_VERSION: '11.4'
+    CUDA_VERSION: '11.6'
   steps:
-    - template: templates/set-version-number-variables-step.yml
+    - checkout: self
+      clean: true
+      submodules: recursive
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_4_tensorrt8_2
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_4
         Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
+        DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimecuda114xtrt82build
+    - template: templates/set-version-number-variables-step.yml
+
+
     - task: CmdLine@2
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run --gpus all -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+          docker run --gpus all -e CC=/opt/rh/devtoolset-11/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-11/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
           --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda114xtrt82build \
           /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
-          --skip_submodule_sync --parallel --build_shared_lib ${{ parameters.buildJavaOption }} --use_tensorrt --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr --tensorrt_home=/usr --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+          --skip_submodule_sync --parallel --build_shared_lib ${{ parameters.buildJavaOption }} --use_tensorrt --tensorrt_placeholder_builder --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr --tensorrt_home=/usr --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
         workingDirectory: $(Build.SourcesDirectory)
 
     - ${{ if eq(parameters.buildJava, true) }}:

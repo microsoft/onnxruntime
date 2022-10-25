@@ -260,7 +260,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     // Traceback the reduceMean node to find pow --> reduceMean
     Node& pow_node = *graph.GetNode(reduce_mean2_node.InputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13, 15}) ||
         pow_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) ||
         !IsSupportedDataType(pow_node)) {
@@ -447,23 +447,22 @@ X ------> SimplifiedLayerNormalization
               ^
 Scale --------|
 */
-Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                                            const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
     nodes_to_remove.clear();
     auto* p_pow = graph.GetNode(node_index);
-    if (p_pow == nullptr)
-      continue;  // we removed the node as part of an earlier fusion
+    if (p_pow == nullptr) continue;  // we removed the node as part of an earlier fusion
 
     Node& pow_node = *p_pow;
     ORT_RETURN_IF_ERROR(Recurse(pow_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13, 15}) ||
         !graph_utils::IsSupportedProvider(pow_node, GetCompatibleExecutionProviders()) ||
-        !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) ||
-        graph.NodeProducesGraphOutput(pow_node) ||
+        !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) || graph.NodeProducesGraphOutput(pow_node) ||
         !IsSupportedDataType(pow_node)) {
       continue;
     }
@@ -478,8 +477,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     Node& reduce_mean_node = *graph.GetNode(p_reduce_mean->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13}) ||
         reduce_mean_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
-        !optimizer_utils::CheckOutputEdges(graph, reduce_mean_node, 1) ||
-        !IsSupportedDataType(reduce_mean_node) ||
+        !optimizer_utils::CheckOutputEdges(graph, reduce_mean_node, 1) || !IsSupportedDataType(reduce_mean_node) ||
         reduce_mean_node.GetInputEdgesCount() == 0) {
       continue;
     }
@@ -492,8 +490,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     Node& add_node = *graph.GetNode(p_add->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7, 13, 14}) ||
         add_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
-        !optimizer_utils::CheckOutputEdges(graph, add_node, 1) ||
-        !IsSupportedDataType(add_node)) {
+        !optimizer_utils::CheckOutputEdges(graph, add_node, 1) || !IsSupportedDataType(add_node)) {
       continue;
     }
     nodes_to_remove.push_back(add_node);
@@ -506,8 +503,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(sqrt_node, "Sqrt", {6, 13}) ||
         sqrt_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
-        !optimizer_utils::CheckOutputEdges(graph, sqrt_node, 1) ||
-        !IsSupportedDataType(sqrt_node) ||
+        !optimizer_utils::CheckOutputEdges(graph, sqrt_node, 1) || !IsSupportedDataType(sqrt_node) ||
         sqrt_node.GetInputEdgesCount() == 0) {
       continue;
     }
@@ -520,8 +516,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     Node& div_node = *graph.GetNode(p_div->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(div_node, "Div", {7, 13, 14}) ||
         div_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
-        !optimizer_utils::CheckOutputEdges(graph, div_node, 1) ||
-        !IsSupportedDataType(div_node)) {
+        !optimizer_utils::CheckOutputEdges(graph, div_node, 1) || !IsSupportedDataType(div_node)) {
       continue;
     }
     nodes_to_remove.push_back(div_node);
@@ -533,9 +528,22 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
 
+    // There are only 4 possible cases (x=Pow->ReduceMean->Add->Sqrt->Div and cannot on fp16 type, y=Mul):
+    // 1. Cast(to:float)->x->Cast(to:fp16)->y : SimplifiedLayerNorm(T:fp16,V:fp16)
+    // 2. Cast(to:float)->x->y : SimplifiedLayerNorm(T:fp16,V:float)
+    // 3. x->Cast(to:fp16)->y : SimplifiedLayerNorm(T:float,V:fp16)
+    // 4. x->y : SimplifiedLayerNorm(T:float,V:float)
+    // They all work for GPU EP.
+    // For CPU EP, we have only SimplifiedlayerNorm(T:float,V:float) implementation, so only #4 works. But for #1 and
+    // #2, if we treat the entry Cast as a normal node, meaning has_leading_cast is false, then for #2, we can still
+    // fuse it to "Cast(to:float)->SimplifiedlayerNorm(T:float,V:float)" (same as applying #4 to the x->y after
+    // Cast), so the condition for CPU EP to fuse or not is always setting has_leading_cast to false and checking if
+    // there is a Cast between x and y. Having Cast between means cannot fuse.
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
     bool has_leading_cast = false;
-    if (p_pow_input_node) {
+    bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
+                     pow_node.GetExecutionProviderType() == kRocmExecutionProvider;
+    if (is_gpu_ep && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
       if (graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13}) &&
@@ -550,14 +558,14 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
+      if (!is_gpu_ep) continue;
       nodes_to_remove.push_back(*next_node);
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
 
     Node& mul_node = *next_node;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13, 14}) ||
-        mul_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
-        !IsSupportedDataType(mul_node)) {
+        mul_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() || !IsSupportedDataType(mul_node)) {
       continue;
     }
     nodes_to_remove.push_back(mul_node);
@@ -597,16 +605,14 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
                                         : pow_node.MutableInputDefs()[0];
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale};
-    Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("SimplifiedLayerNormalization"),
-                                          "SimplifiedLayerNormalization",
-                                          "fused LayerNorm subgraphs ",
-                                          layer_norm_input_defs,
-                                          {}, {}, kOnnxDomain);
+    Node& layer_norm_node =
+        graph.AddNode(graph.GenerateNodeName("SimplifiedLayerNormalization"), "SimplifiedLayerNormalization",
+                      "fused LayerNorm subgraphs ", layer_norm_input_defs, {}, {}, kOnnxDomain);
 
     // Get constant "epsilon" from "Add" node if available. Else, default value will be used.
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add_node.MutableInputDefs()[1]->Name());
-    if (tensor_proto != nullptr &&
-        tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    const ONNX_NAMESPACE::TensorProto* tensor_proto =
+        graph_utils::GetConstantInitializer(graph, add_node.MutableInputDefs()[1]->Name());
+    if (tensor_proto != nullptr && tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       Initializer initializer{*tensor_proto, graph.ModelPath()};
       layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
     } else {
@@ -629,11 +635,13 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
 #ifdef ENABLE_TRAINING
     // add one extra output def, so we have 2 output defs that match what gradient builder expected
-    layer_norm_node.MutableOutputDefs().push_back(&graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));
+    layer_norm_node.MutableOutputDefs().push_back(
+        &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("saved_inv_std_var"), nullptr));
 #endif
 
     modified = true;
   }
   return Status::OK();
 }
+
 }  // namespace onnxruntime

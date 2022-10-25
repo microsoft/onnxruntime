@@ -30,13 +30,14 @@ void SoftmaxCrossEntropyLossGradImpl(
     const Tin* label,
     const T* weight,
     const TAcc* normalize_factor,
+    const T* bias_data,
     size_t count,
     size_t label_depth,
     bool reduction_none,
     T* output_data);
 
 template <typename T, typename Tin>
-void ComputeWeightsSoftmaxCrossEntropyImpl(
+void ComputeSoftmaxCrossEntropyWeightsImpl(
     cudaStream_t stream,
     const Tin* label,
     const T* weight,

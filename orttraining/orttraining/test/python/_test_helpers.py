@@ -1,17 +1,17 @@
 import copy
-import numpy as np
 import os
-import torch
 
+import numpy as np
+import torch
 from numpy.testing import assert_allclose
+
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
 from onnxruntime.training import orttrainer
 
 try:
     from onnxruntime.training.ortmodule import ORTModule
-    from onnxruntime.training.ortmodule._custom_autograd_function import enable_custom_autograd_support
-    from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
     from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
+    from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
 except ImportError:
     # Some pipelines do not contain ORTModule
     pass
@@ -231,10 +231,6 @@ def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
         assert False, err_msg
 
 
-def enable_custom_autograd_function(module):
-    enable_custom_autograd_support()
-
-
 def _run_model_on_device(device, model, input_list, label_input, is_eval_mode=False, run_forward_twice=False):
     if is_eval_mode:
         model.eval()
@@ -287,7 +283,6 @@ def run_with_ort_on_device(device, model, input_list, label_input, is_eval_mode=
     with torch.no_grad():
         model = copy.deepcopy(model)
         model.to(device)
-    enable_custom_autograd_function(model)
     model = ORTModule(model)
 
     return _run_model_on_device(device, model, input_list, label_input, is_eval_mode, run_forward_twice)

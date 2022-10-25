@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//https://github.com/onnx/onnx/blob/master/docs/Operators.md#Gather
+//https://github.com/onnx/onnx/blob/main/docs/Operators.md#Gather
 #include "core/providers/cpu/tensor/gather.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel_type_control_utils.h"
@@ -26,8 +26,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 #endif
 }  // namespace op_kernel_type_control
 
-using IndexTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                  Gather, Input, 1);
 using EnabledIndexTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                          Gather, Input, 1);
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -36,7 +34,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     10,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndexTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
     Gather);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -45,7 +43,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndexTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
     Gather);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -53,7 +51,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndexTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
     Gather);
 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
@@ -88,7 +86,7 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
                       const size_t element_bytes, const int64_t block_size, const int64_t M,
                       const int64_t N, const int64_t data_batch_bytes, const int64_t gathered_batch_bytes,
                       const TensorShape& input_data_shape, const int64_t axis, concurrency::ThreadPool* tp) {
-  const Tin* indices_data = indices_tensor->template Data<Tin>();
+  const Tin* indices_data = indices_tensor->Data<Tin>();
 
   // Check the indices first in case there's a out of bound index.
   auto axis_dim_limit = input_data_shape[axis];

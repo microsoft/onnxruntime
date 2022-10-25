@@ -1,6 +1,8 @@
 name: Update Python API Docs
 on:
-  workflow_dispatch
+  push:
+    branches:
+      - master
 
 jobs:
   publish:
@@ -10,39 +12,37 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install tools
         run: |
-          sudo apt update 
-          sudo apt-get install pip
+          sudo apt-get update
+          sudo apt-get install python3-pip
           sudo apt-get install graphviz
       - name: Install dependencies
         run: |
+          python3 -m pip install --upgrade pip
           cd docs/python
-          pip install -r requirements.txt
-          pip install flatbuffers protobuf==3.19.1
-          pip install -i https://test.pypi.org/simple/ ort-nightly
-          pip list
+          python3 -m pip install -r requirements.txt
+          python3 -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly
+          python3 -m pip list
       - name: Generate Python docs with Sphinx
         run: |
           cd tools/doc
-          ./builddoc.sh /usr/bin ../.. ../../build     
+          ./builddoc.sh /usr/bin ../.. ../../build
       - name: Set vars
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
-          clean: false    
+          clean: false
       - name: Move API docs into target area
         run: |
           ls docs/api
           rm -rf docs/api/python
-          mv build/docs/inference/html docs/api/python   
+          mv build/docs/inference/html docs/api/python
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3
         with:
           branch: gh-pages-pr-python-docs
           base: gh-pages
           title: '[Automated]: Update Python API docs'
-          commit-message: 'Update Python API docs to commit ${{ steps.vars.outputs.sha_short }}'   
-          add-paths: docs/api/python   
-
- 
+          commit-message: 'Update Python API docs to commit ${{ steps.vars.outputs.sha_short }}'
+          add-paths: docs/api/python

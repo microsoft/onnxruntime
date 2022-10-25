@@ -352,6 +352,8 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose) {
   test.Run();
 }
 
+// ROCm doesn't support double
+#ifndef USE_ROCM
 TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose_double) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "iji->ji");
@@ -359,6 +361,7 @@ TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose_double) {
   test.AddOutput<double>("o", {2, 2}, {1., 2., 3., 4.});
   test.Run();
 }
+#endif
 
 TEST(Einsum, ExplicitEinsumAsDiagonalOpWithTranspose_int32) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);

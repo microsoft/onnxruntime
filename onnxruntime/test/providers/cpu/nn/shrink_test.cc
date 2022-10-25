@@ -68,7 +68,8 @@ std::vector<ShrinkTestData<T>> GenerateUnsignedTestCases() {
 }
 
 template <typename T>
-void RunShrinkTest(const std::vector<ShrinkTestData<T>>& test_cases) {
+void RunShrinkTest(const std::vector<ShrinkTestData<T>>& test_cases,
+                   const std::unordered_set<std::string>& excluded_provider_types = {}) {
   for (const auto& test_data : test_cases) {
     OpTester test("Shrink", 9);
 
@@ -82,7 +83,7 @@ void RunShrinkTest(const std::vector<ShrinkTestData<T>>& test_cases) {
 
     test.AddInput<T>("X", test_data.input_dimensions, test_data.input_vals);
     test.AddOutput<T>("Y", test_data.expected_dimensions, test_data.expected_vals);
-    test.Run();
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
   }
 }
 
@@ -167,7 +168,7 @@ TEST(MathOpTest, ShrinkMLFloat16Type) {
        {2, 2},
        output_test_data_nondefault,
        {2, 2}});
-  RunShrinkTest<MLFloat16>(test_cases);
+  RunShrinkTest<MLFloat16>(test_cases, {kTensorrtExecutionProvider});
 }
 
 }  // namespace test

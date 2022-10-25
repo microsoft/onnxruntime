@@ -3,11 +3,25 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/providers/run_options_config_keys.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
 namespace test {
+
+namespace {
+
+const onnxruntime::RunOptions run_options = []() {
+  onnxruntime::RunOptions options{};
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOpTesterRunOptionsConfigTestTunableOp, "true"));
+  return options;
+}();
+
+const constexpr auto run_with_tunable_op = &run_options;
+
+}  // namespace
 
 template <typename T>
 struct MatMulTestData {
@@ -99,21 +113,49 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        {3, 0},
        {}});
 
+  test_cases.push_back(
+      {"test 3D batch",
+       {3, 1, 3},
+       {3, 3, 2},
+       {3, 1, 2},
+       {
+           // clang-format off
+            10,  13,
+           100, 112,
+           298, 319,
+           // clang-format on
+       }});
+
+  test_cases.push_back(
+      {"test 4D batch",
+       {2, 2, 1, 3},
+       {2, 2, 3, 2},
+       {2, 2, 1, 2},
+       {
+           // clang-format off
+            10,  13,
+           100, 112,
+           298, 319,
+           604, 634,
+           // clang-format on
+       }});
+
   return test_cases;
 }
 
 template <typename T>
 void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant) {
-  std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   for (auto t : GenerateTestCases<T>()) {
+    SCOPED_TRACE("test case: " + t.name);
+
     OpTester test("MatMul", opset_version);
 
     int64_t size0 = TensorShape::FromExistingBuffer(t.input0_dims).SizeHelper(0, t.input0_dims.size());
-    std::vector<T> input0_vals(common_input_vals.cbegin(), common_input_vals.cbegin() + size0);
+    std::vector<T> input0_vals = ValueRange<T>(size0);
     test.AddInput<T>("A", t.input0_dims, input0_vals, is_a_constant);
 
     int64_t size1 = TensorShape::FromExistingBuffer(t.input1_dims).SizeHelper(0, t.input1_dims.size());
-    std::vector<T> input1_vals(common_input_vals.cbegin(), common_input_vals.cbegin() + size1);
+    std::vector<T> input1_vals = ValueRange<T>(size1);
     test.AddInput<T>("B", t.input1_dims, input1_vals, is_b_constant);
 
     test.AddOutput<T>("Y", t.expected_dims, t.expected_vals);
@@ -121,11 +163,13 @@ void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant
     // OpenVINO EP: Disabled temporarily matmul broadcasting not fully supported
     // Disable TensorRT because of unsupported data type
     std::unordered_set<std::string> excluded_providers{kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
-    if (is_b_constant) {
+    if (t.name == "test 2D empty input") {
       // NNAPI: currently fails for the "test 2D empty input" case
       excluded_providers.insert(kNnapiExecutionProvider);
     }
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+    test.ConfigExcludeEps(excluded_providers)
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
   }
 }
 
@@ -136,7 +180,6 @@ void RunMatMulTest(int32_t opset_version) {
 
 TEST(MathOpTest, MatMulFloatType) {
   RunMatMulTest<float>(7, false, false);
-  RunMatMulTest<float>(7, false, true);
 }
 
 TEST(MathOpTest, MatMulDoubleType) {
@@ -190,7 +233,9 @@ TEST(MathOpTest, MatMul_Float16) {
   test.AddInput<MLFloat16>("A", {2, 4}, f_A);
   test.AddInput<MLFloat16>("B", {4, 3}, f_B);
   test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: fp16 is not supported
+  test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 #endif
 
@@ -209,12 +254,19 @@ TEST(MathOpTest, MatMul_BFloat16) {
   test.AddInput<BFloat16>("B", {4, 3}, MakeBFloat16({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
   test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  test.Config(run_with_tunable_op);
 #ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+
+  execution_providers.clear();
+  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
+#endif
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
 }
 #endif
 
@@ -257,9 +309,10 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights) {
 
   // Session 1
   {
-    auto ep_vec = cpu_ep();
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+    test.Config(so)
+        .Config(run_with_tunable_op)
+        .ConfigEps(cpu_ep())
+        .RunWithConfig(&number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
     // Assert that no pre-packed weights have been shared thus far
     ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
   }
@@ -279,9 +332,10 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights) {
   // Session 2
   {
     size_t number_of_pre_packed_weights_counter_session_2 = 0;
-    auto ep_vec = cpu_ep();
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+    test.Config(so)
+        .Config(run_with_tunable_op)
+        .ConfigEps(cpu_ep())
+        .RunWithConfig(&number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
 
     // Assert that the same number of weights were pre-packed in both sessions
     ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);

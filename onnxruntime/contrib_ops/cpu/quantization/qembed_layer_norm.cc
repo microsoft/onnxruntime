@@ -49,9 +49,9 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
   Tensor* mask_index = context->Output(1, mask_index_shape);
   bool has_segment_embedding = segment_ids != nullptr;
 
-  const int32_t* input_ids_data = input_ids->template Data<int32_t>();
+  const int32_t* input_ids_data = input_ids->Data<int32_t>();
   const int32_t* segment_ids_data =
-      has_segment_embedding ? segment_ids->template Data<int32_t>() : nullptr;
+      has_segment_embedding ? segment_ids->Data<int32_t>() : nullptr;
 
   int word_embedding_length = static_cast<int>(word_embedding->Shape()[0]);
   int position_embedding_length = static_cast<int>(position_embedding->Shape()[0]);
@@ -77,14 +77,14 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
       quantization::GetTensorQuantizationParams<QuantizedType>(beta_scale, beta_zero_point);
 
   // Grab pointers to buffers each Tensor represents:
-  const QuantizedType* word_embedding_data = word_embedding->template Data<QuantizedType>();
-  const QuantizedType* position_embedding_data = position_embedding->template Data<QuantizedType>();
+  const QuantizedType* word_embedding_data = word_embedding->Data<QuantizedType>();
+  const QuantizedType* position_embedding_data = position_embedding->Data<QuantizedType>();
   const QuantizedType* segment_embedding_data =
-      has_segment_embedding ? segment_embedding->template Data<QuantizedType>() : nullptr;
-  const QuantizedType* gamma_data = gamma->template Data<QuantizedType>();
-  const QuantizedType* beta_data = beta->template Data<QuantizedType>();
+      has_segment_embedding ? segment_embedding->Data<QuantizedType>() : nullptr;
+  const QuantizedType* gamma_data = gamma->Data<QuantizedType>();
+  const QuantizedType* beta_data = beta->Data<QuantizedType>();
 
-  T* output_data = output->template MutableData<T>();
+  T* output_data = output->MutableData<T>();
 
   // Perform the Op:
   {
@@ -168,8 +168,8 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
 
   // Calculate mask
   if (nullptr != mask) {
-    const int32_t* mask_data = mask->template Data<int32_t>();
-    int32_t* mask_index_data = mask_index->template MutableData<int32_t>();
+    const int32_t* mask_data = mask->Data<int32_t>();
+    int32_t* mask_index_data = mask_index->MutableData<int32_t>();
     for (int b = 0; b < batch_size; b++) {
       int32_t cur_sum = 0;
       const int32_t* cur_mask_data = mask_data + (static_cast<int64_t>(b) * sequence_length);
@@ -181,7 +181,7 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
       mask_index_data[b] = cur_sum;
     }
   } else {
-    memset(mask_index->template MutableData<int32_t>(), 0, batch_size * sizeof(int32_t));
+    memset(mask_index->MutableData<int32_t>(), 0, batch_size * sizeof(int32_t));
   }
   return Status::OK();
 }

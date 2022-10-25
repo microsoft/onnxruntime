@@ -123,6 +123,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Tan = 7;
         static const int sc_sinceVer_Upsample = 7;
         static const int sc_sinceVer_Xor = 7;
+        static const int sc_sinceVer_LayerNormalization = 1;
     
         // Special operators
         static const int sc_sinceVer_MemcpyToHost = 1;
@@ -336,23 +337,59 @@ namespace OperatorHelper
         static const int sc_sinceVer_Transpose = 13;
         static const int sc_sinceVer_Unsqueeze = 13;
         static const int sc_sinceVer_ReduseSum = 13;
+        static const int sc_sinceVer_Softmax = 13;
+        static const int sc_sinceVer_LogSoftmax = 13;
+        static const int sc_sinceVer_Hardmax = 13;
     } // namespace OnnxOperatorSet13
+
+    namespace OnnxOperatorSet14
+    {
+        static const int sc_sinceVer_Add = 14;
+        static const int sc_sinceVer_BatchNormalization = 14;
+        static const int sc_sinceVer_CumSum = 14;
+        static const int sc_sinceVer_Div = 14;
+        static const int sc_sinceVer_Identity = 14;
+        static const int sc_sinceVer_GRU = 14;
+        static const int sc_sinceVer_LSTM = 14;
+        static const int sc_sinceVer_Mul = 14;
+        static const int sc_sinceVer_Relu = 14;
+        static const int sc_sinceVer_Reshape = 14;
+        static const int sc_sinceVer_RNN = 14;
+        static const int sc_sinceVer_Sub = 14;
+        static const int sc_sinceVer_Trilu = 14;
+    } // namespace OnnxOperatorSet14
+
+    namespace OnnxOperatorSet15
+    {
+        static const int sc_sinceVer_CastLike = 15;
+        static const int sc_sinceVer_BatchNormalization = 15;
+        static const int sc_sinceVer_Pow = 15;
+    } // namespace OnnxOperatorSet15
+
+    namespace OnnxOperatorSet17
+    {
+        static const int sc_sinceVer_LayerNormalization = 17;
+    } // namespace OnnxOperatorSet17
 
     namespace MsftOperatorSet1
     {
-        static const int sc_sinceVer_FusedConv = 1;
-        static const int sc_sinceVer_FusedConvTranspose = 1;
-        static const int sc_sinceVer_FusedInstanceNormalization = 1;
-        static const int sc_sinceVer_FusedBatchNormalization = 1;
-        static const int sc_sinceVer_FusedMeanVarianceNormalization = 1;
-        static const int sc_sinceVer_FusedGemm = 1;
-        static const int sc_sinceVer_FusedMatMul = 1;
-        static const int sc_sinceVer_FusedAdd = 1;
-        static const int sc_sinceVer_FusedSum = 1;
+        static const int sc_sinceVer_DmlFusedConv = 1;
+        static const int sc_sinceVer_DmlFusedConvTranspose = 1;
+        static const int sc_sinceVer_DmlFusedInstanceNormalization = 1;
+        static const int sc_sinceVer_DmlFusedBatchNormalization = 1;
+        static const int sc_sinceVer_DmlFusedMeanVarianceNormalization = 1;
+        static const int sc_sinceVer_DmlFusedGemm = 1;
+        static const int sc_sinceVer_DmlFusedMatMul = 1;
+        static const int sc_sinceVer_DmlFusedAdd = 1;
+        static const int sc_sinceVer_DmlFusedSum = 1;
         static const int sc_sinceVer_QuantizeLinear = 1;
         static const int sc_sinceVer_DequantizeLinear = 1;
         static const int sc_sinceVer_ConvTransposeWithDynamicPads = 1;
         static const int sc_sinceVer_QLinearAdd = 1;
+        static const int sc_sinceVer_Gelu = 1;
+        static const int sc_sinceVer_FusedMatMul = 1;
+        static const int sc_sinceVer_QLinearSigmoid = 1;
+        static const int sc_sinceVer_Attention = 1;
     } // namespace MsftOperatorSet1
 
 } // namespace OperatorHelper

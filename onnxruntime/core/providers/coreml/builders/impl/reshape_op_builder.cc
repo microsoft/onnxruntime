@@ -4,6 +4,7 @@
 #include "core/providers/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/cpu/tensor/reshape_helper.h"
+#include "core/optimizer/initializer.h"
 
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
@@ -83,14 +84,8 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   }
 
   const auto& perm_tensor = *initializers.at(perm_name);
-  std::vector<uint8_t> unpacked_tensor;
-  auto status = onnxruntime::utils::UnpackInitializerData(perm_tensor, unpacked_tensor);
-  if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Error while unpacking perm_tensor: " << status.ErrorMessage();
-    return false;
-  }
-
-  const int64_t* raw_perm = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+  Initializer unpacked_tensor(perm_tensor);
+  auto raw_perm = unpacked_tensor.DataAsSpan<int64_t>();
   const auto& perm_dims = perm_tensor.dims();
   if (perm_dims.empty() || perm_dims[0] == 0) {
     LOGS(logger, VERBOSE) << "New shape of reshape cannot be empty";

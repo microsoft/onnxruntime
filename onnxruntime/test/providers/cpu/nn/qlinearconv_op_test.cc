@@ -9,7 +9,6 @@
 #include "default_providers.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace test {
@@ -319,49 +318,21 @@ class QLinearConvOpTester {
     float zero_point_;
   };
 
-  template <typename T, MLAS_ROUND_KIND RoundKind>
-  struct RequantizeOutput {};
+  inline float RoundHalfToEven(float input) {
+    if (!std::isfinite(input)) {
+      return input;
+    }
+    // std::remainder returns x - n, where n is the integral value nearest to x. When |x - n| = 0.5, n is chosen to be even
+    return input - std::remainderf(input, 1.f);
+  }
 
   template <typename T>
-  struct RequantizeOutput<T, MLAS_ROUND_KIND::MlasRoundHalfEven> {
-    T operator()(int32_t sum,
-                 float scale,
-                 RequantizeValues<T>& requantize_values) {
-      float f = static_cast<float>(sum) * scale;
-      f = std::min(f, requantize_values.max_value_);
-      f = std::max(f, requantize_values.min_value_);
-
-      if (std::isfinite(f)) {
-        f = f - std::remainderf(f, 1.f);  // std::remainder returns x - n, where n is the integral value nearest to x.
-                                          // When |x - n| = 0.5, n is chosen to be even
-      }
-
-      return static_cast<T>(f + requantize_values.zero_point_);
-    }
-  };
-
-  // Compute RoundUp with double float precision to avoid corner case like:
-  //     sum: 1140, scale: 0.00394736836.
-  // with single float precision, it is 4.50000000 and rounds to 5.
-  // with double float precision, it is 4.4999999303999996 and rounds to 4.
-  // Fixed point computation in arm64 is equivalent to double float precision,
-  // so use double float precision to get same result as fixed point.
-  template <typename T>
-  struct RequantizeOutput<T, MLAS_ROUND_KIND::MlasRoundHalfUp> {
-    T operator()(int32_t sum,
-                 float scale,
-                 RequantizeValues<T>& requantize_values) {
-      double d = static_cast<double>(sum) * static_cast<double>(scale);
-      d = std::min(d, static_cast<double>(requantize_values.max_value_));
-      d = std::max(d, static_cast<double>(requantize_values.min_value_));
-
-      if (std::isfinite(d)) {
-        d = std::round(d);
-      }
-
-      return static_cast<T>(d + requantize_values.zero_point_);
-    }
-  };
+  T RequantizeOutput(int32_t sum, float scale, RequantizeValues<T>& requantize_values) {
+    float f = static_cast<float>(sum) * scale;
+    f = std::min(f, requantize_values.max_value_);
+    f = std::max(f, requantize_values.min_value_);
+    return static_cast<T>(RoundHalfToEven(f) + requantize_values.zero_point_);
+  }
 
   static bool NextPosition(int64_t N, const int64_t* shape, int64_t* dims) {
     // Loop over spatial axes in reverse order to choose an index, like counting.
@@ -380,9 +351,7 @@ class QLinearConvOpTester {
     return incremented;
   }
 
-  void ComputeExpectedOutput(std::vector<ActType>& Y_data,
-                             std::vector<int64_t>& Y_shape,
-                             bool requant_with_fixed_point_on_arm64) {
+  void ComputeExpectedOutput(std::vector<ActType>& Y_data, std::vector<int64_t>& Y_shape) {
     ORT_ENFORCE(W_.shape_.size() > 2);
     ORT_ENFORCE(X_.shape_.size() == W_.shape_.size());
 
@@ -475,17 +444,7 @@ class QLinearConvOpTester {
 
               input_image += input_image_size;
             }
-            if (requant_with_fixed_point_on_arm64) {
-              *Ydata++ = RequantizeOutput<ActType, MLAS_ROUND_KIND::MlasRoundHalfUp>()(
-                  sum,
-                  requantize_scale,
-                  requantize_values);
-            } else {
-              *Ydata++ = RequantizeOutput<ActType, MLAS_ROUND_KIND::MlasRoundHalfEven>()(
-                  sum,
-                  requantize_scale,
-                  requantize_values);
-            }
+            *Ydata++ = RequantizeOutput<ActType>(sum, requantize_scale, requantize_values);
 
           } while (NextPosition(kernel_rank, output_shape, d_output.data()));
 
@@ -498,12 +457,12 @@ class QLinearConvOpTester {
     }
   }
 
-  void Run(bool all_input_initializer_except_x, bool requant_with_fixed_point_on_arm64) {
+  void Run(bool all_input_initializer_except_x) {
     OpTester test("QLinearConv", 10);
 
     std::vector<ActType> Y_data;
     std::vector<int64_t> Y_shape;
-    ComputeExpectedOutput(Y_data, Y_shape, requant_with_fixed_point_on_arm64);
+    ComputeExpectedOutput(Y_data, Y_shape);
 
     test.AddInput<ActType>("x", X_.shape_, X_.data_);
     test.AddInput<float>("x_scale", {}, X_.scale_, all_input_initializer_except_x);
@@ -553,11 +512,7 @@ class QLinearConvOpTester {
       test.AddAttribute("group", groups_);
     }
 
-    SessionOptions so;
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsConfigFixedPointRequantOnARM64,
-        requant_with_fixed_point_on_arm64 ? "1" : "0"));
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "");
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "");
   }
 
  public:
@@ -614,16 +569,11 @@ class QLinearConvOpTester {
   }
 
   void Run() {
-#if defined(_M_ARM64) || defined(__aarch64__)
-    for (bool requant_with_fixed_point_on_arm64 : std::initializer_list<bool>{false, true})
-#else
-    bool requant_with_fixed_point_on_arm64 = false;
-#endif
-      for (bool all_input_initializer_except_x : std::initializer_list<bool>{false, true}) {
-        Run(all_input_initializer_except_x, requant_with_fixed_point_on_arm64);
-      }
+    for (bool all_input_initializer_except_x : std::initializer_list<bool>{false, true}) {
+      Run(all_input_initializer_except_x);
+    }
   }
-};  // namespace
+};
 
 TEST(QLinearConvTest, Conv1D_U8S8) {
   QLinearConvOpTester<uint8_t, int8_t> test;
@@ -687,7 +637,7 @@ TEST(QLinearConvTest, Conv2D_U8S8_Sym_M32_C32_Bias_Pads) {
 
 TEST(QLinearConvTest, Conv2D_U8S8_Sym_M8_C8) {
   // Targeting code processing 8 channels, with odd number
-  // of output pixels
+  // of output pixels 
   QLinearConvOpTester<uint8_t, int8_t> test;
   test.GenerateRandomInput({1, 8, 3, 5}, .85f, 4);
   test.GenerateRandomWeights({8, 8, 3, 3}, .125f, 0);
@@ -1088,6 +1038,7 @@ TEST(QLinearConvTest, Conv2D_S8S8_Sym_M64_C64) {
   test.SetOutputScaleAndZeroPoint(.55f, 54);
   test.Run();
 }
+
 
 TEST(QLinearConvTest, Conv2D_S8S8_Sym_M16_C4_Bias) {
   QLinearConvOpTester<int8_t, int8_t> test;

@@ -1,26 +1,27 @@
 ## This code is from https://github.com/pytorch/examples/blob/master/mnist/main.py
-## with modification to do training using onnxruntime as backend on cuda device.
-## A private PyTorch build from https://aiinfra.visualstudio.com/Lotus/_git/pytorch (ORTTraining branch) is needed to run the demo.
+## with modification to do training using onnxruntime as backend.
 
-## Model testing is not complete.
+# pylint: disable=missing-docstring
+# pylint: disable=C0103
 
 from __future__ import print_function
+
 import argparse
-import torch
-import onnxruntime_pybind11_state as torch_ort
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torchvision import datasets, transforms
-import numpy as np
 import os
 
-dataset_root_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
+import onnxruntime_pybind11_state as torch_ort
+import torch
+import torch.nn.functional as F
+from torch import nn, optim
+from torchvision import datasets, transforms
+
+# we use the build directory so gitignore applies.
+dataset_root_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), "build/data")
 
 
 class NeuralNet(nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
-        super(NeuralNet, self).__init__()
+        super().__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(hidden_size, num_classes)
@@ -40,9 +41,10 @@ def train_with_eager(args, model, optimizer, device, train_loader, epoch):
     for batch_idx, (data, target) in enumerate(train_loader):
         data_cpu = data.reshape(data.shape[0], -1)
         data = data_cpu.to(device)
+        target_ort = target.to(device)
 
         x = model(data)
-        loss = my_loss(x.cpu(), target)
+        loss = my_loss(x, target_ort)
 
         loss.backward()
         optimizer.step()
@@ -70,9 +72,8 @@ def main():
     parser.add_argument(
         "--test-batch-size", type=int, default=1000, metavar="N", help="input batch size for testing (default: 1000)"
     )
-    parser.add_argument("--epochs", type=int, default=10, metavar="N", help="number of epochs to train (default: 10)")
+    parser.add_argument("--epochs", type=int, default=1, metavar="N", help="number of epochs to train (default: 1)")
     parser.add_argument("--lr", type=float, default=0.01, metavar="LR", help="learning rate (default: 0.01)")
-    parser.add_argument("--no-cuda", action="store_true", default=False, help="disables CUDA training")
     parser.add_argument("--seed", type=int, default=1, metavar="S", help="random seed (default: 1)")
     parser.add_argument(
         "--log-interval",
@@ -83,7 +84,6 @@ def main():
     )
 
     args = parser.parse_args()
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
 
     torch.manual_seed(args.seed)
 
@@ -110,18 +110,18 @@ def main():
         **kwargs,
     )
 
-    device = torch.device("ort")
+    device_ort = torch_ort.device()
     input_size = 784
     hidden_size = 500
     num_classes = 10
-    model = NeuralNet(input_size, hidden_size, num_classes)
-    model.to(device)
-    optimizer = optim.SGD(model.parameters(), lr=0.01)
+    model_nn = NeuralNet(input_size, hidden_size, num_classes)
+    model_nn.to(device_ort)
+    optimizer = optim.SGD(model_nn.parameters(), lr=0.01)
 
     print("\nStart Training.")
 
     for epoch in range(1, args.epochs + 1):
-        train_with_eager(args, model, optimizer, device, train_loader, epoch)
+        train_with_eager(args, model_nn, optimizer, device_ort, train_loader, epoch)
 
 
 if __name__ == "__main__":

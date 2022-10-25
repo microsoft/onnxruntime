@@ -46,17 +46,30 @@ parameters:
   type: string
   default: ''
 
+- name: debug_build
+  displayName: >
+    debug_build.
+  type: boolean
+  default: false
+
 stages:
-- stage: Python_Packaging
+- stage: "Cuda_Python_Packaging_debug_${{ parameters.debug_build }}"
 
   variables:
     - name: isMain
-      value: ${{ eq(variables['Build.SourceBranch'], 'refs/heads/master') }}
+      value: ${{ or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')) }}
     - name: finalStorage
       ${{ if eq(variables['isMain'], 'true') }}:
         value: '--final_storage'
       ${{ else }}:
         value: ''
+    - name: buildConfig
+      ${{ if eq(parameters['debug_build'], 'true') }}:
+        value: 'Debug'
+      ${{ else }}:
+        value: 'Release'
+
+  dependsOn: []
 
   jobs:
     - job: Linux_py_Training_Cuda_Wheels
@@ -71,7 +84,6 @@ stages:
             TorchVersion: ${{ parameters.torch_version }}
             OpsetVersion: ${{ parameters.opset_version }}
             CudaVersion: ${{ parameters.cuda_version }}
-            DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
             UploadWheel: ${{ parameters.upload_wheel }}
           Python38:
@@ -79,7 +91,6 @@ stages:
             TorchVersion: ${{ parameters.torch_version }}
             OpsetVersion: ${{ parameters.opset_version }}
             CudaVersion: ${{ parameters.cuda_version }}
-            DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
             UploadWheel: ${{ parameters.upload_wheel }}
           Python39:
@@ -87,7 +98,6 @@ stages:
             TorchVersion: ${{ parameters.torch_version }}
             OpsetVersion: ${{ parameters.opset_version }}
             CudaVersion: ${{ parameters.cuda_version }}
-            DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
             UploadWheel: ${{ parameters.upload_wheel }}
 
@@ -99,7 +109,7 @@ stages:
             echo "Branch is "${{ variables['Build.SourceBranch'] }} && \
             echo "isMain is "${{ variables['isMain'] }} && \
             echo "final_storage is "${{ variables['finalStorage'] }}
-     
+
       - checkout: self
         clean: true
         submodules: recursive
@@ -108,7 +118,7 @@ stages:
 
       - template: get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/$(DockerFile)
+          Dockerfile: tools/ci_build/github/linux/docker/${{ parameters.docker_file }}
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg TORCH_VERSION=$(TorchVersion)
@@ -139,7 +149,7 @@ stages:
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run --rm --gpus all -e CC=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+            docker run --rm -e CC=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -149,10 +159,11 @@ stages:
               -e NIGHTLY_BUILD \
               -e DEFAULT_TRAINING_PACKAGE_DEVICE \
               -e BUILD_BUILDNUMBER \
+              -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
               onnxruntimetraininggpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
-                  --config Release \
+                  --config ${{ variables['buildConfig'] }} \
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
@@ -167,8 +178,8 @@ stages:
         displayName: 'test ortmodule'
         inputs:
           script: |
-            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime/ && \
-            files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
+            rm -rf $(Build.BinariesDirectory)/${{ variables['buildConfig'] }}/onnxruntime/ && \
+            files=($(Build.BinariesDirectory)/${{ variables['buildConfig'] }}/dist/*.whl) && \
             echo ${files[0]} && \
             whlfilename=$(basename ${files[0]}) && \
             echo $whlfilename && \
@@ -180,56 +191,28 @@ stages:
               --volume /bert_data:/bert_data \
               --volume /hf_models_cache:/hf_models_cache \
               onnxruntimetraininggpubuild \
-                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
+                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/${{ variables['buildConfig'] }}/dist/$whlfilename && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install " ;
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)'
-          Contents: 'Release/dist/*.whl'
+          Contents: "${{ variables['buildConfig'] }}/dist/*.whl"
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: CmdLine@2
-        displayName: 'Build Python Documentation'
-        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
-        inputs:
-          script: |
-            mkdir -p $HOME/.onnx
-            docker run --rm \
-              --gpus all \
-              -e NVIDIA_VISIBLE_DEVICES=all \
-              --volume /data/onnx:/data/onnx:ro \
-              --volume $(Build.SourcesDirectory):/onnxruntime_src \
-              --volume $(Build.BinariesDirectory):/build \
-              --volume /data/models:/build/models:ro \
-              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-              -e NIGHTLY_BUILD \
-              -e BUILD_BUILDNUMBER \
-              onnxruntimetraininggpubuild \
-                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/*.whl && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install ; /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release " ;
-          workingDirectory: $(Build.SourcesDirectory)
-
-      - task: CopyFiles@2
-        displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
-          Contents: '**'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)/training_html_doc'
 
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
         inputs:
-          ArtifactName: onnxruntime_gpu
+          ArtifactName: "onnxruntime_gpu_${{ variables['buildConfig'] }}"
 
       - task: CmdLine@2
         displayName: 'Upload wheel'
-        condition: and(succeeded(), eq(variables['UploadWheel'], 'yes'))
+        condition: and(succeeded(), and(eq(variables['UploadWheel'], 'yes'), ne(variables['ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION'], 'true')))
         inputs:
           script: |
             set -e -x
-            files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+            files=($(Build.ArtifactStagingDirectory)/${{ variables['buildConfig'] }}/dist/*.whl) && \
             echo ${files[0]} && \
             python3 tools/ci_build/upload_python_package_to_azure_storage.py \
                 --python_wheel_path ${files[0]} ${{ variables['finalStorage'] }}

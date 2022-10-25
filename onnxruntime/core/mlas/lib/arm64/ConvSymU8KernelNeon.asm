@@ -17,45 +17,23 @@ Abstract:
 
 #include "kxarm64.h"
 
+#define     MLAS_CONV_SYM_FLAG_INPUT_DIRECT      1
 #define     MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE 2
-#define     MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE 4
 
 //
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-#define    ConvSymFrame_SavedRegisters_d8_d9      0
-#define    ConvSymFrame_SavedRegisters_d10_d11    16
-#define    ConvSymFrame_SavedRegisters_d12_d13    32
-#define    ConvSymFrame_SavedRegisters_d14_d15    48
-#define    ConvSymFrame_SavedRegisters_x19_x20    64
-#define    ConvSymFrame_SavedRegisters_x21_x22    80
-#define    ConvSymFrame_SavedRegisters            96
-#define    ConvSymFrame_SavedRegisters_Neg        -96
-#define    ConvSymFrame_PostProcessParams         0 + ConvSymFrame_SavedRegisters
-#define    ConvSymFrame_KernelFlags               8 + ConvSymFrame_SavedRegisters
+#define     ConvSymFrame_SavedNeonRegisters   (8 * 8)
+#define     ConvSymFrame_SavedRegisters           ConvSymFrame_SavedNeonRegisters
+#define     ConvSymFrame_PostProcessParams    0 + ConvSymFrame_SavedRegisters
+#define     ConvSymFrame_KernelFlags          8 + ConvSymFrame_SavedRegisters
 
-/*
-struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
-    const int32_t* Bias{nullptr};
-    const float* Scale{nullptr};
-    float MinimumValue;
-    float MaximumValue;
-    int32_t OutputZeroPoint;
-    int32_t Padding;
-    const int32_t* Multiplier{nullptr};
-    const int32_t* PreShift{nullptr};
-    const int32_t* PostShift{nullptr};
-};
-*/
-#define    ConvSymPostProcessParams_Bias       0
-#define    ConvSymPostProcessParams_Scale      8
-#define    ConvSymPostProcessParams_Min        16
-#define    ConvSymPostProcessParams_Max        20
-#define    ConvSymPostProcessParams_ZeroPoint  24
-#define    ConvSymPostProcessParams_Multiplier 32
-#define    ConvSymPostProcessParams_PreShift   40
-#define    ConvSymPostProcessParams_PostShift  48
+#define     ConvSymPostProcessParams_Bias      0
+#define     ConvSymPostProcessParams_Scale     8
+#define     ConvSymPostProcessParams_Min       16
+#define     ConvSymPostProcessParams_Max       20
+#define     ConvSymPostProcessParams_ZeroPoint 24
 
         TEXTAREA
 
@@ -68,16 +46,24 @@ Routine Description:
 
 Arguments:
 
-    Input (x0) - Supplies the address of the indirect buffer. Every pointer in
-        the indirection buffer points at a InputChannels length vector (either
-        from the input tensor or a vector of padding values). These are grouped
-        in batches of length KernelSize.
+    Input (x0) - Supplies the address of the input buffer.
+
+        If MLAS_CONV_SYM_FLAG_INPUT_DIRECT is set, then the input buffer points
+        directly at the input tensor.
+
+        If MLAS_CONV_SYM_FLAG_INPUT_DIRECT is clear, then the input buffer is an
+        indirection buffer. Every pointer in the indirection buffer points at a
+        InputChannels length vector (either from the input tensor or a vector of
+        padding values). These are grouped in batches of length KernelSize.
+        These batches are then repeated OutputCount times.
 
     Filter (x1) - Supplies the address of the filter buffer.
 
     Output (x2) - Supplies the address of the output buffer.
 
     KernelSize (x3) - Supplies the size of the kernel.
+
+        If MLAS_CONV_SYM_FLAG_INPUT_DIRECT is set, then kernel size should be 1.
 
     InputChannels (x4) - Supplies the number of input channels.
 
@@ -104,14 +90,12 @@ Return Value:
 --*/
         NESTED_ENTRY MlasConvSymU8KernelNeon
 
-        PROLOG_SAVE_REG_PAIR  d8,d9,#ConvSymFrame_SavedRegisters_Neg!
+        PROLOG_SAVE_REG_PAIR  d8,d9,#-64!
         PROLOG_NOP    ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
         PROLOG_NOP    ldrb    w10,[sp,#ConvSymFrame_KernelFlags]
-        PROLOG_SAVE_REG_PAIR  d10,d11,#ConvSymFrame_SavedRegisters_d10_d11
-        PROLOG_SAVE_REG_PAIR  d12,d13,#ConvSymFrame_SavedRegisters_d12_d13
-        PROLOG_SAVE_REG_PAIR  d14,d15,#ConvSymFrame_SavedRegisters_d14_d15
-        PROLOG_SAVE_REG_PAIR  x19,x20,#ConvSymFrame_SavedRegisters_x19_x20
-        PROLOG_SAVE_REG_PAIR  x21,x22,#ConvSymFrame_SavedRegisters_x21_x22
+        PROLOG_SAVE_REG_PAIR  d10,d11,#16
+        PROLOG_SAVE_REG_PAIR  d12,d13,#32
+        PROLOG_SAVE_REG_PAIR  d14,d15,#48
         mov     x9,x3                   // save kernel size
         ldr     x11,[x8,#ConvSymPostProcessParams_Bias]
         mov     x16,x4                  // save input channels
@@ -120,9 +104,6 @@ Return Value:
         add     x5,x2,x5                // c1 = c0 + ldc
         add     x4,x4,7                 // kc = (kc + 7) & ~7
         csel    x5,x2,x5,lo             // if OutputCount < 2  c1 = c0
-        ldr     x19,[x8,#ConvSymPostProcessParams_PreShift]
-        ldr     x20,[x8,#ConvSymPostProcessParams_Multiplier]
-        ldr     x21,[x8,#ConvSymPostProcessParams_PostShift]
         bic     x4,x4,7
         ldp     s16,s18,[x11],8         // init accumulators with bias
         ldp     s20,s22,[x11],8
@@ -156,18 +137,30 @@ Return Value:
 //
 
 KernelSizeLoop
+
+        // Load next 2 A pointers
+        tst     w10,#MLAS_CONV_SYM_FLAG_INPUT_DIRECT
+        ldr     d4,[x1]
+        ldr     d5,[x1,8]
+        beq     InputIndirection
+
+InputDirect
+        mov     x13,x0                  // x13 -> A0
+        add     x15,x0,x16              // x15 -> A1 = A0 + input channels
+        b       BlockLoopPrologue
+
+InputIndirection
         cmp     x7,2                    // test if OutputCount < 2
         ldr     x13,[x0]                // x13 -> A0
-        bhs     LoadA1
-        ldr     x15,[x0],#8             // x15 -> A0
-        b       BlockLoopPrologue
-LoadA1
+        blo     SkipLoadA1
         ldr     x15,[x0,x3,lsl#3]       // x15 -> A1
-        add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
+SkipLoadA1
+
 BlockLoopPrologue
-        ldr     d4,[x1]
+        cmp     x7,2                    // test if OutputCount < 2
+        add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
+        csel    x15,x13,x15,lo          // if OutputCount < 2  x15 -> A0
         subs    x14,x4,16               // input channel - 16
-        ldr     d5,[x1,8]
         movi    v12.8b,128
         blo     InputChannel8           // less than 16 deep, no unroll
 
@@ -332,20 +325,17 @@ BlockLoopEpilogue            // remaining 16 input channels
         b.hi    KernelSizeLoop
 
 Requantize
-        tst     w10,#MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE
-        bne     FixedPointScale
-FloatPointScale
-        tst     w10,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         ldr     w11,[x8,#ConvSymPostProcessParams_ZeroPoint]
+        tst     w10,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         beq     BroadcastScaleValue
         ld1     {v4.4s,v5.4s},[x12]     // load scale vector
-        b       ScaleWithFloatPoint
+        b       AccumulatorsToFloat
 
 BroadcastScaleValue
         ld1r    {v4.4s},[x12]           // load scale Value
         mov     v5.16b, v4.16b
 
-ScaleWithFloatPoint
+AccumulatorsToFloat
         addp    v16.4s,v16.4s,v18.4s
         addp    v20.4s,v20.4s,v22.4s
         addp    v24.4s,v24.4s,v26.4s
@@ -368,72 +358,25 @@ ScaleWithFloatPoint
         fmul    v3.4s,v3.4s,v5.4s
         fcvtns  v0.4s,v0.4s             // convert to int
         fcvtns  v1.4s,v1.4s
+        dup     v9.8h,w11
         fcvtns  v2.4s,v2.4s
         fcvtns  v3.4s,v3.4s
-        b Quantize
-
-FixedPointScale
-        tst     w10,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w11, [x8, #ConvSymPostProcessParams_ZeroPoint]
-        beq     BroadcastFixedPointValue
-        ld1     {v4.4s,v5.4s},[x19]     // load preshift
-        ld1     {v6.4s,v7.4s},[x20]     // load multiplier
-        ld1     {v8.4s,v9.4s},[x21]     // load postshift
-        b       ScaleWithFixedPoint
-BroadcastFixedPointValue
-        ld1r    {v4.4s},[x19]           // load preshift Value
-        mov     v5.16b, v4.16b
-        ld1r    {v6.4s},[x20]           // load multiplier Value
-        mov     v7.16b, v6.16b
-        ld1r    {v8.4s},[x21]           // load postshift Value
-        mov     v9.16b, v8.16b
-
-ScaleWithFixedPoint
-        addp    v16.4s,v16.4s,v18.4s
-        addp    v20.4s,v20.4s,v22.4s
-        addp    v24.4s,v24.4s,v26.4s
-        addp    v28.4s,v28.4s,v30.4s
-        addp    v17.4s,v17.4s,v19.4s
-        addp    v21.4s,v21.4s,v23.4s
-        addp    v25.4s,v25.4s,v27.4s
-        addp    v29.4s,v29.4s,v31.4s
-        addp    v0.4s,v16.4s,v20.4s
-        addp    v1.4s,v24.4s,v28.4s
-        addp    v2.4s,v17.4s,v21.4s
-        addp    v3.4s,v25.4s,v29.4s
-        sqshl   v0.4s, v0.4s, v4.4s       // preshift
-        sqshl   v1.4s, v1.4s, v5.4s
-        sqshl   v2.4s, v2.4s, v4.4s
-        sqshl   v3.4s, v3.4s, v5.4s
-        sqdmulh v0.4s, v0.4s, v6.4s       // multiplier
-        sqdmulh v1.4s, v1.4s, v7.4s
-        sqdmulh v2.4s, v2.4s, v6.4s
-        sqdmulh v3.4s, v3.4s, v7.4s
-        srshl   v0.4s,v0.4s, v8.4s        // postshift
-        srshl   v1.4s,v1.4s, v9.4s
-        srshl   v2.4s,v2.4s, v8.4s
-        srshl   v3.4s,v3.4s, v9.4s
-
-Quantize
-        dup     v9.8h,w11
         sqxtn   v0.4h,v0.4s
-        sqxtn   v2.4h,v2.4s
         sqxtn2  v0.8h,v1.4s
+        sqxtn   v2.4h,v2.4s
         sqxtn2  v2.8h,v3.4s
         sqadd   v0.8h,v0.8h,v9.8h
         sqadd   v2.8h,v2.8h,v9.8h
         sqxtun  v0.8b,v0.8h             // shorten to int8
         sqxtun2 v0.16b,v2.8h
-        st1     {v0.d}[1],[x5]          // full 2x8 store to c
+        st1     {v0.d}[1],[x5]          // full 2x8 store to c 
         st1     {v0.8b},[x2]
 
 ExitKernel
-        EPILOG_RESTORE_REG_PAIR  x21,x22,#ConvSymFrame_SavedRegisters_x21_x22
-        EPILOG_RESTORE_REG_PAIR  x19,x20,#ConvSymFrame_SavedRegisters_x19_x20
-        EPILOG_RESTORE_REG_PAIR  d14,d15,#ConvSymFrame_SavedRegisters_d14_d15
-        EPILOG_RESTORE_REG_PAIR  d12,d13,#ConvSymFrame_SavedRegisters_d12_d13
-        EPILOG_RESTORE_REG_PAIR  d10,d11,#ConvSymFrame_SavedRegisters_d10_d11
-        EPILOG_RESTORE_REG_PAIR  d8,d9,#ConvSymFrame_SavedRegisters!
+        EPILOG_RESTORE_REG_PAIR  d14,d15,#48
+        EPILOG_RESTORE_REG_PAIR  d12,d13,#32
+        EPILOG_RESTORE_REG_PAIR  d10,d11,#16
+        EPILOG_RESTORE_REG_PAIR  d8,d9,#64!
         EPILOG_RETURN
 
 InputChannel8

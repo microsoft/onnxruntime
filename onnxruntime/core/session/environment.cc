@@ -10,6 +10,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
+#include "core/graph/contrib_ops/internal_nhwc_onnx_opset.h"
 #include "core/graph/contrib_ops/ms_opset.h"
 #include "core/graph/contrib_ops/onnx_deprecated_opset.h"
 #if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
@@ -25,7 +26,6 @@
 
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
-
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
@@ -71,6 +71,7 @@ static bool AreOrtMemoryInfosEquivalent(
   } else {
     return left.mem_type == right.mem_type &&
            left.id == right.id &&
+           left.device == right.device &&
            strcmp(left.name, right.name) == 0;
   }
 }
@@ -222,7 +223,14 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       }
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
-      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSInternalNHWCDomain, 1, 1);
+
+      // we have static registrations for NHWC versions of ONNX operators so this domain needs to extend to the
+      // latest ONNX version
+      auto onnx_version = domainToVersionRangeInstance.LastReleaseVersionMap()
+                              .find(ONNX_NAMESPACE::ONNX_DOMAIN)
+                              ->second;
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSInternalNHWCDomain, 1, onnx_version);
+
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kPytorchAtenDomain, 1, 1);
 #ifdef USE_DML
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
@@ -233,9 +241,12 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #ifndef ORT_MINIMAL_BUILD
       RegisterOpSetSchema<contrib::OpSet_Microsoft_ver1>();
       RegisterOpSetSchema<contrib::OpSet_ONNX_Deprecated>();
+      // internal opset that has NHWC versions of ONNX operators
+      RegisterOpSetSchema<internal_nhwc_onnx::OpSet_Internal_NHWC_ONNX>();
 #endif
       contrib::RegisterContribSchemas();
 #endif
+
 #ifdef USE_DML
       dml::RegisterDmlSchemas();
 #endif

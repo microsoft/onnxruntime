@@ -15,7 +15,11 @@ public:
         const MLOperatorKernelCreationContext& kernelInfo
         ) : DmlOperator(kernelInfo)
     {
-        Initialize(kernelInfo);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 1);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
+        std::vector<std::optional<uint32_t>> inputIndices = { 0 }; // For CastLike, the second tensor ('target_type') is not bound.
+        std::vector<std::optional<uint32_t>> outputIndices = { 0 };
+        DmlOperator::Initialize(kernelInfo, inputIndices, outputIndices);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -38,10 +42,12 @@ public:
             m_compiledOperator.Get(),
             m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
             gsl::make_span(inputTensors),
-            gsl::make_span(outputTensors)));
+            gsl::make_span(outputTensors)
+        ));
     }
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(Cast, DmlOperatorCast);
+DML_OP_DEFINE_CREATION_FUNCTION(CastLike15, DmlOperatorCast);
 
 } // namespace Dml

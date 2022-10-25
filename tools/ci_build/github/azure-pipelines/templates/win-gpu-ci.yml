@@ -20,7 +20,7 @@ parameters:
 - name: isX86
   type: boolean
   default: false
-  
+
 - name: isTraining
   type: boolean
   default: false
@@ -37,9 +37,12 @@ parameters:
 - name: RunStaticCodeAnalysis
   displayName: Run Static Code Analysis
   type: boolean
-  default: true  
-  
+  default: true
+
 - name: ORT_EP_NAME
+  type: string
+
+- name: MachinePool
   type: string
 
 - name: DocUpdateNeeded
@@ -52,14 +55,15 @@ jobs:
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true    
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-    DocUpdateNeeded: ${{ parameters.DocUpdateNeeded }}    
+    DocUpdateNeeded: ${{ parameters.DocUpdateNeeded }}
+    skipComponentGovernanceDetection: true
   workspace:
     clean: all
-  pool: 'Win-GPU-2019'
-  timeoutInMinutes:  300  
+  pool: ${{ parameters.MachinePool }}
+  timeoutInMinutes:  300
   steps:
   - task: UsePythonVersion@0
     inputs:
@@ -90,10 +94,10 @@ jobs:
   - script: |
      set ORT_DOXY_SRC=$(Build.SourcesDirectory)
      set ORT_DOXY_OUT=$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}
-     mkdir %ORT_DOXY_SRC% 
+     mkdir %ORT_DOXY_SRC%
      mkdir %ORT_DOXY_OUT%
      "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
-     
+
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'API Documentation Check and generate'
 
@@ -115,7 +119,7 @@ jobs:
 
       - ${{ if eq(parameters.isTraining, true) }}:
           - script: |
-             python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\ortmodule\stage1\requirements_torch1.11.0_cu11.3\requirements.txt
+             python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\ortmodule\stage1\requirements_torch1.11.0_cu11.6\requirements.txt
              python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\requirements.txt
             workingDirectory: '$(Build.BinariesDirectory)'
             displayName: 'Install python modules'
@@ -172,7 +176,7 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: MSBuild@1
-    displayName: 'Build C#'    
+    displayName: 'Build C#'
     inputs:
       solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       configuration: '${{ parameters.BuildConfig }}'
@@ -180,6 +184,11 @@ jobs:
       msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:DefineConstants=USE_${{ parameters.ORT_EP_NAME }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
+  # C# test isn't launched by build.py, so models link has to be added.
+  - script: |
+     mklink /D /J models C:\local\models
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Create models link'
 
   - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true)) }}:
       - task: DotNetCoreCLI@2
@@ -187,7 +196,7 @@ jobs:
         inputs:
           command: test
           projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
-          configuration: '${{ parameters.BuildConfig }}'          
+          configuration: '${{ parameters.BuildConfig }}'
           arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:DefineConstants=USE_${{ parameters.ORT_EP_NAME }} --blame'
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
@@ -195,14 +204,14 @@ jobs:
       - powershell: |
          python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-       
+
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
         displayName: 'Install onnxruntime wheel'
 
   - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
       - powershell: |
          python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
-       
+
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
         displayName: 'Run tests'
 
@@ -218,9 +227,9 @@ jobs:
            **/*.dll
 
 
-      #Manually set msBuildCommandline so that we can also set CAExcludePath
-      #build_dir must be a sub folder of $(Build.SourcesDirectory)
-      #TODO: move this step to a CPU-only machine to save GPU resources.
+      # Manually set msBuildCommandline so that we can also set CAExcludePath
+      # build_dir must be a sub folder of $(Build.SourcesDirectory)
+      # TODO: move this step to a CPU-only machine to save GPU resources.
       - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
         inputs:
@@ -231,16 +240,16 @@ jobs:
           rulesetName: Custom
           customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
           publishXML: true
-          
+
       - task: SdtReport@2
         displayName: 'Create Security Analysis Report'
         inputs:
           SDLNativeRules: true
-    
+
       - task: PublishSecurityAnalysisLogs@3
         displayName: 'Publish Security Analysis Logs'
         continueOnError: true
-   
+
       - task: PostAnalysis@2
         displayName: 'Guardian Break v2'
         inputs:
@@ -272,7 +281,3 @@ jobs:
     inputs:
       pathtoPublish: '$(Build.SourcesDirectory)/docs/ContribOperators.md'
       artifactName: 'ContribOperators.md'
-
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'

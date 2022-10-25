@@ -13,6 +13,9 @@ namespace onnxruntime {
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
+  
+  InitProviderOrtApi();
+  
   openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
@@ -20,6 +23,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().blob_dump_path = info.blob_dump_path_;
   openvino_ep::BackendManager::GetGlobalContext().context = info.context_;
   openvino_ep::BackendManager::GetGlobalContext().enable_opencl_throttling = info.enable_opencl_throttling_;
+  openvino_ep::BackendManager::GetGlobalContext().enable_dynamic_shapes = info.enable_dynamic_shapes_;
 
 
   if ((int)info.num_of_threads_ <= 0) {
@@ -29,56 +33,66 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   }
   //to check if target device is available
   //using ie_core capability GetAvailableDevices to fetch list of devices plugged in
-  bool device_found = false;
-  bool device_id_found = false;
-  auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
-  //Checking for device_type configuration
-  if (info.device_type_ != "") {
-    if(info.device_type_== "CPU" || info.device_type_== "GPU" || info.device_type_== "MYRIAD") {
-      for (auto device : available_devices){
-        if (device.rfind(info.device_type_, 0) == 0){
-          if(info.device_type_== "GPU" && (info.precision_ == "FP32" || info.precision_ == "FP16")) {
+  if (info.use_compiled_network_ == false) {
+    bool device_found = false;
+    bool device_id_found = false;
+    auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
+    // Checking for device_type configuration
+    if (info.device_type_ != "") {
+      if (info.device_type_.find("HETERO") != std::string::npos ||
+         info.device_type_.find("MULTI") != std::string::npos ||
+         info.device_type_.find("AUTO") != std::string::npos) {
+        device_found = true;
+      } else if (info.device_type_ == "CPU" || info.device_type_.find("GPU") != std::string::npos ||
+                info.device_type_ == "MYRIAD") {
+        for (auto device : available_devices) {
+          if (device.rfind(info.device_type_, 0) == 0) {
+            if (info.device_type_.find("GPU") != std::string::npos && (info.precision_ == "FP32" ||
+               info.precision_ == "FP16")) {
               device_found = true;
               break;
-          }
-          if(info.device_type_== "CPU" && info.precision_ == "FP32") {
-            device_found = true;
-            break;
-          }
-          if(info.device_type_== "MYRIAD" && info.precision_ == "FP16") {
-            device_found = true;
-            break;
+            }
+            if (info.device_type_ == "CPU" && (info.precision_ == "FP32" || info.precision_ == "FP16")) {
+              device_found = true;
+              break;
+            }
+            if (info.device_type_ == "MYRIAD" && info.precision_ == "FP16") {
+              device_found = true;
+              break;
+            }
           }
         }
-      }
-    } else {
-      device_found = true;
-    }
-  }
-  if (!device_found) {
-    std::string err_msg = std::string("Device Type not found : ") + info.device_type_ + "\nChoose the right precision with one of:\n";
-    for (auto device : available_devices) {
-      err_msg = err_msg + device + "\n";
-    }
-    ORT_THROW(err_msg);
-  }
-  //Checking for device_id configuration
-  if (info.device_id_ != "") {
-    for (auto device : available_devices) {
-      if (device.rfind(info.device_id_, 0) == 0){
-        if(info.device_id_== "MYRIAD" || info.device_id_== "CPU" || info.device_id_== "GPU"){
-          LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"<< "Switching to Device ID: " << info.device_id_;
-          device_id_found = true;
-          break;
-        }
+      } else {
+        device_found = true;
       }
     }
-    if (!device_id_found) {
-      std::string err_msg = std::string("Device ID not found : ") + info.device_id_ + "\nChoose one of:\n";
+    if (!device_found) {
+      std::string err_msg = std::string("Device Type not found : ") + info.device_type_ +
+                                        "\nChoose the right precision with one of:\n";
       for (auto device : available_devices) {
         err_msg = err_msg + device + "\n";
       }
       ORT_THROW(err_msg);
+    }
+    // Checking for device_id configuration
+    if (info.device_id_ != "") {
+      for (auto device : available_devices) {
+        if (device.rfind(info.device_id_, 0) == 0) {
+          if (info.device_id_ == "MYRIAD" || info.device_id_ == "CPU" || info.device_id_ == "GPU") {
+            LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
+                               << "Switching to Device ID: " << info.device_id_;
+            device_id_found = true;
+            break;
+          }
+        }
+      }
+      if (!device_id_found) {
+        std::string err_msg = std::string("Device ID not found : ") + info.device_id_ + "\nChoose one of:\n";
+        for (auto device : available_devices) {
+          err_msg = err_msg + device + "\n";
+        }
+        ORT_THROW(err_msg);
+      }
     }
   }
   openvino_ep::BackendManager::GetGlobalContext().device_id = info.device_id_;
@@ -92,9 +106,8 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
-OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const std::vector<const KernelRegistry*>& kernel_registries) const {
-  ORT_UNUSED_PARAMETER(kernel_registries);
-
+OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
+                                         const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   //Enable CI Logs
   if (!(GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG").empty())) {
@@ -109,21 +122,17 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer, const 
 #endif
   openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
-#if defined (OPENVINO_2021_2)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2021_2");
-  result = obj.Execute();
-#elif defined (OPENVINO_2021_3)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2021_3");
-  result = obj.Execute();
-#elif defined (OPENVINO_2021_4)
+#if defined (OPENVINO_2021_4)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2021_4");
   result = obj.Execute();
 #elif defined (OPENVINO_2022_1)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_1");
+  result = obj.Execute();
+#elif defined (OPENVINO_2022_2)
+  openvino_ep::GetCapability obj(graph_viewer,
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_2");
   result = obj.Execute();
 #endif
 
@@ -143,7 +152,7 @@ common::Status OpenVINOExecutionProvider::Compile(
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
 #else
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = false;
-#endif 
+#endif
 
     std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, graph_body_viewer, *GetLogger());
 
@@ -157,12 +166,12 @@ common::Status OpenVINOExecutionProvider::Compile(
           *state = static_cast<FunctionState>(p);
           return 0;
         };
-    compute_info.compute_func = [](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
+    compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
       auto function_state = static_cast<OpenVINOEPFunctionState*>(state);
       try {
-        function_state->backend_manager->Compute(*api, context);
-      } catch (const char* msg) {
-        return common::Status(common::ONNXRUNTIME, common::FAIL, msg);
+        function_state->backend_manager->Compute(context);
+      } catch (const std::exception& ex) {
+        return common::Status(common::ONNXRUNTIME, common::FAIL, ex.what());
       }
       return Status::OK();
     };

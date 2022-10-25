@@ -17,8 +17,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     element_type_lists::AllNumeric);
 }
 
-using ShrinkDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Shrink, Input, 0);
 using EnabledShrinkDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Shrink, Input, 0);
 
@@ -28,7 +26,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ShrinkDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledShrinkDataTypes>()),
     Shrink);
 //TODO: fix the warnings
@@ -59,7 +56,7 @@ Status ShrinkImpl(const Tensor* input, Tensor* output, float bias, float lambd) 
 template <>
 Status ShrinkImpl<MLFloat16>(const Tensor* input, Tensor* output, float bias, float lambd) {
   const auto& span = gsl::make_span(input->Data<MLFloat16>(), input->Shape().Size());
-  auto* output_data = output->template MutableData<MLFloat16>();
+  auto* output_data = output->MutableData<MLFloat16>();
   std::transform(span.cbegin(), span.cend(), output_data, [bias, lambd](const MLFloat16& val) {
     float fl = math::halfToFloat(val.val);
     return MLFloat16(math::floatToHalf(ShrinkCore<float>(fl, bias, lambd)));
@@ -70,7 +67,7 @@ Status ShrinkImpl<MLFloat16>(const Tensor* input, Tensor* output, float bias, fl
 template <>
 Status ShrinkImpl<BFloat16>(const Tensor* input, Tensor* output, float bias, float lambd) {
   const auto& span = gsl::make_span(input->Data<BFloat16>(), input->Shape().Size());
-  auto* output_data = output->template MutableData<BFloat16>();
+  auto* output_data = output->MutableData<BFloat16>();
   std::transform(span.cbegin(), span.cend(), output_data, [bias, lambd](const BFloat16& val) {
     float fl = val.ToFloat();
     return BFloat16(ShrinkCore<float>(fl, bias, lambd));

@@ -13,12 +13,6 @@
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #endif
-namespace ONNX_NAMESPACE {
-class TensorShapeProto;
-class TensorProto;
-std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto);
-std::ostream& operator<<(std::ostream& out, const TensorProto& tensor_proto);
-}  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 class ExecutionProviders;
@@ -71,7 +65,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
 
 // Searches the allocation plan from the session_state to find the OrtMemoryInfo for the value 'name'.
 const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
-                                            const std::string& name);
+                                            std::string_view name);
 
 // Initialize the feed and fetch copy info using session_state.
 // Determines the device that each graph input that will be fed will be consumed on,
@@ -82,26 +76,27 @@ common::Status InitializeFeedFetchCopyInfo(const SessionState& session_state,
 // Finalize the feed and fetch copy info using session_state and the device and location information from the feeds
 // and fetches that will be used in graph execution.
 void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
-                               const std::vector<OrtDevice>& feed_locations,
-                               const std::vector<const OrtMemoryInfo*>& fetch_alloc_info);
+                               gsl::span<const OrtDevice> feed_locations,
+                               gsl::span<const OrtMemoryInfo* const> fetch_alloc_info);
 
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                            const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                            gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                             bool only_execute_path_to_fetches = false);
 
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                                   const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                                   gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
-                                   const OrtValueCachePtr& cache);
+                                   const OrtValueCachePtr& cache,
+                                   int32_t partial_graph_index);
 #endif
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
-                               const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                               gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
 

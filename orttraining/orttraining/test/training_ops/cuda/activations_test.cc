@@ -133,14 +133,65 @@ TEST(CudaKernelTest, FastGelu_bias) {
 }
 
 TEST(CudaKernelTest, BiasGeluGradDx_basic) {
-  std::vector<std::vector<int64_t>> test_dims{{4}, {16, 2}, {8, 2, 128, 128}};
+  std::vector<std::vector<int64_t>> test_dims{
+      {1},
+      {8},
+      {64},
+      {128},
+      {512},
+      {16, 1},
+      {16, 8},
+      {16, 64},
+      {16, 128},
+      {16, 192},
+      {16, 256},
+      {16, 258},
+      {8, 2, 128, 1},
+      {8, 2, 128, 8},
+      {8, 2, 128, 64},
+      {9, 2, 128, 128},
+      {16, 128, 6144},
+      {16, 127, 6144},
+      {16, 128, 6143},
+      {16, 3, 224, 224},
+      {15, 3, 223, 223},
+      // multiplier of the initial 3 dims > 65535
+      {128, 3, 224, 2},
+      {128, 3, 224, 3},
+  };
+
   for (const auto& test_dim : test_dims) {
     TestActivationsWithBroadcastBias(test_dim, "BiasGeluGrad_dX", true);
   }
 }
 
 TEST(CudaKernelTest, BiasFastGeluGradDx_basic) {
-  std::vector<std::vector<int64_t>> test_dims{{4}, {16, 2}, {8, 2, 128, 128}};
+  std::vector<std::vector<int64_t>> test_dims{
+      {1},
+      {8},
+      {64},
+      {128},
+      {512},
+      {16, 1},
+      {16, 8},
+      {16, 64},
+      {16, 128},
+      {16, 192},
+      {16, 256},
+      {16, 258},
+      {8, 2, 128, 1},
+      {8, 2, 128, 8},
+      {8, 2, 128, 64},
+      {9, 2, 128, 128},
+      {16, 128, 6144},
+      {16, 127, 6144},
+      {16, 128, 6143},
+      {16, 3, 224, 224},
+      {15, 3, 223, 223},
+      // multiplier of the initial 3 dims > 65535
+      {128, 3, 224, 2},
+      {128, 3, 224, 3},
+  };
   for (const auto& test_dim : test_dims) {
     TestActivationsWithBroadcastBias(test_dim, "BiasFastGeluGrad_dX", true);
   }

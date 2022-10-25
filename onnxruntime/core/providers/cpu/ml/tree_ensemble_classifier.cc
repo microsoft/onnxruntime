@@ -32,7 +32,7 @@ ADD_IN_TYPE_TREE_ENSEMBLE_CLASSIFIER_OP(int32_t);
 
 template <typename T>
 TreeEnsembleClassifier<T>::TreeEnsembleClassifier(const OpKernelInfo& info) : OpKernel(info) {
-  ORT_IF_CONSTEXPR(std::is_same<T, double>::value) {
+  if constexpr(std::is_same<T, double>::value) {
     p_tree_ensemble_ = std::make_unique<detail::TreeEnsembleCommonClassifier<T, double, OutputType>>();
   }
   else {

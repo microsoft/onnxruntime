@@ -1,6 +1,9 @@
 node_modules/
 types/
 
+scripts/**/*.js
+test/data
+
 tsconfig.tsbuildinfo
 
 *.d.ts

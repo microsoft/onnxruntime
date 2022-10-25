@@ -28,19 +28,8 @@
         "Type": "other",
         "other": {
           "Name": "libtool",
-          "Version": "2.4.6",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/libtool/libtool-2.4.6.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "patchelf",
-          "Version": "0.13",
-          "DownloadUrl": "https://github.com/NixOS/patchelf/archive/0.13.tar.gz"
+          "Version": "2.4.7",
+          "DownloadUrl": "http://ftp.gnu.org/gnu/libtool/libtool-2.4.7.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -50,8 +39,8 @@
         "Type": "other",
         "other": {
           "Name": "libxcrypt",
-          "Version": "4.4.26",
-          "DownloadUrl": "https://github.com/besser82/libxcrypt/archive/v4.4.26.tar.gz"
+          "Version": "4.4.28",
+          "DownloadUrl": "https://github.com/besser82/libxcrypt/archive/v4.4.28.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -61,19 +50,8 @@
         "Type": "other",
         "other": {
           "Name": "git",
-          "Version": "2.33.1",
-          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.33.1.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "swig",
-          "Version": "4.0.2",
-          "DownloadUrl": "https://sourceforge.net/projects/swig/files/swig/${SWIG_ROOT}/swig-4.0.2.tar.gz"
+          "Version": "2.36.2",
+          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.36.2.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -83,8 +61,8 @@
         "Type": "other",
         "other": {
           "Name": "sqlite_autoconf",
-          "Version": "3360000",
-          "DownloadUrl": "https://www.sqlite.org/2021/sqlite-autoconf-3360000.tar.gz"
+          "Version": "3390200",
+          "DownloadUrl": "https://www.sqlite.org/2022/sqlite-autoconf-3390200.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -94,10 +72,20 @@
         "Type": "other",
         "other": {
           "Name": "openssl",
-          "Version": "1.1.1l",
-          "DownloadUrl": "https://www.openssl.org/source/openssl-1.1.1l.tar.gz"
+          "Version": "1.1.1q",
+          "DownloadUrl": "https://www.openssl.org/source/openssl-1.1.1q.tar.gz"
         },
         "comments": "manylinux dependency"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "0a92994d729ff76a58f692d3028ca1b64b145d91",
+          "repositoryUrl": "https://github.com/Maratyszcza/FP16.git"
+        },
+        "comments": "git submodule at cmake/external/FP16"
       }
     },
     {
@@ -108,6 +96,16 @@
           "repositoryUrl": "https://github.com/dcleblanc/SafeInt.git"
         },
         "comments": "git submodule at cmake/external/SafeInt/safeint"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "003c580e696a774afdc984996ee909b7c8d8128c",
+          "repositoryUrl": "https://github.com/google/XNNPACK.git"
+        },
+        "comments": "git submodule at cmake/external/XNNPACK"
       }
     },
     {
@@ -164,7 +162,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "fc645b7626ebf86530dbd82fbece74d457e7ae07",
+          "commitHash": "c220895fd1163c01f0a8b44229fb9e4fe0ae0958",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -204,7 +202,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "db78ac1d7716f56fc9f1b030b715f872f93964e4",
+          "commitHash": "b5364faf9d732052506cefc933d3f4e4f04513a5",
           "repositoryUrl": "https://github.com/nlohmann/json.git"
         },
         "comments": "git submodule at cmake/external/json"
@@ -254,7 +252,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "850a81b0b77786bf99ea90580242b084f86a6235",
+          "commitHash": "5a5f8a5935762397aa68429b5493084ff970f774",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -264,7 +262,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "e776aa0275e293707b6a0901e0e8d8a8a3679508",
+          "commitHash": "0d98dba29d66e93259db7daa53a9327df767a415",
           "repositoryUrl": "https://github.com/google/benchmark.git"
         },
         "comments": "git submodule at cmake/external/onnx/third_party/benchmark"
@@ -274,7 +272,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "59a2ac2745d8a57ac94c6accced73620d59fb844",
+          "commitHash": "ffa346860b306c9bbfb341aed9c14c067751feb8",
           "repositoryUrl": "https://github.com/pybind/pybind11.git"
         },
         "comments": "git submodule at cmake/external/onnx/third_party/pybind11"
@@ -284,7 +282,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "4f54a1950e1174dca490900eb7b07cc374f53d41",
+          "commitHash": "87c7a70688fd98fb355b8976f41425b40e4fe52f",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -294,7 +292,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "994c6181247d7b419b28889fc57d5817e2089419",
+          "commitHash": "553df22c67bee5f0fe6599cff60f1afc6748c635",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx"
@@ -314,10 +312,20 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "59a2ac2745d8a57ac94c6accced73620d59fb844",
+          "commitHash": "09f082940113661256310e3f4811aa7261a9fa05",
           "repositoryUrl": "https://github.com/pybind/pybind11.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx/third_party/pybind11"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "6a00cbc4a9b8e68b71caf7f774b3f9c753ae84d5",
+          "repositoryUrl": "https://github.com/wjakob/clang-cindex-python3"
+        },
+        "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx/third_party/pybind11/tools/clang"
       }
     },
     {
@@ -334,7 +342,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0dab03ba7bc438d7ba3eac2b2c1eb39ed520f928",
+          "commitHash": "a902b39270841beafc307dfa709610aa1cac2f06",
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
         "comments": "git submodule at cmake/external/protobuf"
@@ -358,6 +366,16 @@
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "git submodule at cmake/external/protobuf/third_party/googletest"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "1787867f6183f056420e532eec640cba25efafea",
+          "repositoryUrl": "https://github.com/Maratyszcza/pthreadpool.git"
+        },
+        "comments": "git submodule at cmake/external/pthreadpool"
       }
     },
     {

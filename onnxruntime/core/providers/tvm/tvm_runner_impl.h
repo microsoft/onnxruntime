@@ -27,27 +27,25 @@ public:
              const std::vector<DLTensor> tensors_outputs);
   virtual ~RunnerImpl() = default;
 
-  virtual common::Status run(const OrtCustomOpApi* api, OrtKernelContext* context) {
-    Ort::CustomOpApi ort{*api};
+  virtual common::Status run(const OrtApi* /* api */, OrtKernelContext* context) {
 
-    set_input(ort, context);
-    connect_output_tensors2ort(ort, context);
+    Ort::KernelContext ctx{context};
+    set_input(ctx);
+    connect_output_tensors2ort(ctx);
     run_and_get_output();
 
     return Status::OK();
   }
 
-  virtual void set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
-  virtual void connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
+  virtual void set_input(Ort::KernelContext& ctx) = 0;
+  virtual void connect_output_tensors2ort(Ort::KernelContext& context) = 0;
   virtual void run_and_get_output() = 0;
 
 protected:
-  void convert_input_tensors2dl_tensors(Ort::CustomOpApi& ort,
-                                        OrtKernelContext* context,
+  void convert_input_tensors2dl_tensors(Ort::KernelContext& context,
                                         std::vector<DLTensor>& dst,
                                         std::vector<size_t>& dst_inds);
-  void add_device_type_data2output_tensors(Ort::CustomOpApi& ort,
-                                           OrtKernelContext* context);
+  void add_device_type_data2output_tensors(Ort::KernelContext& context);
 
 protected:
   std::shared_ptr<TvmModule> mod_;
@@ -66,9 +64,9 @@ public:
                const std::vector<DLTensor> tensors_outputs);
   virtual ~GERunnerImpl() = default;
 
-  virtual void set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
-  virtual void connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
-  virtual void run_and_get_output() override final;
+  void set_input(Ort::KernelContext& context) override final;
+  void connect_output_tensors2ort(Ort::KernelContext& context) override final;
+  void run_and_get_output() override final;
 };
 
 
@@ -81,9 +79,9 @@ public:
                const std::vector<DLTensor> tensors_outputs);
   virtual ~VMRunnerImpl() = default;
 
-  virtual void set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
-  virtual void connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
-  virtual void run_and_get_output() override final;
+  void set_input(Ort::KernelContext& context) override final;
+  void connect_output_tensors2ort(Ort::KernelContext& context) override final;
+  void run_and_get_output() override final;
 
 private:
     void infer_once_to_get_output_shapes();

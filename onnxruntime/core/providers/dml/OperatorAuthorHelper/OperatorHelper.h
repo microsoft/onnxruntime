@@ -18,6 +18,14 @@ std::vector<DimensionType> BroadcastTensorShape(
     gsl::span<const DimensionType> inputShape0,
     gsl::span<const DimensionType> inputShape1);
 
+// This won't allocate extra memory, if required. This expects
+// caller to make the size of all containers to be same
+void BroadcastTensorShapeAndSetStrides(
+    gsl::span<DimensionType> inputShape0,
+    gsl::span<DimensionType> inputStride0,
+    gsl::span<DimensionType> inputShape1,
+    gsl::span<DimensionType> inputStride1);
+
 // Find all the occurrences of a value, and return the array indices (in ascending order).
 //
 // e.g. input values = {2,1,3,1,1,5}
@@ -46,7 +54,7 @@ void FindValueIndices(gsl::span<const T> values, T value, /*out*/ std::vector<ui
 
 // Convert any negative axis into an absolute axis relative to the back end.
 // So given 3 dimensions, a -1 refers to axis 2, and -3 to axis 0.
-uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount);
+uint32_t HandleNegativeAxis(int32_t signedOnnxAxis, uint32_t dimCount, bool validateAxis = true);
 
 void HandleNegativeAxes(gsl::span<int32_t> onnxAxes, uint32_t dimCount);
 
@@ -217,6 +225,18 @@ void MatMulShapeMapping(
     std::vector<DimensionType>& inputShape0,
     std::vector<DimensionType>& inputShape1,
     std::vector<DimensionType>& outputShape);
+
+void FusedMatMulShapeMapping(
+    std::vector<DimensionType>& inputShape0,
+    std::vector<DimensionType>& inputStride0,
+    std::vector<DimensionType>& inputShape1,
+    std::vector<DimensionType>& inputStride1,
+    std::vector<DimensionType>& outputShape);
+
+std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(
+    gsl::span<const uint32_t> sizes, 
+    int32_t transBatch = 0,
+    int32_t transpose = 0);
 
 class GetOutputShapeAsInputShapeHelper
 {
@@ -762,6 +782,15 @@ public:
     MatMulHelper(const Info_t& info, const Shape_t& shape) : MatMulHelperBase(info, shape, 0, 1) {}
 };
 
+class FusedMatMulHelper
+{
+public:
+    template<typename Info_t, typename Shape_t>
+    FusedMatMulHelper(const Info_t& info, const Shape_t& shape) {}
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
 class QLinearMatMulHelper : public MatMulHelperBase
 {
 public:
@@ -1302,6 +1331,23 @@ protected:
     std::vector<uint32_t> m_outputDimensions;
 };
 
+class BatchNormalizationHelper
+{
+    void Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+    );
+
+public:
+    template <typename Info_t, typename Shape_t>
+    BatchNormalizationHelper(const Info_t& info, const Shape_t& shapeInfo)
+    {
+        Initialize(KernelInformationAdapter(info), ShapeInformationAdapter(shapeInfo));
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
@@ -1318,9 +1364,12 @@ using ShapeInferenceHelper_MaxRoiPool = RoiPoolingHelper;
 using ShapeInferenceHelper_RoiAlign10 = VersionedOpsetHelper<RoiAlignHelper, 10>;
 using ShapeInferenceHelper_InstanceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_BatchNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_BatchNormalization15 = BatchNormalizationHelper;
 
 using ShapeInferenceHelper_LRN = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_LayerNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_LayerNormalization17 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LpNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RNN = RecurrentHelper;
 using ShapeInferenceHelper_GRU = RecurrentHelper;
@@ -1361,10 +1410,12 @@ using ShapeInferenceHelper_Unsqueeze7 = VersionedOpsetHelper<UnsqueezeHelper, 7>
 using ShapeInferenceHelper_Unsqueeze11 = VersionedOpsetHelper<UnsqueezeHelper, 11>;
 using ShapeInferenceHelper_Unsqueeze13 = VersionedOpsetHelper<UnsqueezeHelper, 13>;
 using ShapeInferenceHelper_EyeLike = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Trilu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Expand = ExpandHelper;
 using ShapeInferenceHelper_Reshape7 = ReshapeHelper;
 using ShapeInferenceHelper_Reshape13 = ReshapeHelper;
+using ShapeInferenceHelper_Reshape14 = ReshapeHelper;
 using ShapeInferenceHelper_ConstantOfShape = ConstantOfShapeHelper;
 using ShapeInferenceHelper_Tile = TileHelper;
 using ShapeInferenceHelper_Resize10 = VersionedOpsetHelper<ResizeHelper, 10>;
@@ -1410,6 +1461,8 @@ using ShapeInferenceHelper_Atan = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Affine = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QuantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_DequantizeLinear = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_QLinearSigmoid = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Attention = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Sign = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_IsNaN = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Erf = GetBroadcastedOutputShapeHelper;
@@ -1458,16 +1511,21 @@ using ShapeInferenceHelper_Elu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Celu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Selu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Softmax = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Softmax13 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LogSoftmax = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_LogSoftmax13 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Hardmax = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Hardmax13 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Softsign = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Softplus = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_ParametricSoftplus = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Dropout = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Shrink = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Gelu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Identity7 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Identity13 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Identity14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MatMul = MatMulHelper;
 using ShapeInferenceHelper_MatMulInteger = MatMulHelper;
 using ShapeInferenceHelper_QLinearMatMul = QLinearMatMulHelper;
@@ -1488,17 +1546,21 @@ using ShapeInferenceHelper_RandomNormalLike = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Multinomial = MultinomialHelper;
 
 using ShapeInferenceHelper_ReverseSequence = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_CumSum = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CumSum11 = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_CumSum14 = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Range = RangeHelper;
 
-using ShapeInferenceHelper_FusedConv = ConvHelper;
-using ShapeInferenceHelper_FusedConvTranspose = ConvTransposeHelper;
-using ShapeInferenceHelper_FusedInstanceNormalization = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_FusedBatchNormalization = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_FusedMeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_FusedGemm = GemmHelper;
-using ShapeInferenceHelper_FusedMatMul = MatMulHelper;
-using ShapeInferenceHelper_FusedAdd = GetBroadcastedOutputShapeHelper;
-using ShapeInferenceHelper_FusedSum = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_CastLike15 = GetOutputShapeAsInputShapeHelper;
+
+using ShapeInferenceHelper_DmlFusedConv = ConvHelper;
+using ShapeInferenceHelper_DmlFusedConvTranspose = ConvTransposeHelper;
+using ShapeInferenceHelper_DmlFusedInstanceNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_DmlFusedBatchNormalization = BatchNormalizationHelper;
+using ShapeInferenceHelper_DmlFusedMeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_DmlFusedGemm = GemmHelper;
+using ShapeInferenceHelper_DmlFusedMatMul = MatMulHelper;
+using ShapeInferenceHelper_FusedMatMul = FusedMatMulHelper;
+using ShapeInferenceHelper_DmlFusedAdd = GetBroadcastedOutputShapeHelper;
+using ShapeInferenceHelper_DmlFusedSum = GetBroadcastedOutputShapeHelper;
 
 }  // namespace OperatorHelper

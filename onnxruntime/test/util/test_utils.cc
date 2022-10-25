@@ -137,6 +137,30 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(output_names, expected_fetches, fetches, params);
+
+  if (params.graph_verifier) {
+    (*params.graph_verifier)(graph2);
+  }
+}
+
+void CheckShapeEquality(const ONNX_NAMESPACE::TensorShapeProto* shape1,
+                        const ONNX_NAMESPACE::TensorShapeProto* shape2) {
+  EXPECT_NE(shape1, nullptr);
+  EXPECT_NE(shape2, nullptr);
+  EXPECT_EQ(shape1->dim_size(), shape2->dim_size()) << "Shapes do not have same rank";
+  auto min_dims = std::min(shape1->dim_size(), shape2->dim_size());
+  for (int i = 0; i < min_dims; ++i) {
+    auto dim1 = shape1->dim(i);
+    auto dim2 = shape2->dim(i);
+    EXPECT_EQ(dim1.has_dim_value(), dim2.has_dim_value());
+    if (dim1.has_dim_value()) {
+      EXPECT_EQ(dim1.dim_value(), dim2.dim_value());
+    }
+    EXPECT_EQ(dim1.has_dim_param(), dim2.has_dim_param());
+    if (dim1.has_dim_param()) {
+      EXPECT_EQ(dim1.dim_param(), dim2.dim_param());
+    }
+  }
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)

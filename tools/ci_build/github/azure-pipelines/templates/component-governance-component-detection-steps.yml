@@ -5,13 +5,14 @@ parameters:
   default: 'succeeded' # could be 'ci_only', 'always', 'succeeded'
 
 steps:
-- task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-  displayName: 'Component Detection'
-  condition:
-    or(or(and(eq('${{parameters.condition}}', 'ci_only'), and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI', 'Scheduled'))),
+- ${{ if eq(variables['System.TeamProject'], 'Lotus') }}: 
+  - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+    displayName: 'Component Detection'
+    condition:
+      or(or(and(eq('${{parameters.condition}}', 'ci_only'), and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI', 'Scheduled'))),
           and(eq('${{parameters.condition}}', 'always'), always())),
           and(eq('${{parameters.condition}}', 'succeeded'), succeeded()))
-  inputs:
-    # ignore dmlc-core tracker for its CI, which is not used in onnxruntime build
-    # ignore unit tests in emscripten. emscripten unit tests are not used in onnxruntime build
-    ignoreDirectories: '$(Build.SourcesDirectory)/cmake/external/tvm/3rdparty/dmlc-core/tracker,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests'
+    inputs:
+      # ignore dmlc-core tracker for its CI, which is not used in onnxruntime build
+      # ignore unit tests in emscripten. emscripten unit tests are not used in onnxruntime build
+      ignoreDirectories: '$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests'

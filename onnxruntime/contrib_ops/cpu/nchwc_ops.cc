@@ -61,8 +61,8 @@ Status ReorderInput::Compute(OpKernelContext* context) const {
     worker_count = total_work;
   }
 
-  const auto* x_data = X->template Data<float>();
-  auto* y_data = Y->template MutableData<float>();
+  const auto* x_data = X->Data<float>();
+  auto* y_data = Y->MutableData<float>();
 
   auto reorder_worker = [&](ptrdiff_t batch) {
     auto work = concurrency::ThreadPool::PartitionWork(batch, worker_count, total_work);
@@ -137,8 +137,8 @@ Status ReorderOutput::Compute(OpKernelContext* context) const {
   }
   auto* Y = context->Output(0, Y_shape);
 
-  const auto* x_data = X->template Data<float>();
-  auto* y_data = Y->template MutableData<float>();
+  const auto* x_data = X->Data<float>();
+  auto* y_data = Y->MutableData<float>();
   if (channels_last_) {
     MlasReorderOutputNhwc(Y_shape.data(), x_data, y_data);
   } else {
@@ -185,16 +185,16 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
   TensorShapeVector Y_dims;
   Y_dims.insert(Y_dims.begin(), {X_shape[0], W_shape[0]});
   TensorShape input_shape = X->Shape().Slice(2);
-  ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
+  ORT_RETURN_IF_ERROR(conv_attrs_.InferPadsAndOutputShape(input_shape, kernel_shape, strides, dilations, pads, Y_dims));
   auto* Y = context->Output(0, Y_dims);
-  auto* y_data = Y->template MutableData<float>();
+  auto* y_data = Y->MutableData<float>();
 
   // Check for the optional Conv/Sum fusion.
   if (Sum != nullptr) {
     const auto& sum_shape = Sum->Shape();
     ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
     // If the output was not allocated inplace with the sum tensor, then copy here.
-    const auto* sum_data = Sum->template Data<float>();
+    const auto* sum_data = Sum->Data<float>();
     if (y_data != sum_data) {
       memcpy(y_data, sum_data, sum_shape.Size() * sizeof(float));
     }
@@ -208,9 +208,9 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
       strides.data(),
       Y_dims.data(),
       static_cast<size_t>(conv_attrs_.group),
-      X->template Data<float>(),
-      W->template Data<float>(),
-      B != nullptr ? B->template Data<float>() : nullptr,
+      X->Data<float>(),
+      W->Data<float>(),
+      B != nullptr ? B->Data<float>() : nullptr,
       y_data,
       &activation_,
       Sum == nullptr,
@@ -237,8 +237,8 @@ Status NchwcPoolBase::NchwcPool(OpKernelContext* context, MLAS_POOLING_KIND kind
       pool_attrs_.global_pooling ? nullptr : pads.data(),
       pool_attrs_.global_pooling ? nullptr : pool_attrs_.strides.data(),
       output_dims.data(),
-      X->template Data<float>(),
-      Y->template MutableData<float>(),
+      X->Data<float>(),
+      Y->MutableData<float>(),
       context->GetOperatorThreadPool());
 
   return Status::OK();
@@ -306,8 +306,8 @@ Status NchwcUpsample::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  const auto* x_data = X->template Data<float>();
-  auto* y_data = Y->template MutableData<float>();
+  const auto* x_data = X->Data<float>();
+  auto* y_data = Y->MutableData<float>();
 
   if (nearest_mode_) {
     MlasNchwcUpsampleNearest(

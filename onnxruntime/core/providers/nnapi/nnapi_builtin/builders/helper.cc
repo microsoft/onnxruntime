@@ -1,21 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
+
+#include <functional>
 #include <iostream>
+#include <numeric>
 #include <string>
 #include <vector>
 
-#include "helper.h"
-
-#include "core/common/safeint.h"
 #include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/graph/graph.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/graph.h"
+#include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/op_builder_factory.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
-#include "op_support_checker.h"
 
 namespace onnxruntime {
 namespace nnapi {
@@ -191,33 +195,19 @@ common::Status GetQuantizationScaleAndZeroPoint(
                            "NodeArg: ", io_def.node_arg.Name(), " is not quantized");
   }
 
-  const auto unpack_tensor = [&model_path](const InitializedTensorSet& initializers,
-                                           const std::string& name, std::vector<uint8_t>& unpacked_tensor) {
-    const auto& tensor = *initializers.at(name);
-    ORT_RETURN_IF_ERROR(
-        onnxruntime::utils::UnpackInitializerData(tensor, model_path, unpacked_tensor));
-    return Status::OK();
-  };
-
   const auto& quant_param = *io_def.quant_param;
   {  // get the scale
-    std::vector<uint8_t> unpacked_tensor;
     const auto& name = quant_param.scale.Name();
-    ORT_RETURN_IF_ERROR(unpack_tensor(initializers, name, unpacked_tensor));
+    Initializer unpacked_tensor(*initializers.at(name), model_path);
     // The scale should be one or more floats
-    ORT_RETURN_IF(unpacked_tensor.size() < 4,
-                  "The initializer [", name, "] should have one or more floats ",
-                  "with size no less than 4, actual size: ", unpacked_tensor.size());
-    scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
+    scale = unpacked_tensor.DataAsSpan<float>()[0];
   }
 
   if (quant_param.zero_point) {  // get the zero point if it's there
-    std::vector<uint8_t> unpacked_tensor;
     const auto& name = quant_param.zero_point->Name();
-    ORT_RETURN_IF_ERROR(unpack_tensor(initializers, name, unpacked_tensor));
-    ORT_RETURN_IF(unpacked_tensor.empty(), "The initializer [", name, "] is empty");
+    Initializer unpacked_tensor(*initializers.at(name), model_path);
     // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
-    zero_point = static_cast<int32_t>(unpacked_tensor[0]);
+    zero_point = static_cast<int32_t>(unpacked_tensor.DataAsByteSpan()[0]);
   }
 
   return Status::OK();
@@ -265,17 +255,24 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
   return true;
 }
 
-void GetFlattenOutputShape(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
-  int32_t rank = static_cast<int>(input_shape.size());
-  NodeAttrHelper helper(node_unit);
-  int32_t axis = helper.Get("axis", 1);
-  // axis == rank is a valid input, but invalid for HandleNegativeAxis
-  // Skip non-negative axis here
-  if (axis < 0)
-    axis = static_cast<int32_t>(HandleNegativeAxis(axis, rank));
+Shape GetShapeInfoFromNodeArg(const GraphViewer& graph_viewer, const std::string& name) {
+  // can be applied to both input and output
+  Shape shape;
+  const auto* node_arg = graph_viewer.GetNodeArg(name);
+  const auto* shape_proto = node_arg->Shape();
 
-  dim_1 = std::accumulate(input_shape.cbegin(), input_shape.cbegin() + axis, 1, std::multiplies<int32_t>());
-  dim_2 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies<int32_t>());
+  shape.reserve(shape_proto->dim_size());
+  for (const auto& shape_dim : shape_proto->dim()) {
+    // shape_dim here can possibly have dim_param, but as dynamic shape is not supported in NNAPI for now
+    // (checked already in BaseOpSupportChecker), call dim_value here only.
+    shape.push_back(SafeInt<uint32_t>(shape_dim.dim_value()));
+  }
+  // If we have an empty shape, (scalar input), we need to make it as {1} as
+  // nnapi will treat empty shape as dynamic ranking and onnx does not support that
+  if (shape_proto->dim_size() == 0) {
+    shape.push_back(1);
+  }
+  return shape;
 }
 
 bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_partition) {
@@ -344,14 +341,14 @@ bool IsInternalQuantizationSupported(const Node& node, const std::unordered_set<
 }
 
 bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
-  const auto& op_support_checkers = GetOpSupportCheckers();
-  const auto op_support_checker_it = op_support_checkers.find(node_unit.OpType());
-  if (op_support_checker_it == op_support_checkers.end()) {
+  const auto& op_builders = GetOpBuilders();
+  const auto op_builder_it = op_builders.find(node_unit.OpType());
+  if (op_builder_it == op_builders.end()) {
     return false;
   }
 
-  const auto* op_support_checker = op_support_checker_it->second;
-  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
+  const auto* op_builder = op_builder_it->second;
+  return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
 }
 
 bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
@@ -367,7 +364,7 @@ bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_
   return true;
 }
 
-std::string Shape2String(const std::vector<uint32_t>& shape) {
+std::string Shape2String(const Shape& shape) {
   std::ostringstream os;
   os << "[ ";
   for (const auto& dim : shape)
@@ -375,6 +372,13 @@ std::string Shape2String(const std::vector<uint32_t>& shape) {
 
   os << "]";
   return os.str();
+}
+
+uint32_t ShapeSize(const Shape& shape, size_t begin_idx, size_t end_idx) {
+  ORT_ENFORCE(begin_idx <= end_idx && begin_idx <= shape.size(),
+              "Invalid indices: begin [", begin_idx, "], end [", end_idx, "], shape size [", shape.size(), "]");
+  return std::accumulate(shape.begin() + begin_idx, shape.begin() + end_idx,
+                         SafeInt<uint32_t>{1}, std::multiplies<SafeInt<uint32_t>>{});
 }
 
 bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,

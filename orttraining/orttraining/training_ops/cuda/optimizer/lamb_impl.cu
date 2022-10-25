@@ -626,10 +626,10 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
   // thread count per block.
   constexpr int thread_count = ChunkGroup<4>::thread_count_per_block;
   // shared memory's size per block.
-  const int shared_memory_size = thread_count / GPU_WARP_SIZE * 2 * sizeof(TBuf);
+  const int shared_memory_size = thread_count / GPU_WARP_SIZE_HOST * 2 * sizeof(TBuf);
 
   // Enforce assumptions used inside this reduction CUDA kernel.
-  static_assert(thread_count % GPU_WARP_SIZE == 0, "thread_count must be a multiple of GPU_WARP_SIZE");
+  assert(thread_count % GPU_WARP_SIZE_HOST == 0);
   static_assert((thread_count & (thread_count - 1)) == 0, "thread_count must be a power of two");
 
   const int num_blocks = chunk_group.chunk_count;

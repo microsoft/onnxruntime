@@ -30,8 +30,8 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   std::vector<size_t> permutation(rank);
 
   // The "semantic" meaning of axis has changed in opset-13.
-  // Please compare: https://github.com/onnx/onnx/blob/master/docs/Operators.md#Hardmax
-  // with https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Hardmax-11 for detailed explanations
+  // Please compare: https://github.com/onnx/onnx/blob/main/docs/Operators.md#Hardmax
+  // with https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Hardmax-11 for detailed explanations
   // To account for the opset-13 behavior, our plan will be to transpose the "axis" dim to the innermost dim
   // and perform softmax and then reverse the transpose. We can skip the transposing aspect if the axis is already
   // the innermost dim
@@ -90,11 +90,11 @@ Status Hardmax<float>::Compute(OpKernelContext* ctx) const {
   float* Y_data = nullptr;
 
   if (is_transpose_required) {  // use intermediate buffers to compute the hardmax values
-    X_data = transposed_input.template Data<float>();
-    Y_data = intermediate_output.template MutableData<float>();
+    X_data = transposed_input.Data<float>();
+    Y_data = intermediate_output.MutableData<float>();
   } else {  // use the node input/output directly
-    X_data = X->template Data<float>();
-    Y_data = Y->template MutableData<float>();
+    X_data = X->Data<float>();
+    Y_data = Y->MutableData<float>();
   }
 
   math::RowwiseMax<float, CPUMathUtil>(N, D, X_data, rowmax_data, nullptr);

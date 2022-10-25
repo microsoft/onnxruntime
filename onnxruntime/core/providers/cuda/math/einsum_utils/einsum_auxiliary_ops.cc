@@ -24,8 +24,6 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
   ORT_ENFORCE(output.SizeInBytes() == input.SizeInBytes(),
               "Einsum op: The candidate output does not match the actual output's shape");
   // There are no string tensors in Einsum's case - so safely use memcpy
-  // TODO: Currently, triggers copy on stream 0, investigate if we can still do that
-  // *if* the kernel is launched in a different stream
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableDataRaw(), input.DataRaw(), input.SizeInBytes(),
                                        cudaMemcpyDeviceToDevice,
                                        static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream())));

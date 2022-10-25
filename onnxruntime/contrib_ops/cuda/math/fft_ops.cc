@@ -125,8 +125,8 @@ Status FFTBase<T>::DoFFT(OpKernelContext* context, const Tensor* X, bool complex
   int64_t output_size = std::accumulate(output_dims.begin(), output_dims.end(), 1ll, std::multiplies<int64_t>());
 
   Tensor* Y = const_cast<OpKernelContext*>(context)->Output(0, TensorShape(output_dims));
-  auto* x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
-  auto* y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+  auto* x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
+  auto* y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
   CUFFT_RETURN_IF_ERROR(cufftSetStream(plan_info.plan, Stream()));
   CUFFT_RETURN_IF_ERROR(cufftXtExec(plan_info.plan, const_cast<CudaT*>(x_data), y_data, inverse ? CUFFT_INVERSE : CUFFT_FORWARD));
 

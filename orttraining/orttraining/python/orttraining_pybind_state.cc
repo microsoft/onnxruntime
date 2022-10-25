@@ -8,6 +8,10 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
+#ifdef ENABLE_TRAINING_ON_DEVICE
+#include <google/protobuf/io/zero_copy_stream_impl.h>
+#endif
+
 #include "core/common/parse_string.h"
 #include "core/graph/model.h"
 #include "core/session/environment.h"
@@ -21,16 +25,18 @@
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "orttraining/core/graph/gradient_definition_registry.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
-
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
-
 #include "orttraining/python/orttraining_pybind_common.h"
+#include "orttraining/core/optimizer/graph_transformer_utils.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
 
-PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
+#ifdef ENABLE_TRAINING_ON_DEVICE
+#include "orttraining/training_api/include/checkpoint.h"
+
+#endif
+
 PYBIND11_MAKE_OPAQUE(onnxruntime::OrtValueCache);
 
 namespace onnxruntime {
@@ -141,7 +147,7 @@ struct PyGradientGraphBuilder {
 // TODO: this method does not handle parallel optimization.
 TrainingConfigurationResult ConfigureSessionForTraining(
     training::PipelineTrainingSession* sess, TrainingParameters& parameters) {
-  //TODO tix, refactor the mpi related code to populate all fields correctly by default.
+  // TODO tix, refactor the mpi related code to populate all fields correctly by default.
   ORT_ENFORCE(parameters.data_parallel_size <= parameters.world_size, "data_parallel_size: ", parameters.data_parallel_size, ", world_size: ", parameters.world_size);
   ORT_ENFORCE(parameters.horizontal_parallel_size <= parameters.world_size, "horizontal_parallel_size: ", parameters.horizontal_parallel_size, ", world_size: ", parameters.world_size);
   ORT_ENFORCE(parameters.pipeline_parallel_size <= parameters.world_size, "pipeline_parallel_size: ", parameters.pipeline_parallel_size, ", world_size: ", parameters.world_size);
@@ -357,112 +363,6 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
 }
 
 void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
-  py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
-      .def(py::init<>())
-      .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue) {
-        v->push_back(ortvalue);
-      })
-      .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
-        v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
-      })
-      .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
-      .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
-      .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
-      .def("__iter__", [](const std::vector<OrtValue>& v) {
-        return py::make_iterator(v.cbegin(), v.cend());
-       }, py::keep_alive<0, 1>())
-      .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
-        return v.at(idx);
-      })
-      .def("bool_tensor_indices", [](std::vector<OrtValue>* v) -> std::vector<int64_t> {
-         std::vector<int64_t> indices;
-         for (size_t i = 0; i < v->size(); ++i) {
-           if (GetTensorProtoType((*v)[i]) == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
-             indices.push_back(static_cast<int64_t>(i));
-           }
-         }
-         return indices;
-      }, "Returns the indices of every boolean tensor in this vector of OrtValue. "
-         "In case of a boolean tensor, method to_dlpacks returns a uint8 tensor instead of a boolean tensor. "
-         "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
-         "to get a boolean tensor.")
-      .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
-        return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
-      })
-      .def("element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t {
-        return GetTensorProtoType(v->at(idx));
-      }, "Returns an integer equal to the ONNX proto type of the tensor at position i. "
-         "This integer is one type defined by ONNX TensorProto_DataType "
-         "(such as onnx.TensorProto.FLOAT)."
-          "Raises an exception in any other case.")
-      .def("to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
-
-        if (v.size() == 0)
-          return py::list();
-
-        py::list list_dlpacks;
-        PyObject* obj;
-
-        py::gil_scoped_acquire acquire;
-
-        if (to_tensor.is_none()) {
-          DLManagedTensor* dlmanaged_tensor;
-
-          for (auto it : v) {
-            dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
-            py::capsule capsule(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-            list_dlpacks.append(capsule);
-          }
-        } else {
-          DLManagedTensor* dlmanaged_tensor;
-          PyObject* capsule = NULL;
-          PyObject* handle = to_tensor.ptr();
-
-          for (auto it : v) {
-            // A new instance of dlpack needs to be created. The object which consumes it
-            // is responsible for its deletion.
-            dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
-            if (capsule == NULL) {
-              capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", NULL);
-              if (capsule == NULL)
-                throw std::runtime_error("Unexpected error: empty capsule returned.");
-            } else {
-              // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
-              PyCapsule_SetName(capsule, "dltensor");
-              PyCapsule_SetPointer(capsule, dlmanaged_tensor);
-            }
-            obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
-            if (obj == NULL)
-              throw std::runtime_error("to_tensor returned a null pointer. This is usually caused by an error during the conversion.");
-            list_dlpacks.append(obj);
-            Py_DECREF(obj);
-          }
-          if (capsule != NULL) {
-            // This test is never wrong because v is not empty if the execution goes through that path.
-            // If not present, Guardian detects a potential failure.
-            Py_DECREF(capsule);
-          }
-        }
-        return list_dlpacks;
-       },
-       R"pbdoc(Converts all OrtValue into tensors through DLPack protocol, the method creates
-a DLPack structure for every tensors, then calls python function `to_tensor` to a new object
-consuming the DLPack structure or return a list of capsule if this function is None.
-
-:param to_tensor: this function takes a capsule holding a pointer onto a DLPack structure and returns
-    a new tensor which becomes the new owner of the data. This function takes one python object and
-    returns a new python object. It fits the same signature as `torch.utils.from_dlpack`,
-    if None, the method returns a capsule for every new DLPack structure.
-:return: a list containing the new tensors or a the new capsules if *to_tensor* is None
-
-This method is used to replace `tuple(torch._C._from_dlpack(ov.to_dlpack()) for ov in ort_values)`
-by a faster instruction `tuple(ort_values.to_dlpack(torch._C._from_dlpack))`. This loop
-is difficult to parallelize as it goes through the GIL many times.
-It creates many tensors acquiring ownership of existing OrtValue.
-This method saves one object creation and an C++ allocation
-for every transfered tensor.
-)pbdoc");
-
   py::class_<OrtValueCache, OrtValueCachePtr>(m, "OrtValueCache")
       .def(py::init<>())
       .def("insert", [](const OrtValueCachePtr& cache_ptr, std::string node_arg_name, OrtValue& value) {
@@ -555,16 +455,6 @@ for every transfered tensor.
   m.def("get_mpi_context_world_size", []() -> int { return MPIContext::GetInstance().GetWorldSize(); });
 #endif
 
-  m.def("register_aten_op_executor",
-        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
-          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
-          ORT_THROW_IF_ERROR(
-              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
-          ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
-          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
-          void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
-          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_tensor_argument, p_aten_op_executor);
-        });
   m.def("register_forward_runner", [](py::object obj) -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
@@ -595,6 +485,13 @@ for every transfered tensor.
     // Release all custom python functions registered.
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.UnRegisterFunctions();
+#endif
+  });
+  m.def("is_torch_interop_default_on", []() -> bool {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    return true;
+#else
+        return false;
 #endif
   });
 
@@ -672,7 +569,7 @@ for every transfered tensor.
         NameMLValMap state_tensors;
         ORT_THROW_IF_ERROR(static_cast<PipelineTrainingSession*>(sess->GetSessionHandle())->GetStateTensors(state_tensors));
         auto& data_transfer_manager = sess->GetSessionHandle()->GetDataTransferManager();
-        //convert to numpy array
+        // convert to numpy array
         std::map<std::string, py::object> rmap;
         for (auto& kv : state_tensors) {
           if (kv.second.IsTensor()) {
@@ -730,9 +627,10 @@ for every transfered tensor.
       .def(py::init([](PyInferenceSession* session, const std::vector<std::string>& fw_feed_names,
                        const std::vector<OrtDevice>& fw_outputs_device_info,
                        const std::vector<std::string>& bw_fetches_names,
-                       const std::vector<OrtDevice>& bw_outputs_device_info) {
+                       const std::vector<OrtDevice>& bw_outputs_device_info,
+                       int local_rank) {
         return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
-                                               bw_fetches_names, bw_outputs_device_info);
+                                               bw_fetches_names, bw_outputs_device_info, local_rank);
       }))
       .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state, OrtValueCachePtr cache) -> void {
         Status status = agent->RunForward(feeds, fetches, *state, cache);
@@ -841,13 +739,13 @@ for every transfered tensor.
               const std::vector<std::vector<int64_t>>& input_shapes) {
              ORT_THROW_IF_ERROR(ortmodule_graph_builder->Build(&input_shapes));
            })
-      .def("get_model",
+      .def("get_gradient_model",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
-             return py::bytes(ortmodule_graph_builder->GetModel());
+             return py::bytes(ortmodule_graph_builder->GetGradientModel());
            })
-      .def("get_inference_optimized_model",
+      .def("get_forward_model",
            [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
-             return py::bytes(ortmodule_graph_builder->GetInferenceOptimizedModel());
+             return py::bytes(ortmodule_graph_builder->GetForwardModel());
            })
       .def("get_graph_info", [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
         return ortmodule_graph_builder->GetGraphInfo();
@@ -862,28 +760,28 @@ for every transfered tensor.
                                           const std::unordered_set<std::string>& y_node_arg_names,
                                           const std::unordered_set<std::string>& x_node_arg_names,
                                           const std::string loss_node_arg_name) {
-        std::shared_ptr<Model> model;
-        auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
-        logger_ptr->SetSeverity(logging::Severity::kINFO);
-        ONNX_NAMESPACE::ModelProto model_proto;
-        std::istringstream model_istream(serialized_model);
-        ORT_THROW_IF_ERROR(Model::Load(model_istream, &model_proto));
-        ORT_THROW_IF_ERROR(Model::Load(model_proto, model, nullptr, *logger_ptr));
-        GradientGraphConfiguration gradient_graph_config{};
-        gradient_graph_config.set_gradients_as_graph_outputs = true;
-        // Save some objects, otherwise they get lost.
-        auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
+                          std::shared_ptr<Model> model;
+                          auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+                          logger_ptr->SetSeverity(logging::Severity::kINFO);
+                          ONNX_NAMESPACE::ModelProto model_proto;
+                          std::istringstream model_istream(serialized_model);
+                          ORT_THROW_IF_ERROR(Model::Load(model_istream, &model_proto));
+                          ORT_THROW_IF_ERROR(Model::Load(model_proto, model, nullptr, *logger_ptr));
+                          GradientGraphConfiguration gradient_graph_config{};
+                          gradient_graph_config.set_gradients_as_graph_outputs = true;
+                          // Save some objects, otherwise they get lost.
+                          auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
 
-        auto builder = std::make_unique<GradientGraphBuilder>(
-            &model->MainGraph(),
-            y_node_arg_names,
-            x_node_arg_names,
-            loss_node_arg_name,
-            *gradient_graph_config_ptr,
-            *logger_ptr);
+                          auto builder = std::make_unique<GradientGraphBuilder>(
+                              &model->MainGraph(),
+                              y_node_arg_names,
+                              x_node_arg_names,
+                              loss_node_arg_name,
+                              *gradient_graph_config_ptr,
+                              *logger_ptr);
 
-        return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model), std::move(logger_ptr), std::move(gradient_graph_config_ptr));
-      }))
+                          return std::make_unique<PyGradientGraphBuilder>(std::move(builder), std::move(model), std::move(logger_ptr), std::move(gradient_graph_config_ptr));
+                        }))
       .def("build", [](PyGradientGraphBuilder* gradient_graph_builder) {
         ORT_THROW_IF_ERROR(gradient_graph_builder->builder->Build());
       })
@@ -924,6 +822,168 @@ for every transfered tensor.
         [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);
         });
+#ifdef ENABLE_TRAINING_ON_DEVICE
+  // Python apis only supports CPU device for now.
+  // TODO(adamlouly) : Add support for CUDA device.
+  py::class_<onnxruntime::training::api::Module> training_module(m, "Module", R"pbdoc(Training Module.)pbdoc");
+  training_module
+      .def(py::init([](const std::string& model_uri,
+                       onnxruntime::training::api::CheckpointState& state,
+                       std::optional<std::string> eval_model_uri) {
+        onnxruntime::SessionOptions session_option;
+        return std::make_unique<onnxruntime::training::api::Module>(
+            model_uri,
+            state.module_checkpoint_state.named_parameters, session_option,
+            GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>(), eval_model_uri);
+      }))
+      .def("train_step",
+           [](onnxruntime::training::api::Module* model,
+              const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
+             ORT_THROW_IF_ERROR(model->TrainStep(user_inputs, user_outputs));
+           })
+      .def("eval_step",
+           [](onnxruntime::training::api::Module* model,
+              const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
+             ORT_THROW_IF_ERROR(model->EvalStep(user_inputs, user_outputs));
+           })
+      .def("reset_grad", [](onnxruntime::training::api::Module* model) -> void {
+        ORT_THROW_IF_ERROR(model->ResetGrad());
+      })
+      .def("copy_parameters_to_buffer", [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
+        ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output));
+      })
+      .def("copy_buffer_to_parameters", [](onnxruntime::training::api::Module* model, OrtValue& input) -> void {
+        ORT_THROW_IF_ERROR(model->CopyBufferToParameters(input));
+      })
+      .def("get_parameters_size", [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
+        return model->GetParametersSize(trainable_only);
+      })
+      .def("save_checkpoint", [](onnxruntime::training::api::Module* model, const std::string& checkpoint_path) -> void {
+        onnxruntime::training::api::CheckpointState state;
+        ORT_THROW_IF_ERROR(model->GetStateDict(state.module_checkpoint_state));
+        ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(state,
+                                                                      ToPathString(checkpoint_path)));
+      });
+
+  py::class_<onnxruntime::training::api::CheckpointState>
+      checkpoint_state(m, "CheckpointState", R"pbdoc(CheckpointState.)pbdoc");
+  checkpoint_state.def(py::init([](
+                                    const std::string& ckpt_uri) {
+    onnxruntime::training::api::CheckpointState state;
+    ORT_THROW_IF_ERROR(onnxruntime::training::api::LoadCheckpoint(ToPathString(ckpt_uri), state));
+    return state;
+  }));
+
+  py::class_<onnxruntime::training::api::Optimizer>
+      training_optimizer(m, "Optimizer", R"pbdoc(Training Optimizer.)pbdoc");
+  training_optimizer.def(py::init([](
+                                      const std::string optimizer_model_uri,
+                                      onnxruntime::training::api::Module* model) {
+                      onnxruntime::SessionOptions session_option;
+                      return std::make_unique<onnxruntime::training::api::Optimizer>(
+                          optimizer_model_uri,
+                          model->NamedParameters(), session_option,
+                          GetTrainingORTEnv(), std::vector<std::shared_ptr<IExecutionProvider>>());
+                    }))
+      .def("optimizer_step", [](onnxruntime::training::api::Optimizer* optimizer) -> void {
+        ORT_THROW_IF_ERROR(optimizer->Step());
+      });
+
+  m.def("save_checkpoint",
+        [](const std::vector<py::bytes>& trainable_tensor_protos_pybytes,
+           const std::vector<py::bytes>& non_trainable_tensor_protos_pybytes,
+           const std::string& checkpoint_path) {
+          std::vector<TensorProto> trainable_tensor_protos(trainable_tensor_protos_pybytes.size());
+          std::vector<TensorProto> non_trainable_tensor_protos(non_trainable_tensor_protos_pybytes.size());
+
+          auto parse_pybytes_to_tensor_proto =
+              [](const std::vector<py::bytes>& tensor_protos_pybytes, std::vector<TensorProto>& tensor_protos) {
+                for (size_t i = 0; i < tensor_protos_pybytes.size(); ++i) {
+                  std::istringstream tensor_proto_istream(tensor_protos_pybytes[i]);
+                  ORT_ENFORCE(tensor_proto_istream.good(), "Broken tensor proto istream to read.");
+                  google::protobuf::io::IstreamInputStream zero_copy_input(&tensor_proto_istream);
+                  const bool result =
+                      tensor_protos[i].ParseFromZeroCopyStream(&zero_copy_input) && tensor_proto_istream.eof();
+                  ORT_ENFORCE(result, "Parse tensor proto failed.");
+                }
+              };
+
+          parse_pybytes_to_tensor_proto(trainable_tensor_protos_pybytes, trainable_tensor_protos);
+          parse_pybytes_to_tensor_proto(non_trainable_tensor_protos_pybytes, non_trainable_tensor_protos);
+
+          ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(trainable_tensor_protos,
+                                                                        non_trainable_tensor_protos,
+                                                                        ToPathString(checkpoint_path)));
+        });
+  m.def("get_model_after_loading_checkpoint",
+        [](const std::string& checkpoint_path, const py::bytes& serialized_model) {
+          ONNX_NAMESPACE::ModelProto model_proto;
+
+          std::istringstream buffer(serialized_model);
+          ORT_THROW_IF_ERROR(Model::Load(buffer, &model_proto));
+          ORT_THROW_IF_ERROR(
+              onnxruntime::training::api::LoadCheckpointToModel(ToPathString(checkpoint_path), model_proto));
+
+          std::string model_proto_str;
+          ORT_ENFORCE(model_proto.SerializeToString(&model_proto_str), "Serializing Model failed.");
+
+          return py::bytes(model_proto_str);
+        });
+
+  m.def("get_optimized_model",
+        [](const py::bytes& serialized_model,
+           const std::unordered_set<std::string>& graph_entities_that_require_gradients) {
+          // Load the serialized model
+          std::istringstream buffer(serialized_model);
+          ONNX_NAMESPACE::ModelProto model_proto;
+          ORT_THROW_IF_ERROR(Model::Load(buffer, &model_proto));
+
+          // Get the ort model from ModelProto model
+          auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+          logger_ptr->SetSeverity(logging::Severity::kINFO);
+          std::shared_ptr<onnxruntime::Model> ort_model;
+          ORT_THROW_IF_ERROR(Model::Load(model_proto, ort_model, nullptr, *logger_ptr));
+
+          Graph& graph = ort_model->MainGraph();
+          ORT_THROW_IF_ERROR(graph.Resolve());
+
+          // Register the pretraining graph transformations so that they are run twice
+          constexpr size_t NumSteps = 2;
+          GraphTransformerManager graph_transformation_mgr{NumSteps};
+          std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
+              std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+
+          const auto add_transformers = [&cpu_execution_provider,
+                                         &graph_transformation_mgr,
+                                         &graph_entities_that_require_gradients](TransformerLevel level) {
+            auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
+                level, graph_entities_that_require_gradients, TrainingGraphTransformerConfiguration(),
+                *cpu_execution_provider);
+            for (auto& entry : transformers_to_register) {
+              ORT_THROW_IF_ERROR(graph_transformation_mgr.Register(std::move(entry), level));
+            }
+            return Status::OK();
+          };
+
+          for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+            TransformerLevel level = static_cast<TransformerLevel>(i);
+            if (TransformerLevel::MaxLevel >= level) {
+              ORT_THROW_IF_ERROR(add_transformers(level));
+            }
+          }
+
+          // Run the graph transformations
+          for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
+            ORT_THROW_IF_ERROR(
+                graph_transformation_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *logger_ptr));
+          }
+
+          // Return the optimized model.
+          std::string model_str;
+          ort_model->ToProto().SerializeToString(&model_str);
+          return py::bytes(model_str);
+        });
+#endif
 }
 
 }  // namespace python

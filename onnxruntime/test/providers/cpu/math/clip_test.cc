@@ -22,7 +22,7 @@ TEST(MathOpTest, Clip_6) {
                         {10.0f, 4.4f, 10.0f,
                          -1.3f, 3.5f, 10.0f,
                          -5.4f, 9.3f, 10.0f});
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32)
+#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32) || defined(OPENVINO_CONFIG_CPU_FP16)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   test.Run();

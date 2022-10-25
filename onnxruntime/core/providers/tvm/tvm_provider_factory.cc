@@ -8,8 +8,8 @@
 #include "core/session/abi_session_options_impl.h"
 
 #include "tvm_execution_provider.h"
+#include "tvm_provider_factory_creator.h"
 #include "tvm_so_execution_provider.h"  // NOLINT(build/include_subdir)
-
 
 namespace onnxruntime {
 
@@ -30,16 +30,16 @@ struct TvmProviderFactory : IExecutionProviderFactory {
     return provider;
   }
 
-private:
+ private:
   tvm::TvmEPOptions options_;
 };
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* opt_str) {
+std::shared_ptr<IExecutionProviderFactory> TVMProviderFactoryCreator::Create(const char* opt_str) {
   tvm::TvmEPOptions options = tvm::TvmEPOptionsHelper::FromOptionsString(opt_str);
   return std::make_shared<TvmProviderFactory>(options);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& options) {
+std::shared_ptr<IExecutionProviderFactory> TVMProviderFactoryCreator::Create(const tvm::TvmEPOptions& options) {
   return std::make_shared<TvmProviderFactory>(options);
 }
 }  // namespace onnxruntime
@@ -48,6 +48,6 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tvm,
                     _In_ OrtSessionOptions* options,
                     _In_ const char* opt_str) {
   onnxruntime::tvm::TvmEPOptions tvm_options = onnxruntime::tvm::TvmEPOptionsHelper::FromOptionsString(opt_str);
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Tvm(tvm_options));
+  options->provider_factories.push_back(onnxruntime::TVMProviderFactoryCreator::Create(tvm_options));
   return nullptr;
 }

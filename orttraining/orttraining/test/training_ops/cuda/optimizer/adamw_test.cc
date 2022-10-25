@@ -5,13 +5,13 @@
 
 #include "nlohmann/json.hpp"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 #include "orttraining/test/training_ops/cuda/optimizer/common.h"
 
 namespace onnxruntime {
 namespace test {
 namespace optimizer {
 
-#if USE_CUDA
 using json = nlohmann::json;
 namespace {
 
@@ -27,7 +27,7 @@ constexpr const char* kMomentum2Name = "Momentum2s";
 // value: weight dicts.
 typedef std::unordered_map<std::string, WeightDictType> TestDataDictType;
 
-#define ADAM_TEST_DATA_FOLDER ORT_TSTR("testdata/test_data_generation/adamw_test/")
+const PathString ADAM_TEST_DATA_FOLDER = ORT_TSTR("testdata/test_data_generation/adamw_test/");
 
 void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_iteration, bool* update_signal = nullptr) {
   size_t total_step = 10;
@@ -43,52 +43,65 @@ void TorchAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_ite
     momentum2_tolerance.second = 1e-6f;
   }
 
-  auto data_uri = ADAM_TEST_DATA_FOLDER "adamw_test_single_weight_mode_0.json";
-  std::ifstream in{data_uri};
+  std::vector<std::pair<const ORTCHAR_T*, std::unique_ptr<IExecutionProvider>>> testdata_ep_pair_vector;
+  testdata_ep_pair_vector.push_back(std::make_pair(
+      ORT_TSTR("cpu/adamw_test_single_weight_mode_0.json"),
+      DefaultCpuExecutionProvider()));
+#if USE_CUDA
+  testdata_ep_pair_vector.push_back(std::make_pair(
+      ORT_TSTR("cuda/adamw_test_single_weight_mode_0.json"),
+      DefaultCudaExecutionProvider()));
+#endif
 
-  TestDataDictType test_data;
-  const json j = json::parse(in);
-  j.get_to<TestDataDictType>(test_data);
+  for (auto it = testdata_ep_pair_vector.begin(); it != testdata_ep_pair_vector.end(); ++it) {
+    const PathString data_uri = ADAM_TEST_DATA_FOLDER + it->first;
+    std::ifstream in{data_uri};
 
-  // 11 steps of weight values before applying optimization.
-  WeightDictType& named_weights = test_data[kParamName];
+    TestDataDictType test_data;
+    const json j = json::parse(in);
+    j.get_to<TestDataDictType>(test_data);
 
-  // 10 steps of gradient values used to apply optimization.
-  WeightDictType& named_gradients = test_data[kGradientName];
+    // 11 steps of weight values before applying optimization.
+    WeightDictType& named_weights = test_data[kParamName];
 
-  // 11 steps of momentum1 values before applying optimization.
-  WeightDictType& named_momentum1s = test_data[kMomentum1Name];
+    // 10 steps of gradient values used to apply optimization.
+    WeightDictType& named_gradients = test_data[kGradientName];
 
-  // 11 steps of momentum2 values before applying optimization.
-  WeightDictType& named_momentum2s = test_data[kMomentum2Name];
+    // 11 steps of momentum1 values before applying optimization.
+    WeightDictType& named_momentum1s = test_data[kMomentum1Name];
 
-  ASSERT_EQ(named_weights.size(), 1);
-  ASSERT_EQ(named_gradients.size(), 1);
-  ASSERT_EQ(named_momentum1s.size(), 1);
-  ASSERT_EQ(named_momentum2s.size(), 1);
+    // 11 steps of momentum2 values before applying optimization.
+    WeightDictType& named_momentum2s = test_data[kMomentum2Name];
 
-  ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
-  ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
-  ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
-  ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_weights.size(), 1);
+    ASSERT_EQ(named_gradients.size(), 1);
+    ASSERT_EQ(named_momentum1s.size(), 1);
+    ASSERT_EQ(named_momentum2s.size(), 1);
 
-  std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
-      {{"fc1.weight", {2, 3}}};
+    ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
+    ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
 
-  AdamWTestLoop(use_baseline_inputs_for_each_iteration, total_step, lr,
-                static_cast<float>(0.9f),    // alpha
-                static_cast<float>(0.999f),  // beta
-                static_cast<float>(1e-8f),   // epsilon
-                static_cast<float>(1e-2f),   // weight_decay
-                static_cast<int64_t>(0),     // adam_mode
-                static_cast<int64_t>(1),     // correct_bias
-                named_weights, named_gradients,
-                named_momentum1s, named_momentum2s,
-                weight_name_shape_mapping,
-                weight_tolerance,
-                momentum1_tolerance,
-                momentum2_tolerance,
-                update_signal);
+    std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
+        {{"fc1.weight", {2, 3}}};
+
+    AdamWTestLoop(std::move(it->second),
+                  use_baseline_inputs_for_each_iteration, total_step, lr,
+                  static_cast<float>(0.9f),    // alpha
+                  static_cast<float>(0.999f),  // beta
+                  static_cast<float>(1e-8f),   // epsilon
+                  static_cast<float>(1e-2f),   // weight_decay
+                  static_cast<int64_t>(0),     // adam_mode
+                  static_cast<int64_t>(1),     // correct_bias
+                  named_weights, named_gradients,
+                  named_momentum1s, named_momentum2s,
+                  weight_name_shape_mapping,
+                  weight_tolerance,
+                  momentum1_tolerance,
+                  momentum2_tolerance,
+                  update_signal);
+  }
 }
 
 TEST(AdamWTest, TorchAdamWSingleWeightTest_Loop10Steps) {
@@ -119,52 +132,66 @@ void TorchAdamWMultipleWeightsTestLoop10Steps(bool use_baseline_inputs_for_each_
     momentum2_tolerance.second = 1e-6f;
   }
 
-  auto data_uri = ADAM_TEST_DATA_FOLDER "adamw_test_multiple_weights_mode_0.json";
-  std::ifstream in{data_uri};
+  std::vector<std::pair<const ORTCHAR_T*, std::unique_ptr<IExecutionProvider>>> testdata_ep_pair_vector;
+  testdata_ep_pair_vector.push_back(std::make_pair(
+      ORT_TSTR("cpu/adamw_test_multiple_weights_mode_0.json"),
+      DefaultCpuExecutionProvider()));
+#if USE_CUDA
+  testdata_ep_pair_vector.push_back(std::make_pair(
+      ORT_TSTR("cuda/adamw_test_multiple_weights_mode_0.json"),
+      DefaultCudaExecutionProvider()));
+#endif
 
-  TestDataDictType test_data;
-  const json j = json::parse(in);
-  j.get_to<TestDataDictType>(test_data);
+  for (auto it = testdata_ep_pair_vector.begin(); it != testdata_ep_pair_vector.end(); ++it) {
+    const PathString data_uri = ADAM_TEST_DATA_FOLDER + it->first;
 
-  // 11 steps of weight values before applying optimization.
-  WeightDictType& named_weights = test_data[kParamName];
+    std::ifstream in{data_uri};
 
-  // 10 steps of gradient values used to apply optimization.
-  WeightDictType& named_gradients = test_data[kGradientName];
+    TestDataDictType test_data;
+    const json j = json::parse(in);
+    j.get_to<TestDataDictType>(test_data);
 
-  // 11 steps of momentum1 values before applying optimization.
-  WeightDictType& named_momentum1s = test_data[kMomentum1Name];
+    // 11 steps of weight values before applying optimization.
+    WeightDictType& named_weights = test_data[kParamName];
 
-  // 11 steps of momentum2 values before applying optimization.
-  WeightDictType& named_momentum2s = test_data[kMomentum2Name];
+    // 10 steps of gradient values used to apply optimization.
+    WeightDictType& named_gradients = test_data[kGradientName];
 
-  ASSERT_EQ(named_weights.size(), 4);
-  ASSERT_EQ(named_gradients.size(), 4);
-  ASSERT_EQ(named_momentum1s.size(), 4);
-  ASSERT_EQ(named_momentum2s.size(), 4);
+    // 11 steps of momentum1 values before applying optimization.
+    WeightDictType& named_momentum1s = test_data[kMomentum1Name];
 
-  ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
-  ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
-  ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
-  ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
+    // 11 steps of momentum2 values before applying optimization.
+    WeightDictType& named_momentum2s = test_data[kMomentum2Name];
 
-  std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
-      {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
+    ASSERT_EQ(named_weights.size(), 4);
+    ASSERT_EQ(named_gradients.size(), 4);
+    ASSERT_EQ(named_momentum1s.size(), 4);
+    ASSERT_EQ(named_momentum2s.size(), 4);
 
-  AdamWTestLoop(use_baseline_inputs_for_each_iteration, total_step, lr,
-                static_cast<float>(0.9f),    // alpha
-                static_cast<float>(0.999f),  // beta
-                static_cast<float>(1e-8f),   // epsilon
-                static_cast<float>(1e-2f),   // weight_decay
-                static_cast<int64_t>(0),     // adam_mode
-                static_cast<int64_t>(1),     // correct_bias
-                named_weights, named_gradients,
-                named_momentum1s, named_momentum2s,
-                weight_name_shape_mapping,
-                weight_tolerance,
-                momentum1_tolerance,
-                momentum2_tolerance,
-                update_signal);
+    ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
+    ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
+
+    std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
+        {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
+
+    AdamWTestLoop(std::move(it->second),
+                  use_baseline_inputs_for_each_iteration, total_step, lr,
+                  static_cast<float>(0.9f),    // alpha
+                  static_cast<float>(0.999f),  // beta
+                  static_cast<float>(1e-8f),   // epsilon
+                  static_cast<float>(1e-2f),   // weight_decay
+                  static_cast<int64_t>(0),     // adam_mode
+                  static_cast<int64_t>(1),     // correct_bias
+                  named_weights, named_gradients,
+                  named_momentum1s, named_momentum2s,
+                  weight_name_shape_mapping,
+                  weight_tolerance,
+                  momentum1_tolerance,
+                  momentum2_tolerance,
+                  update_signal);
+  }
 }
 
 TEST(AdamWTest, TorchAdamWMultipleWeightsTest_Loop10Steps) {
@@ -188,51 +215,64 @@ void HFAdamWSingleWeightTestLoop10Steps(bool use_baseline_inputs_for_each_iterat
   std::pair<float, float> momentum1_tolerance{1e-3f, 1e-6f};
   std::pair<float, float> momentum2_tolerance{1e-2f, 1e-7f};
 
-  auto data_uri = ADAM_TEST_DATA_FOLDER "adamw_test_single_weight_mode_1.json";
-  std::ifstream in{data_uri};
+  std::vector<std::pair<const ORTCHAR_T*, std::unique_ptr<IExecutionProvider>>> testdata_ep_pair_vector;
+  testdata_ep_pair_vector.push_back(std::make_pair(
+      ORT_TSTR("cpu/adamw_test_single_weight_mode_1.json"),
+      DefaultCpuExecutionProvider()));
+#if USE_CUDA
+  testdata_ep_pair_vector.push_back(std::make_pair(
+      ORT_TSTR("cuda/adamw_test_single_weight_mode_1.json"),
+      DefaultCudaExecutionProvider()));
+#endif
 
-  TestDataDictType test_data;
-  const json j = json::parse(in);
-  j.get_to<TestDataDictType>(test_data);
+  for (auto it = testdata_ep_pair_vector.begin(); it != testdata_ep_pair_vector.end(); ++it) {
+    const PathString data_uri = ADAM_TEST_DATA_FOLDER + it->first;
+    std::ifstream in{data_uri};
 
-  // 11 steps of weight values before applying optimization.
-  WeightDictType& named_weights = test_data[kParamName];
+    TestDataDictType test_data;
+    const json j = json::parse(in);
+    j.get_to<TestDataDictType>(test_data);
 
-  // 10 steps of gradient values used to apply optimization.
-  WeightDictType& named_gradients = test_data[kGradientName];
+    // 11 steps of weight values before applying optimization.
+    WeightDictType& named_weights = test_data[kParamName];
 
-  // 11 steps of momentum1 values before applying optimization.
-  WeightDictType& named_momentum1s = test_data[kMomentum1Name];
+    // 10 steps of gradient values used to apply optimization.
+    WeightDictType& named_gradients = test_data[kGradientName];
 
-  // 11 steps of momentum2 values before applying optimization.
-  WeightDictType& named_momentum2s = test_data[kMomentum2Name];
+    // 11 steps of momentum1 values before applying optimization.
+    WeightDictType& named_momentum1s = test_data[kMomentum1Name];
 
-  ASSERT_EQ(named_weights.size(), 1);
-  ASSERT_EQ(named_gradients.size(), 1);
-  ASSERT_EQ(named_momentum1s.size(), 1);
-  ASSERT_EQ(named_momentum2s.size(), 1);
+    // 11 steps of momentum2 values before applying optimization.
+    WeightDictType& named_momentum2s = test_data[kMomentum2Name];
 
-  ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
-  ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
-  ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
-  ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_weights.size(), 1);
+    ASSERT_EQ(named_gradients.size(), 1);
+    ASSERT_EQ(named_momentum1s.size(), 1);
+    ASSERT_EQ(named_momentum2s.size(), 1);
 
-  std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
-      {{"fc1.weight", {2, 3}}};
+    ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
+    ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
 
-  AdamWTestLoop(use_baseline_inputs_for_each_iteration, total_step, lr,
-                static_cast<float>(0.9f),    // alpha
-                static_cast<float>(0.999f),  // beta
-                static_cast<float>(1e-6f),   // epsilon
-                static_cast<float>(0.0f),    // weight_decay
-                static_cast<int64_t>(1),     // adam_mode
-                static_cast<int64_t>(1),     // correct_bias
-                named_weights, named_gradients,
-                named_momentum1s, named_momentum2s,
-                weight_name_shape_mapping,
-                weight_tolerance,
-                momentum1_tolerance,
-                momentum2_tolerance);
+    std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
+        {{"fc1.weight", {2, 3}}};
+
+    AdamWTestLoop(std::move(it->second),
+                  use_baseline_inputs_for_each_iteration, total_step, lr,
+                  static_cast<float>(0.9f),    // alpha
+                  static_cast<float>(0.999f),  // beta
+                  static_cast<float>(1e-6f),   // epsilon
+                  static_cast<float>(0.0f),    // weight_decay
+                  static_cast<int64_t>(1),     // adam_mode
+                  static_cast<int64_t>(1),     // correct_bias
+                  named_weights, named_gradients,
+                  named_momentum1s, named_momentum2s,
+                  weight_name_shape_mapping,
+                  weight_tolerance,
+                  momentum1_tolerance,
+                  momentum2_tolerance);
+  }
 }
 
 TEST(AdamWTest, HFAdamWSingleWeightTest_Loop10Steps) {
@@ -257,51 +297,65 @@ void HFAdamWMultipleWeightsTestLoop10Steps(
     momentum2_tolerance.first = 1e-3f;
     momentum2_tolerance.second = 1e-6f;
   }
-  auto data_uri = ADAM_TEST_DATA_FOLDER "adamw_test_multiple_weights_mode_1.json";
-  std::ifstream in{data_uri};
 
-  TestDataDictType test_data;
-  const json j = json::parse(in);
-  j.get_to<TestDataDictType>(test_data);
+  std::vector<std::pair<const ORTCHAR_T*, std::unique_ptr<IExecutionProvider>>> testdata_ep_pair_vector;
+  testdata_ep_pair_vector.push_back(std::make_pair(
+      ORT_TSTR("cpu/adamw_test_multiple_weights_mode_1.json"),
+      DefaultCpuExecutionProvider()));
+#if USE_CUDA
+  testdata_ep_pair_vector.push_back(std::make_pair(
+      ORT_TSTR("cuda/adamw_test_multiple_weights_mode_1.json"),
+      DefaultCudaExecutionProvider()));
+#endif
 
-  // 11 steps of weight values before applying optimization.
-  WeightDictType& named_weights = test_data[kParamName];
+  for (auto it = testdata_ep_pair_vector.begin(); it != testdata_ep_pair_vector.end(); ++it) {
+    const PathString data_uri = ADAM_TEST_DATA_FOLDER + it->first;
+    std::ifstream in{data_uri};
 
-  // 10 steps of gradient values used to apply optimization.
-  WeightDictType& named_gradients = test_data[kGradientName];
+    TestDataDictType test_data;
+    const json j = json::parse(in);
+    j.get_to<TestDataDictType>(test_data);
 
-  // 11 steps of momentum1 values before applying optimization.
-  WeightDictType& named_momentum1s = test_data[kMomentum1Name];
+    // 11 steps of weight values before applying optimization.
+    WeightDictType& named_weights = test_data[kParamName];
 
-  // 11 steps of momentum2 values before applying optimization.
-  WeightDictType& named_momentum2s = test_data[kMomentum2Name];
+    // 10 steps of gradient values used to apply optimization.
+    WeightDictType& named_gradients = test_data[kGradientName];
 
-  ASSERT_EQ(named_weights.size(), 4);
-  ASSERT_EQ(named_gradients.size(), 4);
-  ASSERT_EQ(named_momentum1s.size(), 4);
-  ASSERT_EQ(named_momentum2s.size(), 4);
+    // 11 steps of momentum1 values before applying optimization.
+    WeightDictType& named_momentum1s = test_data[kMomentum1Name];
 
-  ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
-  ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
-  ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
-  ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
+    // 11 steps of momentum2 values before applying optimization.
+    WeightDictType& named_momentum2s = test_data[kMomentum2Name];
 
-  std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
-      {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
+    ASSERT_EQ(named_weights.size(), 4);
+    ASSERT_EQ(named_gradients.size(), 4);
+    ASSERT_EQ(named_momentum1s.size(), 4);
+    ASSERT_EQ(named_momentum2s.size(), 4);
 
-  AdamWTestLoop(use_baseline_inputs_for_each_iteration, total_step, lr,
-                static_cast<float>(0.9f),    // alpha
-                static_cast<float>(0.999f),  // beta
-                static_cast<float>(1e-6f),   // epsilon
-                static_cast<float>(0.0f),    // weight_decay
-                static_cast<int64_t>(1),     // adam_mode
-                static_cast<int64_t>(1),     // correct_bias
-                named_weights, named_gradients,
-                named_momentum1s, named_momentum2s,
-                weight_name_shape_mapping,
-                weight_tolerance,
-                momentum1_tolerance,
-                momentum2_tolerance);
+    ASSERT_EQ(named_weights["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_gradients["fc1.weight"].size(), total_step);
+    ASSERT_EQ(named_momentum1s["fc1.weight"].size(), total_step + 1);
+    ASSERT_EQ(named_momentum2s["fc1.weight"].size(), total_step + 1);
+
+    std::unordered_map<std::string, VectorInt64> weight_name_shape_mapping =
+        {{"fc1.weight", {2, 3}}, {"fc1.bias", {3}}, {"fc2.weight", {3, 2}}, {"fc2.bias", {2}}};
+
+    AdamWTestLoop(std::move(it->second),
+                  use_baseline_inputs_for_each_iteration, total_step, lr,
+                  static_cast<float>(0.9f),    // alpha
+                  static_cast<float>(0.999f),  // beta
+                  static_cast<float>(1e-6f),   // epsilon
+                  static_cast<float>(0.0f),    // weight_decay
+                  static_cast<int64_t>(1),     // adam_mode
+                  static_cast<int64_t>(1),     // correct_bias
+                  named_weights, named_gradients,
+                  named_momentum1s, named_momentum2s,
+                  weight_name_shape_mapping,
+                  weight_tolerance,
+                  momentum1_tolerance,
+                  momentum2_tolerance);
+  }
 }
 
 TEST(AdamWTest, HFAdamWMultipleWeightsTest_Loop10Steps) {
@@ -313,8 +367,6 @@ TEST(AdamWTest, HFAdamWMultipleWeightsStrictTest_Loop10Steps) {
 }
 
 }  // namespace
-
-#endif  // USE_CUDA
 
 }  // namespace optimizer
 }  // namespace test

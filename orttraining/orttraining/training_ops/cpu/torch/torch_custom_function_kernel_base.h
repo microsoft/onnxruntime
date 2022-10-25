@@ -84,7 +84,6 @@ class PythonOpBase {
 
   // Output types of MyReLU.apply(...).
   std::vector<int64_t> output_tensor_types_;
-  std::vector<int64_t> output_tensor_requires_grads_;
 
  private:
   void AddIntScalarArgs();

@@ -43,12 +43,13 @@ Abstract:
 
 #include "mlasi.h"
 
+extern "C" {
+
 #if defined(MLAS_TARGET_ARM64)
 
-template<bool IsFixedPoint>
 void
 MLASCALL
-MlasConvSymDepthwiseKernelSize25ArmU8S8Impl(
+MlasConvSymDepthwiseKernelSize25ArmU8S8(
     void const* const* InputIndirection,
     int8_t const* Filter,
     size_t Channels,
@@ -63,44 +64,10 @@ MlasConvSymDepthwiseKernelSize25ArmU8S8Impl(
     const uint8x16_t vu128 = vdupq_n_u8(128);
     const int16x8_t voutput_zero_point = vld1q_dup_s16((int16_t const*)&PostProcessParams->OutputZeroPoint);
     float32x4_t vscale_0123, vscale_4567, vscale_89AB, vscale_CDEF;
-    int32x4_t vpreshift_0123, vpreshift_4567, vpreshift_89AB, vpreshift_CDEF;
-    int32x4_t vmultiplier_0123, vmultiplier_4567, vmultiplier_89AB, vmultiplier_CDEF;
-    int32x4_t vpostshift_0123, vpostshift_4567, vpostshift_89AB, vpostshift_CDEF;
     const bool is_per_channel = ((KernelFlags & MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE) != 0);
-
     // Init them anyway due to some compiler will generate uninitialized warnings.
-    if constexpr (IsFixedPoint) {
-
-        vpreshift_0123 = vpreshift_4567 = vpreshift_89AB = vpreshift_CDEF = vld1q_dup_s32(PostProcessParams->PreShift);
-        vmultiplier_0123 = vmultiplier_4567 = vmultiplier_89AB = vmultiplier_CDEF = vld1q_dup_s32(PostProcessParams->Multiplier);
-        vpostshift_0123 = vpostshift_4567 = vpostshift_89AB = vpostshift_CDEF = vld1q_dup_s32(PostProcessParams->PostShift);
-
-        MLAS_UNREFERENCED_PARAMETER(vscale_0123);
-        MLAS_UNREFERENCED_PARAMETER(vscale_4567);
-        MLAS_UNREFERENCED_PARAMETER(vscale_89AB);
-        MLAS_UNREFERENCED_PARAMETER(vscale_CDEF);
-
-    } else {
-
-        vscale_0123 = vscale_4567 = vscale_89AB = vscale_CDEF = vld1q_dup_f32(PostProcessParams->Scale);
-
-        MLAS_UNREFERENCED_PARAMETER(vpreshift_0123);
-        MLAS_UNREFERENCED_PARAMETER(vpreshift_4567);
-        MLAS_UNREFERENCED_PARAMETER(vpreshift_89AB);
-        MLAS_UNREFERENCED_PARAMETER(vpreshift_CDEF);
-        MLAS_UNREFERENCED_PARAMETER(vmultiplier_0123);
-        MLAS_UNREFERENCED_PARAMETER(vmultiplier_4567);
-        MLAS_UNREFERENCED_PARAMETER(vmultiplier_89AB);
-        MLAS_UNREFERENCED_PARAMETER(vmultiplier_CDEF);
-        MLAS_UNREFERENCED_PARAMETER(vpostshift_0123);
-        MLAS_UNREFERENCED_PARAMETER(vpostshift_4567);
-        MLAS_UNREFERENCED_PARAMETER(vpostshift_89AB);
-        MLAS_UNREFERENCED_PARAMETER(vpostshift_CDEF);
-
-    }
-
+    vscale_0123 = vscale_4567 = vscale_89AB = vscale_CDEF = vld1q_dup_f32(PostProcessParams->Scale);
     while (OutputCount-- > 0) {
-
         const uint8_t* i00 = IndirectBuf[0];
         const uint8_t* i01 = IndirectBuf[1];
         const uint8_t* i02 = IndirectBuf[2];
@@ -132,11 +99,7 @@ MlasConvSymDepthwiseKernelSize25ArmU8S8Impl(
         IndirectBuf += 25;
         int32_t const* bias = PostProcessParams->Bias;
         float const* scale = PostProcessParams->Scale;
-        int32_t const* preshift = PostProcessParams->PreShift;
-        int32_t const* multiplier = PostProcessParams->Multiplier;
-        int32_t const* postshift = PostProcessParams->PostShift;
         for (size_t c = 0; c < Channels; c += 16) {
-
             int8_t const* w = Filter + c;
             int32x4_t vacc_0123 = vld1q_s32(bias); bias += 4;
             int32x4_t vacc_4567 = vld1q_s32(bias); bias += 4;
@@ -346,50 +309,18 @@ MlasConvSymDepthwiseKernelSize25ArmU8S8Impl(
             vacc_89AB = vaddw_s16(vacc_89AB, vget_low_s16(vprod_89ABCDEF));
             vacc_CDEF = vaddw_s16(vacc_CDEF, vget_high_s16(vprod_89ABCDEF));
 
-            if constexpr (IsFixedPoint) {
-
-                if (is_per_channel) {
-
-                    vpreshift_0123 = vld1q_s32(preshift); preshift += 4;
-                    vpreshift_4567 = vld1q_s32(preshift); preshift += 4;
-                    vpreshift_89AB = vld1q_s32(preshift); preshift += 4;
-                    vpreshift_CDEF = vld1q_s32(preshift); preshift += 4;
-
-                    vmultiplier_0123 = vld1q_s32(multiplier); multiplier += 4;
-                    vmultiplier_4567 = vld1q_s32(multiplier); multiplier += 4;
-                    vmultiplier_89AB = vld1q_s32(multiplier); multiplier += 4;
-                    vmultiplier_CDEF = vld1q_s32(multiplier); multiplier += 4;
-
-                    vpostshift_0123 = vld1q_s32(postshift); postshift += 4;
-                    vpostshift_4567 = vld1q_s32(postshift); postshift += 4;
-                    vpostshift_89AB = vld1q_s32(postshift); postshift += 4;
-                    vpostshift_CDEF = vld1q_s32(postshift); postshift += 4;
-
-                }
-
-                vacc_0123 = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_0123, vpreshift_0123), vmultiplier_0123), vpostshift_0123);
-                vacc_4567 = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_4567, vpreshift_4567), vmultiplier_4567), vpostshift_4567);
-                vacc_89AB = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_89AB, vpreshift_89AB), vmultiplier_89AB), vpostshift_89AB);
-                vacc_CDEF = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_CDEF, vpreshift_CDEF), vmultiplier_CDEF), vpostshift_CDEF);
-
-            } else {
-
-                if (is_per_channel) {
-
-                    vscale_0123 = vld1q_f32(scale); scale += 4;
-                    vscale_4567 = vld1q_f32(scale); scale += 4;
-                    vscale_89AB = vld1q_f32(scale); scale += 4;
-                    vscale_CDEF = vld1q_f32(scale); scale += 4;
-
-                }
-
-                // requantize
-                vacc_0123 = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_0123), vscale_0123));
-                vacc_4567 = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_4567), vscale_4567));
-                vacc_89AB = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_89AB), vscale_89AB));
-                vacc_CDEF = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_CDEF), vscale_CDEF));
-
+            if (is_per_channel) {
+                vscale_0123 = vld1q_f32(scale); scale += 4;
+                vscale_4567 = vld1q_f32(scale); scale += 4;
+                vscale_89AB = vld1q_f32(scale); scale += 4;
+                vscale_CDEF = vld1q_f32(scale); scale += 4;
             }
+
+            // requantize
+            vacc_0123 = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_0123), vscale_0123));
+            vacc_4567 = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_4567), vscale_4567));
+            vacc_89AB = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_89AB), vscale_89AB));
+            vacc_CDEF = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_CDEF), vscale_CDEF));
 
             const int16x8_t vacc_01234567 = vqaddq_s16(vqmovn_high_s32(vqmovn_s32(vacc_0123), vacc_4567), voutput_zero_point);
             const int16x8_t vacc_89ABCDEF = vqaddq_s16(vqmovn_high_s32(vqmovn_s32(vacc_89AB), vacc_CDEF), voutput_zero_point);
@@ -401,11 +332,9 @@ MlasConvSymDepthwiseKernelSize25ArmU8S8Impl(
     }
 }
 
-
-template<bool IsFixedPoint>
 void
 MLASCALL
-MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
+MlasConvSymDepthwiseKernelSize25ArmS8S8(
     void const* const* InputIndirection,
     int8_t const* Filter,
     size_t Channels,
@@ -420,43 +349,10 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
     const int16x8_t voutput_zero_point =
         vld1q_dup_s16((int16_t const*)&PostProcessParams->OutputZeroPoint);
     float32x4_t vscale_0123, vscale_4567, vscale_89AB, vscale_CDEF;
-    int32x4_t vpreshift_0123, vpreshift_4567, vpreshift_89AB, vpreshift_CDEF;
-    int32x4_t vmultiplier_0123, vmultiplier_4567, vmultiplier_89AB, vmultiplier_CDEF;
-    int32x4_t vpostshift_0123, vpostshift_4567, vpostshift_89AB, vpostshift_CDEF;
     const bool is_per_channel = ((KernelFlags & MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE) != 0);
     // Init them anyway due to some compiler will generate uninitialized warnings.
-    if constexpr (IsFixedPoint) {
-
-        vpreshift_0123 = vpreshift_4567 = vpreshift_89AB = vpreshift_CDEF = vld1q_dup_s32(PostProcessParams->PreShift);
-        vmultiplier_0123 = vmultiplier_4567 = vmultiplier_89AB = vmultiplier_CDEF = vld1q_dup_s32(PostProcessParams->Multiplier);
-        vpostshift_0123 = vpostshift_4567 = vpostshift_89AB = vpostshift_CDEF = vld1q_dup_s32(PostProcessParams->PostShift);
-
-        MLAS_UNREFERENCED_PARAMETER(vscale_0123);
-        MLAS_UNREFERENCED_PARAMETER(vscale_4567);
-        MLAS_UNREFERENCED_PARAMETER(vscale_89AB);
-        MLAS_UNREFERENCED_PARAMETER(vscale_CDEF);
-
-    } else {
-
-        vscale_0123 = vscale_4567 = vscale_89AB = vscale_CDEF = vld1q_dup_f32(PostProcessParams->Scale);
-
-        MLAS_UNREFERENCED_PARAMETER(vpreshift_0123);
-        MLAS_UNREFERENCED_PARAMETER(vpreshift_4567);
-        MLAS_UNREFERENCED_PARAMETER(vpreshift_89AB);
-        MLAS_UNREFERENCED_PARAMETER(vpreshift_CDEF);
-        MLAS_UNREFERENCED_PARAMETER(vmultiplier_0123);
-        MLAS_UNREFERENCED_PARAMETER(vmultiplier_4567);
-        MLAS_UNREFERENCED_PARAMETER(vmultiplier_89AB);
-        MLAS_UNREFERENCED_PARAMETER(vmultiplier_CDEF);
-        MLAS_UNREFERENCED_PARAMETER(vpostshift_0123);
-        MLAS_UNREFERENCED_PARAMETER(vpostshift_4567);
-        MLAS_UNREFERENCED_PARAMETER(vpostshift_89AB);
-        MLAS_UNREFERENCED_PARAMETER(vpostshift_CDEF);
-
-    }
-
+    vscale_0123 = vscale_4567 = vscale_89AB = vscale_CDEF = vld1q_dup_f32(PostProcessParams->Scale);
     while (OutputCount-- > 0) {
-
         const int8_t* i00 = IndirectBuf[0];
         const int8_t* i01 = IndirectBuf[1];
         const int8_t* i02 = IndirectBuf[2];
@@ -487,12 +383,8 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
 
         IndirectBuf += 25;
         int32_t const* bias = PostProcessParams->Bias;
-        const float* scale = PostProcessParams->Scale;
-        const int32_t* preshift = PostProcessParams->PreShift;
-        const int32_t* multiplier = PostProcessParams->Multiplier;
-        const int32_t* postshift = PostProcessParams->PostShift;
+        float const* scale = PostProcessParams->Scale;
         for (size_t c = 0; c < Channels; c += 16) {
-
             int8_t const* w = Filter + c;
             int32x4_t vacc_0123 = vld1q_s32(bias); bias += 4;
             int32x4_t vacc_4567 = vld1q_s32(bias); bias += 4;
@@ -702,50 +594,18 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
             vacc_89AB = vaddw_s16(vacc_89AB, vget_low_s16(vprod_89ABCDEF));
             vacc_CDEF = vaddw_s16(vacc_CDEF, vget_high_s16(vprod_89ABCDEF));
 
-            if constexpr (IsFixedPoint) {
-
-                if (is_per_channel) {
-
-                    vpreshift_0123 = vld1q_s32(preshift); preshift += 4;
-                    vpreshift_4567 = vld1q_s32(preshift); preshift += 4;
-                    vpreshift_89AB = vld1q_s32(preshift); preshift += 4;
-                    vpreshift_CDEF = vld1q_s32(preshift); preshift += 4;
-
-                    vmultiplier_0123 = vld1q_s32(multiplier); multiplier += 4;
-                    vmultiplier_4567 = vld1q_s32(multiplier); multiplier += 4;
-                    vmultiplier_89AB = vld1q_s32(multiplier); multiplier += 4;
-                    vmultiplier_CDEF = vld1q_s32(multiplier); multiplier += 4;
-
-                    vpostshift_0123 = vld1q_s32(postshift); postshift += 4;
-                    vpostshift_4567 = vld1q_s32(postshift); postshift += 4;
-                    vpostshift_89AB = vld1q_s32(postshift); postshift += 4;
-                    vpostshift_CDEF = vld1q_s32(postshift); postshift += 4;
-
-                }
-
-                vacc_0123 = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_0123, vpreshift_0123), vmultiplier_0123), vpostshift_0123);
-                vacc_4567 = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_4567, vpreshift_4567), vmultiplier_4567), vpostshift_4567);
-                vacc_89AB = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_89AB, vpreshift_89AB), vmultiplier_89AB), vpostshift_89AB);
-                vacc_CDEF = vrshlq_s32(vqdmulhq_s32(vqshlq_s32(vacc_CDEF, vpreshift_CDEF), vmultiplier_CDEF), vpostshift_CDEF);
-
-            } else {
-
-                if (is_per_channel) {
-
-                    vscale_0123 = vld1q_f32(scale); scale += 4;
-                    vscale_4567 = vld1q_f32(scale); scale += 4;
-                    vscale_89AB = vld1q_f32(scale); scale += 4;
-                    vscale_CDEF = vld1q_f32(scale); scale += 4;
-
-                }
-
-                // requantize
-                vacc_0123 = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_0123), vscale_0123));
-                vacc_4567 = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_4567), vscale_4567));
-                vacc_89AB = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_89AB), vscale_89AB));
-                vacc_CDEF = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_CDEF), vscale_CDEF));
-
+            if (is_per_channel) {
+                vscale_0123 = vld1q_f32(scale); scale += 4;
+                vscale_4567 = vld1q_f32(scale); scale += 4;
+                vscale_89AB = vld1q_f32(scale); scale += 4;
+                vscale_CDEF = vld1q_f32(scale); scale += 4;
             }
+
+            // requantize
+            vacc_0123 = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_0123), vscale_0123));
+            vacc_4567 = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_4567), vscale_4567));
+            vacc_89AB = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_89AB), vscale_89AB));
+            vacc_CDEF = vcvtnq_s32_f32(vmulq_f32(vcvtq_f32_s32(vacc_CDEF), vscale_CDEF));
 
             const int16x8_t vacc_01234567 = vqaddq_s16(vqmovn_high_s32(vqmovn_s32(vacc_0123), vacc_4567), voutput_zero_point);
             const int16x8_t vacc_89ABCDEF = vqaddq_s16(vqmovn_high_s32(vqmovn_s32(vacc_89AB), vacc_CDEF), voutput_zero_point);
@@ -757,72 +617,5 @@ MlasConvSymDepthwiseKernelSize25ArmS8S8Impl(
     }
 }
 
-extern "C" {
-
-void
-MLASCALL
-MlasConvSymDepthwiseKernelSize25ArmU8S8(
-    void const* const* InputIndirection,
-    int8_t const* Filter,
-    size_t Channels,
-    void* Output,
-    size_t OutputCount,
-    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
-    unsigned KernelFlags
-    )
-{
-    if((KernelFlags & MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE) != 0) {
-        MlasConvSymDepthwiseKernelSize25ArmU8S8Impl<true>(
-            InputIndirection,
-            Filter,
-            Channels,
-            Output,
-            OutputCount,
-            PostProcessParams,
-            KernelFlags);
-    } else {
-        MlasConvSymDepthwiseKernelSize25ArmU8S8Impl<false>(
-            InputIndirection,
-            Filter,
-            Channels,
-            Output,
-            OutputCount,
-            PostProcessParams,
-            KernelFlags);
-    }
-}
-
-void
-MLASCALL
-MlasConvSymDepthwiseKernelSize25ArmS8S8(
-    void const* const* InputIndirection,
-    int8_t const* Filter,
-    size_t Channels,
-    void* Output,
-    size_t OutputCount,
-    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
-    unsigned KernelFlags
-    ) {
-    if((KernelFlags & MLAS_CONV_SYM_FLAG_FIXED_POINT_SCALE) != 0) {
-        MlasConvSymDepthwiseKernelSize25ArmS8S8Impl<true>(
-            InputIndirection,
-            Filter,
-            Channels,
-            Output,
-            OutputCount,
-            PostProcessParams,
-            KernelFlags);
-    } else {
-        MlasConvSymDepthwiseKernelSize25ArmS8S8Impl<false>(
-            InputIndirection,
-            Filter,
-            Channels,
-            Output,
-            OutputCount,
-            PostProcessParams,
-            KernelFlags);
-    }
-}
-
-}
 #endif
+}

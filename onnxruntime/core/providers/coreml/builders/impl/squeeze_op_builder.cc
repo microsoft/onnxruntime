@@ -4,6 +4,8 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/optimizer/initializer.h"
+
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
@@ -47,14 +49,11 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     if (node.InputDefs().size() > 1) {
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(node.InputDefs()[1]->Name());
-      std::vector<uint8_t> unpacked_tensor;
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axes_tensor, unpacked_tensor));
-      const int64_t* raw_axes = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
+      Initializer unpacked_tensor(axes_tensor);
+      auto raw_axes = unpacked_tensor.DataAsSpan<int64_t>();
       const auto size = SafeInt<size_t>(axes_tensor.dims()[0]);
-      axes.resize(size);
-      for (size_t i = 0; i < size; i++) {
-        axes[i] = raw_axes[i];
-      }
+      axes.reserve(size);
+      axes.insert(axes.end(), raw_axes.begin(), raw_axes.end());
     }
   } else {
     NodeAttrHelper helper(node);

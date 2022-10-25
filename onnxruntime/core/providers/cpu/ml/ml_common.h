@@ -375,7 +375,7 @@ static void write_scores(InlinedVector<IT>& scores, POST_EVAL_TRANSFORM post_tra
 template <typename T>
 static void write_scores(InlinedVector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
                          int add_second_class) {
-  T* out_p = Z->template MutableData<T>() + write_index;
+  T* out_p = Z->MutableData<T>() + write_index;
   size_t len;
   if (!IAllocator::CalcMemSizeForArray(scores.size(), sizeof(T), &len)) {
     ORT_THROW("length overflow");

@@ -60,10 +60,10 @@ class Gelu : public OpKernel {
 
   Status Compute(OpKernelContext* context) const override {
     const Tensor* input = context->Input<Tensor>(0);
-    const T* input_data = input->template Data<T>();
+    const T* input_data = input->Data<T>();
 
     Tensor* output = context->Output(0, input->Shape());
-    T* output_data = output->template MutableData<T>();
+    T* output_data = output->MutableData<T>();
 
     concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
     int64_t elem_count = input->Shape().Size();

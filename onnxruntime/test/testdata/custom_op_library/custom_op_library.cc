@@ -8,6 +8,8 @@
 #include <cmath>
 #include <mutex>
 
+#include "core/common/common.h"
+
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
 template <typename T1, typename T2, typename T3>
@@ -16,109 +18,62 @@ void cuda_add(int64_t, T3*, const T1*, const T2*, cudaStream_t compute_stream);
 
 static const char* c_OpDomain = "test.customop";
 
-struct OrtCustomOpDomainDeleter {
-  explicit OrtCustomOpDomainDeleter(const OrtApi* ort_api) {
-    ort_api_ = ort_api;
-  }
-  void operator()(OrtCustomOpDomain* domain) const {
-    ort_api_->ReleaseCustomOpDomain(domain);
-  }
-
-  const OrtApi* ort_api_;
-};
-
-using OrtCustomOpDomainUniquePtr = std::unique_ptr<OrtCustomOpDomain, OrtCustomOpDomainDeleter>;
-static std::vector<OrtCustomOpDomainUniquePtr> ort_custom_op_domain_container;
-static std::mutex ort_custom_op_domain_mutex;
-
-static void AddOrtCustomOpDomainToContainer(OrtCustomOpDomain* domain, const OrtApi* ort_api) {
-  std::lock_guard<std::mutex> lock(ort_custom_op_domain_mutex);
-  auto ptr = std::unique_ptr<OrtCustomOpDomain, OrtCustomOpDomainDeleter>(domain, OrtCustomOpDomainDeleter(ort_api));
-  ort_custom_op_domain_container.push_back(std::move(ptr));
-}
-
-struct OrtTensorDimensions : std::vector<int64_t> {
-  OrtTensorDimensions(Ort::CustomOpApi ort, const OrtValue* value) {
-    OrtTensorTypeAndShapeInfo* info = ort.GetTensorTypeAndShape(value);
-    std::vector<int64_t>::operator=(ort.GetTensorShape(info));
-    ort.ReleaseTensorTypeAndShapeInfo(info);
-  }
-};
-
 struct KernelOne {
-  KernelOne(OrtApi api)
-      : api_(api),
-        ort_(api_) {
-  }
 
   void Compute(OrtKernelContext* context) {
     // Setup inputs
-    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
-    const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
-    const float* X = ort_.GetTensorData<float>(input_X);
-    const float* Y = ort_.GetTensorData<float>(input_Y);
+    Ort::KernelContext ctx(context);
+    auto input_X = ctx.GetInput(0);
+    auto input_Y = ctx.GetInput(1);
+    const float* X = input_X.GetTensorData<float>();
+    const float* Y = input_Y.GetTensorData<float>();
 
     // Setup output
-    OrtTensorDimensions dimensions(ort_, input_X);
+    auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
 
-    OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
-    float* out = ort_.GetTensorMutableData<float>(output);
+    auto output = ctx.GetOutput(0, dimensions);
+    float* out = output.GetTensorMutableData<float>();
 
-    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
-    int64_t size = ort_.GetTensorShapeElementCount(output_info);
-    ort_.ReleaseTensorTypeAndShapeInfo(output_info);
+    const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
 
     // Do computation
 #ifdef USE_CUDA
-    cudaStream_t stream = reinterpret_cast<cudaStream_t>(ort_.KernelContext_GetGPUComputeStream(context));
+    cudaStream_t stream = reinterpret_cast<cudaStream_t>(ctx.GetGPUComputeStream());
     cuda_add(size, out, X, Y, stream);
 #else
-    for (int64_t i = 0; i < size; i++) {
+    for (size_t i = 0; i < size; i++) {
       out[i] = X[i] + Y[i];
     }
 #endif
   }
-
- private:
-  OrtApi api_;  // keep a copy of the struct, whose ref is used in the ort_
-  Ort::CustomOpApi ort_;
 };
 
 struct KernelTwo {
-  KernelTwo(OrtApi api)
-      : api_(api),
-        ort_(api_) {
-  }
 
   void Compute(OrtKernelContext* context) {
     // Setup inputs
-    const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
-    const float* X = ort_.GetTensorData<float>(input_X);
+    Ort::KernelContext ctx(context);
+    auto input_X = ctx.GetInput(0);
+    const float* X = input_X.GetTensorData<float>();
 
     // Setup output
-    OrtTensorDimensions dimensions(ort_, input_X);
+    auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
 
-    OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
-    int32_t* out = ort_.GetTensorMutableData<int32_t>(output);
+    auto output = ctx.GetOutput(0, dimensions);
+    int32_t* out = output.GetTensorMutableData<int32_t>();
 
-    OrtTensorTypeAndShapeInfo* output_info = ort_.GetTensorTypeAndShape(output);
-    int64_t size = ort_.GetTensorShapeElementCount(output_info);
-    ort_.ReleaseTensorTypeAndShapeInfo(output_info);
+    const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
 
     // Do computation
-    for (int64_t i = 0; i < size; i++) {
-      out[i] = (int32_t)(round(X[i]));
+    for (size_t i = 0; i < size; i++) {
+      out[i] = static_cast<int32_t>(round(X[i]));
     }
   }
-
- private:
-  OrtApi api_;  // keep a copy of the struct, whose ref is used in the ort_
-  Ort::CustomOpApi ort_;
 };
 
 struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
-    return new KernelOne(api);
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* /* info */) const {
+    return new KernelOne();
   };
 
   const char* GetName() const { return "CustomOpOne"; };
@@ -133,11 +88,11 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
 
-} c_CustomOpOne;
+};
 
 struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
-  void* CreateKernel(OrtApi api, const OrtKernelInfo* /* info */) const {
-    return new KernelTwo(api);
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* /* info */) const {
+    return new KernelTwo();
   };
 
   const char* GetName() const { return "CustomOpTwo"; };
@@ -148,25 +103,36 @@ struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
   size_t GetOutputTypeCount() const { return 1; };
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; };
 
-} c_CustomOpTwo;
+};
+
+static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
+  static std::vector<Ort::CustomOpDomain> ort_custom_op_domain_container;
+  static std::mutex ort_custom_op_domain_mutex;
+  std::lock_guard<std::mutex> lock(ort_custom_op_domain_mutex);
+  ort_custom_op_domain_container.push_back(std::move(domain));
+}
 
 OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api) {
-  OrtCustomOpDomain* domain = nullptr;
-  const OrtApi* ortApi = api->GetApi(ORT_API_VERSION);
+  Ort::Global<void>::api_ = api->GetApi(ORT_API_VERSION);
+  
+  static const CustomOpOne c_CustomOpOne;
+  static const CustomOpTwo c_CustomOpTwo;
+  
+  OrtStatus* result = nullptr;
+  
+  ORT_TRY {
+    Ort::CustomOpDomain domain{c_OpDomain};
+    domain.Add(&c_CustomOpOne);
+    domain.Add(&c_CustomOpTwo);
 
-  if (auto status = ortApi->CreateCustomOpDomain(c_OpDomain, &domain)) {
-    return status;
+    Ort::UnownedSessionOptions session_options(options);
+    session_options.Add(domain);
+    AddOrtCustomOpDomainToContainer(std::move(domain));
+  } ORT_CATCH (const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      Ort::Status status{e};
+      result = status.release();
+    });
   }
-
-  AddOrtCustomOpDomainToContainer(domain, ortApi);
-
-  if (auto status = ortApi->CustomOpDomain_Add(domain, &c_CustomOpOne)) {
-    return status;
-  }
-
-  if (auto status = ortApi->CustomOpDomain_Add(domain, &c_CustomOpTwo)) {
-    return status;
-  }
-
-  return ortApi->AddCustomOpDomain(options, domain);
+  return result;
 }

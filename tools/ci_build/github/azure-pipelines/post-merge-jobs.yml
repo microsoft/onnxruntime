@@ -53,7 +53,7 @@ jobs:
     value: true
   dependsOn:
   - CodeCoverage
-  condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   steps:
   - checkout: self
     submodules: false

@@ -25,16 +25,13 @@ limitations under the License.
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
-#include "longformer_attention_softmax.h"
-#include "attention_impl.h"
+#include "contrib_ops/cuda/bert/longformer_attention_softmax.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
 
-#define CHECK(expr)         \
-  if (!CUBLAS_CALL(expr)) { \
-    return false;           \
-  }
+#define CHECK(expr) CUBLAS_RETURN_IF_ERROR(expr)
 
 namespace onnxruntime {
 namespace contrib {
@@ -191,7 +188,7 @@ __launch_bounds__(blockSize)
 }
 
 // Launch the softmax kernel for non compact memory.
-bool LaunchLongformerSoftmaxSimpleKernel(
+Status LaunchLongformerSoftmaxSimpleKernel(
     cudaStream_t stream,
     cublasHandle_t cublas,
     void* workspace,              // softmax space
@@ -270,8 +267,9 @@ bool LaunchLongformerSoftmaxSimpleKernel(
   // The results are stored in scratch1.
 
   int w = attention_window;
-  int x_offset = num_heads * sequence_length * head_size;
-  int y_offset = num_heads * sequence_length * sequence_length;
+  size_t x_offset = static_cast<size_t>(num_heads) * sequence_length * head_size;
+  // Use size_t to avoid integer overflow since B x N x S x S is 12G for B=64, N=12, S=4096
+  size_t y_offset = static_cast<size_t>(num_heads) * sequence_length * sequence_length;
   int last_block = (sequence_length / w) - 1;
   int strideA = sequence_length * head_size;
   int strideB = sequence_length * head_size;
@@ -308,10 +306,11 @@ bool LaunchLongformerSoftmaxSimpleKernel(
   } else {  // sequence_length > 2 * w
     for (int i = 0; i < batch_size; ++i) {
       for (int j = 0; j < num_heads; ++j) {
-        const void* q_head = reinterpret_cast<const char*>(q) + \
+        const void* q_head = reinterpret_cast<const char*>(q) +
                              (i * x_offset + j * sequence_length * head_size + w * head_size) * element_size;
-        const void* k_head = reinterpret_cast<const char*>(k) + (i * x_offset + j * sequence_length * head_size) * element_size;
-        void* qk_head = reinterpret_cast<char*>(scratch1) + \
+        const void* k_head = reinterpret_cast<const char*>(k) +
+                             (i * x_offset + j * sequence_length * head_size) * element_size;
+        void* qk_head = reinterpret_cast<char*>(scratch1) +
                         (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
         int count = (sequence_length - 2 * w) / w;
         CHECK(cublasGemmStridedBatchedEx(cublas,
@@ -366,7 +365,7 @@ bool LaunchLongformerSoftmaxSimpleKernel(
 
     const void* q_head = reinterpret_cast<const char*>(q) + (last_block * w * head_size) * element_size;
     const void* k_head = reinterpret_cast<const char*>(k) + ((last_block - 1) * w * head_size) * element_size;
-    void* qk_head = reinterpret_cast<char*>(scratch1) + \
+    void* qk_head = reinterpret_cast<char*>(scratch1) +
                     (last_block * w * sequence_length + (last_block - 1) * w) * element_size;
     CHECK(cublasGemmStridedBatchedEx(cublas,
                                      CUBLAS_OP_T,
@@ -425,7 +424,7 @@ bool LaunchLongformerSoftmaxSimpleKernel(
                                        resultType,
                                        algo));
 
-      const void* global_q_batch = reinterpret_cast<const char*>(global_q) + \
+      const void* global_q_batch = reinterpret_cast<const char*>(global_q) +
                                    (i * num_heads * sequence_length * head_size) * element_size;
       const void* global_k_batch = reinterpret_cast<const char*>(global_k) + (i * x_offset) * element_size;
       int strideB_global = sequence_length * head_size;
@@ -516,11 +515,11 @@ bool LaunchLongformerSoftmaxSimpleKernel(
   } else {  // sequence_length > 2 * w
     for (int i = 0; i < batch_size; ++i) {
       for (int j = 0; j < num_heads; ++j) {
-        const void* v_head = reinterpret_cast<const char*>(v) + \
+        const void* v_head = reinterpret_cast<const char*>(v) +
                              (i * x_offset + j * head_size * sequence_length) * element_size;
-        const void* prob_head = reinterpret_cast<const char*>(softmax_out) + \
-                            (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
-        void* out_head = reinterpret_cast<char*>(output) + \
+        size_t offset = (i * y_offset + j * sequence_length * sequence_length + w * sequence_length) * element_size;
+        const void* prob_head = reinterpret_cast<const char*>(softmax_out) + offset;
+        void* out_head = reinterpret_cast<char*>(output) +
                          (i * x_offset + j * head_size * sequence_length + w * head_size) * element_size;
         int count = (sequence_length - 2 * w) / w;
         CHECK(cublasGemmStridedBatchedEx(cublas,
@@ -574,7 +573,7 @@ bool LaunchLongformerSoftmaxSimpleKernel(
                                      algo));
 
     const void* v_head = reinterpret_cast<const char*>(v) + (last_block - 1) * w * head_size * element_size;
-    const void* prob_head = reinterpret_cast<const char*>(softmax_out) + \
+    const void* prob_head = reinterpret_cast<const char*>(softmax_out) +
                             (sequence_length * last_block * w + (last_block - 1) * w) * element_size;
     void* out_head = reinterpret_cast<char*>(output) + last_block * w * head_size * element_size;
 
@@ -608,7 +607,7 @@ bool LaunchLongformerSoftmaxSimpleKernel(
       int glob_longdim_mm = (last_block - 1) * w;
 
       const void* v_head = reinterpret_cast<const char*>(v) + (i * x_offset) * element_size;
-      const void* prob_head = reinterpret_cast<const char*>(softmax_out) + \
+      const void* prob_head = reinterpret_cast<const char*>(softmax_out) +
                               (i * y_offset + 2 * w * sequence_length) * element_size;
       void* out_head = reinterpret_cast<char*>(output) + (i * x_offset + 2 * w * head_size) * element_size;
 
@@ -667,7 +666,7 @@ bool LaunchLongformerSoftmaxSimpleKernel(
     }
   }
 
-  return true;
+  return Status::OK();
 }
 
 }  // namespace cuda

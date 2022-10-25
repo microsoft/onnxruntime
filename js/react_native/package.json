@@ -25,7 +25,7 @@
     "pod-install": "^0.1.36",
     "prettier": "^2.6.2",
     "react": "^18.1.0",
-    "react-native": "^0.68.2",
+    "react-native": "^0.69.1",
     "react-native-builder-bob": "^0.18.2",
     "typescript": "^4.5.5"
   },
@@ -38,9 +38,9 @@
     "registry": "https://registry.npmjs.org/"
   },
   "source": "lib/index",
-  "version": "1.12.0",
+  "version": "1.14.0",
   "main": "dist/commonjs/index",
-  "homepage": "https://github.com/Microsoft/onnxruntime/js/react_native#readme",
+  "homepage": "https://github.com/microsoft/onnxruntime/blob/main/js/react_native/README.md",
   "files": [
     "lib",
     "dist",
@@ -60,7 +60,7 @@
     "!android/gradle/wrapper/*.jar",
     "!android/libs"
   ],
-  "description": "Onnxruntime bridge for react native",
+  "description": "ONNX Runtime bridge for react native",
   "repository": "https://github.com/Microsoft/onnxruntime.git",
   "react-native-builder-bob": {
     "source": "lib",

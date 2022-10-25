@@ -42,6 +42,7 @@ struct RunConfig {
   size_t duration_in_seconds{600};
   size_t concurrent_session_runs{1};
   bool f_dump_statistics{false};
+  int random_seed_for_input_data{-1};
   bool f_verbose{false};
   bool enable_memory_pattern{true};
   bool enable_cpu_mem_arena{true};
@@ -54,7 +55,6 @@ struct RunConfig {
   int cudnn_conv_algo{0};
   bool do_cuda_copy_in_separate_stream{false};
   bool set_denormal_as_zero{false};
-  bool use_fixed_point_requant{false};
   std::basic_string<ORTCHAR_T> ep_runtime_config_string;
   std::map<std::basic_string<ORTCHAR_T>, int64_t> free_dim_name_overrides;
   std::map<std::basic_string<ORTCHAR_T>, int64_t> free_dim_denotation_overrides;

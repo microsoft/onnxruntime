@@ -33,8 +33,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST_ALL_OPSETS(
 
 namespace {
 // reduce the supported types with any global or op specific lists
-using DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                 Transpose, Input, 0);
 using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                         Transpose, Input, 0);
 }  // namespace
@@ -292,8 +290,8 @@ static Status DoUntypedTranspose(const gsl::span<const size_t>& permutations, co
     constexpr bool string_enabled = utils::HasType<EnabledDataTypes, std::string>();
 
     if (string_enabled) {
-      const auto* input_data = input.template Data<std::string>();
-      auto* output_data = output.template MutableData<std::string>();
+      const auto* input_data = input.Data<std::string>();
+      auto* output_data = output.MutableData<std::string>();
       if (1 == prefix_blocksize) {
         DoTransposeSingleBlock(suffix_blocksize, input_data, output_data);
       } else if (1 == suffix_blocksize) {
@@ -418,13 +416,13 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     1,
     12,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
     Transpose);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Transpose,
     13,
-    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
     Transpose);
 
 }  // namespace onnxruntime

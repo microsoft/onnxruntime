@@ -8,8 +8,11 @@
 # - check_overflow_for_grads : https://github.com/NVIDIA/Megatron-LM/blob/5ac5571ba0265af4c491ee0af1508ca7589450c6/megatron/optimizer/optimizer.py#L341
 # --------------------------------------------------------------------------
 
+import warnings
+
 import torch
 from numpy import inf
+
 from ._multi_tensor_apply import MultiTensorApply
 
 multi_tensor_applier = MultiTensorApply(2048 * 32)
@@ -32,12 +35,16 @@ class FP16OptimizerModifier(object):
             if require_torch_non_finite_check is True:
                 _ = torch._amp_foreach_non_finite_check_and_unscale_
         except Exception as _:
+            warnings.warn("Skip modifying optimizer because of Apex or torch_non_finite_check not found.", UserWarning)
             return False
 
         if required_funcs:
             for func_name in required_funcs:
                 func = getattr(self._optimizer, func_name, None)
                 if not func or not callable(func):
+                    warnings.warn(
+                        "Skip modifying optimizer because of specific function not found in optimizer.", UserWarning
+                    )
                     return False
         return True
 
@@ -61,7 +68,7 @@ def check_overflow_for_grads(grad_data):
 def clip_grad_norm_fp32(
     parameters, max_norm, norm_type, get_horizontal_model_parallel_rank=None, get_horizontal_model_parallel_group=None
 ):
-    import amp_C
+    from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
 
     horizontal_model_parallel_grad_norm_aggregation = False
     if get_horizontal_model_parallel_rank and get_horizontal_model_parallel_group:
@@ -115,7 +122,10 @@ def clip_grad_norm_fp32(
             # Multi-tensor applier takes a function and a list of list
             # and performs the operation on that list all in one kernel.
             grad_norm, _ = multi_tensor_applier(
-                amp_C.multi_tensor_l2norm, dummy_overflow_buf, [grads_for_norm], False  # no per-parameter norm
+                fused_ops.multi_tensor_l2norm,
+                dummy_overflow_buf,
+                [fused_ops.TorchTensorVector(grads_for_norm)],
+                False,  # no per-parameter norm
             )
 
             if not horizontal_model_parallel_grad_norm_aggregation:
@@ -140,6 +150,7 @@ def clip_grad_norm_fp32(
         # Filter parameters with gradients.
         grads = [p.grad for p in parameters if p.grad is not None]
         if clip_coef < 1.0:
-            multi_tensor_applier(amp_C.multi_tensor_scale, dummy_overflow_buf, [grads, grads], clip_coef)
+            grads_vec = fused_ops.TorchTensorVector(grads)
+            multi_tensor_applier(fused_ops.multi_tensor_scale, dummy_overflow_buf, [grads_vec, grads_vec], clip_coef)
 
     return total_norm

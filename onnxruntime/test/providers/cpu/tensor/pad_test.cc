@@ -12,29 +12,33 @@ template <typename T, int opset>
 static void RunOnnxOpsetTypedTest(
     const std::vector<int64_t>& input_dims,
     const std::vector<T>& input,
-    const std::vector<int64_t>& pads,
-    T value,
+    const std::vector<int64_t>& pads, bool pads_is_initializer,
+    T value, bool value_is_initializer,
     const std::vector<int64_t>& output_dims,
     const std::vector<T>& output,
     std::string mode = "constant",
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
     const std::string& error_msg = "",
     const std::unordered_set<std::string>& excluded_provider_types = {}) {
+  SCOPED_TRACE(MakeString("opset: ", opset,
+                          ", pads_is_initializer: ", pads_is_initializer,
+                          ", value_is_initializer: ", value_is_initializer));
+
   // ONNX domain opset
   OpTester test("Pad", opset);
   if (mode != "constant")
     test.AddAttribute("mode", mode);
   test.AddInput<T>("data", input_dims, input);
   if constexpr (opset >= 11) {
-    test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
-    test.AddInput<T>("value", {1}, {value});
+    test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, pads_is_initializer);
+    test.AddInput<T>("value", {}, {value}, value_is_initializer);
   } else {
     test.AddAttribute("pads", pads);
     test.AddAttribute("value", static_cast<float>(value));
   }
   test.AddOutput<T>("output", output_dims, output);
   std::unordered_set<std::string> provider_types(excluded_provider_types.begin(), excluded_provider_types.end());
-  if (std::is_same<T, int8_t>::value) {
+  if constexpr (std::is_same_v<T, int8_t>) {
     provider_types.insert(kTensorrtExecutionProvider);
   }
   SessionOptions so;
@@ -64,113 +68,64 @@ static void RunAllOpsetAllDomainPadTests(
     OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
     const std::string& error_msg = "",
     const std::unordered_set<std::string>& excluded_provider_types = {}) {
-  // Test opset-11 and opset-13 kernels of Pad
-  RunOnnxOpsetTypedTest<T, 11>(input_dims,
-                               input,
-                               pads,
-                               value,
-                               output_dims,
-                               output,
-                               mode, expect, error_msg, excluded_provider_types);
-
-  RunOnnxOpsetTypedTest<T, 13>(input_dims,
-                               input,
-                               pads,
-                               value,
-                               output_dims,
-                               output,
-                               mode, expect, error_msg, excluded_provider_types);
-}
-
-template <>
-void RunAllOpsetAllDomainPadTests<>(
-    const std::vector<int64_t>& input_dims,
-    const std::vector<double>& input,
-    const std::vector<int64_t>& pads,
-    double value,
-    const std::vector<int64_t>& output_dims,
-    const std::vector<double>& output,
-    std::string mode,
-    OpTester::ExpectResult expect,
-    const std::string& error_msg,
-    const std::unordered_set<std::string>& excluded_provider_types) {
-  // Test opset-10, opset-11 and opset-13 kernels of Pad (for double type)
-  RunOnnxOpsetTypedTest<double, 10>(input_dims,
-                                    input,
-                                    pads,
-                                    value,
-                                    output_dims,
-                                    output,
-                                    mode, expect, error_msg, excluded_provider_types);
-
-  RunOnnxOpsetTypedTest<double, 11>(input_dims,
-                                    input,
-                                    pads,
-                                    value,
-                                    output_dims,
-                                    output,
-                                    mode, expect, error_msg, excluded_provider_types);
-
-  RunOnnxOpsetTypedTest<double, 13>(input_dims,
-                                    input,
-                                    pads,
-                                    value,
-                                    output_dims,
-                                    output,
-                                    mode, expect, error_msg, excluded_provider_types);
-}
-
-// There is only support for float type for MSDomain kernel in ORT
-template <>
-void RunAllOpsetAllDomainPadTests<>(
-    const std::vector<int64_t>& input_dims,
-    const std::vector<float>& input,
-    const std::vector<int64_t>& pads,
-    float value,
-    const std::vector<int64_t>& output_dims,
-    const std::vector<float>& output,
-    std::string mode,
-    OpTester::ExpectResult expect,
-    const std::string& error_msg,
-    const std::unordered_set<std::string>& excluded_provider_types) {
-  // Test opset-10, opset-11 and opset-13 kernels of Pad (for float type)
-  RunOnnxOpsetTypedTest<float, 10>(input_dims,
+  struct TestParams {
+    bool pads_is_initializer;
+    bool value_is_initializer;
+  };
+  const std::vector<TestParams> all_test_params {
+    {false, false},
+#if defined(USE_NNAPI) && defined(__ANDROID__)
+    // only enable when building NNAPI EP on Android
+    // test runs out of memory in QEMU aarch64 environment, so don't enable otherwise
+    // TODO try to enable when we move from QEMU to arm64 CI machines
+    {true, true},
+#endif
+  };
+  for (const auto& test_params : all_test_params) {
+    // opset 10
+    if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double>) {
+      RunOnnxOpsetTypedTest<T, 10>(input_dims,
                                    input,
-                                   pads,
-                                   value,
+                                   pads, test_params.pads_is_initializer,
+                                   value, test_params.value_is_initializer,
                                    output_dims,
                                    output,
                                    mode, expect, error_msg, excluded_provider_types);
+    }
 
-  RunOnnxOpsetTypedTest<float, 11>(input_dims,
-                                   input,
-                                   pads,
-                                   value,
-                                   output_dims,
-                                   output,
-                                   mode, expect, error_msg, excluded_provider_types);
+    // opset 11
+    RunOnnxOpsetTypedTest<T, 11>(input_dims,
+                                 input,
+                                 pads, test_params.pads_is_initializer,
+                                 value, test_params.value_is_initializer,
+                                 output_dims,
+                                 output,
+                                 mode, expect, error_msg, excluded_provider_types);
 
-  RunOnnxOpsetTypedTest<float, 13>(input_dims,
-                                   input,
-                                   pads,
-                                   value,
-                                   output_dims,
-                                   output,
-                                   mode, expect, error_msg, excluded_provider_types);
+    // opset 13
+    RunOnnxOpsetTypedTest<T, 13>(input_dims,
+                                 input,
+                                 pads, test_params.pads_is_initializer,
+                                 value, test_params.value_is_initializer,
+                                 output_dims,
+                                 output,
+                                 mode, expect, error_msg, excluded_provider_types);
 
 #ifndef DISABLE_CONTRIB_OPS
-
-  // MSFT domain opset-1 (contrib op)
-  OpTester test3("Pad", 1, kMSDomain);
-  if (mode != "constant") test3.AddAttribute("mode", mode);
-  test3.AddInput<float>("data", input_dims, input);
-  test3.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
-  test3.AddInput<float>("value", {1}, {value});
-  test3.AddOutput<float>("output", output_dims, output);
-  // TensorRT does not support pads as an input
-  test3.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
-
-#endif
+    // There is only support for float type for MSDomain kernel in ORT
+    if constexpr (std::is_same_v<T, float>) {
+      // MSFT domain opset-1 (contrib op)
+      OpTester test3("Pad", 1, kMSDomain);
+      if (mode != "constant") test3.AddAttribute("mode", mode);
+      test3.AddInput<T>("data", input_dims, input);
+      test3.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads, test_params.pads_is_initializer);
+      test3.AddInput<T>("value", {1}, {value}, test_params.value_is_initializer);
+      test3.AddOutput<T>("output", output_dims, output);
+      // TensorRT does not support pads as an input
+      test3.Run(expect, error_msg, {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+    }
+#endif  // DISABLE_CONTRIB_OPS
+  }
 }
 
 // Some of the tests can't run on TensorrtExecutionProvider because only constant mode and value 0 of "Pad" node is supported.

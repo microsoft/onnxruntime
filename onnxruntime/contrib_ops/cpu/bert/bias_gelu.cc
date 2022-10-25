@@ -32,11 +32,11 @@ Status BiasGelu<T, use_approximation>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(bias_gelu_helper::CheckInputs(context));
 
   const Tensor* input = context->Input<Tensor>(0);
-  const T* input_data = input->template Data<T>();
+  const T* input_data = input->Data<T>();
   int64_t elem_count = input->Shape().Size();
 
   Tensor* output = context->Output(0, input->Shape());
-  T* output_data = output->template MutableData<T>();
+  T* output_data = output->MutableData<T>();
 
   const Tensor* bias = context->Input<Tensor>(1);
   if (nullptr == bias) {
@@ -71,7 +71,7 @@ Status BiasGelu<T, use_approximation>::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  const T* bias_data = bias->template Data<T>();
+  const T* bias_data = bias->Data<T>();
   int64_t bias_len = bias->Shape().Size();
 
   AllocatorPtr alloc;

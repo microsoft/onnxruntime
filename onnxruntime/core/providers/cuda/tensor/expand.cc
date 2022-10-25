@@ -8,6 +8,7 @@
 namespace onnxruntime {
 namespace cuda {
 
+namespace {
 // Logically expanded y could just be a view of x.
 static void CalcEffectiveDims(TensorShapeVector& x_dims, TensorShapeVector& y_dims) {
   TensorShapeVector x_reverse;
@@ -57,12 +58,40 @@ static void CalcEffectiveDims(TensorShapeVector& x_dims, TensorShapeVector& y_di
   }
 }
 
+#ifdef ENABLE_TRAINING
+TensorShapeVector ComputeOutputStrides(const TensorShape& input_shapes, const gsl::span<const int64_t>& input_strides,
+                                       const TensorShape& output_shapes) {
+  const size_t rank = output_shapes.NumDimensions();
+  const size_t input_rank = input_shapes.NumDimensions();
+
+  if (input_rank == 0 || input_shapes.Size() == 1) {
+    return TensorShapeVector(rank, 0);
+  }
+
+  TensorShapeVector output_strides(rank);
+  const size_t offset = rank - input_rank;
+  for (size_t dim = rank - 1;; --dim) {
+    int64_t stride = 0;
+    int64_t input_dim_size = dim >= offset ? input_shapes[dim - offset] : 1;
+    if (input_dim_size == output_shapes[dim]) {
+      stride = dim >= offset ? input_strides[dim - offset] : output_shapes[dim + 1] * output_strides[dim + 1];
+    }
+
+    output_strides[dim] = stride;
+    if (dim == 0) break;
+  }
+
+  return output_strides;
+}
+#endif
+}  // namespace
+
 Status Expand::ComputeInternal(OpKernelContext* ctx) const {
   const auto& input_data_tensor = *ctx->Input<Tensor>(0);
   const auto& input_shape_tensor = *ctx->Input<Tensor>(1);
 
   // new shape to be expanded to
-  const auto* p_shape = input_shape_tensor.template Data<int64_t>();
+  const auto* p_shape = input_shape_tensor.Data<int64_t>();
   TensorShapeVector output_dims{p_shape, p_shape + input_shape_tensor.Shape().Size()};
   TensorShape output_shape(output_dims);
 
@@ -71,6 +100,17 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
   if (0 == output_shape.Size()) {
     return Status::OK();
   }
+
+#ifdef ENABLE_TRAINING
+  // Strided output.
+  if (input_data_tensor.DataRaw() == output_tensor.DataRaw()) {
+    gsl::span<const int64_t> input_strides = input_data_tensor.Strides();
+    TensorShapeVector output_strides =
+        ComputeOutputStrides(input_data_tensor.Shape(), input_strides, output_shape);
+    output_tensor.SetShapeAndStrides(output_shape, output_strides);
+    return Status::OK();
+  }
+#endif
 
   output_dims = output_shape.AsShapeVector();
   auto input_dims = input_data_tensor.Shape().AsShapeVector();
@@ -102,25 +142,23 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
       input_strides);
 }
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Expand,
-    kOnnxDomain,
-    8, 12,
-    kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .InputMemoryType(OrtMemTypeCPUInput, 1),
-    Expand);
+#ifdef ENABLE_TRAINING
+#define CREATE_EXPAND_KERNEL_DEF (*KernelDefBuilder::Create()).MayStridedOutput(0, 0)
+#else
+#define CREATE_EXPAND_KERNEL_DEF (*KernelDefBuilder::Create())
+#endif
 
-ONNX_OPERATOR_KERNEL_EX(
-    Expand,
-    kOnnxDomain,
-    13,
-    kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .InputMemoryType(OrtMemTypeCPUInput, 1),
-    Expand);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Expand, kOnnxDomain, 8, 12, kCudaExecutionProvider,
+                                  CREATE_EXPAND_KERNEL_DEF.TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 1),
+                                  Expand);
+
+ONNX_OPERATOR_KERNEL_EX(Expand, kOnnxDomain, 13, kCudaExecutionProvider,
+                        CREATE_EXPAND_KERNEL_DEF.TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+                            .InputMemoryType(OrtMemTypeCPUInput, 1),
+                        Expand);
+
+#undef CREATE_EXPAND_KERNEL_DEF
 
 }  // namespace cuda
 };  // namespace onnxruntime

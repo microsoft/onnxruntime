@@ -10,7 +10,7 @@ FROM nvidia/cuda:11.4.2-cudnn8-devel-ubuntu${OS_VERSION}
 
 # ONNX Runtime Variables
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
-ARG ONNXRUNTIME_BRANCH=master
+ARG ONNXRUNTIME_BRANCH=main
 ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
 
 ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.21.0-linux-x86_64/bin:/opt/miniconda/bin:${PATH}

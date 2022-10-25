@@ -10,7 +10,7 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
-#include "beam_search_scorer.h"
+#include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -69,7 +69,7 @@ void BeamHypotheses::Output(
   }
 
   // Since pop get the worst sequence, so output it in the reverse order.
-  // The frist (worst) beam shall be put at the last position among top_k sequences.
+  // The first (worst) beam shall be put at the last position among top_k sequences.
   int index = top_k - 1;
   while (!beams_.empty()) {
     auto item = beams_.top();
@@ -124,7 +124,7 @@ void BeamSearchScorer::Initialize(AllocatorPtr& allocator, int sequence_length) 
   ORT_ENFORCE(next_beam_scores_.empty());  // Make sure this is called only once.
 
   size_t batch_beam_size = batch_size_ * num_beams_;
-  constexpr bool no_fill = false;  // do not fill values after allocation
+  constexpr bool no_fill = false;  // Do not fill values after allocation
 
   done_ = Allocate<bool>(allocator, batch_size_, done_ptr_, no_fill);
   std::fill_n(done_.data(), done_.size(), false);
@@ -134,8 +134,8 @@ void BeamSearchScorer::Initialize(AllocatorPtr& allocator, int sequence_length) 
   next_beam_indices_ = Allocate<int32_t>(allocator, batch_beam_size, next_beam_indices_ptr_, no_fill);
 
   // Space to store intermediate sequence with length sequence_length, sequence_length + 1, ..., max_sequence_length.
-  size_t buffer_per_beam = (SafeInt<size_t>(max_length_) * (max_length_ + 1) - SafeInt<size_t>(sequence_length - 1) * sequence_length) / 2;
-  hypothesis_buffer_length_ = batch_beam_size * buffer_per_beam;
+  size_t per_beam = (SafeInt<size_t>(max_length_) * (max_length_ + 1) - (sequence_length - 1) * sequence_length) / 2;
+  hypothesis_buffer_length_ = batch_beam_size * per_beam;
   hypothesis_buffer_ = Allocate<int32_t>(allocator, hypothesis_buffer_length_, hypothesis_buffer_ptr_, no_fill);
 }
 
@@ -155,7 +155,8 @@ void BeamSearchScorer::Process(ISequences* sequences,
   for (size_t batch = 0; batch < batch_size_; batch++) {
     BeamHypotheses& beam_hyp = beam_hyps_[batch];
     if (done_[batch]) {
-      ORT_ENFORCE(beam_hyp.Size() >= gsl::narrow_cast<int>(num_beams_), "Batch can only be done if all beams have been generated");
+      ORT_ENFORCE(beam_hyp.Size() >= gsl::narrow_cast<int>(num_beams_),
+                  "Batch can only be done if all beams have been generated");
 
       // Pad the batch.
       for (size_t j = 0; j < num_beams_; j++) {
@@ -203,7 +204,7 @@ void BeamSearchScorer::Process(ISequences* sequences,
     }
 
     ORT_ENFORCE(beam_idx == num_beams_);
-    ORT_ENFORCE(hypothesis_buffer_offset_ <= batch_size_ * num_beams_ * max_length_);
+    ORT_ENFORCE(hypothesis_buffer_offset_ <= hypothesis_buffer_length_);
 
     //  Check if we are done so that we can save a pad step if all(done)
     if (!done_[batch]) {
@@ -258,7 +259,8 @@ void BeamSearchScorer::Finalize(ISequences* sequences,
     BeamHypotheses& beam_hyp = beam_hyps_[batch_index];
 
     const size_t num_return_sequences = num_beam_hyps_to_keep_;
-    auto batch_output = output.subspan(batch_index * num_return_sequences * max_length_, num_return_sequences * max_length_);
+    auto batch_output = output.subspan(batch_index * num_return_sequences * max_length_,
+                                       num_return_sequences * max_length_);
 
     if (output_sequence_scores != nullptr) {
       batch_sequence_score = sequence_scores.subspan(batch_index * num_return_sequences, num_return_sequences);

@@ -246,6 +246,7 @@ Return Value:
             this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelAvx;
             this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx;
             this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32KernelAvx;
+            this->GemmU8U8Kernel = nullptr;
 
             //
             // Check if the processor supports AVX2/FMA3 features.
@@ -464,3 +465,17 @@ Return Value:
     return MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 #endif
 }
+
+#ifdef MLAS_TARGET_AMD64_IX86
+
+bool
+MLASCALL
+MlasPlatformU8S8Overflow(
+    void
+    )
+{
+    const auto& p = GetMlasPlatform();
+    return p.GemmU8U8Dispatch != p.GemmU8S8Dispatch;
+}
+
+#endif

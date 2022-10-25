@@ -182,6 +182,8 @@ class Session:
         :param output_names: name of the outputs
         :param input_feed: dictionary ``{ input_name: input_value }``
         :param run_options: See :class:`onnxruntime.RunOptions`.
+        :return: list of results, every result is either a numpy array,
+            a sparse tensor, a list or a dictionary.
 
         ::
 
@@ -228,6 +230,8 @@ class Session:
             for n, v in input_dict_ort_values.items():
                 input_dict[n] = v._get_c_value()
             result = sess.run_with_ort_values(input_dict, output_names, run_options)
+            if not isinstance(result, C.OrtValueVector):
+                raise TypeError("run_with_ort_values() must return a instance of type 'OrtValueVector'.")
             ort_values = [OrtValue(v) for v in result]
             return ort_values
 
@@ -534,12 +538,10 @@ class IOBinding:
         Returns the output OrtValues from the Run() that preceded the call.
         The data buffer of the obtained OrtValues may not reside on CPU memory
         """
-        returned_ortvalues = []
-
-        for ortvalue in self._iobinding.get_outputs():
-            returned_ortvalues.append(OrtValue(ortvalue))
-
-        return returned_ortvalues
+        outputs = self._iobinding.get_outputs()
+        if not isinstance(outputs, C.OrtValueVector):
+            raise TypeError("get_outputs() must return an instance of type 'OrtValueVector'.")
+        return [OrtValue(ortvalue) for ortvalue in outputs]
 
     def copy_outputs_to_cpu(self):
         """Copy output contents to CPU (if on another device). No-op if already on the CPU."""

@@ -20,12 +20,12 @@ static inline bool has_same_scale(const Tensor* tensor_x_scale, const Tensor* te
 
 static inline bool has_same_zero_point(bool is_signed, const Tensor* tensor_x_zero_point, const Tensor* tensor_y_zero_point) {
   if (is_signed) {
-    const int8_t X_zero_point = (tensor_x_zero_point == nullptr) ? static_cast<int8_t>(0) : *(tensor_x_zero_point->template Data<int8_t>());
-    const int8_t Y_zero_point = (tensor_y_zero_point == nullptr) ? static_cast<int8_t>(0) : *(tensor_y_zero_point->template Data<int8_t>());
+    const int8_t X_zero_point = (tensor_x_zero_point == nullptr) ? static_cast<int8_t>(0) : *(tensor_x_zero_point->Data<int8_t>());
+    const int8_t Y_zero_point = (tensor_y_zero_point == nullptr) ? static_cast<int8_t>(0) : *(tensor_y_zero_point->Data<int8_t>());
     return X_zero_point == Y_zero_point;
   } else {
-    const uint8_t X_zero_point = (tensor_x_zero_point == nullptr) ? static_cast<uint8_t>(0) : *(tensor_x_zero_point->template Data<uint8_t>());
-    const uint8_t Y_zero_point = (tensor_y_zero_point == nullptr) ? static_cast<uint8_t>(0) : *(tensor_y_zero_point->template Data<uint8_t>());
+    const uint8_t X_zero_point = (tensor_x_zero_point == nullptr) ? static_cast<uint8_t>(0) : *(tensor_x_zero_point->Data<uint8_t>());
+    const uint8_t Y_zero_point = (tensor_y_zero_point == nullptr) ? static_cast<uint8_t>(0) : *(tensor_y_zero_point->Data<uint8_t>());
     return X_zero_point == Y_zero_point;
   }
 }

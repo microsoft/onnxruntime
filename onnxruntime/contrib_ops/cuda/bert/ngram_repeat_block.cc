@@ -66,6 +66,6 @@ Status NGramRepeatBlock::ComputeInternal(OpKernelContext* context) const {
   return Status::OK();
 }
 
-}  //namespace cuda
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

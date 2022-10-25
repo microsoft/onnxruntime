@@ -33,7 +33,7 @@ void TestFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
     execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
     execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 
@@ -47,7 +47,7 @@ void TestFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
     execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
     execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
@@ -2293,6 +2293,15 @@ TEST(ModOpTest, Fmod_float_mixed_sign) {
   test.Run();
 }
 
+TEST(ModOpTest, Fmod_double_mixed_sign) {
+  OpTester test("Mod", ModOp_ver);
+  test.AddAttribute<int64_t>("fmod", 1);
+  test.AddInput<double>("X", {6}, {-4.3, 7.2, 5.0, 4.3, -7.2, 8.0});
+  test.AddInput<double>("Y", {6}, {2.1f, -3.4, 8.0, -2.1, 3.4, 5.0});
+  test.AddOutput<double>("Z", {6}, {-0.1, 0.4, 5., 0.1, -0.4, 3.});
+  test.Run();
+}
+
 TEST(ModOpTest, Fmod_float16_mixed_sign) {
   OpTester test("Mod", ModOp_ver);
   test.AddAttribute<int64_t>("fmod", 1);
@@ -2304,6 +2313,24 @@ TEST(ModOpTest, Fmod_float16_mixed_sign) {
 
   test.Run();
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(ModOpTest, Fmod_bfloat16_mixed_sign) {
+  OpTester test("Mod", 13);
+  test.AddAttribute<int64_t>("fmod", 1);
+  // Due to BFloat16's precision, if the result is too small, it's not easy get pass for both CUDA and ROCm.
+  test.AddInput<BFloat16>("X", {4}, MakeBFloat16({8.0f, 5.0f, -8.0f, 8.0f}));
+  test.AddInput<BFloat16>("Y", {4}, MakeBFloat16({-3.4f, 8.0f, 3.4f, 5.0f}));
+  test.AddOutput<BFloat16>("Z", {4}, MakeBFloat16({1.2f, 5.f, -1.2f, 3.f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 TEST(ModOpTest, Int8_mixed_sign) {
   OpTester test("Mod", ModOp_ver);

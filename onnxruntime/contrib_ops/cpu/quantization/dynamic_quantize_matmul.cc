@@ -77,7 +77,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   if (y->Shape().Size() == 0)
     return Status::OK();
 
-  auto* y_data = y->template MutableData<float>();
+  auto* y_data = y->MutableData<float>();
   const auto* bias_data = bias_tensor != nullptr ? bias_tensor->Data<float>() : nullptr;
 
   // process zero point of b
@@ -205,7 +205,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
   const Tensor* b_zp_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
 
   // calculate quantization parameter of a
-  const float* a_data = a->template Data<float>();
+  const float* a_data = a->Data<float>();
   int64_t num_of_elements = a->Shape().Size();
 
   float a_scale;
@@ -215,7 +215,7 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
   uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(num_of_elements) * sizeof(uint8_t)));
-  BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(allocator));
+  BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(std::move(allocator)));
 
   ParQuantizeLinear(a_data, a_data_quant, num_of_elements, a_scale, a_zero_point, ctx->GetOperatorThreadPool());
 
@@ -279,7 +279,7 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
       ctx,
       static_cast<const uint8_t*>(a->DataRaw()),
       a->Shape(),
-      is_a_scale_scalar ? *a_scale_tensor->template Data<float>() : 1.f,
+      is_a_scale_scalar ? *a_scale_tensor->Data<float>() : 1.f,
       a_zero_point,
       a->IsDataType<int8_t>(),
       b,

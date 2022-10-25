@@ -32,17 +32,38 @@ using training::OpDef;
 
 namespace {
 
-std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders(bool cpu_only = false) {
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-  if (cpu_only) return execution_providers;
+std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders(
+    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr, bool cpu_only = false) {
+  std::vector<std::unique_ptr<IExecutionProvider>> result;
+  if (execution_providers) {
+    for (auto& entry : *execution_providers) {
+      if (entry->Type() == onnxruntime::kCpuExecutionProvider) {
+        result.emplace_back(DefaultCpuExecutionProvider());
+      } else if (entry->Type() == onnxruntime::kCudaExecutionProvider) {
+        result.emplace_back(DefaultCudaExecutionProvider());
+      } else if (entry->Type() == onnxruntime::kRocmExecutionProvider) {
+        result.emplace_back(DefaultRocmExecutionProvider());
+      } else if (entry->Type() == onnxruntime::kDnnlExecutionProvider) {
+        result.emplace_back(DefaultDnnlExecutionProvider());
+      } else if (entry->Type() == onnxruntime::kTensorrtExecutionProvider) {
+        result.emplace_back(DefaultTensorrtExecutionProvider());
+      }
+    }
+    return result;
+  }
+
+  if (cpu_only) {
+    result.emplace_back(DefaultCpuExecutionProvider());
+    return result;
+  }
 #ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  result.emplace_back(DefaultCudaExecutionProvider());
 #endif
 #ifdef USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
+  result.emplace_back(DefaultRocmExecutionProvider());
 #endif
-  return execution_providers;
+  result.emplace_back(DefaultCpuExecutionProvider());
+  return result;
 }
 
 };  // namespace
@@ -84,14 +105,15 @@ inline void GradientChecker<X_T, Y_T, JAC_T>::InitJacobians(size_t row_count, si
 template <typename X_T, typename Y_T, typename JAC_T>
 inline std::vector<OrtValue> GradientChecker<X_T, Y_T, JAC_T>::EvaluateFunctionAtInput(
     OpTester& op_session, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
-    std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas) {
+    std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas,
+    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
   AddDatas(op_session, x_infos, y_infos, x_datas, y_datas);
 
   // If EPs is not set, the OpTester will run over all possible EPs and keep the outputs of last run as the
   // actual output data, which is time wasting. What we need is the forward graph outputs for numeric Jacobian,
   // using CPU EP only is enough.
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers = GetExecutionProviders(true);
-  op_session.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  std::vector<std::unique_ptr<IExecutionProvider>> eps = GetExecutionProviders(execution_providers, true);
+  op_session.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
   return op_session.GetFetches();
 }
 
@@ -170,23 +192,18 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeTheoreticalJacobianTransp
     for (size_t c = 0; c < dy_size; ++c) {  // for each value in the dy input vector
       AddDatas(op_session, x_infos, y_infos, x_datas, y_datas);
 
-      // While calculating theoritical jacobian transpose we calculate the gradient by
-      // setting back propogating one element of dY at a time and setting everything else to zero
+      // While calculating theoretical jacobian transpose we calculate the gradient by
+      // setting back propagating one element of dY at a time and setting everything else to zero
       // as explained above. The input itself is unrolled into one big vector and the collection of
       // inputs is treated as a vector of vectors. The parameters of the function call below, y_idx and c
       // corresponding to which input (dy1, dy2..etc) and which value of the input (dy_flattened_vector[c]]
-      // to pertrub to 1.
-      if (execution_providers) {
-        op_session.Run(static_cast<int>(y_idx), static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {},
-                       nullptr, execution_providers);
-      } else {
-        // If EPs is not set, the OpTester will run over all possible EPs and keep the outputs of last run as the
-        // actual output data, which is time wasting. So if caller doesn't pass in the EPs, we will use the default
-        // EPs according to the environment.
-        std::vector<std::unique_ptr<IExecutionProvider>> default_eps = GetExecutionProviders();
-        op_session.Run(static_cast<int>(y_idx), static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {},
-                       nullptr, &default_eps);
-      }
+      // to perturb to 1.
+      // If EPs is not set, the OpTester will run over all possible EPs and keep the outputs of last run as the
+      // actual output data, which is time wasting. So if caller doesn't pass in the EPs, we will use the default
+      // EPs according to the environment.
+      std::vector<std::unique_ptr<IExecutionProvider>> eps = GetExecutionProviders(execution_providers);
+      op_session.Run(static_cast<int>(y_idx), static_cast<int>(c), OpTester::ExpectResult::kExpectSuccess, "", {},
+                     nullptr, &eps);
       auto gradients = op_session.GetFetches();
 
       for (size_t x_idx = 0, grad_idx = 0; x_idx < x_num; x_idx++) {
@@ -284,7 +301,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
     const OpDef& op_def, const std::vector<TensorInfo>& x_infos, const std::vector<TensorInfo>& y_infos,
     const JAC_T delta, std::vector<std::vector<X_T>>* x_datas, std::vector<std::vector<Y_T>>* y_datas,
     std::vector<std::vector<JAC_T>>* jacobian_ts, const std::vector<size_t>& row_strides,
-    const std::vector<size_t>& col_strides, const std::vector<AttributeProto>& attributes, bool add_shape) {
+    const std::vector<size_t>& col_strides, const std::vector<AttributeProto>& attributes, bool add_shape,
+    std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers) {
   size_t y_num = y_infos.size();
   size_t x_num = x_infos.size();
   X_T x_delta = static_cast<X_T>(delta);
@@ -310,11 +328,13 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeNumericJacobianTranspose(
 
       // Evaluate at positive delta.
       (*x_datas)[x_idx][r] = v + x_delta;
-      std::vector<OrtValue> y_plus = EvaluateFunctionAtInput(op_session, x_infos, y_infos, x_datas, y_datas);
+      std::vector<OrtValue> y_plus =
+          EvaluateFunctionAtInput(op_session, x_infos, y_infos, x_datas, y_datas, execution_providers);
 
       // Evaluate at negative delta.
       (*x_datas)[x_idx][r] = v - x_delta;
-      std::vector<OrtValue> y_minus = EvaluateFunctionAtInput(op_session, x_infos, y_infos, x_datas, y_datas);
+      std::vector<OrtValue> y_minus =
+          EvaluateFunctionAtInput(op_session, x_infos, y_infos, x_datas, y_datas, execution_providers);
 
       for (size_t y_idx = 0; y_idx < y_num; ++y_idx) {
         if (!y_infos[y_idx].has_gradient) {
@@ -364,7 +384,8 @@ inline Status GradientChecker<X_T, Y_T, JAC_T>::ComputeGradientErrorInternal(
 
   // Compute numeric Jacobian.
   ORT_RETURN_IF_ERROR(ComputeNumericJacobianTranspose(op_def, x_infos, y_infos, JAC_T{1e-3f}, x_datas, y_datas,
-                                                      &jacobian_ns, row_strides, col_strides, attributes));
+                                                      &jacobian_ns, row_strides, col_strides, attributes, true,
+                                                      execution_providers));
 
   // Compute the maximum error between theoretical and numeric Jacobians.
   *max_error = 0.0;

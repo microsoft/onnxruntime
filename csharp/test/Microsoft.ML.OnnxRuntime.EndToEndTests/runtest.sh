@@ -18,8 +18,12 @@ echo "Current NuGet package version is $CurrentOnnxRuntimeVersion"
 
 if [ $RunTestCsharp = "true" ]; then
   if [[ $IsMacOS == "True" || $IsMacOS == "true" ]]; then
-    mkdir -p $BUILD_BINARIESDIRECTORY/models
-    ln -s $BUILD_SOURCESDIRECTORY/cmake/external/onnx/onnx/backend/test/data/node $BUILD_BINARIESDIRECTORY/models/opset16
+    # TODO(#12040): The test should figure out the opset version from the model file. Remove it from the path.
+    ONNX_DIR="${BUILD_SOURCESDIRECTORY}/cmake/external/onnx"
+    ONNX_VERSION_NUMBER=$(cat "${ONNX_DIR}/VERSION_NUMBER" | sed -E 's/([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+    OPSET_VERSION=$(grep "${ONNX_VERSION_NUMBER}" "${ONNX_DIR}/docs/Versioning.md" | sed -E "s/${ONNX_VERSION_NUMBER}\|[^|]+\|([0-9]+)\|.*/\1/")
+    mkdir -p "${BUILD_BINARIESDIRECTORY}/models"
+    ln -s "${ONNX_DIR}/onnx/backend/test/data/node" "${BUILD_BINARIESDIRECTORY}/models/opset${OPSET_VERSION}"
   fi
   # Run C# tests
   dotnet restore $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj -s $LocalNuGetRepo -s https://api.nuget.org/v3/index.json
@@ -29,7 +33,7 @@ if [ $RunTestCsharp = "true" ]; then
   fi
 
   if [ $PACKAGENAME = "Microsoft.ML.OnnxRuntime.Gpu" ]; then
-    export TESTONGPU=ON 
+    export TESTONGPU=ON
     dotnet test -p:DefineConstants=USE_CUDA $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
     if [ $? -ne 0 ]; then
       echo "Failed to build or execute the end-to-end test"

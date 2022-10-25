@@ -210,9 +210,9 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
     TensorShapeVector output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
     Tensor* Y = context->Output(0, TensorShape(output_dims));
 
-    const float* X_data = X->template Data<float>();
-    const int32_t* M_data = M->template Data<int32_t>();
-    float* Y_data = Y->template MutableData<float>();
+    const float* X_data = X->Data<float>();
+    const int32_t* M_data = M->Data<int32_t>();
+    float* Y_data = Y->MutableData<float>();
 
     // The main loop
     int64_t channels = x_shape[1];

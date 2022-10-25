@@ -114,6 +114,22 @@ MlasGetPreferredBufferAlignment(
     void
     );
 
+#ifdef MLAS_TARGET_AMD64_IX86
+
+/**
+ * @brief Return whether the current CPU has over saturation problem
+ *        when computing u8s8 matrix multiplication
+ * https://www.intel.com/content/www/us/en/develop/documentation/onednn-developer-guide-and-reference/top/advanced-topics/nuances-of-int8-computations.html
+*/
+bool
+MLASCALL
+MlasPlatformU8S8Overflow(
+    void
+    );
+
+#endif
+
+
 //
 // Activation routines.
 //
@@ -535,7 +551,7 @@ private:
 /**
  * @brief Supply matrices shape and data type information to quantized gemm functions
  *
- ** NOTE: AIsSigned == true is not supported on non-ARM devices for now.
+ ** NOTE: AIsSigned == true is not supported on non-ARM devices for now. 
  **       AIsSigned == true is supported on ARM devices when BIsSigned is also true.
  *
 */
@@ -623,10 +639,10 @@ struct MLAS_SYMM_QGEMM_DATA_PARAMS {
  * @param [IN] Shape        A single shape descriptor for all multiplicatons.
                             Currently A and B must be signed, and accumulation
                             mode not supported
- * @param [IN] DataParams   Array of data descriptors, one for each multiplication
+ * @param [IN] DataParams   Array of data descriptors, one for each mutliplication
  *                          B must be prepacked
  * @param [IN] BatchN       Number of multiplications
- * @param [IN] ThreadPool
+ * @param [IN] ThreadPool 
 */
 void
 MLASCALL
@@ -683,8 +699,8 @@ MlasGemmPackB(
 
 /**
  * @brief For symmetric quantized GEMM, returns size of the
- *        packing buffer needed for right hand side
- * @param N              Number of columns
+ *        packing buffer needed for right hand side        
+ * @param N              Number of columns 
  * @param K              Number of rows
  * @param AIsSigned      Whether left hand size is signed int8_t
  * @return  size of the packing buffer,
@@ -694,7 +710,7 @@ size_t
 MLASCALL
 MlasSymmQgemmPackBSize(
     size_t N,
-    size_t K,
+    size_t K, 
     bool AIsSigned
     );
 
@@ -829,94 +845,54 @@ MlasConvSymFixupInputZeroPoint(
     bool InputIsSigned
     );
 
-inline
-uint32_t
-BitsOfFp32(float FloatValue)
-{
-  union {
-    uint32_t IntegerValue;
-    float FloatValue;
-  } u;
-  u.FloatValue = FloatValue;
-  return u.IntegerValue;
-}
+//
+// Convolution operators (or maybe others in the future) need to do their
+// own job partition. Since filters (right hand side B matrix) is usually
+// small in size, activations are divided horizontally. We need to provide
+// kernel stride units to facilitate the divide.
+//
 
-inline
-void
-MlasFloatToFixedPoint(
-    float Scale,
-    int32_t& Multiplier,
-    int32_t& PreShift,
-    int32_t& PostShift)
-{
-  const uint32_t ScaleBits = BitsOfFp32(Scale);
+int32_t
+MlasConvSymGetKernelOutputCount(
+    bool InputIsSigned
+    );
 
-  // Multiplier is in [0x40000000, 0x7FFFFF80] range.
-  Multiplier = (int32_t)(((ScaleBits & UINT32_C(0x007FFFFF)) | UINT32_C(0x00800000)) << 7);
-
-  // Shift is in [-8, 31] range.
-  const int32_t Shift = 127 + 31 - 32 - (ScaleBits >> 23);
-
-  // Split shift into PreShift + PostShift, PostShift in [1, 31] range.
-  PostShift = Shift > 1 ? Shift : 1;
-  PreShift = Shift - PostShift;
-
-  PreShift = -PreShift;
-  PostShift = -PostShift;
-}
-
-inline
-void
-MlasFloatToFixedPoint(
-    const float* Scale,
-    int32_t* Multiplier,
-    int32_t* PreShift,
-    int32_t* PostShift,
-    size_t N)
-{
-    for(size_t i = 0; i < N; i++) {
-        MlasFloatToFixedPoint(Scale[i], Multiplier[i], PreShift[i], PostShift[i]);
-    }
-}
-
-enum MLAS_ROUND_KIND {
-    MlasRoundHalfEven,
-    MlasRoundHalfUp,
-};
-
+int32_t
+MlasConvSymDepthwiseGetKernelOutputCnt(
+    bool InputIsSigned
+    );
 
 /**
- * @brief Supply parameters to requantize a tensor. It supports 2 modes:
- **       RequantRoundKind == MlasRoundHalfEven: Scale is used.
- **       RequantRoundKind == MlasRoundHalfUp: Multiplier, PreShift and PostShift are used.
+ * @brief Returns the stride M of depthwise conv kernel
+ * 
+ * Most optimized path is Symmetric conv. See 
+ * MlasConvSymDepthwiseGetKernelOutputCnt(bool)
+ * 
+ * These kernels are implemented in qdwconv.cpp using
+ * intrincic, all of them with stride val 1. We use
+ * a slightly bigger value to improve cache reuse.
  *
+ * This needs to be changed if we optimize depthwise
+ * kernels.
+ * 
+ * @return
 */
-struct MLAS_REQUANT_PARAM {
-    MLAS_REQUANT_PARAM()=default;
+inline
+int32_t
+MlasConvDepthwiseGetKernelOutputCnt()
+{
+    return 4;
+}
 
-    MLAS_REQUANT_PARAM(const float* Scale,
-                       size_t Size,
-                       int32_t ZeroPoint):
-        RequantRoundKind(MLAS_ROUND_KIND::MlasRoundHalfEven),
-        Scale(Scale), Size(Size), ZeroPoint(ZeroPoint){}
+int32_t
+MlasSymmQgemmGetKernelOutputCnt();
 
-    MLAS_REQUANT_PARAM(const int32_t* Multiplier,
-                       const int32_t* PreShift,
-                       const int32_t* PostShift,
-                       size_t Size,
-                       int32_t ZeroPoint):
-        RequantRoundKind(MLAS_ROUND_KIND::MlasRoundHalfUp),
-        Multiplier(Multiplier), PreShift(PreShift), PostShift(PostShift),
-        Size(Size), ZeroPoint(ZeroPoint){}
+int32_t
+MlasQgemmGetKernelOutputCnt(
+    bool AIsSigned,
+    bool BIsSigned
+    );
 
-    MLAS_ROUND_KIND RequantRoundKind;
-    const float* Scale;
-    const int32_t* Multiplier;
-    const int32_t* PreShift;
-    const int32_t* PostShift;
-    size_t Size;
-    int32_t ZeroPoint;
-};
 
 struct MLAS_CONV_SYM_PARAMS {
     const void* InputDirect;
@@ -928,7 +904,9 @@ struct MLAS_CONV_SYM_PARAMS {
     size_t OutputCount;
     size_t KernelSize;
     const int32_t* Bias;
-    const MLAS_REQUANT_PARAM* RequantParam;
+    const float* Scale;
+    bool PerChannelScale;
+    int32_t OutputZeroPoint;
     bool InputIsSigned;
 };
 
@@ -1224,7 +1202,9 @@ MlasQuantizeLinear(
  * @param OutputLeadingDimension    Output matrix leading dimension
  * @param Bias                      Optional bias vector, to be added
                                     to the input before quantization
- * @param MLAS_REQUANT_PARAM        Requantization parameters
+ * @param Scale                     Quantization scale
+ * @param PerColumnScale            true if scale is per-column
+ * @param ZeroPoint                 quantization zero point value
  * @param StartM
  * @param StartN
  * @param CountM
@@ -1240,7 +1220,9 @@ MlasRequantizeOutput(
     OutputType* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
-    const MLAS_REQUANT_PARAM* RequantParam,
+    const float* Scale,
+    bool PerColumnScale,
+    OutputType ZeroPoint,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -1254,12 +1236,16 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
         void* Output,
         size_t OutputLeadingDimension,
         const int32_t* Bias,
-        const MLAS_REQUANT_PARAM* RequantParam,
+        const float* Scale,
+        bool PerColumnScale,
+        int32_t ZeroPoint,
         bool OutputIsSigned)
         : Output_(Output),
           OutputLeadingDimension_(OutputLeadingDimension),
           Bias_(Bias),
-          RequantParam_(RequantParam),
+          Scale_(Scale),
+          PerColumnScale_(PerColumnScale),
+          ZeroPoint_(ZeroPoint),
           OutputIsSigned_(OutputIsSigned)
     {
     }
@@ -1273,10 +1259,12 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
     {
         if(OutputIsSigned_){
             MlasRequantizeOutput(C, ldc, reinterpret_cast<int8_t*>(Output_), OutputLeadingDimension_,
-                                 Bias_, RequantParam_, StartM, StartN, CountM, CountN);
+                                 Bias_, Scale_, PerColumnScale_, static_cast<int8_t>(ZeroPoint_),
+                                 StartM, StartN, CountM, CountN);
         } else {
             MlasRequantizeOutput(C, ldc, reinterpret_cast<uint8_t*>(Output_), OutputLeadingDimension_,
-                                 Bias_, RequantParam_, StartM, StartN, CountM, CountN);
+                                 Bias_, Scale_, PerColumnScale_, static_cast<uint8_t>(ZeroPoint_),
+                                 StartM, StartN, CountM, CountN);
         }
     }
 
@@ -1285,7 +1273,9 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
     void* Output_;
     size_t OutputLeadingDimension_;
     const int32_t* Bias_;
-    const MLAS_REQUANT_PARAM* RequantParam_;
+    const float* Scale_;
+    bool PerColumnScale_;
+    int32_t ZeroPoint_;
     bool OutputIsSigned_;
 };
 

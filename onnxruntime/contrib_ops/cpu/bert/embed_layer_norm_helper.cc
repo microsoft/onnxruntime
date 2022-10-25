@@ -23,7 +23,7 @@ Status CheckInputs(const OpKernelContext* context, bool quantizedVersion) {
   const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
 
   if (!quantizedVersion) {
-    const Tensor* position_ids = context->Input<Tensor>(8); // optional. nullptr if not provided
+    const Tensor* position_ids = context->Input<Tensor>(8);  // optional. nullptr if not provided
 
     if (nullptr != position_ids && input_ids->Shape() != position_ids->Shape()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

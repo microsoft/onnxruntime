@@ -1,7 +1,13 @@
 import numpy as np
 import onnx
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, quantize_nparray
+from ..quant_utils import (
+    TENSOR_NAME_QUANT_SUFFIX,
+    QuantizedValue,
+    QuantizedValueType,
+    attribute_to_kwarg,
+    quantize_nparray,
+)
 from .base_operator import QuantOperatorBase
 
 
@@ -41,12 +47,12 @@ class QPad(QuantOperatorBase):
                     scale_value = scale_array.item() if scale_array.ndim == 0 else scale_array[0]
                     padding_constant_array = onnx.numpy_helper.to_array(padding_constant_initializer)
                     quantized_padding_constant_array = quantize_nparray(
-                        self.quantizer.input_qType,
+                        self.quantizer.activation_qType,
                         padding_constant_array,
                         scale_value,
                         zp_value,
                     )
-                    quantized_padding_constant_name = node.input[2] + "_quantized"
+                    quantized_padding_constant_name = node.input[2] + TENSOR_NAME_QUANT_SUFFIX
                     quantized_padding_constant_initializer = onnx.numpy_helper.from_array(
                         quantized_padding_constant_array,
                         quantized_padding_constant_name,
@@ -60,7 +66,7 @@ class QPad(QuantOperatorBase):
                     pad_value_qnodes = self.quantizer._get_quantize_input_nodes(
                         node,
                         2,
-                        self.quantizer.input_qType,
+                        self.quantizer.activation_qType,
                         quantized_input_value.scale_name,
                         quantized_input_value.zp_name,
                     )
@@ -72,7 +78,7 @@ class QPad(QuantOperatorBase):
         # Create an entry for output quantized value
         quantized_output_value = QuantizedValue(
             node.output[0],
-            node.output[0] + "_quantized",
+            node.output[0] + TENSOR_NAME_QUANT_SUFFIX,
             quantized_input_value.scale_name,
             quantized_input_value.zp_name,
             QuantizedValueType.Input,

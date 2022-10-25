@@ -15,7 +15,7 @@ namespace {
 template <typename T>
 struct GetRatioDataImpl {
   void operator()(const Tensor* ratio, float& ratio_data) const {
-    ratio_data = static_cast<float>(*(ratio->template Data<T>()));
+    ratio_data = static_cast<float>(*(ratio->Data<T>()));
     ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
   }
 };
@@ -28,18 +28,18 @@ struct BiasDropoutComputeImpl {
                     bool use_bitmask) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
 
-    const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
-    const CudaT* bias_data = reinterpret_cast<const CudaT*>(bias.template Data<T>());
+    const CudaT* X_data = reinterpret_cast<const CudaT*>(X.Data<T>());
+    const CudaT* bias_data = reinterpret_cast<const CudaT*>(bias.Data<T>());
 
     const CudaT* residual_data = nullptr;
     if (residual) {
       if (residual->Shape() != X.Shape()) {
         return Status(common::ONNXRUNTIME, common::FAIL, "Residual input shape does not match X input shape.");
       }
-      residual_data = reinterpret_cast<const CudaT*>(residual->template Data<T>());
+      residual_data = reinterpret_cast<const CudaT*>(residual->Data<T>());
     }
 
-    CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
+    CudaT* Y_data = reinterpret_cast<CudaT*>(Y.MutableData<T>());
     BiasDropoutKernelImpl<CudaT>(prop, stream, N, mask_element_count, fdm_dim, ratio_data, generator, X_data, bias_data,
                                  residual_data, Y_data, mask_data, has_same_shape_bias, use_bitmask);
     return Status::OK();

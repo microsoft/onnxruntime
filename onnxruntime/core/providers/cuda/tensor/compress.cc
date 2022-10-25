@@ -41,7 +41,7 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* condition = ctx->Input<Tensor>(1);
   ORT_ENFORCE(condition);
   auto condition_length = condition->Shape().Size();
-  auto condition_data = condition->template Data<bool>();
+  auto condition_data = condition->Data<bool>();
 
   // if has axis, we need to compress on dimension[axis], otherwise compress on the flattened input data
   int64_t input_size = input_tensor->Shape().Size();

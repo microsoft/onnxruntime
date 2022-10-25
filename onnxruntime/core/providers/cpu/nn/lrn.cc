@@ -66,8 +66,8 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
   const int image_size = C * H * W;
   const int pre_pad = (size_ - 1) / 2;
 
-  const auto* Xdata = X->template Data<float>();
-  auto* Ydata = Y->template MutableData<float>();
+  const auto* Xdata = X->Data<float>();
+  auto* Ydata = Y->MutableData<float>();
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
@@ -80,7 +80,7 @@ Status LRN<float>::Compute(OpKernelContext* context) const {
 
   const size_t padded_square_size = (static_cast<size_t>(C) + size_ - 1) * H * W;
   auto psdata = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * padded_square_size);
-  BufferUniquePtr padded_square_buffer(psdata, BufferDeleter(alloc));
+  BufferUniquePtr padded_square_buffer(psdata, BufferDeleter(std::move(alloc)));
   auto* padded_square_data = static_cast<float*>(padded_square_buffer.get());
   math::Set<float, CPUMathUtil>(padded_square_size, 0.0f, padded_square_data, &CPUMathUtil::Instance());
 

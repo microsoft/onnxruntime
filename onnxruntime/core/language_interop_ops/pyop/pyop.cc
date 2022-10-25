@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "pyop.h"
+
 #ifdef _WIN32
 #define LIB_PYOP "onnxruntime_pywrapper.dll"
 #define LOAD_PYOP_LIB(n, v, m) ORT_ENFORCE((v = LoadLibraryA(n)) != nullptr, m)
@@ -14,6 +15,7 @@
 #define LOAD_PYOP_LIB(n, v, m) ORT_ENFORCE((v = dlopen(n, RTLD_NOW | RTLD_GLOBAL)) != nullptr, m)
 #include "dlfcn.h"
 #endif
+
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
 #ifdef _DEBUG
@@ -23,6 +25,7 @@
 #else
 #include <Python.h>
 #endif
+
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include "numpy/arrayobject.h"
 #include <functional>
@@ -35,8 +38,6 @@
 #include <functional>
 #include <unordered_map>
 
-using namespace std;
-
 namespace onnxruntime {
 
 PyOpLibProxy& PyOpLibProxy::GetInstance() {
@@ -44,200 +45,202 @@ PyOpLibProxy& PyOpLibProxy::GetInstance() {
   return proxy;
 }
 
-class Scope
-{
-public:
-    Scope(const vector<PyObject*>& objs = {}): objs_(objs) {
-        mtx_.lock();
+class Scope {
+ public:
+  Scope(const std::vector<PyObject*>& objs = {}) : objs_(objs) {
+    mtx_.lock();
+  }
+  ~Scope() {
+    for (auto obj : objs_) {
+      Py_XDECREF(obj);
     }
-    ~Scope() {
-        for (auto obj: objs_) {
-            Py_XDECREF(obj);
-        }
-        mtx_.unlock();
-    }
-    void Add(PyObject* obj) {
-        objs_.push_back(obj);
-    }
-private:
-    static std::mutex mtx_;
-    vector<PyObject*> objs_;
+    mtx_.unlock();
+  }
+  void Add(PyObject* obj) {
+    objs_.push_back(obj);
+  }
+
+ private:
+  static std::mutex mtx_;
+  std::vector<PyObject*> objs_;
 };
 
 PyOpLibProxy::PyOpLibProxy() {
-    Scope scope;
-    Py_Initialize();
-    if (_import_array() < 0) {
-        return;
-    }
-    auto path_list = PySys_GetObject("path");//do not release it
-    if (nullptr == path_list || !PyList_Check(path_list) ||
-        PyList_Append(path_list, PyUnicode_FromString(".")) != 0) {
-        return;
-    }
-    initialized_ = true;
+  Scope scope;
+  Py_Initialize();
+  if (_import_array() < 0) {
+    return;
+  }
+  auto path_list = PySys_GetObject("path");  // do not release it
+  if (nullptr == path_list || !PyList_Check(path_list) ||
+      PyList_Append(path_list, PyUnicode_FromString(".")) != 0) {
+    return;
+  }
+  initialized_ = true;
 }
 
 PyOpLibProxy::~PyOpLibProxy() {
-    if (initialized_) {
-        Py_Finalize();
-    }
+  if (initialized_) {
+    Py_Finalize();
+  }
 }
 
 std::mutex Scope::mtx_;
 
 const char* PyOpLibProxy::GetLastErrorMessage(std::string& err) {
-    Scope scope;
-    if (PyErr_Occurred()) {
-        PyObject *type, *value, *trace;
-        PyErr_Fetch(&type, &value, &trace);
-        if (nullptr != value) {
-            auto pyVal = PyObject_Repr(value);
-            scope.Add(pyVal);
-            auto pyStr = PyUnicode_AsEncodedString(pyVal, "utf-8", "Error ~");
-            scope.Add(pyStr);
-            err = PyBytes_AS_STRING(pyStr);
-        }
-        PyErr_Restore(type, value, trace);
+  Scope scope;
+  if (PyErr_Occurred()) {
+    PyObject *type, *value, *trace;
+    PyErr_Fetch(&type, &value, &trace);
+    if (nullptr != value) {
+      auto pyVal = PyObject_Repr(value);
+      scope.Add(pyVal);
+      auto pyStr = PyUnicode_AsEncodedString(pyVal, "utf-8", "Error ~");
+      scope.Add(pyStr);
+      err = PyBytes_AS_STRING(pyStr);
     }
-    return err.c_str();
+    PyErr_Restore(type, value, trace);
+  }
+  return err.c_str();
 }
 
 int32_t PyOpLibProxy::GetGil() const {
-    return PyGILState_Ensure();
+  return PyGILState_Ensure();
 }
 
 void PyOpLibProxy::PutGil(int32_t state) const {
-   PyGILState_Release((PyGILState_STATE)state);
+  PyGILState_Release((PyGILState_STATE)state);
 }
 
-PyObject* MakePyObj(const void* data, int32_t type, const vector<int64_t>& dim) {
-    std::vector<npy_intp> np_dim;
-    for (auto d: dim) {
-        np_dim.push_back(static_cast<npy_intp>(d));
-    }
-    auto pyObj = static_cast<PyObject*>(PyArray_EMPTY(static_cast<int>(np_dim.size()), np_dim.data(), type, 0));
-    auto data_len = std::accumulate(begin(np_dim), end(np_dim),
-                                    static_cast<int64_t>(PyArray_DescrFromType(type)->elsize),
-                                    std::multiplies<int64_t>());
-    auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
-    memcpy(PyArray_DATA(np_array), data, data_len);
-    return pyObj;
+PyObject* MakePyObj(const void* data, int32_t type, const std::vector<int64_t>& dim) {
+  std::vector<npy_intp> np_dim;
+  for (auto d : dim) {
+    np_dim.push_back(static_cast<npy_intp>(d));
+  }
+  auto pyObj = static_cast<PyObject*>(PyArray_EMPTY(static_cast<int>(np_dim.size()), np_dim.data(), type, 0));
+  auto data_len = std::accumulate(begin(np_dim), end(np_dim),
+                                  static_cast<int64_t>(PyArray_DescrFromType(type)->elsize),
+                                  std::multiplies<int64_t>());
+  auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
+  memcpy(PyArray_DATA(np_array), data, data_len);
+  return pyObj;
 }
 
-bool ExtractOutput(PyObject*                   pyObj,
-                   vector<unique_ptr<char[]>>& outputs,
-                   vector<int32_t>&            outputs_elem_size,
-                   vector<vector<int64_t>>&    outputs_dim) {
-    if (!PyArray_Check(pyObj)) {
-        return false;
-    }
+bool ExtractOutput(PyObject* pyObj,
+                   std::vector<std::unique_ptr<char[]>>& outputs,
+                   std::vector<int32_t>& outputs_elem_size,
+                   std::vector<std::vector<int64_t>>& outputs_dim) {
+  if (!PyArray_Check(pyObj)) {
+    return false;
+  }
 
-    outputs_dim.push_back({});
-    auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
-    outputs_elem_size.push_back(static_cast<int32_t>(PyArray_ITEMSIZE(np_array)));
+  outputs_dim.push_back({});
+  auto np_array = reinterpret_cast<PyArrayObject*>(pyObj);
+  outputs_elem_size.push_back(static_cast<int32_t>(PyArray_ITEMSIZE(np_array)));
 
-    for (int i = 0; i < PyArray_NDIM(np_array); ++i) {
-        outputs_dim.back().push_back(PyArray_SHAPE(np_array)[i]);
-    }
+  for (int i = 0; i < PyArray_NDIM(np_array); ++i) {
+    outputs_dim.back().push_back(PyArray_SHAPE(np_array)[i]);
+  }
 
-    auto data_len = std::accumulate(begin(outputs_dim.back()),
-                                    end(outputs_dim.back()),
-                                    static_cast<int64_t>(outputs_elem_size.back()),
-                                    std::multiplies<int64_t>());
+  auto data_len = std::accumulate(begin(outputs_dim.back()),
+                                  end(outputs_dim.back()),
+                                  static_cast<int64_t>(outputs_elem_size.back()),
+                                  std::multiplies<int64_t>());
 
-    outputs.push_back(unique_ptr<char[]>(new char[data_len]));
-    memcpy(static_cast<void*>(outputs.back().get()), PyArray_DATA(np_array), data_len);
-    return true;
+  outputs.push_back(std::unique_ptr<char[]>(new char[data_len]));
+  memcpy(static_cast<void*>(outputs.back().get()), PyArray_DATA(np_array), data_len);
+  return true;
 }
 
-void* PyOpLibProxy::NewInstance(const char* module, const char* class_name, const unordered_map<string, string>& args) {
-    Scope scope; 
-    auto pyModule = PyImport_ImportModule(module);
-    if (nullptr == pyModule) {
-        return nullptr;
-    }
+void* PyOpLibProxy::NewInstance(const char* module, const char* class_name,
+                                const std::unordered_map<std::string, std::string>& args) {
+  Scope scope;
+  auto pyModule = PyImport_ImportModule(module);
+  if (nullptr == pyModule) {
+    return nullptr;
+  }
 
-    scope.Add(pyModule);
-    auto pyClass = PyObject_GetAttrString(pyModule, class_name);
-    if (nullptr == pyClass) {
-        return nullptr;
-    }
+  scope.Add(pyModule);
+  auto pyClass = PyObject_GetAttrString(pyModule, class_name);
+  if (nullptr == pyClass) {
+    return nullptr;
+  }
 
-    scope.Add(pyClass);
-    auto empty_args = PyTuple_New(0);
-    scope.Add(empty_args);
-    auto named_args = PyDict_New();
-    scope.Add(named_args);
-    for (const auto& iter: args) {
-        PyDict_SetItemString(named_args, iter.first.c_str(), PyUnicode_FromString(iter.second.c_str()));
-    }
+  scope.Add(pyClass);
+  auto empty_args = PyTuple_New(0);
+  scope.Add(empty_args);
+  auto named_args = PyDict_New();
+  scope.Add(named_args);
+  for (const auto& iter : args) {
+    PyDict_SetItemString(named_args, iter.first.c_str(), PyUnicode_FromString(iter.second.c_str()));
+  }
 
-    return PyObject_Call(pyClass, empty_args, named_args);
+  return PyObject_Call(pyClass, empty_args, named_args);
 }
 
 void PyOpLibProxy::ReleaseInstance(void* instance) {
-    Scope scope({static_cast<PyObject*>(instance)});
+  Scope scope({static_cast<PyObject*>(instance)});
 }
 
-bool PyOpLibProxy::InvokePythonFunc(void*                            raw_inst,
-                                    const char*                      function,
-                                    const vector<const void*>&       inputs,
-                                    const vector<int32_t>&           inputs_type,
-                                    const vector<vector<int64_t>>&   inputs_dim,
-                                    vector<unique_ptr<char[]>>&      outputs,
-                                    vector<int32_t>&                 outputs_elem_size,
-                                    vector<vector<int64_t>>&         outputs_dim,
+bool PyOpLibProxy::InvokePythonFunc(void* raw_inst,
+                                    const char* function,
+                                    const std::vector<const void*>& inputs,
+                                    const std::vector<int32_t>& inputs_type,
+                                    const std::vector<std::vector<int64_t>>& inputs_dim,
+                                    std::vector<std::unique_ptr<char[]>>& outputs,
+                                    std::vector<int32_t>& outputs_elem_size,
+                                    std::vector<std::vector<int64_t>>& outputs_dim,
                                     std::function<void(const char*)> logging_func) {
-    Scope scope;
-    auto instance = static_cast<PyObject*>(raw_inst);
-    if (nullptr == instance || nullptr == function) {
-        logging_func("InvokePythonFunc: found invalid instance or function");
+  Scope scope;
+  auto instance = static_cast<PyObject*>(raw_inst);
+  if (nullptr == instance || nullptr == function) {
+    logging_func("InvokePythonFunc: found invalid instance or function");
+    return false;
+  }
+
+  auto pyFunc = PyObject_GetAttrString(instance, function);
+  if (nullptr == pyFunc) {
+    logging_func("InvokePythonFunc: failed to create function object");
+    return false;
+  }
+
+  scope.Add(pyFunc);
+  auto pyArgs = PyTuple_New(inputs.size());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    PyTuple_SetItem(pyArgs, i, MakePyObj(inputs[i], inputs_type[i], inputs_dim[i]));
+  }
+
+  scope.Add(pyArgs);
+  auto pyResult = PyObject_CallObject(pyFunc, pyArgs);
+  if (nullptr == pyResult) {
+    logging_func("InvokePythonFunc: no result");
+    return false;
+  }
+
+  scope.Add(pyResult);
+  if (PyArray_Check(pyResult)) {
+    ExtractOutput(pyResult, outputs, outputs_elem_size, outputs_dim);
+  } else if (PyTuple_Check(pyResult)) {
+    for (int32_t i = 0; i < PyTuple_Size(pyResult); ++i) {
+      if (!ExtractOutput(PyTuple_GetItem(pyResult, i), outputs, outputs_elem_size, outputs_dim)) {
+        logging_func("InvokePythonFunc: failed to extract output");
         return false;
+      }
     }
+  } else {
+    logging_func("InvokePythonFunc: returned value must be numpy(s)");
+    return false;
+  }
+  return true;
+}  // bool InvokePythonFunc
 
-    auto pyFunc = PyObject_GetAttrString(instance, function);
-    if (nullptr == pyFunc) {
-        logging_func("InvokePythonFunc: failed to create function object");
-        return false;
-    }
-
-    scope.Add(pyFunc);
-    auto pyArgs = PyTuple_New(inputs.size());
-    for (size_t i = 0; i < inputs.size(); ++i) {
-        PyTuple_SetItem(pyArgs, i, MakePyObj(inputs[i], inputs_type[i], inputs_dim[i]));
-    }
-
-    scope.Add(pyArgs);
-    auto pyResult = PyObject_CallObject(pyFunc, pyArgs);
-    if (nullptr == pyResult) {
-        logging_func("InvokePythonFunc: no result");
-        return false;
-    }
-
-    scope.Add(pyResult);
-    if (PyArray_Check(pyResult)) {
-        ExtractOutput(pyResult, outputs, outputs_elem_size, outputs_dim);
-    } else if (PyTuple_Check(pyResult)) {
-        for (int32_t i = 0; i < PyTuple_Size(pyResult); ++i) {
-            if (!ExtractOutput(PyTuple_GetItem(pyResult, i), outputs, outputs_elem_size, outputs_dim)) {
-                logging_func("InvokePythonFunc: failed to extract output");
-                return false;
-            }
-        }
-    } else {
-        logging_func("InvokePythonFunc: returned value must be numpy(s)");
-        return false;
-    }
-    return true;
-}//bool InvokePythonFunc
-
-PyCustomKernel::PyCustomKernel(Ort::CustomOpApi ort,
-                               const OnnxAttrs& attrs,
+PyCustomKernel::PyCustomKernel(const OnnxAttrs& attrs,
                                const std::string& module,
                                const std::string& class_name,
                                const std::string& compute,
-                               PyOpLogFunc logging_func) : ort_(ort), attrs_(attrs), module_(module), class_name_(class_name), compute_(compute), logging_func_(logging_func) {
+                               PyOpLogFunc logging_func) : 
+        attrs_(attrs), module_(module),
+        class_name_(class_name), compute_(compute), logging_func_(logging_func) {
   std::string err;
   auto state = PyOpLibProxy::GetInstance().GetGil();
   ORT_ENFORCE(PyOpLibProxy::GetInstance().Initialized(), "Py library not properly initialized.");
@@ -260,18 +263,26 @@ void PyCustomKernel::GetOutputShape(OrtKernelContext*, size_t, OrtTensorTypeAndS
 
 void PyCustomKernel::Compute(OrtKernelContext* context) {
   ORT_ENFORCE(nullptr != context);
-  auto inputs_count = (size_t) reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context)->InputCount();
+  
+  Ort::KernelContext ctx(context);
+  const auto inputs_count = ctx.GetInputCount();
+  
   std::vector<const void*> inputs;
   std::vector<std::unique_ptr<char[]>> outputs;
   std::vector<int32_t> inputs_type, outputs_elem_size;
   std::vector<std::vector<int64_t>> inputs_dim, outputs_dim;
 
+  inputs.reserve(inputs_count);
+  inputs_dim.reserve(inputs_count);
   for (size_t i = 0; i < inputs_count; ++i) {
-    auto ort_value = ort_.KernelContext_GetInput(context, i);
-    inputs.push_back(ort_value->Get<Tensor>().DataRaw());
-    inputs_type.push_back(GetType(ort_value));
-    auto tensor_dims = ort_value->Get<Tensor>().Shape().GetDims();
-    std::vector<int64_t> shape(tensor_dims.cbegin(), tensor_dims.cend());
+    auto value = ctx.GetInput(i);
+    ORT_ENFORCE(value.IsTensor(), "input must be a tensor");
+   
+    inputs.push_back(value.GetTensorRawData());
+    
+    auto type_and_shape = value.GetTensorTypeAndShapeInfo();
+    inputs_type.push_back(GetNumpyType(type_and_shape.GetElementType()));
+    auto shape = type_and_shape.GetShape();
     inputs_dim.push_back(std::move(shape));
   }
 
@@ -280,23 +291,20 @@ void PyCustomKernel::Compute(OrtKernelContext* context) {
   ORT_ENFORCE(PyOpLibProxy::GetInstance().InvokePythonFunc(instance_, compute_.c_str(), inputs, inputs_type,
                                                            inputs_dim, outputs, outputs_elem_size,
                                                            outputs_dim, logging_func_),
-              PyOpLibProxy::GetInstance().GetLastErrorMessage(err));  //ORT_ENFORCE
+              PyOpLibProxy::GetInstance().GetLastErrorMessage(err));  // ORT_ENFORCE
   PyOpLibProxy::GetInstance().PutGil(state);
 
   for (size_t i = 0; i < outputs.size(); ++i) {
-    auto ort_output = ort_.KernelContext_GetOutput(context, i, outputs_dim[i].data(), outputs_dim[i].size());
-    auto output_mem_addr = ort_.GetTensorMutableData<char>(ort_output);
+    auto ort_output = ctx.GetOutput(i, outputs_dim[i].data(), outputs_dim[i].size());
+    auto output_mem_addr = ort_output.GetTensorMutableData<char>();
     auto output_len = std::accumulate(begin(outputs_dim[i]), end(outputs_dim[i]), static_cast<int64_t>(outputs_elem_size[i]), std::multiplies<int64_t>());
     memcpy(output_mem_addr, outputs[i].get(), output_len);
   }
 }
 
-int32_t PyCustomKernel::GetType(const OrtValue* input) const {
-  int32_t numpy_type;
-  ORT_ENFORCE(nullptr != input);
-  ORT_ENFORCE(input->IsTensor(), "input must be a tensor");
-  auto elem_type = input->Get<Tensor>().GetElementType();
+int32_t PyCustomKernel::GetNumpyType(int32_t elem_type) const {
 
+  int32_t numpy_type;
   namespace on = ONNX_NAMESPACE;
   switch (elem_type) {
     case on::TensorProto_DataType_BOOL:
@@ -333,7 +341,7 @@ int32_t PyCustomKernel::GetType(const OrtValue* input) const {
       numpy_type = 12;
       break;
     default:
-      ORT_THROW("Input primitive type not supported: ", DataTypeImpl::ToString(input->Get<Tensor>().DataType()));
+      ORT_THROW("Input primitive type not supported: ", elem_type);
   }
   return numpy_type;
 }
@@ -346,8 +354,8 @@ PyCustomOp::PyCustomOp(const OnnxAttrs& attrs,
                        const std::string& compute,
                        PyOpLogFunc logging_func) : attrs_(attrs), inputs_type_(inputs_type), outputs_type_(outputs_type), module_(module), class_name_(class_name), compute_(compute), logging_func_(logging_func) { OrtCustomOp::version = ORT_API_VERSION; }
 
-void* PyCustomOp::CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo*) const {
-  return new PyCustomKernel(api, attrs_, module_, class_name_, compute_, logging_func_);
+void* PyCustomOp::CreateKernel(const OrtApi&, const OrtKernelInfo*) const {
+  return new PyCustomKernel(attrs_, module_, class_name_, compute_, logging_func_);
 }
 
 const char* PyCustomOp::GetName() const { return "PyOp"; }
@@ -384,7 +392,7 @@ PyCustomOp* LoadPyOp(const ONNX_NAMESPACE::NodeProto& node_proto, PyOpLogFunc lo
         }
       }
     }
-  }  //for
+  }  // for
   ORT_ENFORCE(module != "", "PyOp module not specified");
   ORT_ENFORCE(class_name != "", "PyOp class name not specified");
   ORT_ENFORCE(!input_types.empty(), "PyOp node inputs not specified");

@@ -23,7 +23,7 @@ void DnnlGelu::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     src_mem = sp.GetMemory(node.Input(IN_X));
   }
   auto gelu_src_mem = src_mem;
-
+  dnnl::memory dst_mem;
   if (is_biased) {
     auto bias_mem = sp.GetMemoryInOrtFormat(node.Input(IN_BIAS), dnnl_engine);
     auto src0_ori_md = src_mem.get_desc();
@@ -50,38 +50,37 @@ void DnnlGelu::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       }
     }
 
+    dnnl::primitive_attr attr;
+    dnnl::post_ops ops;
+    dnnl::algorithm algo = dnnl_util::OrtOperatorToDnnlAlgorithm(node.OpType());
+    ops.append_eltwise(1.0f, algo, 1.0f, 1.0f);
+    attr.set_post_ops(ops);
+
     auto dst_md = dnnl::memory::desc(output_shape, node.Output(OUT_Y).Type(), dnnl::memory::format_tag::any);
 
     auto binary_d = dnnl::binary::desc(dnnl::algorithm::binary_add, src0_md, src1_md, dst_md);
-    auto binary_pd = dnnl::binary::primitive_desc(binary_d, dnnl_engine);
+    auto binary_pd = dnnl::binary::primitive_desc(binary_d, attr, dnnl_engine);
 
-    auto binary_src0_mem = sp.GetMemoryAndReshape(node.Input(IN_X), binary_pd.src0_desc(), dnnl_engine);
-    auto binary_src1_mem = sp.GetMemoryAndReshape(node.Input(IN_BIAS), binary_pd.src1_desc(), dnnl_engine);
-
-    auto binary_dst_mem = dnnl::memory(binary_pd.dst_desc(), dnnl_engine);
+    dst_mem = dnnl::memory(binary_pd.dst_desc(), dnnl_engine);
     auto binary_prim = dnnl::binary(binary_pd);
 
-    sp.AddPrimitive(binary_prim, {{DNNL_ARG_SRC_0, binary_src0_mem},
-                                  {DNNL_ARG_SRC_1, binary_src1_mem},
-                                  {DNNL_ARG_DST, binary_dst_mem}});
+    sp.AddPrimitive(binary_prim, {{DNNL_ARG_SRC_0, src_mem},
+                                  {DNNL_ARG_SRC_1, bias_mem},
+                                  {DNNL_ARG_DST, dst_mem}});
+  } else {
+    dnnl::algorithm algo = dnnl_util::OrtOperatorToDnnlAlgorithm(node.OpType());
+    auto gelu_desc = dnnl::eltwise_forward::desc(dnnl::prop_kind::forward_inference, algo, gelu_src_mem.get_desc());
+    auto gelu_pd = dnnl::eltwise_forward::primitive_desc(gelu_desc, dnnl_engine);
 
-    gelu_src_mem = binary_dst_mem;
-
-  }
-
-  dnnl::algorithm algo = dnnl_util::OrtOperatorToDnnlAlgorithm(node.OpType());
-  auto gelu_desc = dnnl::eltwise_forward::desc(dnnl::prop_kind::forward_inference, algo, gelu_src_mem.get_desc());
-  auto gelu_pd = dnnl::eltwise_forward::primitive_desc(gelu_desc, dnnl_engine);
-
-  if(!is_biased) {
     // If using GPU this will move the memory from the CPU to the GPU.
     gelu_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), gelu_pd.src_desc(), dnnl_engine);
-  }
-  auto dst_mem = dnnl::memory(gelu_pd.dst_desc(), dnnl_engine);
 
-  auto gelu_op = dnnl::eltwise_forward(gelu_pd);
-  sp.AddPrimitive(gelu_op, {{DNNL_ARG_SRC, gelu_src_mem},
-                            {DNNL_ARG_DST, dst_mem}});
+    dst_mem = dnnl::memory(gelu_pd.dst_desc(), dnnl_engine);
+
+    auto gelu_op = dnnl::eltwise_forward(gelu_pd);
+    sp.AddPrimitive(gelu_op, {{DNNL_ARG_SRC, gelu_src_mem},
+                              {DNNL_ARG_DST, dst_mem}});
+  }
 
   if (sp.IsScalar(node.Input(IN_X))) {
     sp.SetMemory(node.Output(OUT_Y), dst_mem, false, true);

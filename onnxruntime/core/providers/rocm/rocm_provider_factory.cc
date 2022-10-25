@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
 #include "core/providers/rocm/rocm_provider_factory.h"
 
 #include <memory>
@@ -10,7 +9,9 @@
 #include "gsl/gsl"
 
 #include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/providers/rocm/rocm_execution_provider_info.h"
 #include "core/providers/rocm/rocm_allocator.h"
+#include "core/providers/rocm/rocm_provider_factory_creator.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
 
@@ -44,10 +45,6 @@ struct ROCMProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> ROCMProviderFactory::CreateProvider() {
   return std::make_unique<ROCMExecutionProvider>(info_);
-}
-
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(const ROCMExecutionProviderInfo& info) {
-  return std::make_shared<onnxruntime::ROCMProviderFactory>(info);
 }
 
 struct ProviderInfo_ROCM_Impl : ProviderInfo_ROCM {
@@ -107,26 +104,26 @@ struct ProviderInfo_ROCM_Impl : ProviderInfo_ROCM {
     return rocm::Impl_Cast(static_cast<hipStream_t>(stream), input_data, output_data, count);
   }
 
-  bool RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return RocmCall<hipError_t, false>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg); }
-  bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return RocmCall<hipError_t, true>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg); }
+  Status RocmCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return RocmCall<hipError_t, false>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg); }
+  void RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { RocmCall<hipError_t, true>(hipError_t(retCode), exprString, libName, hipError_t(successCode), msg); }
 
   void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) override {
     ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
 
     // Current ROCM device.
     int device;
-    HIP_CALL(hipGetDevice(&device));
+    HIP_CALL_THROW(hipGetDevice(&device));
 
     if (device != src_location.id) {
       // Need to switch to the allocating device.
-      HIP_CALL(hipSetDevice(src_location.id));
+      HIP_CALL_THROW(hipSetDevice(src_location.id));
       // Copy from GPU to CPU.
-      HIP_CALL(hipMemcpy(dst_ptr, src_ptr, size, hipMemcpyDeviceToHost));
+      HIP_CALL_THROW(hipMemcpy(dst_ptr, src_ptr, size, hipMemcpyDeviceToHost));
       // Switch back to current device.
-      HIP_CALL(hipSetDevice(device));
+      HIP_CALL_THROW(hipSetDevice(device));
     } else {
       // Copy from GPU to CPU.
-      HIP_CALL(hipMemcpy(dst_ptr, src_ptr, size, hipMemcpyDeviceToHost));
+      HIP_CALL_THROW(hipMemcpy(dst_ptr, src_ptr, size, hipMemcpyDeviceToHost));
     }
   }
 
@@ -176,6 +173,7 @@ struct ROCM_Provider : Provider {
     info.has_user_compute_stream = params->has_user_compute_stream;
     info.user_compute_stream = params->user_compute_stream;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
+    info.tunable_op.enabled = params->tunable_op_enabled;
 
     return std::make_shared<ROCMProviderFactory>(info);
   }

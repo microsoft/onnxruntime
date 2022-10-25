@@ -17,6 +17,8 @@ namespace tvm {
 namespace provider_option_names {
 constexpr const char* kExecutor = "executor";
 constexpr const char* kSoFolder = "so_folder";
+constexpr const char* kCheckHash = "check_hash";
+constexpr const char* kHashFilePath = "hash_file_path";
 constexpr const char* kTarget = "target";
 constexpr const char* kTargetHost = "target_host";
 constexpr const char* kOptLevel = "opt_level";
@@ -29,6 +31,9 @@ constexpr const char* kInputShapes = "input_shapes";
 
 static const std::unordered_set<std::string> valid_keys {
   std::string{kExecutor},
+  std::string{kSoFolder},
+  std::string{kCheckHash},
+  std::string{kHashFilePath},
   std::string{kTarget},
   std::string{kTargetHost},
   std::string{kOptLevel},
@@ -113,6 +118,8 @@ TvmEPOptions TvmEPOptionsHelper::FromProviderOptions(const ProviderOptions& pr_o
     ProviderOptionsParser{}
       .AddAssignmentToReference(tvm::provider_option_names::kExecutor, options.executor)
       .AddAssignmentToReference(tvm::provider_option_names::kSoFolder, options.so_folder)
+      .AddAssignmentToReference(tvm::provider_option_names::kCheckHash, options.check_hash)
+      .AddAssignmentToReference(tvm::provider_option_names::kHashFilePath, options.hash_file_path)
       .AddAssignmentToReference(tvm::provider_option_names::kTarget, options.target)
       .AddAssignmentToReference(tvm::provider_option_names::kTargetHost, options.target_host)
       .AddAssignmentToReference(tvm::provider_option_names::kOptLevel, options.opt_level)
@@ -247,6 +254,9 @@ void TvmEPOptionsHelper::optLevelPostprocess(unsigned int& opt_level) {
 std::ostream& operator<<(std::ostream& out, const TvmEPOptions& options) {
   out << "TVM EP options:\n" <<
   "executor type: " << options.executor << "\n" <<
+  "so_folder: " << options.so_folder << "\n" <<
+  "check_hash: " << options.check_hash << "\n" <<
+  "hash_file_path: " << options.hash_file_path << "\n" <<
   "target: " << options.target << "\n" <<
   "target_host: " << options.target_host << "\n" <<
   "opt level: " << options.opt_level << "\n" <<

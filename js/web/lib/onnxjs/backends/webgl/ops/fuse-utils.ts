@@ -14,7 +14,7 @@ export interface InternalActivationAttributes {
   readonly activationCacheKey: string;
 }
 
-export function getActicationSnippet(attributes: InternalActivationAttributes) {
+export function getActivationSnippet(attributes: InternalActivationAttributes) {
   let func: GlslValueFunction;
   switch (attributes.activation) {
     case 'Relu':

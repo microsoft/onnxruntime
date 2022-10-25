@@ -4,22 +4,23 @@
 
 import copy
 import itertools
-import os
 import math
-import numpy as np
-import torch
-import pytest
+import os
 import warnings
 
-from onnxruntime.training.ortmodule import ORTModule, _fallback, ORTMODULE_TORCH_CPP_DIR
-from onnxruntime.training.ortmodule.torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 import _test_helpers
+import numpy as np
+import pytest
+import torch
 from _orttraining_ortmodule_models import (
-    NeuralNetSinglePositionalArgument,
-    NeuralNetCustomClassOutput,
     MyCustomClassInputNet,
     MyCustomFunctionReluModel,
+    NeuralNetCustomClassOutput,
+    NeuralNetSinglePositionalArgument,
 )
+
+from onnxruntime.training.ortmodule import ORTMODULE_TORCH_CPP_DIR, ORTModule, _fallback
+from onnxruntime.training.ortmodule.torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 
 # PyTorch model definitions for tests
 
@@ -351,7 +352,7 @@ def test_ortmodule_fallback_torch_model(is_training, fallback_enabled, matching_
 
                 ort_out = ort_model(x)
                 pt_out = pt_model(x)
-                _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
+                _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=1e-3, atol=1e-6)
             else:
                 with pytest.raises(_fallback.ORTModuleTorchModelException) as ex_info:
                     ort_model = ORTModule(pt_model)
@@ -373,6 +374,7 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
     #   Otherwise, an incorrect policy (FALLBACK_UNSUPPORTED_DEVICE) is used to verify that the fallback does not happen
 
     from packaging import version
+
     from onnxruntime.training.ortmodule import MINIMUM_RUNTIME_PYTORCH_VERSION_STR
 
     runtime_pytorch_version = version.parse(torch.__version__.split("+")[0])
@@ -486,6 +488,15 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(
 def test_ortmodule_fallback_onnx_model__custom_autograd(
     is_training, fallback_enabled, matching_policy, persist_fallback
 ):
+    from onnxruntime.training.ortmodule._custom_autograd_function import (
+        custom_autograd_function_enabler,
+        enable_custom_autograd_support,
+    )
+
+    # Disable the autograd support to test the fallback.
+    old_state = custom_autograd_function_enabler.state
+    enable_custom_autograd_support(False)
+
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # fallback_enabled: True PyTorch executes the forward graph instead of ORT backend
     # matching_policy: True matches FALLBACK_UNSUPPORTED_ONNX_MODEL policy to ORTModuleDeviceException exception.
@@ -525,7 +536,7 @@ def test_ortmodule_fallback_onnx_model__custom_autograd(
                     )
                 pt_out = pt_model(x.mm(w1)).mm(w2)
                 ort_out = ort_model(x.mm(w1)).mm(w2)
-                _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
+                _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=1e-03, atol=1e-04)
             else:
                 with pytest.raises(_fallback.ORTModuleONNXModelException) as ex_info:
                     _ = ort_model(x.mm(w1)).mm(w2)
@@ -535,6 +546,9 @@ def test_ortmodule_fallback_onnx_model__custom_autograd(
                 # Initialize with fallback policy because Exception will happen during __init__
                 _ = ort_model(x.mm(w1)).mm(w2)
             assert "There was an error while exporting the PyTorch model to ONNX" in str(ex_info.value)
+
+    # Restore the autograd support state.
+    enable_custom_autograd_support(old_state)
 
 
 @pytest.mark.parametrize(

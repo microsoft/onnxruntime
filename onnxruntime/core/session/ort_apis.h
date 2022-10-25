@@ -357,12 +357,14 @@ ORT_API_STATUS_IMPL(CreateOp,
                     _In_ const OrtKernelInfo* info,
                     _In_ const char* op_name,
                     _In_ const char* domain,
-                    int version,
+                    _In_ int version,
                     _In_opt_ const char** type_constraint_names,
                     _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                    int type_constraint_count,
+                    _In_opt_ int type_constraint_count,
                     _In_opt_ const OrtOpAttr* const* attr_values,
-                    int attr_count,
+                    _In_opt_ int attr_count,
+                    _In_ int input_count,
+                    _In_ int output_count,
                     _Outptr_ OrtOp** ort_op);
 
 ORT_API_STATUS_IMPL(InvokeOp,
@@ -374,5 +376,31 @@ ORT_API_STATUS_IMPL(InvokeOp,
                     _In_ int output_count);
 
 ORT_API(void, ReleaseOp, _Frees_ptr_opt_ OrtOp* op);
+
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider,
+                    _In_ OrtSessionOptions* options,
+                    _In_ const char* provider_name,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    _In_ size_t num_keys);
+
+ORT_API_STATUS_IMPL(CopyKernelInfo, _In_ const OrtKernelInfo* info, _Outptr_ OrtKernelInfo** info_copy);
+
+ORT_API(void, ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy);
+
+ORT_API(const OrtTrainingApi*, GetTrainingApi, uint32_t version);
+
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_CANN,
+                    _In_ OrtSessionOptions* options, _In_ const OrtCANNProviderOptions* cann_options);
+ORT_API_STATUS_IMPL(CreateCANNProviderOptions, _Outptr_ OrtCANNProviderOptions** out);
+ORT_API_STATUS_IMPL(UpdateCANNProviderOptions, _Inout_ OrtCANNProviderOptions* cann_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys);
+ORT_API_STATUS_IMPL(GetCANNProviderOptionsAsString, _In_ const OrtCANNProviderOptions* cann_options,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+ORT_API(void, ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProviderOptions*);
+
+ORT_API(void, MemoryInfoGetDeviceType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtMemoryInfoDeviceType* out);
 
 }  // namespace OrtApis

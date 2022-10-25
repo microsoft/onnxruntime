@@ -1,16 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/onnx_protobuf.h"
-#include "core/framework/session_state_utils.h"
-
 #include <functional>
 #include <limits>
+#include <utility>
+
 #include <core/common/status.h>
 
+#include "core/framework/ortdevice.h"
+#include "core/graph/onnx_protobuf.h"
+#include "core/framework/session_state_utils.h"
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
-
 #include "core/graph/graph_viewer.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/graph_partitioner.h"
@@ -54,6 +55,44 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
   return Status::OK();
 }
 
+// deleter for external data tensors managed by an OrtValue; manages the release of
+// the tensor's data buffer (which points to the external data) and the tensor itself
+struct ExtDataValueDeleter {
+  OrtCallback ext_delete_cb;
+  Tensor* p_tensor;
+  void operator()(void*) noexcept {
+    if (ext_delete_cb.f) {
+      ext_delete_cb.f(ext_delete_cb.param);
+    }
+
+    delete p_tensor;
+  }
+};
+
+// given a tensor proto with external data return an OrtValue with a tensor for
+// that data; the pointers for the tensor data and the tensor itself are owned
+// by the OrtValue's deleter
+static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
+                                                        const std::basic_string<PATH_CHAR_TYPE>& proto_path,
+                                                        const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                        Tensor& tensor, OrtCallback& ext_data_deleter) {
+  ORT_ENFORCE(utils::HasExternalData(tensor_proto));
+
+  void* ext_data_buf = nullptr;
+  SafeInt<size_t> ext_data_len = 0;
+  ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path.c_str(), tensor_proto,
+                                                       ext_data_buf, ext_data_len, ext_data_deleter));
+
+  // NB: creating a do-nothing allocator per tensor is wasteful; can perhaps be
+  // avoided if the Tensor class implements the do-nothing behavior when given a
+  // nullptr for the allocator argument
+  const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
+  TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
+  tensor = Tensor(type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+
+  return common::Status::OK();
+}
+
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
@@ -65,7 +104,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   }
 
   // Get shape and type of the tensor, and allocate the empty tensor
-  TensorShape tensor_shape{utils::GetTensorShapeFromTensorProto(tensor_proto)};
+  TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::unique_ptr<Tensor> p_tensor;
   if (m != nullptr) {
@@ -87,8 +126,21 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
   }
 
-  if (strcmp(p_tensor->Location().name, CPU) == 0) {
+  if (p_tensor->Location().device.Type() == OrtDevice::CPU) {
     // deserialize directly to CPU tensor
+    if (utils::HasExternalData(tensor_proto)) {
+      // NB: The file containing external data for the tensor is mmap'd. If the tensor will be used on CPU we can
+      // utilize the mmap'd buffer directly by calling ExtDataTensorProtoToTensor. If we called
+      // TensorProtoToTensor it would copy the data, causing unnecessary overhead
+      OrtCallback ext_data_deleter;
+      ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_tensor, ext_data_deleter));
+
+      ExtDataValueDeleter deleter{ext_data_deleter, p_tensor.get()};
+
+      MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
+      ort_value.Init(p_tensor.release(), ml_tensor_type, deleter);
+      return common::Status::OK();
+    }
     ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor));
   } else {  // non-cpu tensor
     if (tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
@@ -108,7 +160,13 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
     }
 
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
+    OrtCallback ext_data_deleter;
+    if (utils::HasExternalData(tensor_proto)) {
+      ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor,
+                                                     ext_data_deleter));
+    } else {
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
+    }
     // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 
     Status copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
@@ -136,7 +194,8 @@ common::Status SaveInitializedTensors(
     const SaveTensorFunction& save_tensor_func,
     const logging::Logger& logger, const DataTransferManager& data_transfer_mgr,
     const ExecutionPlanBase& exec_plan,
-    const SessionOptions& session_options) {
+    const SessionOptions& session_options,
+    const MemoryProfileFunction& memory_profile_func) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
 
@@ -169,10 +228,14 @@ common::Status SaveInitializedTensors(
     return retval;
   };
 
-  //1. first plan the memory
-  const onnxruntime::InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
-  std::unordered_map<int, const ONNX_NAMESPACE::TensorProto*> id_to_initialized_tensor;
-  std::set<int> user_supplied_initializer_ids;  // set containing the ort value ids of all user supplied initializers
+  // 1. first plan the memory
+  const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+  InlinedHashMap<int, const ONNX_NAMESPACE::TensorProto*> id_to_initialized_tensor;
+  InlinedHashSet<int> user_supplied_initializer_ids;  // set containing the ort value ids of all user supplied initializers
+
+  id_to_initialized_tensor.reserve(initialized_tensor_set.size());
+  user_supplied_initializer_ids.reserve(initialized_tensor_set.size());
+
   for (const auto& entry : initialized_tensor_set) {
     int ort_value_index;
     ORT_RETURN_IF_ERROR(ort_value_name_idx_map.GetIdx(entry.first, ort_value_index));
@@ -183,12 +246,18 @@ common::Status SaveInitializedTensors(
   }
 
   // tensors requiring a specific allocation order are traced first, to ensure they are allocated in order
+  // NB1: vector with init allocation order may contain a subset of all tensors (or none at all)
+  // NB2: only skip tracing and planning memory when data is external (i.e mmap) and on CPU.
+  //    when data is external and on GPU, need to copy first to cpu memory, then to gpu memory.
   auto initialized_tensors_to_allocate = id_to_initialized_tensor;
   for (int ort_value_index : initializer_allocation_order) {
     const auto entry = initialized_tensors_to_allocate.find(ort_value_index);
-    // can not trace string tensor
-    ORT_ENFORCE(entry != initialized_tensors_to_allocate.end() && entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING);
-    ORT_RETURN_IF_ERROR(planner.Trace(entry->first, entry->second));
+    if (!(utils::HasExternalData(*entry->second) && exec_plan.GetLocation(ort_value_index).device.Type() == OrtDevice::CPU)) {
+      // can not trace string tensor
+      ORT_ENFORCE(entry != initialized_tensors_to_allocate.end() &&
+                  entry->second->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING);
+      ORT_RETURN_IF_ERROR(planner.Trace(entry->first, entry->second));
+    }
     initialized_tensors_to_allocate.erase(entry);
   }
 
@@ -203,17 +272,15 @@ common::Status SaveInitializedTensors(
     }
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
-  //2. allocate weight buffer on different locations
-  // planned_initializers_memory_size_in_byte is not actual physical size.
-  // It's the virtual size computed by planner.
-  std::unordered_map<std::string, size_t> planned_initializers_memory_sizes_in_byte;
+  // 2. allocate weight buffer on different locations
+  //  planned_initializers_memory_size_in_byte is not actual physical size.
+  //  It's the virtual size computed by planner.
+  InlinedHashMap<std::string, size_t> planned_initializers_memory_sizes_in_byte;
   ORT_RETURN_IF_ERROR(
       planner.FinalizePlan(planned_initializers_memory_sizes_in_byte));
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  MemoryInfo::RecordPatternInfo(planner.GetMemPatterns(), MemoryInfo::MapType::Initializer);
-  MemoryInfo::MemoryInfoProfile::CreateEvents("initializer_" + std::to_string(MemoryInfo::GetIteration()),
-                                              MemoryInfo::MemoryInfoProfile::GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 0);
-#endif
+
+  if (memory_profile_func)
+    memory_profile_func(planner);
 
   for (auto i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "
@@ -222,10 +289,16 @@ common::Status SaveInitializedTensors(
 
   OrtCallback deleter{nullptr, nullptr};
 
-  //3. create weight tensors based on weights buffer
+  // 3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
     int ort_value_index = entry.first;
-    const char* name = (entry.second->name().empty()) ? "" : entry.second->name().c_str();
+    const std::string& name = entry.second->name();
+
+    if (name.empty()) {
+      LOGS(logger, INFO) << "Skipping entry for missing optional value at idx " << ort_value_index;
+      continue;
+    }
+
     OrtValue ort_value;
 
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
@@ -234,15 +307,16 @@ common::Status SaveInitializedTensors(
     } else {
       const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 
-      std::unique_ptr<MemBuffer> m;
+      std::optional<MemBuffer> m;
       AllocatorPtr alloc;
       // TODO: if the tensor need be copied, does it have enough room?
       ORT_RETURN_IF_ERROR(planner.GetPreallocatedBuffer(ort_value_index, name, m, alloc));
       bool use_device_allocator_for_initializers =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
-      Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, m.get(), alloc, default_cpu_alloc, ort_value,
-                                         data_transfer_mgr, use_device_allocator_for_initializers);
+      Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
+                                         default_cpu_alloc, ort_value, data_transfer_mgr,
+                                         use_device_allocator_for_initializers);
       if (!st.IsOK()) {
         std::ostringstream oss;
         oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
@@ -250,17 +324,19 @@ common::Status SaveInitializedTensors(
       }
     }
 
+    // 'name' is a reference to a string within the TensorProto that save_tensor_func may free
+    // so we need to output this message prior to calling save_tensor_func
+    VLOGS(logger, 1) << "Adding weight with name : " << name << " with index: " << ort_value_index;
+
     // any outer scope value is shadowed by a local value and can't override it.
     // due to that check_outer_scope is false
     const bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
 #if !defined(DISABLE_SPARSE_TENSORS)
     const bool sparse = graph.GetGraph().IsSparseInitializer(name);
-    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant, sparse));
+    ORT_RETURN_IF_ERROR(save_tensor_func(name, ort_value_index, ort_value, deleter, constant, sparse));
 #else
-    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant, false));
+    ORT_RETURN_IF_ERROR(save_tensor_func(name, ort_value_index, ort_value, deleter, constant, false));
 #endif
-
-    VLOGS(logger, 1) << "Added weight with name : " << name << " with index: " << ort_value_index;
   }
 
   LOGS(logger, INFO) << "Done saving initialized tensors";
@@ -279,7 +355,7 @@ static bool IsArgNameInInputsOutputs(const std::string& name,
 
 common::Status SaveInputOutputNamesToNodeMapping(const onnxruntime::GraphViewer& graph,
                                                  SessionState& session_state,
-                                                 const std::vector<const NodeArg*>& implicit_inputs) {
+                                                 gsl::span<const NodeArg* const> implicit_inputs) {
   auto& graph_inputs = graph.GetInputsIncludingInitializers();
   auto& graph_outputs = graph.GetOutputs();
 

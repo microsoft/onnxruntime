@@ -28,13 +28,13 @@ namespace cuda {
         Stream(),                                                                                                \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         &prepare.lhs_padded_strides,                                                                             \
-        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->Data<T>()),     \
         &prepare.rhs_padded_strides,                                                                             \
-        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->template Data<T>()),     \
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.rhs_tensor->Data<T>()),     \
         &prepare.fdm_output_strides,                                                                             \
         prepare.fdm_H,                                                                                           \
         prepare.fdm_C,                                                                                           \
-        reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->template MutableData<T>()), \
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(prepare.output_tensor->MutableData<T>()), \
         prepare.output_tensor->Shape().Size());                                                                  \
     return Status::OK();                                                                                         \
   }

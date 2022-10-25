@@ -25,6 +25,7 @@
 #                     'is_tensor' is optional, if not present, the default is False.
 
 import json
+
 from onnxruntime.capi import _pybind_state as C
 
 
@@ -85,7 +86,7 @@ def register_gradient(domain, name, *attributes):
 
 
 # For ATen op, we need to provide op_name and overload name.
-@register_gradient("org.pytorch.aten", "ATen", "aten::embedding", "")
+@register_gradient("org.pytorch.aten", "ATen", "embedding", "")
 def embedding_gradient():
     return [
         ("Constant", [], ["Const_0"], {"value": {"value": 0, "dtype": "int", "is_tensor": True}}),
@@ -95,12 +96,12 @@ def embedding_gradient():
             ("ATen", "org.pytorch.aten"),
             ["GO(0)", "I(1)", "Gather_X_0", "I(2)", "I(3)", "I(4)"],
             ["GI(0)"],
-            {"operator": {"value": "aten::embedding_backward", "dtype": "string"}},
+            {"operator": {"value": "embedding_backward", "dtype": "string"}},
         ),
     ]
 
 
-@register_gradient("org.pytorch.aten", "ATen", "aten::diagonal", "")
+@register_gradient("org.pytorch.aten", "ATen", "diagonal", "")
 def diagonal_gradient():
     return [
         ("Shape", ["I(0)"], ["Shape_X"]),
@@ -108,19 +109,19 @@ def diagonal_gradient():
             ("ATen", "org.pytorch.aten"),
             ["GO(0)", "Shape_X", "I(1)", "I(2)", "I(3)"],
             ["GI(0)"],
-            {"operator": {"value": "aten::diagonal_backward", "dtype": "string"}},
+            {"operator": {"value": "diagonal_backward", "dtype": "string"}},
         ),
     ]
 
 
-@register_gradient("org.pytorch.aten", "ATen", "aten::max_pool2d_with_indices", "")
+@register_gradient("org.pytorch.aten", "ATen", "max_pool2d_with_indices", "")
 def max_pool2d_gradient():
     return [
         (
             ("ATen", "org.pytorch.aten"),
             ["GO(0)", "I(0)", "I(1)", "I(2)", "I(3)", "I(4)", "I(5)", "O(1)"],
             ["GI(0)"],
-            {"operator": {"value": "aten::max_pool2d_with_indices_backward", "dtype": "string"}},
+            {"operator": {"value": "max_pool2d_with_indices_backward", "dtype": "string"}},
         ),
     ]
 
@@ -143,8 +144,8 @@ def minmax_gradient():
     ]
 
 
-min_gradient = register_gradient("org.pytorch.aten", "ATen", "aten::min", "")(minmax_gradient)
-max_gradient = register_gradient("org.pytorch.aten", "ATen", "aten::max", "")(minmax_gradient)
+min_gradient = register_gradient("org.pytorch.aten", "ATen", "min", "")(minmax_gradient)
+max_gradient = register_gradient("org.pytorch.aten", "ATen", "max", "")(minmax_gradient)
 
 
 def minmax_dim_gradient():
@@ -161,16 +162,16 @@ def minmax_dim_gradient():
             ("ATen", "org.pytorch.aten"),
             ["GO(0)", "I(1)", "O(1)", "Shape_X", "I(2)"],
             ["GI(0)"],
-            {"operator": {"value": "aten::value_selecting_reduction_backward", "dtype": "string"}},
+            {"operator": {"value": "value_selecting_reduction_backward", "dtype": "string"}},
         ),
     ]
 
 
-min_dim_gradient = register_gradient("org.pytorch.aten", "ATen", "aten::min", "dim")(minmax_dim_gradient)
-max_dim_gradient = register_gradient("org.pytorch.aten", "ATen", "aten::max", "dim")(minmax_dim_gradient)
+min_dim_gradient = register_gradient("org.pytorch.aten", "ATen", "min", "dim")(minmax_dim_gradient)
+max_dim_gradient = register_gradient("org.pytorch.aten", "ATen", "max", "dim")(minmax_dim_gradient)
 
 
-@register_gradient("org.pytorch.aten", "ATen", "aten::unfold", "")
+@register_gradient("org.pytorch.aten", "ATen", "unfold", "")
 def unfold_gradient():
     return [
         ("Shape", ["I(0)"], ["Shape_X"]),
@@ -178,58 +179,89 @@ def unfold_gradient():
             ("ATen", "org.pytorch.aten"),
             ["GO(0)", "Shape_X", "I(1)", "I(2)", "I(3)"],
             ["GI(0)"],
-            {"operator": {"value": "aten::unfold_backward", "dtype": "string"}},
+            {"operator": {"value": "unfold_backward", "dtype": "string"}},
         ),
     ]
 
 
-@register_gradient("org.pytorch.aten", "ATen", "aten::avg_pool2d", "")
+@register_gradient("org.pytorch.aten", "ATen", "avg_pool2d", "")
 def avg_pool2d_gradient():
     return [
         (
             ("ATen", "org.pytorch.aten"),
             ["GO(0)", "I(0)", "I(1)", "I(2)", "I(3)", "I(4)", "I(5)", "I(6)"],
             ["GI(0)"],
-            {"operator": {"value": "aten::avg_pool2d_backward", "dtype": "string"}},
+            {"operator": {"value": "avg_pool2d_backward", "dtype": "string"}},
         ),
     ]
 
 
-@register_gradient("org.pytorch.aten", "ATen", "aten::_adaptive_avg_pool2d", "")
+@register_gradient("org.pytorch.aten", "ATen", "_adaptive_avg_pool2d", "")
 def adaptive_avg_pool2d_gradient():
     return [
         (
             ("ATen", "org.pytorch.aten"),
             ["GO(0)", "I(0)"],
             ["GI(0)"],
-            {"operator": {"value": "aten::_adaptive_avg_pool2d_backward", "dtype": "string"}},
+            {"operator": {"value": "_adaptive_avg_pool2d_backward", "dtype": "string"}},
         ),
     ]
 
 
-CustomGradientRegistry.register_custom_stop_gradient_edges([0], "org.pytorch.aten", "ATen", "aten::argmax", "")
-CustomGradientRegistry.register_custom_stop_gradient_edges([0], "org.pytorch.aten", "ATen", "aten::multinomial", "")
+CustomGradientRegistry.register_custom_stop_gradient_edges([0], "org.pytorch.aten", "ATen", "argmax", "")
+CustomGradientRegistry.register_custom_stop_gradient_edges([0], "org.pytorch.aten", "ATen", "multinomial", "")
 
 
-@register_gradient("org.pytorch.aten", "ATen", "aten::binary_cross_entropy_with_logits", "")
-def binary_cross_entropy_with_logits_gradient():
-    return [
-        (
-            ("ATen", "org.pytorch.aten"),
-            ["GO(0)", "I(0)", "I(1)", "I(2)", "I(3)", "I(4)"],
-            ["GI(0)"],
-            {"operator": {"value": "aten::binary_cross_entropy_with_logits_backward", "dtype": "string"}},
-        ),
-    ]
-
-
-@register_gradient("org.pytorch.aten", "ATen", "aten::numpy_T", "")
+@register_gradient("org.pytorch.aten", "ATen", "numpy_T", "")
 def numpy_T_gradient():
     return [
         (
             ("ATen", "org.pytorch.aten"),
             ["GO(0)"],
             ["GI(0)"],
-            {"operator": {"value": "aten::numpy_T", "dtype": "string"}},
+            {"operator": {"value": "numpy_T", "dtype": "string"}},
         ),
     ]
+
+
+@register_gradient("org.pytorch.aten", "ATen", "native_group_norm", "")
+def native_group_norm_gradient():
+    return [
+        ("Constant", [], ["Const_0"], {"value": {"value": [True, True, True], "dtype": "bool", "is_tensor": True}}),
+        (
+            ("ATen", "org.pytorch.aten"),
+            ["GO(0)", "I(0)", "O(1)", "O(2)", "I(1)", "I(3)", "I(4)", "I(5)", "I(6)", "Const_0"],
+            ["GI(0)", "GI(1)", "GI(2)"],
+            {"operator": {"value": "native_group_norm_backward", "dtype": "string"}},
+        ),
+    ]
+
+
+def _upsample_nearest_gradient(backward_fn):
+    return [
+        ("Shape", ["I(0)"], ["Shape_X"]),
+        (
+            ("ATen", "org.pytorch.aten"),
+            ["GO(0)", "I(1)", "Shape_X", "I(2)"],
+            ["GI(0)"],
+            {
+                "operator": {"value": backward_fn, "dtype": "string"},
+                "overload_name": {"value": "vec", "dtype": "string"},
+            },
+        ),
+    ]
+
+
+@register_gradient("org.pytorch.aten", "ATen", "upsample_nearest1d", "vec")
+def upsample_nearest1d_gradient():
+    return _upsample_nearest_gradient("upsample_nearest1d_backward")
+
+
+@register_gradient("org.pytorch.aten", "ATen", "upsample_nearest2d", "vec")
+def upsample_nearest2d_gradient():
+    return _upsample_nearest_gradient("upsample_nearest2d_backward")
+
+
+@register_gradient("org.pytorch.aten", "ATen", "upsample_nearest3d", "vec")
+def upsample_nearest3d_gradient():
+    return _upsample_nearest_gradient("upsample_nearest3d_backward")

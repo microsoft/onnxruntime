@@ -116,6 +116,10 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
   return session_options;
 }
 
+int OrtAppendExecutionProvider(ort_session_options_handle_t session_options, const char* name) {
+  return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, nullptr, nullptr, 0);
+}
+
 int OrtAddSessionConfigEntry(OrtSessionOptions* session_options,
                              const char* config_key,
                              const char* config_value) {
@@ -242,6 +246,12 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
   OrtAllocator* allocator = nullptr;
   size_t* p_dims = nullptr;
   void* p_string_data = nullptr;
+
+  ONNXType tensor_type;
+  RETURN_ERROR_CODE_IF_ERROR(GetValueType, tensor, &tensor_type);
+  if ( tensor_type != ONNX_TYPE_TENSOR ) {
+    return ORT_FAIL;
+  }
 
   RETURN_ERROR_CODE_IF_ERROR(GetTensorTypeAndShape, tensor, &info);
 

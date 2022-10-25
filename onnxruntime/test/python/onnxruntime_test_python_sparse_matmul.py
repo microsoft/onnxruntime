@@ -1,10 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+# pylint: disable=C0115,W0212,C0103,C0114
 
-import gc
-import os
-import sys
-import threading
 
 # -*- coding: UTF-8 -*-
 import unittest
@@ -13,10 +10,24 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail
+from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector, RunOptions
 
 
 class TestSparseToDenseMatmul(unittest.TestCase):
+    def testRunSparseOutputOrtValueVector(self):
+        """
+        Try running models using the new run_with_ort_values
+        sparse_initializer_as_output.onnx - requires no inputs, but only one output
+        that comes from the initializer
+        """
+        # The below values are a part of the model
+        sess = onnxrt.InferenceSession(
+            get_name("sparse_initializer_as_output.onnx"),
+            providers=onnxrt.get_available_providers(),
+        )
+        res = sess._sess.run_with_ort_values({}, ["values"], RunOptions())
+        self.assertIsInstance(res, OrtValueVector)
+
     def testRunSparseOutputOnly(self):
         """
         Try running models using the new run_with_ort_values
@@ -39,7 +50,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         self.assertTrue(isinstance(sparse_output, onnxrt.SparseTensor))
         self.assertEqual(dense_shape, sparse_output.dense_shape())
         self.assertTrue(np.array_equal(values, sparse_output.values()))
-        self.assertTrue(np.array_equal(indices, sparse_output.as_coo_rep().indices()))
+        self.assertTrue(np.array_equal(indices, sparse_output.as_coo_view().indices()))
 
     def testRunContribSparseMatMul(self):
         """
@@ -410,3 +421,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         result = ort_value.numpy()
         self.assertEqual(list(result.shape), common_shape)
         self.assertTrue(np.array_equal(Y_result, result))
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=1)

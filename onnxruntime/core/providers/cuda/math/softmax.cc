@@ -116,8 +116,8 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<size_t> permutation(rank);
 
   // The "semantic" meaning of axis has changed in opset-13.
-  // Please compare: https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax
-  // with https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-11 for detailed explanations
+  // Please compare: https://github.com/onnx/onnx/blob/main/docs/Operators.md#Softmax
+  // with https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Softmax-11 for detailed explanations
   // To account for the opset-13 behavior, our plan will be to transpose the "axis" dim to the innermost dim
   // and perform softmax and then reverse the transpose. We can skip the transposing aspect if the axis is already
   // the innermost dim
@@ -161,12 +161,12 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape* compute_input_shape = nullptr;
 
   if (is_transpose_required) {  // use intermediate buffers to compute the softmax values
-    X_data = transposed_input->template Data<T>();
-    Y_data = intermediate_output->template MutableData<T>();
+    X_data = transposed_input->Data<T>();
+    Y_data = intermediate_output->MutableData<T>();
     compute_input_shape = &transposed_input->Shape();
   } else {  // use the node input/output directly
-    X_data = X->template Data<T>();
-    Y_data = Y->template MutableData<T>();
+    X_data = X->Data<T>();
+    Y_data = Y->MutableData<T>();
     compute_input_shape = &input_shape;
   }
 

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gradient_op_test_utils.h"
+#include "core/framework/kernel_type_str_resolver.h"
 #include "core/session/inference_session.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/gradient_graph_builder.h"
@@ -116,7 +117,6 @@ void GradientOpTester::Run(
         kCudaExecutionProvider,
         kRocmExecutionProvider,
         kDnnlExecutionProvider,
-        kNupharExecutionProvider,
         kTensorrtExecutionProvider,
     };
     bool has_run = false;
@@ -147,8 +147,6 @@ void GradientOpTester::Run(
           execution_provider = DefaultCudaExecutionProvider();
         else if (entry->Type() == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider(1);
-        else if (entry->Type() == onnxruntime::kNupharExecutionProvider)
-          execution_provider = DefaultNupharExecutionProvider();
         else if (entry->Type() == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         // skip if execution provider is disabled
@@ -173,8 +171,6 @@ void GradientOpTester::Run(
           execution_provider = DefaultCudaExecutionProvider();
         else if (provider_type == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider();
-        else if (provider_type == onnxruntime::kNupharExecutionProvider)
-          execution_provider = DefaultNupharExecutionProvider();
         else if (provider_type == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kRocmExecutionProvider)
@@ -184,6 +180,8 @@ void GradientOpTester::Run(
           continue;
 
         bool valid = true;
+
+        OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
 
         // set execution provider for all nodes in the graph
         for (auto& node : graph.Nodes()) {
@@ -200,32 +198,17 @@ void GradientOpTester::Run(
 
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci;
-          auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);
+          auto st = reg->TryFindKernel(node, execution_provider->Type(), kernel_type_str_resolver, &kci);
           if (!st.IsOK()) {
+            // The goal here is unclear. It seems best to leave it to the Session
+            // creation to figure out whether the model can be executed using some
+            // valid execution-provider. Removed the logic here for partially inlining
+            // functions, as function-inlining requires other pre-conditions like
+            // Graph::Resolve etc, and it appears it is not being used anyway.
             if (!node.CanBeInlined()) {
               valid = false;
-            } else {
-              // TODO: hanlde the nested function case.
-              std::unique_ptr<Function> node_func;
-              st = node.GetInstantiateFunctionBody(node_func);
-              if (!st.IsOK()) {
-                valid = false;
-              } else {
-                for (auto& sub_node : node_func->Body().Nodes()) {
-                  if (sub_node.OpType() != "Constant") {
-                    auto sub_reg = execution_provider->GetKernelRegistry();
-                    const KernelCreateInfo* sub_kci;
-                    st = sub_reg->TryFindKernel(sub_node, execution_provider->Type(), &sub_kci);
-                    if (!st.IsOK()) {
-                      valid = false;
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-            if (!valid)
               break;
+            }
           }
         }
 

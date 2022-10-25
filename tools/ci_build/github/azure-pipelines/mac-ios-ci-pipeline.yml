@@ -1,5 +1,5 @@
 jobs:
-- job: iOS_CI_on_Mac
+- job: iOS_CI_CPU_on_Mac
   pool:
     vmImage: 'macOS-11'
   variables:
@@ -27,6 +27,21 @@ jobs:
           --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
           --parallel
       displayName: (CPU EP) Build onnxruntime for iOS x86_64 and run tests using simulator
+
+
+- job: iOS_CI_CoreML_on_Mac
+  pool:
+    vmImage: 'macOS-11'
+  variables:
+    MACOSX_DEPLOYMENT_TARGET: '10.14'
+  timeoutInMinutes: 150
+  steps:
+    - script: |
+        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+          $(Build.SourcesDirectory) \
+          $(Build.BinariesDirectory)/protobuf \
+          $(Build.BinariesDirectory)/protobuf_install
+      displayName: Build Host Protoc
 
     - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \

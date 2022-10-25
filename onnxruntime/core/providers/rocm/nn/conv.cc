@@ -91,17 +91,17 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
   const auto x_dims = x_shape.GetDims();
-  s_.x_data = reinterpret_cast<const HipT*>(X->template Data<T>());
+  s_.x_data = reinterpret_cast<const HipT*>(X->Data<T>());
   s_.element_size = X->DataType()->Size();
   //set W
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
   auto w_dims = w_shape.AsShapeVector();
-  s_.w_data = reinterpret_cast<const HipT*>(W->template Data<T>());
+  s_.w_data = reinterpret_cast<const HipT*>(W->Data<T>());
   //set B
   if (context->InputCount() >= 3) {
     const Tensor* B = context->Input<Tensor>(2);
-    s_.b_data = reinterpret_cast<const HipT*>(B->template Data<T>());
+    s_.b_data = reinterpret_cast<const HipT*>(B->Data<T>());
   } else {
     s_.b_data = nullptr;
   }
@@ -109,7 +109,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   if (context->InputCount() >= 4) {
     const Tensor* Z = context->Input<Tensor>(3);
     ORT_RETURN_IF_ERROR(s_.z_tensor.Set(Z->Shape().GetDims(), MiopenTensor::GetDataType<HipT>()));
-    s_.z_data = reinterpret_cast<const HipT*>(Z->template Data<T>());
+    s_.z_data = reinterpret_cast<const HipT*>(Z->Data<T>());
   } else {
     s_.z_data = nullptr;
   }
@@ -184,7 +184,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       s_.y_data = reinterpret_cast<HipT*>(s_.memory_for_miopen_conv_results.get());
     } else {
       // No post slicing needed. Fill the output tensor's buffer directly.
-      s_.y_data = reinterpret_cast<HipT*>(s_.Y->template MutableData<T>());
+      s_.y_data = reinterpret_cast<HipT*>(s_.Y->MutableData<T>());
     }
 
     TensorShapeVector x_dims_miopen{x_dims.begin(), x_dims.end()};
@@ -269,7 +269,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       s_.memory_for_miopen_conv_results = GetScratchBuffer<void>(TensorShape(s_.y_dims_with_adjusted_pads).Size() * s_.element_size);
       s_.y_data = reinterpret_cast<HipT*>(s_.memory_for_miopen_conv_results.get());
     } else {
-      s_.y_data = reinterpret_cast<HipT*>(s_.Y->template MutableData<T>());
+      s_.y_data = reinterpret_cast<HipT*>(s_.Y->MutableData<T>());
     }
   }
   return Status::OK();

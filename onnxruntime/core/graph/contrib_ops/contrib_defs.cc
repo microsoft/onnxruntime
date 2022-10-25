@@ -16,7 +16,6 @@
 #include "core/graph/contrib_ops/range_schema_defs.h"
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/graph/signal_ops/signal_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "onnx/defs/function.h"
 
@@ -370,7 +369,6 @@ void sparseCompatibleMatmulShapeInference(
   updateOutputShape(ctx, 0, resultShape, default_tensor_type);
 }
 
-
 bool ParseScalar(const TensorProto* initializer, int& value) {
   std::vector<int32_t> parsed_data;
   if (initializer->data_type() == TensorProto::INT32) {
@@ -461,6 +459,44 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
       updateOutputShape(ctx, 2, scores_shape);
     }
   }
+}
+
+void GreedySearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  // Shape inference
+  // input 0 (input_ids) shape: (batch_size, sequence_length)
+  // output 0 (sequences) shape: (batch_size, max_length)
+  // output 1 (scores) shape: (max_length - sequence_length, batch_size, num_beams, vocab_size)
+  if (!hasInputShape(ctx, 0)) {
+    return;
+  }
+  auto& input_ids_shape = getInputShape(ctx, 0);
+  auto& input_ids_dims = input_ids_shape.dim();
+  if (input_ids_dims.size() != 2) {
+    fail_shape_inference("Inputs 0 shall be 2 dimensions");
+  }
+  if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
+    return;
+  }
+
+  int64_t batch_size = input_ids_dims[0].dim_value();
+
+  const auto max_length = ctx.getInputData(1);
+  if (max_length == nullptr) {  // not initializer
+    return;
+  }
+
+  int max_length_value = 0;
+  if (!ParseScalar(max_length, max_length_value) || max_length_value <= 0) {
+    fail_shape_inference("Failed to parse max_length or it is not positive integer scalar");
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto sequences_shape;
+  sequences_shape.add_dim()->set_dim_value(batch_size);
+  sequences_shape.add_dim()->set_dim_value(max_length_value);
+  updateOutputShape(ctx, 0, sequences_shape);
 }
 
 constexpr const char* Gelu_ver1_doc =
@@ -725,8 +761,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
                                 .SetDoc(
                                     "Y = softmax(scores + bias)) with simple broadcast on bias. "
                                     "Intended to specialize softmax(scores + additive_mask) commonly found in transformer models.")
-                                .Attr("softmax_axis", "apply softmax to elements for dimensions softmax_axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
-                                .Attr("broadcast_axis", "broadcast bias across input for dimensions broadcast_axis to softmax_axis-1", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("axis", "apply softmax to elements for dimensions axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
+                                .Attr("is_inner_broadcast", "true if broadcast bias across input for dimensions broadcast_axis to axis-1, "
+                                      "otherwise broadcast bias across input for dimensions 0 to broadcast_axis - 1",
+                                      AttributeProto::INT)
                                 .Input(0, "data", "The input data as Tensor.", "T")
                                 .Input(1, "bias", "The bias (or mask) as Tensor.", "T")
                                 .Output(0, "output", "The output.", "T")
@@ -957,25 +995,26 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .SetDoc("Beam Search for text generation. Supports GPT-2 decoder.")
                                 .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
                                 .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
+                                .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
                                 .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("model_type", "model type: 0 for GPT-2; 1 for encoder decoder like T5", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr("encoder_decoder_init", "subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
                                 .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
                                 .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
                                 .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
                                 .Input(4, "num_return_sequences", "The number of returned sequences in the batch. Shape is (1)", "I")
-                                .Input(5, "temperature", "The value used to module the next token probabilities. Accepts value > 0.0. Shape is (1)", "T")
-                                .Input(6, "length_penalty",
+                                .Input(5, "length_penalty",
                                        "Exponential penalty to the length. Default value 1.0 means no penalty."
                                        "Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences."
                                        "Shape is (1,)",
                                        "T", OpSchema::Optional)
-                                .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
-                                .Input(8, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
-                                .Input(9, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "M", OpSchema::Optional)
+                                .Input(6, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
+                                .Input(7, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
+                                .Input(8, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "M", OpSchema::Optional)
+                                .Input(9, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
                                 .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
                                 .Output(2, "scores",
@@ -988,6 +1027,31 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   BeamSearchShapeInference(ctx);
+                                }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(GreedySearch, 1,
+                            OpSchema()
+                                .SetDoc("Greedy Search for text generation.")
+                                .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
+                                .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
+                                .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts.", AttributeProto::INT, static_cast<int64_t>(-1))
+                                .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("model_type", "model type: 0 for decoder only like GPT-2; 1 for encoder decoder like Bart", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("encoder", "The subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
+                                .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
+                                .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
+                                .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
+                                .Input(3, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
+                                .Input(4, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "I", OpSchema::Optional)
+                                .Input(5, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "I", OpSchema::Optional)
+                                .Input(6, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
+                                .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)", "I")
+                                // TODO(wy): support scores if needed.
+                                .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
+                                .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
+                                .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                  GreedySearchShapeInference(ctx);
                                 }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
@@ -1232,7 +1296,8 @@ activation and leaky_relu_alpha.)DOC")
                                     "C",
                                     "Input tensor C. "
                                     "The shape of C should be unidirectional broadcastable to (M, N).",
-                                    "T")
+                                    "T",
+                                    OpSchema::Optional)
                                 .Output(0, "Y", "Output tensor of shape (M, N).", "T")
                                 .TypeConstraint(
                                     "T",
@@ -1692,14 +1757,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(WordConvEmbedding, 1,
                                 .Attr(
                                     "embedding_size",
                                     "Integer representing the embedding vector size for each word."
-                                    "If not provide, use the fileter size of conv weight",
+                                    "If not provide, use the filter size of conv weight",
                                     AttributeProto::INT,
                                     OPTIONAL_VALUE)
                                 .Attr(
                                     "conv_window_size",
                                     "This operator applies convolution to word from left to right with window equal to conv_window_size and stride to 1."
                                     "Take word 'example' for example, with conv_window_size equal to 2, conv is applied to [ex],[xa], [am], [mp]..."
-                                    "If not provide, use the first dimension of conv kernal shape.",
+                                    "If not provide, use the first dimension of conv kernel shape.",
                                     AttributeProto::INT,
                                     OPTIONAL_VALUE)
                                 .Attr(
@@ -2416,7 +2481,46 @@ void RegisterContribSchemas() {
         // }
         // updateOutputShape(ctx, 0, disentangled_attention_shape);
         propagateShapeFromInputToOutput(ctx, 0, 0);
+      });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Snpe)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Onnx node for SNPE.")
+      .Attr("DLC", "payload of the SNPE DLC file.", AttributeProto::STRING)
+      .Attr(
+          "snpe_version",
+          "(Optional) SNPE version used to convert the model.",
+          AttributeProto::STRING,
+          OPTIONAL_VALUE)
+      .Attr("target_device", "(Optional) Target device like CPU, DSP, etc.", AttributeProto::STRING, OPTIONAL_VALUE)
+      .Attr("notes", "(Optional) Some notes for the model", AttributeProto::STRING, OPTIONAL_VALUE)
+      .AllowUncheckedAttributes()
+      .Input(
+          0,
+          "inputs",
+          "List of tensors for SNPE DLC input",
+          "T",
+          OpSchema::Variadic,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(
+          0,
+          "outputs",
+          "One or more outputs, list of tensors for DLC output",
+          "T",
+          OpSchema::Variadic,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(uint16)", "tensor(float)"},
+          "Constrain input and output types to uint8, uint16, float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
       });
 
   static const char* BitmaskDropout_ver1_doc = R"DOC(
@@ -2470,15 +2574,29 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
         }
       });
 
+#ifdef ENABLE_ATEN
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
+      .SetDomain(kPytorchAtenDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("ATen")
+      .Input(0, "inputs", "ATen Op inputs.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs", "ATen Op outputs.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .Attr("operator", "Name of ATen operator.", AttributeProto::STRING)
+      .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
+                      "Allow inputs and outputs to be any kind of tensor.");
+#endif
+
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
-#endif
-
-#ifdef BUILD_MS_EXPERIMENTAL_OPS
-  onnxruntime::signal::RegisterSignalSchemas();
 #endif
 }
 

@@ -583,6 +583,7 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>,
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedK,
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.K,
+    4 // Kernel Stride M
 };
 
 #if defined(MLAS_TARGET_ARM64)
@@ -1214,6 +1215,7 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_X8S8_KERNEL_NEON>,
     MLAS_GEMM_X8S8_KERNEL_NEON::PackedK,
     MLAS_GEMM_X8S8_KERNEL_NEON::PackedStrides.K,
+    4 // Kernel Stride M
 };
 
 const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchNeon = {

@@ -8,7 +8,7 @@
                "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
             }
          }
-      },   
+      },
       {
         "component": {
           "Type": "maven",
@@ -36,17 +36,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "638d7d2407de27f98f542f61a37a33c90a2e75a9",
-               "repositoryUrl": "https://github.com/microsoft/onnxruntime-tvm.git"
-            },
-            "comments": "needed for Nuphar EP"
-         }
-      },
-      {
-         "component": {
-            "type": "git",
-            "git": {
-               "commitHash": "ffd5f70370642c909222f9a4cae8400023dacbdc",
+               "commitHash": "3425ed846308a456f98404c79f6df1693bed6377",
                "repositoryUrl": "https://github.com/apache/tvm.git"
             },
             "comments": "needed for TVM EP"

@@ -49,8 +49,19 @@ onnxruntime::common::Status SaveAttributeOrtFormat(
     flatbuffers::Offset<fbs::Attribute>& fbs_attr, const Path& model_path,
     const onnxruntime::Graph* subgraph);
 
-onnxruntime::common::Status LoadInitializerOrtFormat(
-    const fbs::Tensor& fbs_tensor, ONNX_NAMESPACE::TensorProto& initializer);
+/// <summary>
+/// Load an initializer from an ORT format flatbuffer.
+/// </summary>
+/// <param name="fbs_tensor">Flatbuffer Tensor</param>
+/// <param name="initializer">TensorProto to load data into</param>
+/// <param name="can_use_flatbuffer_for_initializers">
+/// If true, set the TensorProto to point to the memory in the flatbuffer instead of copying data.
+/// This requires the buffer to remain valid for the entire duration of the InferenceSession.
+/// </param>
+/// <returns>Status</returns>
+onnxruntime::common::Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
+                                                     ONNX_NAMESPACE::TensorProto& initializer,
+                                                     bool can_use_flatbuffer_for_initializers = false);
 
 onnxruntime::common::Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor,
                                                            ONNX_NAMESPACE::SparseTensorProto& initializer);
@@ -62,6 +73,7 @@ onnxruntime::common::Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_att
                                                    ONNX_NAMESPACE::AttributeProto& attr_proto,
                                                    std::unique_ptr<onnxruntime::Graph>& sub_graph,
                                                    onnxruntime::Graph& graph, onnxruntime::Node& node,
+                                                   bool can_use_flatbuffer_for_initializers,
                                                    const logging::Logger& logger);
 
 }  // namespace utils

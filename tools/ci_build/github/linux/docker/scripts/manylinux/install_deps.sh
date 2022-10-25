@@ -2,8 +2,17 @@
 set -e -x
 
 # Development tools and libraries
-yum -y install \
-    graphviz
+if [ -f /etc/redhat-release ]; then
+  yum update && yum -y install graphviz
+  os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
+elif [ -f /etc/os-release ]; then
+  apt-get update && apt-get install -y graphviz
+  os_major_version=$(cat /etc/os-release | tr -dc '0-9.'|cut -d \. -f1)
+else
+  echo "Unsupported OS"
+  exit 1
+fi
+
 
 # Download a file from internet
 function GetFile {
@@ -45,15 +54,11 @@ else
     PYTHON_EXES=("/opt/conda/bin/python")
 fi
 
-os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
-
 SYS_LONG_BIT=$(getconf LONG_BIT)
 mkdir -p /tmp/src
 GLIBC_VERSION=$(getconf GNU_LIBC_VERSION | cut -f 2 -d \.)
 
-DISTRIBUTOR=$(lsb_release -i -s)
-
-if [[ "$DISTRIBUTOR" = "CentOS" && $SYS_LONG_BIT = "64" ]]; then
+if [[ $SYS_LONG_BIT = "64" ]]; then
   LIBDIR="lib64"
 else
   LIBDIR="lib"
@@ -93,10 +98,10 @@ export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 for PYTHON_EXE in "${PYTHON_EXES[@]}"
 do
   ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/requirements\.txt}
-  if ![[ ${PYTHON_EXE} = "/opt/python/cp310-cp310/bin/python3.10" ]]; then
+  if ! [[ ${PYTHON_EXE} = "/opt/python/cp310-cp310/bin/python3.10" ]]; then
     ${PYTHON_EXE} -m pip install -r ${0/%install_deps\.sh/..\/training\/ortmodule\/stage1\/requirements_torch_cpu\/requirements.txt}
   else
-    ${PYTHON_EXE} -m pip install torch==1.11.0
+    ${PYTHON_EXE} -m pip install torch==1.12.1
   fi
 done
 

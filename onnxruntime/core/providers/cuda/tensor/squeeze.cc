@@ -51,7 +51,7 @@ Status Squeeze::ComputeInternal(OpKernelContext* ctx) const {
     ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
                 "An axes tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-    const auto* data = axes_tensor->template Data<int64_t>();
+    const auto* data = axes_tensor->Data<int64_t>();
     axes.assign(data, data + nDims);
   } else {
     axes.assign(axes_.begin(), axes_.end());

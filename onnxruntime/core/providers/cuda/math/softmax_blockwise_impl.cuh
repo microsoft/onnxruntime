@@ -41,7 +41,7 @@ dim3 SoftMax_getBlockSize(int ILP, uint64_t dim_size) {
 
   while (block_size < (max_block_size)) block_size *= 2;
   // Launch at least a single warp - the kernel assumes that.
-  block_size = std::max(block_size, static_cast<uint64_t>(GPU_WARP_SIZE));
+  block_size = std::max(block_size, static_cast<uint64_t>(GPU_WARP_SIZE_HOST));
   return dim3(static_cast<unsigned int>(block_size));
 }
 

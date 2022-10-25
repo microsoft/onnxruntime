@@ -29,7 +29,7 @@ jobs:
   variables:
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    CommonBuildArgs: '--config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wasm --emsdk_version releases-upstream-2ddc66235392b37e5b33477fd86cbe01a14b8aa2-64bit ${{ parameters.ExtraBuildArgs }}'
+    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wasm --use_xnnpack --emsdk_version releases-upstream-4c3772879a04140298c3abde90962d5567b5e2fc-64bit ${{ parameters.ExtraBuildArgs }}'
     runCodesignValidationInjection: false
   timeoutInMinutes: ${{ parameters.TimeoutInMinutes }}
   workspace:

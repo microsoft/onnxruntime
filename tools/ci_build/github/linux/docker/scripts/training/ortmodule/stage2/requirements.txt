@@ -1,10 +1,10 @@
 pandas
 sklearn
-numpy==1.21.0
+numpy==1.21.6
 transformers==v4.4.2
 tensorboard>=2.2.0,<2.5.0
 h5py
 wget
 pytorch-lightning==1.6.0
 deepspeed==0.3.15
-fairscale
+fairscale==0.4.6

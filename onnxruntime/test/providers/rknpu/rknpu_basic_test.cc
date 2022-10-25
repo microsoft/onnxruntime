@@ -18,7 +18,7 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims);
   ASSERT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<float> found(rtensor.template Data<float>(), rtensor.template Data<float>() + expected_values.size());
+  const std::vector<float> found(rtensor.Data<float>(), rtensor.Data<float>() + expected_values.size());
   ASSERT_EQ(expected_values, found);
 }
 

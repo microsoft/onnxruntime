@@ -25,7 +25,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        double per_sample_tolerance,
                        double relative_per_sample_tolerance,
                        std::unique_ptr<GraphTransformer> transformer,
-                       const std::function<void(SessionOptions&)>& add_session_options) {
+                       const std::function<void(SessionOptions&)>& add_session_options,
+                       const InlinedHashSet<std::string>& disabled_optimizers) {
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
@@ -58,6 +59,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
     ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
     if (transformer) {
       ASSERT_STATUS_OK(session.RegisterGraphTransformer(std::move(transformer), level));
+    } else if (!disabled_optimizers.empty()) {
+      ASSERT_STATUS_OK(session.FilterEnabledOptimizers(InlinedHashSet<std::string>{disabled_optimizers}));
     }
 
     ASSERT_STATUS_OK(session.Initialize());
@@ -92,6 +95,29 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                         false);
     EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
   }
+}
+
+void TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
+                          const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
+                          TransformerLevel level, unsigned steps, const std::function<void(Graph&)>& pre_graph_checker,
+                          const std::function<void(Graph&)>& post_graph_checker) {
+  // Build the model for this test.
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = opset_version;
+  domain_to_version[kMSDomain] = 1;
+  Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  ASSERT_TRUE(build_test_case);
+  build_test_case(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+  pre_graph_checker(graph);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{steps};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), level));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, level, logger));
+  post_graph_checker(graph);
 }
 
 }  // namespace test

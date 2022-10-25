@@ -37,7 +37,11 @@ namespace onnxruntime {
 constexpr const char* CPU = "Cpu";
 constexpr const char* CUDA = "Cuda";
 constexpr const char* CUDA_PINNED = "CudaPinned";
+constexpr const char* CANN = "Cann";
+constexpr const char* CANN_PINNED = "CannPinned";
 constexpr const char* DML = "DML";
+constexpr const char* HIP = "Hip";
+constexpr const char* HIP_PINNED = "HipPinned";
 constexpr const char* OpenVINO_CPU = "OpenVINO_CPU";
 constexpr const char* OpenVINO_GPU = "OpenVINO_GPU";
 
@@ -85,7 +89,7 @@ class IAllocator {
   }
 
   /**
-  * Calculate the memory size for an array. The size is bounds checked using SafeInt. 
+  * Calculate the memory size for an array. The size is bounds checked using SafeInt.
    * \tparam alignment must be power of 2
    * \param nmemb Number of members or elements in the array
    * \param size Size of each element
@@ -101,7 +105,7 @@ class IAllocator {
    * \param size Size of each element
    * \param out Total size required after any alignment is applied
    * \return true, successful. false, overflow
-   * \remarks This was the original API and was implemented in the header. Replaced with the above version 
+   * \remarks This was the original API and was implemented in the header. Replaced with the above version
    *          implemented in the .cc file so that the SafeInt dependency is internal.
    */
   template <size_t alignment>
@@ -146,7 +150,7 @@ class IAllocator {
     size_t alloc_size = count_or_bytes;
 
     // if T is not void, 'count_or_bytes' == number of items so allow for that
-    ORT_IF_CONSTEXPR(!std::is_void<T>::value) {
+    if constexpr(!std::is_void<T>::value) {
       // sizeof(void) isn't valid, but the compiler isn't smart enough to ignore that this line isn't
       // reachable if T is void. use std::conditional to 'use' void* in the sizeof call
       if (!CalcMemSizeForArray(

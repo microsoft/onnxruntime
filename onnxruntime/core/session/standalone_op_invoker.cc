@@ -7,6 +7,11 @@
 #include "core/session/ort_apis.h"
 #include <unordered_map>
 
+#if defined(_MSC_VER) && !defined(__clang__)
+//disabling warning on calling of raw "delete" operator
+#pragma warning(disable : 26400)
+#endif
+
 #ifdef ORT_MINIMAL_BUILD
 
 ORT_API_STATUS_IMPL(OrtApis::CreateOpAttr,
@@ -28,10 +33,12 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                     _In_ const char*,
                     _In_ const char*,
                     _In_ int,
-                    _In_ const char**,
-                    _In_ const ONNXTensorElementDataType*,
+                    _In_opt_ const char**,
+                    _In_opt_ const ONNXTensorElementDataType*,
+                    _In_opt_ int,
+                    _In_opt_ const OrtOpAttr* const*,
+                    _In_opt_ int,
                     _In_ int,
-                    _In_ const OrtOpAttr* const*,
                     _In_ int,
                     _Out_ OrtOp**) {
   API_IMPL_BEGIN
@@ -54,10 +61,86 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeOp,
 ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp*) {
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo,
+                    _In_ const OrtKernelInfo*,
+                    _Outptr_ OrtKernelInfo**) {
+  API_IMPL_BEGIN
+  return CreateStatus(ORT_NOT_IMPLEMENTED, "CopyKernelInfo is not implemented for minimal build.");
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo*) {
+}
+
 #else
 
 namespace onnxruntime {
 namespace standalone {
+
+using NodePtr = std::unique_ptr<onnxruntime::Node>;
+
+using ArgPtr = std::unique_ptr<onnxruntime::NodeArg>;
+using ArgPtrs = onnxruntime::InlinedVector<ArgPtr>;
+
+using NodeResource = std::pair<NodePtr, ArgPtrs>;
+using NodeResourceMap = InlinedHashMap<const onnxruntime::OpKernel*,NodeResource>;
+
+class NodeRepo {
+ public:
+  static NodeRepo& GetInstance() {
+    static NodeRepo node_repo;
+    return node_repo;
+  }
+
+  onnxruntime::Status AddNode(const onnxruntime::OpKernel* kernel, NodePtr&& node_ptr, ArgPtrs&& args) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    auto ret = resource_map_.try_emplace(kernel, NodeResource{std::move(node_ptr), std::move(args)});
+    if (!ret.second) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing node"); 
+    }
+    return Status::OK();
+  }
+
+  onnxruntime::Status ValidateInputOutputCounts(const onnxruntime::OpKernel* kernel,
+                                                int input_count,
+                                                int output_count) {
+    size_t expect_input_count{};
+    size_t expect_output_count{};
+    {
+      std::lock_guard<std::mutex> guard(mutex_);
+      auto iter = resource_map_.find(kernel);
+      if (iter == resource_map_.end()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "matching node is missing");
+      }
+      auto* node = iter->second.first.get();
+      expect_input_count = node->InputDefs().size();
+      expect_output_count = node->OutputDefs().size();
+    }
+    if (expect_input_count != static_cast<size_t>(input_count)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "invalid node input count: ", input_count,
+                             ", expect: ", expect_input_count);
+    }
+    if (expect_output_count != static_cast<size_t>(output_count)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "invalid node output count", output_count,
+                             ", expect: ", expect_output_count);
+    }
+    return Status::OK();
+  }
+
+  void RemoveNode(const onnxruntime::OpKernel* kernel) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    resource_map_.erase(kernel);
+  }
+
+ private:
+  explicit NodeRepo() = default;
+  ~NodeRepo() = default;
+
+  std::mutex mutex_;
+  NodeResourceMap resource_map_;
+};
 
 // For invoking kernels without a graph
 class StandAloneKernelContext : public OpKernelContext {
@@ -217,7 +300,7 @@ onnxruntime::Status CreateOpAttr(const char* name, const void* data, int len, Or
   auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>();
   onnxruntime::Status status = onnxruntime::Status::OK();
   attr->set_name(std::string{name});
-  const int* ints = reinterpret_cast<const int*>(data);
+  const int64_t* ints = reinterpret_cast<const int64_t*>(data);
   const float* floats = reinterpret_cast<const float*>(data);
   auto str = reinterpret_cast<const char*>(data);
   auto strs = reinterpret_cast<const char* const*>(data);
@@ -269,6 +352,8 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
                              int type_constraint_count,
                              const OrtOpAttr* const* attr_values,
                              int attr_count,
+                             int input_count,
+                             int output_count,
                              OrtOp** op) {
   *op = nullptr;
   auto kernel_info = reinterpret_cast<const OpKernelInfo*>(info);
@@ -288,19 +373,43 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
                                                ep->Type(),
                                                &kernel_create_info);
   ORT_RETURN_IF_ERROR(status);
-  onnxruntime::Node node;
+
+  ArgPtrs arg_ptrs;
+  std::vector<onnxruntime::NodeArg*> input_args;
+  std::vector<onnxruntime::NodeArg*> output_args;
+
+  for (int i = 0; i < input_count; ++i) {
+    arg_ptrs.push_back(std::make_unique<NodeArg>(std::to_string(i), nullptr));
+    input_args.push_back(arg_ptrs.back().get());
+  }
+
+  for (int i = 0; i < output_count; ++i) {
+    arg_ptrs.push_back(std::make_unique<NodeArg>(std::to_string(i), nullptr));
+    output_args.push_back(arg_ptrs.back().get());
+  }
+
+  NodePtr node_ptr = std::make_unique<onnxruntime::Node>(std::string("standalone_") + op_name, op_name, "", input_args, output_args, nullptr, domain);
   for (int i = 0; i < attr_count; ++i) {
     auto attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr_values[i]);
-    node.AddAttributeProto(*attr_proto);
+    node_ptr->AddAttributeProto(*attr_proto);
   }
+
   auto kernel_def_builder = KernelDefBuilder::Create();
   kernel_def_builder->SetName(op_name);
   kernel_def_builder->SetDomain(domain);
   kernel_def_builder->SinceVersion(version);
-  OpKernelInfo instant_kernel_info(node, *kernel_def_builder->Build(), *ep, {}, {}, {});
+  auto kernel_def = kernel_def_builder->Build();
+
+  static std::unordered_map<int, OrtValue> kEmptyValueMap;
+  static OrtValueNameIdxMap kEmptyNameMap;
+
+  OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def, *ep, kEmptyValueMap, kEmptyNameMap, kernel_info->GetDataTransferManager());
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
-  FuncManager func_mgr;
-  status = kernel_create_info->kernel_create_func(func_mgr, instant_kernel_info, op_kernel);
+
+  static FuncManager kFuncMgr;
+  status = kernel_create_info->kernel_create_func(kFuncMgr, tmp_kernel_info, op_kernel);
+  ORT_RETURN_IF_ERROR(status);
+  status = NodeRepo::GetInstance().AddNode(op_kernel.get(), std::move(node_ptr), std::move(arg_ptrs));
   ORT_RETURN_IF_ERROR(status);
   *op = reinterpret_cast<OrtOp*>(op_kernel.release());
   return status;
@@ -315,6 +424,8 @@ onnxruntime::Status InvokeOp(_In_ const OrtKernelContext* context,
   auto ctx = reinterpret_cast<const OpKernelContext*>(context);
   AllocatorPtr allocator{};
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+  auto kernel = reinterpret_cast<const OpKernel*>(ort_op);
+  ORT_RETURN_IF_ERROR(NodeRepo::GetInstance().ValidateInputOutputCounts(kernel, input_count, output_count));
   StandAloneKernelContext standalone_kernel_ctx(input_values,
                                                 input_count,
                                                 output_values,
@@ -322,7 +433,6 @@ onnxruntime::Status InvokeOp(_In_ const OrtKernelContext* context,
                                                 allocator,
                                                 ctx->GetOperatorThreadPool(),
                                                 ctx->Logger());
-  auto kernel = reinterpret_cast<const OpKernel*>(ort_op);
   return kernel->Compute(&standalone_kernel_ctx);
 }
 
@@ -355,12 +465,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                     _In_ const OrtKernelInfo* info,
                     _In_ const char* op_name,
                     _In_ const char* domain,
-                    int version,
+                    _In_ int version,
                     _In_opt_ const char** type_constraint_names,
                     _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                    int type_constraint_count,
+                    _In_opt_ int type_constraint_count,
                     _In_opt_ const OrtOpAttr* const* attr_values,
-                    int attr_count,
+                    _In_opt_ int attr_count,
+                    _In_ int input_count,
+                    _In_ int output_count,
                     _Outptr_ OrtOp** ort_op) {
   API_IMPL_BEGIN
   auto status = onnxruntime::standalone::CreateOp(info,
@@ -372,6 +484,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                                                   type_constraint_count,
                                                   attr_values,
                                                   attr_count,
+                                                  input_count,
+                                                  output_count,
                                                   ort_op);
   if (status.IsOK()) {
     return nullptr;
@@ -400,7 +514,25 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeOp,
 
 ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp* op) {
   if (op) {
-    delete reinterpret_cast<onnxruntime::OpKernel*>(op);
+    auto kernel = reinterpret_cast<onnxruntime::OpKernel*>(op);
+    onnxruntime::standalone::NodeRepo::GetInstance().RemoveNode(kernel);
+    delete kernel;
+  }
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo, _In_ const OrtKernelInfo* info, _Outptr_ OrtKernelInfo** info_copy) {
+  API_IMPL_BEGIN
+  auto kernel_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  auto tmp_info_holder = std::make_unique<onnxruntime::OpKernelInfo>(*kernel_info);
+  *info_copy = reinterpret_cast<OrtKernelInfo*>(tmp_info_holder.release());
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy) {
+  if (info_copy) {
+    auto kernel_info = reinterpret_cast<onnxruntime::OpKernelInfo*>(info_copy);
+    delete kernel_info;
   }
 }
 

@@ -10,7 +10,6 @@
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
-
 #ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
 #endif
@@ -23,11 +22,10 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/providers/cpu/cpu_provider_factory_creator.h"
+#include "core/providers/provider_factory_creators.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -51,6 +49,9 @@ struct OrtStatus {
 #ifdef USE_OPENVINO
 #if OPENVINO_CONFIG_CPU_FP32
 #define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
+
+#elif OPENVINO_CONFIG_CPU_FP16
+#define BACKEND_OPENVINO "-OPENVINO_CPU_FP16"
 
 #elif OPENVINO_CONFIG_GPU_FP32
 #define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
@@ -78,12 +79,6 @@ struct OrtStatus {
 #endif
 #else
 #define BACKEND_OPENVINO ""
-#endif
-
-#ifdef USE_NUPHAR
-#define BACKEND_NUPHAR "-NUPHAR"
-#else
-#define BACKEND_NUPHAR ""
 #endif
 
 #ifdef USE_TVM
@@ -123,6 +118,12 @@ struct OrtStatus {
 #define BACKEND_DML ""
 #endif
 
+#if USE_CANN
+#define BACKEND_CANN "-CANN"
+#else
+#define BACKEND_CANN ""
+#endif
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -147,15 +148,6 @@ extern std::string openvino_device_type;
 }
 }  // namespace onnxruntime
 #endif
-#ifdef USE_NUPHAR
-#include "core/providers/nuphar/nuphar_provider_factory.h"
-// TODO remove deprecated global config
-namespace onnxruntime {
-namespace python {
-extern std::string nuphar_settings;
-}
-}  // namespace onnxruntime
-#endif
 #ifdef USE_TVM
 #include "core/providers/tvm/tvm_ep_options.h"
 #endif
@@ -170,6 +162,10 @@ extern std::string nuphar_settings;
 #endif
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
+#endif
+#ifdef USE_CANN
+#include "core/providers/cann/cann_provider_factory.h"
+#include "core/providers/cann/cann_execution_provider_info.h"
 #endif
 
 #ifdef USE_CUDA
@@ -187,6 +183,13 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace onnxruntime
 #endif
 
+#ifdef USE_CANN
+namespace onnxruntime {
+ProviderInfo_CANN* TryGetProviderInfo_CANN();
+ProviderInfo_CANN& GetProviderInfo_CANN();
+}  // namespace onnxruntime
+#endif
+
 #ifdef USE_ROCM
 namespace onnxruntime {
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
@@ -196,6 +199,8 @@ namespace python {
 extern bool miopen_conv_exhaustive_search;
 // TODO remove deprecated global config
 extern bool do_copy_in_default_stream;
+// TODO remove deprecated global config
+extern onnxruntime::rocm::TunableOpInfo tunable_op;
 extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
@@ -381,8 +386,8 @@ class PySparseTensor {
 
  private:
   // instance_ represents data that comes as input. Thus we depend on numpy
-  //arrays that own the underlying memory to stay around. We store copies
-  //of py::objects for those arrays in backing_storage_ as an extra ref-count.
+  // arrays that own the underlying memory to stay around. We store copies
+  // of py::objects for those arrays in backing_storage_ as an extra ref-count.
 
   // If we have and are able to copy from the OrtValue returned by run() to CPU, then this owns the data
   // and backing_storage_ is empty.
@@ -396,7 +401,7 @@ class PySparseTensor {
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
-//You can attempt to make 'onnxruntime::python::SessionObjectInitializer::Get' constexpr
+// You can attempt to make 'onnxruntime::python::SessionObjectInitializer::Get' constexpr
 #pragma warning(disable : 26497)
 #endif
 class SessionObjectInitializer {
@@ -485,7 +490,6 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 #ifdef USE_TVM
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);

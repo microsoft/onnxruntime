@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//https://github.com/onnx/onnx/blob/master/docs/Operators.md#Scatter
+//https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
 #include <type_traits>
 
 #include "gsl/gsl"
@@ -26,13 +26,9 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ScatterElements, Input, 0, element_type_lists::All);
 }  // namespace op_kernel_type_control
 
-using ScatterDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Scatter, Input, 0);
 using EnabledScatterDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Scatter, Input, 0);
 
-using ScatterElementsDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, ScatterElements, Input, 0);
 using EnabledScatterElementsDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ScatterElements, Input, 0);
 
@@ -64,7 +60,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterDataTypes>);
@@ -76,7 +71,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterElementsDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
@@ -88,7 +82,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterElementsDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
@@ -99,7 +92,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterElementsDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
@@ -179,7 +171,7 @@ Status GetIndices(
     const Tensor& data_input, const Tensor& indices_input, int64_t axis,
     std::vector<int64_t>& indices_data) {
   const auto& input_data_shape = data_input.Shape();
-  const auto* indices_data_raw = indices_input.template Data<TIndex>();
+  const auto* indices_data_raw = indices_input.Data<TIndex>();
   const auto num_indices = indices_input.Shape().Size();
   const auto axis_dim_limit = input_data_shape[axis];
 
@@ -222,9 +214,9 @@ Status ScatterData(
   // we do not copy
   if (src_base != dst_base) {
     if (std::is_same<Tdata, std::string>::value) {
-      const auto* str_begin = data_input->template Data<std::string>();
+      const auto* str_begin = data_input->Data<std::string>();
       const std::string* str_end = str_begin + input_elements;
-      auto* dst = data_output->template MutableData<std::string>();
+      auto* dst = data_output->MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
       memcpy(static_cast<void*>(dst_base), static_cast<const void*>(src_base), total_input_bytes);
@@ -370,7 +362,7 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
   for (size_t i = 0; i < input_dims.size(); ++i) {
     // For all axes except the axis of interest, make sure that the corresponding 'indices' shape
     // value is within bounds of the corresponding 'data' shape.
-    if (static_cast<int64_t>(i) != axis_ && input_dims[i] < indices_dims[i]) {
+    if (static_cast<int64_t>(i) != axis && input_dims[i] < indices_dims[i]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices dim=", indices_dims[i], " at pos=", i,
                              " is greater than input dim=", input_dims[i]);
     }

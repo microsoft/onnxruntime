@@ -21,6 +21,14 @@
 # 7. Build extended minimal ORT with NNAPI, with exceptions/RTTI/ml_ops disabled, for Android(arm64-v8a),
 #    this safe-guards the extended minimal build with NNAPI EP.
 
+resources:
+  repositories:
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
   timeoutInMinutes: 120
@@ -36,6 +44,13 @@ jobs:
     clean: true
     submodules: recursive
 
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuild
+
   - task: CmdLine@2
     displayName: Create test data directory
     inputs:
@@ -45,13 +60,6 @@ jobs:
         # create empty config used in some parts
         touch $(test_data_directory)/include_no_operators.config
       workingDirectory: $(Build.SourcesDirectory)
-
-  - template: templates/get-docker-image-steps.yml
-    parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
-      Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecpubuild
 
   - task: CmdLine@2
     displayName: 1. Build full onnxruntime and generate ORT format test files

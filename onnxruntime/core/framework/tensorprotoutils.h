@@ -10,6 +10,7 @@
 #include "core/common/common.h"
 #include "core/common/path.h"
 #include "core/common/status.h"
+#include "core/common/safeint.h"
 #include "core/framework/endian_utils.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
@@ -35,7 +36,7 @@ namespace utils {
 
 TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto);
 
-std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+TensorShape GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 /**
  * deserialize a TensorProto into a preallocated memory buffer.
@@ -52,7 +53,7 @@ common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_prot
  * @param tensor_proto  source data
  * @param tensorp       destination empty tensor
  * @return
-*/
+ */
 common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                                    const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                    Tensor& tensor);
@@ -74,6 +75,20 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 // The output value could be zero or -1.
 template <size_t alignment>
 common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto, size_t* out);
+
+/**
+Special marker used to indicate an existing memory buffer contains the TensorProto external data.
+If the 'location' field of the external data info is set to this marker, the 'offset' field should contain the
+address of the memory containing the data.
+*/
+constexpr const ORTCHAR_T* kTensorProtoMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_ADDR_/*");
+
+// Given a tensor proto with external data obtain a pointer to the data and its length.
+// The ext_data_deleter argument is updated with a callback that owns/releases the data.
+common::Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
+                                         const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                         void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
+                                         OrtCallback& ext_data_deleter);
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the
@@ -401,7 +416,7 @@ inline bool HasModelVersion(const ONNX_NAMESPACE::ModelProto& m_proto) {
 }
 
 inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
-  //XXX: Figure out proto3 style
+  // XXX: Figure out proto3 style
   return node_proto.has_name();
 }
 #endif

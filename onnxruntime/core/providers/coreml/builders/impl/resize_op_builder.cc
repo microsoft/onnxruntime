@@ -8,6 +8,7 @@
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/cpu/tensor/reshape_helper.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/optimizer/initializer.h"
 
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
@@ -43,7 +44,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
 // Helper functions
 bool GetResizeScales(const InitializedTensorSet& initializers,
                      const Node& node, std::vector<float>& scales,
-                     const logging::Logger& logger) {
+                     const logging::Logger&) {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 3)
     return false;
@@ -51,21 +52,15 @@ bool GetResizeScales(const InitializedTensorSet& initializers,
   const auto& scales_tensor = *initializers.at(input_defs[2]->Name());
   if (scales_tensor.dims_size() != 1 || scales_tensor.dims()[0] != 4)
     return false;
-
-  std::vector<uint8_t> unpacked_tensor;
-  auto status = onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor);
-  if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Error while unpacking scales_tensor: " << status.ErrorMessage();
-    return false;
-  }
-  const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
-  scales = std::vector<float>{scales_data, scales_data + 4};
+  Initializer unpacked_tensor(scales_tensor);
+  auto scales_data = unpacked_tensor.DataAsSpan<float>();
+  scales = std::vector<float>{scales_data.begin(), scales_data.end()};
   return true;
 }
 
 bool GetResizeOutputSizes(const InitializedTensorSet& initializers,
                           const Node& node, std::vector<int64_t>& sizes,
-                          const logging::Logger& logger) {
+                          const logging::Logger&) {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 4)
     return false;
@@ -73,15 +68,9 @@ bool GetResizeOutputSizes(const InitializedTensorSet& initializers,
   const auto& sizes_tensor = *initializers.at(input_defs[3]->Name());
   if (sizes_tensor.dims_size() != 1 || sizes_tensor.dims()[0] != 4)
     return false;
-
-  std::vector<uint8_t> unpacked_tensor;
-  auto status = onnxruntime::utils::UnpackInitializerData(sizes_tensor, unpacked_tensor);
-  if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Error while unpacking sizes_tensor: " << status.ErrorMessage();
-    return false;
-  }
-  const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
-  sizes = std::vector<int64_t>{sizes_data, sizes_data + 4};
+  Initializer unpacked_tensor(sizes_tensor);
+  auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
+  sizes = std::vector<int64_t>{sizes_data.begin(), sizes_data.end()};
   return true;
 }
 

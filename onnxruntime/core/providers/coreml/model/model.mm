@@ -17,6 +17,10 @@
 #import <CoreML/CoreML.h>
 #import <Foundation/Foundation.h>
 
+// force the linker to create a dependency on the CoreML framework so that in MAUI usage we don't need
+// to manually do this
+asm(".linker_option \"-framework\", \"CoreML\"");
+
 // Model input for a CoreML model
 // All the input onnx tensors values will be converted to MLMultiArray(s)
 @interface OnnxTensorFeatureProvider : NSObject <MLFeatureProvider> {

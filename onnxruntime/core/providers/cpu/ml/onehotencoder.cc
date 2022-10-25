@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/onehotencoder.h"
 /**
-https://github.com/onnx/onnx/blob/master/onnx/defs/traditionalml/defs.cc
+https://github.com/onnx/onnx/blob/main/onnx/defs/traditionalml/defs.cc
 ONNX_OPERATOR_SCHEMA(OneHotEncoder)
 .SetDomain("ai.onnx.ml")
 .SetDoc(R"DOC(
@@ -77,10 +77,10 @@ common::Status OneHotEncoderOp<T>::Compute(OpKernelContext* context) const {
   output_shape.push_back(num_categories_);
 
   Tensor* Y = context->Output(0, TensorShape(output_shape));
-  auto* y_data = Y->template MutableData<float>();
+  auto* y_data = Y->MutableData<float>();
   std::fill_n(y_data, Y->Shape().Size(), 0.0f);
 
-  const auto* x_data = X->template Data<T>();
+  const auto* x_data = X->Data<T>();
   const auto x_size = input_shape.Size();
   std::unordered_map<int64_t, size_t>::const_iterator idx;
   for (int64_t i = 0; i < x_size; ++i) {
@@ -102,10 +102,10 @@ common::Status OneHotEncoderOp<std::string>::Compute(OpKernelContext* context) c
   output_shape.push_back(num_categories_);
 
   Tensor* Y = context->Output(0, TensorShape(output_shape));
-  auto* y_data = Y->template MutableData<float>();
+  auto* y_data = Y->MutableData<float>();
   std::fill_n(y_data, Y->Shape().Size(), 0.0f);
 
-  const auto* x_data = X->template Data<std::string>();
+  const auto* x_data = X->Data<std::string>();
   const auto x_size = input_shape.Size();
   for (int64_t i = 0; i < x_size; ++i) {
     auto str_idx = cats_strings_.find(x_data[i]);

@@ -13,6 +13,7 @@ using Microsoft::WRL::ComPtr;
 #include <wil/result.h>
 
 #include "core/providers/dml/dml_provider_factory.h"
+#include "core/providers/dml/dml_provider_factory_creator.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/ort_apis.h"
@@ -103,7 +104,11 @@ bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
     return isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int device_id) {
+  return Create(device_id, /*skip_software_device_check*/ false);
+}
+
+std::shared_ptr<IExecutionProviderFactory> DMLProviderFactoryCreator::Create(int device_id, bool skip_software_device_check) {
 #ifdef _GAMING_XBOX
     ComPtr<ID3D12Device> d3d12_device;
     D3D12XBOX_CREATE_DEVICE_PARAMETERS params = {};
@@ -119,8 +124,13 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
   ComPtr<IDXGIAdapter1> adapter;
   ORT_THROW_IF_FAILED(dxgi_factory->EnumAdapters1(device_id, &adapter));
 
-  // Disallow using DML with the software adapter (Microsoft Basic Display Adapter) because CPU evaluations are much faster
-  ORT_THROW_HR_IF(E_INVALIDARG, IsSoftwareAdapter(adapter.Get()));
+  // Disallow using DML with the software adapter (Microsoft Basic Display Adapter) because CPU evaluations are much
+  // faster. Some scenarios though call for EP initialization without this check (as execution will not actually occur
+  // anyway) such as operation kernel registry enumeration for documentation purposes.
+  if (!skip_software_device_check)
+  {
+    ORT_THROW_HR_IF(E_INVALIDARG, IsSoftwareAdapter(adapter.Get()));
+  }
 
   ComPtr<ID3D12Device> d3d12_device;
   ORT_THROW_IF_FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_GRAPHICS_PPV_ARGS(d3d12_device.ReleaseAndGetAddressOf())));
@@ -162,7 +172,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(in
 // The OrtSessionOptionsAppendExecutionProvider_DML export on the OrtDmlApi should be used instead.
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOptions* options, int device_id) {
 API_IMPL_BEGIN
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_DML(device_id));
+  options->provider_factories.push_back(onnxruntime::DMLProviderFactoryCreator::Create(device_id));
 API_IMPL_END
   return nullptr;
 }

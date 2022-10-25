@@ -153,8 +153,8 @@ MlasQLinearGlobalAveragePoolNchw(
         *sum_buffer++ = vget_lane_s32(vpadd_s32(vacc, vacc), 0);
     }
 
-    MLAS_REQUANT_PARAM RequantParam(&scale, 1, ZeroPointOutput);
-    MlasRequantizeOutput(AccumulateBuffer, Channels, Output, Channels, nullptr, &RequantParam, 0, 0, 1, Channels);
+    MlasRequantizeOutput(AccumulateBuffer, Channels, Output, Channels, nullptr, &scale, false,
+                         static_cast<T8Bits>(ZeroPointOutput), 0, 0, 1, Channels);
 }
 
 template <typename T8Bits>
@@ -321,9 +321,8 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
             vst1q_s32(acc + 4, vacc_hi);
         }
     }
-
-    MLAS_REQUANT_PARAM RequantParam(&Scale, 1, Output_zero_point);
-    MlasRequantizeOutput(AccumulateBuffer, Channels, Output, Channels, nullptr, &RequantParam, 0, 0, 1, Channels);
+    MlasRequantizeOutput(AccumulateBuffer, Channels, Output, Channels, nullptr, &Scale, false,
+                         Output_zero_point, 0, 0, 1, Channels);
 }
 
 #elif defined(MLAS_SSE2_INTRINSICS)
@@ -428,8 +427,8 @@ MlasQLinearGlobalAveragePoolNchw(
         *sum_buffer++ = _mm_cvtsi128_si32(vsums);
     }
 
-    MLAS_REQUANT_PARAM RequantParam(&scale, 1, ZeroPointOutput);
-    MlasRequantizeOutput(AccumulateBuffer, Channels, Output, Channels, nullptr, &RequantParam, 0, 0, 1, Channels);
+    MlasRequantizeOutput(AccumulateBuffer, Channels, Output, Channels, nullptr, &scale, false,
+                         static_cast<T8Bits>(ZeroPointOutput), 0, 0, 1, Channels);
 }
 
 template <typename T8Bits>
@@ -698,9 +697,8 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
             _mm_storeu_si128(((__m128i*)acc) + 1, vacc_hi);
         }
     }
-
-    MLAS_REQUANT_PARAM RequantParam(&Scale, 1, Output_zero_point);
-    MlasRequantizeOutput(AccumulateBuffer, Channels, Output, Channels, nullptr, &RequantParam, 0, 0, 1, Channels);
+    MlasRequantizeOutput(AccumulateBuffer, Channels, Output, Channels, nullptr, &Scale, false,
+                         Output_zero_point, 0, 0, 1, Channels);
 }
 
 #else

@@ -93,25 +93,11 @@ file(GLOB_RECURSE onnxruntime_rocm_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.cuh"
 )
 
-file(GLOB_RECURSE onnxruntime_rocm_generated_contrib_ops_cc_srcs CONFIGURE_DEPENDS
-  "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/*.h"
-  "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/*.cc"
-)
-
-file(GLOB_RECURSE onnxruntime_rocm_generated_contrib_ops_cu_srcs CONFIGURE_DEPENDS
-  "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/*.cu"
-  "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/*.cuh"
-)
-
 file(GLOB onnxruntime_providers_common_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/core/providers/*.h"
   "${ONNXRUNTIME_ROOT}/core/providers/*.cc"
   "${ONNXRUNTIME_ROOT}/core/providers/op_kernel_type_control_overrides.inc"
 )
-
-if(onnxruntime_USE_NUPHAR)
-  set(PROVIDERS_NUPHAR onnxruntime_providers_nuphar)
-endif()
 if(onnxruntime_USE_VITISAI)
   set(PROVIDERS_VITISAI onnxruntime_providers_vitisai)
 endif()
@@ -152,7 +138,15 @@ endif()
 if (onnxruntime_USE_TVM)
   set(PROVIDERS_TVM onnxruntime_providers_tvm)
 endif()
-
+if (onnxruntime_USE_XNNPACK)
+  set(PROVIDERS_XNNPACK onnxruntime_providers_xnnpack)
+endif()
+if(onnxruntime_USE_SNPE)
+    include(onnxruntime_snpe_provider.cmake)
+endif()
+if (onnxruntime_USE_CANN)
+  set(PROVIDERS_CANN onnxruntime_providers_cann)
+endif()
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -160,6 +154,13 @@ set(onnxruntime_providers_src ${onnxruntime_providers_common_srcs} ${onnxruntime
 
 # disable contrib ops conditionally
 if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  if (NOT onnxruntime_ENABLE_ATEN)
+    list(REMOVE_ITEM onnxruntime_cpu_contrib_ops_srcs
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op.h"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op.cc"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/cpu/aten_ops/aten_op_executor.cc"
+    )
+  endif()
   # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
   source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cpu_contrib_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_contrib_ops_srcs})
@@ -190,11 +191,19 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/gist/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_ops/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_ops/*.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
+endif()
+
+if (onnxruntime_ENABLE_ATEN)
+  file(GLOB_RECURSE onnxruntime_providers_dlpack_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.cc"
+    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.h"
+  )
+  set(onnxruntime_providers_dlpack_srcs ${onnxruntime_providers_dlpack_srcs})
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dlpack_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_providers_dlpack_srcs})
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -217,15 +226,6 @@ if (onnxruntime_ENABLE_TRAINING)
 
   source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
-
-  # todo: put this in core/framework and enabled only for training
-  file(GLOB_RECURSE onnxruntime_providers_dlpack_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.cc"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.h"
-  )
-  set(onnxruntime_providers_dlpack_srcs ${onnxruntime_providers_dlpack_srcs})
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dlpack_srcs})
-  list(APPEND onnxruntime_providers_src ${onnxruntime_providers_dlpack_srcs})
 endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
@@ -272,6 +272,13 @@ if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_providers PRIVATE ${ORTTRAINING_ROOT})
 endif()
 
+if (onnxruntime_ENABLE_ATEN)
+  target_compile_definitions(onnxruntime_providers PRIVATE ENABLE_ATEN)
+  # DLPack is a header-only dependency
+  set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
+  target_include_directories(onnxruntime_providers PRIVATE ${DLPACK_INCLUDE_DIR})
+endif()
+
 if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
   onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
@@ -282,10 +289,6 @@ if (onnxruntime_ENABLE_TRAINING)
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
     target_include_directories(onnxruntime_providers PUBLIC ${MPI_CXX_INCLUDE_DIRS})
   endif()
-
-  # DLPack is a header-only dependency
-  set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
-  target_include_directories(onnxruntime_providers PRIVATE ${DLPACK_INCLUDE_DIR})
 endif()
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cpu  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
@@ -302,9 +305,17 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   )
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_shared_cc_srcs})
-  onnxruntime_add_shared_library(onnxruntime_providers_shared ${onnxruntime_providers_shared_cc_srcs})
+  onnxruntime_add_shared_library(onnxruntime_providers_shared ${onnxruntime_providers_shared_cc_srcs} "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc")
   set_target_properties(onnxruntime_providers_shared PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_shared PROPERTIES LINKER_LANGUAGE CXX)
+
+  target_compile_definitions(onnxruntime_providers_shared PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
+  target_compile_definitions(onnxruntime_providers_shared PRIVATE VER_MINOR=${VERSION_MINOR_PART})
+  target_compile_definitions(onnxruntime_providers_shared PRIVATE VER_BUILD=${VERSION_BUILD_PART})
+  target_compile_definitions(onnxruntime_providers_shared PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
+  target_compile_definitions(onnxruntime_providers_shared PRIVATE VER_STRING=\"${VERSION_STRING}\")
+  target_compile_definitions(onnxruntime_providers_shared PRIVATE FILE_NAME=\"onnxruntime_providers_shared.dll\")
+
 
   # On Apple/Unix we don't directly link with this library as we load it with RTLD_GLOBAL, so this is only set to the actual library on WIN32
   set(ONNXRUNTIME_PROVIDERS_SHARED)
@@ -337,7 +348,7 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
   )
-  
+
   # The shared_library files are in a separate list since they use precompiled headers, and the above files have them disabled.
   file(GLOB_RECURSE onnxruntime_providers_cuda_shared_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
@@ -353,6 +364,11 @@ if (onnxruntime_USE_CUDA)
 
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    if (NOT onnxruntime_ENABLE_ATEN)
+      list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/aten_ops/aten_op.cc"
+      )
+    endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
@@ -436,9 +452,12 @@ if (onnxruntime_USE_CUDA)
     endif()
   endif()
 
-  add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
-  target_link_libraries(onnxruntime_providers_cuda PRIVATE cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED})
-  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_link_libraries(onnxruntime_providers_cuda PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED})
+  if(onnxruntime_CUDNN_HOME)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+  endif()
+  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
@@ -476,15 +495,12 @@ if (onnxruntime_USE_CUDA)
       "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
     )
 
-    # minimize the Windows includes. 
+    # minimize the Windows includes.
     # this avoids an issue with CUDA 11.6 where 'small' is defined in the windows and cuda headers.
     target_compile_definitions(onnxruntime_providers_cuda PRIVATE "WIN32_LEAN_AND_MEAN")
-    
+
     # disable a warning from the CUDA headers about unreferenced local functions
     #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
-    if (onnxruntime_USE_NUPHAR_TVM)
-      target_compile_options(onnxruntime_providers_cuda PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
-    endif()
     set(onnxruntime_providers_cuda_static_library_flags
         -IGNORE:4221 # LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
     )
@@ -502,6 +518,10 @@ if (onnxruntime_USE_CUDA)
     set_property(TARGET onnxruntime_providers_cuda APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/cuda/symbols.def")
   else()
     message(FATAL_ERROR "onnxruntime_providers_cuda unknown platform, need to specify shared library exports for it")
+  endif()
+
+  if (onnxruntime_ENABLE_ATEN)
+    target_compile_definitions(onnxruntime_providers_cuda PRIVATE ENABLE_ATEN)
   endif()
 
   install(TARGETS onnxruntime_providers_cuda
@@ -564,6 +584,9 @@ endif()
 
 if (onnxruntime_USE_TENSORRT)
   add_definitions(-DUSE_TENSORRT=1)
+  if (onnxruntime_TENSORRT_PLACEHOLDER_BUILDER)
+    add_definitions(-DORT_TENSORRT_PLACEHOLDER_BUILDER)
+  endif()
   set(BUILD_LIBRARY_ONLY 1)
   add_definitions("-DONNX_ML=1")
   add_definitions("-DONNX_NAMESPACE=onnx")
@@ -587,24 +610,45 @@ if (onnxruntime_USE_TENSORRT)
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-missing-field-initializers")
   endif()
   set(CXX_VERSION_DEFINED TRUE)
-  add_subdirectory(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
-  set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
-  if ( CMAKE_COMPILER_IS_GNUCC )
-    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+
+  if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
+    # Add TensorRT library
+    find_path(TENSORRT_INCLUDE_DIR NvInfer.h
+      HINTS ${TENSORRT_ROOT}
+      PATH_SUFFIXES include)
+    MESSAGE(STATUS "Found TensorRT headers at ${TENSORRT_INCLUDE_DIR}")
+    find_library(TENSORRT_LIBRARY_INFER nvinfer
+      HINTS ${TENSORRT_ROOT}
+      PATH_SUFFIXES lib lib64 lib/x64)
+    find_library(TENSORRT_LIBRARY_INFER_PLUGIN nvinfer_plugin
+      HINTS  ${TENSORRT_ROOT}
+      PATH_SUFFIXES lib lib64 lib/x64)
+    find_library(TENSORRT_LIBRARY_NVONNXPARSER nvonnxparser
+      HINTS  ${TENSORRT_ROOT}
+      PATH_SUFFIXES lib lib64 lib/x64)
+    set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_INFER_PLUGIN} ${TENSORRT_LIBRARY_NVONNXPARSER})
+    MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
+  else()
+    add_subdirectory(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
+    set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
+    if ( CMAKE_COMPILER_IS_GNUCC )
+      set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+    endif()
+    if (WIN32)
+      set(CMAKE_CUDA_FLAGS ${OLD_CMAKE_CUDA_FLAGS})
+      unset(PROTOBUF_LIBRARY)
+      unset(OLD_CMAKE_CXX_FLAGS)
+      unset(OLD_CMAKE_CUDA_FLAGS)
+      set_target_properties(nvonnxparser PROPERTIES LINK_FLAGS "/ignore:4199")
+      target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
+      target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
+    endif()
+    include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
+    include_directories(${TENSORRT_INCLUDE_DIR})
+    set(onnxparser_link_libs nvonnxparser_static)
   endif()
-  if (WIN32)
-    set(CMAKE_CUDA_FLAGS ${OLD_CMAKE_CUDA_FLAGS})
-    unset(PROTOBUF_LIBRARY)
-    unset(OLD_CMAKE_CXX_FLAGS)
-    unset(OLD_CMAKE_CUDA_FLAGS)
-    set_target_properties(nvonnxparser PROPERTIES LINK_FLAGS "/ignore:4199")
-    target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
-    target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
-  endif()
-  include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
-  include_directories(${TENSORRT_INCLUDE_DIR})
+
   set(trt_link_libs cudnn ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
-  set(onnxparser_link_libs nvonnxparser_static)
 
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
@@ -617,8 +661,16 @@ if (onnxruntime_USE_TENSORRT)
   onnxruntime_add_shared_library_module(onnxruntime_providers_tensorrt ${onnxruntime_providers_tensorrt_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnx flatbuffers)
   add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers ${ABSEIL_LIBS})
-  target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
+    target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers ${ABSEIL_LIBS})
+    target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${TENSORRT_INCLUDE_DIR} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  else()
+    target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers ${ABSEIL_LIBS})
+    target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  endif()
+  if(onnxruntime_CUDNN_HOME)
+    target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${onnxruntime_CUDNN_HOME}/include)
+  endif()
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tensorrt  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_tensorrt PROPERTIES LINKER_LANGUAGE CUDA)
@@ -654,56 +706,6 @@ if (onnxruntime_USE_TENSORRT)
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
-endif()
-
-if (onnxruntime_USE_NUPHAR)
-  add_definitions(-DUSE_NUPHAR=1)
-
-  if (NOT onnxruntime_USE_NUPHAR_TVM)
-    message(FATAL_ERROR "onnxruntime_USE_NUPHAR_TVM required for onnxruntime_USE_NUPHAR")
-  endif()
-
-  if (NOT onnxruntime_USE_LLVM)
-    message(FATAL_ERROR "onnxruntime_USE_LLVM required for onnxruntime_USE_NUPHAR")
-  endif()
-
-  include(onnxruntime_nuphar_extern.cmake)
-
-  file(GLOB_RECURSE onnxruntime_providers_nuphar_cc_srcs
-    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.cc"
-  )
-
-  # following files required different build flag for AVX2 in separate onnxruntime_nuphar_extern.cmake file
-  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/extern/igemv_avx2.cc")
-  list (REMOVE_ITEM onnxruntime_providers_nuphar_cc_srcs "${ONNXRUNTIME_ROOT}/core/providers/nuphar/extern/igemv_avx2.h")
-
-  if (onnxruntime_USE_MKLML)
-    add_definitions(-DNUPHAR_USE_MKL)
-  endif()
-
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nuphar_cc_srcs})
-  onnxruntime_add_static_library(onnxruntime_providers_nuphar ${onnxruntime_providers_nuphar_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_nuphar
-    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers
-  )
-  set_target_properties(onnxruntime_providers_nuphar PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_nuphar PRIVATE ${ONNXRUNTIME_ROOT} ${TVM_INCLUDES} ${eigen_INCLUDE_DIRS})
-  set_target_properties(onnxruntime_providers_nuphar PROPERTIES LINKER_LANGUAGE CXX)
-  target_compile_options(onnxruntime_providers_nuphar PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
-  add_dependencies(onnxruntime_providers_nuphar ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar
-    DESTINATION
-    ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
-  )
-
-  if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_providers_nuphar
-            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
-            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-  endif()
 endif()
 
 if (onnxruntime_USE_VITISAI)
@@ -753,12 +755,12 @@ if (onnxruntime_USE_OPENVINO)
   # Header paths
   find_package(InferenceEngine REQUIRED)
   find_package(ngraph REQUIRED)
- 
-  if (OPENVINO_2022_1)
+
+  if (OPENVINO_2022_1 OR OPENVINO_2022_2)
   find_package(OpenVINO REQUIRED COMPONENTS Runtime ONNX)
   list (OV_20_LIBS openvino::frontend::onnx openvino::runtime)
   endif()
- 
+
   if (WIN32)
     unset(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO)
   endif()
@@ -771,7 +773,7 @@ if (onnxruntime_USE_OPENVINO)
   endif()
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
-  onnxruntime_add_shared_library_module(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs})
+  onnxruntime_add_shared_library_module(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs} "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc")
   onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnx)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
@@ -782,6 +784,13 @@ if (onnxruntime_USE_OPENVINO)
   add_dependencies(onnxruntime_providers_openvino onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${OpenVINO_INCLUDE_DIR} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS} $ENV{OPENCL_INCS})
   target_link_libraries(onnxruntime_providers_openvino ${ONNXRUNTIME_PROVIDERS_SHARED} ${OPENVINO_LIB_LIST} ${ABSEIL_LIBS})
+
+  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
+  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_MINOR=${VERSION_MINOR_PART})
+  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_BUILD=${VERSION_BUILD_PART})
+  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
+  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_STRING=\"${VERSION_STRING}\")
+  target_compile_definitions(onnxruntime_providers_openvino PRIVATE FILE_NAME=\"onnxruntime_providers_openvino.dll\")
 
   if(MSVC)
     target_compile_options(onnxruntime_providers_openvino PUBLIC /wd4099 /wd4275 /wd4100 /wd4005 /wd4244 /wd4267)
@@ -937,45 +946,41 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     add_compile_definitions(ORT_NNAPI_MAX_SUPPORTED_API_LEVEL=${onnxruntime_NNAPI_HOST_API})
   endif()
 
-  file(GLOB
-    onnxruntime_providers_nnapi_cc_srcs_top CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
+  set(onnxruntime_provider_nnapi_cc_src_patterns
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/*.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/*.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/impl/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/impl/*.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
   )
+
+  # On Android, use the actual NNAPI implementation.
+  # Otherwise, use a stub implementation to support some unit testing.
+  if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+    list(APPEND onnxruntime_provider_nnapi_cc_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.cc")
+  else()
+    list(APPEND onnxruntime_provider_nnapi_cc_src_patterns
+         "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation_stub.cc")
+  endif()
 
   # These are shared utils,
   # TODO, move this to a separated lib when used by EPs other than NNAPI and CoreML
-  file(GLOB_RECURSE onnxruntime_providers_shared_utils_cc_srcs CONFIGURE_DEPENDS
+  list(APPEND onnxruntime_provider_nnapi_cc_src_patterns
     "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.h"
     "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.cc"
   )
 
-  if(CMAKE_SYSTEM_NAME STREQUAL "Android")
-    file(GLOB_RECURSE
-      onnxruntime_providers_nnapi_cc_srcs_nested CONFIGURE_DEPENDS
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/*.cc"
-    )
-  else()
-    file(GLOB
-      onnxruntime_providers_nnapi_cc_srcs_nested CONFIGURE_DEPENDS
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/model.*"
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.cc"
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/*.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/builders/*.cc"
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.*"
-      "${ONNXRUNTIME_ROOT}/core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.*"
-    )
-  endif()
-
-  set(onnxruntime_providers_nnapi_cc_srcs
-    ${onnxruntime_providers_nnapi_cc_srcs_top}
-    ${onnxruntime_providers_nnapi_cc_srcs_nested}
-    ${onnxruntime_providers_shared_utils_cc_srcs}
-  )
+  file(GLOB onnxruntime_providers_nnapi_cc_srcs CONFIGURE_DEPENDS ${onnxruntime_provider_nnapi_cc_src_patterns})
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})
@@ -1075,10 +1080,15 @@ if (onnxruntime_USE_DML)
 
   function(target_add_dml target)
     if (onnxruntime_USE_CUSTOM_DIRECTML)
-      if (dml_LIB_DIR)
-        target_link_libraries(${target} PRIVATE ${dml_LIB_DIR}/DirectML.lib)
-      else()
+      if (dml_EXTERNAL_PROJECT)
+        # Internal build of DirectML: link against the "DirectML" target.
         target_link_libraries(${target} PRIVATE DirectML)
+      else()
+        if (dml_LIB_DIR)
+          target_link_libraries(${target} PRIVATE ${dml_LIB_DIR}/DirectML.lib)
+        else()
+          target_link_libraries(${target} PRIVATE DirectML)
+        endif()
       endif()
     else()
       add_dependencies(${target} RESTORE_PACKAGES)
@@ -1091,7 +1101,7 @@ if (onnxruntime_USE_DML)
   if (GDK_PLATFORM STREQUAL Scarlett)
     target_link_libraries(onnxruntime_providers_dml PRIVATE ${gdk_dx_libs})
   else()
-    target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
+    target_link_libraries(onnxruntime_providers_dml PRIVATE dxguid.lib d3d12.lib dxgi.lib)
   endif()
 
   target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
@@ -1173,6 +1183,15 @@ if (onnxruntime_USE_MIGRAPHX)
   set_property(TARGET onnxruntime_providers_migraphx APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/migraphx/version_script.lds -Xlinker --gc-sections")
   target_link_libraries(onnxruntime_providers_migraphx PRIVATE nsync_cpp stdc++fs)
 
+  include(CheckLibraryExists)
+  check_library_exists(migraphx::c "migraphx_program_run_async" "/opt/rocm/migraphx/lib" HAS_STREAM_SYNC)
+  if(HAS_STREAM_SYNC)
+      target_compile_definitions(onnxruntime_providers_migraphx PRIVATE -DMIGRAPHX_STREAM_SYNC)
+      message(STATUS "MIGRAPHX GPU STREAM SYNC is ENABLED")
+  else()
+      message(STATUS "MIGRAPHX GPU STREAM SYNC is DISABLED")
+  endif()
+
   install(TARGETS onnxruntime_providers_migraphx
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -1247,6 +1266,7 @@ endif()
 
 if (onnxruntime_USE_ROCM)
   add_definitions(-DUSE_ROCM=1)
+  include(onnxruntime_rocm_hipify.cmake)
 
   # Add search paths for default hip installation
   list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_ROCM_HOME} ${onnxruntime_ROCM_HOME}/hip ${onnxruntime_ROCM_HOME}/hcc ${onnxruntime_ROCM_HOME}/miopen ${onnxruntime_ROCM_HOME}/hiprand ${onnxruntime_ROCM_HOME}/rocrand)
@@ -1258,7 +1278,8 @@ if (onnxruntime_USE_ROCM)
   find_library(ROC_BLAS rocblas REQUIRED)
   find_library(MIOPEN_LIB MIOpen REQUIRED)
   find_library(RCCL_LIB rccl REQUIRED)
-  set(ONNXRUNTIME_ROCM_LIBS ${HIP_LIB} ${ROC_BLAS} ${MIOPEN_LIB} ${RCCL_LIB})
+  find_library(ROCTRACER_LIB roctracer64 REQUIRED)
+  set(ONNXRUNTIME_ROCM_LIBS ${HIP_LIB} ${ROC_BLAS} ${MIOPEN_LIB} ${RCCL_LIB} ${ROCTRACER_LIB})
 
   file(GLOB_RECURSE onnxruntime_providers_rocm_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.h"
@@ -1276,15 +1297,7 @@ if (onnxruntime_USE_ROCM)
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.cuh"
   )
 
-  file(GLOB_RECURSE onnxruntime_providers_rocm_generated_cc_srcs CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/core/providers/rocm/*.h"
-    "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/core/providers/rocm/*.cc"
-  )
-
-  file(GLOB_RECURSE onnxruntime_providers_rocm_generated_cu_srcs CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/core/providers/rocm/*.cu"
-    "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/core/providers/rocm/*.cuh"
-  )
+  hipify("onnxruntime/core/providers" provider_excluded_files onnxruntime_providers_rocm_generated_cc_srcs onnxruntime_providers_rocm_generated_cu_srcs)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_rocm_cc_srcs} ${onnxruntime_providers_rocm_shared_srcs} ${onnxruntime_providers_rocm_cu_srcs})
   set(onnxruntime_providers_rocm_src ${onnxruntime_providers_rocm_cc_srcs} ${onnxruntime_providers_rocm_shared_srcs} ${onnxruntime_providers_rocm_cu_srcs})
@@ -1292,6 +1305,14 @@ if (onnxruntime_USE_ROCM)
 
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    if (NOT onnxruntime_ENABLE_ATEN)
+      list(REMOVE_ITEM onnxruntime_rocm_contrib_ops_cc_srcs
+        "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/aten_ops/aten_op.cc"
+      )
+    endif()
+
+    hipify("onnxruntime/contrib_ops" contrib_ops_excluded_files onnxruntime_rocm_generated_contrib_ops_cc_srcs onnxruntime_rocm_generated_contrib_ops_cu_srcs)
+
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_rocm_contrib_ops_cc_srcs} ${onnxruntime_rocm_contrib_ops_cu_srcs})
     list(APPEND onnxruntime_providers_rocm_src ${onnxruntime_rocm_contrib_ops_cc_srcs} ${onnxruntime_rocm_contrib_ops_cu_srcs})
@@ -1309,15 +1330,7 @@ if (onnxruntime_USE_ROCM)
       "${ORTTRAINING_SOURCE_DIR}/training_ops/rocm/*.cuh"
     )
 
-    file(GLOB_RECURSE onnxruntime_rocm_generated_training_ops_cc_srcs CONFIGURE_DEPENDS
-      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/*.h"
-      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/*.cc"
-    )
-
-    file(GLOB_RECURSE onnxruntime_rocm_generated_training_ops_cu_srcs CONFIGURE_DEPENDS
-      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/*.cu"
-      "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining/orttraining/training_ops/rocm/*.cuh"
-    )
+    hipify("orttraining/orttraining/training_ops" training_ops_excluded_files onnxruntime_rocm_generated_training_ops_cc_srcs onnxruntime_rocm_generated_training_ops_cu_srcs)
 
     # NCCL is not support in Windows build
     if (WIN32 OR NOT onnxruntime_USE_NCCL)
@@ -1342,19 +1355,18 @@ if (onnxruntime_USE_ROCM)
   endif(CMAKE_BUILD_TYPE MATCHES Debug)
 
   list(APPEND HIP_CLANG_FLAGS ${HIP_CXX_FLAGS})
+  list(APPEND HIP_CLANG_FLAGS ${CMAKE_HIP_FLAGS})
 
   # Generate GPU code during compilation
   list(APPEND HIP_CLANG_FLAGS -fno-gpu-rdc)
 
-  # Generate GPU code for GFX9 Generation
-  list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx906 --amdgpu-target=gfx908)
-  if (ROCM_VERSION_DEV_INT GREATER_EQUAL 50000)
-    list(APPEND HIP_CLANG_FLAGS --amdgpu-target=gfx90a)
-  endif()
+  # Generate GPU code
+  foreach(HIP_ARCH ${CMAKE_HIP_ARCHITECTURES})
+    list(APPEND HIP_CLANG_FLAGS --offload-arch=${HIP_ARCH})
+  endforeach()
 
-  #onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
-  hip_add_library(onnxruntime_providers_rocm MODULE ${onnxruntime_providers_rocm_src})
-  onnxruntime_configure_target(onnxruntime_providers_rocm)
+  auto_set_source_files_hip_language(${onnxruntime_providers_rocm_src})
+  onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
 
   if(NOT MSVC)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_HCC__=1)
@@ -1371,10 +1383,25 @@ if (onnxruntime_USE_ROCM)
     endif()
   endif()
 
-  add_dependencies(onnxruntime_providers_rocm onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  add_custom_target(generate_hipified_files DEPENDS
+    ${onnxruntime_providers_rocm_generated_cc_srcs}
+    ${onnxruntime_providers_rocm_generated_cu_srcs}
+    ${onnxruntime_rocm_generated_contrib_ops_cc_srcs}
+    ${onnxruntime_rocm_generated_contrib_ops_cu_srcs}
+    ${onnxruntime_rocm_generated_training_ops_cc_srcs}
+    ${onnxruntime_rocm_generated_training_ops_cu_srcs})
+
+  add_dependencies(onnxruntime_providers_rocm generate_hipified_files onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_link_libraries(onnxruntime_providers_rocm PRIVATE ${ONNXRUNTIME_ROCM_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} ${ABSEIL_LIBS})
-  # During transition to separate hipFFT repo, put hipfft/include early
-  target_include_directories(onnxruntime_providers_rocm PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hipcub/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include)
+  target_include_directories(onnxruntime_providers_rocm SYSTEM
+    PRIVATE
+      ${ONNXRUNTIME_ROOT}
+      ${CMAKE_CURRENT_BINARY_DIR}
+      ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime
+      ${eigen_INCLUDE_DIRS}
+    PUBLIC
+      ${onnxruntime_ROCM_HOME}/include
+      ${onnxruntime_ROCM_HOME}/include/roctracer)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/rocm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES FOLDER "ONNXRuntime")
@@ -1392,11 +1419,18 @@ if (onnxruntime_USE_ROCM)
     #endif()
   endif()
 
+  include(composable_kernel)
+  target_link_libraries(onnxruntime_providers_rocm PRIVATE onnxruntime_composable_kernel_includes device_gemm_instance)
+
   if(UNIX)
     set_property(TARGET onnxruntime_providers_rocm APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/rocm/version_script.lds -Xlinker --gc-sections")
     target_link_libraries(onnxruntime_providers_rocm PRIVATE nsync_cpp)
   else()
     message(FATAL_ERROR "onnxruntime_providers_rocm unknown platform, need to specify shared library exports for it")
+  endif()
+
+  if (onnxruntime_ENABLE_ATEN)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE ENABLE_ATEN)
   endif()
 
   install(TARGETS onnxruntime_providers_rocm
@@ -1408,11 +1442,22 @@ endif()
 
 if (onnxruntime_USE_TVM)
   add_definitions(-DUSE_TVM=1)
+  if (onnxruntime_TVM_USE_HASH)
+    add_definitions(-DUSE_TVM_HASH=1)
+  endif()
 
-  file (GLOB_RECURSE onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
+  if (onnxruntime_TVM_USE_HASH)
+    file (GLOB_RECURSE onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
     )
+  else()
+    file (GLOB onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/tvm/*.cc"
+    )
+  endif()
+
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tvm_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_tvm ${onnxruntime_providers_tvm_cc_srcs})
 
@@ -1433,11 +1478,23 @@ if (onnxruntime_USE_TVM)
       onnxruntime_common
       onnxruntime_framework
   )
+  if (onnxruntime_TVM_USE_HASH)
+    add_dependencies(onnxruntime_providers_tvm ippcp_s)
+    target_include_directories(onnxruntime_providers_tvm PRIVATE ${IPP_CRYPTO_INCLUDE_DIR})
+    target_link_libraries(onnxruntime_providers_tvm PRIVATE ippcp_s)
+  endif()
 
   set_target_properties(onnxruntime_providers_tvm PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_tvm PROPERTIES LINKER_LANGUAGE CXX)
 
-  target_compile_options(onnxruntime_providers_tvm PRIVATE -Wno-error=type-limits)
+  if (WIN32 AND MSVC)
+    # wd4100: identifier' : unreferenced formal parameter
+    # wd4127: conditional expression is constant
+    # wd4244: conversion from 'int' to 'char', possible loss of data
+    target_compile_options(onnxruntime_providers_tvm PRIVATE "/wd4100" "/wd4127" "/wd4244")
+  else()
+    target_compile_options(onnxruntime_providers_tvm PRIVATE "-Wno-error=type-limits")
+  endif()
   target_compile_definitions(onnxruntime_providers_tvm PUBLIC DMLC_USE_LOGGING_LIBRARY=<tvm/runtime/logging.h>)
 
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tvm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
@@ -1451,6 +1508,74 @@ if (onnxruntime_USE_TVM)
   endif()
 endif()
 
+if (onnxruntime_USE_XNNPACK)
+  add_compile_definitions(USE_XNNPACK=1)
+
+  file(GLOB_RECURSE onnxruntime_providers_xnnpack_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_INCLUDE_DIR}/core/providers/xnnpack/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/xnnpack/*.cc"
+    # utils for handling QDQ models
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.cc"
+  )
+
+  source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_xnnpack_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_xnnpack ${onnxruntime_providers_xnnpack_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_xnnpack
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} XNNPACK pthreadpool
+  )
+
+  add_dependencies(onnxruntime_providers_xnnpack onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_xnnpack PROPERTIES FOLDER "ONNXRuntime")
+
+  install(DIRECTORY ${ONNXRUNTIME_INCLUDE_DIR}/core/providers/xnnpack
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
+  )
+
+  set_target_properties(onnxruntime_providers_xnnpack PROPERTIES LINKER_LANGUAGE CXX)
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_xnnpack
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+endif()
+
+if (onnxruntime_USE_CANN)
+  add_definitions(-DUSE_CANN=1)
+  file(GLOB_RECURSE onnxruntime_providers_cann_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/cann/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cann/*.cc"
+  )
+
+  # The shared_library files are in a separate list since they use precompiled headers, and the above files have them disabled.
+  file(GLOB_RECURSE onnxruntime_providers_cann_shared_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cann_cc_srcs} ${onnxruntime_providers_cann_shared_srcs})
+  set(onnxruntime_providers_cann_src ${onnxruntime_providers_cann_cc_srcs} ${onnxruntime_providers_cann_shared_srcs})
+
+  onnxruntime_add_shared_library_module(onnxruntime_providers_cann ${onnxruntime_providers_cann_src})
+  onnxruntime_add_include_to_target(onnxruntime_providers_cann onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+
+  add_dependencies(onnxruntime_providers_cann onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_link_libraries(onnxruntime_providers_cann PRIVATE ascendcl acl_op_compiler nsync_cpp ${ABSEIL_LIBS} onnxruntime_providers_shared)
+  target_link_directories(onnxruntime_providers_cann PRIVATE ${onnxruntime_CANN_HOME}/lib64)
+  target_include_directories(onnxruntime_providers_cann PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${onnxruntime_CANN_HOME} ${onnxruntime_CANN_HOME}/include)
+  set_target_properties(onnxruntime_providers_cann PROPERTIES LINKER_LANGUAGE CXX)
+  set_target_properties(onnxruntime_providers_cann PROPERTIES FOLDER "ONNXRuntime")
+
+  install(TARGETS onnxruntime_providers_cann
+          ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
 if (NOT onnxruntime_BUILD_SHARED_LIB)
   install(TARGETS onnxruntime_providers
           ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -1458,4 +1583,3 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
           RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
           FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-

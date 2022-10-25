@@ -37,7 +37,7 @@ REG_EXPAND_KERNEL(MLFloat16)
 template <typename T>
 Status Expand<T>::Compute(OpKernelContext* context) const {
   const auto* input_tensor = context->Input<Tensor>(0);
-  const auto* input_data = input_tensor->template Data<T>();
+  const auto* input_data = input_tensor->Data<T>();
   const auto& input_shape = input_tensor->Shape().GetDims();
 
   const auto* input_dims = input_shape.data();
@@ -68,7 +68,7 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
 
   TensorShape output_tensor_shape(output_shape);
   auto* output_tensor = context->Output(0, output_tensor_shape);
-  auto* output_data = output_tensor->template MutableData<T>();
+  auto* output_data = output_tensor->MutableData<T>();
   auto* output_dims = output_shape.data();
   auto output_dims_size = static_cast<int64_t>(output_shape.size());
   auto max_dims_size = std::max(input_dims_size, output_dims_size);

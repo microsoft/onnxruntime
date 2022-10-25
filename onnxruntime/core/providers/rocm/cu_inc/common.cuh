@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <type_traits>
+#include <memory>
 #include <stdint.h>
 #include <vector>
 #include <mutex>
@@ -280,6 +282,41 @@ __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
 }
 
+template <typename T>
+__device__ __inline__ T _Mod(T a, T b) {
+  T r = a % b;
+  T zero = T(0);
+  if ((r > zero && b < zero) || (r < zero && b > zero)) {
+    r += b;
+  }
+  return r;
+}
+
+template <typename T>
+__device__ __inline__ T _Fmod(T a, T b) {
+  return a % b;
+}
+
+template <>
+__device__ __inline__ float _Fmod(float a, float b) {
+  return fmodf(a, b);
+}
+
+template <>
+__device__ __inline__ double _Fmod(double a, double b) {
+  return fmod(a, b);
+}
+
+template <>
+__device__ __inline__ half _Fmod(half a, half b) {
+  return fmodf((float)a, (float)b);
+}
+
+template <>
+__device__ __inline__ BFloat16 _Fmod(BFloat16 a, BFloat16 b) {
+  return fmodf((float)a, (float)b);
+}
+
 // We would like to use 64-bit integer to support large matrices. However, ROCM seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
 #ifndef HIP_LONG
@@ -299,7 +336,7 @@ struct GridDim {
   };
 };
 
-// aligned vector generates vectorized load/store on CUDA
+// aligned vector generates vectorized load/store
 template<typename T, int vec_size>
 struct alignas(sizeof(T) * vec_size) aligned_vector {
   T val[vec_size];
@@ -316,25 +353,30 @@ struct alignas(sizeof(T) * vec_size) aligned_vector {
 //#define HIP_KERNEL_ASSERT(...) assert(__VA_ARGS__)
 
 // WARP related definitions and functions
-constexpr int GPU_WARP_SIZE = 64;
+constexpr int GPU_WARP_SIZE = warpSize;
+inline int GPU_WARP_SIZE_HOST= warpSizeDynamic();
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
+  ORT_UNUSED_PARAMETER(mask);
   return __shfl(value, srcLane, width);
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
+  ORT_UNUSED_PARAMETER(mask);
   return __shfl_xor(value, laneMask, width);
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
+  ORT_UNUSED_PARAMETER(mask);
   return __shfl_up(value, delta, width);
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
+  ORT_UNUSED_PARAMETER(mask);
   return __shfl_down(value, delta, width);
 }
 

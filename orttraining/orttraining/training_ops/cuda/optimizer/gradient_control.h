@@ -22,5 +22,12 @@ class InPlaceAccumulator final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
+template <typename T, typename T_GRAD>
+class InPlaceAccumulatorV2 final : public CudaKernel {
+ public:
+  InPlaceAccumulatorV2(const OpKernelInfo& info) : CudaKernel(info) {}
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

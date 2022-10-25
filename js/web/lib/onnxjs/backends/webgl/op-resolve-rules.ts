@@ -8,6 +8,7 @@ import * as binaryOps from './ops/binary-op';
 import {cast, parseCastAttributes} from './ops/cast';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
+import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
 import {depthToSpace, parseDepthToSpaceAttributes} from './ops/depth-to-space';
 import {flatten, parseFlattenAttributes} from './ops/flatten';
 import {gather, parseGatherAttributes} from './ops/gather';
@@ -48,6 +49,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Clip', '', '11+', unaryOps.clipV11],
   ['Concat', '', '4+', concat, parseConcatAttributes],
   ['Conv', '', '1+', conv, parseConvAttributes],
+  ['ConvTranspose', '', '1+', convTranspose, parseConvTransposeAttributes],
   ['Cos', '', '7+', unaryOps.cos],
   ['Div', '', '7+', binaryOps.div],
   ['Dropout', '', '7+', unaryOps.identity],

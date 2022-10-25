@@ -22,7 +22,7 @@ namespace android {
 namespace nn {
 namespace wrapper {
 
-OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale, int32_t zeroPoint)
+OperandType::OperandType(Type type, const Shape& d, float scale, int32_t zeroPoint)
     : type(type), dimensions(d) {
   operandType = {
       /*.type = */ static_cast<int32_t>(type),
@@ -33,7 +33,7 @@ OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale,
   };
 }
 
-OperandType::OperandType(Type type, const std::vector<uint32_t>& d, SymmPerChannelQuantParams&& channelQuant)
+OperandType::OperandType(Type type, const Shape& d, SymmPerChannelQuantParams&& channelQuant)
     : type(type), dimensions(d), channelQuant(std::move(channelQuant)) {
   operandType = {
       /*.type = */ static_cast<int32_t>(type),
@@ -71,7 +71,6 @@ size_t OperandType::GetElementByteSize() const {
       element_size = 1;
       break;
     case Type::TENSOR_FLOAT16:
-    case Type::FLOAT16:
       element_size = 2;
       break;
     case Type::TENSOR_FLOAT32:
@@ -87,7 +86,6 @@ size_t OperandType::GetElementByteSize() const {
       element_size = 1;
       break;
     case Type::TENSOR_QUANT16_SYMM:
-    case Type::TENSOR_QUANT16_ASYMM:
       element_size = 2;
       break;
     default:
@@ -98,12 +96,12 @@ size_t OperandType::GetElementByteSize() const {
 }
 
 size_t OperandType::GetOperandBlobByteSize() const {
-  // use uin64_t even dimension is uint32_t to prevent overflow
-  uint64_t num_elements = std::accumulate(dimensions.begin(), dimensions.end(), uint64_t(1), std::multiplies<uint64_t>());
-  return SafeInt<size_t>(num_elements) * GetElementByteSize();
+  SafeInt<size_t> num_elements = std::accumulate(dimensions.begin(), dimensions.end(), SafeInt<size_t>(1),
+                                                 std::multiplies<SafeInt<size_t>>());
+  return num_elements * GetElementByteSize();
 }
 
-void OperandType::SetDimensions(const std::vector<uint32_t>& d) {
+void OperandType::SetDimensions(const Shape& d) {
   dimensions = d;
   operandType.dimensionCount = static_cast<uint32_t>(dimensions.size());
   operandType.dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr;

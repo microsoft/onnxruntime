@@ -133,12 +133,12 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
         static_cast<int>(helper.M()),
         static_cast<int>(helper.K()),
         &alpha,
-        reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+        reinterpret_cast<const CudaT*>(right_X->Data<T>()),
         ldb,
-        reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+        reinterpret_cast<const CudaT*>(left_X->Data<T>()),
         lda,
         &zero,
-        reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+        reinterpret_cast<CudaT*>(Y->MutableData<T>()),
         ldc,
         device_prop));
     return Status::OK();
@@ -151,14 +151,14 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                           static_cast<int>(helper.M()),
                                                           static_cast<int>(helper.K()),
                                                           &alpha,
-                                                          reinterpret_cast<const CudaT*>(right_X->template Data<T>()),
+                                                          reinterpret_cast<const CudaT*>(right_X->Data<T>()),
                                                           ldb,
                                                           stride_B,
-                                                          reinterpret_cast<const CudaT*>(left_X->template Data<T>()),
+                                                          reinterpret_cast<const CudaT*>(left_X->Data<T>()),
                                                           lda,
                                                           stride_A,
                                                           &zero,
-                                                          reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+                                                          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
                                                           ldc,
                                                           stride_C,
                                                           static_cast<int>(batch_count),
@@ -172,9 +172,9 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaAsyncBuffer<const CudaT*> left_arrays(this, helper.LeftOffsets().size());
   CudaAsyncBuffer<const CudaT*> right_arrays(this, helper.RightOffsets().size());
   CudaAsyncBuffer<CudaT*> output_arrays(this, helper.OutputOffsets().size());
-  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->template Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
-  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->template Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
-  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->template MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
+  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
+  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
+  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
   ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu());
   ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu());
   ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu());

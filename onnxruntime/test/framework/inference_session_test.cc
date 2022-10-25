@@ -35,6 +35,9 @@
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #endif
+#ifdef USE_TENSORRT
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
+#endif
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
@@ -85,9 +88,9 @@ class FuseAdd : public OpKernel {
     auto Y = context->Input<Tensor>(1);
     auto Z = context->Input<Tensor>(2);
     auto& shape = X->Shape();
-    auto M = context->Output(0, shape)->template MutableData<float>();
+    auto M = context->Output(0, shape)->MutableData<float>();
     for (int i = 0; i < shape.Size(); ++i) {
-      *(M + i) = *(X->template Data<float>() + i) + *(Y->template Data<float>() + i) + *(Z->template Data<float>() + i);
+      *(M + i) = *(X->Data<float>() + i) + *(Y->Data<float>() + i) + *(Z->Data<float>() + i);
     }
     return Status::OK();
   }
@@ -128,7 +131,7 @@ class FuseExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override {
+                const IKernelLookup& /*kernel_lookup*/) const override {
     // Fuse two add into one.
     std::vector<std::unique_ptr<ComputeCapability>> result;
     std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
@@ -217,8 +220,8 @@ void VerifyOutputs(const Tensor& tensor, const std::vector<int64_t>& expected_di
                    const std::vector<T>& expected_values) {
   TensorShape expected_shape(expected_dims);
   ASSERT_EQ(expected_shape, tensor.Shape());
-  const std::vector<T> found(tensor.template Data<T>(),
-                             tensor.template Data<T>() + expected_values.size());
+  const std::vector<T> found(tensor.Data<T>(),
+                             tensor.Data<T>() + expected_values.size());
   ASSERT_EQ(expected_values, found);
 }
 
@@ -665,10 +668,72 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
     }
   }
 
-#if defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)
+#if (defined(USE_CUDA) && defined(ENABLE_CUDA_PROFILING)) || (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING))
   ASSERT_TRUE(has_kernel_info);
 #endif
 }
+
+TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
+  SessionOptions so;
+
+  so.session_logid = "CheckRunProfiler";
+  so.enable_profiling = true;
+  so.profile_file_prefix = ORT_TSTR("onnxprofile_profile_test");
+
+  InferenceSession session_object(so, GetEnvironment());
+#ifdef USE_CUDA
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+#endif
+#ifdef USE_ROCM
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
+#endif
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = "RunTag";
+
+  RunModel(session_object, run_options);
+  std::string profile_file = session_object.EndProfiling();
+
+  std::ifstream profile(profile_file);
+  ASSERT_TRUE(profile);
+  std::string line;
+  std::vector<std::string> lines;
+
+  while (std::getline(profile, line)) {
+    lines.push_back(line);
+  }
+
+  auto size = lines.size();
+  ASSERT_TRUE(size > 1);
+  ASSERT_TRUE(lines[0].find("[") != string::npos);
+  ASSERT_TRUE(lines[1].find("model_loading_uri") != string::npos);
+  ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
+  std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
+
+  bool has_api_info = false;
+  for (size_t i = 1; i < size - 1; ++i) {
+    for (auto& s : tags) {
+      ASSERT_TRUE(lines[i].find(s) != string::npos);
+#ifdef USE_CUDA
+      has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
+                                               lines[i].find("cudaLaunch") != string::npos;
+#endif
+#ifdef USE_ROCM
+      has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
+                                               lines[i].find("hipLaunch") != string::npos;
+#endif
+    }
+  }
+
+#if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
+  ASSERT_TRUE(has_api_info);
+#else
+  ASSERT_TRUE(has_api_info || true);
+#endif
+}
+
 
 TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
   SessionOptions so;
@@ -1447,6 +1512,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   ONNX_NAMESPACE::TypeProto bool_tensor;
   bool_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
   auto& if_cond_input = graph.GetOrCreateNodeArg("if_cond_input", &bool_tensor);
   auto& graph_if_input = graph.GetOrCreateNodeArg("graph_if_input", nullptr);
@@ -1485,7 +1551,9 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test3LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#if USE_CUDA
+#if USE_TENSORRT
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+#elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
@@ -1520,6 +1588,22 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   status = session_object.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());
   VerifyOutputs(fetches, expected_dims, expected_values);
+
+#if USE_TENSORRT
+  // previous run with graph being optimized, one of If node’s both subgraphs become empty, so TRT EP won’t assign this If node to TRT and later ORT assign it to CUDA.
+  // we also want to test graph not being optimized and TRT EP should also be able to run it and make the whole graph run on TRT. 
+  so.graph_optimization_level = TransformerLevel::Default; 
+  InferenceSession session_object_2{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object_2.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+  status = session_object_2.Load(model_file_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object_2.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  // Now run
+  status = session_object_2.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+  VerifyOutputs(fetches, expected_dims, expected_values);
+#endif
 }
 
 TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
@@ -1562,11 +1646,13 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
 
   ONNX_NAMESPACE::TypeProto float_tensor_input;
   float_tensor_input.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor_input.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
   ONNX_NAMESPACE::TypeProto float_tensor;
   float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("__graph_0__float_unknown");
   ONNX_NAMESPACE::TypeProto bool_tensor;
   bool_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  bool_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
   // graph inputs
   auto& input_0 = graph.GetOrCreateNodeArg("input_0", &float_tensor_input);
@@ -1617,7 +1703,9 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   so.session_logid = "InferenceSessionTests.Test2LayerNestedSubgraph";
   InferenceSession session_object{so, GetEnvironment()};
 
-#if USE_CUDA
+#if USE_TENSORRT
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+#elif USE_CUDA
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
@@ -1763,7 +1851,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
   TensorShape expected_shape(Y_dims);
   ASSERT_EQ(expected_shape, rtensor.Shape());
   for (size_t i = 0; i < Y_data.size(); ++i)
-    EXPECT_NEAR(Y_data[i], rtensor.template Data<float>()[i], FLT_EPSILON);
+    EXPECT_NEAR(Y_data[i], rtensor.Data<float>()[i], FLT_EPSILON);
 
   // run truncated sequence
   output_names.clear();
@@ -1806,7 +1894,7 @@ TEST(InferenceSessionTests, TestTruncatedSequence) {
     ASSERT_EQ(truncated_shape, truncated_rtensor.Shape());
     auto seq_output_stride = truncated_shape.SizeFromDimension(1);
     for (int i = 0; i < truncated_shape.Size(); ++i)
-      EXPECT_NEAR(Y_data[i + seq_start * seq_output_stride], truncated_rtensor.template Data<float>()[i], FLT_EPSILON);
+      EXPECT_NEAR(Y_data[i + seq_start * seq_output_stride], truncated_rtensor.Data<float>()[i], FLT_EPSILON);
 
     // prepare for next truncated input
     fetches = truncated_fetches;
@@ -2004,14 +2092,14 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   OrtCUDAProviderOptions provider_options{};
   provider_options.default_memory_arena_cfg = &arena_cfg;
   provider_options.device_id = 0;
-  auto factory = CreateExecutionProviderFactory_Cuda(&provider_options);
+  auto factory = CudaProviderFactoryCreator::Create(&provider_options);
 
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(factory->CreateProvider()));
   ASSERT_STATUS_OK(session_object.Initialize());
 
   // Fetch the CUDA allocator to analyze its stats
-  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator);
+  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
   auto cuda_alloc = session_object.GetAllocator(mem_info);
 
   AllocatorStats alloc_stats;

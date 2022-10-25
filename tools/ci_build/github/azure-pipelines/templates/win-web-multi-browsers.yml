@@ -7,7 +7,7 @@ jobs:
 - job: build_onnxruntime_web_windows
   pool:
     vmImage: windows-2019
-  timeoutInMinutes: 30
+  timeoutInMinutes: 60
   workspace:
     clean: all
   steps:

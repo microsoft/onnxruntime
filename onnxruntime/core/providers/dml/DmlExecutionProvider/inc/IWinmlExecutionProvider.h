@@ -12,6 +12,9 @@
 
 struct AbstractOperatorDesc;
 interface IMLOperatorTensor;
+struct DML_INPUT_GRAPH_EDGE_DESC;
+struct DML_OUTPUT_GRAPH_EDGE_DESC;
+struct DML_INTERMEDIATE_GRAPH_EDGE_DESC;
 
 namespace onnxruntime
 {
@@ -45,7 +48,7 @@ namespace Windows::AI::MachineLearning::Adapter
             IUnknown* data,
             bool isInternalOperator) = 0;
 
-        virtual void GetABIExecutionInterface(
+        virtual void GetABIExecutionInterfaceAndInvalidateState(
             bool isInternalOperator,
             IUnknown** abiExecutionObject) const = 0;
 
@@ -73,26 +76,23 @@ namespace Windows::AI::MachineLearning::Adapter
         std::unique_ptr<AbstractOperatorDesc> desc;
     };
 
-    // This is the counterpart to the MLOperatorKernelDmlProperties ABI struct which owns its memory and uses containers.
+    // This is the counterpart to the MLOperatorGraphDesc ABI struct which owns its memory and uses containers.
+    // Either nodesAsOperatorDesc or nodesAsIDMLOperator can have non-zero size.
     struct DmlGraphNodeCreateInfo
     {
-        bool initialized = false;
-
-        // Mapping between DML in/out indices and kernel in/out indices
-        std::vector<uint32_t> kernelInputIndices;
-        std::vector<uint32_t> kernelOutputIndices;
-
-        Microsoft::WRL::ComPtr<IDMLOperator> op;
-        std::unique_ptr<AbstractOperatorDesc> desc;
-
-        bool allowHalfPrecisionComputation = false;
+        uint32_t nodeCount;
+        std::vector<std::unique_ptr<AbstractOperatorDesc>> nodesAsOperatorDesc;
+        std::vector<Microsoft::WRL::ComPtr<IDMLOperator>> nodesAsIDMLOperator;
+        std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+        std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
+        std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
     };
 
     using GraphNodeFactory = std::function<void(
         const onnxruntime::Node& node, 
         MLOperatorTensorGetter& constantInputGetter,
         const void* executionHandle,
-        DmlGraphNodeCreateInfo* graphNodeCreateInfo
+        /*out*/ DmlGraphNodeCreateInfo* graphNodeCreateInfo
         )>;
 
     struct GraphNodeFactoryRegistration

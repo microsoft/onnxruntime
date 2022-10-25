@@ -43,6 +43,13 @@ struct OP_Gelu : public CtxGelu {
   }
 };
 
+template <>
+struct OP_Gelu<half> : public CtxGelu {
+  __device__ __inline__ half operator()(const half& a) const {
+    return static_cast<half>(_Gelu(static_cast<float>(a)));
+  }
+};
+
 #define UNARY_ACTIVATION_IMPL(name)                                        \
   UNARY_ACTIVATION_IMPL_DECLARATION(name) {                                \
     UnaryElementWiseImpl(stream,                                           \

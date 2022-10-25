@@ -1,22 +1,21 @@
 import io
 import os
 import warnings
+from distutils.version import LooseVersion
+
 import numpy as np
 import onnx
-from onnx import numpy_helper
-from onnx import helper
 import torch
 import torch.nn
 import torch.onnx
+from onnx import helper, numpy_helper
+
 import onnxruntime as ort
-from ..training import postprocess
-from distutils.version import LooseVersion
-import warnings
-
-from .checkpointing_utils import list_checkpoint_files, get_checkpoint_name, CombineZeroCheckpoint
 import onnxruntime.capi.pt_patch
-
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+
+from ..training import postprocess
+from .checkpointing_utils import CombineZeroCheckpoint, get_checkpoint_name, list_checkpoint_files
 
 DEFAULT_OPSET_VERSION = 14
 
@@ -732,6 +731,10 @@ class ORTTrainer:
             optimized_model_filepath: path to output the optimized training graph.
                Defaults to "" (no output).
         """
+        warnings.warn(
+            "ORTTrainer is deprecated and will be removed in ort release 1.14. Please use ORTModule instead.",
+            FutureWarning,
+        )
         warnings.warn(
             "DISCLAIMER: This is an early version of an experimental training API and it is subject to change. DO NOT create production applications with it"
         )

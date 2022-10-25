@@ -3,12 +3,13 @@
 
 #pragma once
 
-#include <cuda_runtime.h>
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
-template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-void dispatch_softmax_backward(cudaStream_t stream, output_t* grad_input, const input_t* grad, const input_t* output,
-                               int softmax_elements, int softmax_elements_stride, int batch_count);
+template <typename T>
+Status SoftmaxGradImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* input_grad, const T* output_grad,
+                       const T* softmax_output, int element_count, int batch_count, bool is_log_softmax);
 }
 }  // namespace onnxruntime

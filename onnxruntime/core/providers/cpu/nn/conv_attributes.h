@@ -28,16 +28,18 @@ struct ConvAttributes {
     kernel_shape_specified = info.GetAttrs("kernel_shape", kernel_shape_).IsOK();
 
     status = info.GetAttrs("strides", strides);
-    if (!status.IsOK() || strides.empty()) {
+    if (kernel_shape_specified && (!status.IsOK() || strides.empty())) {
       strides.resize(kernel_shape_.size(), 1);
     }
 
     gsl::span<const int64_t> pads_span;
     status = info.GetAttrsAsSpan("pads", pads_span);
     if (!status.IsOK()) {
-      // If pads are not explicitly provided, fill the container with all zeros
-      // so that we can compute and fill in pad values downstream
-      pads.resize(kernel_shape_.size() * 2, 0);
+      if (kernel_shape_specified) {
+        // If pads are not explicitly provided, fill the container with all zeros
+        // so that we can compute and fill in pad values downstream
+        pads.resize(kernel_shape_.size() * 2, 0);
+      }
     } else {
       // Pads are explicitly provided, make sure that auto_pad is NOTSET
       ORT_ENFORCE(auto_pad == AutoPadType::NOTSET,
@@ -46,7 +48,7 @@ struct ConvAttributes {
     }
 
     status = info.GetAttrs("dilations", dilations);
-    if (!status.IsOK() || dilations.empty()) {
+    if (kernel_shape_specified && (!status.IsOK() || dilations.empty())) {
       dilations.resize(kernel_shape_.size(), 1);
     }
 
@@ -125,13 +127,13 @@ struct ConvAttributes {
     return ValidateInputShape(input->Shape(), weight->Shape());
   }
 
-  Status InferOutputShape(const TensorShape& input_shape,
-                          const gsl::span<const int64_t>& kernel_shape,
-                          const gsl::span<const int64_t>& strides_p,
-                          const gsl::span<const int64_t>& dilations_p,
-                          ConvPadVector& pads_p,
-                          TensorShapeVector& output_shape,
-                          bool force_symmetric_auto_padding = false) const {
+  Status InferPadsAndOutputShape(const TensorShape& input_shape,
+                                 const gsl::span<const int64_t>& kernel_shape,
+                                 const gsl::span<const int64_t>& strides_p,
+                                 const gsl::span<const int64_t>& dilations_p,
+                                 ConvPadVector& pads_p,
+                                 TensorShapeVector& output_shape,
+                                 bool force_symmetric_auto_padding = false) const {
     size_t rank = input_shape.NumDimensions();
 
     // Make sure all "metadata" containers have the right number of elements
@@ -158,8 +160,7 @@ struct ConvAttributes {
                                                    kernel_shape[dim],
                                                    dilations_p[dim],
                                                    auto_pad,
-                                                   pads_p.at(dim),
-                                                   pads_p.at(input_shape.NumDimensions() + dim),
+                                                   pads_p[dim], pads_p[rank + dim],
                                                    output_dim_size,
                                                    force_symmetric_auto_padding));
       if (output_dim_size <= 0) {

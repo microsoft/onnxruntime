@@ -1,0 +1,98 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3e1174ec..65648cb7 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ cmake_minimum_required(VERSION 3.14)
+ 
+ # Check support for CUDA/HIP in Cmake
+-project(composable_kernel)
++project(composable_kernel LANGUAGES CXX HIP)
+ 
+ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+ 
+@@ -36,27 +36,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ set(CMAKE_CXX_EXTENSIONS OFF)
+ message("CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
+ 
+-## OpenMP
+-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+-	# workaround issue hipcc in rocm3.5 cannot find openmp
+-	set(OpenMP_CXX "${CMAKE_CXX_COMPILER}")
+-	set(OpenMP_CXX_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
+-	set(OpenMP_CXX_LIB_NAMES "libomp" "libgomp" "libiomp5")
+-	set(OpenMP_libomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+-	set(OpenMP_libgomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+-	set(OpenMP_libiomp5_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+-else()
+-	find_package(OpenMP REQUIRED)
+-endif()
+-
+-message("OpenMP_CXX_LIB_NAMES: ${OpenMP_CXX_LIB_NAMES}")
+-message("OpenMP_gomp_LIBRARY: ${OpenMP_gomp_LIBRARY}")
+-message("OpenMP_pthread_LIBRARY: ${OpenMP_pthread_LIBRARY}")
+-message("OpenMP_CXX_FLAGS: ${OpenMP_CXX_FLAGS}")
+-
+-link_libraries(${OpenMP_gomp_LIBRARY})
+-link_libraries(${OpenMP_pthread_LIBRARY})
+-
+ ## HIP
+ find_package(HIP REQUIRED)
+ # Override HIP version in config.h, if necessary.
+@@ -245,9 +224,6 @@ rocm_package_setup_component(tests
+ )
+ 
+ add_subdirectory(library)
+-add_subdirectory(example)
+-add_subdirectory(test)
+-add_subdirectory(profiler)
+ 
+ #Create an interface target for the include only files and call it "composablekernels"
+ include(CMakePackageConfigHelpers)
+@@ -273,11 +249,3 @@ rocm_install(FILES
+ 
+ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+ set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+-
+-rocm_create_package(
+-    NAME composablekernel
+-    DESCRIPTION "High Performance Composable Kernel for AMD GPUs"
+-    MAINTAINER "MIOpen Kernels Dev Team <dl.MIOpen@amd.com>"
+-    LDCONFIG
+-    HEADER_ONLY
+-)
+diff --git a/include/ck/ck.hpp b/include/ck/ck.hpp
+index fcaec592..8ea06421 100644
+--- a/include/ck/ck.hpp
++++ b/include/ck/ck.hpp
+@@ -126,7 +126,9 @@
+ #define CK_EXPERIMENTAL_USE_MEMCPY_FOR_BIT_CAST 1
+ 
+ // experimental feature: optimize for inter-wave scheduling policy
++#ifndef CK_EXPERIMENTAL_INTER_WAVE_SCHEDULING
+ #define CK_EXPERIMENTAL_INTER_WAVE_SCHEDULING 0
++#endif
+ #define CK_EXPERIMENTAL_INTER_WAVE_SCHEDULING_MAC_CLUSTERS 1
+ 
+ // hack: have underlying assumption that need to be satsified, otherwise it's a bug
+diff --git a/library/src/tensor_operation_instance/gpu/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
+index 6f3f900b..594d983d 100644
+--- a/library/src/tensor_operation_instance/gpu/CMakeLists.txt
++++ b/library/src/tensor_operation_instance/gpu/CMakeLists.txt
+@@ -1,5 +1,6 @@
+ function(add_instance_library INSTANCE_NAME)
+     message("adding instance ${INSTANCE_NAME}")
++    set_source_files_properties(${ARGN} PROPERTIES LANGUAGE HIP)
+     add_library(${INSTANCE_NAME} OBJECT ${ARGN})
+     target_compile_features(${INSTANCE_NAME} PUBLIC)
+     set_target_properties(${INSTANCE_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+diff --git a/library/src/tensor_operation_instance/gpu/grouped_conv3d_fwd/CMakeLists.txt b/library/src/tensor_operation_instance/gpu/grouped_conv3d_fwd/CMakeLists.txt
+index 5dc20332..78eedca5 100644
+--- a/library/src/tensor_operation_instance/gpu/grouped_conv3d_fwd/CMakeLists.txt
++++ b/library/src/tensor_operation_instance/gpu/grouped_conv3d_fwd/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-add_library(device_grouped_conv3d_fwd_instance
++add_instance_library(device_grouped_conv3d_fwd_instance
+    device_grouped_conv3d_fwd_xdl_gndhwc_gkzyxc_gndhwk_bf16_instance.cpp
+    device_grouped_conv3d_fwd_xdl_gndhwc_gkzyxc_gndhwk_f16_instance.cpp
+    device_grouped_conv3d_fwd_xdl_gndhwc_gkzyxc_gndhwk_f32_instance.cpp

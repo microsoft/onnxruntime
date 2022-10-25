@@ -18,7 +18,7 @@ TVMRunner::TVMRunner(const TvmEPOptions& options,
   runner_ = getTVMRunnerImpl(mod, options, inputs_info, output_tensors);
 }
 
-common::Status TVMRunner::operator()(FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
+common::Status TVMRunner::operator()(FunctionState state, const OrtApi* api, OrtKernelContext* context) {
   return runner_->run(api, context);
 }
 

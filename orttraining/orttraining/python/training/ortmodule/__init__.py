@@ -6,12 +6,14 @@
 import os
 import sys
 import warnings
+
 import torch
 from packaging import version
 
 from onnxruntime import set_seed
 from onnxruntime.capi import build_and_package_info as ort_info
-from ._fallback import _FallbackPolicy, ORTModuleFallbackException, ORTModuleInitException, wrap_exception
+
+from ._fallback import ORTModuleFallbackException, ORTModuleInitException, _FallbackPolicy, wrap_exception
 from .torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 
 
@@ -33,7 +35,7 @@ def _defined_from_envvar(name, default_value, warn=True):
 # NOTE: To *change* values in runtime, import onnxruntime.training.ortmodule and
 # assign them new values. Importing them directly do not propagate changes.
 ################################################################################
-ONNX_OPSET_VERSION = 14
+ONNX_OPSET_VERSION = 15
 MINIMUM_RUNTIME_PYTORCH_VERSION_STR = "1.8.1"
 ORTMODULE_TORCH_CPP_DIR = os.path.join(os.path.dirname(__file__), "torch_cpp_extensions")
 _FALLBACK_INIT_EXCEPTION = None
@@ -118,6 +120,7 @@ def _are_deterministic_algorithms_enabled():
     return ORTMODULE_IS_DETERMINISTIC
 
 
+from .debug_options import DebugOptions, LogLevel  # noqa: E402
+
 # ORTModule must be loaded only after all validation passes
 from .ortmodule import ORTModule  # noqa: E402
-from .debug_options import DebugOptions, LogLevel  # noqa: E402

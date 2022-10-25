@@ -40,9 +40,9 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
   if (Y->Shape().Size() == 0)
     return Status::OK();
 
-  const int8_t* a_ptr = a->template Data<int8_t>();
-  const int8_t* b_ptr = b->template Data<int8_t>();
-  int32_t* output_ptr = Y->template MutableData<int32_t>();
+  const int8_t* a_ptr = a->Data<int8_t>();
+  const int8_t* b_ptr = b->Data<int8_t>();
+  int32_t* output_ptr = Y->MutableData<int32_t>();
 
   // validate zero points
   int8_t a_offset = 0;
@@ -51,13 +51,13 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
     auto a_zero_point = ctx->Input<Tensor>(2);
     ORT_ENFORCE(IsScalarOr1ElementVector(a_zero_point),
                 "MatmulInteger : input1 zero point must be a scalar or 1D tensor of size 1");
-    a_offset = *(a_zero_point->template Data<int8_t>());
+    a_offset = *(a_zero_point->Data<int8_t>());
   }
   if (has_b_zero_point_) {
     auto b_zero_point = ctx->Input<Tensor>(3);
     ORT_ENFORCE(IsScalarOr1ElementVector(b_zero_point),
                 "MatmulInteger : input2 zero point must be a scalar or 1D tensor of size 1");
-    b_offset = *(b_zero_point->template Data<int8_t>());
+    b_offset = *(b_zero_point->Data<int8_t>());
   }
 
   // offset output c[i,j] to

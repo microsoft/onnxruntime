@@ -5,17 +5,21 @@
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
+from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue
 
 
-class ExecutionAgentOutput(object):
+class ExecutionAgentOutput:  # pylint: disable=R0903
+    "Wraps an OrtValue and adds an ID."
+
     def __init__(self, ortvalues, run_id=None):
+        if isinstance(ortvalues, list):
+            raise TypeError("ortvalues must be of type 'OrtValueVector'.")
         self.ortvalues = ortvalues
         self.run_id = run_id
 
 
-class InferenceAgent(object):
+class InferenceAgent:
     """
     This is the main class used to run an ORTModule model inferencing.
     """
@@ -69,7 +73,11 @@ class InferenceAgent(object):
         """
 
         self._inference_session.run_with_iobinding(iobinding, run_options)
-        ortvalues = iobinding.get_outputs()
+        # iobinding.get_outputs() wraps every C OrtValue into Python OrtValue
+        # but ExecutionAgentOutput only accepts OrtValueVector.
+        ortvalues = iobinding._iobinding.get_outputs()  # pylint: disable=W0212
+        if not isinstance(ortvalues, C.OrtValueVector):
+            raise TypeError("ortvalues must be an instance of type 'OrtValueVector'.")
         return ExecutionAgentOutput(ortvalues)
 
 
@@ -88,6 +96,7 @@ class TrainingAgent(object):
         session_options=None,
         providers=None,
         provider_options=None,
+        local_rank=None,
     ):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
@@ -102,6 +111,8 @@ class TrainingAgent(object):
             providers are used with the default precedence.
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
+        :param local_rank: Optional rank of current device, used for memory profiling only.
+            Default rank is 0 if not specified.
 
         The model type will be inferred unless explicitly set in the SessionOptions.
         To explicitly set:
@@ -129,6 +140,7 @@ class TrainingAgent(object):
             fw_outputs_device_info,
             bw_fetches_names,
             bw_outputs_device_info,
+            local_rank,
         )
 
     def run_forward(self, feeds, fetches, state, cache=None):
