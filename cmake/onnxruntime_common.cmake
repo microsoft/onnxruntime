@@ -115,7 +115,11 @@ if(NOT onnxruntime_DISABLE_ABSEIL)
     set(ABSEIL_NATVIS_FILE "abseil-cpp.natvis")
     target_sources(
         onnxruntime_common
-        INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ABSEIL_NATVIS_FILE}>
+        INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ABSEIL_NATVIS_FILE}>)
+    set(GSL_NATVIS_FILE "gsl.natvis")
+    target_sources(
+        onnxruntime_common
+        INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${GSL_NATVIS_FILE}>
     )
   endif()
 endif()

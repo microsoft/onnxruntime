@@ -46,6 +46,7 @@ inline GEMM(T, ScalarT) {
   params.c = c;
   params.ldc = ldc;
 
+  // TODO: current implementation for beta != 0 will cause repeatedly inplace update in C buffer. Skip them for now.
   if (tunable) {
     if (opa == BlasOp::N && opb == BlasOp::N) {
       static internal::GemmTunableOp<T, internal::Row, internal::Row> gemm{};

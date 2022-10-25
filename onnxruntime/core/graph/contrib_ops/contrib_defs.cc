@@ -1045,6 +1045,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GreedySearch, 1,
                                 .Input(3, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
                                 .Input(4, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "I", OpSchema::Optional)
                                 .Input(5, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "I", OpSchema::Optional)
+                                .Input(6, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)", "I")
                                 // TODO(wy): support scores if needed.
                                 .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
@@ -1756,14 +1757,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(WordConvEmbedding, 1,
                                 .Attr(
                                     "embedding_size",
                                     "Integer representing the embedding vector size for each word."
-                                    "If not provide, use the fileter size of conv weight",
+                                    "If not provide, use the filter size of conv weight",
                                     AttributeProto::INT,
                                     OPTIONAL_VALUE)
                                 .Attr(
                                     "conv_window_size",
                                     "This operator applies convolution to word from left to right with window equal to conv_window_size and stride to 1."
                                     "Take word 'example' for example, with conv_window_size equal to 2, conv is applied to [ex],[xa], [am], [mp]..."
-                                    "If not provide, use the first dimension of conv kernal shape.",
+                                    "If not provide, use the first dimension of conv kernel shape.",
                                     AttributeProto::INT,
                                     OPTIONAL_VALUE)
                                 .Attr(

@@ -20,6 +20,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
   * <a href="#com.microsoft.DequantizeBFP">com.microsoft.DequantizeBFP</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
+  * <a href="#com.microsoft.DequantizeWithOrder">com.microsoft.DequantizeWithOrder</a>
   * <a href="#com.microsoft.DynamicQuantizeLSTM">com.microsoft.DynamicQuantizeLSTM</a>
   * <a href="#com.microsoft.DynamicQuantizeMatMul">com.microsoft.DynamicQuantizeMatMul</a>
   * <a href="#com.microsoft.EmbedLayerNormalization">com.microsoft.EmbedLayerNormalization</a>
@@ -57,11 +58,14 @@ Do not modify directly.*
   * <a href="#com.microsoft.QLinearReduceMean">com.microsoft.QLinearReduceMean</a>
   * <a href="#com.microsoft.QLinearSigmoid">com.microsoft.QLinearSigmoid</a>
   * <a href="#com.microsoft.QLinearSoftmax">com.microsoft.QLinearSoftmax</a>
+  * <a href="#com.microsoft.QOrderedAttention">com.microsoft.QOrderedAttention</a>
   * <a href="#com.microsoft.QOrderedGelu">com.microsoft.QOrderedGelu</a>
   * <a href="#com.microsoft.QOrderedLayerNormalization">com.microsoft.QOrderedLayerNormalization</a>
+  * <a href="#com.microsoft.QOrderedLongformerAttention">com.microsoft.QOrderedLongformerAttention</a>
   * <a href="#com.microsoft.QOrderedMatMul">com.microsoft.QOrderedMatMul</a>
   * <a href="#com.microsoft.QuantizeBFP">com.microsoft.QuantizeBFP</a>
   * <a href="#com.microsoft.QuantizeLinear">com.microsoft.QuantizeLinear</a>
+  * <a href="#com.microsoft.QuantizeWithOrder">com.microsoft.QuantizeWithOrder</a>
   * <a href="#com.microsoft.Range">com.microsoft.Range</a>
   * <a href="#com.microsoft.ReduceSumInteger">com.microsoft.ReduceSumInteger</a>
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
@@ -989,7 +993,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.DequantizeBFP"></a><a name="com.microsoft.dequantizebfp">**com.microsoft.DequantizeBFP**</a>
 
-  The BFP dequantization operator. It consumes the raw BFP data and some metadata such as the shape and strides of the original tensor and computes the dequantized tensor.
+  The BFP dequantization operator.
+  It consumes the raw BFP data and some metadata such as the shape and strides of the original tensor and computes the dequantized tensor.
+  More documentation on the BFP format can be found in this paper: https://www.microsoft.com/en-us/research/publication/pushing-the-limits-of-narrow-precision-inferencing-at-cloud-scale-with-microsoft-floating-point/
 
 #### Version
 
@@ -1000,8 +1006,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>bfp_type</tt> : int (required)</dt>
 <dd>The type of BFP - must match with the BFPType enum</dd>
-<dt><tt>block_dims</tt> : list of ints</dt>
-<dd>Numbers within a bounding box will span across these dimensions.Any dimension not in this list is the same for all numbers within a bounding box.As an example, consider a 2D tensor with shape [d0, d1] and block_dims equal to [1].Within a bounding box, all elements will be within the same row but will be from different columnns.The default is the last dimension.</dd>
+<dt><tt>block_dim</tt> : int</dt>
+<dd>Each bounding box spans this dimension.Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that consumes the output of this operator.For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 1 and QuantizeBFP(W) would use block_dim 0.The default is the last dimension.</dd>
 <dt><tt>dtype</tt> : int</dt>
 <dd>The datatype to dequantize to.</dd>
 </dl>
@@ -1078,6 +1084,53 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.</dd>
 <dt><tt>T2</tt> : tensor(float16), tensor(float)</dt>
 <dd>Constrain 'y', 'x_scale' to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.DequantizeWithOrder"></a><a name="com.microsoft.dequantizewithorder">**com.microsoft.DequantizeWithOrder**</a>
+
+  Dequantize input matrix to specific layout used in cublaslt. attr to specify output type, float16 or float32
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>order_input</tt> : int (required)</dt>
+<dd>cublasLt order of input matrix. See the schema of QuantizeWithOrder for order definition.</dd>
+<dt><tt>order_output</tt> : int (required)</dt>
+<dd>cublasLt order of output matrix</dd>
+<dt><tt>to</tt> : int (required)</dt>
+<dd>The output data type, only support TensorProto_DataType_FLOAT (1) and TensorProto_DataType_FLOAT16 (10)</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : Q</dt>
+<dd>TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)</dd>
+<dt><tt>scale_input</tt> : S</dt>
+<dd>scale of the input</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : F</dt>
+<dd>output tensor</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>Q</tt> : tensor(int8)</dt>
+<dd>Constrain input and output types to int8 tensors.</dd>
+<dt><tt>F</tt> : tensor(float16), tensor(float)</dt>
+<dd>Constrain to float types</dd>
+<dt><tt>S</tt> : tensor(float)</dt>
+<dd>Constrain Scale to float32 types</dd>
 </dl>
 
 
@@ -1630,7 +1683,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The id of the padding token</dd>
 </dl>
 
-#### Inputs (2 - 6)
+#### Inputs (2 - 7)
 
 <dl>
 <dt><tt>input_ids</tt> : I</dt>
@@ -1645,6 +1698,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
 <dt><tt>prefix_vocab_mask</tt> (optional) : I</dt>
 <dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
+<dt><tt>attention_mask</tt> (optional) : I</dt>
+<dd>Custom attention mask. Shape is (batch_size, sequence_length)</dd>
 </dl>
 
 #### Outputs
@@ -1786,7 +1841,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.LongformerAttention"></a><a name="com.microsoft.longformerattention">**com.microsoft.LongformerAttention**</a>
 
   Longformer Self Attention with a local context and a global context. Tokens attend locally: Each token
-  attends to its W previous tokens and W succeding tokens with W being the window length. A selected few tokens
+  attends to its W previous tokens and W succeeding tokens with W being the window length. A selected few tokens
   attend globally to all other tokens.
   
   The attention mask is of shape (batch_size, sequence_length), where sequence_length is a multiple of 2W after padding.
@@ -2670,7 +2725,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
-<dd>Constrain input and output types to singed/unsigned int8 tensors.</dd>
+<dd>Constrain input and output types to signed/unsigned int8 tensors.</dd>
 </dl>
 
 
@@ -2912,7 +2967,106 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(uint8), tensor(int8)</dt>
-<dd>Constrain input and output types to singed/unsigned int8 tensors.</dd>
+<dd>Constrain input and output types to signed/unsigned int8 tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QOrderedAttention"></a><a name="com.microsoft.qorderedattention">**com.microsoft.QOrderedAttention**</a>
+
+  Quantized version of simplified Multi-Head Self Attention(using int8 with specific matrix Layout).
+  Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
+  The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length)
+  or (batch_size, sequence_length, past_sequence_length + sequence_length) with value 0 for masked and 1 otherwise,
+  we also support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
+  where value of each element is the end position, or valid length of actual sequence excluding padding. When input has
+  left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
+  the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
+  and present state are optional. Present state could appear in output even when past state is not in input.
+  Current version does not support past/present, extra_add and qkv_hidden_sizes.
+  TODO: Support them if needed in the future.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+<dt><tt>order_input</tt> : int (required)</dt>
+<dd>cublasLt order of input matrix. See the schema of QuantizeWithOrder for order definition.</dd>
+<dt><tt>order_output</tt> : int (required)</dt>
+<dd>cublasLt order of global bias</dd>
+<dt><tt>order_weight</tt> : int (required)</dt>
+<dd>cublasLt order of weight matrix</dd>
+<dt><tt>qkv_hidden_sizes</tt> : list of ints</dt>
+<dd>Hidden layer sizes of Q, K, V paths in Attention</dd>
+<dt><tt>unidirectional</tt> : int</dt>
+<dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
+</dl>
+
+#### Inputs (17 - 20)
+
+<dl>
+<dt><tt>input</tt> : Q</dt>
+<dd>3D input tensor with shape (batch_size, sequence_length, input_hidden_size)</dd>
+<dt><tt>scale_input</tt> : S</dt>
+<dd>scale of the input, scalar value (per tensor) currently.</dd>
+<dt><tt>scale_Q_gemm</tt> : S</dt>
+<dd>scale of the gemm - scalar (per-tensor quantization)</dd>
+<dt><tt>scale_K_gemm</tt> : S</dt>
+<dd>scale of the gemm - scalar (per-tensor quantization)</dd>
+<dt><tt>scale_V_gemm</tt> : S</dt>
+<dd>scale of the gemm - scalar (per-tensor quantization)</dd>
+<dt><tt>Q_weight</tt> : Q</dt>
+<dd>2D input tensor with shape (input_hidden_size, hidden_size), where hidden_size = num_heads * head_size</dd>
+<dt><tt>K_weight</tt> : Q</dt>
+<dd>2D input tensor with shape (input_hidden_size, hidden_size), where hidden_size = num_heads * head_size</dd>
+<dt><tt>V_weight</tt> : Q</dt>
+<dd>2D input tensor with shape (input_hidden_size, hidden_size), where hidden_size = num_heads * head_size</dd>
+<dt><tt>scale_Q_weight</tt> : S</dt>
+<dd>scale of the weight (scalar for per-tensor quantization or 1-D of dims [hidden_size] for per-channel quantization)</dd>
+<dt><tt>scale_K_weight</tt> : S</dt>
+<dd>scale of the weight (scalar for per-tensor quantization or 1-D of dims [hidden_size] for per-channel quantization)</dd>
+<dt><tt>scale_V_weight</tt> : S</dt>
+<dd>scale of the weight (scalar for per-tensor quantization or 1-D of dims [hidden_size] for per-channel quantization)</dd>
+<dt><tt>Q_bias</tt> : S</dt>
+<dd>1D input tensor with shape (hidden_size)</dd>
+<dt><tt>K_bias</tt> : S</dt>
+<dd>1D input tensor with shape (hidden_size)</dd>
+<dt><tt>V_bias</tt> : S</dt>
+<dd>1D input tensor with shape (hidden_size)</dd>
+<dt><tt>scale_QKT_gemm</tt> (optional) : S</dt>
+<dd>scale of the gemm - scalar (per-tensor quantization)</dd>
+<dt><tt>scale_QKT_softmax</tt> (optional) : S</dt>
+<dd>scale of the softmax result - scalar (per-tensor quantization)</dd>
+<dt><tt>scale_values_gemm</tt> : S</dt>
+<dd>scale of the gemm - scalar (per-tensor quantization). Also this is the output scale for the operator.</dd>
+<dt><tt>mask_index</tt> (optional) : G</dt>
+<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
+<dt><tt>past</tt> (optional) : Q</dt>
+<dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
+<dt><tt>extra_add</tt> (optional) : S</dt>
+<dd>additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : Q</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>Q</tt> : tensor(int8)</dt>
+<dd>Constrain input and output types to int8 tensors.</dd>
+<dt><tt>S</tt> : tensor(float)</dt>
+<dd>Constrain scales to float32 tensors.</dd>
+<dt><tt>G</tt> : tensor(int32)</dt>
+<dd>Constrain to integer types</dd>
 </dl>
 
 
@@ -2928,9 +3082,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>order_X</tt> : int</dt>
-<dd>cublasLt order of input X. Default is ROW MAJOR.</dd>
+<dd>cublasLt order of input X. Optional. See the schema of QuantizeWithOrder for order definition.</dd>
 <dt><tt>order_Y</tt> : int</dt>
-<dd>cublasLt order of matrix Y, must be same as order_X. Default is ROW MAJOR.</dd>
+<dd>cublasLt order of matrix Y, must be same as order_X if specified together. Optional.</dd>
 </dl>
 
 #### Inputs
@@ -2977,7 +3131,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>epsilon</tt> : float</dt>
 <dd>The epsilon value to use to avoid division by zero.</dd>
 <dt><tt>order_X</tt> : int</dt>
-<dd>cublasLt order of input X. Default is ROW MAJOR.</dd>
+<dd>cublasLt order of input X. Default is ROW MAJOR. See the schema of QuantizeWithOrder for order definition.</dd>
 <dt><tt>order_Y</tt> : int</dt>
 <dd>cublasLt order of matrix Y, must be same as order_X. Default is ROW MAJOR.</dd>
 </dl>
@@ -3016,9 +3170,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
-### <a name="com.microsoft.QOrderedMatMul"></a><a name="com.microsoft.qorderedmatmul">**com.microsoft.QOrderedMatMul**</a>
+### <a name="com.microsoft.QOrderedLongformerAttention"></a><a name="com.microsoft.qorderedlongformerattention">**com.microsoft.QOrderedLongformerAttention**</a>
 
-  TODO
+  Quantized version of Longformer Self Attention (using int8 with specific matrix Layout).
 
 #### Version
 
@@ -3027,12 +3181,100 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>order_A</tt> : int</dt>
-<dd>cublasLt order of matrix A. Default is ROW MAJOR.</dd>
-<dt><tt>order_B</tt> : int</dt>
-<dd>cublasLt order of matrix B. Default is ROW MAJOR.</dd>
-<dt><tt>order_Y</tt> : int</dt>
-<dd>cublasLt order of matrix Y and optional matrix C. Default is ROW MAJOR.</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+<dt><tt>order_global_weight</tt> : int (required)</dt>
+<dd>cublasLt order of weight matrix</dd>
+<dt><tt>order_input</tt> : int (required)</dt>
+<dd>cublasLt order of input matrix. See the schema of QuantizeWithOrder for order definition.</dd>
+<dt><tt>order_output</tt> : int (required)</dt>
+<dd>cublasLt order of global bias</dd>
+<dt><tt>order_weight</tt> : int (required)</dt>
+<dd>cublasLt order of weight matrix</dd>
+<dt><tt>window</tt> : int (required)</dt>
+<dd>One sided attention windows length W, or half of total window length</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : Q</dt>
+<dd>3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size</dd>
+<dt><tt>scale_input</tt> : S</dt>
+<dd>scale of the input</dd>
+<dt><tt>weight</tt> : Q</dt>
+<dd>2D input tensor with shape (hidden_size, 3 * hidden_size)</dd>
+<dt><tt>scale_weight</tt> : S</dt>
+<dd>scale of the weight</dd>
+<dt><tt>bias</tt> : S</dt>
+<dd>1D input tensor with shape (3 * hidden_size), fp32 only currently.</dd>
+<dt><tt>scale_bias</tt> : S</dt>
+<dd>reserved. (not used as add bias need float value in cublasLt for normal order.)</dd>
+<dt><tt>scale_qkv_gemm</tt> : S</dt>
+<dd>scale of the output for fused kqv gemm</dd>
+<dt><tt>mask</tt> : F</dt>
+<dd>Attention mask with shape (batch_size, sequence_length)</dd>
+<dt><tt>global_weight</tt> : Q</dt>
+<dd>2D input tensor with shape (hidden_size, 3 * hidden_size)</dd>
+<dt><tt>scale_global_weight</tt> : S</dt>
+<dd>scale of the global_weight</dd>
+<dt><tt>global_bias</tt> : S</dt>
+<dd>1D input tensor with shape (3 * hidden_size)</dd>
+<dt><tt>scale_global_gemm</tt> : S</dt>
+<dd>scale of the global_qkv_gemm</dd>
+<dt><tt>global</tt> : G</dt>
+<dd>Global attention flags with shape (batch_size, sequence_length)</dd>
+<dt><tt>scale_output</tt> : S</dt>
+<dd>scale of the output</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : Q</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>Q</tt> : tensor(int8)</dt>
+<dd>Constrain input and output types to int8 tensors.</dd>
+<dt><tt>S</tt> : tensor(float)</dt>
+<dd>Constrain scales to float32 tensors.</dd>
+<dt><tt>G</tt> : tensor(int32)</dt>
+<dd>Constrain to integer types</dd>
+<dt><tt>F</tt> : tensor(float16)</dt>
+<dd>Be compatible with float version.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QOrderedMatMul"></a><a name="com.microsoft.qorderedmatmul">**com.microsoft.QOrderedMatMul**</a>
+
+  Quantize (Int8) MatMul with order. Implement Y = alpha * A * B + bias + beta * C. Matrix A, B, C, Y are all int8 matrix.
+  Two type of order combination supported:
+    *) When order_B is ORDER_COL, order_A must be ORDER_ROW.
+           bias is vector of {#cols of Y} of float32, C should be batch 1/batch_A. B could be of batch 1 or batch_A.
+           Note B is reorder to ORDER_COL, or Transposed. Not Transposed first and then Reordered here.
+    *) When order_B is specify ORDER_COL4_4R2_8C or ORDER_COL32_2R_4R4, orderA must be ORDER_COL32.
+           MatMul will be implemented using alpha(A * B) + beta * C => Y.
+           bias is not supported here. B in fact is transposed first then reordered into ORDER_COL4_4R2_8C or ORDER_COL32_2R_4R4 here.
+  order_Y and order_C will be same as order_A.
+  Support per column quantized weight, ie, scale_B is 1-D vector of size [#cols of matrix B].
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>order_A</tt> : int (required)</dt>
+<dd>cublasLt order of matrix A. See the schema of QuantizeWithOrder for order definition.</dd>
+<dt><tt>order_B</tt> : int (required)</dt>
+<dd>cublasLt order of matrix B</dd>
+<dt><tt>order_Y</tt> : int (required)</dt>
+<dd>cublasLt order of matrix Y and optional matrix C</dd>
 </dl>
 
 #### Inputs (5 - 8)
@@ -3041,19 +3283,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>A</tt> : Q</dt>
 <dd>3-dimensional matrix A</dd>
 <dt><tt>scale_A</tt> : S</dt>
-<dd>scale of the input A</dd>
+<dd>scale of the input A.</dd>
 <dt><tt>B</tt> : Q</dt>
-<dd>2-dimensional matrix B</dd>
+<dd>2-dimensional matrix B. Transposed if order_B is ORDER_COL.</dd>
 <dt><tt>scale_B</tt> : S</dt>
-<dd>scale of the input B</dd>
+<dd>scale of the input B. Scalar or 1-D float32.</dd>
 <dt><tt>scale_Y</tt> : S</dt>
-<dd>scale of the output Y</dd>
+<dd>scale of the output Y.</dd>
 <dt><tt>bias</tt> (optional) : S</dt>
-<dd>1d bias</dd>
+<dd>1d bias, not scaled with scale_Y.</dd>
 <dt><tt>C</tt> (optional) : Q</dt>
 <dd>3d or 2d matrix C. if 2d expand to 3d first. Shape[0] should be 1 or same as A.shape[0] </dd>
 <dt><tt>scale_C</tt> (optional) : S</dt>
-<dd>scale of the input A</dd>
+<dd>scale of the input A.</dd>
 </dl>
 
 #### Outputs
@@ -3076,6 +3318,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.QuantizeBFP"></a><a name="com.microsoft.quantizebfp">**com.microsoft.QuantizeBFP**</a>
 
   The BFP quantization operator. It consumes a full precision tensor and computes an BFP tensor.
+  More documentation on the BFP format can be found in this paper: https://www.microsoft.com/en-us/research/publication/pushing-the-limits-of-narrow-precision-inferencing-at-cloud-scale-with-microsoft-floating-point/
 
 #### Version
 
@@ -3086,8 +3329,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>bfp_type</tt> : int (required)</dt>
 <dd>The type of BFP - must match with the BFPType enum</dd>
-<dt><tt>block_dims</tt> : list of ints</dt>
-<dd>Numbers within a bounding box will span across these dimensions.Any dimension not in this list is the same for all numbers within a bounding box.As an example, consider a 2D tensor with shape [d0, d1] and block_dims equal to [1].Within a bounding box, all elements will be within the same row but will be from different columnns.The default is the last dimension.</dd>
+<dt><tt>block_dim</tt> : int</dt>
+<dd>Each bounding box spans this dimension.Typically, the block dimension corresponds to the reduction dimension of the matrix multipication that consumes the output of this operator.For example, for a 2D matrix multiplication A@W, QuantizeBFP(A) would use block_dim 1 and QuantizeBFP(W) would use block_dim 0.The default is the last dimension.</dd>
 </dl>
 
 #### Inputs
@@ -3163,6 +3406,51 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain 'x', 'y_scale' to float tensors.</dd>
 <dt><tt>T2</tt> : tensor(int8), tensor(uint8)</dt>
 <dd>Constrain 'y_zero_point' and 'y' to 8-bit integer tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.QuantizeWithOrder"></a><a name="com.microsoft.quantizewithorder">**com.microsoft.QuantizeWithOrder**</a>
+
+  Quantize input matrix to specific layout used in cublaslt.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>order_input</tt> : int (required)</dt>
+<dd>cublasLt order of input matrix. ORDER_COL = 0, ORDER_ROW = 1, ORDER_COL32 = 2, ORDER_COL4_4R2_8C = 3, ORDER_COL32_2R_4R4 = 4. Please refer https://docs.nvidia.com/cuda/cublas/index.html#cublasLtOrder_t for their meaning.</dd>
+<dt><tt>order_output</tt> : int (required)</dt>
+<dd>cublasLt order of output matrix.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input</tt> : F</dt>
+<dd>TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)</dd>
+<dt><tt>scale_input</tt> : S</dt>
+<dd>scale of the input</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : Q</dt>
+<dd>output tensor</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>Q</tt> : tensor(int8)</dt>
+<dd>Constrain input and output types to int8 tensors.</dd>
+<dt><tt>F</tt> : tensor(float16), tensor(float)</dt>
+<dd>Constrain to float types</dd>
+<dt><tt>S</tt> : tensor(float)</dt>
+<dd>Constrain Scale to float32 types</dd>
 </dl>
 
 
@@ -3716,9 +4004,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>char_embedding_size</tt> : int</dt>
 <dd>Integer representing the embedding vector size for each char.If not provide, use the char embedding size of embedding vector.</dd>
 <dt><tt>conv_window_size</tt> : int</dt>
-<dd>This operator applies convolution to word from left to right with window equal to conv_window_size and stride to 1.Take word 'example' for example, with conv_window_size equal to 2, conv is applied to [ex],[xa], [am], [mp]...If not provide, use the first dimension of conv kernal shape.</dd>
+<dd>This operator applies convolution to word from left to right with window equal to conv_window_size and stride to 1.Take word 'example' for example, with conv_window_size equal to 2, conv is applied to [ex],[xa], [am], [mp]...If not provide, use the first dimension of conv kernel shape.</dd>
 <dt><tt>embedding_size</tt> : int</dt>
-<dd>Integer representing the embedding vector size for each word.If not provide, use the fileter size of conv weight</dd>
+<dd>Integer representing the embedding vector size for each word.If not provide, use the filter size of conv weight</dd>
 </dl>
 
 #### Inputs

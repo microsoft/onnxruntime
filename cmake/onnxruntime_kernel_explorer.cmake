@@ -12,6 +12,7 @@ endif()
 if(NOT HIP_FOUND)
   message(FATAL_ERROR "hip is required but is not found")
 endif()
+enable_language(HIP)
 
 include(composable_kernel)
 
@@ -19,7 +20,11 @@ set(KERNEL_EXPLORER_ROOT ${ONNXRUNTIME_ROOT}/python/tools/kernel_explorer)
 set(BERT_DIR ${ONNXRUNTIME_ROOT}/contrib_ops/rocm/bert)
 
 file(GLOB kernel_explorer_srcs CONFIGURE_DEPENDS "${KERNEL_EXPLORER_ROOT}/*.cc")
+# NOTE: This should not be necessary, but hip* symbols are hiding by some ifdef in LANGUAGE CXX mode, weird...
+set_source_files_properties(${kernel_explorer_srcs} PROPERTIES LANGUAGE HIP)
+
 file(GLOB kernel_explorer_kernel_srcs CONFIGURE_DEPENDS "${KERNEL_EXPLORER_ROOT}/kernels/*.cc")
+set_source_files_properties(${kernel_explorer_kernel_srcs} PROPERTIES LANGUAGE HIP)
 
 onnxruntime_add_shared_library_module(kernel_explorer
   ${kernel_explorer_srcs}
@@ -40,13 +45,7 @@ target_link_libraries(kernel_explorer
 target_compile_definitions(kernel_explorer
   PUBLIC ROCM_USE_FLOAT16
   PRIVATE $<TARGET_PROPERTY:onnxruntime_pybind11_state,COMPILE_DEFINITIONS>)
-
-# handle kernel_explorer sources as hip language
-target_compile_options(kernel_explorer PRIVATE "-xhip")
-# TODO: use predefined AMDGPU_TARGETS
-target_compile_options(kernel_explorer PRIVATE "--offload-arch=gfx908" "--offload-arch=gfx90a")
-# https://github.com/ROCm-Developer-Tools/HIP/blob/4514f350849b1090954295f8f87a5f8d78bd781b/hip-lang-config.cmake.in
-target_link_libraries(kernel_explorer PRIVATE ${CLANGRT_BUILTINS})
+target_compile_options(kernel_explorer PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_HCC__=1)
 
 add_dependencies(kernel_explorer onnxruntime_pybind11_state)
 

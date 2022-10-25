@@ -220,6 +220,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedAdd);
 DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedSum);
 DML_OP_EXTERN_CREATION_FUNCTION(QuantizeLinear);
 DML_OP_EXTERN_CREATION_FUNCTION(DequantizeLinear);
+DML_OP_EXTERN_CREATION_FUNCTION(QLinearSigmoid);
 DML_OP_EXTERN_CREATION_FUNCTION(Sign);
 DML_OP_EXTERN_CREATION_FUNCTION(IsNaN);
 DML_OP_EXTERN_CREATION_FUNCTION(Sinh);
@@ -261,6 +262,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(DynamicQuantizeLinear);
 DML_OP_EXTERN_CREATION_FUNCTION(MatMulInteger);
 DML_OP_EXTERN_CREATION_FUNCTION(ConvInteger);
 DML_OP_EXTERN_CREATION_FUNCTION(Trilu);
+DML_OP_EXTERN_CREATION_FUNCTION(Attention);
 
 DML_OP_EXTERN_QUERY_FUNCTION(MaxPool);
 DML_OP_EXTERN_QUERY_FUNCTION(Slice);
@@ -270,8 +272,11 @@ DML_OP_EXTERN_QUERY_FUNCTION(RecurrentNeuralNetwork);
 DML_OP_EXTERN_QUERY_FUNCTION(BatchNormalization);
 DML_OP_EXTERN_QUERY_FUNCTION(Pad);
 DML_OP_EXTERN_QUERY_FUNCTION(LayerNormalization);
+DML_OP_EXTERN_QUERY_FUNCTION(QLinearSigmoid);
+DML_OP_EXTERN_QUERY_FUNCTION(Attention);
 
 constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
+constexpr static std::array<const char*, 2> typeNameListAttention = {"T", "M"};
 constexpr static std::array<const char*, 2> typeNameListTwo = { "T1", "T2" };
 constexpr static std::array<const char*, 2> typeNameListLayerNorm = { "T", "U" };
 constexpr static std::array<const char*, 3> typeNameListThree = { "T1", "T2", "T3" };
@@ -330,6 +335,8 @@ constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListIntege
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListRoiAlign = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32|SupportedTensorDataTypes::Int64 };
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListArgMinMax = {SupportedTensorDataTypes::Float16to32|SupportedTensorDataTypes::Ints8to64};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListLayerNormalization = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Float32};
+constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListQLinearSigmoid = {SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8};
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListAttention = {SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Int32};
 
 constexpr static std::array<SupportedTensorDataTypes, 3> supportedTypeListQLinearMatMul = {
     SupportedTensorDataTypes::Int8|SupportedTensorDataTypes::UInt8,
@@ -699,6 +706,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     // Contrib operators
     {REG_INFO_MS(   1,  Gelu,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  FusedMatMul,                        typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  QLinearSigmoid,                     typeNameListDefault,            supportedTypeListQLinearSigmoid,        DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryQLinearSigmoid)},
+    {REG_INFO_MS(   1,  Attention,                          typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryAttention)},
 
     {REG_INFO(     10,  IsInf,                              typeNameListTwo,                supportedTypeListIsInf,                 DmlGraphSupport::Supported)},
     {REG_INFO(     10,  Mod,                                typeNameListDefault,            supportedTypeListNumericDefault,        DmlGraphSupport::Supported)},

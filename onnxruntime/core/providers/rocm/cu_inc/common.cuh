@@ -336,7 +336,7 @@ struct GridDim {
   };
 };
 
-// aligned vector generates vectorized load/store on CUDA
+// aligned vector generates vectorized load/store
 template<typename T, int vec_size>
 struct alignas(sizeof(T) * vec_size) aligned_vector {
   T val[vec_size];
@@ -358,21 +358,25 @@ inline int GPU_WARP_SIZE_HOST= warpSizeDynamic();
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
+  ORT_UNUSED_PARAMETER(mask);
   return __shfl(value, srcLane, width);
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
+  ORT_UNUSED_PARAMETER(mask);
   return __shfl_xor(value, laneMask, width);
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
+  ORT_UNUSED_PARAMETER(mask);
   return __shfl_up(value, delta, width);
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
+  ORT_UNUSED_PARAMETER(mask);
   return __shfl_down(value, delta, width);
 }
 

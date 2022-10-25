@@ -4,7 +4,7 @@ jobs:
     vmImage: 'macOS-11'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
-  timeoutInMinutes: 100
+  timeoutInMinutes: 150
   steps:
     - script: |
         /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
@@ -34,7 +34,7 @@ jobs:
     vmImage: 'macOS-11'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
-  timeoutInMinutes: 100
+  timeoutInMinutes: 150
   steps:
     - script: |
         /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \

@@ -3,8 +3,10 @@ trigger: none
 name: 'linux_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 jobs:
 - job: AMDMIGraphX_CI
+  workspace:
+    clean: all
   pool: 'AMD-GPU'
-  timeoutInMinutes: 60
+  timeoutInMinutes: 180
 
   # gid of video and render group on gcr-openpai-35 and -36
   variables:
@@ -24,7 +26,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/pai/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/pai
-      Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)
+      Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
     inputs:
@@ -42,18 +44,20 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /onnxruntime_src \
-          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+          onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
             python tools/ci_build/build.py \
               --config RelWithDebInfo \
+              --cmake_extra_defines \
+                CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
               --mpi_home /opt/ompi \
               --use_migraphx \
-              --rocm_version=5.2.3 \
+              --rocm_version=$(RocmVersion) \
               --rocm_home /opt/rocm \
               --nccl_home /opt/rocm \
               --update \
               --build_dir /build \
               --build \
-              --parallel 8 \
+              --parallel 16 \
               --build_wheel \
               --skip_submodule_sync \
               --skip_tests
@@ -76,7 +80,7 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /build/RelWithDebInfo \
-          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+          onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
             /onnxruntime_src/tools/ci_build/github/pai/migraphx_test_launcher.sh
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
