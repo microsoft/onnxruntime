@@ -53,7 +53,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     QAttention<float>);
 
 template <typename T>
-QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {}
+QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info, true, true) {
+}
 
 template <typename T>
 Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr alloc,
@@ -155,11 +156,15 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 
   const TensorShape& weights_shape = (packed_weights_ ? weight_shape_ : weights->Shape());
   ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(),
-                                                 weights_shape,
+                                                 &weights_shape,
                                                  bias->Shape(),
                                                  mask_index,
                                                  past_tensor,
-                                                 nullptr));
+                                                 nullptr,  // extra_add_qk
+                                                 nullptr,  // key
+                                                 nullptr,  // value
+                                                 nullptr   // parameters
+                                                 ));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
