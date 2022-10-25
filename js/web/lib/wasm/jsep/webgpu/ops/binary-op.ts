@@ -2,10 +2,9 @@
 // Licensed under the MIT License.
 
 // import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
-import {WebGpuBackend} from '../../backend-webgpu';
-import {Tensor} from '../../tensor';
+import {TensorView} from '../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../util';
-import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
 import {createIndicesHelper, WORKGROUP_SIZE} from './common';
 
@@ -120,11 +119,11 @@ const createBinaryOpProgramShader =
     };
 
 const createBinaryOpProgramInfo =
-    (metadata: ProgramMetadata, a: Tensor, b: Tensor, funcCall: BinaryFunctionCall, additionalImplementation?: string,
-     outputTensorType: Tensor.DataType = a.type): ProgramInfo => {
+    (metadata: ProgramMetadata, a: TensorView, b: TensorView, funcCall: BinaryFunctionCall,
+     additionalImplementation?: string, outputDataType: number = a.dataType): ProgramInfo => {
       const isBroadcast = !ShapeUtil.areEqual(a.dims, b.dims);
       let outputShape = a.dims;
-      let outputSize = a.size;
+      let outputSize = ShapeUtil.size(a.dims);
 
       let vectorize = false;
 
@@ -163,14 +162,14 @@ const createBinaryOpProgramInfo =
         ...metadata,
         shaderSource: createBinaryOpProgramShader(
             a.dims, b.dims, outputShape, vectorize, isBroadcast, funcCall, additionalImplementation),
-        outputs: [{dims: outputShape, type: outputTensorType, gpuDataType: GpuDataType.default}],
+        outputs: [{dims: outputShape, dataType: outputDataType, gpuDataType: GpuDataType.default}],
         dispatchGroup: () =>
             ({x: Math.ceil(outputSize / 64 /* workgroup size */ / (vectorize ? 4 : 1) /* vec size */)})
       };
     };
 
 const createBinaryOpProgramInfoLoader =
-    (inputs: Tensor[], name: string, funcCall: BinaryFunctionCall, additionalImplementation?: string,
+    (inputs: readonly TensorView[], name: string, funcCall: BinaryFunctionCall, additionalImplementation?: string,
      cacheKey?: string): ProgramInfoLoader => {
       const metadata:
           ProgramMetadata = {name, inputTypes: [GpuDataType.default, GpuDataType.default], cacheHint: cacheKey};
@@ -180,14 +179,14 @@ const createBinaryOpProgramInfoLoader =
       };
     };
 
-export const add = async(backend: WebGpuBackend, inputs: Tensor[]): Promise<Tensor[]> =>
-    backend.run(createBinaryOpProgramInfoLoader(inputs, 'Add', (a, b) => `${a}+${b}`), inputs);
+export const add = (context: ComputeContext): number =>
+    context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Add', (a, b) => `${a}+${b}`));
 
 // export const and = (backend: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [backend.run(createBinaryProgramInfoLoader(backend, inputs, glslAnd(), 'bool'), inputs)];
 
-export const div = async(backend: WebGpuBackend, inputs: Tensor[]): Promise<Tensor[]> =>
-    backend.run(createBinaryOpProgramInfoLoader(inputs, 'Div', (a, b) => `${a}/${b}`), inputs);
+export const div = (context: ComputeContext): number =>
+    context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Div', (a, b) => `${a}/${b}`));
 
 // export const equal = (backend: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [backend.run(createBinaryProgramInfoLoader(backend, inputs, glslEqual(), 'bool'), inputs)];
@@ -198,20 +197,20 @@ export const div = async(backend: WebGpuBackend, inputs: Tensor[]): Promise<Tens
 // export const less = (backend: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [backend.run(createBinaryProgramInfoLoader(backend, inputs, glslLess(), 'bool'), inputs)];
 
-export const mul = async(backend: WebGpuBackend, inputs: Tensor[]): Promise<Tensor[]> =>
-    backend.run(createBinaryOpProgramInfoLoader(inputs, 'Mul', (a, b) => `${a}*${b}`), inputs);
+export const mul = (context: ComputeContext): number =>
+    context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Mul', (a, b) => `${a}*${b}`));
 
 // export const or = (backend: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [backend.run(createBinaryProgramInfoLoader(backend, inputs, glslOr(), 'bool'), inputs)];
 
-export const pow = async(backend: WebGpuBackend, inputs: Tensor[]): Promise<Tensor[]> =>
-    backend.run(createBinaryOpProgramInfoLoader(inputs, 'Pow', 'pow'), inputs);
+export const pow = (context: ComputeContext): number =>
+    context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Pow', 'pow'));
 
 // export const pRelu = (backend: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [backend.run(createBinaryProgramInfoLoader(backend, inputs, glslPRelu()), inputs)];
 
-export const sub = async(backend: WebGpuBackend, inputs: Tensor[]): Promise<Tensor[]> =>
-    backend.run(createBinaryOpProgramInfoLoader(inputs, 'Sub', (a, b) => `${a}-${b}`), inputs);
+export const sub = (context: ComputeContext): number =>
+    context.compute(createBinaryOpProgramInfoLoader(context.inputs, 'Sub', (a, b) => `${a}-${b}`));
 
 // export const xor = (backend: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [backend.run(createBinaryProgramInfoLoader(backend, inputs, glslXor(), 'bool'), inputs)];

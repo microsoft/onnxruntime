@@ -119,7 +119,7 @@ export const releaseSession = (sessionId: number): void => {
 /**
  * Copied from ONNX definition. Use this to drop dependency 'onnx_proto' to decrease compiled .js file size.
  */
-const enum DataType {
+export const enum DataType {
   undefined = 0,
   float = 1,
   uint8 = 2,

@@ -1,31 +1,31 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor, TensorView} from './tensor';
+import {TensorView} from './tensor';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
-import {WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
+import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
+import {ComputeContext, GpuData, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 
 const getProgramInfoUniqueKey =
-    (programInfo: ProgramInfo|ProgramInfoLoader, inputTensors: readonly Tensor[], inputGpuDatas: readonly GpuData[]):
-        string => {
-          const inputGpuDataTypes = inputGpuDatas.map(data => `${data.type}`).join('_');
-          const inputTensorShapes = inputTensors.map(t => `${t.dims.join(',')}`).join('_');
-          let key = programInfo.name;
-          if (programInfo.cacheHint) {
-            key += '[' + programInfo.cacheHint + ']';
-          }
-          key += ':' + inputTensorShapes + ';' + inputGpuDataTypes;
-          return key;
-        };
+    (programInfo: ProgramInfo|ProgramInfoLoader, inputTensors: readonly TensorView[],
+     inputGpuDatas: readonly GpuData[]): string => {
+      const inputGpuDataTypes = inputGpuDatas.map(data => `${data.type}`).join('_');
+      const inputTensorShapes = inputTensors.map(t => `${t.dims.join(',')}`).join('_');
+      let key = programInfo.name;
+      if (programInfo.cacheHint) {
+        key += '[' + programInfo.cacheHint + ']';
+      }
+      key += ':' + inputTensorShapes + ';' + inputGpuDataTypes;
+      return key;
+    };
 
 export class WebGpuBackend {
   device: GPUDevice;
   gpuDataManager: GpuDataManager;
   programManager: ProgramManager;
 
-  kernels: Map<number, [(context: ComputeContext) => number, unknown]>;
+  kernels: Map<number, [RunFunction, unknown]>;
 
   commandEncoder: GPUCommandEncoder|null = null;
   computePassEncoder: GPUComputePassEncoder|null = null;
@@ -88,23 +88,25 @@ export class WebGpuBackend {
     this.pendingDispatchNumber = 0;
   }
 
-  private uploadGpuData(tensor: Tensor, textureType: GpuDataType): GpuData {
-    return this.gpuDataManager.upload(tensor, textureType);
-  }
-
-  private createGpuData(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): [Tensor, GpuData] {
-    return this.dataManager.createGpuTensor(type, dims, gpuDataType);
-  }
-
-  run(program: ProgramInfoLoader|ProgramInfo, inputs: readonly TensorView[]): number {
+  run(program: ProgramInfoLoader|ProgramInfo, inputs: readonly TensorView[],
+      createOutput: (index: number, dims: readonly number[]) => number): number {
     if (inputs.length !== program.inputTypes.length) {
       throw new Error(`Input size must be equal to ${program.inputTypes.length}.`);
     }
 
-    // create info for inputs
+    // // create info for inputs
+    // const inputDatas: GpuData[] = [];
+    // for (let i = 0; i < program.inputTypes.length; ++i) {
+    //   inputDatas[i] = this.uploadGpuData(inputs[i], program.inputTypes[i]);
+    // }
+
     const inputDatas: GpuData[] = [];
-    for (let i = 0; i < program.inputTypes.length; ++i) {
-      inputDatas[i] = this.uploadGpuData(inputs[i], program.inputTypes[i]);
+    for (let i = 0; i < inputs.length; ++i) {
+      const gpuData = this.gpuDataManager.get(inputs[i].data);
+      if (!gpuData) {
+        throw new Error(`no GPU data for ${inputs[i].data}`);
+      }
+      inputDatas[i] = gpuData;
     }
 
     const key = getProgramInfoUniqueKey(program, inputs, inputDatas);
@@ -116,11 +118,12 @@ export class WebGpuBackend {
 
     // create info for outputs
     const outputDatas: GpuData[] = [];
-    const outputTensors: Tensor[] = [];
     for (let i = 0; i < programInfo.outputs.length; ++i) {
-      const [tensor, gpuData] = this.createGpuData(
-          programInfo.outputs[i].type, programInfo.outputs[i].dims, programInfo.outputs[i].gpuDataType);
-      outputTensors.push(tensor);
+      const dataId = createOutput(i, programInfo.outputs[i].dims);
+      const gpuData = this.gpuDataManager.get(dataId);
+      if (!gpuData) {
+        throw new Error(`no GPU data for ${inputs[i].data}`);
+      }
       outputDatas.push(gpuData);
     }
 
@@ -131,14 +134,14 @@ export class WebGpuBackend {
 
     this.programManager.run(artifact, inputDatas, outputDatas, artifact.programInfo.dispatchGroup(inputs));
 
-    return outputTensors;
+    return 0;
   }
 
-  upload(gpuDataId: number, data: Uint8Array) {
+  upload(gpuDataId: number, data: Uint8Array): void {
     this.gpuDataManager.upload(gpuDataId, data);
   }
 
-  async download(gpuDataId: number, data: Uint8Array) {
+  async download(gpuDataId: number, data: Uint8Array): Promise<void> {
     const arrayBuffer = await this.gpuDataManager.download(gpuDataId);
     data.set(new Uint8Array(arrayBuffer));
   }
@@ -169,7 +172,11 @@ export class WebGpuBackend {
   }
 
   computeKernel(kernelId: number, context: ComputeContext): number {
-    const kernel = this.kernels
-    throw new Error('Method not implemented.');
+    const kernel = this.kernels.get(kernelId);
+    if (!kernel) {
+      throw new Error(`kernel not created: ${kernelId}`);
+    }
+    const [kernelEntry, attributes] = kernel;
+    return kernelEntry(context, attributes);
   }
 }

@@ -202,7 +202,7 @@ else()
 
   set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS " \
                         -s \"EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}\" \
-                        -s \"EXPORTED_FUNCTIONS=_malloc,_free\" \
+                        -s \"EXPORTED_FUNCTIONS=_malloc,_free,_JsepOutput\" \
                         -s MAXIMUM_MEMORY=4294967296 \
                         -s WASM=1 \
                         -s NO_EXIT_RUNTIME=0 \
@@ -216,6 +216,7 @@ else()
                         --no-entry")
 
   if (onnxruntime_USE_JS)
+    target_compile_definitions(onnxruntime_webassembly PRIVATE -DUSE_JS=1)
     set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --pre-js \"${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js\"")
   endif()
 
