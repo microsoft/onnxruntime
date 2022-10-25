@@ -45,7 +45,7 @@ target_link_libraries(kernel_explorer
 target_compile_definitions(kernel_explorer
   PUBLIC ROCM_USE_FLOAT16
   PRIVATE $<TARGET_PROPERTY:onnxruntime_pybind11_state,COMPILE_DEFINITIONS>)
-target_compile_options(kernel_explorer PRIVATE -Wno-unknown-warning-option -Wno-sign-compare -D__HIP_PLATFORM_HCC__=1)
+target_compile_options(kernel_explorer PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_HCC__=1)
 
 add_dependencies(kernel_explorer onnxruntime_pybind11_state)
 
