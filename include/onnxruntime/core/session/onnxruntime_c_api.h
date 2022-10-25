@@ -57,6 +57,7 @@ extern "C" {
 #define _Inout_updates_all_(X)
 #define _Out_writes_bytes_all_(X)
 #define _Out_writes_all_(X)
+#define _Out_writes_z_(X)
 #define _Success_(X)
 #define _Outptr_result_buffer_maybenull_(X)
 #define _Outptr_result_z_
