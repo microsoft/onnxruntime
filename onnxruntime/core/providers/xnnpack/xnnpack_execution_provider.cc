@@ -84,8 +84,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 }  // namespace xnnpack
 
-// Can't run XNNPACK EP with multiple sessions, as we share the same global XNNPACK alloc context.
-// why we have to do this? because XNNPACK internal has a global context, and can only be initialized once. The second initialization will do nothing. Hence AllocContext_ptr_global is alive until the process is terminated.
+// run XNNPACK EP in concurrent is not supported yet
 static const IAllocator* AllocContext_ptr_global{nullptr};
 static InlinedHashSet<const IAllocator*> g_alloc_map;
 
