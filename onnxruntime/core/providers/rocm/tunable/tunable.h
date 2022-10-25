@@ -103,10 +103,10 @@ class TunableOp {
     tuning_ = false;
   }
 
-  // We might want to do some tricks to the params, e.g., some op will do inplace update to one output buffer. If we
-  // blindly tune over the `params`, there will be accumulated update to that buffer during FindFastest, which is
-  // undesired side effect. In this case, we must prepare a new (proxy) params struct for the tuning so that the side
-  // effect can be hide.
+  // We might want to do some tricks to the `params`, e.g., some op will use a buffer for input and output at the same
+  // time, so it will do inplace update to it. If we blindly tune over the `params`, there will be accumulated update
+  // to that buffer during FindFastest, which is an undesired side effect. In this case, we must prepare a new (proxy)
+  // params struct for the tuning to avoid this side effect.
   virtual const ParamsT* PreTuning(const ParamsT* params) {
     return params;
   }

@@ -45,10 +45,11 @@ class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
 
   const GemmParams<T>* PreTuning(const GemmParams<T>* params) override {
     if (!IsZero(params->beta)) {
-      // We need to create a proxy params for the tuning process. Otherwise, say, we tune it for n iterations, then
-      // during tuning C^(1) = alpha A B + beta C^(0), ..., C^(n) = alpha A B + beta C^(n-1). And for the actual run
-      // after tuning, the result will be C^(n+1), whereas what we want is C^(1). This only happens if the tuning's
-      // FindFastest is invoked.
+      // When beta != 0, C buffer is used as an input as well as an output. We need to create a proxy params for the
+      // tuning process. Otherwise, tuning will cause the C buffer been updated accumulatedly, say, we tune it for n
+      // iterations, then during tuning C^(1) = alpha A B + beta C^(0), ..., C^(n) = alpha A B + beta C^(n-1). And for
+      // the actual run after tuning, the result will be C^(n+1), whereas what we want is C^(1). This only happens if
+      // the tuning's FindFastest is invoked.
       //
       // Note, C^(i) is the C at i-th iteration.
       GemmParams<T>* proxy = new GemmParams<T>();
