@@ -6,8 +6,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-constexpr int kMaxSequenceLength = 4096;
-
 void SamplingParameters::ParseFromAttributes(const OpKernelInfo& info) {
   model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", 0));
   eos_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("eos_token_id", -1));

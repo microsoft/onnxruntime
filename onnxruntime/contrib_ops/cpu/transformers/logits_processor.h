@@ -106,7 +106,7 @@ class TemperatureLogitsProcessor : public ILogitsProcessor<T> {
                NextTokenScores<T>& next_token_scores) override;
 
  private:
-  int temperature_;
+  float temperature_;
 };
 
 template <typename T>
@@ -121,7 +121,6 @@ class TopPLogitsProcessor : public ILogitsProcessor<T> {
  private:
   float top_p_;
   float filter_value_;
-  int min_tokens_to_keep_;
   onnxruntime::concurrency::ThreadPool* thread_pool_;
 };
 
