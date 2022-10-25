@@ -1358,6 +1358,16 @@ class ShapeHelper {
  protected:
 };
 
+class SizeHelper {
+ public:
+  template <typename Info_t, typename Shape_t>
+  SizeHelper(const Info_t& info, const Shape_t& shape) { }
+
+  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+ protected:
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
@@ -1574,5 +1584,6 @@ using ShapeInferenceHelper_DmlFusedAdd = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_DmlFusedSum = GetBroadcastedOutputShapeHelper;
 
 using ShapeInferenceHelper_Shape = ShapeHelper;
+using ShapeInferenceHelper_Size = SizeHelper;
 
 }  // namespace OperatorHelper

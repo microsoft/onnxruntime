@@ -404,6 +404,10 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     {
         builder.OutputMemoryType(::OrtMemType::OrtMemTypeCPUInput, 0);
     }
+    else if (name == "Size")
+    {
+        builder.OutputMemoryType(::OrtMemType::OrtMemTypeCPUInput, 0);
+    }
 
     std::vector<uint32_t> constantCpuInputCapture;
     constantCpuInputCapture.assign(requiredConstantCpuInputs, requiredConstantCpuInputs + constantCpuInputCount);

@@ -2484,4 +2484,11 @@ namespace OperatorHelper
         return edgeShapes;
     }
 
+    std::vector<EdgeShapes> SizeHelper::GetOutputShapes(const MLShapeInferenceContext & shapeInfo) const
+    {
+        std::vector<EdgeShapes> edgeShapes(1);
+        edgeShapes[0] = { 1 };
+        return edgeShapes;
+    }
+
 } // namespace OperatorHelper

@@ -341,6 +341,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_LogSoftmax = 13;
         static const int sc_sinceVer_Hardmax = 13;
         static const int sc_sinceVer_Shape = 13;
+        static const int sc_sinceVer_Size = 13;
     } // namespace OnnxOperatorSet13
 
     namespace OnnxOperatorSet14

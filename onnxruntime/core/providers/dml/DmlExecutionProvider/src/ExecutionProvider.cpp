@@ -190,7 +190,7 @@ namespace Dml
         m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
 
-        // CPU Allocator used to create buffers for the MemcpyFromHost / Shape operator.
+        // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
         m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
         m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
 
@@ -662,11 +662,11 @@ namespace Dml
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask(); // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
 
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>> result;
-        
+
         // Get the list of node indices in toplogical order, so nodes are visited before
         // downstream nodes consuming them.
         const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
-        for (size_t nodeIndex : toplogicalOrder) 
+        for (size_t nodeIndex : toplogicalOrder)
         {
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
             if (IsNodeSupportedByDml(node, kernel_lookup, deviceDataTypeMask))

@@ -33,8 +33,7 @@ public:
         DmlOperator::Initialize(kernelCreationContext);
     }
 
-    // Takes a tensor as input and outputs an 1D int64 tensor
-    // containing the shape of the input tensor.
+    // Takes a tensor as input and outputs a 1D int64 tensor containing the shape of the input tensor.
     void Compute(const MLOperatorKernelContext& kernelContext)
     {
         std::vector<IMLOperatorTensor*> inputTensors = GetInputTensors(kernelContext);
@@ -42,8 +41,8 @@ public:
         assert(inputTensors.size() == 1);
         assert(outputTensors.size() == 1);
 
-        IMLOperatorTensor *inputTensor = inputTensors[0];
-        IMLOperatorTensor *outputTensor = outputTensors[0];
+        const IMLOperatorTensor* inputTensor = inputTensors[0];
+        IMLOperatorTensor* outputTensor = outputTensors[0];
         assert(outputTensor->GetDimensionCount() == 1);
 
         uint32_t inputDimCount = inputTensor->GetDimensionCount();
@@ -94,7 +93,7 @@ private:
     int64_t m_endIndex = std::numeric_limits<int64_t>::max();
 };
 
-// Shape is a special case which is hardcoded in MLOperatorAuthorImpl.cpp. If name changes this must be updated.
+// Shape is a special case which is hardcoded in AbiCustomRegistry.cpp. If name changes this must be updated.
 // Special case makes sure that the input/output resource is created using the CPU allocator.
 DML_OP_DEFINE_CREATION_FUNCTION(Shape, DmlOperatorShape);
 
