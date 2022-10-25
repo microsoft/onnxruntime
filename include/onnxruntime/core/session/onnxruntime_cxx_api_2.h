@@ -24,23 +24,10 @@
 
 #pragma once
 #include "onnxruntime_c_api.h"
-#include <cstddef>
-#include <array>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <vector>
 #include <unordered_map>
-#include <utility>
-#include <type_traits>
-
-// Used as an imaginary member variable in the wrapped types to prevent accidental value construction or copying
-struct OrtAbstract
-{
-  OrtAbstract() = delete;
-  OrtAbstract(const OrtAbstract&) = delete;
-  void operator=(const OrtAbstract&) = delete;
-};
 
 /** \brief All C++ Onnxruntime APIs are defined inside this namespace
  *
@@ -50,9 +37,6 @@ namespace Ort {
 /// Before using this C++ wrapper API, you MUST call Ort::InitApi to set the below 'api' variable
 inline const OrtApi* api{};
 inline void InitApi() { api = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
-
-/// This returns a reference to the OrtApi interface in use
-inline const OrtApi& GetApi() { return *api; }
 
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and returns a vector of strings representing the available execution providers.
 std::vector<std::string> GetAvailableProviders();
@@ -125,6 +109,15 @@ struct BFloat16_t {
 };
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
+
+// Used as an imaginary member variable in the wrapped types to prevent accidental value construction or copying
+struct Abstract
+{
+  Abstract() = delete;
+  Abstract(const Abstract&) = delete;
+  void operator=(const Abstract&) = delete;
+};
+
 }
 
 /** \brief The Status that holds ownership of OrtStatus received from C API
@@ -138,8 +131,8 @@ struct OrtStatus
   std::string GetErrorMessage() const;
   OrtErrorCode GetErrorCode() const;
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseStatus(reinterpret_cast<OrtStatus*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseStatus(reinterpret_cast<OrtStatus*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /** \brief The Env (Environment)
@@ -166,8 +159,8 @@ struct OrtEnv {
 
   OrtEnv& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseEnv(reinterpret_cast<OrtEnv*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseEnv(reinterpret_cast<OrtEnv*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /** \brief Custom Op Domain
@@ -180,8 +173,8 @@ struct OrtCustomOpDomain {
   // This does not take ownership of the op, simply registers it.
   void Add(const OrtCustomOp* op);  ///< Wraps CustomOpDomain_Add
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseCustomOpDomain(reinterpret_cast<OrtCustomOpDomain*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseCustomOpDomain(reinterpret_cast<OrtCustomOpDomain*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /** \brief RunOptions
@@ -215,8 +208,8 @@ struct OrtRunOptions {
    */
   OrtRunOptions& UnsetTerminate();
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseRunOptions(reinterpret_cast<OrtRunOptions*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseRunOptions(reinterpret_cast<OrtRunOptions*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /** \brief Options object used when creating a new Session object
@@ -275,8 +268,8 @@ struct OrtSessionOptions {
   OrtSessionOptions& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
   OrtSessionOptions& SetCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);        ///< Wraps OrtApi::SessionOptionsSetCustomJoinThreadFn
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseSessionOptions(reinterpret_cast<OrtSessionOptions*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseSessionOptions(reinterpret_cast<OrtSessionOptions*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /** \brief Wrapper around ::OrtModelMetadata
@@ -330,8 +323,8 @@ struct OrtModelMetadata {
 
   int64_t GetVersion() const;  ///< Wraps OrtApi::ModelMetadataGetVersion
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseModelMetadata(reinterpret_cast<OrtModelMetadata*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseModelMetadata(reinterpret_cast<OrtModelMetadata*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /** \brief Wrapper around ::OrtSession
@@ -410,8 +403,8 @@ struct OrtSession {
 
   void Run(_In_opt_ const OrtRunOptions* run_options, const OrtIoBinding&);  ///< Wraps OrtApi::RunWithBinding
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseSession(reinterpret_cast<OrtSession*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseSession(reinterpret_cast<OrtSession*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /** \brief Wrapper around ::OrtMemoryInfo
@@ -430,8 +423,8 @@ struct OrtMemoryInfo {
 
   bool operator==(const OrtMemoryInfo& o) const;
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseMemoryInfo(reinterpret_cast<OrtMemoryInfo*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseMemoryInfo(reinterpret_cast<OrtMemoryInfo*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /** \brief Wrapper around ::OrtTensorTypeAndShapeInfo
@@ -454,8 +447,8 @@ struct OrtTensorTypeAndShapeInfo {
 
   std::vector<int64_t> GetShape() const;  ///< Uses GetDimensionsCount & GetDimensions to return a std::vector of the shape
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseTensorTypeAndShapeInfo(reinterpret_cast<OrtTensorTypeAndShapeInfo*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseTensorTypeAndShapeInfo(reinterpret_cast<OrtTensorTypeAndShapeInfo*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /** \brief Wrapper around ::OrtSequenceTypeInfo
@@ -465,8 +458,8 @@ struct OrtSequenceTypeInfo {
 
   std::unique_ptr<OrtTypeInfo> GetSequenceElementType() const;  ///< Wraps OrtApi::GetSequenceElementType
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseSequenceTypeInfo(reinterpret_cast<OrtSequenceTypeInfo*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseSequenceTypeInfo(reinterpret_cast<OrtSequenceTypeInfo*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /** \brief Wrapper around ::OrtMapTypeInfo
@@ -477,8 +470,8 @@ struct OrtMapTypeInfo {
   ONNXTensorElementDataType GetMapKeyType() const;  ///< Wraps OrtApi::GetMapKeyType
   std::unique_ptr<OrtTypeInfo> GetMapValueType() const;                 ///< Wraps OrtApi::GetMapValueType
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseMapTypeInfo(reinterpret_cast<OrtMapTypeInfo*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseMapTypeInfo(reinterpret_cast<OrtMapTypeInfo*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /// <summary>
@@ -493,8 +486,8 @@ struct OrtTypeInfo {
 
   ONNXType GetONNXType() const;
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseTypeInfo(reinterpret_cast<OrtTypeInfo*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseTypeInfo(reinterpret_cast<OrtTypeInfo*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 // This structure is used to feed  sparse tensor values
@@ -885,8 +878,8 @@ struct OrtValue
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseValue(reinterpret_cast<OrtValue*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseValue(reinterpret_cast<OrtValue*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 namespace Ort
@@ -929,8 +922,8 @@ struct OrtAllocator2 : OrtAllocator {
   void Free(void* p);
   const OrtMemoryInfo* GetInfo() const;
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseAllocator(reinterpret_cast<OrtAllocator*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseAllocator(reinterpret_cast<OrtAllocator*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /** \brief Wrapper around ::OrtIoBinding
@@ -950,8 +943,8 @@ struct OrtIoBinding {
   void SynchronizeInputs();
   void SynchronizeOutputs();
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseIoBinding(reinterpret_cast<OrtIoBinding*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseIoBinding(reinterpret_cast<OrtIoBinding*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /*! \struct Ort::ArenaCfg
@@ -970,8 +963,8 @@ struct OrtArenaCfg {
    */
   static std::unique_ptr<OrtArenaCfg> Create(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk);
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseArenaCfg(reinterpret_cast<OrtArenaCfg*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseArenaCfg(reinterpret_cast<OrtArenaCfg*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 //
@@ -984,8 +977,8 @@ struct OrtArenaCfg {
 struct OrtOpAttr {
   static std::unique_ptr<OrtOpAttr> Create(const char* name, const void* data, int len, OrtOpAttrType type);
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseOpAttr(reinterpret_cast<OrtOpAttr*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseOpAttr(reinterpret_cast<OrtOpAttr*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /// <summary>
@@ -1003,7 +996,7 @@ struct OrtKernelContext {
   void* GetGPUComputeStream() const;
 
   static void operator delete(void* p)=delete;
-  OrtAbstract make_abstract;
+  Ort::Abstract make_abstract;
 };
 
 struct OrtKernelInfo{
@@ -1030,8 +1023,8 @@ struct OrtKernelInfo{
   void GetAttrs(const char* name, std::vector<float>&);
   void GetAttrs(const char* name, std::vector<int64_t>&);
 
-  static void operator delete(void* p) { Ort::GetApi().ReleaseKernelInfo(reinterpret_cast<OrtKernelInfo*>(p)); }
-  OrtAbstract make_abstract;
+  static void operator delete(void* p) { Ort::api->ReleaseKernelInfo(reinterpret_cast<OrtKernelInfo*>(p)); }
+  Ort::Abstract make_abstract;
 };
 
 /// <summary>
