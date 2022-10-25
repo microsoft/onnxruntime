@@ -19,7 +19,7 @@ export interface GpuData {
 export interface TensorInfo {
   id?: Tensor.Id;
   dims: readonly number[];
-  type: Tensor.DataType;
+  dataType: number;
   gpuDataType: GpuDataType;
 }
 
@@ -82,7 +82,7 @@ export interface ProgramInfo extends ProgramMetadata {
    */
   // entryPoint: string;
 
-  dispatchGroup: (inputs: readonly Tensor[]) => {
+  dispatchGroup: (inputs: readonly TensorView[]) => {
     x: number;
     y?: number;
     z?: number;

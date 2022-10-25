@@ -35,7 +35,7 @@ class OpKernelContext implements ComputeContext {
   }
 
   compute(program: ProgramInfoLoader|ProgramInfo): number {
-    return this.backend.run(program, this.inputs);
+    return this.backend.run(program, this.inputs, this.output.bind(this));
   }
 
   output(index: number, dims: readonly number[]): number {

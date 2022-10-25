@@ -79,8 +79,9 @@ class GpuDataManagerImpl implements GpuDataManager {
     }
 
     // create gpu buffer
-    const gpuBufferForUploading =
-        this.backend.device.createBuffer({mappedAtCreation: true, size, usage: GPUBufferUsage.STORAGE});
+    const gpuBufferForUploading = this.backend.device.createBuffer(
+        // eslint-disable-next-line no-bitwise
+        {mappedAtCreation: true, size, usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC});
 
     // copy (upload) data
     const arrayBuffer = gpuBufferForUploading.getMappedRange();
@@ -104,9 +105,9 @@ class GpuDataManagerImpl implements GpuDataManager {
     const bufferSize = calcNormalizedBufferSize(size);
 
     // create gpu buffer
-    const gpuBuffer =
+    const gpuBuffer = this.backend.device.createBuffer(
         // eslint-disable-next-line no-bitwise
-        this.backend.device.createBuffer({size: bufferSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC});
+        {size: bufferSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST});
 
     const gpuData = {id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer};
     this.storageCache.set(gpuData.id, {gpuData, originalSize: size});

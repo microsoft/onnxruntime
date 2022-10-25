@@ -1,13 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
-import {Graph} from '../../../graph';
-import {OperatorInitialization} from '../../../operators';
-import {Tensor} from '../../../tensor';
-import {ShapeUtil} from '../../../util';
-import {WebGpuInferenceHandler} from '../inference-handler';
-import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {DataType} from '../../../wasm-core-impl';
+import {TensorView} from '../../tensor';
+import {ShapeUtil} from '../../util';
+import {AttributeWithCacheKey} from '../attribute-with-cache-key';
+import {ComputeContext, GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
 
 import {createIndicesHelper, IndicesHelper, WORKGROUP_SIZE} from './common';
 
@@ -15,22 +13,22 @@ export interface ConcatAttributes extends AttributeWithCacheKey {
   readonly axis: number;
 }
 
-const validateInputs = (inputs: Tensor[]): void => {
+const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length < 1) {
     throw new Error('too few inputs');
   }
 
-  const inputType = inputs[0].type;
+  const inputType = inputs[0].dataType;
   const inputDimensionality = inputs[0].dims.length;
 
   // TODO: Support string concat
-  if (inputType === 'string') {
+  if (inputType === DataType.string) {
     throw new Error('string tensor is not supported yet');
   }
 
   for (const input of inputs) {
     // make sure types of all inputs match
-    if (input.type !== inputType) {
+    if (input.dataType !== inputType) {
       throw new Error('input tensors should be one type');
     }
 
@@ -41,24 +39,47 @@ const validateInputs = (inputs: Tensor[]): void => {
   }
 };
 
-export const concat = async(
-    inferenceHandler: WebGpuInferenceHandler, inputs: Tensor[], attributes: ConcatAttributes): Promise<Tensor[]> => {
-  validateInputs(inputs);
-  return inferenceHandler.run(createConcatProgramInfoLoader(inputs, attributes), inputs);
-};
-
 const createConcatProgramMetadata = (inputCount: number, cacheHint: string) =>
     ({name: 'Concat', inputTypes: Array(inputCount).fill(GpuDataType.default), cacheHint});
 
+const calculateInputIndexImpl = (numberOfTensors: number): string => `
+  fn calculateInputIndex(index: u32) -> u32 {
+    for (var i: u32 = 0u; i < ${numberOfTensors}u; i += 1u ) {
+      if (index < sizeInConcatAxis[i]) {
+        return i;
+      }
+    }
+    return ${numberOfTensors}u;
+  }`;
+
+const readBufferDataImpl = (indicesHelper: readonly IndicesHelper[], tensorRank: number, dataType: string) => {
+  const numberOfTensors = indicesHelper.length;
+  const codeLines: string[] = [];
+  for (let i = 0; i < numberOfTensors; ++i) {
+    const returnSnippet = `return input${i}[${indicesHelper[i].i2oExpression('indices', true)}];`;
+    if (numberOfTensors === 1) {
+      codeLines.push(returnSnippet);
+    } else if (i === 0) {
+      codeLines.push(`if (textureIndex == ${i}u) { ${returnSnippet} }`);
+    } else if (i === numberOfTensors - 1) {
+      codeLines.push(`else { ${returnSnippet} }`);
+    } else {
+      codeLines.push(`else if (textureIndex == ${i}) { ${returnSnippet} }`);
+    }
+  }
+  return `
+    fn readBufferData(textureIndex: u32, indices: ptr<function, ${indicesHelper[0].iType}>) -> ${dataType} {
+      ${codeLines.join('\n')}
+    }`;
+};
+
 const createConcatProgramInfo =
-    (metadata: ProgramMetadata, inputs: Tensor[], axis: number, dataType = 'f32'): ProgramInfo => {
+    (metadata: ProgramMetadata, inputs: readonly TensorView[], axis: number, dataType = 'f32'): ProgramInfo => {
       const inputShape = inputs[0].dims.slice();
       if (axis >= inputShape.length || axis < (-1 * inputShape.length)) {
         throw new Error('axis specified for concat doesn\'t match input dimensionality');
       }
-      if (axis < 0) {
-        axis = inputShape.length + axis;
-      }
+      const adjustedAxis = (axis < 0) ? inputShape.length + axis : axis;
       // ensure all of the non-concatenated axes match each other
       // calculate the shape of the output tensor while we do that
       const outputShape = inputShape.slice(0);
@@ -66,8 +87,8 @@ const createConcatProgramInfo =
         const dataNShape = inputs[i].dims.slice();
         for (let axisIndex = 0; axisIndex < inputShape.length; axisIndex++) {
           // add to the placeholder for computing output shape
-          if (axisIndex === axis) {
-            outputShape[axis] += dataNShape[axisIndex];
+          if (axisIndex === adjustedAxis) {
+            outputShape[adjustedAxis] += dataNShape[axisIndex];
           }
           // ensure all non-cancatenated axes match each other
           else if (inputShape[axisIndex] !== dataNShape[axisIndex]) {
@@ -85,7 +106,7 @@ const createConcatProgramInfo =
 
       let previousSum = 0;
       for (let i = 0; i < inputs.length; ++i) {
-        previousSum += inputs[i].dims[axis];
+        previousSum += inputs[i].dims[adjustedAxis];
         sizeInConcatAxis[i] = previousSum;
 
         inputStorageBuffersDeclarations[i] =
@@ -96,7 +117,7 @@ const createConcatProgramInfo =
 
       const outputIndicesHelper = createIndicesHelper('output', outputShape);
 
-      const indicesAxis = rank < 2 ? 'indices' : `indices[${axis}]`;
+      const indicesAxis = rank < 2 ? 'indices' : `indices[${adjustedAxis}]`;
       const shaderSource = `
   const WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
 
@@ -130,47 +151,19 @@ const createConcatProgramInfo =
   }`;
       return {
         ...metadata,
-        outputs: [{dims: outputShape, type: inputs[0].type, gpuDataType: GpuDataType.default}],
+        outputs: [{dims: outputShape, dataType: inputs[0].dataType, gpuDataType: GpuDataType.default}],
         shaderSource,
         dispatchGroup: () => ({x: Math.ceil(outputSize / 64 /* workgroup size */)})
       };
     };
 
-const createConcatProgramInfoLoader = (inputs: Tensor[], attributes: ConcatAttributes): ProgramInfoLoader => {
-  const metadata = createConcatProgramMetadata(inputs.length, attributes.cacheKey);
-  return {...metadata, get: () => createConcatProgramInfo(metadata, inputs, attributes.axis)};
+const createConcatProgramInfoLoader =
+    (inputs: readonly TensorView[], attributes: ConcatAttributes): ProgramInfoLoader => {
+      const metadata = createConcatProgramMetadata(inputs.length, attributes.cacheKey);
+      return {...metadata, get: () => createConcatProgramInfo(metadata, inputs, attributes.axis)};
+    };
+
+export const concat = (context: ComputeContext, attributes: ConcatAttributes): number => {
+  validateInputs(context.inputs);
+  return context.compute(createConcatProgramInfoLoader(context.inputs, attributes));
 };
-
-const calculateInputIndexImpl = (numberOfTensors: number): string => `
-  fn calculateInputIndex(index: u32) -> u32 {
-    for (var i: u32 = 0u; i < ${numberOfTensors}u; i += 1u ) {
-      if (index < sizeInConcatAxis[i]) {
-        return i;
-      }
-    }
-    return ${numberOfTensors}u;
-  }`;
-
-const readBufferDataImpl = (indicesHelper: readonly IndicesHelper[], tensorRank: number, dataType: string) => {
-  const numberOfTensors = indicesHelper.length;
-  const codeLines: string[] = [];
-  for (let i = 0; i < numberOfTensors; ++i) {
-    const returnSnippet = `return input${i}[${indicesHelper[i].i2oExpression('indices', true)}];`;
-    if (numberOfTensors === 1) {
-      codeLines.push(returnSnippet);
-    } else if (i === 0) {
-      codeLines.push(`if (textureIndex == ${i}u) { ${returnSnippet} }`);
-    } else if (i === numberOfTensors - 1) {
-      codeLines.push(`else { ${returnSnippet} }`);
-    } else {
-      codeLines.push(`else if (textureIndex == ${i}) { ${returnSnippet} }`);
-    }
-  }
-  return `
-  fn readBufferData(textureIndex: u32, indices: ptr<function, ${indicesHelper[0].iType}>) -> ${dataType} {
-    ${codeLines.join('\n')}
-  }`;
-};
-
-export const parseConcatAttributes: OperatorInitialization<ConcatAttributes> = (node: Graph.Node): ConcatAttributes =>
-    createAttributeWithCacheKey({axis: node.attributes.getInt('axis')});
