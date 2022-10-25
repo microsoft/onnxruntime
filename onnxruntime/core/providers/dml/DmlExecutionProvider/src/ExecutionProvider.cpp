@@ -16,6 +16,7 @@
 #include "GraphPartitioner.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/fallback_cpu_capability.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -662,14 +663,29 @@ namespace Dml
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask(); // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
 
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>> result;
-        
+
         // Get the list of node indices in toplogical order, so nodes are visited before
         // downstream nodes consuming them.
         const std::vector<onnxruntime::NodeIndex>& toplogicalOrder = graph.GetNodesInTopologicalOrder();
-        for (size_t nodeIndex : toplogicalOrder) 
+
+        // Get the list of nodes that should stay on the CPU
+        std::vector<size_t> candidates;
+        for (size_t nodeIndex : toplogicalOrder)
         {
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
-            if (IsNodeSupportedByDml(node, kernel_lookup, deviceDataTypeMask))
+            if (kernel_lookup.LookUpKernel(node))
+            {
+                candidates.push_back(node.Index());
+            }
+        }
+
+        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, candidates);
+
+        for (size_t nodeIndex : toplogicalOrder)
+        {
+            const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
+            if (IsNodeSupportedByDml(node, kernel_lookup, deviceDataTypeMask)
+                && cpuPreferredNodes.find(nodeIndex) == cpuPreferredNodes.end())
             {
                 std::unique_ptr<onnxruntime::IndexedSubGraph> subGraph = std::make_unique<onnxruntime::IndexedSubGraph>();
                 subGraph->nodes = {nodeIndex};
