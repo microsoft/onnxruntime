@@ -145,6 +145,7 @@ def create_ort_session(onnx_model_path, use_gpu=True):
             execution_providers.append('CUDAExecutionProvider')
         elif torch.version.hip:
             execution_providers.append('ROCMExecutionProvider')
+            execution_providers.append('MIGraphXExecutionProvider')
 
     return InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
 
