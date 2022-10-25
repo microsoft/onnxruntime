@@ -1718,7 +1718,7 @@ struct OrtApi {
   *
   * \see ::OrtCustomOp
   */
-  ORT_API2_STATUS(KernelContext_GetOutput, _Inout_ const OrtKernelContext* context, _In_ size_t index,
+  ORT_API2_STATUS(KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index,
                   _In_ const int64_t* dim_values, size_t dim_count, _Outptr_ OrtValue** out);
 
   /// @}

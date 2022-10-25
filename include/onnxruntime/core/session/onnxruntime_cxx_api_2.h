@@ -34,10 +34,6 @@
 #include <utility>
 #include <type_traits>
 
-#ifdef ORT_NO_EXCEPTIONS
-#include <iostream>
-#endif
-
 // Used as an imaginary member variable in the wrapped types to prevent accidental value construction or copying
 struct OrtAbstract
 {
@@ -51,38 +47,7 @@ struct OrtAbstract
  */
 namespace Ort {
 
-/** \brief All C++ methods that can fail will throw an exception of this type
- *
- * If <tt>ORT_NO_EXCEPTIONS</tt> is defined, then any error will result in a call to abort()
- */
-struct Exception : std::exception {
-  Exception(std::string&& string, OrtErrorCode code) : message_{std::move(string)}, code_{code} {}
-
-  OrtErrorCode GetOrtErrorCode() const { return code_; }
-  const char* what() const noexcept override { return message_.c_str(); }
-
- private:
-  std::string message_;
-  OrtErrorCode code_;
-};
-
-#ifdef ORT_NO_EXCEPTIONS
-// The #ifndef is for the very special case where the user of this library wants to define their own way of handling errors.
-// NOTE: This header expects control flow to not continue after calling ORT_CXX_API_THROW
-#ifndef ORT_CXX_API_THROW
-#define ORT_CXX_API_THROW(string, code)       \
-  do {                                        \
-    std::cerr << Ort::Exception(string, code) \
-                     .what()                  \
-              << std::endl;                   \
-    abort();                                  \
-  } while (false)
-#endif
-#else
-#define ORT_CXX_API_THROW(string, code) \
-  throw Ort::Exception(string, code)
-#endif
-
+/// Before using this C++ wrapper API, you MUST call Ort::InitApi to set the below 'api' variable
 inline const OrtApi* api{};
 inline void InitApi() { api = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
 
@@ -160,24 +125,6 @@ struct BFloat16_t {
 };
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
-
-namespace detail {
-
-// Light functor to release memory with OrtAllocator
-struct AllocatedFree {
-  OrtAllocator& allocator_;
-  explicit AllocatedFree(OrtAllocator& allocator) : allocator_(allocator) {}
-  void operator()(void* ptr) const { if (ptr) allocator_.Free(&allocator_, ptr); }
-};
-
-}  // namespace detail
-
-/** \brief unique_ptr typedef used to own strings allocated by OrtAllocators
- *  and release them at the end of the scope. The lifespan of the given allocator
- *  must eclipse the lifespan of AllocatedStringPtr instance
- */
-using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
-
 }
 
 /** \brief The Status that holds ownership of OrtStatus received from C API
@@ -186,8 +133,7 @@ using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
  */
 struct OrtStatus
 {  
-  static std::unique_ptr<OrtStatus> Create(const Ort::Exception&);       ///< Creates status instance out of exception
-  static std::unique_ptr<OrtStatus> Create(const std::exception&);  ///< Creates status instance out of exception
+  static std::unique_ptr<OrtStatus> Create(OrtErrorCode code, const std::string &what);
 
   std::string GetErrorMessage() const;
   OrtErrorCode GetErrorCode() const;
@@ -340,60 +286,45 @@ struct OrtModelMetadata {
 
   /** \brief Returns a copy of the producer name.
    *
-   * \param allocator to allocate memory for the copy of the name returned
    * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
    */
   std::string GetProducerName() const;  ///< Wraps OrtApi::ModelMetadataGetProducerName
 
   /** \brief Returns a copy of the graph name.
    *
-   * \param allocator to allocate memory for the copy of the name returned
    * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
    */
   std::string GetGraphName() const;  ///< Wraps OrtApi::ModelMetadataGetGraphName
 
   /** \brief Returns a copy of the domain name.
    *
-   * \param allocator to allocate memory for the copy of the name returned
    * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
    */
   std::string GetDomain() const;  ///< Wraps OrtApi::ModelMetadataGetDomain
 
   /** \brief Returns a copy of the description.
    *
-   * \param allocator to allocate memory for the copy of the string returned
    * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
    */
   std::string GetDescription() const;  ///< Wraps OrtApi::ModelMetadataGetDescription
 
   /** \brief Returns a copy of the graph description.
    *
-   * \param allocator to allocate memory for the copy of the string returned
    * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
    */
   std::string GetGraphDescription() const;  ///< Wraps OrtApi::ModelMetadataGetGraphDescription
 
   /** \brief Returns a vector of copies of the custom metadata keys.
    *
-   * \param allocator to allocate memory for the copy of the string returned
    * \return a instance std::vector of smart pointers that would deallocate the buffers when out of scope.
-   *  The OrtAllocator instance must be valid at the point of memory release.
    */
-  std::vector<Ort::AllocatedStringPtr> GetCustomMetadataMapKeysAllocated(OrtAllocator& allocator) const;  ///< Wraps OrtApi::ModelMetadataGetCustomMetadataMapKeys
+  std::vector<std::string> GetCustomMetadataMapKeysAllocated() const;  ///< Wraps OrtApi::ModelMetadataGetCustomMetadataMapKeys
 
   /** \brief Looks up a value by a key in the Custom Metadata map
    *
    * \param key zero terminated string key to lookup
-   * \param allocator to allocate memory for the copy of the string returned
    * \return a instance of smart pointer that would deallocate the buffer when out of scope.
    *  maybe nullptr if key is not found.
-   *
-   *  The OrtAllocator instances must be valid at the point of memory release.
    */
   std::string LookupCustomMetadataMap(const char* key) const;  ///< Wraps OrtApi::ModelMetadataLookupCustomMetadataMap
 
@@ -421,35 +352,27 @@ struct OrtSession {
   /** \brief Returns a copy of input name at the specified index.
    *
    * \param index must less than the value returned by GetInputCount()
-   * \param allocator to allocate memory for the copy of the name returned
    * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
    */
   std::string GetInputName(size_t index) const;
 
   /** \brief Returns a copy of output name at then specified index.
    *
    * \param index must less than the value returned by GetOutputCount()
-   * \param allocator to allocate memory for the copy of the name returned
    * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
    */
   std::string GetOutputName(size_t index) const;
 
   /** \brief Returns a copy of the overridable initializer name at then specified index.
    *
    * \param index must less than the value returned by GetOverridableInitializerCount()
-   * \param allocator to allocate memory for the copy of the name returned
    * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
    */
   std::string GetOverridableInitializerName(size_t index) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
 
   /** \brief Returns a copy of the profiling file name.
    *
-   * \param allocator to allocate memory for the copy of the string returned
    * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
    */
   std::string EndProfiling();  ///< Wraps OrtApi::SessionEndProfiling
   uint64_t GetProfilingStartTimeNs() const;                                 ///< Wraps OrtApi::SessionGetProfilingStartTimeNs
@@ -992,6 +915,10 @@ struct MemoryAllocation {
 };
 }
 
+/** \brief Wrapper around ::OrtAllocator
+*
+* Named OrtAllocator2 because OrtAllocator is already defined, so must wrap it through inheritance
+*/
 struct OrtAllocator2 : OrtAllocator {
 
   static OrtAllocator2& GetWithDefaultOptions(); ///< ::OrtAllocator default instance that is owned by Onnxruntime
@@ -1013,9 +940,7 @@ struct OrtIoBinding {
   static std::unique_ptr<OrtIoBinding> Create(OrtSession& session);
 
   std::vector<std::string> GetOutputNames() const;
-  std::vector<std::string> GetOutputNames(OrtAllocator&) const;
   std::vector<std::unique_ptr<OrtValue>> GetOutputValues() const;
-  std::vector<std::unique_ptr<OrtValue>> GetOutputValues(OrtAllocator&) const;
 
   void BindInput(const char* name, const OrtValue&);
   void BindOutput(const char* name, const OrtValue&);
@@ -1027,10 +952,6 @@ struct OrtIoBinding {
 
   static void operator delete(void* p) { Ort::GetApi().ReleaseIoBinding(reinterpret_cast<OrtIoBinding*>(p)); }
   OrtAbstract make_abstract;
-
-private:
-  std::vector<std::string> GetOutputNamesHelper(OrtAllocator&) const;
-  std::vector<std::unique_ptr<OrtValue>> GetOutputValuesHelper(OrtAllocator&) const;
 };
 
 /*! \struct Ort::ArenaCfg
@@ -1077,8 +998,8 @@ struct OrtKernelContext {
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
   const OrtValue* GetInput(size_t index) const;
-  OrtValue* GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
-  OrtValue* GetOutput(size_t index, const std::vector<int64_t>& dims) const;
+  OrtValue* GetOutput(size_t index, const int64_t* dim_values, size_t dim_count);
+  OrtValue* GetOutput(size_t index, const std::vector<int64_t>& dims);
   void* GetGPUComputeStream() const;
 
   static void operator delete(void* p)=delete;

@@ -9,20 +9,27 @@
 
 namespace Ort {
 
-namespace detail {
-inline void ThrowStatus(const OrtStatus& st) {
-  std::string error_message = st.GetErrorMessage();
-  OrtErrorCode error_code = st.GetErrorCode();
-  ORT_CXX_API_THROW(std::move(error_message), error_code);
-}
-}  // namespace detail
-
-inline void ThrowOnError(OrtStatus* ort_status) {
+#ifndef ORT_CXX_API_THROW
+inline void ThrowOnError(const OrtStatus* ort_status) {
   if (ort_status) {
-    std::unique_ptr<OrtStatus> st{ort_status};
-    detail::ThrowStatus(*st);
+    throw ort_status;
   }
 }
+#else
+ORT_CXX_API_THROW
+#endif
+
+struct StandardAllocator : OrtAllocator
+{
+  StandardAllocator() : OrtAllocator{}
+  {
+    version = ORT_API_VERSION;
+    OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) -> void* { return new std::byte[size]; };
+    OrtAllocator::Free = [](OrtAllocator* this_, void *p) { delete p; };
+  }
+};
+
+inline StandardAllocator standard_allocator;
 
 struct StringAllocator : OrtAllocator
 {
@@ -52,12 +59,8 @@ private:
 
 } // namespace Ort
 
-inline std::unique_ptr<OrtStatus> OrtStatus::Create(const Ort::Exception& e) {
-  return std::unique_ptr<OrtStatus>{Ort::GetApi().CreateStatus(e.GetOrtErrorCode(), e.what())};
-}
-
-inline std::unique_ptr<OrtStatus> OrtStatus::Create(const std::exception& e) {
-  return std::unique_ptr<OrtStatus>{Ort::GetApi().CreateStatus(ORT_FAIL, e.what())};
+inline std::unique_ptr<OrtStatus> OrtStatus::Create(OrtErrorCode code, const std::string& what) {
+  return std::unique_ptr<OrtStatus>{Ort::GetApi().CreateStatus(code, what.c_str())};
 }
 
 inline std::string OrtStatus::GetErrorMessage() const {
@@ -229,19 +232,44 @@ inline std::unique_ptr<OrtIoBinding> OrtIoBinding::Create(OrtSession& session) {
 }
 
 inline std::vector<std::string> OrtIoBinding::GetOutputNames() const {
-  return GetOutputNamesHelper(OrtAllocator2::GetWithDefaultOptions());
-}
+  char* buffer{};
+  size_t* lengths{};
+  size_t count{};
+  Ort::ThrowOnError(Ort::GetApi().GetBoundOutputNames(this, &Ort::standard_allocator, &buffer, &lengths, &count));
 
-inline std::vector<std::string> OrtIoBinding::GetOutputNames(OrtAllocator& allocator) const {
-  return GetOutputNamesHelper(allocator);
+  std::unique_ptr<size_t> lengths_owned{ lengths };
+  std::unique_ptr<char> buffer_owned{ buffer };
+
+  std::vector<std::string> result;
+  for (size_t i = 0; i < count; ++i) {
+    auto sz = *lengths;
+    result.emplace_back(buffer, sz);
+    buffer += sz;
+    ++lengths;
+  }
+  return result;
 }
 
 inline std::vector<std::unique_ptr<OrtValue>> OrtIoBinding::GetOutputValues() const {
-  return GetOutputValuesHelper(OrtAllocator2::GetWithDefaultOptions());
-}
+  size_t owned = 0;
+  size_t output_count = 0;
+  OrtValue** output_buffer{};
+  Ort::ThrowOnError(Ort::GetApi().GetBoundOutputValues(this, &Ort::standard_allocator, &output_buffer, &output_count));
+  std::unique_ptr<OrtValue*> owned_output_buffer{ output_buffer };
 
-inline std::vector<std::unique_ptr<OrtValue>> OrtIoBinding::GetOutputValues(OrtAllocator& allocator) const {
-  return GetOutputValuesHelper(allocator);
+  try {
+    std::vector<std::unique_ptr<OrtValue>> result;
+    for (size_t i = 0; i < output_count; ++i) {
+      result.emplace_back(output_buffer[i]);
+      ++owned;
+    }
+    return result;
+  }
+  catch (...) {
+    while (owned < output_count)
+      delete output_buffer[owned++];
+    throw;
+  }
 }
   
 inline void OrtIoBinding::BindInput(const char* name, const OrtValue& value) {
@@ -270,66 +298,6 @@ inline void OrtIoBinding::SynchronizeInputs() {
 
 inline void OrtIoBinding::SynchronizeOutputs() {
   Ort::ThrowOnError(Ort::GetApi().SynchronizeBoundOutputs(this));
-}
-
-inline std::vector<std::string> OrtIoBinding::GetOutputNamesHelper(OrtAllocator& allocator) const {
-  std::vector<std::string> result;
-  auto free_fn = Ort::detail::AllocatedFree(allocator);
-  using Ptr = std::unique_ptr<void, decltype(free_fn)>;
-
-  char* buffer = nullptr;
-  size_t* lengths = nullptr;
-  size_t count = 0;
-  Ort::ThrowOnError(Ort::GetApi().GetBoundOutputNames(this, &allocator, &buffer, &lengths, &count));
-
-  if (count == 0) {
-    return result;
-  }
-
-  Ptr buffer_g(buffer, free_fn);
-  Ptr lengths_g(lengths, free_fn);
-
-  result.reserve(count);
-  for (size_t i = 0; i < count; ++i) {
-    auto sz = *lengths;
-    result.emplace_back(buffer, sz);
-    buffer += sz;
-    ++lengths;
-  }
-  return result;
-}
-
-inline std::vector<std::unique_ptr<OrtValue>> OrtIoBinding::GetOutputValuesHelper(OrtAllocator& allocator) const {
-  std::vector<std::unique_ptr<OrtValue>> result;
-  size_t owned = 0;
-  size_t output_count = 0;
-  // Lambda to release the buffer when no longer needed and
-  // make sure that we destroy all instances on exception
-  auto free_fn = [&owned, &output_count, &allocator](OrtValue** buffer) {
-    if (buffer) {
-      while (owned < output_count) {
-        auto* p = buffer + owned++;
-        Ort::GetApi().ReleaseValue(*p);
-      }
-      allocator.Free(&allocator, buffer);
-    }
-  };
-  using Ptr = std::unique_ptr<OrtValue*, decltype(free_fn)>;
-
-  OrtValue** output_buffer = nullptr;
-  Ort::ThrowOnError(Ort::GetApi().GetBoundOutputValues(this, &allocator, &output_buffer, &output_count));
-  if (output_count == 0) {
-    return result;
-  }
-
-  Ptr buffer_g(output_buffer, free_fn);
-
-  result.reserve(output_count);
-  for (size_t i = 0; i < output_count; ++i) {
-    result.emplace_back(output_buffer[i]);
-    ++owned;
-  }
-  return result;
 }
 
 inline std::unique_ptr<OrtArenaCfg> OrtArenaCfg::Create(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
@@ -562,7 +530,7 @@ inline OrtSessionOptions& OrtSessionOptions::AddExternalInitializers(const std::
                                                                      const std::vector<std::unique_ptr<OrtValue>>& ort_values) {
   const size_t inputs_num = names.size();
   if (inputs_num != ort_values.size()) {
-    ORT_CXX_API_THROW("Expecting names and ort_values to have the same length", ORT_INVALID_ARGUMENT);
+    Ort::ThrowOnError(OrtStatus::Create(ORT_INVALID_ARGUMENT, "Expecting names and ort_values to have the same length").get());
   }
   std::vector<const char*> names_ptr;
   std::vector<const OrtValue*> ort_values_ptrs;
@@ -806,28 +774,21 @@ inline std::string OrtModelMetadata::LookupCustomMetadataMap(const char* key) co
   return string_allocator;
 }
 
-inline std::vector<Ort::AllocatedStringPtr> OrtModelMetadata::GetCustomMetadataMapKeysAllocated(OrtAllocator& allocator) const {
-  auto deletor = Ort::detail::AllocatedFree(allocator);
-  std::vector<Ort::AllocatedStringPtr> result;
-
-  char** out = nullptr;
+inline std::vector<std::string> OrtModelMetadata::GetCustomMetadataMapKeysAllocated() const {
+  char** out;
   int64_t num_keys = 0;
-  Ort::ThrowOnError(Ort::GetApi().ModelMetadataGetCustomMetadataMapKeys(this, &allocator, &out, &num_keys));
+  Ort::ThrowOnError(Ort::GetApi().ModelMetadataGetCustomMetadataMapKeys(this, &Ort::standard_allocator, &out, &num_keys));
   if (num_keys <= 0) {
-    return result;
+    return {};
   }
 
-  // array of pointers will be freed
-  std::unique_ptr<void, decltype(deletor)> array_guard(out, deletor);
-  // reserve may throw
-  auto strings_deletor = [&deletor, num_keys](char** out) { for(int64_t i = 0; i < num_keys; ++i) deletor(out[i]); };
+  // Own the returned memory so it will be freed
+  auto strings_deletor = [num_keys](char** out) { for(int64_t i = 0; i < num_keys; ++i) delete out[i]; };
   std::unique_ptr<char*, decltype(strings_deletor)> strings_guard(out, strings_deletor);
-  result.reserve(static_cast<size_t>(num_keys));
-  strings_guard.release();
-  for (int64_t i = 0; i < num_keys; ++i) {
-    result.push_back(Ort::AllocatedStringPtr(out[i], deletor));
-  }
 
+  std::vector<std::string> result;
+  for (int64_t i = 0; i < num_keys; ++i)
+    result.push_back(out[i]);
   return result;
 }
 
@@ -1195,13 +1156,13 @@ inline const OrtValue* OrtKernelContext::GetInput(size_t index) const {
   return out;
 }
 
-inline OrtValue* OrtKernelContext::GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const {
+inline OrtValue* OrtKernelContext::GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) {
   OrtValue* out;
   Ort::ThrowOnError(Ort::GetApi().KernelContext_GetOutput(this, index, dim_values, dim_count, &out));
   return out;
 }
 
-inline OrtValue* OrtKernelContext::GetOutput(size_t index, const std::vector<int64_t>& dims) const {
+inline OrtValue* OrtKernelContext::GetOutput(size_t index, const std::vector<int64_t>& dims) {
   OrtValue* out;
   Ort::ThrowOnError(Ort::GetApi().KernelContext_GetOutput(this, index, dims.data(), dims.size(), &out));
   return out;
