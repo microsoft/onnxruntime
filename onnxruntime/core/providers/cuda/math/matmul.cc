@@ -129,6 +129,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
       size_t workspace_size = 32 * 1024 * 1024;
       auto workspace_memory = GetScratchBuffer<void>(workspace_size);
 
+      /*
       bool use_special = false;
       if (left_X->SizeInBytes() == 25165824 &&
           right_X->SizeInBytes() == 4718592) {
@@ -136,7 +137,6 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
               std::cout << "Using special" << "\n";
       }
       
-      /*
       if (use_special) {
         cudaMemcpyAsync(left_X_ptr_ ,
                         const_cast<T*>(left_X->Data<T>()), 
@@ -163,11 +163,11 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           static_cast<int>(helper.K()),
           &alpha,
           reinterpret_cast<const CudaT*>(right_X->Data<T>()),
-          //reinterpret_cast<const CudaT*>(weight_ptr),          
+          // reinterpret_cast<const CudaT*>(weight_ptr),          
           ldb,
-          use_special ?  reinterpret_cast<const CudaT*>(left_X_ptr_) : 
-                         reinterpret_cast<const CudaT*>(left_X->Data<T>()),
-          //reinterpret_cast<const CudaT*>(left_X_ptr_),
+          //use_special ?  reinterpret_cast<const CudaT*>(left_X_ptr_) : 
+          //               reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+          reinterpret_cast<const CudaT*>(left_X->Data<T>()),
 
           lda,
           &zero,

@@ -22,14 +22,14 @@ class MatMul final : public CudaKernel {
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0} {
           // cudaMalloc(&left_X_ptr_, (size_t)(ceil(6291456/ 256.)) * 256);
 
-          cudaMalloc(&left_X_ptr_, (size_t)(ceil(25165824/ 256.)) * 256);
-          std::vector<uint16_t> data(25165824, 3);
+          //cudaMalloc(&left_X_ptr_, (size_t)(ceil(25165824/ 256.)) * 256);
+          //std::vector<uint16_t> data(25165824, 3);
 
-          cudaMemcpy(data.data() , left_X_ptr_, 25165824,  cudaMemcpyDeviceToHost);
+          //cudaMemcpy(data.data() , left_X_ptr_, 25165824,  cudaMemcpyDeviceToHost);
 
-          for(size_t i=0; i<25165824; ++i) {
-            std::cout << MLFloat16(data[i]).ToFloat() << std::endl;
-          }
+          //for(size_t i=0; i<25165824; ++i) {
+          //  std::cout << MLFloat16(data[i]).ToFloat() << std::endl;
+          //}
 
           //cudaMalloc(&right_X_ptr_1_, (size_t)(ceil(1179648/ 256.)) * 256);
           //cudaMalloc(&right_X_ptr_2_, (size_t)(ceil(4718592/ 256.)) * 256);

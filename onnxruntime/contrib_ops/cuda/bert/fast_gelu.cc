@@ -12,15 +12,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      FastGelu,                                                   \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(T)                                 \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                 \
+      FastGelu,                                                  \
+      kMSDomain,                                                 \
+      1,                                                         \
+      T,                                                         \
+      kCudaExecutionProvider,                                    \
+      (*KernelDefBuilder::Create())                              \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()) \
+          .MayInplace(0, 0),                                     \
       FastGelu<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -51,13 +52,13 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
 
   return LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
-                                   Stream(),
-                                   static_cast<int>(input_length),
-                                   static_cast<int>(bias_length),
-                                   reinterpret_cast<const CudaT*>(input->Data<T>()),
-                                   (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
-                                   reinterpret_cast<CudaT*>(output->MutableData<T>()),
-                                   use_half2_);
+                                     Stream(),
+                                     static_cast<int>(input_length),
+                                     static_cast<int>(bias_length),
+                                     reinterpret_cast<const CudaT*>(input->Data<T>()),
+                                     (nullptr != bias) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
+                                     reinterpret_cast<CudaT*>(output->MutableData<T>()),
+                                     use_half2_);
 }
 
 }  // namespace cuda
