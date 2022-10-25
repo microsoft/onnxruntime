@@ -3,7 +3,7 @@ jobs:
   workspace:
     clean: all
   timeoutInMinutes: 15
-  pool: 'onnxruntime-gpu-winbuild'
+  pool: 'onnxruntime-gpu-winbuild-t4'
   
   steps:
     - task: DownloadSecureFile@1

@@ -174,6 +174,13 @@ set(training_ops_excluded_files
   "cuda_training_kernels.h"
 )
 
+function(auto_set_source_files_hip_language)
+  foreach(f ${ARGN})
+    if(f MATCHES ".*\\.cu$")
+      set_source_files_properties(${f} PROPERTIES LANGUAGE HIP)
+    endif()
+  endforeach()
+endfunction()
 
 # cuda_dir must be relative to REPO_ROOT
 function(hipify cuda_dir in_excluded_file_patterns out_generated_cc_files out_generated_cu_files)
@@ -207,15 +214,16 @@ function(hipify cuda_dir in_excluded_file_patterns out_generated_cc_files out_ge
       DEPENDS ${hipify_tool} ${f}
       COMMENT "Hipify: ${cuda_f_rel} -> amdgpu/${rocm_f_rel}"
     )
-    if(f MATCHES "\\..*cuh?")
+    if(f MATCHES ".*\\.cuh?$")
       list(APPEND generated_cu_files ${f_out})
     else()
       list(APPEND generated_cc_files ${f_out})
     endif()
   endforeach()
 
-  set_source_files_properties(generated_cc_files PROPERTIES GENERATED TRUE)
-  set_source_files_properties(generated_cu_files PROPERTIES GENERATED TRUE)
+  set_source_files_properties(${generated_cc_files} PROPERTIES GENERATED TRUE)
+  set_source_files_properties(${generated_cu_files} PROPERTIES GENERATED TRUE)
+  auto_set_source_files_hip_language(${generated_cu_files})
   set(${out_generated_cc_files} ${generated_cc_files} PARENT_SCOPE)
   set(${out_generated_cu_files} ${generated_cu_files} PARENT_SCOPE)
 endfunction()

@@ -1177,10 +1177,6 @@ else()
   if (HAS_ENUM_CONSTEXPR_CONVERSION)
     target_compile_options(${PROTOBUF_LIB} PRIVATE "-Wno-enum-constexpr-conversion")
   endif()
-  if (onnxruntime_USE_ROCM)
-    # float16.h:90:12: error: ‘tmp’ is used uninitialized
-    list(APPEND ORT_WARNING_FLAGS -Wno-uninitialized)
-  endif()
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
@@ -1324,14 +1320,34 @@ function(onnxruntime_set_compile_flags target_name)
       #too many such errors in eigen
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-deprecated-copy>" "$<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-copy>")
     endif()
+    foreach(FLAG ${ORT_WARNING_FLAGS})
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${FLAG}>")
+    endforeach()
     if (onnxruntime_USE_CUDA)
+      foreach(FLAG ${ORT_WARNING_FLAGS})
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${FLAG}>")
+      endforeach()
       if ((NVCC_HAS_STRICT_ALIASING AND "${target_name}" MATCHES "cuda") OR (HAS_STRICT_ALIASING AND NOT "${target_name}" MATCHES "cuda"))
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Wno-strict-aliasing>")
       endif()
     endif()
-    foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
-      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${ORT_FLAG}>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:${ORT_FLAG}>")
-    endforeach()
+    if (onnxruntime_USE_ROCM)
+      # flags are detected with CXX language mode, some flags are not supported with hipclang
+      # because we may mix gcc and hipclang
+      set(ORT_HIP_WARNING_FLAGS ${ORT_WARNING_FLAGS})
+      list(REMOVE_ITEM ORT_HIP_WARNING_FLAGS -Wno-nonnull-compare)
+
+      # float16.h:90:12: error: ‘tmp’ is used uninitialized
+      list(APPEND ORT_HIP_WARNING_FLAGS -Wno-uninitialized)
+
+      # some #pragma unroll will fail, do not treat them as error
+      # #warning must not be treated as error
+      list(APPEND ORT_HIP_WARNING_FLAGS -Wno-error=pass-failed "-Wno-error=#warnings")
+
+      foreach(FLAG ${ORT_HIP_WARNING_FLAGS})
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:HIP>:SHELL:${FLAG}>")
+      endforeach()
+    endif()
 endfunction()
 
 function(onnxruntime_set_source_file_properties target_name)
