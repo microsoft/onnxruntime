@@ -2600,7 +2600,7 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::ReleaseKernelIOInfo,
     &OrtApis::KernelIOInfo_GetName,
     &OrtApis::KernelIOInfo_GetTypeInfo,
-    &OrtApis::GetSessionConfigEntrySize,
+    &OrtApis::HasSessionConfigEntry,
     &OrtApis::GetSessionConfigEntry};
 
 

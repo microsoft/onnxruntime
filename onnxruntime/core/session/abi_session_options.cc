@@ -177,17 +177,11 @@ ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* o
   return onnxruntime::ToOrtStatus(options->value.config_options.AddConfigEntry(config_key, config_value));
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntrySize, _In_ const OrtSessionOptions* options,
-                    _In_z_ const char* config_key, _Out_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::HasSessionConfigEntry, _In_ const OrtSessionOptions* options,
+                    _In_z_ const char* config_key, _Out_ int* out) {
   API_IMPL_BEGIN
   auto value_opt = options->value.config_options.GetConfigEntry(config_key);
-
-  if (value_opt) {
-    *size = value_opt->size() + 1;
-  } else {
-    *size = 0;
-  }
-
+  *out = static_cast<int>(value_opt.has_value());
   return nullptr;
   API_IMPL_END
 }

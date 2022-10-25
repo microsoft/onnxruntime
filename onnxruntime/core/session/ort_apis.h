@@ -415,8 +415,8 @@ ORT_API_STATUS_IMPL(KernelIOInfo_GetName, _In_ const OrtKernelIOInfo* io_info, _
 ORT_API_STATUS_IMPL(KernelIOInfo_GetTypeInfo, _In_ const OrtKernelIOInfo* io_info,
                     _Outptr_ const OrtTypeInfo** type_info);
 
-ORT_API_STATUS_IMPL(GetSessionConfigEntrySize, _In_ const OrtSessionOptions* options,
-                    _In_z_ const char* config_key, _Out_ size_t* size);
+ORT_API_STATUS_IMPL(HasSessionConfigEntry, _In_ const OrtSessionOptions* options,
+                    _In_z_ const char* config_key, _Out_ int* out);
 ORT_API_STATUS_IMPL(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
                     _In_z_ const char* config_key, _Out_writes_z_(size) char* config_value, _Inout_ size_t* size);
 

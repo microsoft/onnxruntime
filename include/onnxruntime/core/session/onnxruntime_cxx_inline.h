@@ -483,6 +483,9 @@ inline RunOptions& RunOptions::UnsetTerminate() {
 namespace detail {
 
 template <typename T>
+const char* const ConstSessionOptionsImpl<T>::custom_op_config_entry_prefix = "custom_op.";
+
+template <typename T>
 inline Ort::SessionOptions ConstSessionOptionsImpl<T>::Clone() const {
   OrtSessionOptions* out;
   ThrowOnError(GetApi().CloneSessionOptions(this->p_, &out));
@@ -504,27 +507,19 @@ inline std::string ConstSessionOptionsImpl<T>::GetConfigEntry(const char* config
 }
 
 template <typename T>
-inline size_t ConstSessionOptionsImpl<T>::GetConfigEntrySize(const char* config_key) const {
-  size_t size = 0;
-  Ort::ThrowOnError(GetApi().GetSessionConfigEntrySize(this->p_, config_key, &size));
-  return size;
+inline bool ConstSessionOptionsImpl<T>::HasConfigEntry(const char* config_key) const {
+  int out = 0;
+  Ort::ThrowOnError(GetApi().HasSessionConfigEntry(this->p_, config_key, &out));
+  return static_cast<bool>(out);
 }
 
 template <typename T>
-std::string ConstSessionOptionsImpl<T>::GetConfigEntryOrDefault(const char* config_key, const std::string& def) {
-  size_t size = 0;
-  Ort::ThrowOnError(GetApi().GetSessionConfigEntrySize(this->p_, config_key, &size));
-
-  if (size == 0) {
-    return def;  // Return default value
+inline std::string ConstSessionOptionsImpl<T>::GetConfigEntryOrDefault(const char* config_key, const std::string& def) {
+  if (!this->HasConfigEntry(config_key)) {
+    return def;
   }
 
-  std::string out;
-  out.resize(size);
-  Ort::ThrowOnError(GetApi().GetSessionConfigEntry(this->p_, config_key, &out[0], &size));
-  out.resize(size - 1);  // remove the terminating character '\0'
-
-  return out;
+  return this->GetConfigEntry(config_key);
 }
 
 template <typename T>
@@ -620,6 +615,18 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::Add(OrtCustomOpDomain* cust
 template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddConfigEntry(const char* config_key, const char* config_value) {
   ThrowOnError(GetApi().AddSessionConfigEntry(this->p_, config_key, config_value));
+  return *this;
+}
+
+template <typename T>
+SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddCustomOpConfigEntry(const char* op_name, const char* key,
+                                                                     const char* config_value) {
+  std::string config_key = SessionOptionsImpl<T>::custom_op_config_entry_prefix;
+  config_key += op_name;
+  config_key += ".";
+  config_key += key;
+
+  ThrowOnError(GetApi().AddSessionConfigEntry(this->p_, config_key.c_str(), config_value));
   return *this;
 }
 
@@ -1768,11 +1775,15 @@ SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
 template <typename TOp, typename TKernel>
 void CustomOpBase<TOp, TKernel>::GetSessionConfigs(std::unordered_map<std::string, std::string>& out,
                                                    ConstSessionOptions options) const {
-  std::vector<std::string> keys = static_cast<const TOp*>(this)->GetSessionConfigKeys();
+  const TOp* derived = static_cast<const TOp*>(this);
+  std::vector<std::string> keys = derived->GetSessionConfigKeys();
 
   out.reserve(keys.size());
 
-  std::string config_entry_key = std::string("custom_op.") + static_cast<const TOp*>(this)->GetName() + ".";
+  std::string config_entry_key = ConstSessionOptions::custom_op_config_entry_prefix;
+  config_entry_key += derived->GetName();
+  config_entry_key += ".";
+
   const size_t prefix_size = config_entry_key.length();
 
   for (const auto& key : keys) {

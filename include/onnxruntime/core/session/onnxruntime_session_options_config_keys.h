@@ -143,5 +143,8 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
 
-// TODO: Documentation
+// Configuration entry prefix for custom operators. Entry keys for custom operators are built
+// at runtime with the following structure:
+// "custom_op.[CustomOpName].[Keyname]"
+// Ex: "custom_op.MyCustomOp.device_type"
 static const char* const kOrtSessionOptionsConfigCustomOpConfigPrefix = "custom_op.";

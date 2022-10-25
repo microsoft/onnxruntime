@@ -435,8 +435,10 @@ struct ConstSessionOptionsImpl : Base<T> {
   Ort::SessionOptions Clone() const;  ///< Creates and returns a copy of this SessionOptions object. Wraps OrtApi::CloneSessionOptions
 
   std::string GetConfigEntry(const char* config_key) const;  ///< Wraps OrtApi::GetSessionConfigEntry
-  size_t GetConfigEntrySize(const char* config_key) const;   ///< Wraps OrtApi::GetSessionConfigEntrySize
+  bool HasConfigEntry(const char* config_key) const;         ///< Wraps OrtApi::HasSessionConfigEntry
   std::string GetConfigEntryOrDefault(const char* config_key, const std::string& def);
+
+  static const char* const custom_op_config_entry_prefix;
 };
 
 template <typename T>
@@ -470,7 +472,8 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& DisablePerSessionThreads();  ///< Wraps OrtApi::DisablePerSessionThreads
 
-  SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
+  SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);                        ///< Wraps OrtApi::AddSessionConfigEntry
+  SessionOptionsImpl& AddCustomOpConfigEntry(const char* op_name, const char* key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
 
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers

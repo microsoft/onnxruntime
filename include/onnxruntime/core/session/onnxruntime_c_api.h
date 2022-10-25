@@ -3686,21 +3686,17 @@ struct OrtApi {
   /// \name OrtSessionOptions
   /// @{
 
-  /** \brief Get the size of the value of a session configuration entry.
-  *
-  * Can be used to query for the existence of a session configuration entry.
-  * Sets the size to 0 if the configuration entry does not exist. Otherwise, sets the size to
-  * the size of the value string, which includes the null-terminator.
+  /** \brief Checks if the given session configuration entry exists.
   *
   * \param[in] options The session options.
   * \param[in] config_key A null-terminated UTF-8 string representation of the configuration key.
-  * \param[out] size Pointer set to the size of the configuration entry's value. See above comments for details.
+  * \param[out] out Pointer set to 1 if the entry exists and 0 otherwise.
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   * \since Version 1.14
   */
-  ORT_API2_STATUS(GetSessionConfigEntrySize, _In_ const OrtSessionOptions* options,
-                  _In_z_ const char* config_key, _Out_ size_t* size);
+  ORT_API2_STATUS(HasSessionConfigEntry, _In_ const OrtSessionOptions* options,
+                  _In_z_ const char* config_key, _Out_ int* out);
 
   /** \brief Get a session configuration value.
   *
