@@ -264,7 +264,7 @@ stages:
     - job: Windows_py_GPU_Wheels
       workspace:
         clean: all
-      pool: 'onnxruntime-gpu-winbuild'
+      pool: 'onnxruntime-gpu-winbuild-t4'
       timeoutInMinutes:  300
       variables:
         CUDA_VERSION: '11.6'
