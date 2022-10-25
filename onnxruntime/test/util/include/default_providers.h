@@ -53,6 +53,7 @@ std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider();
 
 std::unique_ptr<IExecutionProvider> DefaultInternalTestingExecutionProvider(
     const std::unordered_set<std::string>& supported_ops);

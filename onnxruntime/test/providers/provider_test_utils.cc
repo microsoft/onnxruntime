@@ -1177,6 +1177,8 @@ void OpTester::Run(
           execution_provider = DefaultSnpeExecutionProvider();
         else if (provider_type == onnxruntime::kXnnpackExecutionProvider)
           execution_provider = DefaultXnnpackExecutionProvider();
+        else if (provider_type == onnxruntime::kDmlExecutionProvider)
+          execution_provider = DefaultDmlExecutionProvider();
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
