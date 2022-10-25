@@ -10,8 +10,6 @@
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
 
-#include "xnnpack.h"
-
 struct pthreadpool;
 namespace onnxruntime {
 // placeholder for future use. no options currently
@@ -52,7 +50,6 @@ class XnnpackExecutionProvider : public IExecutionProvider {
 
  private:
   pthreadpool* xnnpack_thread_pool_{nullptr};
-  xnn_allocator xnn_default_allocator_;
 };
 
 }  // namespace onnxruntime

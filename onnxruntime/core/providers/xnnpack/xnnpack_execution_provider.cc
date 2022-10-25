@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "core/common/common.h"
 #include "core/graph/function_utils.h"
 #include "xnnpack_execution_provider.h"
 #include "detail/utils.h"
@@ -84,8 +85,13 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 }  // namespace xnnpack
 
+// Can't run XNNPACK EP with multiple sessions, as we share the same global XNNPACK alloc context.
+// why we have to do this? because XNNPACK internal has a global context, and can only be initialized once. The second initialization will do nothing. Hence AllocContext_ptr_global is alive until the process is terminated.
+static const IAllocator* AllocContext_ptr_global{nullptr};
+
 static void* xnn_allocate(void* context, size_t size) {
-  return static_cast<IAllocator*>(context)->Alloc(size);
+  IAllocator* allocator = *reinterpret_cast<IAllocator**>(context);
+  return allocator->Alloc(size);
 }
 
 static void* xnn_reallocate(void* context, void* pointer, size_t size) {
@@ -97,7 +103,8 @@ static void* xnn_reallocate(void* context, void* pointer, size_t size) {
 
 static void xnn_deallocate(void* context, void* pointer) {
   if (pointer != nullptr) {
-    static_cast<IAllocator*>(context)->Free(pointer);
+    IAllocator* allocator = *reinterpret_cast<IAllocator**>(context);
+    allocator->Free(pointer);
   }
 }
 
@@ -121,13 +128,7 @@ static void xnn_aligned_deallocate(void* context, void* pointer) {
 using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
-    : IExecutionProvider{kXnnpackExecutionProvider, true},
-      xnn_default_allocator_{nullptr,
-                             xnn_allocate,
-                             xnn_reallocate,
-                             xnn_deallocate,
-                             xnn_aligned_allocate,
-                             xnn_aligned_deallocate} {
+    : IExecutionProvider{kXnnpackExecutionProvider, true} {
   if (info.xnn_thread_pool_size > 1) {
     // pthreadpool is independent of ort-threadpoool, so we have to disable cpu spinning for ort-threadpool.
     // otherwise, the pthreadpool will be starved and harm performance a lot.
@@ -161,8 +162,19 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
     InsertAllocator(cpu_alloc);
   }
 
-  xnn_default_allocator_.context = cpu_alloc.get();
-  xnn_status st = xnn_initialize(&xnn_default_allocator_);
+  static const xnn_allocator xnn_default_allocator{&AllocContext_ptr_global,
+                                                   xnn_allocate,
+                                                   xnn_reallocate,
+                                                   xnn_deallocate,
+                                                   xnn_aligned_allocate,
+                                                   xnn_aligned_deallocate};
+  // Do we need to use mutex_lock here?
+  if (AllocContext_ptr_global != nullptr && cpu_alloc.get() != AllocContext_ptr_global) {
+    ORT_THROW("XNNPACK EP doesn't support run multiple sessions");
+  }
+
+  AllocContext_ptr_global = cpu_alloc.get();
+  xnn_status st = xnn_initialize(&xnn_default_allocator);
   if (st != xnn_status_success) {
     ORT_THROW("XNNPACK initialization failed with status ", st);
   }
@@ -324,6 +336,7 @@ std::shared_ptr<KernelRegistry> XnnpackExecutionProvider::GetKernelRegistry() co
 XnnpackExecutionProvider::~XnnpackExecutionProvider() {
   xnn_deinitialize();
   pthreadpool_destroy(xnnpack_thread_pool_);
+  AllocContext_ptr_global = nullptr;
 }
 
 }  // namespace onnxruntime
