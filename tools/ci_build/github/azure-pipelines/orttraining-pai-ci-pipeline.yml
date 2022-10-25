@@ -2,11 +2,11 @@ trigger: none
 
 name: 'orttraining_ci_$(Date:yyyyMMdd)_$(Rev:r)'
 jobs:
-- job: AMD_CI
+- job: AMD_CI_Build
   workspace:
     clean: all
-  pool: 'AMD-GPU'
-  timeoutInMinutes: 150
+  pool: Linux-CPU-2019
+  timeoutInMinutes: 90
 
   # gid of video and render group on gcr-openpai-35 and -36
   variables:
@@ -14,20 +14,99 @@ jobs:
       value: 44
     - name: render
       value: 109
-    - name: onnxruntimeBuildSucceeded
-      value: false
+    - name: RocmVersion
+      value: 5.2.3
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
+      Context: tools/ci_build/github/pai
+      Repository: onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        docker run --rm \
+          --privileged \
+          --security-opt seccomp=unconfined \
+          --shm-size=1024m \
+          --device=/dev/kfd \
+          --device=/dev/dri \
+          --group-add $(video) \
+          --group-add $(render) \
+          --user $UID:$(id -g $USER) \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /onnxruntime_src \
+          onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion) \
+            python tools/ci_build/build.py \
+              --config RelWithDebInfo \
+              --enable_training \
+              --enable_training_torch_interop \
+              --mpi_home /opt/ompi \
+              --cmake_extra_defines \
+                  CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
+              --use_rocm \
+              --rocm_version=$(RocmVersion) \
+              --rocm_home /opt/rocm \
+              --nccl_home /opt/rocm\
+              --update \
+              --build_dir /build \
+              --build \
+              --parallel 8 \
+              --build_wheel \
+              --skip_tests \
+              --skip_submodule_sync
+      workingDirectory: $(Build.SourcesDirectory)
+    displayName: 'Build onnxruntime'
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/RelWithDebInfo'
+
+  - template: templates/clean-agent-build-directory-step.yml
+
+- job: AMD_CI_Test
+  workspace:
+    clean: all
+  pool: 'AMD-GPU'
+  timeoutInMinutes: 60
+  dependsOn:
+  - AMD_CI_Build
+
+  # gid of video and render group on gcr-openpai-35 and -36
+  variables:
+    - name: video
+      value: 44
+    - name: render
+      value: 109
     - name: RocmVersion
       value: 5.2.3
 
   # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
   container:
-    image: onnxruntimecibuildenvironment.azurecr.io/rocm-ci-pipeline-env:rocm$(RocmVersion)
-    endpoint: onnxruntimecibuildenvironmentforamd
-    options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --shm-size=1024m --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render)
+    image: onnxruntimebuildcache.azurecr.io/onnxruntimetrainingrocm-cibuild-rocm$(RocmVersion)
+    endpoint: onnxruntimebuildcache
+    options: --privileged -e HIP_VISIBLE_DEVICES --security-opt seccomp=unconfined --shm-size=1024m --device=/dev/kfd --device=/dev/dri  --group-add $(video) --group-add $(render) --volume
 
   steps:
   - checkout: self
     clean: true
+    submodules: recursive
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-linux'
+      targetPath: '/build/RelWithDebInfo'
 
   - script: |-
       echo "Selecting GPU based on HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES"
@@ -49,33 +128,6 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |-
-        export ROCM_HOME=/opt/rocm
-        python tools/ci_build/build.py \
-          --config RelWithDebInfo \
-          --enable_training \
-          --enable_training_torch_interop \
-          --mpi_home /opt/ompi \
-          --cmake_extra_defines \
-              CMAKE_HIP_COMPILER=${ROCM_HOME}/llvm/bin/clang++ \
-          --use_rocm \
-          --rocm_version=$(RocmVersion) \
-          --rocm_home ${ROCM_HOME} \
-          --nccl_home ${ROCM_HOME}\
-          --update \
-          --build_dir ./build \
-          --build \
-          --parallel 16 \
-          --build_wheel \
-          --skip_tests
-    displayName: 'Build onnxruntime'
-
-  - bash: |-
-      echo "##vso[task.setvariable variable=onnxruntimeBuildSucceeded]true"
-    displayName: 'Set Onnxruntime Build Succeeded'
-
-  - task: CmdLine@2
-    inputs:
-      script: |-
         cd ./build/RelWithDebInfo &&\
         ../../tools/ci_build/github/pai/pai_test_launcher.sh
     displayName: 'Run onnxruntime unit tests'
@@ -87,7 +139,7 @@ jobs:
         export PYTHONPATH=$PWD
         python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
     displayName: 'Compile torch extensions into build directory'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+    condition: succeededOrFailed()
 
   - task: CmdLine@2
     inputs:
@@ -115,7 +167,7 @@ jobs:
           ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm$(RocmVersion).json
     displayName: 'Run Python Hugging-Face BERT-L test'
     retryCountOnTaskFailure: 1
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+    condition: succeededOrFailed()
 
   - task: CmdLine@2
     inputs:
@@ -144,7 +196,7 @@ jobs:
           ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm$(RocmVersion).json
     displayName: 'Run Python Hugging-Face GPT2 test'
     retryCountOnTaskFailure: 1
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+    condition: succeededOrFailed()
 
 #  - script: |-
 #      cd ./build/RelWithDebInfo
@@ -227,7 +279,7 @@ jobs:
           ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base-rocm$(RocmVersion).json
     displayName: 'Run Python Hugging-Face DistilBERT test'
     retryCountOnTaskFailure: 1
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+    condition: succeededOrFailed()
 
   #- script: |-
   #    cd ./build/RelWithDebInfo
@@ -289,7 +341,7 @@ jobs:
           --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip \
           --target_dir training_e2e_test_data \
           --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+    condition: succeededOrFailed()
     retryCountOnTaskFailure: 2
     displayName: 'Download onnxruntime_training_data.zip data'
 
@@ -302,7 +354,7 @@ jobs:
           --gpu_sku MI100_32G
     displayName: 'Run C++ BERT-L batch size test'
     retryCountOnTaskFailure: 1
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+    condition: succeededOrFailed()
 
   - task: CmdLine@2
     inputs:
@@ -314,7 +366,7 @@ jobs:
           --gpu_sku MI100_32G
     displayName: 'Run C++ BERT-L performance test'
     retryCountOnTaskFailure: 1
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+    condition: succeededOrFailed()
 
   - task: CmdLine@2
     inputs:
@@ -326,25 +378,25 @@ jobs:
           --gpu_sku MI100_32G
     displayName: 'Run C++ BERT-L convergence test'
     retryCountOnTaskFailure: 1
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
+    condition: succeededOrFailed()
 
   - script: |
       sudo apt-get update
       sudo apt install -y cifs-utils
     displayName: 'Install filesystems util'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+    condition: succeededOrFailed()
 
   - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
     displayName: 'Mount MNIST'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+    condition: succeededOrFailed()
 
   - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/bert-data" -d "/bert_data"
     displayName: 'Mount bert-data'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+    condition: succeededOrFailed()
 
   - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
     displayName: 'Mount hf-models-cache'
-    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+    condition: succeededOrFailed()
 
 
   # Entry point for all ORTModule tests
@@ -369,4 +421,4 @@ jobs:
   #         --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw \
   #         --transformers_cache /hf_models_cache/huggingface/transformers
   #   displayName: 'Run orttraining_ortmodule_tests.py'
-  #   condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true'))
+  #   condition: succeededOrFailed()
