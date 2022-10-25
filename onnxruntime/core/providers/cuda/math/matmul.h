@@ -21,7 +21,7 @@ class MatMul final : public CudaKernel {
         trans_batch_b_{info.GetAttrOrDefault<int64_t>("transBatchB", 0) != 0} {
           // cudaMalloc(&left_X_ptr_, (size_t)(ceil(6291456/ 256.)) * 256);
 
-          cudaMalloc(&left_X_ptr_, (size_t)(ceil(6291456/ 256.)) * 256);
+          cudaMalloc(&left_X_ptr_, (size_t)(ceil(25165824/ 256.)) * 256);
           //cudaMalloc(&right_X_ptr_1_, (size_t)(ceil(1179648/ 256.)) * 256);
           //cudaMalloc(&right_X_ptr_2_, (size_t)(ceil(4718592/ 256.)) * 256);
 
