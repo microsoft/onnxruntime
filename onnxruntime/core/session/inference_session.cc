@@ -486,7 +486,16 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
 
   // Some session option values (default or user provided) may not work with some EPs.
   // Rather than put the onus on the user to know these, make the appropriate change while logging the change.
-  ORT_RETURN_IF_ERROR(p_exec_provider->ValidateSessionOptions(session_options_));
+  // modify the default behaviors
+  if (provider_type == onnxruntime::kDmlExecutionProvider) {
+    // DML's memory is not byte addressable and hence mem pattern doesn't work.
+    if (session_options_.enable_mem_pattern) {
+      LOGS(*session_logger_, WARNING)
+          << "Having memory pattern enabled is not supported while using the DML Execution Provider. "
+          << "So disabling it for this session since it uses the DML Execution Provider.";
+      session_options_.enable_mem_pattern = false;
+    }
+  }
 
   if (provider_type == onnxruntime::kCudaExecutionProvider) {
     auto trt_ep = execution_providers_.Get(kTensorrtExecutionProvider);
@@ -494,6 +503,8 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
       ORT_RETURN_IF_ERROR(p_exec_provider->SetComputeStream(trt_ep->GetComputeStream()));
     }
   }
+
+  ORT_RETURN_IF_ERROR(p_exec_provider->ValidateSessionOptions(session_options_));
 
   // if any EPs do not support concurrent calls to Run we add locking around graph execution
   if (p_exec_provider->ConcurrentRunSupported() == false) {

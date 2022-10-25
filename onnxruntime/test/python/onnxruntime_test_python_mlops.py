@@ -12,17 +12,10 @@ from helper import get_name
 import onnxruntime as onnxrt
 
 
-def create_inference_session(name, providers):
-    options = onnxrt.SessionOptions()
-    if "DmlExecutionProvider" in providers:
-        options.enable_mem_pattern = False
-    return onnxrt.InferenceSession(get_name(name), sess_options=options, providers=providers)
-
-
 class TestInferenceSession(unittest.TestCase):
     def testZipMapStringFloat(self):
-        sess = create_inference_session(
-            "zipmap_stringfloat.onnx",
+        sess = onnxrt.InferenceSession(
+            get_name("zipmap_stringfloat.onnx"),
             providers=onnxrt.get_available_providers(),
         )
         x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))
@@ -45,8 +38,8 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_expected, res[0])
 
     def testZipMapInt64Float(self):
-        sess = create_inference_session(
-            "zipmap_int64float.onnx",
+        sess = onnxrt.InferenceSession(
+            get_name("zipmap_int64float.onnx"),
             providers=onnxrt.get_available_providers(),
         )
         x = np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3))
@@ -66,8 +59,8 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_expected, res[0])
 
     def testDictVectorizer(self):
-        sess = create_inference_session(
-            "pipeline_vectorize.onnx",
+        sess = onnxrt.InferenceSession(
+            get_name("pipeline_vectorize.onnx"),
             providers=onnxrt.get_available_providers(),
         )
         input_name = sess.get_inputs()[0].name
@@ -116,7 +109,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testLabelEncoder(self):
-        sess = create_inference_session("LabelEncoder.onnx", providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("LabelEncoder.onnx"), providers=onnxrt.get_available_providers())
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "input")
         input_type = str(sess.get_inputs()[0].type)
@@ -149,8 +142,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def test_run_model_mlnet(self):
         available_providers = onnxrt.get_available_providers()
-        sess_option = onnxrt.SessionOptions()
-        sess_option.enable_mem_pattern = "DmlExecutionProvider" not in available_providers
+
         # The Windows GPU CI pipeline builds the wheel with both CUDA and DML enabled and ORT does not support cases
         # where one node is assigned to CUDA and one node to DML, as it doesn't have the data transfer capabilities to
         # deal with potentially different device memory. Hence, use a session with only DML and CPU (excluding CUDA)
@@ -158,11 +150,11 @@ class TestInferenceSession(unittest.TestCase):
         if "CUDAExecutionProvider" in available_providers and "DmlExecutionProvider" in available_providers:
             sess = onnxrt.InferenceSession(
                 get_name("mlnet_encoder.onnx"),
-                sess_option,
+                None,
                 ["DmlExecutionProvider", "CPUExecutionProvider"],
             )
         else:
-            sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"), sess_option, providers=available_providers)
+            sess = onnxrt.InferenceSession(get_name("mlnet_encoder.onnx"), providers=available_providers)
 
         names = [_.name for _ in sess.get_outputs()]
         self.assertEqual(["C00", "C12"], names)
@@ -205,9 +197,7 @@ class TestInferenceSession(unittest.TestCase):
             ],
             dtype=np.float64,
         )
-        sess_option = onnxrt.SessionOptions()
-        sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
-        sess = onnxrt.InferenceSession(model, sess_options=sess_option, providers=available_providers)
+        sess = onnxrt.InferenceSession(model, providers=available_providers)
         got = sess.run(None, {"X": iris})
         self.assertEqual(got[0].dtype, np.float64)
         self.assertEqual(got[0].shape, (3, 1))

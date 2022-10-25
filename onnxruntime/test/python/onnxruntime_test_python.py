@@ -44,13 +44,6 @@ available_providers_without_tvm_and_tensorrt = [
 ]
 
 
-def create_inference_session(name, providers):
-    options = onnxrt.SessionOptions()
-    if "DmlExecutionProvider" in providers:
-        options.enable_mem_pattern = False
-    return onnxrt.InferenceSession(get_name(name), sess_options=options, providers=providers)
-
-
 class TestInferenceSession(unittest.TestCase):
     def run_model(self, session_object, run_options):
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -68,16 +61,16 @@ class TestInferenceSession(unittest.TestCase):
 
     def testModelSerialization(self):
         try:
-            sess_option = onnxrt.SessionOptions()
-            sess_option.log_severity_level = 1
-            sess_option.logid = "TestModelSerialization"
-            sess_option.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
+            so = onnxrt.SessionOptions()
+            so.log_severity_level = 1
+            so.logid = "TestModelSerialization"
+            so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
             onnxrt.InferenceSession(
                 get_name("mul_1.onnx"),
-                sess_options=sess_option,
+                sess_options=so,
                 providers=["CPUExecutionProvider"],
             )
-            self.assertTrue(os.path.isfile(sess_option.optimized_model_filepath))
+            self.assertTrue(os.path.isfile(so.optimized_model_filepath))
         except Fail as onnxruntime_error:
             if (
                 str(onnxruntime_error) == "[ONNXRuntimeError] : 1 : FAIL : Unable to serialize model as it contains"
@@ -92,7 +85,7 @@ class TestInferenceSession(unittest.TestCase):
         # get_all_providers() returns the default EP order from highest to lowest.
         # CPUExecutionProvider should always be last.
         self.assertTrue("CPUExecutionProvider" == onnxrt.get_all_providers()[-1])
-        sess = create_inference_session("mul_1.onnx", onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         self.assertTrue("CPUExecutionProvider" in sess.get_providers())
 
     def testEnablingAndDisablingTelemetry(self):
@@ -104,7 +97,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSetProviders(self):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
-            sess = create_inference_session("mul_1.onnx", ["CUDAExecutionProvider"])
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CUDAExecutionProvider"])
             # confirm that CUDA Provider is in list of registered providers.
             self.assertTrue("CUDAExecutionProvider" in sess.get_providers())
             # reset the session and register only CPU Provider.
@@ -114,7 +107,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSetProvidersWithOptions(self):
         if "TensorrtExecutionProvider" in onnxrt.get_available_providers():
-            sess = create_inference_session("mul_1.onnx", ["TensorrtExecutionProvider"])
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["TensorrtExecutionProvider"])
             self.assertIn("TensorrtExecutionProvider", sess.get_providers())
 
             options = sess.get_provider_options()
@@ -182,7 +175,7 @@ class TestInferenceSession(unittest.TestCase):
             CUDA_SUCCESS = 0
 
             def runBaseTest1():
-                sess = create_inference_session("mul_1.onnx", ["CUDAExecutionProvider"])
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CUDAExecutionProvider"])
                 self.assertTrue("CUDAExecutionProvider" in sess.get_providers())
 
                 option1 = {"device_id": 0}
@@ -201,7 +194,7 @@ class TestInferenceSession(unittest.TestCase):
                 )
 
             def runBaseTest2():
-                sess = create_inference_session("mul_1.onnx", ["CUDAExecutionProvider"])
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CUDAExecutionProvider"])
                 self.assertIn("CUDAExecutionProvider", sess.get_providers())
 
                 # test get/set of "gpu_mem_limit" configuration.
@@ -300,7 +293,7 @@ class TestInferenceSession(unittest.TestCase):
                 result = ctypes.c_int()
                 error_str = ctypes.c_char_p()
 
-                sess = create_inference_session("mul_1.onnx", ["CPUExecutionProvider"])
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
                 option = {"device_id": i}
                 sess.set_providers(["CUDAExecutionProvider"], [option])
                 self.assertEqual(
@@ -324,7 +317,7 @@ class TestInferenceSession(unittest.TestCase):
                 for i in range(num_device):
                     setDeviceIdTest(i)
 
-                sess = create_inference_session("mul_1.onnx", ["CPUExecutionProvider"])
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
 
                 # configure session with invalid option values and that should fail
                 with self.assertRaises(RuntimeError):
@@ -382,18 +375,18 @@ class TestInferenceSession(unittest.TestCase):
 
     def testInvalidSetProviders(self):
         with self.assertRaises(RuntimeError) as context:
-            sess = create_inference_session("mul_1.onnx", ["CPUExecutionProvider"])
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
             sess.set_providers(["InvalidProvider"])
         self.assertTrue("Unknown Provider Type: InvalidProvider" in str(context.exception))
 
     def testSessionProviders(self):
         if "CUDAExecutionProvider" in onnxrt.get_available_providers():
             # create session from scratch, but constrain it to only use the CPU.
-            sess = create_inference_session("mul_1.onnx", ["CPUExecutionProvider"])
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
             self.assertEqual(["CPUExecutionProvider"], sess.get_providers())
 
     def testRunModel(self):
-        sess = create_inference_session("mul_1.onnx", available_providers)
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -410,9 +403,7 @@ class TestInferenceSession(unittest.TestCase):
     def testRunModelFromBytes(self):
         with open(get_name("mul_1.onnx"), "rb") as f:
             content = f.read()
-        sess_option = onnxrt.SessionOptions()
-        sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
-        sess = onnxrt.InferenceSession(content, sess_options=sess_option, providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(content, providers=onnxrt.get_available_providers())
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -427,7 +418,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testRunModel2(self):
-        sess = create_inference_session("matmul_1.onnx", onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -442,7 +433,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testRunModel2Contiguous(self):
-        sess = create_inference_session("matmul_1.onnx", onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("matmul_1.onnx"), providers=onnxrt.get_available_providers())
         x = np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32)[:, [1, 0]]
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -470,12 +461,12 @@ class TestInferenceSession(unittest.TestCase):
                 " on different threads using the same session object."
             )
         else:
-            sess_option = onnxrt.SessionOptions()
-            sess_option.log_verbosity_level = 1
-            sess_option.logid = "MultiThreadsTest"
+            so = onnxrt.SessionOptions()
+            so.log_verbosity_level = 1
+            so.logid = "MultiThreadsTest"
             sess = onnxrt.InferenceSession(
                 get_name("mul_1.onnx"),
-                sess_options=sess_option,
+                sess_options=so,
                 providers=available_providers_without_tvm,
             )
             ro1 = onnxrt.RunOptions()
@@ -490,7 +481,7 @@ class TestInferenceSession(unittest.TestCase):
             t2.join()
 
     def testListAsInput(self):
-        sess = create_inference_session("mul_1.onnx", onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         res = sess.run([], {input_name: x.tolist()})
@@ -498,7 +489,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testStringListAsInput(self):
-        sess = create_inference_session("identity_string.onnx", available_providers_without_tvm)
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array(["this", "is", "identity", "test"], dtype=str).reshape((2, 2))
         x_name = sess.get_inputs()[0].name
         res = sess.run([], {x_name: x.tolist()})
@@ -509,7 +500,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue("CPU" in device or "GPU" in device)
 
     def testRunModelSymbolicInput(self):
-        sess = create_inference_session("matmul_2.onnx", available_providers_without_tvm)
+        sess = onnxrt.InferenceSession(get_name("matmul_2.onnx"), providers=available_providers_without_tvm)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -526,7 +517,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testBooleanInputs(self):
-        sess = create_inference_session("logicaland.onnx", available_providers)
+        sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), providers=available_providers)
         a = np.array([[True, True], [False, False]], dtype=bool)
         b = np.array([[True, False], [True, False]], dtype=bool)
 
@@ -558,7 +549,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(output_expected, res[0])
 
     def testStringInput1(self):
-        sess = create_inference_session("identity_string.onnx", available_providers_without_tvm)
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array(["this", "is", "identity", "test"], dtype=str).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
@@ -579,7 +570,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0])
 
     def testStringInput2(self):
-        sess = create_inference_session("identity_string.onnx", available_providers_without_tvm)
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array(["Olá", "你好", "여보세요", "hello"], dtype=str).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
@@ -600,7 +591,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0])
 
     def testInputBytes(self):
-        sess = create_inference_session("identity_string.onnx", available_providers_without_tvm)
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array([b"this", b"is", b"identity", b"test"]).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
@@ -621,7 +612,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0].astype("|S8"))
 
     def testInputObject(self):
-        sess = create_inference_session("identity_string.onnx", available_providers_without_tvm)
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         x = np.array(["this", "is", "identity", "test"], object).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
@@ -642,7 +633,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0])
 
     def testInputVoid(self):
-        sess = create_inference_session("identity_string.onnx", available_providers_without_tvm)
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers_without_tvm)
         # numpy 1.20+ doesn't automatically pad the bytes based entries in the array when dtype is np.void,
         # so we use inputs where that is the case
         x = np.array([b"must", b"have", b"same", b"size"], dtype=np.void).reshape((2, 2))
@@ -668,7 +659,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testRaiseWrongNumInputs(self):
         with self.assertRaises(ValueError) as context:
-            sess = create_inference_session("logicaland.onnx", onnxrt.get_available_providers())
+            sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), providers=onnxrt.get_available_providers())
             a = np.array([[True, True], [False, False]], dtype=bool)
             res = sess.run([], {"input:0": a})
 
@@ -678,7 +669,7 @@ class TestInferenceSession(unittest.TestCase):
         model_path = "../models/opset8/test_squeezenet/model.onnx"
         if not os.path.exists(model_path):
             return
-        sess = create_inference_session(model_path, providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(model_path, providers=onnxrt.get_available_providers())
         modelmeta = sess.get_modelmeta()
         self.assertEqual("onnx-caffe2", modelmeta.producer_name)
         self.assertEqual("squeezenet_old", modelmeta.graph_name)
@@ -687,12 +678,11 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual("", modelmeta.graph_description)
 
     def testProfilerWithSessionOptions(self):
-        sess_option = onnxrt.SessionOptions()
-        sess_option.enable_profiling = True
-        sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
+        so = onnxrt.SessionOptions()
+        so.enable_profiling = True
         sess = onnxrt.InferenceSession(
             get_name("mul_1.onnx"),
-            sess_options=sess_option,
+            sess_options=so,
             providers=onnxrt.get_available_providers(),
         )
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -710,12 +700,11 @@ class TestInferenceSession(unittest.TestCase):
 
     def testProfilerGetStartTimeNs(self):
         def getSingleSessionProfilingStartTime():
-            sess_option = onnxrt.SessionOptions()
-            sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
-            sess_option.enable_profiling = True
+            so = onnxrt.SessionOptions()
+            so.enable_profiling = True
             sess = onnxrt.InferenceSession(
                 get_name("mul_1.onnx"),
-                sess_options=sess_option,
+                sess_options=so,
                 providers=onnxrt.get_available_providers(),
             )
             return sess.get_profiling_start_time_ns()
@@ -739,7 +728,6 @@ class TestInferenceSession(unittest.TestCase):
             opt.graph_optimization_level,
             onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTENDED,
         )
-        opt.enable_mem_pattern = "DmlExecutionProvider" not in available_providers
         sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), sess_options=opt, providers=available_providers)
         a = np.array([[True, True], [False, False]], dtype=bool)
         b = np.array([[True, False], [True, False]], dtype=bool)
@@ -747,7 +735,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([], {"input1:0": a, "input:0": b})
 
     def testSequenceLength(self):
-        sess = create_inference_session("sequence_length.onnx", available_providers_without_tvm)
+        sess = onnxrt.InferenceSession(get_name("sequence_length.onnx"), providers=available_providers_without_tvm)
         x = [
             np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3)),
             np.array([1.0, 0.0, 3.0, 44.0, 23.0, 11.0], dtype=np.float32).reshape((2, 3)),
@@ -768,8 +756,8 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_expected, res[0])
 
     def testSequenceConstruct(self):
-        sess = create_inference_session(
-            "sequence_construct.onnx",
+        sess = onnxrt.InferenceSession(
+            get_name("sequence_construct.onnx"),
             providers=available_providers_without_tvm,
         )
 
@@ -801,7 +789,6 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSequenceInsert(self):
         opt = onnxrt.SessionOptions()
-        opt.enable_mem_pattern = "DmlExecutionProvider" not in available_providers_without_tvm
         opt.execution_mode = onnxrt.ExecutionMode.ORT_SEQUENTIAL
         sess = onnxrt.InferenceSession(
             get_name("sequence_insert.onnx"),
@@ -838,14 +825,10 @@ class TestInferenceSession(unittest.TestCase):
 
     def testLoadingSessionOptionsFromModel(self):
         try:
-            providers = onnxrt.get_available_providers()
-            # DmlExecutionProvider doesn't support memory_pattern
-            if "DmlExecutionProvider" in providers:
-                providers.remove("DmlExecutionProvider")
             os.environ["ORT_LOAD_CONFIG_FROM_MODEL"] = str(1)
             sess = onnxrt.InferenceSession(
                 get_name("model_with_valid_ort_config_json.onnx"),
-                providers=providers,
+                providers=onnxrt.get_available_providers(),
             )
             session_options = sess.get_session_options()
 
@@ -872,13 +855,12 @@ class TestInferenceSession(unittest.TestCase):
             os.environ["ORT_LOAD_CONFIG_FROM_MODEL"] = str(0)
 
     def testSessionOptionsAddFreeDimensionOverrideByDenotation(self):
-        sess_option = onnxrt.SessionOptions()
-        sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
-        sess_option.add_free_dimension_override_by_denotation("DATA_BATCH", 3)
-        sess_option.add_free_dimension_override_by_denotation("DATA_CHANNEL", 5)
+        so = onnxrt.SessionOptions()
+        so.add_free_dimension_override_by_denotation("DATA_BATCH", 3)
+        so.add_free_dimension_override_by_denotation("DATA_CHANNEL", 5)
         sess = onnxrt.InferenceSession(
             get_name("abs_free_dimensions.onnx"),
-            sess_options=sess_option,
+            sess_options=so,
             providers=onnxrt.get_available_providers(),
         )
         input_name = sess.get_inputs()[0].name
@@ -888,13 +870,12 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(input_shape, [3, 5, 5])
 
     def testSessionOptionsAddFreeDimensionOverrideByName(self):
-        sess_option = onnxrt.SessionOptions()
-        sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
-        sess_option.add_free_dimension_override_by_name("Dim1", 4)
-        sess_option.add_free_dimension_override_by_name("Dim2", 6)
+        so = onnxrt.SessionOptions()
+        so.add_free_dimension_override_by_name("Dim1", 4)
+        so.add_free_dimension_override_by_name("Dim2", 6)
         sess = onnxrt.InferenceSession(
             get_name("abs_free_dimensions.onnx"),
-            sess_options=sess_option,
+            sess_options=so,
             providers=onnxrt.get_available_providers(),
         )
         input_name = sess.get_inputs()[0].name
@@ -904,38 +885,36 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(input_shape, [4, 6, 5])
 
     def testSessionOptionsAddConfigEntry(self):
-        sess_option = onnxrt.SessionOptions()
+        so = onnxrt.SessionOptions()
         key = "CONFIG_KEY"
         val = "CONFIG_VAL"
-        sess_option.add_session_config_entry(key, val)
-        self.assertEqual(sess_option.get_session_config_entry(key), val)
+        so.add_session_config_entry(key, val)
+        self.assertEqual(so.get_session_config_entry(key), val)
 
     def testInvalidSessionOptionsConfigEntry(self):
-        sess_option = onnxrt.SessionOptions()
+        so = onnxrt.SessionOptions()
         invalide_key = "INVALID_KEY"
         with self.assertRaises(RuntimeError) as context:
-            sess_option.get_session_config_entry(invalide_key)
+            so.get_session_config_entry(invalide_key)
         self.assertTrue(
             "SessionOptions does not have configuration with key: " + invalide_key in str(context.exception)
         )
 
     def testSessionOptionsAddInitializer(self):
         # Create an initializer and add it to a SessionOptions instance
-        sess_option = onnxrt.SessionOptions()
+        so = onnxrt.SessionOptions()
         # This initializer is different from the actual initializer in the model for "W"
         ortvalue_initializer = onnxrt.OrtValue.ortvalue_from_numpy(
             np.array([[2.0, 1.0], [4.0, 3.0], [6.0, 5.0]], dtype=np.float32)
         )
         # The user should manage the life cycle of this OrtValue and should keep it in scope
         # as long as any session that is going to be reliant on it is in scope
-        sess_option.add_initializer("W", ortvalue_initializer)
+        so.add_initializer("W", ortvalue_initializer)
 
         # Create an InferenceSession that only uses the CPU EP and validate that it uses the
         # initializer provided via the SessionOptions instance (overriding the model initializer)
         # We only use the CPU EP because the initializer we created is on CPU and we want the model to use that
-        sess = onnxrt.InferenceSession(
-            get_name("mul_1.onnx"), sess_options=sess_option, providers=["CPUExecutionProvider"]
-        )
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
         res = sess.run(
             ["Y"],
             {"X": np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)},
@@ -951,12 +930,12 @@ class TestInferenceSession(unittest.TestCase):
         # Create an external initializer data in OrtValue
         # This initializer will replace the initializer with external data reference in the graph
         ortvalue_initializer = onnxrt.OrtValue.ortvalue_from_numpy(np.array([0, 0, 1, 1]).astype(np.int64))
-        sess_option = onnxrt.SessionOptions()
-        sess_option.add_external_initializers(["Pads_not_on_disk"], [ortvalue_initializer])
+        so = onnxrt.SessionOptions()
+        so.add_external_initializers(["Pads_not_on_disk"], [ortvalue_initializer])
         # This should not throw
         onnxrt.InferenceSession(
             get_name("model_with_external_initializer_come_from_user.onnx"),
-            sess_options=sess_option,
+            sess_options=so,
             providers=["CPUExecutionProvider"],
         )
 
@@ -983,7 +962,6 @@ class TestInferenceSession(unittest.TestCase):
 
         so1 = onnxrt.SessionOptions()
         so1.register_custom_ops_library(shared_library)
-        so1.enable_mem_pattern = "DmlExecutionProvider" not in available_providers_without_tvm_and_tensorrt
 
         # Model loading successfully indicates that the custom op node could be resolved successfully
         sess1 = onnxrt.InferenceSession(
@@ -1010,7 +988,6 @@ class TestInferenceSession(unittest.TestCase):
 
         # Create another SessionOptions instance with the same shared library referenced
         so3 = onnxrt.SessionOptions()
-        so3.enable_mem_pattern = "DmlExecutionProvider" not in available_providers_without_tvm_and_tensorrt
         so3.register_custom_ops_library(shared_library)
         sess3 = onnxrt.InferenceSession(
             custom_op_model, sess_options=so3, providers=available_providers_without_tvm_and_tensorrt
@@ -1022,7 +999,7 @@ class TestInferenceSession(unittest.TestCase):
         numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
 
         def test_session_with_ortvalue_input(ortvalue):
-            sess = create_inference_session("mul_1.onnx", onnxrt.get_available_providers())
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
             res = sess.run(["Y"], {"X": ortvalue})
             self.assertTrue(np.array_equal(res[0], numpy_arr_output))
             vect = sess._sess.run_with_ort_values({"X": ortvalue._get_c_value()}, ["Y"], RunOptions())
@@ -1194,7 +1171,7 @@ class TestInferenceSession(unittest.TestCase):
                 "CPUExecutionProvider",
             ]
 
-            session = create_inference_session("issue4829.onnx", providers)
+            session = onnxrt.InferenceSession(get_name("issue4829.onnx"), providers=providers)
             shape = np.array([2, 2], dtype=np.int64)
             for iteration in range(100000):
                 result = session.run(output_names=["output"], input_feed={"shape": shape})
@@ -1218,7 +1195,6 @@ class TestInferenceSession(unittest.TestCase):
         so1 = onnxrt.SessionOptions()
         so1.log_severity_level = 1
         so1.add_session_config_entry("session.use_env_allocators", "1")
-        so1.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         onnxrt.InferenceSession(
             get_name("mul_1.onnx"),
             sess_options=so1,
@@ -1227,7 +1203,6 @@ class TestInferenceSession(unittest.TestCase):
 
         # Create a session that will NOT use the registered arena based allocator
         so2 = onnxrt.SessionOptions()
-        so2.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         so2.log_severity_level = 1
         onnxrt.InferenceSession(
             get_name("mul_1.onnx"),
@@ -1242,7 +1217,7 @@ class TestInferenceSession(unittest.TestCase):
         else:
             x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
 
-            sess1 = create_inference_session("mul_1.onnx", ["CPUExecutionProvider"])
+            sess1 = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
             input_name = sess1.get_inputs()[0].name
 
             # Shrink CPU memory after execution
@@ -1256,7 +1231,7 @@ class TestInferenceSession(unittest.TestCase):
 
             available_providers = onnxrt.get_available_providers()
             if "CUDAExecutionProvider" in available_providers:
-                sess2 = create_inference_session("mul_1.onnx", available_providers)
+                sess2 = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
                 input_name = sess2.get_inputs()[0].name
 
                 # Shrink CPU and GPU memory after execution

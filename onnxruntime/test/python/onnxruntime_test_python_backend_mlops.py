@@ -9,7 +9,7 @@ from helper import get_name
 from onnx import load
 
 import onnxruntime.backend as backend
-from onnxruntime import datasets, get_device
+from onnxruntime import datasets
 from onnxruntime.backend.backend import OnnxRuntimeBackend as ort_backend
 
 
@@ -34,8 +34,7 @@ def check_list_of_map_to_float(testcase, expected_rows, actual_rows):
 class TestBackend(unittest.TestCase):
     def testRunModelNonTensor(self):
         name = get_name("pipeline_vectorize.onnx")
-        enable_mem_pattern = "DML" not in get_device()
-        rep = backend.prepare(name, enable_mem_pattern=enable_mem_pattern)
+        rep = backend.prepare(name)
         x = {0: 25.0, 1: 5.13, 2: 0.0, 3: 0.453, 4: 5.966}
         res = rep.run(x)
         output_expected = np.array([[49.752754]], dtype=np.float32)
@@ -45,8 +44,7 @@ class TestBackend(unittest.TestCase):
         name = datasets.get_example("logreg_iris.onnx")
         model = load(name)
 
-        enable_mem_pattern = "DML" not in get_device()
-        rep = backend.prepare(model, enable_mem_pattern=enable_mem_pattern)
+        rep = backend.prepare(model)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         res = rep.run(x)
         output_expected = np.array([0, 0, 0], dtype=np.float32)
@@ -72,8 +70,7 @@ class TestBackend(unittest.TestCase):
         model = load(name)
 
         inputs = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        enable_mem_pattern = "DML" not in get_device()
-        outputs = ort_backend.run_model(model, inputs, enable_mem_pattern=enable_mem_pattern)
+        outputs = ort_backend.run_model(model, inputs)
 
         output_expected = np.array([0, 0, 0], dtype=np.float32)
         np.testing.assert_allclose(output_expected, outputs[0], rtol=1e-05, atol=1e-08)

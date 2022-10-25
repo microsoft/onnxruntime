@@ -15,8 +15,7 @@ import onnxruntime.backend as backend
 class TestBackend(unittest.TestCase):
     def testRunModel(self):
         name = get_name("mul_1.onnx")
-        # disable memory_pattern for dml
-        rep = backend.prepare(name, enable_mem_pattern=False)
+        rep = backend.prepare(name)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         res = rep.run(x)
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
@@ -41,10 +40,8 @@ class TestBackend(unittest.TestCase):
         This case is handled specifically in ExecutionFrame::AllocateAsPerAllocationPlan().
         This test is to ensure that the case is covered.
         """
-        sess_option = onnxrt.SessionOptions()
-        sess_option.enable_mem_pattern = "DmlExecutionProvider" not in onnxrt.get_available_providers()
         name = get_name("alloc_tensor_reuse.onnx")
-        sess = onnxrt.InferenceSession(name, sess_option, providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(name, providers=onnxrt.get_available_providers())
 
         run_options = onnxrt.RunOptions()
         run_options.only_execute_path_to_fetches = True
