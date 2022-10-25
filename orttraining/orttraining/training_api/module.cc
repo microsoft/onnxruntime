@@ -57,7 +57,7 @@ Status RemoveUnusedNodes(Graph& inference_graph, InlinedVector<const NodeArg*>& 
 }
 
 Status TransformModelOutputsForInference(Graph& inference_graph,
-                                         const InlinedVector<std::string_view>& inference_graph_outputs) {
+                                         gsl::span<const std::string> inference_graph_outputs) {
   // Model is updated to remove any outputs that are not defined in inference_graph_outputs. Nodes
   // producing these unused model outputs are also subsequently removed.
 
@@ -82,16 +82,6 @@ Status TransformModelOutputsForInference(Graph& inference_graph,
   ORT_RETURN_IF_ERROR(inference_graph.Resolve());
 
   return Status::OK();
-}
-
-InlinedVector<std::string_view> ParseInferenceGraphOutputsFromMetadata(const ONNX_NAMESPACE::ModelProto& model_proto) {
-  for (const auto& model_metadata : model_proto.metadata_props()) {
-    if (model_metadata.key() == Module::InferenceGraphOutputsMetadataString) {
-      return onnxruntime::utils::SplitString(model_metadata.value(), ",");
-    }
-  }
-
-  return {};
 }
 
 Status TransformModelInputsForInference(Graph& inference_graph,
@@ -465,7 +455,8 @@ Status Module::GetStateDict(ModuleCheckpointState& module_checkpoint_state) {
   return Status::OK();
 }
 
-Status Module::ExportModelForInferencing(const std::string& inference_model_path) const {
+Status Module::ExportModelForInferencing(const std::string& inference_model_path,
+                                         gsl::span<const std::string> graph_output_names) const {
   ORT_RETURN_IF_NOT(eval_sess_, "Eval model was not provided. Cannot export a model for inferencing.");
 
   ONNX_NAMESPACE::ModelProto eval_model;
@@ -475,10 +466,9 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
   std::shared_ptr<Model> inference_model;
   ORT_RETURN_IF_ERROR(Model::Load(eval_model, inference_model, nullptr, logging::LoggingManager::DefaultLogger()));
 
-  // The cloned model's outputs are transformed such that the model has outputs as defined by the metadata_props
-  // defined in the eval model. Any nodes not contributing to the inference outputs will be pruned.
-  ORT_THROW_IF_ERROR(TransformModelOutputsForInference(inference_model->MainGraph(),
-                                                       ParseInferenceGraphOutputsFromMetadata(eval_model)));
+  // The cloned model's outputs are transformed such that the model has outputs as defined by graph_output_names
+  // Any nodes not contributing to the inference outputs will be pruned.
+  ORT_THROW_IF_ERROR(TransformModelOutputsForInference(inference_model->MainGraph(), graph_output_names));
 
   // The cloned model's inputs are transformed such that the model has only user defined inputs. All parameters
   // are moved to be constant initializers for the model.

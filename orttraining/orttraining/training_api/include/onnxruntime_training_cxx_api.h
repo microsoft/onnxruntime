@@ -149,7 +149,8 @@ class TrainingSession : public detail::Base<OrtTrainingSession> {
    * Wraps OrtTrainingApi::ExportModelForInferencing
    *
    */
-  void ExportModelForInferencing(const std::basic_string<ORTCHAR_T>& inference_model_path);
+  void ExportModelForInferencing(const std::basic_string<ORTCHAR_T>& inference_model_path,
+                                 const std::vector<std::string>& graph_output_names);
 };
 
 }  // namespace Ort

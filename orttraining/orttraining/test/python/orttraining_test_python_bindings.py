@@ -21,7 +21,7 @@ class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingModel):
 
 def _create_training_models():
     # Given
-    device = "cuda"
+    device = "cpu"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
     pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
@@ -82,11 +82,11 @@ def test_train_step():
         fetches = model(forward_inputs)
 
         # Calculate loss using pytorch model to compare it with Module's output.
-        pt_outputs = pt_model(torch.from_numpy(inputs).to("cuda"))
+        pt_outputs = pt_model(torch.from_numpy(inputs))
         loss_fn = torch.nn.CrossEntropyLoss()
-        pt_loss = loss_fn(pt_outputs, torch.from_numpy(labels).to("cuda").long())
+        pt_loss = loss_fn(pt_outputs, torch.from_numpy(labels).long())
 
-        assert fetches[0] == pt_loss.item()
+        assert np.allclose(fetches[0], pt_loss.detach().numpy())
 
 
 def test_eval_step():
@@ -231,5 +231,5 @@ def test_export_model_for_inferencing():
 
         # Export inference model
         inference_model_file_path = os.path.join(temp_dir, "inference_model.onnx")
-        model.export_model_for_inferencing(inference_model_file_path)
+        model.export_model_for_inferencing(inference_model_file_path, ["output-0"])
         assert os.path.exists(inference_model_file_path)

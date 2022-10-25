@@ -340,11 +340,25 @@ ORT_API(void, OrtTrainingApis::ReleaseCheckpointState, _Frees_ptr_opt_ OrtCheckp
 }
 
 ORT_API_STATUS_IMPL(OrtTrainingApis::ExportModelForInferencing, _Inout_ OrtTrainingSession* sess,
-                    _In_ const ORTCHAR_T* inference_model_path) {
+                    _In_ const ORTCHAR_T* inference_model_path, size_t graph_outputs_len,
+                    _In_reads_(graph_outputs_len) const char* const* graph_output_names) {
   API_IMPL_BEGIN
 
   auto session = reinterpret_cast<onnxruntime::training::api::TrainingSession*>(sess);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(session->ExportModelForInferencing(onnxruntime::ToUTF8String(inference_model_path)));
+
+  onnxruntime::InlinedVector<std::string> output_names(graph_outputs_len);
+
+  for (size_t i = 0; i != graph_outputs_len; ++i) {
+    if (graph_output_names[i] == nullptr || graph_output_names[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Name of graph output cannot be empty. Please provide valid graph names");
+    }
+
+    output_names[i] = graph_output_names[i];
+  }
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      session->ExportModelForInferencing(onnxruntime::ToUTF8String(inference_model_path), output_names));
 
   return nullptr;
   API_IMPL_END

@@ -111,7 +111,6 @@ class TrainingModel(building_blocks.Block):
         accessor.global_accessor.model.CopyFrom(model_with_shapes)
 
         # Build the graph outputs
-        inference_graph_outputs = [output.name for output in accessor.global_accessor.model.graph.output]
         graph_utils.build_graph_outputs(accessor.global_accessor.model, output)
 
         # get all the model parameters for the user_model
@@ -126,13 +125,6 @@ class TrainingModel(building_blocks.Block):
             self._arg_requiring_grad,
             self._arg_not_requiring_grad,
             output,
-        )
-
-        # Set the eval model metadata for the inference graph outputs so that the training session
-        # can export a model for inferencing based on information stored in the metadata props
-        onnx.helper.set_model_props(
-            accessor.global_accessor.eval_model,
-            {get_inference_graph_outputs_metadata_string(): ",".join(inference_graph_outputs)},
         )
 
         # add gradient accumulation nodes

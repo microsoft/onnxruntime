@@ -108,7 +108,8 @@ struct Module {
 
   // Load the eval model from eval_model_path_or_bytes and transform it for the purpose of
   // inferencing, and serialize to given path
-  Status ExportModelForInferencing(const std::string& inference_model_path) const;
+  Status ExportModelForInferencing(const std::string& inference_model_path,
+                                   gsl::span<const std::string> graph_output_names) const;
 
   inline static std::string InferenceGraphOutputsMetadataString = "InferenceGraphOutputs";
 

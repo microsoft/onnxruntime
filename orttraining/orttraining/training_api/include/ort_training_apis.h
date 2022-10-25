@@ -61,6 +61,7 @@ ORT_API(void, ReleaseCheckpointState, _Frees_ptr_opt_ OrtCheckpointState* sessio
 ORT_API(void, ReleaseTrainingSession, _Frees_ptr_opt_ OrtTrainingSession* session);
 
 ORT_API_STATUS_IMPL(ExportModelForInferencing, _Inout_ OrtTrainingSession* sess,
-                    _In_ const ORTCHAR_T* inference_model_path);
+                    _In_ const ORTCHAR_T* inference_model_path, size_t graph_outputs_len,
+                    _In_reads_(graph_outputs_len) const char* const* graph_output_names);
 
 }  // namespace OrtTrainingApis

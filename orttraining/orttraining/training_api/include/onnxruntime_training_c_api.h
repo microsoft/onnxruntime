@@ -300,10 +300,11 @@ struct OrtTrainingApi {
   /** \brief Export a model that can be used for inferencing.
   *
   * If the training session was provided with an eval model, the training session can generate
-  * an inference model if it knows the inference graph outputs. The inference graph outputs are expected
-  * to be set in the metadata_props field at the time of eval model creation. This happens by default
-  * using onnxruntime offline tooling.
+  * an inference model if it knows the inference graph outputs. The input inference graph outputs
+  * are used to prune the eval model so that the output model's outputs align with the provided outputs.
   * The exported model is saved at the path provided and can be used for inferencing with InferenceSession.
+  * Note that the function re-loads the eval model from the path provided to CreateTrainingSession and expects
+  * that this path still be valid.
   *
   * \param[in] sess The training session.
   * \param[in] inference_model_path Path where the inference model should be serialized to.
@@ -312,7 +313,8 @@ struct OrtTrainingApi {
   *
   */
   ORT_API2_STATUS(ExportModelForInferencing, _Inout_ OrtTrainingSession* sess,
-                  _In_ const ORTCHAR_T* inference_model_path);
+                  _In_ const ORTCHAR_T* inference_model_path, size_t graph_outputs_len,
+                  _In_reads_(graph_outputs_len) const char* const* graph_output_names);
 };
 
 typedef struct OrtTrainingApi OrtTrainingApi;
