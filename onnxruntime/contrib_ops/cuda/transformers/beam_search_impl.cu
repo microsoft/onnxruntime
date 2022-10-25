@@ -64,6 +64,9 @@ __global__ void LogitsProcessKernel(
     T* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
+    const int* presence_mask,
+    float presence_penalty,
+    float temperature,
     int num_beams,
     int vocab_size,
     int total_elements,
@@ -136,6 +139,18 @@ __global__ void LogitsProcessKernel(
     if (word_id == demote_token_id) {
       next_token_scores[index] = cub::FpLimits<T>::Lowest();
     }
+
+    // PresencePenaltyLogitsProcessor
+    if (presence_mask != nullptr && presence_mask[index] == 1) {
+      float score = (float)next_token_scores[index] - presence_penalty;
+      next_token_scores[index] = (T)score;
+    }
+
+    // TemperatureLogitsProcessor
+    if (temperature != 1.0f) {
+      float score = (float)(next_token_scores[index]);
+      next_token_scores[index] = (T)(score / temperature);
+    }
   }
 }
 
@@ -144,6 +159,9 @@ void LaunchLogitsProcessKernel(
     T* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
+    const int* presence_mask,
+    float presence_penalty,
+    float temperature,
     int batch_size,
     int num_beams,
     int vocab_size,
@@ -161,6 +179,9 @@ void LaunchLogitsProcessKernel(
       next_token_scores,
       vocab_mask,
       prefix_vocab_mask,
+      presence_mask,
+      presence_penalty,
+      temperature,
       num_beams,
       vocab_size,
       total_elements,
@@ -177,6 +198,9 @@ template void LaunchLogitsProcessKernel(
     float* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
+    const int* presence_mask,
+    float presence_penalty,
+    float temperature,
     int batch_size,
     int num_beams,
     int vocab_size,
@@ -192,6 +216,9 @@ template void LaunchLogitsProcessKernel(
     half* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
+    const int* presence_mask,
+    float presence_penalty,
+    float temperature,
     int batch_size,
     int num_beams,
     int vocab_size,

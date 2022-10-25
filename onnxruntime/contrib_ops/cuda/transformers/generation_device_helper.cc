@@ -317,6 +317,9 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       next_token_scores.data(),
       parameters->vocab_mask.data(),
       step > 1 ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
+      parameters->presence_mask.data(),
+      parameters->presence_penalty,
+      parameters->temperature,
       parameters->batch_size,
       parameters->num_beams,
       parameters->vocab_size,
@@ -462,7 +465,6 @@ Status GreedySearchProcessLogits(
     void* stream,                                           // cuda stream (for CUDA only)
     const transformers::IConsoleDumper* dumper) {           // tensor dumper
   ORT_UNUSED_PARAMETER(logits_processors);
-  ORT_UNUSED_PARAMETER(do_sampling);
 #ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
@@ -531,6 +533,9 @@ Status GreedySearchProcessLogits(
       reinterpret_cast<CudaT*>(next_token_scores.data()),
       parameters->vocab_mask.data(),
       step > 1 ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
+      parameters->presence_mask.data(),
+      parameters->presence_penalty,
+      parameters->temperature,
       parameters->batch_size,
       parameters->num_beams,
       parameters->vocab_size,
@@ -549,41 +554,46 @@ Status GreedySearchProcessLogits(
   // TODO(wy): support output_scores in greedy search
   ORT_UNUSED_PARAMETER(output_scores);
 
-  // next_tokens = torch.argmax(scores, dim=-1)
-  int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
-  TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
-  auto element_type = DataTypeImpl::GetType<T>();
-  OrtValue next_token_scores_value;
-  Tensor::InitOrtValue(element_type,
-                       next_token_scores_shape,
-                       next_token_scores.data(),
-                       allocator->Info(),
-                       next_token_scores_value);
-  const Tensor& input = next_token_scores_value.Get<Tensor>();
+  if (do_sampling) {
+    ORT_UNUSED_PARAMETER(do_sampling);
 
-  constexpr int axis = 1;
-  constexpr unsigned top_k = static_cast<unsigned>(1);
-  constexpr bool largest = true;
-  constexpr bool sorted = false;
+  } else {
+    // next_tokens = torch.argmax(scores, dim=-1)
+    int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
+    TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
+    auto element_type = DataTypeImpl::GetType<T>();
+    OrtValue next_token_scores_value;
+    Tensor::InitOrtValue(element_type,
+                         next_token_scores_shape,
+                         next_token_scores.data(),
+                         allocator->Info(),
+                         next_token_scores_value);
+    const Tensor& input = next_token_scores_value.Get<Tensor>();
 
-  auto topk_scores = Tensor::CreateDefault();
-  auto topk_indices = Tensor::CreateDefault();
-  ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
-                           *topk_scores, *topk_indices));
+    constexpr int axis = 1;
+    constexpr unsigned top_k = static_cast<unsigned>(1);
+    constexpr bool largest = true;
+    constexpr bool sorted = false;
+
+    auto topk_scores = Tensor::CreateDefault();
+    auto topk_indices = Tensor::CreateDefault();
+    ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
+                             *topk_scores, *topk_indices));
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", *(topk_scores.get()));
-  dumper->Print("topk_indices", *(topk_indices.get()));
+    dumper->Print("topk_scores", *(topk_scores.get()));
+    dumper->Print("topk_indices", *(topk_indices.get()));
 #endif
 
-  const int64_t* next_token_indices = topk_indices->Data<int64_t>();
+    const int64_t* next_token_indices = topk_indices->Data<int64_t>();
 
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens_cpu.data(),
-                                       next_token_indices,
-                                       greedy_state->next_tokens_cpu.size_bytes(),
-                                       cudaMemcpyDeviceToHost,
-                                       cuda_stream));
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens_cpu.data(),
+                                         next_token_indices,
+                                         greedy_state->next_tokens_cpu.size_bytes(),
+                                         cudaMemcpyDeviceToHost,
+                                         cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+  }
 
 #ifdef DEBUG_GENERATION
   dumper->Print("greedy_state->next_tokens", greedy_state->next_tokens.data(), batch_size, 1);
