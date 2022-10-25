@@ -254,10 +254,14 @@ class WindowsEnv : public Env {
     return result;
   }
 
-  int GetNumCpuCores() const override {
+  static int DefaultNumCores() {
+    return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
+  }
+
+  int GetNumPhysicalCpuCores() const override {
     auto logical_processor_info = FetchLogicalProcessorInfo();
     if (!logical_processor_info.has_value()) {
-      ORT_THROW("Fatal error: Unable to get number of physical cores on the system");
+      return DefaultNumCores();
     }
 
     int phys_cores = 0;
@@ -267,7 +271,7 @@ class WindowsEnv : public Env {
       }
     }
 
-    ORT_ENFORCE(phys_cores > 0, "Expecting to have at least one CPU core available");
+    phys_cores = std::max(1, phys_cores);
 
     return phys_cores;
   }
@@ -277,7 +281,8 @@ class WindowsEnv : public Env {
 
     auto logical_processor_info = FetchLogicalProcessorInfo();
     if (!logical_processor_info.has_value()) {
-      ORT_THROW("Fatal error: Unable to get processor information on the system");
+      ret.resize(DefaultNumCores());
+      return ret;
     }
 
     // Convert mask to a vector of ints
@@ -304,7 +309,10 @@ class WindowsEnv : public Env {
       }
     }
 
-    ORT_ENFORCE(!ret.empty(), "Expecting to have at least one CPU core available");
+    if (ret.empty()) {
+      ret.resize(DefaultNumCores());
+    }
+
     return ret;
   }
 
