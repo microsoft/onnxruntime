@@ -9,7 +9,7 @@
   },
   "author": "fs-eire",
   "module": "./lib/index.js",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
     "flatbuffers": "^1.12.0",

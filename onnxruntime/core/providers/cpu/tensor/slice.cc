@@ -74,8 +74,8 @@ ONNX_CPU_OPERATOR_KERNEL(
 // Updates starts and steps to match flattened_output_dims if it is.
 // e.g. if input shape is { 2, 2, 2 }, output shape is { 1, 2, 2 }, and the 'steps' value for the last two dims is 1,
 // we are keeping all the data of the inner most two dimensions so can combine those into dims of { 1, 4 }
-static void FlattenOutputDims(const gsl::span<const int64_t>& input_dimensions,
-                              const gsl::span<const int64_t>& output_dims,
+static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions,
+                              gsl::span<const int64_t> output_dims,
                               TensorShapeVector& starts,
                               TensorShapeVector& ends,
                               TensorShapeVector& steps,
@@ -115,9 +115,9 @@ static void FlattenOutputDims(const gsl::span<const int64_t>& input_dimensions,
 }
 
 // Slice V1-9 & DynamicSlice
-Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                    const gsl::span<const int64_t>& raw_ends,
-                                    const gsl::span<const int64_t>& raw_axes,
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                    gsl::span<const int64_t> raw_ends,
+                                    gsl::span<const int64_t> raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
@@ -126,10 +126,10 @@ Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
 }
 
 // DynamicSlice & Slice V10
-Status SliceBase::PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
-                                    const gsl::span<const int64_t>& raw_ends,
-                                    const gsl::span<const int64_t>& raw_axes,
-                                    const gsl::span<const int64_t>& raw_steps,
+Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
+                                    gsl::span<const int64_t> raw_ends,
+                                    gsl::span<const int64_t> raw_axes,
+                                    gsl::span<const int64_t> raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
@@ -223,17 +223,11 @@ static Status SliceImpl(OpKernelContext* ctx,
   const auto* output_end = output + output_tensor.Shape().Size();
 
   auto create_output = [&output, &output_end](SliceIterator<T>& slice_input_iterator) {
-    if (slice_input_iterator.SolitaryInnerStep()) {
-      while (output < output_end) {
-        output = slice_input_iterator.CopyInnermostAxisSolitaryInnerStep(output);
-      }
-    } else {
-      while (output < output_end) {
-        output = slice_input_iterator.CopyInnermostAxisNonSolitaryInnerStep(output);
-      }
+    while (output < output_end) {
+      output = slice_input_iterator.CopyContiguousInnermostAxes(output);
     }
 
-    ORT_ENFORCE(output == output_end);
+     ORT_ENFORCE(output == output_end);
   };
 
   if (compute_metadata.p_flattened_output_dims_) {

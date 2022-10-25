@@ -159,7 +159,7 @@ class TestInferenceSession(unittest.TestCase):
 
             """
             int8_use_native_calibration_table = "false"
-            option['trt_int8_use_native_calibration_table'] = int8_use_native_calibration_table 
+            option['trt_int8_use_native_calibration_table'] = int8_use_native_calibration_table
             int8_enable = "true"
             option['trt_int8_enable'] = int8_enable
             calib_table_name = '/home/onnxruntime/table.flatbuffers' # this file is not existed
@@ -347,6 +347,31 @@ class TestInferenceSession(unittest.TestCase):
                 runBaseTest1()
                 runBaseTest2()
                 # raise OSError("could not load any of: " + ' '.join(libnames))
+
+        if "ROCMExecutionProvider" in onnxrt.get_available_providers():
+
+            def runRocmOptionsTest():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["ROCMExecutionProvider"])
+                self.assertIn("ROCMExecutionProvider", sess.get_providers())
+                options = sess.get_provider_options()
+
+                def test_get_and_set_option_with_values(option_name, option_values):
+                    provider_options = sess.get_provider_options()
+                    self.assertIn("ROCMExecutionProvider", provider_options)
+                    rocm_options = options["ROCMExecutionProvider"]
+                    self.assertIn(option_name, rocm_options)
+                    for option_value in option_values:
+                        rocm_options[option_name] = option_value
+                        sess.set_providers(["ROCMExecutionProvider"], [rocm_options])
+                        new_provider_options = sess.get_provider_options()
+                        self.assertEqual(
+                            new_provider_options.get("ROCMExecutionProvider", {}).get(option_name),
+                            str(option_value),
+                        )
+
+                test_get_and_set_option_with_values("tunable_op_enabled", ["1", "0"])
+
+            runRocmOptionsTest()
 
     def testInvalidSetProviders(self):
         with self.assertRaises(RuntimeError) as context:

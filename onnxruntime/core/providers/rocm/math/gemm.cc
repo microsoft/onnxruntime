@@ -128,7 +128,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   return tunable::blas::column_major::Gemm(
-      false, Stream(),
+      IsTunableOpEnabled(), Stream(),
       RocblasHandle(),
       trans_B_ ? BlasOp::Trans : BlasOp::NonTrans,
       trans_A_ ? BlasOp::Trans : BlasOp::NonTrans,
