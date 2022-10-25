@@ -2483,4 +2483,11 @@ namespace OperatorHelper
         return outputDimensionsList;
     }
 
+    std::vector<EdgeShapes> ShapeHelper::GetOutputShapes(const MLShapeInferenceContext & shapeInfo) const
+    {
+        std::vector<EdgeShapes> edgeShapes(1);
+        edgeShapes[0] = { shapeInfo.GetInputTensorDimensionCount(0) };
+        return edgeShapes;
+    }
+
 } // namespace OperatorHelper

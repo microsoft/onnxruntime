@@ -10,6 +10,7 @@
 #include "GraphDescBuilder.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/fallback_cpu_capability.h"
 #include <wil/wrl.h>
 #ifndef _GAMING_XBOX
 #include <dxgi1_6.h>
@@ -145,7 +146,7 @@ namespace Dml
     void GetRegistrationProperties(
         const onnxruntime::GraphViewer& graph,
         const onnxruntime::Node& node,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernelLookup,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         const InternalRegistrationInfoMap& internalRegInfoMap,
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap,
@@ -162,7 +163,7 @@ namespace Dml
 
         // Ensure that shape information is known statically for the inputs and outputs of the node,
         // which is required for MLGraph compilation.
-        const onnxruntime::KernelCreateInfo* createInfo = kernel_lookup.LookUpKernel(node);
+        const onnxruntime::KernelCreateInfo* createInfo = kernelLookup.LookUpKernel(node);
         assert(createInfo != nullptr);  // since GetRegistrationProperties is called only when node is a DML node
 
         auto regInfoIter = internalRegInfoMap.find(createInfo->kernel_def.get());
@@ -379,7 +380,7 @@ namespace Dml
     BuildPartitions(
         const onnxruntime::GraphViewer& graph,
         const InternalRegistrationInfoMap& internalRegInfoMap,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernelLookup,
         uint32_t supportedDeviceDataTypeMask, // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         std::unordered_map<const onnxruntime::Node*, GraphNodeProperties>& graphNodePropertyMap,
         std::unordered_set<std::string>& requiredInitializerMap,
@@ -420,6 +421,19 @@ namespace Dml
         // Check whether this graph is a subgraph, or contains any node with a subgraph.
         bool modelUsesSubgraph = ModelUsesSubgraph(graph);
 
+        // Get the list of nodes that should stay on the CPU
+        std::vector<size_t> candidates;
+        for (size_t nodeIndex : toplogicalOrder)
+        {
+            const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
+            if (kernelLookup.LookUpKernel(node))
+            {
+                candidates.push_back(node.Index());
+            }
+        }
+
+        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernelLookup, candidates);
+
         // Build up partitions while traversing the graph.
         for (size_t nodeIndex : toplogicalOrder)
         {
@@ -433,12 +447,12 @@ namespace Dml
             bool isDmlGraphNode = false;
 
             // Get the registration properties above and populate nodeNameToPartitionMap.
-            if (isDmlNode)
+            if (isDmlNode && cpuPreferredNodes.find(nodeIndex) == cpuPreferredNodes.end())
             {
                 GetRegistrationProperties(
                     graph,
                     node,
-                    kernel_lookup,
+                    kernelLookup,
                     supportedDeviceDataTypeMask,
                     internalRegInfoMap,
                     &nodeNameToPartitionMap,

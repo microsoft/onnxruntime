@@ -32,6 +32,7 @@ namespace AttrName
     static constexpr const char* Dilations = "dilations";
     static constexpr const char* Direction = "direction";
     static constexpr const char* Dtype = "dtype";
+    static constexpr const char* End = "end";
     static constexpr const char* Ends = "ends";
     static constexpr const char* Epsilon = "epsilon";
     static constexpr const char* Equation = "equation";
@@ -81,6 +82,7 @@ namespace AttrName
     static constexpr const char* Spatial = "spatial";
     static constexpr const char* SpatialScale = "spatial_scale";
     static constexpr const char* Split = "split";
+    static constexpr const char* Start = "start";
     static constexpr const char* Starts = "starts";
     static constexpr const char* Steepness = "steepness";
     static constexpr const char* StorageOrder = "storage_order";
