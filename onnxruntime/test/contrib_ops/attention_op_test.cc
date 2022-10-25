@@ -163,6 +163,8 @@ static void RunAttentionTest(
       tester.AddOptionalInputEdge<int32_t>();
     }
 
+    std::vector<int64_t> past_dims = {2, batch_size, number_of_heads, past_sequence_length, head_size};
+    std::vector<int64_t> present_dims = {2, batch_size, number_of_heads, total_sequence_length, head_size};
     if (use_past_state) {
       if (!past_present_share_buffer) {
         std::vector<int64_t> past_dims = {2, batch_size, number_of_heads, past_sequence_length, head_size};
@@ -196,6 +198,12 @@ static void RunAttentionTest(
           tester.AddInput<float>("past", cache_dims, past_cache);
           tester.AddOutput<float>("present", cache_dims, present_cache);
         }
+      }
+    } else {
+      if (use_float16) {
+        tester.AddOptionalInputEdge<MLFloat16>();
+      } else {
+        tester.AddOptionalInputEdge<float>();
       }
     } else {
       if (use_float16) {

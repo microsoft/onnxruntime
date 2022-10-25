@@ -610,6 +610,11 @@ Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, c
   return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
 
+Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
+                                                const SessionState& subgraph_session_state) {
+  return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name,
+                                                             subgraph_session_state);
+}
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN

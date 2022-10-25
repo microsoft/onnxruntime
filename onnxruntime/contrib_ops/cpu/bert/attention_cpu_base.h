@@ -37,6 +37,8 @@ class AttentionCPUBase : public AttentionBase {
                         int v_hidden_size,                     // hidden size of V (D_v)
                         const Tensor* relative_position_bias,  // bias addition in QK. Its size is BxNxSxT
                         OpKernelContext* context) const {
+    const int kv_sequence_length = sequence_length;
+
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 

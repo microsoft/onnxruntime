@@ -14,7 +14,7 @@ namespace contrib {
 class AttentionBase {
  public:
   Status CheckInputs(const TensorShape& input_shape,
-                     const TensorShape& weights_shape,
+                     const TensorShape* weights_shape,
                      const TensorShape& bias_shape,
                      const Tensor*& mask_index,  // Dummy mask of shape (1 or batch_size, 1) will be updated to nullptr.
                      const Tensor* past,
@@ -58,7 +58,7 @@ class AttentionBase {
                    int64_t total_sequence_length) const;
 
   Status CheckInputs(const TensorShape& input_shape,
-                     const TensorShape& weights_shape,
+                     const TensorShape* weights_shape,
                      const TensorShape& bias_shape,
                      const Tensor*& mask_index,  // Dummy mask of shape (1 or batch_size, 1) will be updated to nullptr.
                      const Tensor* past,

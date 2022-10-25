@@ -156,7 +156,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 
   const TensorShape& weights_shape = (packed_weights_ ? weight_shape_ : weights->Shape());
   ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(),
-                                                 weights_shape,
+                                                 &weights_shape,
                                                  bias->Shape(),
                                                  mask_index,
                                                  past_tensor,
