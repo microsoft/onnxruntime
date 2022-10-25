@@ -1,12 +1,13 @@
 #!/usr/bin/python
 
 import argparse
+import fnmatch
 import json
 import subprocess as sp
+
 import pandas as pd
 
-
-def _demangle(name, demangler='cu++filt'):
+def _demangle(name, demangler='c++filt'):
     try:
         with sp.Popen([demangler, name], stdin=sp.PIPE, stdout=sp.PIPE) as proc:
             out, _ = proc.communicate()
@@ -25,7 +26,7 @@ def _get_args():
     parser.add_argument('--dimension-sensitive', action='store_true',
                         help='Perform a kernel launch dimension sensitive analysis of kernel execution times')
 
-    parser.add_argument('--filter', type=str, nargs='+', action='extend', help='Restrict analysis to the specified identifiers, i.e., specify a filter list')
+    parser.add_argument('--filter', type=str, nargs='+', action='extend', help='Restrict analysis to the specified identifiers, i.e., specify a filter list. Also supports UNIX-style wildcards.')
     parser.add_argument('--csv', help='save data to csv')
     parser.add_argument('-c', '--count', type=int, default=40, help='list top N items')
     parser.add_argument('-v', '--verbose', action='store_true', help='verbose')
@@ -45,7 +46,7 @@ def _shape_to_string(shape):
     return res
 
 
-def _json_to_df(profile_path, filter_set):
+def _json_to_df(profile_path, filter_matcher):
     cpu_entries = []
     gpu_entries = []
     
@@ -68,7 +69,7 @@ def _json_to_df(profile_path, filter_set):
 
         name = item['name']
 
-        if filter_set is not None and len(filter_set) > 0 and name not in filter_set and op_name not in filter_set:
+        if not filter_matcher(name) and op_name is not None and not filter_matcher(op_name):
             continue
         
         if cat != 'Kernel' and not name.endswith('kernel_time'):
@@ -103,6 +104,9 @@ def _json_to_df(profile_path, filter_set):
     return cpu_df, gpu_df
 
 def _print_cpu_top_hitters(frame, args):
+    if len(frame) == 0:
+        print('No CPU entries found!')
+        return
     top = args.count
     group_key = ['name', 'input_shape'] if args.shape_sensitive else ['name']
     frame2 = frame[['duration', 'count']].sum()
@@ -118,6 +122,9 @@ def _print_cpu_top_hitters(frame, args):
         frame1.to_csv(f'{args.csv}_cpu_kernel_times.csv', index=False)
 
 def _print_gpu_top_hitters(frame, args):
+    if len(frame) == 0:
+        print('No GPU entries found!')
+        return
     top = args.count
     group_key = ['name', 'dimensions'] if args.dimension_sensitive else ['name']
     frame2 = frame[['duration', 'count']].sum()
@@ -133,11 +140,34 @@ def _print_gpu_top_hitters(frame, args):
     if args.csv:
         frame1.to_csv(f'{args.csv}_gpu_kernel_times.csv', index=False)
 
+def _construct_filter_matcher(args):
+    if args.filter is None or len(args.filter) == 0:
+        return lambda x: True
+    filter_list = args.filter
+    concrete_filter_set = set()
+    fnmatch_filter_set = set()
+    for pattern in filter_list:
+        if '*' in pattern or '?' in pattern or '[' in pattern or ']' in pattern:
+            fnmatch_filter_set.add(pattern)
+        else:
+            concrete_filter_set.add(pattern)
+
+    def _match_item(item):
+        if item in concrete_filter_set:
+            return True
+        for pattern in fnmatch_filter_set:
+            if fnmatch.fnmatch(item, pattern):
+                return True
+        return False
+    
+    return _match_item
+        
+
 def main():
     args = _get_args()
-    filter_set = set(args.filter if args.filter is not None else [])
+    filter_matcher = _construct_filter_matcher(args)
 
-    cpu_df, gpu_df = _json_to_df(args.input, filter_set)
+    cpu_df, gpu_df = _json_to_df(args.input, filter_matcher)
 
     pd.set_option('display.max_colwidth', 120)
     _print_cpu_top_hitters(cpu_df, args)
