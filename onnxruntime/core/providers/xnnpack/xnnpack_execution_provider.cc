@@ -6,7 +6,6 @@
 #include <unordered_set>
 #include <utility>
 
-#include "core/common/common.h"
 #include "core/graph/function_utils.h"
 #include "xnnpack_execution_provider.h"
 #include "detail/utils.h"
