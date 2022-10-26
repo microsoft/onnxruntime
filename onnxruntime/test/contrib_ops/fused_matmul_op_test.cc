@@ -228,7 +228,7 @@ TEST(FusedMatMulOpTest, DoubleTypeNoTranspose) {
 #endif
 
 TEST(FusedMatMulOpTest, FloatTypeTransposeA) {
-  // TODO: Unskip when fixed
+  // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: vector subscript out of range";
   }
@@ -236,7 +236,7 @@ TEST(FusedMatMulOpTest, FloatTypeTransposeA) {
 }
 
 TEST(FusedMatMulOpTest, FloatTypeTransposeB) {
-  // TODO: Unskip when fixed
+  // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: vector subscript out of range";
   }
@@ -246,7 +246,7 @@ TEST(FusedMatMulOpTest, FloatTypeTransposeB) {
 }
 
 TEST(FusedMatMulOpTest, FloatTypeTransposeAB) {
-  // TODO: Unskip when fixed
+  // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: vector subscript out of range";
   }
@@ -257,7 +257,7 @@ TEST(FusedMatMulOpTest, FloatTypeTransposeAB) {
 }
 
 TEST(FusedMatMulOpTest, FloatTypeScale) {
-  // TODO: Unskip when fixed
+  // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: vector subscript out of range";
   }
@@ -272,6 +272,11 @@ TEST(FusedMatMulOpTest, FloatTypeScale) {
 }
 
 TEST(FusedMatMulOpTest, FloatTypeTransposeBatch) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: DmlCommandRecorder.cpp(338): The parameter is incorrect";
+  }
+
   RunFusedMatMulTest<float>("FusedMatMul", 1, false, false, true, false);
   RunFusedMatMulTest<float>("FusedMatMul", 1, false, false, false, true);
   RunFusedMatMulTest<float>("FusedMatMul", 1, false, false, true, true, 0.5f);
