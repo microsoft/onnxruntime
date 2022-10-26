@@ -84,11 +84,11 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 }  // namespace xnnpack
 
-// run XNNPACK EP in concurrent is not supported yet
-static const IAllocator* AllocContext_ptr_global{nullptr};
+// Not graceful, but we have to define a global variable to hold allocator for all XNNPACK EP instances.
+static AllocatorPtr AllocContext_ptr_global{nullptr};
 
 static void* xnn_allocate(void* context, size_t size) {
-  IAllocator* allocator = *reinterpret_cast<IAllocator**>(context);
+  IAllocator* allocator = (*reinterpret_cast<AllocatorPtr*>(context)).get();
   return allocator->Alloc(size);
 }
 
@@ -101,7 +101,7 @@ static void* xnn_reallocate(void* context, void* pointer, size_t size) {
 
 static void xnn_deallocate(void* context, void* pointer) {
   if (pointer != nullptr) {
-    IAllocator* allocator = *reinterpret_cast<IAllocator**>(context);
+    IAllocator* allocator = (*reinterpret_cast<AllocatorPtr*>(context)).get();
     allocator->Free(pointer);
   }
 }
@@ -152,7 +152,9 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
                                                                 OrtAllocatorType::OrtDeviceAllocator));
           });
 
-      cpu_alloc = CreateAllocator(allocator_info);
+      cpu_alloc = AllocContext_ptr_global
+                      ? AllocContext_ptr_global
+                      : CreateAllocator(allocator_info);
       // enable sharing of our allocator
       allocator_manager.InsertAllocator(cpu_alloc);
     }
@@ -166,15 +168,12 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
                                                    xnn_deallocate,
                                                    xnn_aligned_allocate,
                                                    xnn_aligned_deallocate};
-  // Do we need to use mutex_lock here?
-  if (AllocContext_ptr_global != nullptr && cpu_alloc.get() != AllocContext_ptr_global) {
-    ORT_THROW("XNNPACK EP doesn't support run multiple sessions");
-  }
-
-  AllocContext_ptr_global = cpu_alloc.get();
-  xnn_status st = xnn_initialize(&xnn_default_allocator);
-  if (st != xnn_status_success) {
-    ORT_THROW("XNNPACK initialization failed with status ", st);
+  if (!AllocContext_ptr_global) {
+    AllocContext_ptr_global = cpu_alloc;
+    xnn_status st = xnn_initialize(&xnn_default_allocator);
+    if (st != xnn_status_success) {
+      ORT_THROW("XNNPACK initialization failed with status ", st);
+    }
   }
 }
 
@@ -334,7 +333,6 @@ std::shared_ptr<KernelRegistry> XnnpackExecutionProvider::GetKernelRegistry() co
 XnnpackExecutionProvider::~XnnpackExecutionProvider() {
   xnn_deinitialize();
   pthreadpool_destroy(xnnpack_thread_pool_);
-  AllocContext_ptr_global = nullptr;
 }
 
 }  // namespace onnxruntime
