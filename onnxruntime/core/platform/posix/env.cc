@@ -33,10 +33,10 @@ limitations under the License.
 #include <vector>
 #include <assert.h>
 
-#include <gsl/gsl>
-
 #include "core/common/common.h"
+#include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
 #include "core/platform/scoped_resource.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 
@@ -148,10 +148,10 @@ class PosixThread : public EnvThread {
     Param(const ORTCHAR_T* name_prefix1,
           int index1,
           unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
-          Eigen::ThreadPoolInterface* param1) 
+          Eigen::ThreadPoolInterface* param1)
       : name_prefix(name_prefix1),
       index(index1),
-      start_address(start_address1), 
+      start_address(start_address1),
       param(param1) {}
   };
 
@@ -165,7 +165,7 @@ class PosixThread : public EnvThread {
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
 
     auto param_ptr = std::make_unique<Param>(name_prefix, index, start_address, param);
-    if (gsl::narrow<size_t>(index) < thread_options.affinity.size()) {
+    if (narrow<size_t>(index) < thread_options.affinity.size()) {
       param_ptr->affinity_mask = thread_options.affinity[index];
     }
 

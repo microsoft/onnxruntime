@@ -373,7 +373,7 @@ gsl::span<const T> ReadConstantValues(const OpKernelInfo& info, int idx) {
     } else {
       // It's legal for zero-point to be null, we just give its default value 0
       static const T default_zp[] = {0};
-      return gsl::make_span(default_zp, static_cast<typename gsl::span<T>::index_type>(1));
+      return gsl::make_span(default_zp, static_cast<typename gsl::span<T>::size_type>(1));
     }
   }
   return (tensor->DataAsSpan<T>());

@@ -1448,6 +1448,10 @@ namespace OperatorHelper
             return std::equal(a.begin(), a.end(), b.begin(), b.end());
         };
 
+        auto as_span = [](std::initializer_list<uint32_t> il) {
+            return gsl::make_span(il.begin(), il.size());
+        };
+
         std::array<uint32_t, 3> componentRanks;
         if (m_components.size() > componentRanks.size())
         {
@@ -1498,8 +1502,8 @@ namespace OperatorHelper
         struct RecognizedOperatorInfo
         {
             RecognizedOperatorType recognizedOperatorType;
-            std::initializer_list<const uint32_t> componentRanks;
-            std::initializer_list<const uint32_t> labelIndices;
+            std::initializer_list<uint32_t> componentRanks;
+            std::initializer_list<uint32_t> labelIndices;
         };
 
         const RecognizedOperatorInfo recognizedOperators[] = {
@@ -1520,7 +1524,7 @@ namespace OperatorHelper
         // For each recognized operator, compare the labels-per-component and label indices.
         for (auto& recognizedOperator : recognizedOperators)
         {
-            if (equals(m_labelIndices, recognizedOperator.labelIndices)
+            if (equals(m_labelIndices, as_span(recognizedOperator.labelIndices))
             &&  m_components.size() == recognizedOperator.componentRanks.size())
             {
                 for (size_t i = 0; i < m_components.size(); ++i)
@@ -1528,7 +1532,7 @@ namespace OperatorHelper
                     componentRanks[i] = m_components[i].GetDimensionCount();
                 }
 
-                if (equals(gsl::make_span(componentRanks.data(), m_components.size()), recognizedOperator.componentRanks))
+                if (equals(gsl::make_span(componentRanks.data(), m_components.size()), as_span(recognizedOperator.componentRanks)))
                 {
                     return recognizedOperator.recognizedOperatorType;
                 }
