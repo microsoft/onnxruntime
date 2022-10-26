@@ -151,7 +151,7 @@ Status ActivationOp::Compute(OpKernelContext* context) const {
   const Tensor& X1 = *context->Input<Tensor>(0);
   // const Tensor* X2_ptr = context->Input<Tensor>(1); // only p-relu has the second input
   auto X1_shape = X1.Shape();
-  size_t batch_size = X1_shape[0];
+  size_t batch_size = X1_shape.NumDimensions() == 1 ? 1 : X1_shape[0];
 
   Tensor* Y = context->Output(0, X1.Shape());
   // Bail out early if one of the dimensions is zero.
