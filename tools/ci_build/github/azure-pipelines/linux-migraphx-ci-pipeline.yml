@@ -57,7 +57,7 @@ jobs:
               --update \
               --build_dir /build \
               --build \
-              --parallel 8 \
+              --parallel \
               --build_wheel \
               --skip_submodule_sync \
               --skip_tests
