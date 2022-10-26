@@ -2480,14 +2480,8 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, candidates);
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
-    const onnxruntime::Node& node = *graph.GetNode(node_index);
-
-    if (cpu_nodes.count(node_index) > 0) {
-      printf("*************Placed on CPU: %s\n", node.Name().c_str());
+    if (cpu_nodes.count(node_index) > 0)
       continue;
-    }
-
-    printf("*************Placed on CUDA: %s\n", node.Name().c_str());
 
     auto sub_graph = IndexedSubGraph::Create();
     sub_graph->Nodes().push_back(node_index);
