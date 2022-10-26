@@ -179,6 +179,33 @@ TEST(Einsum, ExplicitEinsumAsMatmul) {
   test.Run();
 }
 
+TEST(Einsum, ExplicitEinsumAsMatmulNhcw) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "aibj,ajbk->aibk");
+  test.AddInput<float>("x", {1, 3, 1, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f});
+  test.AddInput<float>("y", {1, 2, 1, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f});
+  test.AddOutput<float>("o", {1, 3, 1, 3}, {9.f, 12.f, 15.f, 19.f, 26.f, 33.f, 29.f, 40.f, 51.f});
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsMatmulNhcwTransposeA) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ajbi,ajbk->aibk");
+  test.AddInput<float>("x", {1, 2, 1, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f});
+  test.AddInput<float>("y", {1, 2, 1, 3}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f});
+  test.AddOutput<float>("o", {1, 3, 1, 3}, {17.f, 22.f, 27.f, 22.f, 29.f, 36.f, 27.f, 36.f, 45.f});
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsMatmulNhcwTransposeB) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "aibj,akbj->aibk");
+  test.AddInput<float>("x", {1, 3, 1, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f});
+  test.AddInput<float>("y", {1, 3, 1, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f});
+  test.AddOutput<float>("o", {1, 3, 1, 3}, {5.f, 11.f, 17.f, 11.f, 25.f, 39.f, 17.f, 39.f, 61.f});
+  test.Run();
+}
+
 TEST(Einsum, ExplicitEinsumAsMatmulWithUpperCasedLabel) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   // 'K' != 'k' (and dim values differ too) and Einsum should handle be able to handle that
