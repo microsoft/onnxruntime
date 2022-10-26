@@ -2,15 +2,8 @@
 // Licensed under the MIT License.
 
 #include "gemm.h"
-#include "core/graph/constants.h"
-#include "core/graph/graph.h"
-#include "core/graph/graph_utils.h"
 #include "core/framework/transpose_helper.h"
 #include "core/providers/utils.h"
-#include "core/providers/xnnpack/detail/utils.h"
-#include "core/framework/tensorprotoutils.h"
-#include "gsl/gsl-lite.hpp"
-
 
 namespace onnxruntime {
 namespace xnnpack {
