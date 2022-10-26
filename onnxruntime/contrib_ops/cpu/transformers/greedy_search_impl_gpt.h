@@ -81,12 +81,14 @@ Status GreedySearchGpt<T>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengt
                                               IAllocatorUniquePtr<char>& buffer) {
   const OrtValue* input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& input_ids = input_ids_value->Get<Tensor>();
+  const OrtValue* attn_mask_value = this->context_.GetInputOrtValue(6);
   return gpt_subgraph_.CreateInitialFeeds(input_ids,
                                           this->implicit_inputs_,
                                           this->parameters_->num_beams,
                                           this->parameters_->pad_token_id,
                                           sequence_lengths,
                                           expanded_input_ids,
+                                          attn_mask_value,
                                           feeds,
                                           this->create_inputs_func_,
                                           this->add_to_feeds_func_,
