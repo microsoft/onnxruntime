@@ -81,7 +81,7 @@ Status SliceOutUnwantedOutputSection(hipStream_t stream,
   ORT_THROW_IF_ERROR(SliceBase::PrepareForCompute(starts, ends, axes, compute_metadata));
 
   // As a sanity check, ensure that the slice operator's output shape matches with the expected output shape
-  ORT_ENFORCE(SpanEq(compute_metadata.output_dims_, output_dims));
+  ORT_ENFORCE(SpanEq(gsl::make_span(compute_metadata.output_dims_), output_dims));
 
   return SliceRocm::Impl(stream, input_data, input_dims, output_data, compute_metadata, element_size);
 }

@@ -12,6 +12,7 @@
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/logging/logging.h"
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/common/span_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -135,7 +136,7 @@ Status AddNnapiSplit(ModelBuilder& model_builder,
   const auto input_rank = shaper[input].size();
   axis = static_cast<int32_t>(HandleNegativeAxis(axis, input_rank));
 
-  const auto count = gsl::narrow<int32_t>(outputs.size());
+  const auto count = narrow<int32_t>(outputs.size());
 
   // Calculate split output shape
   {
@@ -314,7 +315,7 @@ Status BuildBatchMatMul(ModelBuilder& model_builder, const NodeUnit& node_unit) 
     std::vector<int32_t> new_shape_i32{};
     new_shape_i32.reserve(new_shape.size());
     std::transform(new_shape.begin(), new_shape.end(), std::back_inserter(new_shape_i32),
-                   [](uint32_t d) { return gsl::narrow<int32_t>(d); });
+                   [](uint32_t d) { return narrow<int32_t>(d); });
     ORT_RETURN_IF_ERROR(AddNnapiReshape(model_builder, input, new_shape_name, new_shape_i32, output));
     return Status::OK();
   };
@@ -1302,8 +1303,8 @@ Status PerformBroadcasting(const Shape& shape1, const Shape& shape2, Shape& outp
   bool shape1_is_bigger = shape1.size() >= shape2.size();
   auto max_shape = shape1_is_bigger ? shape1 : shape2;
   const auto& min_shape = shape1_is_bigger ? shape2 : shape1;
-  for (int i = gsl::narrow<int>(max_shape.size()) - 1,
-           j = gsl::narrow<int>(min_shape.size()) - 1;
+  for (int i = narrow<int>(max_shape.size()) - 1,
+           j = narrow<int>(min_shape.size()) - 1;
        i >= 0 && j >= 0;
        i--, j--) {
     int dim_max_shape = max_shape[i];
