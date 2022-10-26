@@ -416,7 +416,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
         }
         auto pos = token.find("|");
         if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-          ORT_THROW(R"(Use a '|' to separate the key and value for 
+          ORT_THROW(R"(Use a '|' to separate the key and value for
 the run-time option you are trying to use.\n)");
         }
 
@@ -426,7 +426,7 @@ the run-time option you are trying to use.\n)");
         if (key == "runtime") {
           std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
           if (supported_runtime.find(value) == supported_runtime.end()) {
-            ORT_THROW(R"(Wrong configuration value for the key 'runtime'. 
+            ORT_THROW(R"(Wrong configuration value for the key 'runtime'.
 select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)");
           }
         } else if (key == "priority") {
@@ -434,7 +434,7 @@ select from 'CPU', 'GPU_FP32', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n)"
         } else if (key == "buffer_type") {
           std::set<std::string> supported_buffer_type = {"TF8", "TF16", "UINT8", "FLOAT", "ITENSOR"};
           if (supported_buffer_type.find(value) == supported_buffer_type.end()) {
-            ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'. 
+            ORT_THROW(R"(Wrong configuration value for the key 'buffer_type'.
 select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           }
         } else {

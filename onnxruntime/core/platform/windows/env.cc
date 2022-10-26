@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <Windows.h>
 
+#include <iostream>
 #include <fstream>
 #include <optional>
 #include <string>
@@ -28,6 +29,7 @@ limitations under the License.
 
 #include <gsl/gsl>
 #include "core/common/logging/logging.h"
+#include "core/common/span_utils.h"
 #include "core/platform/env.h"
 #include "core/platform/scoped_resource.h"
 #include "core/platform/windows/telemetry.h"
@@ -70,15 +72,15 @@ class WindowsThread : public EnvThread {
     int index;
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
-    std::optional<size_t> affinity_mask;
+    std::optional<LogicalProcessors> affinity;
     Param(const ORTCHAR_T* name_prefix1,
           int index1,
           unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
-          Eigen::ThreadPoolInterface* param1) 
-      : name_prefix(name_prefix1),
-      index(index1),
-      start_address(start_address1),
-      param(param1) {}
+          Eigen::ThreadPoolInterface* param1)
+        : name_prefix(name_prefix1),
+          index(index1),
+          start_address(start_address1),
+          param(param1) {}
   };
 
  public:
@@ -92,7 +94,7 @@ class WindowsThread : public EnvThread {
 
     std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param);
     if (gsl::narrow<size_t>(index) < thread_options.affinity.size()) {
-      local_param->affinity_mask = thread_options.affinity[index];
+      local_param->affinity = thread_options.affinity[index];
     }
 
     if (custom_create_thread_fn) {
@@ -159,12 +161,17 @@ class WindowsThread : public EnvThread {
     unsigned ret = 0;
     ORT_TRY {
       // TODO: should I try to use SetThreadSelectedCpuSets?
-      if (p->affinity_mask.has_value()) {
-        auto rc = SetThreadAffinityMask(GetCurrentThread(), *p->affinity_mask);
+      if (p->affinity.has_value() && !p->affinity->empty()) {
+        DWORD_PTR mask = 0;
+        for (auto id : *p->affinity) {
+          mask |= DWORD_PTR{1} << id;
+        }
+        auto rc = SetThreadAffinityMask(GetCurrentThread(), mask);
         if (!rc) {
           const auto error_code = GetLastError();
           LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
-                              << ", mask: " << *p->affinity_mask
+                              << ", index: " << p->index
+                              << ", mask: " << *p->affinity
                               << ", error code: " << error_code
                               << ", error msg: " << std::system_category().message(error_code)
                               << ". Specify the number of threads explicitly so the affinity is not set.";
@@ -212,53 +219,100 @@ class WindowsEnv : public Env {
     Sleep(static_cast<DWORD>(micros) / 1000);
   }
 
-  int GetNumCpuCores() const override {
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
-    DWORD returnLength = sizeof(buffer);
+  struct LogicalProcessorInformation {
+    std::unique_ptr<char[]> buffer_;
+    gsl::span<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION> logical_processors;
+  };
+
+  std::optional<LogicalProcessorInformation> FetchLogicalProcessorInfo() const {
+    // We will fail the first time around. The docs say, the size of the structure
+    // is different on different versions and releases.
+    DWORD returnLength = 0;
+    if (GetLogicalProcessorInformation(NULL, &returnLength) == FALSE) {
+      if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+        auto last_error = GetLastError();
+        LOGS_DEFAULT(ERROR) << "GetLogicalProcessorInformation failed to obtain buffer length. error code: "
+                            << last_error
+                            << " error msg: " << std::system_category().message(last_error);
+        return {};
+      }
+    }
+
+    auto allocation = std::make_unique<char[]>(returnLength);
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION* buffer = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION*>(allocation.get());
     if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
-      // try GetSystemInfo
-      SYSTEM_INFO sysInfo;
-      GetSystemInfo(&sysInfo);
-      if (sysInfo.dwNumberOfProcessors <= 0) {
-        ORT_THROW("Fatal error: 0 count processors from GetSystemInfo");
-      }
-      // This is the number of logical processors in the current group
-      return sysInfo.dwNumberOfProcessors;
+      auto last_error = GetLastError();
+      LOGS_DEFAULT(ERROR) << "GetLogicalProcessorInformation failed to retrieve SYSTEM_LOGICAL_PROCESSOR_INFORMATION. error code: "
+                          << last_error
+                          << " error msg: " << std::system_category().message(last_error);
+      return {};
     }
-    int processorCoreCount = 0;
-    int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-    for (int i = 0; i != count; ++i) {
-      if (buffer[i].Relationship == RelationProcessorCore) {
-        ++processorCoreCount;
-      }
-    }
-    if (!processorCoreCount)
-      ORT_THROW("Fatal error: 0 count processors from GetLogicalProcessorInformation");
-    return processorCoreCount;
+
+    const size_t count = gsl::narrow<size_t>(returnLength) / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION);
+    std::optional<LogicalProcessorInformation> result;
+    result = {std::move(allocation), gsl::make_span(buffer, count)};
+    return result;
   }
 
-  std::vector<size_t> GetThreadAffinityMasks() const override {
-    auto generate_vector_of_n = [](int n) {
-      std::vector<size_t> ret(n);
-      std::iota(ret.begin(), ret.end(), 0);
-      return ret;
-    };
-    // Indeed 64 should be enough. However, it's harmless to have a little more.
-    SYSTEM_LOGICAL_PROCESSOR_INFORMATION buffer[256];
-    DWORD returnLength = sizeof(buffer);
-    if (GetLogicalProcessorInformation(buffer, &returnLength) == FALSE) {
-      return generate_vector_of_n(std::thread::hardware_concurrency());
+  static int DefaultNumCores() {
+    return std::max(1, static_cast<int>(std::thread::hardware_concurrency() / 2));
+  }
+
+  int GetNumPhysicalCpuCores() const override {
+    auto logical_processor_info = FetchLogicalProcessorInfo();
+    if (!logical_processor_info.has_value()) {
+      return DefaultNumCores();
     }
-    std::vector<size_t> ret;
-    int count = (int)(returnLength / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION));
-    for (int i = 0; i != count; ++i) {
-      if (buffer[i].Relationship == RelationProcessorCore) {
-        ret.push_back(buffer[i].ProcessorMask);
+
+    int phys_cores = 0;
+    for (const auto& processor_info : logical_processor_info->logical_processors) {
+      if (processor_info.Relationship == RelationProcessorCore) {
+        phys_cores++;
       }
     }
-    if (ret.empty()) {
-      return generate_vector_of_n(std::thread::hardware_concurrency());
+
+    phys_cores = std::max(1, phys_cores);
+
+    return phys_cores;
+  }
+
+  std::vector<LogicalProcessors> GetThreadAffinityMasks() const override {
+    std::vector<LogicalProcessors> ret;
+
+    auto logical_processor_info = FetchLogicalProcessorInfo();
+    if (!logical_processor_info.has_value()) {
+      ret.resize(DefaultNumCores());
+      return ret;
     }
+
+    // Convert mask to a vector of ints
+    auto mask_to_vector = [](uint64_t mask) {
+      LogicalProcessors aff;
+      int bit = 0;
+      while (mask != 0) {
+        if ((mask & 0x1) != 0) {
+          aff.push_back(bit);
+        }
+        mask >>= 0x1;
+        ++bit;
+      }
+      return aff;
+    };
+
+    for (const auto& processor_info : logical_processor_info->logical_processors) {
+      if (processor_info.Relationship == RelationProcessorCore) {
+        // A single core can host multiple logical processors
+        // so the mask returned can have more than one bit set.
+        // We allow threads to be ran on any logical CPU within a given
+        // physical core.
+        ret.push_back(mask_to_vector(processor_info.ProcessorMask));
+      }
+    }
+
+    if (ret.empty()) {
+      ret.resize(DefaultNumCores());
+    }
+
     return ret;
   }
 
@@ -776,6 +830,8 @@ class WindowsEnv : public Env {
   }
 
  private:
+  WindowsEnv() = default;
+
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
   WindowsTelemetry telemetry_provider_;
 };
