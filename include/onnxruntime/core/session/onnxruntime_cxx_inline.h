@@ -1555,7 +1555,7 @@ inline const OrtMemoryInfo* CustomOpApi::GetTensorMemoryInfo(_In_ const OrtValue
 
 template <typename T>
 inline const T* CustomOpApi::GetTensorData(_Inout_ const OrtValue* value) {
-  return GetTensorData<T>(value);
+  return GetTensorMutableData<T>(const_cast<OrtValue*>(value));
 }
 
 inline std::vector<int64_t> CustomOpApi::GetTensorShape(const OrtTensorTypeAndShapeInfo* info) {
