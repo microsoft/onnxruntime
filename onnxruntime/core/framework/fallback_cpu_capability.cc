@@ -73,15 +73,13 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     }
 
     const KernelCreateInfo* kernel_info = kernel_lookup.LookUpKernel(*node);
-    // at least one registry has a target provider's kernel for this node
-    ORT_ENFORCE(kernel_info != nullptr);
     node_to_kernel.insert({node_id, kernel_info});
 
     // first, find all the direct consumer of cpu tensors.
     ORT_THROW_IF_ERROR(node->ForEachWithIndex(
         node->OutputDefs(),
         [&](const NodeArg& node_arg, size_t out_index) {
-          if (kernel_info->kernel_def->IsOutputOnCpu(out_index)) {
+          if (kernel_info == nullptr || kernel_info->kernel_def->IsOutputOnCpu(out_index)) {
             if (node->Name() == "Unsqueeze_983" || node->Name() == "Concat_984" || node->Name() == "Div_980") {
               printf("%s output is on CPU\n", node->Name().c_str());
             }
@@ -176,7 +174,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       }
 
       // input is a CPU tensor, but it's intended to be consumed as CPU input by the target EP
-      if (node_to_kernel[cur]->kernel_def->IsInputOnCpu(i)) {
+      if (node_to_kernel[cur] != nullptr && node_to_kernel[cur]->kernel_def->IsInputOnCpu(i)) {
         place_in_cpu = false;
         if (node->Name() == "Unsqueeze_983" || node->Name() == "Concat_984" || node->Name() == "Div_980") {
           printf("%s: input is a CPU tensor, but it's intended to be consumed as CPU input by the target EP\n", node->Name().c_str());
@@ -200,9 +198,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
         candidates.push((*it).Index());
       }
-    }
-    else
-    {
+    } else {
       if (node->Name() == "Unsqueeze_983" || node->Name() == "Concat_984" || node->Name() == "Div_980") {
         printf("Not inserting %s in cpu_nodes\n", node->Name().c_str());
       }
