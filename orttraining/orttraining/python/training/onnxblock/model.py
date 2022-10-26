@@ -10,7 +10,6 @@ import onnx
 import onnxruntime.training.onnxblock._graph_utils as graph_utils
 import onnxruntime.training.onnxblock.building_blocks as building_blocks
 import onnxruntime.training.onnxblock.model_accessor as accessor
-from onnxruntime.capi._pybind_state import get_inference_graph_outputs_metadata_string
 
 
 class Model(building_blocks.Block):

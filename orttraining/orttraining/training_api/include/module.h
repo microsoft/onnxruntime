@@ -111,8 +111,6 @@ struct Module {
   Status ExportModelForInferencing(const std::string& inference_model_path,
                                    gsl::span<const std::string> graph_output_names) const;
 
-  inline static std::string InferenceGraphOutputsMetadataString = "InferenceGraphOutputs";
-
  private:
   std::unique_ptr<onnxruntime::InferenceSession> train_sess_{nullptr};
   std::unique_ptr<onnxruntime::InferenceSession> eval_sess_{nullptr};
