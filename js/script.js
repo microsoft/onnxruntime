@@ -1104,10 +1104,10 @@ var validCombos = {
 
     //mac m1
     "mac,C-API,ARM64,CoreML":
-        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
     "mac,C#,ARM64,CoreML":
-      "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "mac,C++,ARM64,CoreML":
         "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
@@ -1116,7 +1116,7 @@ var validCombos = {
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
     
     "mac,C-API,ARM64,CoreML":
-      "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
     "mac,Python,ARM64,DefaultCPU":
         "pip install onnxruntime",
