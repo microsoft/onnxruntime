@@ -852,10 +852,4 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
     GpuDFTOperatorFactory::RegisterDFTKernel(registry);
 }
 
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 1, 12, Shape);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 13, 14, Shape);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 15, Shape);
-class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 1, 12, Size);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 13, Size);
-
 } // namespace Dml

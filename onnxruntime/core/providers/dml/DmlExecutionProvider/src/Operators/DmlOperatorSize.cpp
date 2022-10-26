@@ -31,12 +31,14 @@ public:
         const uint32_t inputDimCount = inputTensor->GetDimensionCount();
         std::vector<uint32_t> inputShape(inputDimCount);
         THROW_IF_FAILED(inputTensor->GetShape(inputDimCount, inputShape.data()));
-        uint32_t numElements = std::accumulate(inputShape.begin(), inputShape.end(), 1, std::multiplies<uint32_t>());
+        uint32_t numElements = ComputeElementCountFromDimensions(inputShape);
 
         // Write the number of elements to output data
         IMLOperatorTensor* outputTensor = outputTensors[0];
+
+        ML_CHECK_VALID_ARGUMENT(outputTensor->IsCpuData(), "Output must be a CPU tensor.");
         int64_t* outputData = reinterpret_cast<int64_t*>(outputTensor->GetData());
-        outputData[0] = (int64_t)numElements;
+        outputData[0] = static_cast<uint64_t>(numElements);
     }
 };
 

@@ -1349,23 +1349,31 @@ public:
 };
 
 class ShapeHelper {
- public:
-  template <typename Info_t, typename Shape_t>
-  ShapeHelper(const Info_t& info, const Shape_t& shape) { }
+public:
+    template <typename Info_t, typename Shape_t>
+    ShapeHelper(const Info_t& info, const Shape_t& shapeInfo)
+    {
+        Initialize(KernelInformationAdapter(info), ShapeInformationAdapter(shapeInfo));
+    }
 
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 
- protected:
+protected:
+    uint32_t m_sliceStart = 0;
+    uint32_t m_sliceEnd = 0;
+
+private:
+    void Initialize(
+        const IKernelInformationAdapter& kernelInformation,
+        const IShapeInformationAdapter& shapeInformation
+    );
 };
 
 class SizeHelper {
- public:
-  template <typename Info_t, typename Shape_t>
-  SizeHelper(const Info_t& info, const Shape_t& shape) { }
-
-  std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
-
- protected:
+public:
+    template <typename Info_t, typename Shape_t>
+    SizeHelper(const Info_t& info, const Shape_t& shapeInfo) { }
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
 using ShapeInferenceHelper_Conv = ConvHelper;

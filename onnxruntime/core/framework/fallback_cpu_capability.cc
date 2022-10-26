@@ -69,15 +69,13 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     const Node* node = graph.GetNode(node_id);
 
     const KernelCreateInfo* kernel_info = kernel_lookup.LookUpKernel(*node);
-    // at least one registry has a target provider's kernel for this node
-    ORT_ENFORCE(kernel_info != nullptr);
     node_to_kernel.insert({node_id, kernel_info});
 
     // first, find all the direct consumer of cpu tensors.
     ORT_THROW_IF_ERROR(node->ForEachWithIndex(
         node->OutputDefs(),
         [&](const NodeArg& node_arg, size_t out_index) {
-          if (kernel_info->kernel_def->IsOutputOnCpu(out_index)) {
+          if (kernel_info == nullptr || kernel_info->kernel_def->IsOutputOnCpu(out_index)) {
             cpu_output_args.insert(&node_arg);
             auto consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
             for (auto& consumer_node : consumer_nodes) {
@@ -135,7 +133,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       }
 
       // input is a CPU tensor, but it's intended to be consumed as CPU input by the target EP
-      if (node_to_kernel[cur]->kernel_def->IsInputOnCpu(i)) {
+      if (node_to_kernel[cur] != nullptr && node_to_kernel[cur]->kernel_def->IsInputOnCpu(i)) {
         place_in_cpu = false;
         break;
       }
