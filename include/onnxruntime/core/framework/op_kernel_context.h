@@ -3,7 +3,7 @@
 
 namespace onnxruntime {
 class IExecutionFrame;
-struct Stream;
+class Stream;
 namespace concurrency {
 class ThreadPool;
 }

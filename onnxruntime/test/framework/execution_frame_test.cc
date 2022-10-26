@@ -358,7 +358,7 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   CreateMLValue<float>(cpu_allocator, std::vector<int64_t>{2, 2}, std::vector<float>(4, 1.0f), &t_value);
 
   vector<OrtValue> outputs;
-  ExecutionFrame frame({x_idx}, {x_value}, {y_idx}, outputs, {}, state, nullptr);
+  ExecutionFrame frame({x_idx}, {x_value}, {y_idx}, outputs, {}, state, {});
 
   ASSERT_FALSE(frame.GetMutableNodeInputOrOutputMLValue(t_idx)->IsTensor());
   ASSERT_STATUS_OK(frame.SetOutputMLValue(t_idx, t_value));

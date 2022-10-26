@@ -24,7 +24,7 @@ class SessionState;
 class OrtValueNameIdxMap;
 struct MemoryPatternGroup;
 class NodeIndexInfo;
-struct Stream;
+class Stream;
 
 class IExecutionFrame {
  protected:

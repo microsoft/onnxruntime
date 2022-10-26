@@ -16,7 +16,7 @@ using NotificationHandle = void*;
 using StreamHandle = void*;
 
 namespace synchronize {
-struct Notification;
+class Notification;
 }
 
 // a stream abstraction which hold an opaque handle, and a reference to which OrtDevice instance this stream belong to.

@@ -644,7 +644,7 @@ void LambMultiTensorReductionFunctor<TIn1, TIn2, TOut1, TOut2, TBuf>::operator()
   TOut2* d_buffer = reinterpret_cast<TOut2*>(w_buffer + num_blocks);
 
   auto sync_range_and_lock = compute_tensor_range_and_lock(chunk_group, kernel, ort_stream);
-  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->handle) : nullptr;
+  cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   LambMultiTensorReductionImpl<TIn1, TIn2, TOut1, TOut2, TBuf>
       <<<chunk_group.chunk_count, thread_count, shared_memory_size, cuda_stream>>>(
           chunk_group, w_buffer, d_buffer, sync_range_and_lock.GpuPtr());
