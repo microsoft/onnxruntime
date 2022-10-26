@@ -8,9 +8,9 @@
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
 
-#ifndef NDEBUG
-//#define DEBUG_GENERATION 1  // uncomment it for debugging beam search
-#endif
+//#ifndef NDEBUG
+#define DEBUG_GENERATION 1  // uncomment it for debugging beam search
+//#endif
 
 namespace onnxruntime {
 
@@ -109,8 +109,8 @@ struct IGenerationParameters {
   int no_repeat_ngram_size;
   bool early_stopping;
   float presence_penalty;
-  float temperature;
-  float top_p;
+  float temperature = 1.0f;
+  float top_p = 0.0f;
   float filter_value;
 
   // Parameters from inputs

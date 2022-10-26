@@ -229,6 +229,7 @@ void TopPLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 
     std::vector<T> sorted_scores(beam_token_scores.begin(), beam_token_scores.end());
 
+    // bugbug: decending sort
     std::vector<size_t> sorted_indices(beam_token_scores.size());
     std::iota(sorted_indices.begin(), sorted_indices.end(), 0);
     std::sort(sorted_indices.begin(),

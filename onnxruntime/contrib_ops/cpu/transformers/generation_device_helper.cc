@@ -449,6 +449,8 @@ Status GreedySearchProcessLogits(
   dumper->Print("next_token_scores after logits processor", next_token_scores.data(), batch_size, 1, vocab_size);
 #endif
 
+  constexpr unsigned top_k = 1;
+
   if (do_sampling) {
     // bugbug: is this Softmax really needed?
     gsl::span<T>& next_token_probs = greedy_state->next_token_probs;
@@ -498,7 +500,6 @@ Status GreedySearchProcessLogits(
     const Tensor& input = next_token_scores_value.Get<Tensor>();
 
     constexpr int axis = 1;
-    constexpr unsigned top_k = 1;
     constexpr bool largest = true;
     constexpr bool sorted = false;
 
