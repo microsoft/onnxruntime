@@ -64,6 +64,14 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime'
 
+  - task: CmdLine@2
+    displayName: 'Delete Unnecessary Files'
+    inputs:
+      script: |
+        rm -rf $(Build.BinariesDirectory)/RelWithDebInfo/onnxruntime $(Build.BinariesDirectory)/RelWithDebInfo/pybind11
+        rm -f $(Build.BinariesDirectory)/RelWithDebInfo/CMakeFiles
+        rm -rf $(Build.BinariesDirectory)/RelWithDebInfo/_deps
+
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Artifact'
     inputs:
