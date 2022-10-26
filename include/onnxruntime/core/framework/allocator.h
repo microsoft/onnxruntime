@@ -134,6 +134,9 @@ class IAllocator {
      @param allocator The allocator.
      @param count_or_bytes The exact bytes to allocate if T is void, otherwise the number of elements to allocate.
      @param use_reserve If true, call Reserve() instead of Alloc() to allocate memory.
+     @param stream Which stream instance allocated chunk will be used with.
+     @param wait_fn If the allocator want to dynamic reuse a chunk from another stream, use this wait_fn to sync on
+                    the target stream to make the reuse safe.
      @returns std::unique_ptr with allocated memory and deleter.
   */
   template <typename T>

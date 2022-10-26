@@ -81,13 +81,22 @@ class ParallelPlannerContext : public SequentialPlannerContext {
   explicit ParallelPlannerContext() : SequentialPlannerContext(ExecutionMode::ORT_PARALLEL, ExecutionOrder::DEFAULT, false) {}
 };
 
+// Given a graph with node placement information, partition the nodes into multiple sequence.
+// Each sequence can be executed in-dependently. The nodes in each sequence are executed in order,
+// but we can't assume any execution order between sequences, unless there is a data dependency.
 class INodePartitioner {
  public:
+  // DummyPartition is the default partition, which group the nodes based on the device information.
+  // i.e., given a graph which has CPU EP nodes, Cuda EP nodes and TRT EP nodes,
+  // it will be partitioned as two sequences, one is for CPU EP nodes, another is for TRT and Cuda nodes.
+  // We will add more optimized partitioner later.
   enum NodePartitionerType {
     DummyPartition = 0,
     Unknown,
   };
   virtual ~INodePartitioner(){};
+  // create the partition based on the partition type.
+  // if a configuration file is given, perform the partition based on the user configuration.
   static std::unique_ptr<INodePartitioner> CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file = "");
   virtual void PartitionNodes(const onnxruntime::GraphViewer& graph_viewer, const ExecutionProviders& execution_providers, std::vector<InlinedVector<NodeIndex>>& stream_nodes) = 0;
   Status GetStatus() const { return status_; }
