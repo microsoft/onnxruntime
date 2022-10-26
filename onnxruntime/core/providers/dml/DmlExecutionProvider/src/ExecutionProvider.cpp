@@ -677,14 +677,9 @@ namespace Dml
             if (IsNodeSupportedByDml(node, kernel_lookup, deviceDataTypeMask)
                 && cpuPreferredNodes.find(nodeIndex) == cpuPreferredNodes.end())
             {
-                printf("*************Placed on DML: %s\n", node.Name().c_str());
                 std::unique_ptr<onnxruntime::IndexedSubGraph> subGraph = std::make_unique<onnxruntime::IndexedSubGraph>();
                 subGraph->nodes = {nodeIndex};
                 result.push_back(std::make_unique<onnxruntime::ComputeCapability>(std::move(subGraph)));
-            }
-            else
-            {
-                printf("*************Placed on CPU: %s\n", node.Name().c_str());
             }
         }
         return result;
