@@ -19,6 +19,20 @@ limitations under the License.
 
 namespace onnxruntime {
 
+std::ostream& operator<<(std::ostream& os, const LogicalProcessors& aff) {
+  os << "{";
+  std::copy(aff.cbegin(), aff.cend(), std::ostream_iterator<int>(os, ", "));
+  return os << "}";
+}
+
+std::ostream& operator<<(std::ostream& os, gsl::span<const LogicalProcessors> affs) {
+  os << "{";
+  for (const auto& aff : affs) {
+    os << aff;
+  }
+  return os << "}";
+}
+
 Env::Env() = default;
 
 }  // namespace onnxruntime
