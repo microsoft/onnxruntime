@@ -115,6 +115,13 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
+        chmod +x $(Build.BinariesDirectory)/RelWithDebInfo/onnxruntime_test_all
+      workingDirectory: $(Build.SourcesDirectory)
+    displayName: 'Prepare For Unit Test'
+
+  - task: CmdLine@2
+    inputs:
+      script: |
         docker run --rm \
           -e HIP_VISIBLE_DEVICES \
           --privileged \
