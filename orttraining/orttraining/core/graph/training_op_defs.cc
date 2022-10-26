@@ -2637,7 +2637,6 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(QuickGeluGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("QuickGeluGrad")
       .Attr("alpha", "Alpha value.", AttributeProto::FLOAT, 1.702f)
       .AllowUncheckedAttributes()
@@ -2646,28 +2645,7 @@ Example 4:
       .Output(0, "dX", "Gradient of the input.", "T")
       .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
                       "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
-      .SetContextDependentFunctionBodyBuilder(
-          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-            auto* tp = ctx.getInputType(0);
-            if ((tp == nullptr) || (!tp->has_tensor_type())) return false;
-            auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
-            auto* alpha_attr = ctx.getAttribute("alpha");
-            float alpha = (alpha_attr != nullptr) ? alpha_attr->f() : 1.702f;
-            std::vector<FunctionBodyHelper::NodeDef> body{ONNX_NAMESPACE::Const("Alpha", alpha, elem_type),
-                                                          ONNX_NAMESPACE::Const("One", 1.f, elem_type),
-                                                          {{"CX"}, "Mul", {"Alpha", "X"}},
-                                                          {{"SigmoidCX"}, "Sigmoid", {"CX"}},
-                                                          {{"OneMinusSigmoidCX"}, "Sub", {"One", "SigmoidCX"}},
-                                                          {{"Mul1"}, "Mul", {"CX", "SigmoidCX"}},
-                                                          {{"Mul2"}, "Mul", {"Mul1", "OneMinusSigmoidCX"}},
-                                                          {{"Add1"}, "Add", {"Mul2", "SigmoidCX"}},
-                                                          {{"dX"}, "Mul", {"dY", "Add1"}}};
-            OperatorSetIdProto onnx_opset_13;
-            onnx_opset_13.set_domain("");
-            onnx_opset_13.set_version(13);
-            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
-          });
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(TanhGrad)
       .SetDomain(kMSDomain)

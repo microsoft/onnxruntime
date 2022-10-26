@@ -31,7 +31,7 @@ Status QuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     float alpha = 1.0f;
     if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7, 13, 14}) &&
         graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) && node.GetOutputEdgesCount() == 1) {
-      for (auto i = 0; i < 2; ++i) {
+      for (int i = 0; i < static_cast<int>(node.InputDefs().size()); ++i) {
         const NodeArg& input_arg = *(node.InputDefs()[i]);
         if (!optimizer_utils::IsScalar(input_arg)) continue;
         const TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
@@ -56,6 +56,9 @@ Status QuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     NodeArg* quick_gelu_input_arg = nullptr;
     Node* p_sigmoid_node = p_node;
+    // If alpha_index is not -1, it means the node is Mul node and it has a scalar input.
+    // We expect the output of Mul node is consumed by a Sigmoid node.
+    // If alpha_index is -1, it means current node is expected to be a Sigmoid node.
     if (alpha_index != -1) {
       quick_gelu_input_arg = node.MutableInputDefs()[(alpha_index + 1) % 2];
       nodes_to_fuse.emplace_back(node);
