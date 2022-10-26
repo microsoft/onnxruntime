@@ -21,7 +21,7 @@ struct OrtValue;
 
 namespace onnxruntime {
 
-//TODO:ensure dtype_!=nullptr
+// TODO:ensure dtype_!=nullptr
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #ifdef HAS_NULL_DEREFERENCE
@@ -35,10 +35,9 @@ namespace onnxruntime {
   it, and won't do any allocation / release.
 */
 
-using BufferCreateFn = std::function<void*(size_t)>;
-
 class Tensor final {
  public:
+  using BufferCreateFn = std::function<void*(size_t)>;
 
   // NB! Removing Create() methods returning unique_ptr<Tensor>. Still available in other EPs that are dynamically linked.
   // Strive not to allocate Tensor with new/delete as it is a shallow class and using it by value is just fine.
@@ -101,8 +100,8 @@ class Tensor final {
 
   static void InitOrtValue(MLDataType elt_type,
                            const TensorShape& shape,
-                           const OrtMemoryInfo& alloc_info, 
-                           BufferCreateFn create_fn, 
+                           const OrtMemoryInfo& alloc_info,
+                           BufferCreateFn create_fn,
                            BufferFreeFn delete_fn,
                            OrtValue& ort_value,
                            gsl::span<const int64_t> strides = {});
@@ -127,7 +126,7 @@ class Tensor final {
 
   ~Tensor();
 
-  //Move is allowed
+  // Move is allowed
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(Tensor);
 
   Tensor(Tensor&& other) noexcept;

@@ -137,7 +137,7 @@ class ExecutionFrame final : public IExecutionFrame {
                  // optional custom allocators. key is index in fetches
                  const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                  const SessionState& session_state,
-                 const std::vector<Stream*>* device_streams);
+                 gsl::span<Stream*> device_streams);
 
   ~ExecutionFrame() override;
 
@@ -235,7 +235,7 @@ class ExecutionFrame final : public IExecutionFrame {
   // It is never updated after creation
   const InlinedHashMap<int, TensorShape>* inferred_shapes_{nullptr};
 
-  const std::vector<Stream*>* device_streams_;
+  gsl::span<Stream*> device_streams_;
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Size of virtual memory allocated before any kernel execution.

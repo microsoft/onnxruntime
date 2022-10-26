@@ -1,67 +1,19 @@
 #pragma once
 #include "core/common/logging/logging.h"
+#include "core/framework/device_stream_collection.h"
+#include "core/framework/execution_frame.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/stream_handles.h"
 #include "core/graph/basic_types.h"
 #include "core/common/inlined_containers.h"
+#include "core/framework/memory_info.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #endif
 
 namespace onnxruntime {
 class SessionState;
-class IExecutionFrame;
-class ExecutionFrame;
-
-using OrtValueIndex = int;
-
-struct ReleasePlan {
-  std::unique_ptr<std::atomic_int[]> value_ref_counts_;
-};
-
-class DeviceStreamCollectionImpl;
-class DeviceStreamCollection {
- public:
-  DeviceStreamCollection(size_t num_streams, const SessionState& sess_state);
-  ~DeviceStreamCollection();
-  void SetDeviceStream(size_t, std::unique_ptr<Stream> stream);
-  void SetDeviceStream(size_t, Stream* stream);
-  const std::vector<Stream*>& GetStreams() const;
-  size_t NumStreams() const;
-  Status CleanUp();
-
- private:
-  std::unique_ptr<DeviceStreamCollectionImpl> impl_;
-};
-
-/*
- * LIMITATION:
- * CountDownBarrier is only for scenario that the v is set
- * to the # of consumers and each consumer calls Dec() exactly once.
- */
-class CountDownBarrier {
- public:
-  CountDownBarrier() : v_{0} {};
-
-  void Set(int32_t v) {
-    ORT_ENFORCE(v >= 0);
-    v_.store(v, std::memory_order_relaxed);
-  }
-
-  bool Dec() {
-    return v_.fetch_sub(1, std::memory_order_relaxed) == 1;
-  }
-
-  int32_t Get() { return v_.load(std::memory_order_relaxed); }
-
-  void Inc() {
-    ++v_;
-  }
-
- private:
-  std::atomic_int_fast32_t v_;
-};
 
 class SessionScope;
 typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
@@ -72,6 +24,34 @@ typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 // TODO: if we merge the notifications to execution frame, we might don't need this.
 class ExecutionContext {
  public:
+  /*
+   * LIMITATION:
+   * CountDownBarrier is only for scenario that the v is set
+   * to the # of consumers and each consumer calls Dec() exactly once.
+   */
+  class CountDownBarrier {
+   public:
+    CountDownBarrier() : v_{0} {};
+
+    void Set(int32_t v) {
+      ORT_ENFORCE(v >= 0);
+      v_.store(v, std::memory_order_relaxed);
+    }
+
+    bool Dec() {
+      return v_.fetch_sub(1, std::memory_order_relaxed) == 1;
+    }
+
+    int32_t Get() { return v_.load(std::memory_order_relaxed); }
+
+    void Inc() {
+      ++v_;
+    }
+
+   private:
+    std::atomic_int_fast32_t v_;
+  };
+
   ExecutionContext(const SessionState& sess_state,
                    int32_t num_streams,
                    gsl::span<const size_t> notification_owners,
@@ -88,18 +68,12 @@ class ExecutionContext {
 
   const logging::Logger& GetLogger() const;
 
-  ExecutionFrame* GetExecutionFrame();
+  ExecutionFrame& GetExecutionFrame();
 
   synchronize::Notification* GetNotification(size_t idx);
 
-  const bool* TerminateFlag() const;
-
   void SetLogger(const logging::Logger& current_logger) {
-    logger = &current_logger;
-  }
-
-  void SetTerminateFlag(const bool* terminate_flag) {
-    terminate_flag_ = terminate_flag;
+    logger_ = &current_logger;
   }
 
   const Status& TaskStatus() const;
@@ -160,15 +134,14 @@ class ExecutionContext {
 #endif
 
  private:
-  const SessionState* session_state;
-  std::unique_ptr<ExecutionFrame> frame;
-  const logging::Logger* logger;
-  InlinedVector<std::unique_ptr<synchronize::Notification>> notifications;
-  std::unique_ptr<ReleasePlan> release_plan;
+  const SessionState* session_state_;
+  ExecutionFrame frame_;
+  const logging::Logger* logger_;
+  InlinedVector<std::unique_ptr<synchronize::Notification>> notifications_;
+  std::unique_ptr<std::atomic_int[]> release_plan_;
   const DeviceStreamCollection& device_stream_map_;
   std::vector<CountDownBarrier> count_down_barriers_;
   CountDownBarrier remain_tasks_;
-  const bool* terminate_flag_ = nullptr;
   Status task_status_{Status::OK()};
   SessionScope* session_scope_{};
 #ifdef ENABLE_TRAINING
@@ -183,8 +156,9 @@ class ExecutionContext {
 
 using NotificationIndex = size_t;
 
-void RunSince(size_t stream_idx, ExecutionContext& ctx, size_t since);
+void RunSince(size_t stream_idx, ExecutionContext& ctx, const bool& terminate_flag, size_t since);
 void ScheduleDownstream(ExecutionContext& ctx,
                         size_t trigger,
-                        bool single_thread_mode);
+                        bool single_thread_mode,
+                        const bool& terminate_flag);
 }  // namespace onnxruntime

@@ -135,7 +135,10 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
   BarrierStep(size_t id) : SequentialExecutionPlan::ExecutionStep(),
                            barrier_id{id} {}
 
-  Status Execute(ExecutionContext* ctx, size_t /*stream_idx*/, bool& continue_flag) override {
+  Status Execute(ExecutionContext* ctx,
+                 size_t /*stream_idx*/,
+                 const bool& /*terminate_flag*/,
+                 bool& continue_flag) override {
     continue_flag = ctx->DecCountDownBarrier(barrier_id);
     return Status::OK();
   }
@@ -156,7 +159,10 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
                                                                    wait_handle(handle),
                                                                    notification_idx(idx) {}
 
-  Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) override {
+  Status Execute(ExecutionContext* ctx,
+                 size_t stream_idx,
+                 const bool& /*terminate_flag*/,
+                 bool& continue_flag) override {
     ORT_ENFORCE(wait_handle, "WaitOnEPStep.wait_handle is null");
     wait_handle(*ctx->GetDeviceStream(stream_idx), *ctx->GetNotification(notification_idx));
     // update streams clock status
@@ -184,7 +190,10 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
   LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(),
                                       node_index{index} {}
 
-  Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) override {
+  Status Execute(ExecutionContext* ctx,
+                 size_t stream_idx,
+                 const bool& terminate_flag,
+                 bool& continue_flag) override {
     if (!continue_flag) {
       LOGS(ctx->GetLogger(), WARNING) << "Exiting due to terminate flag being set to true.";
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
@@ -196,7 +205,7 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
       return Status::OK();
     }
 #endif
-    onnxruntime::Status status = ExecuteKernel(*ctx, node_index, stream_idx);
+    onnxruntime::Status status = ExecuteKernel(*ctx, node_index, stream_idx, terminate_flag);
     continue_flag = status.IsOK();
     return status;
   }
@@ -216,7 +225,10 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
   ActivateNotificationStep(NotificationIndex notification_index) : SequentialExecutionPlan::ExecutionStep(),
                                                                    notification_idx(notification_index) {}
 
-  Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) override {
+  Status Execute(ExecutionContext* ctx,
+                 size_t stream_idx,
+                 const bool& /*terminate_flag*/,
+                 bool& continue_flag) override {
     if (ctx->GetNotification(notification_idx)) {
       ctx->GetNotification(notification_idx)->ActivateAndUpdate();
     }
@@ -240,8 +252,11 @@ class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
   TriggerDownstreamStep(size_t trigger_point_index) : SequentialExecutionPlan::ExecutionStep(),
                                                       trigger_point_index(trigger_point_index) {}
 
-  Status Execute(ExecutionContext* ctx, size_t /*stream_idx*/, bool& continue_flag) override {
-    ScheduleDownstream(*ctx, trigger_point_index, ctx->SingleThreadMode());
+  Status Execute(ExecutionContext* ctx,
+                 size_t /*stream_idx*/,
+                 const bool& terminate_flag,
+                 bool& continue_flag) override {
+    ScheduleDownstream(*ctx, trigger_point_index, ctx->SingleThreadMode(), terminate_flag);
     continue_flag = true;
     return Status::OK();
   }
@@ -276,8 +291,7 @@ class PlannerImpl {
         outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
-  Status CreatePlan(const ExecutionProviders& execution_providers,
-                    const IStreamCommandHandleRegistry& stream_handle_registry,
+  Status CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
                     /*const ProviderStreamMap& provider_stream_map,
                     const OpStreamMap& op_stream_map,*/
                     const std::string& partition_config_file,
@@ -1447,7 +1461,7 @@ class PlannerImpl {
 
   Status ComputeReusePlan() {
     auto* backup_context = context_;
-    ParalllelPlannerContext parallel_context;
+    ParallelPlannerContext parallel_context;
     if (!IsSingleStream()) {
       // use parallel execution context to generate a baseline first (no memory sharing)
       context_ = &parallel_context;
@@ -2224,14 +2238,13 @@ class PlannerImpl {
 #endif
 };
 
-Status PlannerImpl::CreatePlan(const ExecutionProviders& execution_providers,
-                               const IStreamCommandHandleRegistry& stream_handle_registry,
+Status PlannerImpl::CreatePlan(const IStreamCommandHandleRegistry& stream_handle_registry,
                                /*const ProviderStreamMap& provider_stream_map,
                                const OpStreamMap& op_stream_map,*/
                                const std::string& partition_config_file,
                                const logging::Logger& logger) {
   // 1. partition graph into streams
-  PartitionIntoStreams(logger, execution_providers, partition_config_file);
+  PartitionIntoStreams(logger, execution_providers_, partition_config_file);
 
   // 2. initialize the plan based on stream partition result
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
@@ -2243,7 +2256,7 @@ Status PlannerImpl::CreatePlan(const ExecutionProviders& execution_providers,
   ORT_RETURN_IF_ERROR(ComputePlanForInputsAndWeights());
 
   // build execution plan
-  ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers, stream_handle_registry));
+  ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_, stream_handle_registry));
 
   // build value_node_map
   for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {
@@ -2297,7 +2310,6 @@ Status SequentialPlanner::CreatePlan(
     const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
-    const ExecutionProviders& execution_providers,
     const IStreamCommandHandleRegistry& stream_handle_registry,
     const std::string& partition_config_file,
     const logging::Logger& logger,
@@ -2310,8 +2322,7 @@ Status SequentialPlanner::CreatePlan(
                       outer_scope_node_arg_to_location_map,
                       ort_value_name_idx_map, context, *plan);
 
-  return planner.CreatePlan(execution_providers,
-                            stream_handle_registry,
+  return planner.CreatePlan(stream_handle_registry,
                             /*provider_stream_map,
                             op_stream_map,*/
                             partition_config_file,

@@ -20,7 +20,7 @@ Status KernelRegistryManager::CreateKernel(const Node& node,
                                            SessionState& session_state,
                                            const KernelCreateInfo& kernel_create_info,
                                            std::unique_ptr<OpKernel>& out) const {
-  //auto* parallel_execution_plan = session_state.GetParalllelExecutionPlan();
+  // auto* parallel_execution_plan = session_state.GetParallelExecutionPlan();
   OpKernelInfo kernel_info(node, *kernel_create_info.kernel_def, execution_provider,
                            session_state.GetConstantInitializedTensors(),
                            session_state.GetOrtValueNameIdxMap(),

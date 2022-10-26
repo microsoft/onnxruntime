@@ -340,7 +340,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
                                gsl::span<const int> fetch_mlvalue_idxs, gsl::span<const OrtValue> fetches,
                                const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                const SessionState& session_state,
-                               const std::vector<Stream*>* device_streams)
+                               gsl::span<Stream*> device_streams)
     : IExecutionFrame(session_state.GetOrtValueNameIdxMap(), session_state.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       session_state_(session_state),
       mem_patterns_(nullptr),
@@ -484,12 +484,12 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, i
 }
 
 Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const {
-  // auto& value_to_stream_map = session_state_.GetConstParalllelExecutionPlan().GetValueToStreamMap();
+  // auto& value_to_stream_map = session_state_.GetConstParallelExecutionPlan().GetValueToStreamMap();
   // auto& value_to_stream_map = const_cast<SessionState&>(session_state_).GetTheExecutionPlan()->GetValueToStreamMap();
   const auto& value_to_stream_map = const_cast<SessionState&>(session_state_).GetExecutionPlan()->GetValueToStreamMap();
   auto it = value_to_stream_map.find(ort_value_idx);
-  if (it != value_to_stream_map.end() && device_streams_ && it->second < device_streams_->size()) {
-    return (*device_streams_)[it->second];
+  if (it != value_to_stream_map.end() && it->second < device_streams_.size()) {
+    return device_streams_[it->second];
   }
   return nullptr;
 }

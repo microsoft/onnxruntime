@@ -87,8 +87,8 @@ ExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<cons
         // partial executor in training can only be run with single thread
         true);
   } else {
-    execution_context_->GetExecutionFrame()->UpdateFeeds(feed_mlvalue_idxs, feeds);
-    execution_context_->GetExecutionFrame()->UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());
+    execution_context_->GetExecutionFrame().UpdateFeeds(feed_mlvalue_idxs, feeds);
+    execution_context_->GetExecutionFrame().UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());
     execution_context_->SetLogger(sess_logger);
   }
 

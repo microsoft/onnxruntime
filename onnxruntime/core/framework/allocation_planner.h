@@ -76,9 +76,9 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
   bool enable_memory_reuse_ = true;
 };
 
-class ParalllelPlannerContext : public SequentialPlannerContext {
+class ParallelPlannerContext : public SequentialPlannerContext {
  public:
-  explicit ParalllelPlannerContext() : SequentialPlannerContext(ExecutionMode::ORT_PARALLEL, ExecutionOrder::DEFAULT, false) {}
+  explicit ParallelPlannerContext() : SequentialPlannerContext(ExecutionMode::ORT_PARALLEL, ExecutionOrder::DEFAULT, false) {}
 };
 
 class INodePartitioner {
@@ -115,7 +115,6 @@ class SequentialPlanner {
       const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map,
       const OrtValueNameIdxMap& ort_value_name_idx_map,
       const ISequentialPlannerContext& context,
-      const ExecutionProviders& execution_providers,
       const IStreamCommandHandleRegistry& stream_handle_registry,
       const std::string& partition_config_file,
       const logging::Logger& logger,

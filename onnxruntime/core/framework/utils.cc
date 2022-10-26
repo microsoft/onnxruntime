@@ -595,7 +595,7 @@ ExecuteGraphImpl(const SessionState& session_state,
                  const FeedsFetchesManager& feeds_fetches_manager,
                  gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                  const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                 ExecutionMode execution_mode, const bool* terminate_flag,
+                 ExecutionMode execution_mode, const bool& terminate_flag,
                  const logging::Logger& logger, const bool only_execute_path_to_fetches = false,
                  Stream* parent_stream = nullptr) {
   const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
@@ -643,7 +643,7 @@ ExecuteGraphImpl(const SessionState& session_state,
       // TODO: we can pre-calculate the stream index for graph inputs in execution plan
       for (auto& copy_info : feed_copy_info) {
         auto& device = copy_info.target_device;
-        auto& streams = device_stream_collection.GetStreams();
+        auto streams = device_stream_collection.GetStreams();
         bool found = false;
         for (auto* stream : streams) {
           if (stream && stream->GetDevice().Type() == device.Type()) {
@@ -691,7 +691,7 @@ ExecuteGraphImpl(const SessionState& session_state,
     InlinedVector<Stream*> fetches_streams;
     fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
-    auto& device_streams = device_stream_collection.GetStreams();
+    auto device_streams = device_stream_collection.GetStreams();
     for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
       auto it = value_to_stream_map.find(fetch_idx);
       if (it != value_to_stream_map.end()) {
@@ -723,7 +723,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, &terminate_flag, logger, only_execute_path_to_fetches, parent_stream);
+                                 execution_mode, terminate_flag, logger, only_execute_path_to_fetches, parent_stream);
 
   return status;
 }
@@ -755,7 +755,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                      feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
                                      logger,
                                      device_stream_collection,
-                                     &terminate_flag,
+                                     terminate_flag,
                                      // single thread mode
                                      single_thread_mode,
                                      state,
@@ -773,7 +773,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
       // TODO: we can pre-calculate the stream index for graph inputs in execution plan
       for (auto& copy_info : feed_copy_info) {
         auto& device = copy_info.target_device;
-        auto& streams = device_stream_collection.GetStreams();
+        auto streams = device_stream_collection.GetStreams();
         bool found = false;
         for (auto* stream : streams) {
           if (stream && stream->GetDevice().Type() == device.Type()) {
@@ -813,7 +813,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                               feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, {},
                                               logger,
                                               device_stream_collection,
-                                              &terminate_flag,
+                                              terminate_flag,
                                               // single thread mode
                                               single_thread_mode,
                                               state,
@@ -822,7 +822,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
     InlinedVector<Stream*> fetches_streams;
     fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
     auto& value_to_stream_map = execution_plan->value_to_stream_map;
-    auto& device_streams = device_stream_collection.GetStreams();
+    auto device_streams = device_stream_collection.GetStreams();
     for (auto fetch_idx : feeds_fetches_info.fetches_mlvalue_idxs) {
       auto it = value_to_stream_map.find(fetch_idx);
       if (it != value_to_stream_map.end()) {
@@ -847,7 +847,7 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool* terminate_flag, const logging::Logger& logger,
+                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                                Stream* parent_stream) {
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
                                  execution_mode, terminate_flag, logger, false, parent_stream);

@@ -102,7 +102,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   class ExecutionStep {
    public:
     virtual ~ExecutionStep() {}
-    virtual Status Execute(ExecutionContext* ctx, size_t stream_idx, bool& continue_flag) = 0;
+    virtual Status Execute(ExecutionContext* ctx, size_t stream_idx, const bool& terminate_flag, bool& continue_flag) = 0;
     virtual std::string Dump() const = 0;
   };
 

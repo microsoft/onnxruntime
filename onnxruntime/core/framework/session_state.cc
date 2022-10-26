@@ -1357,7 +1357,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     subgraphs_kernel_create_info_maps,
                                                     outer_scope_node_arg_to_location_map,
                                                     ort_value_name_idx_map_, context,
-                                                    this->GetExecutionProviders(),
                                                     this->GetStreamHandleRegistryInstance(),
                                                     /*provider_stream_map,
                                                     read_op_map_from_str(session_options.grouped_ops),*/

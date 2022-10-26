@@ -15,8 +15,8 @@ using NotificationHandle = void*;
 // it can be either a cuda stream, or even nullptr for device doesn't have stream support like cpu.
 using StreamHandle = void*;
 
-// a stream abstraction which hold an opaque handle, and a reference to which EP instance this stream belong to.
-// it need to be EP instance as we might have different stream on different EP with same type.
+// a stream abstraction which hold an opaque handle, and a reference to which OrtDevice instance this stream belong to.
+// it need to be OrtDevice instance as we might have different stream on different OrtDevice with same type.
 // i.e. different cuda stream on different GPU.
 namespace synchronize {
 struct Notification;
