@@ -52,12 +52,12 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
     if (typeof pathOrBuffer === 'string') {
       if (typeof fetch === 'undefined') {
         // node
-        let model = await promisify(readFile)(pathOrBuffer);
+        const model = await promisify(readFile)(pathOrBuffer);
         [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
       } else {
         // browser
         // fetch model and move to wasm heap.
-        let modelData : SerializableModeldata = await this.createSessionAllocate(pathOrBuffer);
+        const modelData : SerializableModeldata = await this.createSessionAllocate(pathOrBuffer);
         // create the session
         [this.sessionId, this.inputNames, this.outputNames] = await createSessionFinalize(modelData, options);
       }
