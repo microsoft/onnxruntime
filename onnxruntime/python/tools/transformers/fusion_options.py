@@ -19,6 +19,7 @@ class FusionOptions:
         self.enable_gelu = True
         self.enable_layer_norm = True
         self.enable_attention = True
+        self.merge_qkv_weights = True  # Use merged weights for Q/K/V projection in Attention.
         self.enable_skip_layer_norm = True
         self.enable_embed_layer_norm = True
         self.enable_bias_skip_layer_norm = True
@@ -51,6 +52,10 @@ class FusionOptions:
             options.enable_layer_norm = False
         if args.disable_attention:
             options.enable_attention = False
+        if args.no_merge_qkv_weights:
+            if args.model_type == "bert":
+                raise ValueError(f"--no_merge_qkv_weights is not implemented for model type {args.model_type}")
+            options.merge_qkv_weights = False
         if args.disable_skip_layer_norm:
             options.enable_skip_layer_norm = False
         if args.disable_embed_layer_norm:
@@ -158,3 +163,11 @@ class FusionOptions:
             help="no attention mask. Only works for model_type=bert",
         )
         parser.set_defaults(no_attention_mask=False)
+
+        parser.add_argument(
+            "--no_merge_qkv_weights",
+            required=False,
+            action="store_true",
+            help="exclude MatMul weights in attention. Use separated query, key and value inputs instead.",
+        )
+        parser.set_defaults(no_merge_qkv_weights=False)

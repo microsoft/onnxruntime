@@ -18,14 +18,18 @@ from onnx import TensorProto, load_model
 from parity_utilities import find_transformers_source
 from transformers import is_tf_available
 
+import onnxruntime
+
 if find_transformers_source():
     from benchmark_helper import ConfigModifier, OptimizerInfo, Precision
+    from fusion_options import FusionOptions
     from huggingface_models import MODELS
     from onnx_exporter import export_onnx_model_from_pt, export_onnx_model_from_tf
     from onnx_model import OnnxModel
     from optimizer import optimize_model
 else:
     from onnxruntime.transformers.benchmark_helper import ConfigModifier, OptimizerInfo, Precision
+    from onnxruntime.transformers.fusion_options import FusionOptions
     from onnxruntime.transformers.huggingface_models import MODELS
     from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt, export_onnx_model_from_tf
     from onnxruntime.transformers.onnx_model import OnnxModel
@@ -47,6 +51,18 @@ TEST_MODELS = {
 }
 
 
+TINY_MODELS = {
+    "hf-internal-testing/tiny-bert": (
+        ["input_ids", "attention_mask", "token_type_ids"],
+        12,
+        False,
+        "bert",
+    ),
+    "sshleifer/tiny-gpt2": (["input_ids"], 11, False, "gpt2"),
+    "sshleifer/tiny-distilbert-base-cased": (["input_ids", "attention_mask"], 11, False, "bert"),
+}
+
+
 def _get_test_model_path(name):
     sub_dir, file = TEST_MODELS[name]
     if sub_dir == "FUSION":
@@ -56,6 +72,15 @@ def _get_test_model_path(name):
 
 
 class TestModelOptimization(unittest.TestCase):
+    def setUp(self):
+        self.tiny_bert = "hf-internal-testing/tiny-bert"
+        self.tiny_gpt2 = "sshleifer/tiny-gpt2"
+        self.tiny_distilbert = "sshleifer/tiny-distilbert-base-cased"
+
+    def tearDown(self):
+        shutil.rmtree("./onnx_models", ignore_errors=True)
+        super().tearDown()
+
     def verify_node_count(self, onnx_model, expected_node_count, test_name):
         for op_type, count in expected_node_count.items():
             if len(onnx_model.get_nodes_by_op_type(op_type)) != count:
@@ -66,37 +91,38 @@ class TestModelOptimization(unittest.TestCase):
                 self.assertEqual(len(onnx_model.get_nodes_by_op_type(op_type)), count)
 
     # add test function for huggingface pytorch model
-    def _test_optimizer_on_huggingface_model(
+    def run_optimizer_on_huggingface_model(
         self,
         model_name,
         expected_fusion_result_list,
         inputs_count=1,
         validate_model=True,
+        use_gpu=False,
+        fusion_options=None,
     ):
-        # Remove cached model so that CI machine will have space
-        shutil.rmtree("./cache_models", ignore_errors=True)
         shutil.rmtree("./onnx_models", ignore_errors=True)
+
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
 
-        input_names = MODELS[model_name][0]
+        model = MODELS[model_name] if model_name in MODELS else TINY_MODELS[model_name]
+        input_names = model[0]
 
         config_modifier = ConfigModifier(None)
-        fusion_options = None
         model_class = "AutoModel"
         with torch.no_grad():
             _, is_valid_onnx_model, _, _ = export_onnx_model_from_pt(
                 model_name,
-                MODELS[model_name][1],  # opset version
-                MODELS[model_name][2],  # use_external_data_format
-                MODELS[model_name][3],  # optimization model type
+                model[1],  # opset version
+                model[2],  # use_external_data_format
+                model[3],  # optimization model type
                 model_class,
                 config_modifier,
-                "./cache_models",
+                None if model_name in TINY_MODELS else "./cache_models",  # Use default folder for tiny models for CI.
                 "./onnx_models",
                 input_names[:inputs_count],
-                False,
+                use_gpu,
                 Precision.FLOAT32,
                 OptimizerInfo.BYSCRIPT,
                 True,
@@ -105,10 +131,17 @@ class TestModelOptimization(unittest.TestCase):
                 model_fusion_statistics,
                 fusion_options,
             )
-
         onnx_model = list(model_fusion_statistics.keys())[0]
-        fusion_result_list = list(model_fusion_statistics[onnx_model].values())
-
+        optimized_ops = [
+            "EmbedLayerNormalization",
+            "Attention",
+            "Gelu",
+            "FastGelu",
+            "BiasGelu",
+            "LayerNormalization",
+            "SkipLayerNormalization",
+        ]
+        fusion_result_list = [model_fusion_statistics[onnx_model][key] for key in optimized_ops]
         if validate_model:
             self.assertEqual(is_valid_onnx_model, True)
         self.assertEqual(fusion_result_list, expected_fusion_result_list)
@@ -185,67 +218,80 @@ class TestModelOptimization(unittest.TestCase):
 
     @pytest.mark.slow
     def test_huggingface_bert_fusion_1(self):
-        self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=1)
+        self.run_optimizer_on_huggingface_model(self.tiny_bert, [1, 2, 0, 0, 2, 0, 4], inputs_count=1)
 
     @pytest.mark.slow
     def test_huggingface_bert_fusion_2(self):
-        self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=2)
+        self.run_optimizer_on_huggingface_model(self.tiny_bert, [1, 2, 0, 0, 2, 0, 4], inputs_count=2)
 
-    @pytest.mark.slow
     def test_huggingface_bert_fusion_3(self):
-        self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=3)
+        self.run_optimizer_on_huggingface_model(self.tiny_bert, [1, 2, 0, 0, 2, 0, 4], inputs_count=3)
 
     @pytest.mark.slow
-    def test_huggingface_openaigpt_fusion(self):
-        self._test_optimizer_on_huggingface_model("openai-gpt", [0, 12, 0, 12, 0, 24, 0])
+    def test_huggingface_bert_fusion_no_attention_merged_weights(self):
+        fusion_options = FusionOptions("bert")
+        fusion_options.merge_qkv_weights = False
+        use_gpu = "CUDAExecutionProvider" in onnxruntime.get_available_providers()
+        self.run_optimizer_on_huggingface_model(
+            self.tiny_bert,
+            [1, 2, 0, 0, 2, 0, 4],
+            inputs_count=3,
+            validate_model=use_gpu,  # Separated Q/K/V is supported in CUDA only.
+            use_gpu=use_gpu,
+            fusion_options=fusion_options,
+        )
+
+    @pytest.mark.slow
+    def test_huggingface_distillbert_fusion(self):
+        self.run_optimizer_on_huggingface_model(self.tiny_distilbert, [1, 2, 0, 0, 2, 0, 4], inputs_count=1)
+        self.run_optimizer_on_huggingface_model(self.tiny_distilbert, [1, 2, 0, 0, 2, 0, 4], inputs_count=2)
 
     @pytest.mark.slow
     @unittest.skip("skip failed fusion test of gpt-2 on PyTorch 1.12 and transformers 4.18. TODO: fix it")
     def test_huggingface_gpt2_fusion(self):
-        self._test_optimizer_on_huggingface_model("gpt2", [0, 12, 0, 12, 0, 25, 0])
+        self.run_optimizer_on_huggingface_model(self.tiny_gpt2, [0, 12, 0, 12, 0, 25, 0])
+
+    @pytest.mark.slow
+    def test_huggingface_openaigpt_fusion(self):
+        self.run_optimizer_on_huggingface_model("openai-gpt", [0, 12, 0, 12, 0, 24, 0])
 
     @pytest.mark.slow
     @unittest.skip("skip failed fusion test of xlm on PyTorch 1.12 and transformers 4.18. TODO: fix it")
     def test_huggingface_xlm_fusion(self):
-        self._test_optimizer_on_huggingface_model("xlm-mlm-ende-1024", [0, 6, 0, 0, 6, 0, 13])
+        self.run_optimizer_on_huggingface_model("xlm-mlm-ende-1024", [0, 6, 0, 0, 6, 0, 13])
 
     @pytest.mark.slow
     def test_huggingface_roberta_fusion(self):
-        self._test_optimizer_on_huggingface_model("roberta-base", [0, 12, 0, 0, 12, 1, 24])
-
-    @pytest.mark.slow
-    def test_huggingface_distillbert_fusion(self):
-        self._test_optimizer_on_huggingface_model("distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=1)
-        self._test_optimizer_on_huggingface_model("distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=2)
+        self.run_optimizer_on_huggingface_model("roberta-base", [0, 12, 0, 0, 12, 1, 24])
 
     @pytest.mark.slow
     @unittest.skip("skip failed fusion test of camembert on PyTorch 1.12 and transformers 4.18. TODO: fix it")
     def test_huggingface_camembert_fusion(self):
-        self._test_optimizer_on_huggingface_model("camembert-base", [0, 12, 0, 0, 12, 1, 24], validate_model=False)
+        self.run_optimizer_on_huggingface_model("camembert-base", [0, 12, 0, 0, 12, 1, 24], validate_model=False)
 
     @pytest.mark.slow
     @unittest.skip("skip failed fusion test of albert on PyTorch 1.12 and transformers 4.18. TODO: fix it")
     def test_huggingface_albert_fusion(self):
-        self._test_optimizer_on_huggingface_model("albert-base-v1", [0, 12, 0, 0, 12, 1, 24])
+        self.run_optimizer_on_huggingface_model("albert-base-v1", [0, 12, 0, 0, 12, 1, 24])
 
     @pytest.mark.slow
     @unittest.skip("skip fusion test of t5 since it is not implemented yet")
     def test_huggingface_t5_fusion(self):
-        self._test_optimizer_on_huggingface_model("t5-small", [0, 0, 0, 0, 0, 0, 0])
+        self.run_optimizer_on_huggingface_model("t5-small", [0, 0, 0, 0, 0, 0, 0])
 
     @pytest.mark.slow
     def test_huggingface_xlmroberta_fusion(self):
-        self._test_optimizer_on_huggingface_model("xlm-roberta-base", [0, 12, 0, 0, 12, 1, 24])
+        self.run_optimizer_on_huggingface_model("xlm-roberta-base", [0, 12, 0, 0, 12, 1, 24])
 
     @pytest.mark.slow
     @unittest.skip("skip failed fusion test of flaubert on PyTorch 1.12 and transformers 4.18. TODO: fix it")
     def test_huggingface_flaubert_fusion(self):
-        self._test_optimizer_on_huggingface_model(
+        self.run_optimizer_on_huggingface_model(
             "flaubert/flaubert_base_cased",
             [0, 12, 0, 0, 12, 0, 25],
             validate_model=False,
         )
-        self._test_optimizer_on_huggingface_model(
+        self.run_optimizer_on_huggingface_model(
             "flaubert/flaubert_small_cased",
             [0, 6, 0, 0, 6, 12, 1],
             validate_model=False,
@@ -254,16 +300,16 @@ class TestModelOptimization(unittest.TestCase):
     @pytest.mark.slow
     @unittest.skip("skip failed fusion test of dialogpt on PyTorch 1.12 and transformers 4.18. TODO: fix it")
     def test_huggingface_dialogpt_fusion(self):
-        self._test_optimizer_on_huggingface_model("microsoft/DialoGPT-small", [0, 12, 0, 12, 0, 25, 0])
+        self.run_optimizer_on_huggingface_model("microsoft/DialoGPT-small", [0, 12, 0, 12, 0, 25, 0])
 
     @pytest.mark.slow
     def test_huggingface_bart_fusion(self):
-        self._test_optimizer_on_huggingface_model("facebook/bart-base", [0, 0, 0, 0, 12, 2, 30])
+        self.run_optimizer_on_huggingface_model("facebook/bart-base", [0, 0, 0, 0, 12, 2, 30])
 
 
 @unittest.skipUnless(is_tf_available(), "skip TestBertOptimizationTF since tensorflow is not available")
 class TestTensorflowModelOptimization(unittest.TestCase):
-    def Setup(self):
+    def setUp(self):
         try:
             import tf2onnx
         except ImportError:
