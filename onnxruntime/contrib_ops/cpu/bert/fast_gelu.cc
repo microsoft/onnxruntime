@@ -11,7 +11,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .MayInplace(0, 0),
     BiasGelu<float, true>);
 
 }  // namespace contrib

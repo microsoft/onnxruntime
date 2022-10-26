@@ -20,7 +20,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .MayInplace(0, 0),
     BiasGelu<float, false>);
 
 // FastGelu uses approximation for Gelu. The formula is 0.5 * (1 + Tanh(x * (C * x * x + B))) * x.
