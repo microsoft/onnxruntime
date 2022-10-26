@@ -37,7 +37,7 @@ struct AllocatorCreationInfo {
   OrtArenaCfg arena_cfg;
   void* ptr1_;
   void* ptr2_;
-  bool use_shared_
+  bool use_shared_;
 };
 
 // Returns an allocator (an instance of IAllocator) based on the creation info provided.
