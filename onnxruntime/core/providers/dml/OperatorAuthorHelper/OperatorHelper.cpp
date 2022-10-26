@@ -2485,53 +2485,22 @@ namespace OperatorHelper
         ML_CHECK_VALID_ARGUMENT(kernelInformation.GetInputCount() == 1);
         ML_CHECK_VALID_ARGUMENT(kernelInformation.GetOutputCount() == 1);
 
-        auto& attributes = kernelInformation.GetAttributes();
-        bool needsSlicing = false;
-        int64_t startIndex = attributes.template GetOptionalAttribute<int32_t>(AttrName::Start, 0);
-        int64_t endIndex = std::numeric_limits<int64_t>::max();
-
-        if (startIndex != 0)
-        {
-            // "start" is provided and is non-default (default is 0)
-            needsSlicing = true;
-        }
-
-        if (attributes.HasAttribute(AttrName::End, MLOperatorAttributeType::Int))
-        {
-            endIndex = attributes.template GetAttribute<int64_t>(AttrName::End);
-            needsSlicing = true;
-        }
-
         std::vector<uint32_t> inputShape = shapeInformation.GetInputTensorShape(0);
+        const uint32_t inputDimCount = static_cast<uint32_t>(inputShape.size());
+
+        const auto& attributes = kernelInformation.GetAttributes();
+        const int64_t startIndex = attributes.template GetOptionalAttribute<int64_t>(AttrName::Start, 0);
+        const int64_t endIndex = attributes.template GetOptionalAttribute<int64_t>(AttrName::End, inputDimCount);
 
         // Compute the starting and ending indices for the slice
-        if (!needsSlicing)
-        {
-            m_sliceStart = 0;
-            m_sliceEnd = static_cast<uint32_t>(inputShape.size());
-        }
-        else
-        {
-            const uint32_t inputDimCount = static_cast<uint32_t>(inputShape.size());
+        int64_t trueStart = startIndex < 0 ? startIndex + inputDimCount : startIndex;
+        trueStart = std::clamp<int64_t>(trueStart, 0, inputDimCount);
 
-            int64_t trueStart = startIndex;
-            int64_t trueEnd = endIndex;
+        int64_t trueEnd = endIndex < 0 ? endIndex + inputDimCount : endIndex;
+        trueEnd = std::clamp<int64_t>(trueEnd, 0, inputDimCount);
 
-            // Deal with negative(s) and clamp
-            trueStart = trueStart < 0 ? trueStart + inputDimCount : trueStart;
-            trueStart = trueStart < 0 ? 0 : ((trueStart > inputDimCount) ? inputDimCount : trueStart);
-
-            trueEnd = trueEnd < 0 ? trueEnd + inputDimCount : trueEnd;
-            trueEnd = trueEnd < 0 ? 0 : ((trueEnd > inputDimCount) ? inputDimCount : trueEnd);
-
-            int64_t sliceLength = trueEnd - trueStart;
-
-            if (sliceLength > 0)
-            {
-                m_sliceStart = static_cast<uint32_t>(trueStart);
-                m_sliceEnd = static_cast<uint32_t>(trueEnd);
-            }
-        }
+        m_sliceStart = static_cast<uint32_t>(trueStart);
+        m_sliceEnd = std::max<uint32_t>(static_cast<uint32_t>(trueEnd), m_sliceStart);
     }
 
     std::vector<EdgeShapes> ShapeHelper::GetOutputShapes(const MLShapeInferenceContext & shapeInfo) const
