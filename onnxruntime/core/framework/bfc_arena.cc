@@ -265,7 +265,7 @@ void* BFCArena::Alloc(size_t size) {
   if (use_shared_) {
     if (size == 6291456) {
       std::cout << "Reusing ptr1" << std::endl;
-      return ptr1_;    
+      return ptr1_;
     } else if (size == 25165824) {
       std::cout << "Reusing ptr2" << std::endl;
       return ptr2_;
@@ -450,6 +450,11 @@ void BFCArena::Free(void* p) {
   if (p == nullptr) {
     return;
   }
+
+  if (use_shared_ && (p == ptr1_ || p == ptr2_)) {
+    return;
+  }
+
   std::lock_guard<OrtMutex> lock(lock_);
   auto it = reserved_chunks_.find(p);
   if (it != reserved_chunks_.end()) {
