@@ -323,11 +323,11 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   if (!chunk && enable_cross_stream_reusing) {
     chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, true);
     if (chunk->stream && stream && chunk->stream != stream) {
-      auto notificaiton = chunk->stream->CreateNotification(1);
-      notificaiton->ActivateAndUpdate();
+      auto notification = chunk->stream->CreateNotification(1);
+      notification->ActivateAndUpdate();
       if (wait_fn)
-        wait_fn(*stream, *notificaiton);
-      stream->UpdateStreamClock(notificaiton->GetStreamSyncTable());
+        wait_fn(*stream, *notification);
+      stream->UpdateStreamClock(notification->GetStreamSyncTable());
       // it should be ok to release the notification now, as the wait is already launch to stream.
     }
   }
@@ -834,7 +834,7 @@ void StreamAwareArena::ReleaseStreamBuffers(Stream* stream) {
         RemoveFreeChunkFromBin(h);
         ChunkHandle h_next = c->next;
         Chunk* c_next = h_next != kInvalidChunkHandle ? ChunkFromHandle(h_next) : nullptr;
-        // merge untill next chunk is different stream
+        // merge until next chunk is different stream
         while (c_next && !c_next->in_use() && c_next->stream == c->stream) {
           Coalesce(h);
           h_next = c->next;

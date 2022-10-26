@@ -1,3 +1,5 @@
+//// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/common/spin_pause.h"

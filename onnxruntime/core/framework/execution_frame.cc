@@ -484,8 +484,6 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBuffer(OrtValue& ort_value, i
 }
 
 Stream* ExecutionFrame::GetValueStream(int ort_value_idx) const {
-  // auto& value_to_stream_map = session_state_.GetConstParallelExecutionPlan().GetValueToStreamMap();
-  // auto& value_to_stream_map = const_cast<SessionState&>(session_state_).GetTheExecutionPlan()->GetValueToStreamMap();
   const auto& value_to_stream_map = const_cast<SessionState&>(session_state_).GetExecutionPlan()->GetValueToStreamMap();
   auto it = value_to_stream_map.find(ort_value_idx);
   if (it != value_to_stream_map.end() && it->second < device_streams_.size()) {
@@ -684,10 +682,6 @@ Status ExecutionFrame::AllocateReusedOrtValueIfNotAllocatedHelper(int reuse_mlva
 
 // This method is not thread safe!
 Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape) {
-  /*
-  const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
-  const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-  */
   const auto& alloc_plan = session_state_.GetPerAllocPlan();
   ORT_ENFORCE(ort_value_index >= 0 && static_cast<size_t>(ort_value_index) < alloc_plan.size());
   const auto& per_alloc_plan = alloc_plan[ort_value_index];
@@ -848,12 +842,6 @@ Status ExecutionFrame::ReleaseMLValueImpl(int ort_value_idx) {
 }
 
 const AllocPlanPerValue& ExecutionFrame::GetAllocationPlan(int ort_value_idx) {
-  /*
-  const SequentialExecutionPlan* p_seq_exec_plan = session_state_.GetExecutionPlan();
-  const auto& alloc_plan = p_seq_exec_plan->allocation_plan;
-  ORT_ENFORCE(ort_value_idx >= 0 && static_cast<size_t>(ort_value_idx) < alloc_plan.size());
-  return alloc_plan[ort_value_idx];
-  */
   return session_state_.GetPerAllocPlan()[ort_value_idx];
 }
 

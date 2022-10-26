@@ -1,3 +1,5 @@
+//// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #include "core/framework/session_state.h"
@@ -50,9 +52,6 @@ DeviceStreamCollection& PartialGraphExecutionState::GetDeviceStreamCollection(co
     // session when deconstruct partial graph execution state.
     // so let's always delete the stream collections.
     // luckly, for ort module, we always running with default stream, so no impact to perf.
-    /*device_stream_deleter_ = [&](std::unique_ptr<DeviceStreamCollection> ptr) {
-      session_state.RecycleDeviceStreamCollection(std::move(ptr));
-    };*/
   }
   return *device_stream_collection_;
 }

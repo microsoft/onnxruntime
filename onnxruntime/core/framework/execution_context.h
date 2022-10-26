@@ -19,9 +19,11 @@ class SessionScope;
 typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
 typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 
-// execution context that support to execute a command on stream.
-// The notifications got instantiated when execution context is constructed.
-// TODO: if we merge the notifications to execution frame, we might don't need this.
+// Execution context that support to execute a command on stream.
+// It is composed by following components:
+// 1. a execution frame
+// 2. a collection of device stream instances that kernels can launch to.
+// 3. a set of notification instances needed to perform synchronization in current execution plan.
 class ExecutionContext {
  public:
   /*
@@ -75,23 +77,28 @@ class ExecutionContext {
   void SetLogger(const logging::Logger& current_logger) {
     logger_ = &current_logger;
   }
-
+  // Get status of the execution.
+  // if one of the stream got non-OK status, the whole task status will be set as that non-OK status.
   const Status& TaskStatus() const;
-
+  // Decrease the count of a given barrier.
   bool DecCountDownBarrier(size_t barrier_id);
-
+  // The execution mode:
+  // 1. single thread mode: all the streams will be launched using current host thread.
+  // 2. multi-threads mode: use inter-op thread pool to schedule the N streams.
   bool SingleThreadMode() const { return single_thread_mode_; }
-
+  // Get the Stream instance for a given logic sequence.
+  // return nullptr if the device of given logic sequence doesn't register stream support.
   Stream* GetDeviceStream(size_t idx);
-
+  // Decrease the count of remaining job by 1.
   void CompleteTask();
-
+  // Increase the count of remaining job by 1.
   void AddTask();
-
+  // This is only used under multi-threads mode.
+  // blocked until all the jobs scheduled into inter-op thread pool complete.
   void WaitAll();
-
+  // If one of the stream got non-OK status, update the status in the context.
   void SetStatus(Status& status);
-
+  // Release the OrtValues after a step, based on the execution plan.
   void RecycleNodeInputs(onnxruntime::NodeIndex node_index);
 
 #ifdef ENABLE_TRAINING
@@ -156,7 +163,9 @@ class ExecutionContext {
 
 using NotificationIndex = size_t;
 
+// Execute the stream at index 'stream_idx' with execution context 'ctx', from step 'since'.
 void RunSince(size_t stream_idx, ExecutionContext& ctx, const bool& terminate_flag, size_t since);
+// Schedule the downstream jobs from other streams at 'trigger' step, based on the execution plan.
 void ScheduleDownstream(ExecutionContext& ctx,
                         size_t trigger,
                         bool single_thread_mode,

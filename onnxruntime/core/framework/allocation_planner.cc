@@ -955,7 +955,6 @@ class PlannerImpl {
 
         auto outputs = pnode->OutputDefs();
         auto num_outputs = outputs.size();
-        // bool has_external_outputs = HasExternalOutputs(*pnode);
         for (size_t i = 0; i < num_outputs; ++i) {
           auto* node_output = outputs[i];
           if (!node_output->Exists()) continue;
@@ -1290,7 +1289,6 @@ class PlannerImpl {
               OrtValueIndex reusable_input{};
               if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
                   allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
-                // LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                 std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                 allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                 allocation_plan[output_idx_global].reused_buffer = reusable_input;
@@ -1380,10 +1378,6 @@ class PlannerImpl {
             }
 
             const auto* downstream_shape = context_->GetShape(*downstream_arg);
-            // if (!(*downstream_shape == *shape)) {
-            //   node_iter = next(node_iter);
-            //   continue;
-            // }
             if (!SameSize(*downstream_shape, *downstream_arg, *shape, *node_output)) {
               node_iter = next(node_iter);
               continue;
@@ -1413,7 +1407,6 @@ class PlannerImpl {
               }
             }
             if (all_covered) {
-              // LOGS(const_cast<SessionState&>(impl_->session_state_).Logger(), INFO) << node_output->Name() << " reused by " << downstream_arg->Name() << " as remote tensor" << std::endl;
               std::cout << node_output->Name() << " reused by " << downstream_arg->Name() << " as remote tensor" << std::endl;
               allocation_plan[downstream_value].alloc_kind = AllocKind::kReuse;
               allocation_plan[downstream_value].reused_buffer = output_idx_global;
@@ -1567,12 +1560,6 @@ class PlannerImpl {
           // Re-using inputs is applicable for tensors, sequence tensors,
           // and optional types if the kernel has marked certain inputs as
           // possible candidates for re-use
-          // std::cout << ort_value_info_[reused].p_def_site->Name() << " reused by " << node_output->Name() << " as input" << std::endl;
-          // auto* shape = ort_value_info_[reused].p_def_site->Shape();
-          // for (int i = 0; i < shape->dim_size(); ++i) {
-          //  std::cout << shape->dim().at(i).dim_value() << " ";
-          //}
-          // std::cout << std::endl;
           Reuse(reused, current, AllocKind::kReuse);
           ort_value_info_[current].is_inplace_reuse = true;
 #ifdef ENABLE_TRAINING
@@ -1588,12 +1575,6 @@ class PlannerImpl {
         } else if (!context_->IsParallelExecutionEnabled() &&
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
-          // std::cout << ort_value_info_[reused].p_def_site->Name() << " reused by " << node_output->Name() << " as remote tensor" << std::endl;
-          // auto* shape = ort_value_info_[reused].p_def_site->Shape();
-          // for (int i = 0; i < shape->dim_size(); ++i) {
-          //  std::cout << shape->dim().at(i).dim_value() << " ";
-          //}
-          // std::cout << std::endl;
           Reuse(reused, current, AllocKind::kReuse);
         } else {
           // otherwise: allocate a new buffer for this output
@@ -1886,14 +1867,11 @@ class PlannerImpl {
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     partitioner->PartitionNodes(graph_viewer_, execution_providers, stream_nodes_);
     node_stream_map_.resize(graph_viewer_.MaxNodeIndex() + 1);
-    // int node_cnt = 0;
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
       for (auto node_index : stream_nodes_[i]) {
         node_stream_map_[node_index] = i;
-        // node_cnt++;
       }
     }
-    // std::cout << "total node partitioned: " << node_cnt << std::endl;
     num_logic_streams_ = stream_nodes_.size();
   }
 
@@ -2333,8 +2311,6 @@ Status SequentialPlanner::CreatePlan(
 
 InlinedHashMap<std::string, INodePartitioner::NodePartitionerType> INodePartitioner::name_type_map = {{std::string{"DummyPartition"}, NodePartitionerType::DummyPartition}};
 
-// INodePartitioner::INodePartitioner(const std::string& configuration_file, const logging::Logger& logger) : configuration_file_(configuration_file, logger) {}
-
 class DummyPartitioner : public INodePartitioner {
  public:
   DummyPartitioner(const logging::Logger& logger, const std::string& configuration_file) : INodePartitioner(logger, configuration_file) {
@@ -2541,13 +2517,10 @@ std::unique_ptr<INodePartitioner> INodePartitioner::CreateNodePartitioner(const 
     }
   }  // else means configuration will not be written to a file
   std::unique_ptr<INodePartitioner> node_partitioner;
-  switch (partitioner_type) {
-    case INodePartitioner::NodePartitionerType::DummyPartition:
-      node_partitioner.reset(new DummyPartitioner(logger, cfg_file));
-      break;
-    default:
-      break;
+  if (partitioner_type == INodePartitioner::NodePartitionerType::DummyPartition) {
+    node_partitioner.reset(new DummyPartitioner(logger, cfg_file));
   }
+
   return node_partitioner;
 }
 

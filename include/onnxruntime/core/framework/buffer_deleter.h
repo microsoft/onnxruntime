@@ -12,16 +12,17 @@ using BufferFreeFn = std::function<void(void*)>;
 // TODO: Do we need this class or is IAllocator::MakeUniquePtr sufficient/better
 class BufferDeleter {
  public:
-  BufferDeleter() : buffer_delete_fn_(nullptr) {}
+  BufferDeleter() = default;
   BufferDeleter(AllocatorPtr alloc)
       : buffer_delete_fn_([alloc](void* buf) { alloc->Free(buf); }) {}
 
-  BufferDeleter(BufferFreeFn buff_delete_fn)
-      : buffer_delete_fn_(buff_delete_fn) {}
+  explicit BufferDeleter(BufferFreeFn buff_delete_fn)
+      : buffer_delete_fn_(std::move(buff_delete_fn)) {}
 
   void operator()(void* p) const {
-    if (buffer_delete_fn_)
+    if (buffer_delete_fn_) {
       buffer_delete_fn_(p);
+    }
   }
 
  private:
@@ -34,7 +35,7 @@ class BufferDeleter {
   // change our current allocator mgr to use shared_ptr. Will revisit it
   // later.
   // the buffer_delete_fn is a std::function which hold the reference to allocator ptr
-  BufferFreeFn buffer_delete_fn_;
+  BufferFreeFn buffer_delete_fn_{nullptr};
 };
 
 using BufferUniquePtr = std::unique_ptr<void, BufferDeleter>;

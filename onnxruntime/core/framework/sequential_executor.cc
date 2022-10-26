@@ -432,7 +432,6 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
     auto session_scope = ctx.GetSessionScope();
     ORT_ENFORCE(session_scope, "session scope uninitialized");
     KernelScope kernel_scope(*session_scope, kernel_ctx, *p_kernel);
-    // ORT_RETURN_IF_ERROR(p_kernel->Compute(&kernel_ctx));
     ORT_TRY {
 #ifdef ENABLE_TRAINING
       if (p_kernel->KernelDef().AllocateInputsContiguously()) {

@@ -157,7 +157,7 @@ class IAllocator {
       }
     }
 
-    std::function<void*(size_t)> alloc_fn = GetAllocationFn(allocator, use_reserve, stream, wait_fn);
+    std::function<void*(size_t)> alloc_fn = GetAllocationFn(allocator, use_reserve, stream, std::move(wait_fn));
 
     // allocate
     T* p = static_cast<T*>(alloc_fn(alloc_size));
