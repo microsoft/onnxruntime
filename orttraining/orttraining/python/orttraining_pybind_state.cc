@@ -872,6 +872,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("export_model_for_inferencing",
            [](onnxruntime::training::api::Module* model, const std::string& inference_model_path,
               const std::vector<std::string>& graph_output_names) -> void {
+             ORT_ENFORCE(model, "Received a nullptr for expected pointer to class training::api::Module");
              ORT_THROW_IF_ERROR(model->ExportModelForInferencing(inference_model_path,
                                                                  graph_output_names));
            });

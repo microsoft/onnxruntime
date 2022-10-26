@@ -29,12 +29,11 @@ std::unordered_set<const Node*> GetReverseReachableNodes(Graph& inference_graph,
   std::unordered_set<const Node*> visited_nodes;
   for (auto node_arg : output_node_args) {
     auto* node = inference_graph.GetProducerNode(node_arg->Name());
-    if (!node) {
+    if (!node || std::find(nodes.begin(), nodes.end(), node->Index()) != nodes.end()) {
       continue;
     }
 
     nodes.push_back(node->Index());
-    visited_nodes.insert(node);
   }
 
   inference_graph.ReverseDFSFrom(nodes, [&visited_nodes](const Node* node) { visited_nodes.insert(node); }, {});
@@ -61,10 +60,8 @@ Status TransformModelOutputsForInference(Graph& inference_graph,
   // Model is updated to remove any outputs that are not defined in inference_graph_outputs. Nodes
   // producing these unused model outputs are also subsequently removed.
 
-  if (inference_graph_outputs.empty()) {
-    // The outputs are not decipherable, so don't transform the graph outputs.
-    return Status::OK();
-  }
+  ORT_RETURN_IF(inference_graph_outputs.empty(),
+                "Expected a non empty vector of graph output names. Got an empty vector.");
 
   InlinedVector<const NodeArg*> inference_graph_output_node_args;
   inference_graph_output_node_args.reserve(inference_graph_outputs.size());
@@ -457,7 +454,8 @@ Status Module::GetStateDict(ModuleCheckpointState& module_checkpoint_state) {
 
 Status Module::ExportModelForInferencing(const std::string& inference_model_path,
                                          gsl::span<const std::string> graph_output_names) const {
-  ORT_RETURN_IF_NOT(eval_sess_, "Eval model was not provided. Cannot export a model for inferencing.");
+  ORT_RETURN_IF(!eval_sess_ || eval_model_path_.empty(),
+                "Eval model was not provided. Cannot export a model for inferencing.");
 
   ONNX_NAMESPACE::ModelProto eval_model;
   ORT_THROW_IF_ERROR(Model::Load(ToPathString(eval_model_path_), eval_model));
