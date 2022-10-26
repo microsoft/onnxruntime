@@ -43,6 +43,10 @@ limitations under the License.
 #define ORT_USE_CPUINFO
 #endif
 
+#ifdef CPUINFO_SUPPORTED
+#include <cpuinfo.h>
+#endif
+
 #include "core/common/common.h"
 #include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
