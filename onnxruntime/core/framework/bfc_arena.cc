@@ -272,6 +272,7 @@ void* BFCArena::Alloc(size_t size) {
     }
   }
 
+  std::cout << "Allocating new for size: " << size << std::endl;
   return AllocateRawInternal(size, false);
 }
 
