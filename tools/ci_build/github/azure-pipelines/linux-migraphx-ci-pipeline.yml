@@ -6,7 +6,7 @@ jobs:
   workspace:
     clean: all
   pool: Linux-CPU-2019
-  timeoutInMinutes: 60
+  timeoutInMinutes: 180
 
   # gid of video and render group on gcr-openpai-35 and -36
   variables:
