@@ -16,7 +16,7 @@ class XnnpackInitWrapper {
     return instance;
   }
 
-  void InitXnnpackWithAllocator(AllocatorPtr allocator);
+  void InitXnnpackWithAllocatorAndAddRef(AllocatorPtr allocator);
   AllocatorPtr GetOrCreateAllocator();
 
   void increase_ref() {

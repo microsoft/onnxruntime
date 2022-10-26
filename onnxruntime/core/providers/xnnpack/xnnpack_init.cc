@@ -59,7 +59,7 @@ AllocatorPtr XnnpackInitWrapper::GetOrCreateAllocator() {
   return ort_allocator_;
 }
 
-void XnnpackInitWrapper::InitXnnpackWithAllocator(AllocatorPtr allocator) {
+void XnnpackInitWrapper::InitXnnpackWithAllocatorAndAddRef(AllocatorPtr allocator) {
   increase_ref();
 
   static std::once_flag once;
