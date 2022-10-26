@@ -13,12 +13,8 @@ if(CMAKE_ANDROID_ARCH_ABI STREQUAL armeabi-v7a)
   set(XNNPACK_ENABLE_ARM_BF16 OFF)
 ENDIF()
 
-if(onnxruntime_BUILD_WEBASSEMBLY)
-  execute_process(COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenSupport.patch WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/${XNNPACK_DIR})
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
-  execute_process(COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddiOSSupport.patch WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/${XNNPACK_DIR})
+if(onnxruntime_BUILD_WEBASSEMBLY OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  execute_process(COMMAND git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/${XNNPACK_DIR})
 endif()
 
 add_subdirectory(external/FP16)

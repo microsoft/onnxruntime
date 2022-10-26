@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d53c48aa1..a7ae3770c 100755
+index d53c48aa1..4c987bd7a 100755
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -105,7 +105,7 @@ ENDIF()
@@ -7,7 +7,7 @@ index d53c48aa1..a7ae3770c 100755
  IF(NOT CMAKE_SYSTEM_NAME)
    MESSAGE(FATAL_ERROR "CMAKE_SYSTEM_NAME not defined")
 -ELSEIF(NOT CMAKE_SYSTEM_NAME MATCHES "^(Darwin|Linux|Android|Windows|CYGWIN|MSYS)$")
-+ELSEIF(NOT CMAKE_SYSTEM_NAME MATCHES "^(Darwin|Linux|Android|Windows|CYGWIN|MSYS|iOS)$")
++ELSEIF(NOT CMAKE_SYSTEM_NAME MATCHES "^(Darwin|Linux|Android|Windows|CYGWIN|MSYS|Emscripten|iOS)$")
    MESSAGE(FATAL_ERROR "Unrecognized CMAKE_SYSTEM_NAME = ${CMAKE_SYSTEM_NAME}")
  ENDIF()
  
