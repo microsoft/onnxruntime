@@ -169,7 +169,6 @@ Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
       prepacked_weights->buffer_sizes_.push_back(packed_b_size);
     }
   }
-
   return Status::OK();
 }
 

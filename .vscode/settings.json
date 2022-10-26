@@ -39,8 +39,5 @@
     "cpplint.filters": [
         "-build/include_subdir",
         "-runtime/references"
-    ],
-    "files.associations": {
-        "utility": "cpp"
-    }
+    ]
 }
