@@ -125,11 +125,11 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
+    /*
       
       size_t workspace_size = 32 * 1024 * 1024;
       auto workspace_memory = GetScratchBuffer<void>(workspace_size);
 
-      /*
       bool use_special = false;
       if (left_X->SizeInBytes() == 25165824 &&
           right_X->SizeInBytes() == 4718592) {
@@ -174,7 +174,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
           ldc,
           NULL, false,
-          workspace_memory.get(), workspace_size,
+          NULL, 0,
           Stream()));
 
     return Status::OK();
