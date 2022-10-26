@@ -270,9 +270,10 @@ void* BFCArena::Alloc(size_t size) {
       std::cout << "Reusing ptr2" << std::endl;
       return ptr2_;
     }
+
+    std::cout << "Allocating new for size: " << size << std::endl;
   }
 
-  std::cout << "Allocating new for size: " << size << std::endl;
   return AllocateRawInternal(size, false);
 }
 
