@@ -116,7 +116,7 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
     InsertAllocator(cpu_alloc);
   }
 
-  XnnpackInitWrapper::GetInstance().InitXnnpackWithAllocator(cpu_alloc);
+  XnnpackInitWrapper::GetInstance().InitXnnpackWithAllocatorAndAddRef(cpu_alloc);
 }
 
 // For ops are not lay-out sensitive and does not defined in
