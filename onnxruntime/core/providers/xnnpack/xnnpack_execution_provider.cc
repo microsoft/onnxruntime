@@ -86,7 +86,6 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 // run XNNPACK EP in concurrent is not supported yet
 static const IAllocator* AllocContext_ptr_global{nullptr};
-static InlinedHashSet<const IAllocator*> g_alloc_map;
 
 static void* xnn_allocate(void* context, size_t size) {
   IAllocator* allocator = *reinterpret_cast<IAllocator**>(context);
@@ -167,10 +166,12 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
                                                    xnn_deallocate,
                                                    xnn_aligned_allocate,
                                                    xnn_aligned_deallocate};
+  // Do we need to use mutex_lock here?
+  if (AllocContext_ptr_global != nullptr && cpu_alloc.get() != AllocContext_ptr_global) {
+    ORT_THROW("XNNPACK EP doesn't support run multiple sessions");
+  }
 
   AllocContext_ptr_global = cpu_alloc.get();
-  g_alloc_map.emplace(AllocContext_ptr_global);
-
   xnn_status st = xnn_initialize(&xnn_default_allocator);
   if (st != xnn_status_success) {
     ORT_THROW("XNNPACK initialization failed with status ", st);
@@ -333,14 +334,7 @@ std::shared_ptr<KernelRegistry> XnnpackExecutionProvider::GetKernelRegistry() co
 XnnpackExecutionProvider::~XnnpackExecutionProvider() {
   xnn_deinitialize();
   pthreadpool_destroy(xnnpack_thread_pool_);
-  if (auto it = g_alloc_map.find(AllocContext_ptr_global); it != g_alloc_map.end()) {
-    g_alloc_map.erase(it);
-    if (!g_alloc_map.empty()) {
-      AllocContext_ptr_global = *g_alloc_map.begin();
-    } else {
-      AllocContext_ptr_global = nullptr;
-    }
-  }
+  AllocContext_ptr_global = nullptr;
 }
 
 }  // namespace onnxruntime
