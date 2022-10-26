@@ -128,9 +128,9 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
   size_t q_hidden_size, k_hidden_size, v_hidden_size;
 
   if (qkv_hidden_sizes_.size() != 0) {
-    q_hidden_size = qkv_hidden_sizes_[0];
-    k_hidden_size = qkv_hidden_sizes_[1];
-    v_hidden_size = qkv_hidden_sizes_[2];
+    q_hidden_size = static_cast<size_t>(qkv_hidden_sizes_[0]);
+    k_hidden_size = static_cast<size_t>(qkv_hidden_sizes_[1]);
+    v_hidden_size = static_cast<size_t>(qkv_hidden_sizes_[2]);
 
     if (q_hidden_size == 0 || k_hidden_size == 0 || v_hidden_size == 0) {
       return Status::OK();
