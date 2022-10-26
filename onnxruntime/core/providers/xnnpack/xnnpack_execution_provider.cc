@@ -15,6 +15,8 @@
 #include "core/framework/kernel_registry.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 
+#include "xnnpack_init.h"
+
 namespace onnxruntime {
 
 namespace xnnpack {
@@ -84,46 +86,6 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 }  // namespace xnnpack
 
-// Not graceful, but we have to define a global variable to hold allocator for all XNNPACK EP instances.
-static AllocatorPtr AllocContext_global{nullptr};
-static int AllocContext_use_count_g{0};
-
-static void* xnn_allocate(void* context, size_t size) {
-  IAllocator* allocator = (*reinterpret_cast<AllocatorPtr*>(context)).get();
-  return allocator->Alloc(size);
-}
-
-static void* xnn_reallocate(void* context, void* pointer, size_t size) {
-  if (pointer == nullptr) {
-    return xnn_allocate(context, size);
-  }
-  ORT_NOT_IMPLEMENTED("xnn_reallocate is not implemented");
-}
-
-static void xnn_deallocate(void* context, void* pointer) {
-  if (pointer != nullptr) {
-    IAllocator* allocator = (*reinterpret_cast<AllocatorPtr*>(context)).get();
-    allocator->Free(pointer);
-  }
-}
-
-static void* xnn_aligned_allocate(void* context, size_t alignment, size_t size) {
-#if defined(__wasm__) && !defined(__wasm_relaxed_simd__) && !defined(__wasm_simd128__)
-  ORT_ENFORCE(alignment <= 2 * sizeof(void*));
-  return xnn_allocate(context, size);
-#else
-  void* ptr = xnn_allocate(context, size);
-  ORT_ENFORCE((int64_t(ptr) & (alignment - 1)) == 0,
-              " xnnpack wants to allocate a space with ", alignment, "bytes aligned. But it's not satisfied");
-  // if ptr is not aligned, we have to find a way to return a aligned ptr and store the original ptr
-  return ptr;
-#endif
-}
-
-static void xnn_aligned_deallocate(void* context, void* pointer) {
-  return xnn_deallocate(context, pointer);
-}
-
 using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
@@ -146,16 +108,7 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
     cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
 
     if (!cpu_alloc) {
-      // create our allocator
-      AllocatorCreationInfo allocator_info(
-          [](int) {
-            return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
-                                                                OrtAllocatorType::OrtDeviceAllocator));
-          });
-
-      cpu_alloc = AllocContext_global
-                      ? AllocContext_global
-                      : CreateAllocator(allocator_info);
+      cpu_alloc = XnnpackInitWrapper::GetInstance().GetOrCreateAllocator();
       // enable sharing of our allocator
       allocator_manager.InsertAllocator(cpu_alloc);
     }
@@ -163,20 +116,7 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
     InsertAllocator(cpu_alloc);
   }
 
-  AllocContext_use_count_g++;
-  static const xnn_allocator xnn_default_allocator{&AllocContext_global,
-                                                   xnn_allocate,
-                                                   xnn_reallocate,
-                                                   xnn_deallocate,
-                                                   xnn_aligned_allocate,
-                                                   xnn_aligned_deallocate};
-  if (!AllocContext_global) {
-    AllocContext_global = cpu_alloc;
-    xnn_status st = xnn_initialize(&xnn_default_allocator);
-    if (st != xnn_status_success) {
-      ORT_THROW("XNNPACK initialization failed with status ", st);
-    }
-  }
+  XnnpackInitWrapper::GetInstance().InitXnnpackWithAllocator(cpu_alloc);
 }
 
 // For ops are not lay-out sensitive and does not defined in
@@ -333,11 +273,8 @@ std::shared_ptr<KernelRegistry> XnnpackExecutionProvider::GetKernelRegistry() co
 }
 
 XnnpackExecutionProvider::~XnnpackExecutionProvider() {
-  xnn_deinitialize();
   pthreadpool_destroy(xnnpack_thread_pool_);
-  if ((--AllocContext_use_count_g) == 0) {
-    AllocContext_global.reset();
-  }
+  XnnpackInitWrapper::GetInstance().release_ref();
 }
 
 }  // namespace onnxruntime
