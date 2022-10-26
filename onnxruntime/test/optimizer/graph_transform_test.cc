@@ -213,6 +213,289 @@ TEST_F(GraphTransformationTests, NoopElimination) {
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 1);
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["Add"] + CountOpsInGraph(graph)["Sub"] + CountOpsInGraph(graph)["Mul"] +
+                  CountOpsInGraph(graph)["Div"],
+              1);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["Add"] + CountOpsInGraph(graph)["Sub"] + CountOpsInGraph(graph)["Mul"] +
+                  CountOpsInGraph(graph)["Div"],
+              0);
+  };
+
+  // x+0, float.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<float>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<float>({}, {0.0f});
+      auto* add_out = builder.MakeIntermediate();
+      auto* identity_output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Add", {matmul_output, initializer_arg}, {add_out});
+      builder.AddNode("Identity", {add_out}, {identity_output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // 0+x, fp16.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<MLFloat16>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<MLFloat16>({1}, {MLFloat16(0.0f)});
+      auto* add_out = builder.MakeIntermediate();
+      auto* identity_output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Add", {initializer_arg, matmul_output}, {add_out});
+      builder.AddNode("Identity", {add_out}, {identity_output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // x-0, double.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<double>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<double>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<double>({1, 1}, {static_cast<double>(0.0f)});
+      auto* sub_out = builder.MakeIntermediate();
+      auto* identity_output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Sub", {matmul_output, initializer_arg}, {sub_out});
+      builder.AddNode("Identity", {sub_out}, {identity_output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // x*1, int32.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<int32_t>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<int32_t>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<int32_t>({1, 1, 1}, {1});
+      auto* mul_out = builder.MakeIntermediate();
+      auto* identity_output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Mul", {matmul_output, initializer_arg}, {mul_out});
+      builder.AddNode("Identity", {mul_out}, {identity_output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // 1*x, int64.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<int64_t>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<int64_t>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<int64_t>({1, 1, 1, 1}, {static_cast<int64_t>(1)});
+      auto* mul_out = builder.MakeIntermediate();
+      auto* identity_output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Mul", {initializer_arg, matmul_output}, {mul_out});
+      builder.AddNode("Identity", {mul_out}, {identity_output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // x/1, float.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<float>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<float>({}, {1.0f});
+      auto* div_out = builder.MakeIntermediate();
+      auto* identity_output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Div", {matmul_output, initializer_arg}, {div_out});
+      builder.AddNode("Identity", {div_out}, {identity_output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // Invalid case: x+1.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<float>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<float>({}, {1.0f});
+      auto* add_out = builder.MakeIntermediate();
+      auto* identity_output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Add", {matmul_output, initializer_arg}, {add_out});
+      builder.AddNode("Identity", {add_out}, {identity_output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, pre_graph_checker);
+  }
+
+  // Invalid case: initializer rank is larger.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<MLFloat16>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<MLFloat16>({1, 1, 1, 1, 1}, {MLFloat16(0.0f)});
+      auto* add_out = builder.MakeIntermediate();
+      auto* identity_output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Add", {initializer_arg, matmul_output}, {add_out});
+      builder.AddNode("Identity", {add_out}, {identity_output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, pre_graph_checker);
+  }
+
+  // Invalid case: 0-x.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<double>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<double>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<double>({1, 1}, {static_cast<double>(0.0f)});
+      auto* sub_out = builder.MakeIntermediate();
+      auto* identity_output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Sub", {initializer_arg, matmul_output}, {sub_out});
+      builder.AddNode("Identity", {sub_out}, {identity_output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, pre_graph_checker);
+  }
+
+  // Invalid case: x-1.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<double>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<double>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<double>({1, 1}, {static_cast<double>(1.0f)});
+      auto* sub_out = builder.MakeIntermediate();
+      auto* identity_output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Sub", {matmul_output, initializer_arg}, {sub_out});
+      builder.AddNode("Identity", {sub_out}, {identity_output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, pre_graph_checker);
+  }
+
+  // Invalid case: 0*x.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<int32_t>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<int32_t>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<int32_t>({1, 1, 1}, {0});
+      auto* mul_out = builder.MakeIntermediate();
+      auto* identity_output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Mul", {initializer_arg, matmul_output}, {mul_out});
+      builder.AddNode("Identity", {mul_out}, {identity_output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, pre_graph_checker);
+  }
+
+  // Invalid case: output is graph output.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<int64_t>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<int64_t>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<int64_t>({1, 1, 1, 1}, {static_cast<int64_t>(1)});
+      auto* mul_out = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Mul", {initializer_arg, matmul_output}, {mul_out});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, pre_graph_checker);
+  }
+
+  // Invalid case: 1/x.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* input2_arg = builder.MakeInput<float>({{3, 3}});
+      auto* matmul_output = builder.MakeIntermediate();
+      auto* initializer_arg = builder.MakeInitializer<float>({}, {1.0f});
+      auto* div_out = builder.MakeIntermediate();
+      auto* identity_output = builder.MakeOutput();
+
+      builder.AddNode("MatMul", {input1_arg, input2_arg}, {matmul_output});
+      builder.AddNode("Div", {initializer_arg, matmul_output}, {div_out});
+      builder.AddNode("Identity", {div_out}, {identity_output});
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<NoopElimination>()));
+    TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, pre_graph_checker);
+  }
 }
 
 TEST_F(GraphTransformationTests, DropoutElimination) {
