@@ -128,6 +128,13 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
 
     return CreateAllocator(default_memory_info);
   } else {
+
+    void* ptr1 = nullptr;
+    cudaMalloc(&ptr1, 6291456);
+
+    void* ptr2 = nullptr;
+    cudaMalloc(&ptr2, 25165824);
+
     AllocatorCreationInfo default_memory_info(
         [](OrtDevice::DeviceId id) {
           return std::make_unique<CUDAAllocator>(id, CUDA);
@@ -135,7 +142,10 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
         device_id,
         true,
         {default_memory_arena_cfg ? *default_memory_arena_cfg
-                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)});
+                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)},
+         ptr1,
+         ptr2,
+         true);
 
     // CUDA malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);

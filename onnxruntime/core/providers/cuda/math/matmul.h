@@ -45,7 +45,7 @@ class MatMul final : public CudaKernel {
   const bool trans_B_;
   const bool trans_batch_a_;
   const bool trans_batch_b_;
-  void* left_X_ptr_ = nullptr;
+  //void* left_X_ptr_ = nullptr;
   //void* right_X_ptr_1_ = nullptr;
   //void* right_X_ptr_2_ = nullptr;
 

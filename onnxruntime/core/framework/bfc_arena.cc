@@ -4,6 +4,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/bfc_arena.h"
 #include <type_traits>
+#include <iostream>
 
 namespace onnxruntime {
 BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
@@ -11,7 +12,10 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    ArenaExtendStrategy arena_extend_strategy,
                    int initial_chunk_size_bytes,
                    int max_dead_bytes_per_chunk,
-                   int initial_growth_chunk_size_bytes)
+                   int initial_growth_chunk_size_bytes,
+                   void* ptr1,
+                   void* ptr2,
+                   bool use_shared)
     : IAllocator(OrtMemoryInfo(resource_allocator->Info().name,
                                OrtAllocatorType::OrtArenaAllocator,
                                resource_allocator->Info().device,
@@ -22,7 +26,10 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       next_allocation_id_(1),
       initial_chunk_size_bytes_(initial_chunk_size_bytes),
       max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk),
-      initial_growth_chunk_size_bytes_(initial_growth_chunk_size_bytes) {
+      initial_growth_chunk_size_bytes_(initial_growth_chunk_size_bytes),
+      ptr1_(ptr1),
+      ptr2_(ptr2),
+      use_shared_(use_shared) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name
                      << " with following configs: initial_chunk_size_bytes: " << initial_chunk_size_bytes_
                      << " max_dead_bytes_per_chunk: " << max_dead_bytes_per_chunk_
@@ -164,11 +171,11 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   static constexpr float kBackpedalFactor = 0.9f;
   // Try allocating less memory.
   while (mem_addr == nullptr) {
-  // kBackpedalFactor is float, bytes is size_t. The result of bytes * kBackpedalFactor is float. When we cast it to
-  // size_t, which is a smaller type, it could loss data. This is what C4244 complains. The "static_cast<size_t>" here 
-  // is to suppress the warning. C26451 suggest we may change kBackpedalFactor to double to get better accuary. But if
-  // we do that, AMD GPU CI build pipeline will have an "out-of-memory" error. So I choose to keep this piece of code
-  // untouched and disable the warning first.
+    // kBackpedalFactor is float, bytes is size_t. The result of bytes * kBackpedalFactor is float. When we cast it to
+    // size_t, which is a smaller type, it could loss data. This is what C4244 complains. The "static_cast<size_t>" here
+    // is to suppress the warning. C26451 suggest we may change kBackpedalFactor to double to get better accuary. But if
+    // we do that, AMD GPU CI build pipeline will have an "out-of-memory" error. So I choose to keep this piece of code
+    // untouched and disable the warning first.
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26451)
@@ -255,6 +262,16 @@ size_t BFCArena::RoundedBytes(size_t bytes) {
 }
 
 void* BFCArena::Alloc(size_t size) {
+  if (use_shared_) {
+    if (size == 6291456) {
+      std::cout << "Reusing ptr1" << std::endl;
+      return ptr1_;    
+    } else if (size == 25165824) {
+      std::cout << "Reusing ptr2" << std::endl;
+      return ptr2_;
+    }
+  }
+
   return AllocateRawInternal(size, false);
 }
 
