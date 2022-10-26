@@ -675,7 +675,12 @@ namespace Dml
             const onnxruntime::Node& node = *graph.GetNode(nodeIndex);
             if (kernel_lookup.LookUpKernel(node))
             {
+                printf("************Adding %s to candidates\n", node.Name().c_str());
                 candidates.push_back(node.Index());
+            }
+            else
+            {
+                printf("************%s couldn't be added to candidates\n", node.Name().c_str());
             }
         }
 

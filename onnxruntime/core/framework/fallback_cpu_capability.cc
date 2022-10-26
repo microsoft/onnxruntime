@@ -68,6 +68,10 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     provider_nodes.insert(node_id);
     const Node* node = graph.GetNode(node_id);
 
+    if (node->Name() == "Unsqueeze_983" || node->Name() == "Concat_984" || node->Name() == "Div_980") {
+      printf("Adding %s to provider_nodes\n", node->Name().c_str());
+    }
+
     const KernelCreateInfo* kernel_info = kernel_lookup.LookUpKernel(*node);
     // at least one registry has a target provider's kernel for this node
     ORT_ENFORCE(kernel_info != nullptr);
@@ -78,11 +82,27 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
         node->OutputDefs(),
         [&](const NodeArg& node_arg, size_t out_index) {
           if (kernel_info->kernel_def->IsOutputOnCpu(out_index)) {
+            if (node->Name() == "Unsqueeze_983" || node->Name() == "Concat_984" || node->Name() == "Div_980") {
+              printf("%s output is on CPU\n", node->Name().c_str());
+            }
+
             cpu_output_args.insert(&node_arg);
             auto consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
             for (auto& consumer_node : consumer_nodes) {
+              if (consumer_node->Name() == "Unsqueeze_983" || consumer_node->Name() == "Concat_984" || node->Name() == "Div_980") {
+                printf("%s IS A CONSUMER NODE of %s!!!\n", consumer_node->Name().c_str(), node->Name().c_str());
+              }
+
+              if (node->Name() == "Unsqueeze_983" || node->Name() == "Concat_984" || node->Name() == "Div_980") {
+                printf("Adding consumer node (%s) for node %s\n", consumer_node->Name().c_str(), node->Name().c_str());
+              }
+
               candidates.push(consumer_node->Index());
               LOGS_DEFAULT(INFO) << "Candidate for fallback CPU execution: " << consumer_node->Name();
+            }
+          } else {
+            if (node->Name() == "Unsqueeze_983" || node->Name() == "Concat_984" || node->Name() == "Div_980") {
+              printf("%s output is NOT on CPU\n", node->Name().c_str());
             }
           }
           return Status::OK();
@@ -103,12 +123,27 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     NodeIndex cur = candidates.top();
     candidates.pop();
 
-    auto p = visited.insert(cur);
-    if (!p.second)
-      continue;
+    auto* node3 = graph.GetNode(cur);
+    if (node3->Name() == "Unsqueeze_983" || node3->Name() == "Concat_984" || node->Name() == "Div_980") {
+      printf("Popping %s\n", node3->Name().c_str());
+    }
 
-    if (provider_nodes.find(cur) == provider_nodes.end())
+    auto p = visited.insert(cur);
+    if (!p.second) {
+      auto* node2 = graph.GetNode(cur);
+      if (node2->Name() == "Unsqueeze_983" || node2->Name() == "Concat_984" || node->Name() == "Div_980") {
+        printf("%s already visited\n", node2->Name().c_str());
+      }
       continue;
+    }
+
+    if (provider_nodes.find(cur) == provider_nodes.end()) {
+      auto* node2 = graph.GetNode(cur);
+      if (node2->Name() == "Unsqueeze_983" || node2->Name() == "Concat_984" || node->Name() == "Div_980") {
+        printf("%s not found in provider_nodes\n", node2->Name().c_str());
+      }
+      continue;
+    }
 
     auto* node = graph.GetNode(cur);
     bool place_in_cpu = true;
@@ -118,6 +153,9 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       // skip placing on CPU if the data typs is float16 or bfloat16
       if (input->Type() == DataTypeUtils::ToType("float16") ||
           input->Type() == DataTypeUtils::ToType("bfloat16")) {
+        if (node->Name() == "Unsqueeze_983" || node->Name() == "Concat_984" || node->Name() == "Div_980") {
+          printf("%s: skip placing on CPU if the data typs is float16 or bfloat16\n", node->Name().c_str());
+        }
         place_in_cpu = false;
         break;
       }
@@ -130,6 +168,9 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 
       // the input is not a CPU tensor
       if (cpu_output_args.find(input) == cpu_output_args.end()) {
+        if (node->Name() == "Unsqueeze_983" || node->Name() == "Concat_984" || node->Name() == "Div_980") {
+          printf("%s: the input is not a CPU tensor\n", node->Name().c_str());
+        }
         place_in_cpu = false;
         break;
       }
@@ -137,11 +178,18 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       // input is a CPU tensor, but it's intended to be consumed as CPU input by the target EP
       if (node_to_kernel[cur]->kernel_def->IsInputOnCpu(i)) {
         place_in_cpu = false;
+        if (node->Name() == "Unsqueeze_983" || node->Name() == "Concat_984" || node->Name() == "Div_980") {
+          printf("%s: input is a CPU tensor, but it's intended to be consumed as CPU input by the target EP\n", node->Name().c_str());
+        }
         break;
       }
     }
 
     if (place_in_cpu) {
+      if (node->Name() == "Unsqueeze_983" || node->Name() == "Concat_984" || node->Name() == "Div_980") {
+        printf("Inserting %s in cpu_nodes\n", node->Name().c_str());
+      }
+
       cpu_nodes.insert(cur);
       LOGS_DEFAULT(INFO) << "ORT optimization- Force fallback to CPU execution for node: " << node->Name()
                          << " because the CPU execution path is deemed faster than overhead involved with execution on other EPs "
@@ -151,6 +199,12 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       }
       for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
         candidates.push((*it).Index());
+      }
+    }
+    else
+    {
+      if (node->Name() == "Unsqueeze_983" || node->Name() == "Concat_984" || node->Name() == "Div_980") {
+        printf("Not inserting %s in cpu_nodes\n", node->Name().c_str());
       }
     }
   }
