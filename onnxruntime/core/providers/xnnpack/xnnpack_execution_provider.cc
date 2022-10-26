@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <atomic>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -87,7 +86,7 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
 // Not graceful, but we have to define a global variable to hold allocator for all XNNPACK EP instances.
 static AllocatorPtr AllocContext_global{nullptr};
-static std::atomic_int AllocContext_use_count_g{0};
+static int AllocContext_use_count_g{0};
 
 static void* xnn_allocate(void* context, size_t size) {
   IAllocator* allocator = (*reinterpret_cast<AllocatorPtr*>(context)).get();
