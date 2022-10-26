@@ -124,14 +124,14 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     candidates.pop();
 
     auto* node3 = graph.GetNode(cur);
-    if (node3->Name() == "Unsqueeze_983" || node3->Name() == "Concat_984" || node->Name() == "Div_980") {
+    if (node3->Name() == "Unsqueeze_983" || node3->Name() == "Concat_984" || node3->Name() == "Div_980") {
       printf("Popping %s\n", node3->Name().c_str());
     }
 
     auto p = visited.insert(cur);
     if (!p.second) {
       auto* node2 = graph.GetNode(cur);
-      if (node2->Name() == "Unsqueeze_983" || node2->Name() == "Concat_984" || node->Name() == "Div_980") {
+      if (node2->Name() == "Unsqueeze_983" || node2->Name() == "Concat_984" || node2->Name() == "Div_980") {
         printf("%s already visited\n", node2->Name().c_str());
       }
       continue;
@@ -139,7 +139,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 
     if (provider_nodes.find(cur) == provider_nodes.end()) {
       auto* node2 = graph.GetNode(cur);
-      if (node2->Name() == "Unsqueeze_983" || node2->Name() == "Concat_984" || node->Name() == "Div_980") {
+      if (node2->Name() == "Unsqueeze_983" || node2->Name() == "Concat_984" || node2->Name() == "Div_980") {
         printf("%s not found in provider_nodes\n", node2->Name().c_str());
       }
       continue;
