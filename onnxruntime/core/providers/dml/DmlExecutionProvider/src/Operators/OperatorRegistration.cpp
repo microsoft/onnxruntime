@@ -300,7 +300,6 @@ constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListFloat1
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListFloat16to32Ints8to32 = {SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Ints8Bit | SupportedTensorDataTypes::Ints16Bit | SupportedTensorDataTypes::Ints32Bit};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListFloat16to32Ints8to64 = {SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Ints8Bit | SupportedTensorDataTypes::Ints16Bit | SupportedTensorDataTypes::Ints32Bit | SupportedTensorDataTypes::Ints64Bit};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListFloat16to32SignedInts8to32 = {SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Int8 | SupportedTensorDataTypes::Int16 | SupportedTensorDataTypes::Int32};
-constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListFloat16to32SignedInts8to64 = {SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Int8 | SupportedTensorDataTypes::Int16 | SupportedTensorDataTypes::Int32 | SupportedTensorDataTypes::Int64};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListFloat16to32Ints32to64 = {SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Ints32Bit | SupportedTensorDataTypes::Ints64Bit};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListUInt8to64 = {SupportedTensorDataTypes::UInt8to64};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListNumericDefault = { SupportedTensorDataTypes::NumericDefault };
@@ -508,8 +507,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     13,  Exp,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Log,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Log,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO(      7,  Abs,                                typeNameListDefault,            supportedTypeListFloat16to32SignedInts8to64, DmlGraphSupport::Supported)},
-    {REG_INFO(     13,  Abs,                                typeNameListDefault,            supportedTypeListFloat16to32SignedInts8to64, DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  Abs,                                typeNameListDefault,            supportedTypeListSigned,                DmlGraphSupport::Supported)},
+    {REG_INFO(     13,  Abs,                                typeNameListDefault,            supportedTypeListSigned,                DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Ceil,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Ceil,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Floor,                              typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
