@@ -1097,6 +1097,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   if (onnxruntime_BUILD_SHARED_LIB)
     onnxruntime_add_static_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
     target_include_directories(onnxruntime_mocked_allocator PUBLIC ${TEST_SRC_DIR}/util/include)
+    target_link_libraries(onnxruntime_mocked_allocator PRIVATE ${GSL_TARGET})
     set_target_properties(onnxruntime_mocked_allocator PROPERTIES FOLDER "ONNXRuntimeTest")
 
     #################################################################

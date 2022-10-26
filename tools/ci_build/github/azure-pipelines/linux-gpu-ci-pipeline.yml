@@ -79,7 +79,7 @@ jobs:
   - template: templates/clean-agent-build-directory-step.yml
 
 - job: Linux_Test
-  timeoutInMinutes: 60
+  timeoutInMinutes: 180
   variables:
     skipComponentGovernanceDetection: true
   workspace:

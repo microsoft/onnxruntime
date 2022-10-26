@@ -1020,13 +1020,14 @@ endif()
 set(GSL_DIR "${REPO_ROOT}/cmake/external/GSL")
 add_subdirectory(${GSL_DIR} EXCLUDE_FROM_ALL)
 set(GSL_TARGET "Microsoft.GSL::GSL")
+set(GSL_INCLUDE_DIR "$<TARGET_PROPERTY:${GSL_TARGET},INTERFACE_INCLUDE_DIRECTORIES>")
 
 include(eigen)
 
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
 # dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2)
+set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2 ${GSL_TARGET})
 
 if(NOT onnxruntime_DISABLE_ABSEIL)
   set(ABSEIL_LIBS absl::inlined_vector absl::flat_hash_set
@@ -1166,10 +1167,6 @@ else()
 
   if (HAS_ENUM_CONSTEXPR_CONVERSION)
     target_compile_options(${PROTOBUF_LIB} PRIVATE "-Wno-enum-constexpr-conversion")
-  endif()
-  if (onnxruntime_USE_ROCM)
-    # float16.h:90:12: error: ‘tmp’ is used uninitialized
-    list(APPEND ORT_WARNING_FLAGS -Wno-uninitialized)
   endif()
 endif()
 
@@ -1314,14 +1311,34 @@ function(onnxruntime_set_compile_flags target_name)
       #too many such errors in eigen
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-deprecated-copy>" "$<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-copy>")
     endif()
+    foreach(FLAG ${ORT_WARNING_FLAGS})
+      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${FLAG}>")
+    endforeach()
     if (onnxruntime_USE_CUDA)
+      foreach(FLAG ${ORT_WARNING_FLAGS})
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${FLAG}>")
+      endforeach()
       if ((NVCC_HAS_STRICT_ALIASING AND "${target_name}" MATCHES "cuda") OR (HAS_STRICT_ALIASING AND NOT "${target_name}" MATCHES "cuda"))
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Wno-strict-aliasing>")
       endif()
     endif()
-    foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
-      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${ORT_FLAG}>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:${ORT_FLAG}>")
-    endforeach()
+    if (onnxruntime_USE_ROCM)
+      # flags are detected with CXX language mode, some flags are not supported with hipclang
+      # because we may mix gcc and hipclang
+      set(ORT_HIP_WARNING_FLAGS ${ORT_WARNING_FLAGS})
+      list(REMOVE_ITEM ORT_HIP_WARNING_FLAGS -Wno-nonnull-compare)
+
+      # float16.h:90:12: error: ‘tmp’ is used uninitialized
+      list(APPEND ORT_HIP_WARNING_FLAGS -Wno-uninitialized)
+
+      # some #pragma unroll will fail, do not treat them as error
+      # #warning must not be treated as error
+      list(APPEND ORT_HIP_WARNING_FLAGS -Wno-error=pass-failed "-Wno-error=#warnings")
+
+      foreach(FLAG ${ORT_HIP_WARNING_FLAGS})
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:HIP>:SHELL:${FLAG}>")
+      endforeach()
+    endif()
 endfunction()
 
 function(onnxruntime_set_source_file_properties target_name)

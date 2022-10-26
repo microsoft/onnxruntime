@@ -1365,9 +1365,8 @@ if (onnxruntime_USE_ROCM)
     list(APPEND HIP_CLANG_FLAGS --offload-arch=${HIP_ARCH})
   endforeach()
 
-  #onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
-  hip_add_library(onnxruntime_providers_rocm MODULE ${onnxruntime_providers_rocm_src})
-  onnxruntime_configure_target(onnxruntime_providers_rocm)
+  auto_set_source_files_hip_language(${onnxruntime_providers_rocm_src})
+  onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
 
   if(NOT MSVC)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare -D__HIP_PLATFORM_HCC__=1)

@@ -828,14 +828,18 @@ onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& nod
 namespace layout_transformer {
 
 const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
-  static std::unordered_set<std::string_view> ort_layout_senstive_ops = []() {
+  static std::unordered_set<std::string_view> ort_layout_sensitive_ops = []() {
     const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
+    std::unordered_set<std::string_view> ort_specific_ops = {"FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
+#else
     std::unordered_set<std::string_view> ort_specific_ops = {"Resize", "FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
+#endif
     ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
     return ort_specific_ops;
   }();
 
-  return ort_layout_senstive_ops;
+  return ort_layout_sensitive_ops;
 }
 
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {

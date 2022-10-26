@@ -85,14 +85,32 @@ Do not modify directly.*
 ## com.microsoft
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
 
-  Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
-  The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length)
-  or (batch_size, sequence_length, past_sequence_length + sequence_length) with value 0 for masked and 1 otherwise,
-  we also support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
-  where value of each element is the end position, or valid length of actual sequence excluding padding. When input has
-  left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
-  the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
-  and present state are optional. Present state could appear in output even when past state is not in input.
+  Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
+  
+  The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
+  is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
+  and v_hidden_size is that of V.
+  
+  The mask_index is optional. Besides raw attention mask with shape (batch_size, total_sequence_length)
+  or (batch_size, sequence_length, total_sequence_length) with value 0 for masked and 1 otherwise,
+  we support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
+  where value is actual sequence length excluding padding. When input has left-side padding, mask_index has
+  shape (2 * batch_size), where the values are the exclusive end positions followed by the inclusive start positions.
+  
+  When unidirectional is 1, each token only attends to previous tokens.
+  
+  Both past and present state are optional. They shall be used together, and not allowed to use only one of them.
+  
+  When weights is not provided, key and value are required. In this situation, MatMul for input projection is excluded,
+  and input is the query after projection. The bias is included for performance consideration.
+  
+  The qkv_hidden_sizes is required only when K and V have different hidden sizes.
+  
+  When there is past state, hidden dimension for Q, K and V shall be the same.
+  
+  The total_sequence_length is past_sequence_length + kv_sequence_length. Here kv_sequence_length is the length of K or V.
+  For self attention, kv_sequence_length equals to sequence_length (sequence length of Q).
+  For cross attention, query and key might have different lengths.
 
 #### Version
 
@@ -104,35 +122,39 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 <dt><tt>qkv_hidden_sizes</tt> : list of ints</dt>
-<dd>Hidden layer sizes of Q, K, V paths in Attention</dd>
+<dd>Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size</dd>
 <dt><tt>unidirectional</tt> : int</dt>
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
-#### Inputs (3 - 6)
+#### Inputs (3 - 8)
 
 <dl>
-<dt><tt>input</tt> : T</dt>
-<dd>3D input tensor with shape (batch_size, sequence_length, input_hidden_size)</dd>
-<dt><tt>weight</tt> : T</dt>
-<dd>2D input tensor with shape (input_hidden_size, 3 * hidden_size), where hidden_size = num_heads * head_size</dd>
+<dt><tt>input</tt> (optional) : T</dt>
+<dd>Input tensor with shape (batch_size, sequence_length, input_hidden_size) when weights is available, or query tensor with shape (batch_size, sequence_length, hidden_size) when weights is not available.</dd>
+<dt><tt>weights</tt> (optional) : T</dt>
+<dd>Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)</dd>
 <dt><tt>bias</tt> : T</dt>
-<dd>1D input tensor with shape (3 * hidden_size)</dd>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
-<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
+<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
 <dt><tt>past</tt> (optional) : T</dt>
-<dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
+<dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)</dd>
 <dt><tt>extra_add</tt> (optional) : T</dt>
-<dd>additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).</dd>
+<dd>additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Input for key with shape (batch_size, kv_sequence_length, hidden_size). Required when weights is not available.</dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>Input for key with shape (batch_size, kv_sequence_length, v_hidden_size). Required when weights is not available.</dd>
 </dl>
 
 #### Outputs (1 - 2)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
 <dt><tt>present</tt> (optional) : T</dt>
-<dd>present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)</dd>
+<dd>past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size)</dd>
 </dl>
 
 #### Type Constraints

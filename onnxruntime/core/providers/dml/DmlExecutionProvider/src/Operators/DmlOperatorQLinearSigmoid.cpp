@@ -78,6 +78,7 @@ public:
                 NchwDimensionCount, // minDimensionCount
                 0 // guaranteedBaseOffsetAlignment
             );
+        DML_TENSOR_DESC namedIntermediateOutputTensorDesc = intermediateOutputTensorDesc.GetDmlDesc();
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -86,7 +87,7 @@ public:
         dequantizeOperatorDesc.InputTensor = &inputDescs[OnnxInputIndex::X];
         dequantizeOperatorDesc.ScaleTensor = &inputDescs[OnnxInputIndex::X_scale];
         dequantizeOperatorDesc.ZeroPointTensor = &inputDescs[OnnxInputIndex::X_zero_point];
-        dequantizeOperatorDesc.OutputTensor = &intermediateOutputTensorDesc.GetDmlDesc();
+        dequantizeOperatorDesc.OutputTensor = &namedIntermediateOutputTensorDesc;
         
         const DML_OPERATOR_DESC opDesc1{DML_OPERATOR_ELEMENT_WISE_DEQUANTIZE_LINEAR, &dequantizeOperatorDesc};
 
