@@ -12,6 +12,25 @@ EndPointInvoker::~EndPointInvoker() {}
 
 namespace tc = triton::client;
 
+class TritonInvokder : public EndPointInvoker {
+ public:
+  TritonInvokder(const EndPointConfig& config);
+  TensorPtrArray Send(ConstTensorPtrArray input_tensors) const override;
+
+ private:
+  bool ReadConfig(const char* config_name, std::string& config_val);
+  bool ReadConfig(const char* config_name, onnxruntime::InlinedVector<std::string>& config_vals);
+
+  std::string uri_;
+  std::string key_; // access token for bearer authentication
+  std::string model_name_;
+  std::string model_ver_;
+  onnxruntime::InlinedVector<std::string> input_names_;
+  onnxruntime::InlinedVector<std::string> output_names_;
+  std::shared_ptr<CPUAllocator> cpu_allocator_;
+  std::unique_ptr<triton::client::InferenceServerHttpClient> triton_client_;
+};
+
 TritonInvokder::TritonInvokder(const EndPointConfig& config) : EndPointInvoker(config) {
   if (ReadConfig("uri", uri_) &&
       ReadConfig("key", key_) &&
@@ -124,7 +143,7 @@ TensorPtrArray TritonInvokder::Send(ConstTensorPtrArray ort_inputs) const {
 }
 
 bool TritonInvokder::ReadConfig(const char* config_name, std::string& config_val) {
-  if (config_.contains(config_name)) {
+  if (config_.count(config_name)) {
     config_val = config_[config_name];
   } else {
     status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Triton invoker failed to initialize due to missing config: ", config_name);
@@ -133,7 +152,7 @@ bool TritonInvokder::ReadConfig(const char* config_name, std::string& config_val
 }
 
 bool TritonInvokder::ReadConfig(const char* config_name, onnxruntime::InlinedVector<std::string>& config_vals) {
-  if (config_.contains(config_name)) {
+  if (config_.count(config_name)) {
     std::stringstream ss;
     ss << config_[config_name];
     std::string tmp;
@@ -144,6 +163,17 @@ bool TritonInvokder::ReadConfig(const char* config_name, onnxruntime::InlinedVec
     status_ = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Triton invoker failed to initialize due to missing config: ", config_name);
   }
   return status_.IsOK();
+}
+
+std::unique_ptr<EndPointInvoker> EndPointInvoker::CreateInvoker(const EndPointConfig& config) {
+  static const std::string endpoint_type = "endpoint_type";
+  static const std::string triton_type = "triton";
+  if (config.count(endpoint_type)) {
+    if (config.at(endpoint_type) == triton_type) {
+      return std::make_unique<TritonInvokder>(config);
+    }
+  }
+  return {};
 }
 
 }  // namespace cloud

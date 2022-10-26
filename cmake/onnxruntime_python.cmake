@@ -210,7 +210,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
-    ${PROVIDERS_XNNPACK}
+	${PROVIDERS_CLOUD}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -831,6 +831,16 @@ if (onnxruntime_USE_ROCM)
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
           $<TARGET_FILE:onnxruntime_providers_rocm>
+          $<TARGET_FILE:onnxruntime_providers_shared>
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+endif()
+
+if (onnxruntime_USE_CLOUD)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          $<TARGET_FILE:onnxruntime_providers_cloud>
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )

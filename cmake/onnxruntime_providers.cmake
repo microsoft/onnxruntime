@@ -157,6 +157,9 @@ endif()
 if (onnxruntime_USE_CANN)
   set(PROVIDERS_CANN onnxruntime_providers_cann)
 endif()
+if (onnxruntime_USE_CLOUD)
+  set(PROVIDERS_CLOUD onnxruntime_providers_cloud)
+endif()
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -1579,7 +1582,7 @@ if (onnxruntime_USE_CANN)
   onnxruntime_add_include_to_target(onnxruntime_providers_cann onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
 
   add_dependencies(onnxruntime_providers_cann onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_link_libraries(onnxruntime_providers_cann PRIVATE ascendcl acl_op_compiler nsync_cpp ${ABSEIL_LIBS} onnxruntime_providers_shared)
+  target_link_libraries(onnxruntime_providers_cann PRIVATE ascendcl acl_op_compiler nsync_cpp ${ABSEIL_LIBS} onnxruntime_providers onnxruntime_providers_shared)
   target_link_directories(onnxruntime_providers_cann PRIVATE ${onnxruntime_CANN_HOME}/lib64)
   target_include_directories(onnxruntime_providers_cann PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${onnxruntime_CANN_HOME} ${onnxruntime_CANN_HOME}/include)
   set_target_properties(onnxruntime_providers_cann PROPERTIES LINKER_LANGUAGE CXX)
@@ -1592,36 +1595,33 @@ if (onnxruntime_USE_CANN)
 endif()
 
 if (onnxruntime_USE_CLOUD)
+  add_subdirectory(external/curl)
   file(GLOB_RECURSE onnxruntime_providers_cloud_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/cloud/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cloud/*.cc"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cloud_src})
   onnxruntime_add_static_library(onnxruntime_providers_cloud ${onnxruntime_providers_cloud_src})
+  add_dependencies(onnxruntime_providers_cloud onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_cloud PRIVATE external/curl/include)
-  onnxruntime_add_include_to_target(onnxruntime_providers_cloud onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
-  target_link_libraries(onnxruntime_providers_cloud PRIVATE onnx nnxruntime_common onnxruntime_framework libcurl)
+  onnxruntime_add_include_to_target(onnxruntime_providers_cloud onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers onnxruntime_providers_shared)
+  target_link_libraries(onnxruntime_providers_cloud PRIVATE onnx onnxruntime_common onnxruntime_framework libcurl)
   set_target_properties(onnxruntime_providers_cloud PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_cloud PROPERTIES LINKER_LANGUAGE CXX)
   
+  target_include_directories(onnxruntime_providers_cloud PRIVATE ${TRITON_ROOT}/include)
+  # target_link_directories(onnxruntime_providers_cloud PRIVATE ${TRITON_ROOT}/lib)
+  link_directories(${TRITON_ROOT}/lib)
+  target_link_libraries(onnxruntime_providers_cloud PRIVATE httpclient_static)
+  if (WIN32)
+    target_link_libraries(onnxruntime_providers_cloud PRIVATE ws2_32 crypt32 Wldap32)
+  endif()
+
   install(TARGETS onnxruntime_providers_cloud
           ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
           FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-  
-  target_include_directories(onnxruntime_providers_cloud PRIVATE ${TRITON_ROOT}/include)
-  target_link_directories(onnxruntime_providers_cloud PRIVATE ${TRITON_ROOT}/include)
-  target_link_libraries(onnxruntime_providers_cloud PRIVATE httpclient_static)
-  if (WIN32)
-    target_link_libraries(onnxruntime_providers_cloud PRIVATE ws2_32 crypt32 Wldap32)
-  endif()
-  #add_dependencies(onnxruntime_providers_cloud onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  #onnxruntime_add_include_to_target(onnxruntime_providers_cloud onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
-  #target_include_directories(onnxruntime_providers_cloud PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
-  #set_target_properties(onnxruntime_providers_cloud PROPERTIES LINKER_LANGUAGE CXX)
-  #set_target_properties(onnxruntime_providers_cloud PROPERTIES FOLDER "ONNXRuntime")
-  #target_link_libraries(onnxruntime_providers_cloud PRIVATE ${ONNXRUNTIME_PROVIDERS_SHARED})
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

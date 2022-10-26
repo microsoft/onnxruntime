@@ -3,23 +3,20 @@
 
 #pragma once
 
+//#include "core/graph/graph_viewer.h"
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
 
-struct CloudExecutionProviderInfo {
-  std::string url;
-  std::string access_token;
-};
+//class GraphViewer;
 
 class CloudExecutionProvider : public IExecutionProvider {
  public:
-  explicit CloudExecutionProvider(const CloudExecutionProviderInfo& info);
-  virtual ~CloudExecutionProvider();
-  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  explicit CloudExecutionProvider(const std::unordered_map<std::string, std::string>& config);
+  ~CloudExecutionProvider() = default;
 
  private:
-  CloudExecutionProviderInfo info_;
+  std::unordered_map<std::string, std::string> config_;
 };
 
 }  // namespace onnxruntime
