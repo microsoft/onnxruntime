@@ -82,11 +82,19 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
         // jsepDownload(src, dst, size)
         async(gpuDataId: number, dataOffset: number, size: number):
             Promise<void> => {
-              // eslint-disable-next-line no-console
-              console.log('jsepDownload');
-
               const data = module.HEAPU8.subarray(dataOffset, dataOffset + size);
+
+              // eslint-disable-next-line no-console
+              console.log(`jsepDownload: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
+
+              // eslint-disable-next-line no-console
+              console.log(`jsepDownload: before download: ${
+                  new Float32Array(data.buffer, data.byteOffset, data.byteLength).join(',')}`);
+
               await backend.download(gpuDataId, data);
+              // eslint-disable-next-line no-console
+              console.log(`jsepDownload: after download: ${
+                  new Float32Array(data.buffer, data.byteOffset, data.byteLength).join(',')}`);
             },
 
         // jsepCreateKernel

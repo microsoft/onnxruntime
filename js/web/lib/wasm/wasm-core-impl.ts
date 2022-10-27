@@ -238,171 +238,180 @@ const numericTensorTypeToTypedArray = (type: Tensor.Type): Float32ArrayConstruct
 /**
  * perform inference run
  */
-export const run =
-    (sessionId: number, inputIndices: number[], inputs: SerializableTensor[], outputIndices: number[],
-     options: InferenceSession.RunOptions): SerializableTensor[] => {
-      const wasm = getInstance();
-      const session = activeSessions.get(sessionId);
-      if (!session) {
-        throw new Error('invalid session id');
+export const run = async(
+    sessionId: number, inputIndices: number[], inputs: SerializableTensor[], outputIndices: number[],
+    options: InferenceSession.RunOptions): Promise<SerializableTensor[]> => {
+  const wasm = getInstance();
+  const session = activeSessions.get(sessionId);
+  if (!session) {
+    throw new Error('invalid session id');
+  }
+  const sessionHandle = session[0];
+  const inputNamesUTF8Encoded = session[1];
+  const outputNamesUTF8Encoded = session[2];
+
+  const inputCount = inputIndices.length;
+  const outputCount = outputIndices.length;
+
+  let runOptionsHandle = 0;
+  let runOptionsAllocs: number[] = [];
+
+  const inputValues: number[] = [];
+  const inputAllocs: number[] = [];
+
+  try {
+    [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
+
+    // create input tensors
+    for (let i = 0; i < inputCount; i++) {
+      const dataType = inputs[i][0];
+      const dims = inputs[i][1];
+      const data = inputs[i][2];
+
+      let dataOffset: number;
+      let dataByteLength: number;
+
+      if (Array.isArray(data)) {
+        // string tensor
+        dataByteLength = 4 * data.length;
+        dataOffset = wasm._malloc(dataByteLength);
+        inputAllocs.push(dataOffset);
+        let dataIndex = dataOffset / 4;
+        for (let i = 0; i < data.length; i++) {
+          if (typeof data[i] !== 'string') {
+            throw new TypeError(`tensor data at index ${i} is not a string`);
+          }
+          wasm.HEAPU32[dataIndex++] = allocWasmString(data[i], inputAllocs);
+        }
+      } else {
+        dataByteLength = data.byteLength;
+        dataOffset = wasm._malloc(dataByteLength);
+        inputAllocs.push(dataOffset);
+        wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), dataOffset);
       }
-      const sessionHandle = session[0];
-      const inputNamesUTF8Encoded = session[1];
-      const outputNamesUTF8Encoded = session[2];
 
-      const inputCount = inputIndices.length;
-      const outputCount = outputIndices.length;
-
-      let runOptionsHandle = 0;
-      let runOptionsAllocs: number[] = [];
-
-      const inputValues: number[] = [];
-      const inputAllocs: number[] = [];
-
+      const stack = wasm.stackSave();
+      const dimsOffset = wasm.stackAlloc(4 * dims.length);
       try {
-        [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
-
-        // create input tensors
-        for (let i = 0; i < inputCount; i++) {
-          const dataType = inputs[i][0];
-          const dims = inputs[i][1];
-          const data = inputs[i][2];
-
-          let dataOffset: number;
-          let dataByteLength: number;
-
-          if (Array.isArray(data)) {
-            // string tensor
-            dataByteLength = 4 * data.length;
-            dataOffset = wasm._malloc(dataByteLength);
-            inputAllocs.push(dataOffset);
-            let dataIndex = dataOffset / 4;
-            for (let i = 0; i < data.length; i++) {
-              if (typeof data[i] !== 'string') {
-                throw new TypeError(`tensor data at index ${i} is not a string`);
-              }
-              wasm.HEAPU32[dataIndex++] = allocWasmString(data[i], inputAllocs);
-            }
-          } else {
-            dataByteLength = data.byteLength;
-            dataOffset = wasm._malloc(dataByteLength);
-            inputAllocs.push(dataOffset);
-            wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), dataOffset);
-          }
-
-          const stack = wasm.stackSave();
-          const dimsOffset = wasm.stackAlloc(4 * dims.length);
-          try {
-            let dimIndex = dimsOffset / 4;
-            dims.forEach(d => wasm.HEAP32[dimIndex++] = d);
-            const tensor = wasm._OrtCreateTensor(
-                tensorDataTypeStringToEnum(dataType), dataOffset, dataByteLength, dimsOffset, dims.length);
-            if (tensor === 0) {
-              throw new Error('Can\'t create a tensor');
-            }
-            inputValues.push(tensor);
-          } finally {
-            wasm.stackRestore(stack);
-          }
+        let dimIndex = dimsOffset / 4;
+        dims.forEach(d => wasm.HEAP32[dimIndex++] = d);
+        const tensor = wasm._OrtCreateTensor(
+            tensorDataTypeStringToEnum(dataType), dataOffset, dataByteLength, dimsOffset, dims.length);
+        if (tensor === 0) {
+          throw new Error('Can\'t create a tensor');
         }
-
-        const beforeRunStack = wasm.stackSave();
-        const inputValuesOffset = wasm.stackAlloc(inputCount * 4);
-        const inputNamesOffset = wasm.stackAlloc(inputCount * 4);
-        const outputValuesOffset = wasm.stackAlloc(outputCount * 4);
-        const outputNamesOffset = wasm.stackAlloc(outputCount * 4);
-
-        try {
-          let inputValuesIndex = inputValuesOffset / 4;
-          let inputNamesIndex = inputNamesOffset / 4;
-          let outputValuesIndex = outputValuesOffset / 4;
-          let outputNamesIndex = outputNamesOffset / 4;
-          for (let i = 0; i < inputCount; i++) {
-            wasm.HEAPU32[inputValuesIndex++] = inputValues[i];
-            wasm.HEAPU32[inputNamesIndex++] = inputNamesUTF8Encoded[inputIndices[i]];
-          }
-          for (let i = 0; i < outputCount; i++) {
-            wasm.HEAPU32[outputValuesIndex++] = 0;
-            wasm.HEAPU32[outputNamesIndex++] = outputNamesUTF8Encoded[outputIndices[i]];
-          }
-
-          // support RunOptions
-          let errorCode = wasm._OrtRun(
-              sessionHandle, inputNamesOffset, inputValuesOffset, inputCount, outputNamesOffset, outputCount,
-              outputValuesOffset, runOptionsHandle);
-
-          const output: SerializableTensor[] = [];
-
-          if (errorCode === 0) {
-            for (let i = 0; i < outputCount; i++) {
-              const tensor = wasm.HEAPU32[outputValuesOffset / 4 + i];
-
-              const beforeGetTensorDataStack = wasm.stackSave();
-              // stack allocate 4 pointer value
-              const tensorDataOffset = wasm.stackAlloc(4 * 4);
-
-              let type: Tensor.Type|undefined, dataOffset = 0;
-              try {
-                errorCode = wasm._OrtGetTensorData(
-                    tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
-                if (errorCode !== 0) {
-                  throw new Error(`Can't access output tensor data. error code = ${errorCode}`);
-                }
-                let tensorDataIndex = tensorDataOffset / 4;
-                const dataType = wasm.HEAPU32[tensorDataIndex++];
-                dataOffset = wasm.HEAPU32[tensorDataIndex++];
-                const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
-                const dimsLength = wasm.HEAPU32[tensorDataIndex++];
-                const dims = [];
-                for (let i = 0; i < dimsLength; i++) {
-                  dims.push(wasm.HEAPU32[dimsOffset / 4 + i]);
-                }
-                wasm._OrtFree(dimsOffset);
-
-                const size = dims.length === 0 ? 1 : dims.reduce((a, b) => a * b);
-                type = tensorDataTypeEnumToString(dataType);
-                if (type === 'string') {
-                  const stringData: string[] = [];
-                  let dataIndex = dataOffset / 4;
-                  for (let i = 0; i < size; i++) {
-                    const offset = wasm.HEAPU32[dataIndex++];
-                    const maxBytesToRead = i === size - 1 ? undefined : wasm.HEAPU32[dataIndex] - offset;
-                    stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
-                  }
-                  output.push([type, dims, stringData]);
-                } else {
-                  const typedArrayConstructor = numericTensorTypeToTypedArray(type);
-                  const data = new typedArrayConstructor(size);
-                  new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-                      .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength));
-                  output.push([type, dims, data]);
-                }
-              } finally {
-                wasm.stackRestore(beforeGetTensorDataStack);
-                if (type === 'string' && dataOffset) {
-                  wasm._free(dataOffset);
-                }
-                wasm._OrtReleaseTensor(tensor);
-              }
-            }
-          }
-
-          if (errorCode === 0) {
-            return output;
-          } else {
-            throw new Error(`failed to call OrtRun(). error code = ${errorCode}.`);
-          }
-        } finally {
-          wasm.stackRestore(beforeRunStack);
-        }
+        inputValues.push(tensor);
       } finally {
-        inputValues.forEach(wasm._OrtReleaseTensor);
-        inputAllocs.forEach(wasm._free);
-
-        wasm._OrtReleaseRunOptions(runOptionsHandle);
-        runOptionsAllocs.forEach(wasm._free);
+        wasm.stackRestore(stack);
       }
-    };
+    }
+
+    const beforeRunStack = wasm.stackSave();
+    const inputValuesOffset = wasm.stackAlloc(inputCount * 4);
+    const inputNamesOffset = wasm.stackAlloc(inputCount * 4);
+    const outputValuesOffset = wasm.stackAlloc(outputCount * 4);
+    const outputNamesOffset = wasm.stackAlloc(outputCount * 4);
+
+    try {
+      let inputValuesIndex = inputValuesOffset / 4;
+      let inputNamesIndex = inputNamesOffset / 4;
+      let outputValuesIndex = outputValuesOffset / 4;
+      let outputNamesIndex = outputNamesOffset / 4;
+      for (let i = 0; i < inputCount; i++) {
+        wasm.HEAPU32[inputValuesIndex++] = inputValues[i];
+        wasm.HEAPU32[inputNamesIndex++] = inputNamesUTF8Encoded[inputIndices[i]];
+      }
+      for (let i = 0; i < outputCount; i++) {
+        wasm.HEAPU32[outputValuesIndex++] = 0;
+        wasm.HEAPU32[outputNamesIndex++] = outputNamesUTF8Encoded[outputIndices[i]];
+      }
+
+      // support RunOptions
+      let errorCode = wasm._OrtRun(
+          sessionHandle, inputNamesOffset, inputValuesOffset, inputCount, outputNamesOffset, outputCount,
+          outputValuesOffset, runOptionsHandle);
+
+      // eslint-disable-next-line @typescript-eslint/naming-convention
+      const prom = (wasm as {OrtRunPromise?: Promise<void>}).OrtRunPromise;
+      if (prom) {
+        await prom;
+      }
+
+      // eslint-disable-next-line no-console
+      console.log(`OrtRun() errorcode=${errorCode}`);
+
+      const output: SerializableTensor[] = [];
+
+      if (errorCode === 0) {
+        for (let i = 0; i < outputCount; i++) {
+          const tensor = wasm.HEAPU32[outputValuesOffset / 4 + i];
+
+          const beforeGetTensorDataStack = wasm.stackSave();
+          // stack allocate 4 pointer value
+          const tensorDataOffset = wasm.stackAlloc(4 * 4);
+
+          let type: Tensor.Type|undefined, dataOffset = 0;
+          try {
+            errorCode = wasm._OrtGetTensorData(
+                tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
+            if (errorCode !== 0) {
+              throw new Error(`Can't access output tensor data. error code = ${errorCode}`);
+            }
+            let tensorDataIndex = tensorDataOffset / 4;
+            const dataType = wasm.HEAPU32[tensorDataIndex++];
+            dataOffset = wasm.HEAPU32[tensorDataIndex++];
+            const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
+            const dimsLength = wasm.HEAPU32[tensorDataIndex++];
+            const dims = [];
+            for (let i = 0; i < dimsLength; i++) {
+              dims.push(wasm.HEAPU32[dimsOffset / 4 + i]);
+            }
+            wasm._OrtFree(dimsOffset);
+
+            const size = dims.length === 0 ? 1 : dims.reduce((a, b) => a * b);
+            type = tensorDataTypeEnumToString(dataType);
+            if (type === 'string') {
+              const stringData: string[] = [];
+              let dataIndex = dataOffset / 4;
+              for (let i = 0; i < size; i++) {
+                const offset = wasm.HEAPU32[dataIndex++];
+                const maxBytesToRead = i === size - 1 ? undefined : wasm.HEAPU32[dataIndex] - offset;
+                stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
+              }
+              output.push([type, dims, stringData]);
+            } else {
+              const typedArrayConstructor = numericTensorTypeToTypedArray(type);
+              const data = new typedArrayConstructor(size);
+              new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+                  .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + data.byteLength));
+              output.push([type, dims, data]);
+            }
+          } finally {
+            wasm.stackRestore(beforeGetTensorDataStack);
+            if (type === 'string' && dataOffset) {
+              wasm._free(dataOffset);
+            }
+            wasm._OrtReleaseTensor(tensor);
+          }
+        }
+      }
+
+      if (errorCode === 0) {
+        return output;
+      } else {
+        throw new Error(`failed to call OrtRun(). error code = ${errorCode}.`);
+      }
+    } finally {
+      wasm.stackRestore(beforeRunStack);
+    }
+  } finally {
+    inputValues.forEach(wasm._OrtReleaseTensor);
+    inputAllocs.forEach(wasm._free);
+
+    wasm._OrtReleaseRunOptions(runOptionsHandle);
+    runOptionsAllocs.forEach(wasm._free);
+  }
+};
 
 /**
  * end profiling

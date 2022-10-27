@@ -5,6 +5,10 @@
 
 #include "core/providers/js/data_transfer.h"
 
+EM_ASYNC_JS(void, jsepDownload, (const void *src_data, void *dst_data, size_t bytes), {
+  await Module.jsepDownload(src_data, dst_data, bytes);
+});
+
 namespace onnxruntime {
 namespace js {
 
@@ -26,7 +30,9 @@ common::Status DataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /*un
     EM_ASM({ Module.jsepUpload($0, $1, $2); }, src_data, dst_data, bytes);
   } else if (src_device.Type() == OrtDevice::GPU) {
     // copy from GPU to CPU
-    EM_ASM({ Module.jsepDownload($0, $1); }, src_data, dst_data);
+    printf("DataTransfer::CopyTensor before jsepDownload\n");
+    jsepDownload(src_data, dst_data, bytes);
+    printf("DataTransfer::CopyTensor after jsepDownload\n");
   } else {
     // copy from CPU to CPU (don't think we ever get here)
     memcpy(dst_data, src_data, bytes);
