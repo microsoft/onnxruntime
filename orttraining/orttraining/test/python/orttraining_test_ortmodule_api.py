@@ -759,7 +759,8 @@ def test_scatternd_correctness(device, indices):
 
 @pytest.mark.parametrize("use_fp16", [False, True])
 @pytest.mark.parametrize("input_requires_grad", [False, True])
-def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
+@pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
+def test_gradient_correctness_conv1d(use_fp16, input_requires_grad, conv_algo_search):
     class NeuralNetConv1D(torch.nn.Module):
         def __init__(self, in_channels, out_channels, kernel_size, padding=0, groups=1):
             super(NeuralNetConv1D, self).__init__()
@@ -775,6 +776,9 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
     if torch.cuda.get_device_capability()[0] < 7:
         return
 
+    if conv_algo_search is not None:
+        os.environ["ORTMODULE_CONV_ALGO_SEARCH"] = conv_algo_search
+
     device = "cuda"
     N, seq_len, C_in, C_out, kernel_size = 32, 128, 1536, 1536, 3
     pt_model = NeuralNetConv1D(C_in, C_out, kernel_size, padding=1).to(device)
@@ -787,12 +791,13 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
         loss.backward()
         return prediction
 
+    torch.manual_seed(2333)
     for _ in range(10):
         x = torch.randn(N, seq_len, C_in, device=device, requires_grad=input_requires_grad)
         pt_prediction = run_step(pt_model, x)
         ort_prediction = run_step(ort_model, x)
 
-        # PyTorch's Conv/GonvGrad uses HEURISTIC mode to search algo while ORT uses EXHAUSTIVE mode by default.
+        # PyTorch's Conv/GonvGrad uses HEURISTIC mode to search algo while this UT tests different modes for ORTModule.
         # While different algo types generate slightly different results, especially for FP16,
         # so relax the tolerance for comparison, especially for FP16 run and gradient comparison.
         if use_fp16:
@@ -801,6 +806,21 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
         else:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-2, atol=4e-2)
+
+    provider_options = ort_model._torch_module._execution_manager(
+        ort_model._is_training()
+    )._execution_agent._inference_session._provider_options
+
+    expected_conv_algo_search = "HEURISTIC" if conv_algo_search is None else conv_algo_search
+    actual_conv_algo_search = None
+    if "CUDAExecutionProvider" in provider_options:
+        actual_conv_algo_search = provider_options["CUDAExecutionProvider"]["cudnn_conv_algo_search"]
+    elif "ROCMExecutionProvider" in provider_options:
+        actual_conv_algo_search = provider_options["ROCMExecutionProvider"]["cudnn_conv_algo_search"]
+    assert actual_conv_algo_search == expected_conv_algo_search
+
+    if conv_algo_search is not None:
+        del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
 
 
 def _run_gradient_correctness_transpose(perm, shape):
@@ -1318,6 +1338,7 @@ def test_gradient_correctness_reducesum(dim, keepdim):
         loss.backward()
         return prediction
 
+    torch.manual_seed(2333)
     for _ in range(10):
         pt_input = torch.rand((N, D, H), device=device, requires_grad=True)
         ort_input = copy.deepcopy(pt_input)
@@ -1383,12 +1404,12 @@ def test_gradient_correctness_chunk(dim, chunks):
         os.remove(os.path.join(os.getcwd(), "chunk_model_execution_model_training.onnx"))
 
 
-# In PyTorch 1.11.0, there is issue during reduce node shape handling for exporter, so any sub-graph that
+# In PyTorch 1.11 to 1.12, there is issue during reduce node shape handling for exporter, so any sub-graph that
 # contains ReduceProd will fail to run, for example, "sec,sm->ecm", "sec,ecm->sm".
-# Currently skip these cases and test_gradient_correctness_einsum_2,
-# will enable these tests again once the issue in PyTorch is fixed.
-skip_torch_1_11 = pytest.mark.skipif(
-    Version(torch.__version__) >= Version("1.11.0"), reason="PyTorch 1.11 incompatible"
+# Skip these cases and test_gradient_correctness_einsum_2 for these versions.
+skip_einsum_test_if = pytest.mark.skipif(
+    Version(torch.__version__) >= Version("1.11.0") and Version(torch.__version__) < Version("1.13.0"),
+    reason="PyTorch 1.11 and 1.12 incompatible",
 )
 
 
@@ -1401,8 +1422,8 @@ skip_torch_1_11 = pytest.mark.skipif(
         "ks,ksm->sm",
         "kes,ems->mek",
         "kes,ksm->ms",
-        pytest.param("sec,sm->ecm", marks=[skip_torch_1_11]),
-        pytest.param("sec,ecm->sm", marks=[skip_torch_1_11]),
+        pytest.param("sec,sm->ecm", marks=[skip_einsum_test_if]),
+        pytest.param("sec,ecm->sm", marks=[skip_einsum_test_if]),
     ],
 )
 def test_gradient_correctness_einsum(equation):
@@ -1453,7 +1474,7 @@ def test_gradient_correctness_einsum(equation):
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-3, rtol=1e-3)
 
 
-@skip_torch_1_11
+@skip_einsum_test_if
 def test_gradient_correctness_einsum_2():
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):
@@ -1633,6 +1654,76 @@ def test_numpy_T(input_shape):
     ort_prediction = run_step(ort_model, ort_input)
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+
+
+def test_aten_group_norm():
+    class NeuralNetGroupNorm(torch.nn.Module):
+        def __init__(self, num_groups, num_channels):
+            super(NeuralNetGroupNorm, self).__init__()
+            self.group_norm = torch.nn.GroupNorm(
+                num_groups=num_groups, num_channels=num_channels, eps=1e-5, affine=True
+            )
+
+        def forward(self, x, y):
+            return self.group_norm(x + y)
+
+    device = "cuda"
+    pt_model = NeuralNetGroupNorm(3, 6).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, x, y):
+        prediction = model(x, y)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_x = torch.randn([20, 6, 10, 10], dtype=torch.float, device=device, requires_grad=True)
+    pt_y = torch.randn([20, 6, 10, 10], dtype=torch.float, device=device, requires_grad=True)
+    ort_x = copy.deepcopy(pt_x)
+    ort_y = copy.deepcopy(pt_y)
+    pt_prediction = run_step(pt_model, pt_x, pt_y)
+    ort_prediction = run_step(ort_model, ort_x, ort_y)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_x.grad, pt_x.grad)
+    _test_helpers.assert_values_are_close(ort_y.grad, pt_y.grad)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+
+@pytest.mark.parametrize("input_rank", (3, 4, 5))
+@pytest.mark.parametrize("use_factor", (True, False))
+def test_aten_upsample_nearest(input_rank, use_factor):
+    class _NeuralNetUpsampleNearest(torch.nn.Module):
+        def __init__(self):
+            super(_NeuralNetUpsampleNearest, self).__init__()
+
+        def forward(self, input):
+            return (
+                torch.nn.functional.interpolate(input, scale_factor=2.0, mode="nearest")
+                if use_factor
+                else torch.nn.functional.interpolate(input, size=12, mode="nearest")
+            )
+
+    device = "cuda"
+    pt_model = _NeuralNetUpsampleNearest().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    input_size = [2 * (dim + 1) for dim in range(input_rank)]
+    pt_input = torch.randn(input_size, dtype=torch.float, device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
 def test_gradient_correctness_cast_chain():
@@ -4070,7 +4161,6 @@ def test_ortmodule_string_inputs_are_ignored():
     with pytest.warns(UserWarning) as warning_record:
         out = ort_model(x, "hello")
 
-    assert len(warning_record) == 2
     assert (
         "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
         in warning_record[1].message.args[0]
@@ -4187,7 +4277,8 @@ def test_debug_options_save_onnx_models_os_environment(mode):
         # assert that the onnx models have been saved
         assert os.path.exists(os.path.join(temporary_dir, f"my_model_torch_exported_{mode}.onnx"))
         assert os.path.exists(os.path.join(temporary_dir, f"my_model_optimized_{mode}.onnx"))
-        assert os.path.exists(os.path.join(temporary_dir, f"my_model_optimized_pre_grad_{mode}.onnx"))
+        if mode == "training":
+            assert os.path.exists(os.path.join(temporary_dir, f"my_model_optimized_pre_grad_{mode}.onnx"))
         assert os.path.exists(os.path.join(temporary_dir, f"my_model_execution_model_{mode}.onnx"))
         del os.environ["ORTMODULE_SAVE_ONNX_PATH"]
 
@@ -4207,12 +4298,14 @@ def test_debug_options_save_onnx_models_cwd(mode):
     # assert that the onnx models have been saved
     assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_torch_exported_{mode}.onnx"))
     assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_optimized_{mode}.onnx"))
-    assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_optimized_pre_grad_{mode}.onnx"))
+    if mode == "training":
+        assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_optimized_pre_grad_{mode}.onnx"))
     assert os.path.exists(os.path.join(os.getcwd(), f"my_cwd_model_execution_model_{mode}.onnx"))
 
     os.remove(os.path.join(os.getcwd(), f"my_cwd_model_torch_exported_{mode}.onnx"))
     os.remove(os.path.join(os.getcwd(), f"my_cwd_model_optimized_{mode}.onnx"))
-    os.remove(os.path.join(os.getcwd(), f"my_cwd_model_optimized_pre_grad_{mode}.onnx"))
+    if mode == "training":
+        os.remove(os.path.join(os.getcwd(), f"my_cwd_model_optimized_pre_grad_{mode}.onnx"))
     os.remove(os.path.join(os.getcwd(), f"my_cwd_model_execution_model_{mode}.onnx"))
 
 
@@ -5357,3 +5450,32 @@ def test_eval_model_mode():
                 assert model.training == new_mode
                 assert model._torch_module.is_training() == new_mode
                 assert model._torch_module._flattened_module.training == new_mode
+
+
+def test_eval_onnx_models():
+    class NeuralNetBatchNorm(torch.nn.Module):
+        def __init__(self, num_features):
+            super(NeuralNetBatchNorm, self).__init__()
+            self.bn = torch.nn.BatchNorm1d(num_features)
+
+        def forward(self, input):
+            return self.bn(input)
+
+    device = "cuda"
+
+    N, H = 64, 128
+    model = ORTModule(NeuralNetBatchNorm(H).to(device))
+
+    x1 = torch.randn(N, H, device=device, requires_grad=True)
+    output = model(x1)
+    output.sum().backward()
+
+    x2 = torch.randn(N, H, device=device)
+    model.eval()
+    model(x2)
+
+    training_model = model._torch_module._execution_manager(True)._onnx_models.optimized_model
+    eval_model = model._torch_module._execution_manager(False)._onnx_models.optimized_model
+    # BatchNormInternal is for training, while BatchNormalization is for inference.
+    assert "BatchNormInternal" in [node.op_type for node in training_model.graph.node]
+    assert "BatchNormalization" in [node.op_type for node in eval_model.graph.node]

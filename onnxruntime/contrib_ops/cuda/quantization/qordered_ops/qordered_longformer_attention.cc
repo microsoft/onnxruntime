@@ -71,7 +71,7 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
 
 #else
 
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
 
 #endif
 }
@@ -119,7 +119,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   // TODO: only calculate once per model.
   // Build Global Index
-  auto global_index_buffer = GetScratchBuffer<int>(batch_size * sequence_length);
+  auto global_index_buffer = GetScratchBuffer<int>(static_cast<size_t>(batch_size) * static_cast<size_t>(sequence_length));
   auto batch_global_num_buffer = GetScratchBuffer<int>(batch_size);
 
   size_t global_scratch_bytes = GetGlobalScratchSize(sequence_length);
@@ -267,7 +267,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 #else
 
   ORT_UNUSED_PARAMETER(context);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
 
 #endif
 

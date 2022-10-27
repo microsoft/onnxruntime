@@ -26,12 +26,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     float, double, int8_t, uint8_t, int64_t, uint64_t);
 }  // namespace op_kernel_type_control
 
-using Clip11Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
-    kCpuExecutionProvider, kOnnxDomain, Clip, 11, Input, 0);
 using EnabledClip11Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Clip, 11, Input, 0);
-using Clip12Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
-    kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0);
 using EnabledClip12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0);
 
@@ -41,7 +37,7 @@ using AllEnabledClipTypes =
         EnabledClip12Types>;
 
 #define REG_KERNEL_VERSIONED_NONTEMPL(                                                 \
-    OP_TYPE, START_VER, END_VER, KERNEL_CLASS, DEFAULT_TYPE_LIST, ENABLED_TYPE_LIST)   \
+    OP_TYPE, START_VER, END_VER, KERNEL_CLASS, ENABLED_TYPE_LIST)                      \
   ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                  \
       OP_TYPE,                                                                         \
       START_VER,                                                                       \
@@ -49,25 +45,23 @@ using AllEnabledClipTypes =
       KernelDefBuilder()                                                               \
           .MayInplace(0, 0)                                                            \
           .TypeConstraint("T",                                                         \
-                          BuildKernelDefConstraintsFromTypeList<DEFAULT_TYPE_LIST>(),  \
                           BuildKernelDefConstraintsFromTypeList<ENABLED_TYPE_LIST>()), \
       KERNEL_CLASS);
 
 #define REG_KERNEL_NONTEMPL(                                                           \
-    OP_TYPE, VERSION, KERNEL_CLASS, DEFAULT_TYPE_LIST, ENABLED_TYPE_LIST)              \
+    OP_TYPE, VERSION, KERNEL_CLASS, ENABLED_TYPE_LIST)                                 \
   ONNX_CPU_OPERATOR_KERNEL(                                                            \
       OP_TYPE,                                                                         \
       VERSION,                                                                         \
       KernelDefBuilder()                                                               \
           .MayInplace(0, 0)                                                            \
           .TypeConstraint("T",                                                         \
-                          BuildKernelDefConstraintsFromTypeList<DEFAULT_TYPE_LIST>(),  \
                           BuildKernelDefConstraintsFromTypeList<ENABLED_TYPE_LIST>()), \
       KERNEL_CLASS);
 
-REG_KERNEL_VERSIONED_NONTEMPL(Clip, 11, 11, Clip, Clip11Types, EnabledClip11Types);
-REG_KERNEL_VERSIONED_NONTEMPL(Clip, 12, 12, Clip, Clip12Types, EnabledClip12Types);
-REG_KERNEL_NONTEMPL(Clip, 13, Clip, Clip12Types, EnabledClip12Types);
+REG_KERNEL_VERSIONED_NONTEMPL(Clip, 11, 11, Clip, EnabledClip11Types);
+REG_KERNEL_VERSIONED_NONTEMPL(Clip, 12, 12, Clip, EnabledClip12Types);
+REG_KERNEL_NONTEMPL(Clip, 13, Clip, EnabledClip12Types);
 
 #undef REG_KERNEL_VERSIONED_NONTEMPL
 #undef REG_KERNEL_NONTEMPL

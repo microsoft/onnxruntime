@@ -289,7 +289,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
           parameters->num_beams,
           decoder_subgraph_.GetFirstPastInputIndex(),
           decoder_subgraph_.GetFirstPresentOutputIndex(),
-          decoder_subgraph_.HasHiddenStates(),
+          decoder_subgraph_.UseSequenceAsInputIds(),
           current_length,
           cpu_state.sequences,
           this->GetConsoleDumper()));

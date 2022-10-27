@@ -47,6 +47,47 @@ __global__ void SkipLayerNormKernel(
 
 // Vectorized kernel
 template <typename T, unsigned TPB, int ILP>
+__global__ void SkipLayerNormKernelVec(
+    const int ld, const T* input, const T* skip, const T* beta, const T* gamma,
+    const T* bias, const T epsilon, T* output, bool hasBias) {
+  const T reverse_ld = T(1.f / ld);
+  const int offset = blockIdx.x * ld;
+
+  KeyValuePairSum pair_sum;
+  // reduce x and x^2
+  hipcub::KeyValuePair<T, T> thread_data(0, 0);
+
+  using VecT = aligned_vector<T, ILP>;
+  T input_v[ILP], skip_v[ILP], bias_v[ILP];
+  if (threadIdx.x * ILP < ld) {
+    VecT* input_val = reinterpret_cast<VecT*>(&input_v);
+    VecT* skip_val = reinterpret_cast<VecT*>(&skip_v);
+
+    for (int i = threadIdx.x * ILP; i < ld; i += TPB * ILP) {
+      int idx = offset + i;
+
+      *input_val = *reinterpret_cast<const VecT*>(&input[idx]);
+      *skip_val = *reinterpret_cast<const VecT*>(&skip[idx]);
+      if (hasBias) {
+        VecT* bias_val = reinterpret_cast<VecT*>(&bias_v);
+        *bias_val = *reinterpret_cast<const VecT*>(&bias[i]);
+      }
+
+      #pragma unroll
+      for (int k = 0; k < ILP; k++) {
+        input_v[k] += hasBias ? skip_v[k] + bias_v[k] : skip_v[k];
+        const T rldval = reverse_ld * input_v[k];
+        thread_data = pair_sum(thread_data, hipcub::KeyValuePair<T, T>(rldval, rldval * input_v[k]));
+      }
+      *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&input_v[0]);
+    }
+  }
+
+  LayerNormVec<T, TPB, ILP>(thread_data, ld, offset, beta, gamma, epsilon, output);
+}
+
+// Vectorized kernel
+template <typename T, unsigned TPB, int ILP>
 __global__ void SkipLayerNormKernelSmall(
     const int ld, const T* input, const T* skip, const T* beta, const T* gamma,
     const T* bias, const T epsilon, T* output, bool hasBias) {

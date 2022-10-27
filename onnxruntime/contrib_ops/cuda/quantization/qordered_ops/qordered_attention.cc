@@ -156,9 +156,9 @@ inline void debug_print([[maybe_unused]] const T* arr,
 
 #endif
 
-QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info), input_hidden_size_(0) {
+QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
-
+  input_hidden_size_ = 0;
   int cuda_runtime_version = 0;
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_runtime_version));
   ORT_ENFORCE(cuda_runtime_version >= 11040, "QOrderedMatmul need cuda runtime higher than 11.4");
@@ -185,7 +185,7 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
 
 #else
 
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
 
 #endif
 }
@@ -244,7 +244,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   int64_t size_of_attention_scores = ((int64_t)batch_size) * num_heads_ * sequence_length * sequence_length;
 
   // transposed qkv_layer,  union(stacked, attention probs + attention scores)
-  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>(m * n + std::max((int64_t)m * n, 2 * size_of_attention_scores));
+  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>((int64_t)m * n + std::max((int64_t)m * n, 2 * size_of_attention_scores));
 
   int8_t* stacked_qkv_layers = gemm_buffer_quantized.get() + ((int64_t)m * n);
   int8_t* tranposed_qkv_layers = gemm_buffer_quantized.get();
@@ -305,7 +305,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
 #else
 
   ORT_UNUSED_PARAMETER(context);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
 
 #endif
 

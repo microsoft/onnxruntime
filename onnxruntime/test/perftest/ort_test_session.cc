@@ -657,8 +657,8 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
           dim = 1;
         }
       }
-      // default allocator doesn't have to be freed by user
-      auto allocator = static_cast<OrtAllocator*>(Ort::AllocatorWithDefaultOptions());
+
+      auto allocator = Ort::AllocatorWithDefaultOptions();
       Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
                                                          input_node_dim.size(), tensor_info.GetElementType());
       InitializeTensorWithSeed(seed, input_tensor);

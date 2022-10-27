@@ -11,16 +11,14 @@ namespace onnxruntime {
 
 class LayerNormImpl : public OpKernel {
  public:
-  LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified = false);
+  LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified = false, bool contrib_op = false);
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
  private:
-  template <typename T>
-  struct ComputeImpl;
-
   int64_t axis_;
   float epsilon_;
   const bool simplified_;
+  const bool contrib_op_;
 };
 
 }  // namespace onnxruntime

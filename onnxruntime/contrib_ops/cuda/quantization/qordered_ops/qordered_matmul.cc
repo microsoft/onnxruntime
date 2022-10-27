@@ -52,7 +52,7 @@ QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
 
 #else
 
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
 
 #endif
 }
@@ -110,7 +110,7 @@ Status QOrderedMatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
   ORT_UNUSED_PARAMETER(input_idx);
   ORT_UNUSED_PARAMETER(alloc);
   ORT_UNUSED_PARAMETER(is_packed);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
 
 #endif
 
@@ -191,7 +191,7 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
 #else
 
   ORT_UNUSED_PARAMETER(context);
-  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!")
+  ORT_ENFORCE(false, "Compiling with CUDA_VERSION >= 11.4 is needed!");
 
 #endif
 
