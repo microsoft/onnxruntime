@@ -141,8 +141,8 @@ __global__ void cuda_random_uniform_kernel(half* buffer, const int size) {
 }
 
 
-void cudaRandomUniform(void* buffer, const int size) {
-  cuda_random_uniform_kernel<<<256, 256>>>(reinterpret_cast<half*>(buffer), size);
+void cudaRandomUniform(cudaStream_t stream, void* buffer, const int size) {
+  cuda_random_uniform_kernel<<<256, 256, 0, stream>>>(reinterpret_cast<half*>(buffer), size);
 }
 
 }  // namespace cuda

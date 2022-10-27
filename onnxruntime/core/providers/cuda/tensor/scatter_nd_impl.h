@@ -19,7 +19,7 @@ Status ScatterNDImpl(
     const void* updates_data,
     const size_t num_updates_elements);
 
-void cudaRandomUniform(void* buffer, const int size);
+void cudaRandomUniform(cudaStream_t stream, void* buffer, const int size);
 
 }  // namespace cuda
 }  // namespace onnxruntime
