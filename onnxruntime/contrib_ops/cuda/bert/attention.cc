@@ -54,7 +54,8 @@ static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
   disable_fused_runner_ = sizeof(T) != 2 || ParseEnvironmentVariableWithDefault<bool>(kDisableFusedAttention, false);
-  use_data_ptr_ = info.node().Name() == "Attention_0";
+  /// use_data_ptr_ = info.node().Name() == "Attention_0";
+  use_data_ptr_ =  false;
   if (use_data_ptr_) {
     std::cout << "Using data pointer instead of input" << std::endl;
   }
