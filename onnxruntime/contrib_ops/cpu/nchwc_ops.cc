@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/safeint.h>
 #include "nchwc_ops.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"

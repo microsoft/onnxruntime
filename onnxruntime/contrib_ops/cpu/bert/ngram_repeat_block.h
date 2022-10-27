@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <core/common/safeint.h>
 #include "core/common/common.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
@@ -37,7 +38,7 @@ class NGramRepeatBlock : public OpKernel {
     int64_t cur_len = input_ids_dims[1];
     ORT_ENFORCE(scores_dims[0] == batch_size);
     int64_t vocab_size = scores_dims[1];
-
+    
     if (cur_len + 1 < ngram_size_) {
       return Status::OK();
     }
