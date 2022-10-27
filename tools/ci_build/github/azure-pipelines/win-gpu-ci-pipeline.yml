@@ -89,12 +89,13 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
         buildArch: x64
-        additionalBuildFlags: --gen_doc validate --skip_tests --enable_pybind --use_dml --use_cuda --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+        # note: need to specify `--gen_doc` when creating the build config so it has to be in additionalBuildFlags
+        additionalBuildFlags: --gen_doc validate --skip_tests --enable_pybind --use_dml --use_cuda --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: false
         RunStaticCodeAnalysis: false
+        GenerateDocumentation: true
         ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
-        MachinePool: Win-CPU-2019
-        DocUpdateNeeded: true
+        MachinePool: onnxruntime-Win2019-GPU-T4
