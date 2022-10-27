@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 import logging
-from typing import Any, Callable, Dict, List, Mapping, Set, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Set, Tuple, Union
 
 import numpy as np
 import onnx
@@ -191,7 +191,6 @@ def _jit_graph_to_onnx_model(graph, operator_export_type):
     It also does not interact with actual PyTorch modules nor
     PyTorch tensor inputs.
     """
-
     graph = torch.onnx.utils._optimize_graph(graph, operator_export_type, params_dict={})
     proto, _, _, _ = graph._export_onnx(
         {},
@@ -353,36 +352,52 @@ def _assert_allclose_with_detailed_error_message(
         )
 
 
+class OrtExecutionInfo:
+    """Information required to execute torch.fx.GraphModule using onnxruntime.InferenceSession"""
+
+    def __init__(self):
+        # session self.sessions[mod] is created for computing the graph in mod.
+        self.sessions: Dict[torch.fx.GraphModule, onnxruntime.InferenceSession] = {}
+        # self.input_names[mod] contains all input names in the ONNX model exported from mod.
+        # self.input_names[mod][i] is the name of the i-th positional input of the graph in mod.
+        self.input_names: Dict[torch.fx.GraphModule, List[str]] = {}
+        # Similar to self.input_names, but for outputs of the graph.
+        self.output_names: Dict[torch.fx.GraphModule, List[str]] = {}
+        # self.input_devices[mod] contains devices of inputs fed to mod.forward (excluding self).
+        # self.input_devices[mod][i] is the i-th positional input's device.
+        self.input_devices: Dict[torch.fx.GraphModule, List[ORTC.OrtDevice]] = {}
+        # Similar to self.input_devices, but for outputs of the graph.
+        self.output_devices: Dict[torch.fx.GraphModule, List[ORTC.OrtDevice]] = {}
+        # This is a debug flag. When True, this backend will compare its
+        self.assert_allclose_to_baseline: bool = False
+        # We need example outputs to determine output schema of ORT run.
+        # self.example_outputs[mod] is the outputs of mod.forward(*self.example_inputs[mod]).
+        self.example_outputs: Dict[torch.fx.GraphModule, Union[Tuple[torch.Tensor], torch.Tensor]] = {}
+
+
 class OrtBackend:
     def __init__(self):
         self.supported_ops = OrtOperatorSupport()
         # TODO: this is a naive implementation of cache without proper guard
         self.partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
-        self.prim_outputs = {}
         # TODO: this is a naive implementation of cache without proper guard, this will only work for identical inputs
-        self.onnx_sessions = {}
-        self.onnx_model = {}
-        self.onnx_input_names = {}
-        self.onnx_output_names = {}
-        self.onnx_input_devices = {}
-        self.onnx_output_devices = {}
-        self.assert_allclose_to_baseline = False
+        self.ort_execution_info = OrtExecutionInfo()
 
     def ort_acclerated_call(self, graph_module: torch.fx.GraphModule, *args, **kwargs):
-        if graph_module in self.onnx_sessions:
-            onnx_session = self.onnx_sessions[graph_module]
-            input_names = self.onnx_input_names[graph_module]
-            output_names = self.onnx_output_names[graph_module]
-            input_devices = self.onnx_input_devices[graph_module]
-            output_devices = self.onnx_output_devices[graph_module]
-            prim_outputs = self.prim_outputs[graph_module]
+        if graph_module in self.ort_execution_info.sessions:
+            onnx_session = self.ort_execution_info.sessions[graph_module]
+            input_names = self.ort_execution_info.input_names[graph_module]
+            output_names = self.ort_execution_info.output_names[graph_module]
+            input_devices = self.ort_execution_info.input_devices[graph_module]
+            output_devices = self.ort_execution_info.output_devices[graph_module]
+            prim_outputs = self.ort_execution_info.example_outputs[graph_module]
         else:
             # TODO(wechi): this is a workaround for #84311.
             _move_placeholder_to_front(graph_module)
             # Store reference outputs. They are used to indicate output
             # tensors' types and devices when calling ORT.
             prim_outputs = FakeTensorProp(graph_module).propagate(*args, **kwargs)
-            self.prim_outputs[graph_module] = prim_outputs
+            self.ort_execution_info.example_outputs[graph_module] = prim_outputs
             # Compile the torch.fx.GraphModule into a torch.jit.ScriptModule.
             script_module = _fx_to_torchscript(graph_module)
             # Post-processing step to add expected input and output type information
@@ -399,7 +414,7 @@ class OrtBackend:
             # so we add execution provider only based on the first input's device.
             onnx_session = _create_onnx_session(onnx_proto, args[0].device)
             # Cache ORT session. It's reused for the same "graph_module".
-            self.onnx_sessions[graph_module] = onnx_session
+            self.ort_execution_info.sessions[graph_module] = onnx_session
             # Generate ONNX model and extract its input and output names.
             onnx_model = _create_onnx_model(onnx_proto)
             # TODO(wechi): ORT session should provide a API to extract
@@ -414,10 +429,10 @@ class OrtBackend:
                 output_devices = _get_onnx_devices(prim_outputs)
             else:
                 output_devices = _get_onnx_devices((prim_outputs,))
-            self.onnx_input_names[graph_module] = input_names
-            self.onnx_output_names[graph_module] = output_names
-            self.onnx_input_devices[graph_module] = input_devices
-            self.onnx_output_devices[graph_module] = output_devices
+            self.ort_execution_info.input_names[graph_module] = input_names
+            self.ort_execution_info.output_names[graph_module] = output_names
+            self.ort_execution_info.input_devices[graph_module] = input_devices
+            self.ort_execution_info.output_devices[graph_module] = output_devices
 
         if isinstance(prim_outputs, tuple):
             assert all(isinstance(elem, torch.Tensor) for elem in prim_outputs)
@@ -428,7 +443,7 @@ class OrtBackend:
                 onnx_session, input_names, args, input_devices, output_names, prim_outputs, output_devices
             )
             _nvtx_range_pop()
-            if self.assert_allclose_to_baseline:
+            if self.ort_execution_info.assert_allclose_to_baseline:
                 # Compute baseline.
                 baeline_outputs = torch._prims.executor.execute(graph_module, *args, executor="aten")
                 # Ensure every output tensor is close to the corresponding baseline.
@@ -444,7 +459,7 @@ class OrtBackend:
                 onnx_session, input_names, args, input_devices, output_names, (prim_outputs,), output_devices
             )
             assert len(onnx_outputs) == 1
-            if self.assert_allclose_to_baseline:
+            if self.ort_execution_info.assert_allclose_to_baseline:
                 # Compute baseline.
                 baseline_outputs = torch._prims.executor.execute(graph_module, *args, executor="aten")
                 # Ensure output tensor is close to the corresponding baseline.
