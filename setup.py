@@ -70,6 +70,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_openvino"):
     package_name = "onnxruntime-openvino"
 elif parse_arg_remove_boolean(sys.argv, "--use_dnnl"):
     package_name = "onnxruntime-dnnl"
+elif parse_arg_remove_boolean(sys.argv, "--use_directml"):
+    package_name = "onnxruntime-directml"
 elif parse_arg_remove_boolean(sys.argv, "--use_tvm"):
     package_name = "onnxruntime-tvm"
 elif parse_arg_remove_boolean(sys.argv, "--use_vitisai"):
