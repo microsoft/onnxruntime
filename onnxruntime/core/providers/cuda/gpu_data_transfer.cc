@@ -5,6 +5,7 @@
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_common.h"
 #include "core/providers/cuda/tensor/scatter_nd_impl.h"
+#include <iostream>
 
 // use default stream for copy for now, to avoid racing in BFC arena as in issue #4829
 // note this may cause some models to run slower if there are ops running on CPU
@@ -39,6 +40,7 @@ bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_
 }
 
 common::Status GPUDataTransfer::Randomize(Tensor& dst) const {
+  std::cout << "Randomization starts" << std::endl;
   cuda::cudaRandomUniform(GetStream(kCudaStreamDefault), dst.MutableDataRaw(), dst.SizeInBytes());
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(GetStream(kCudaStreamDefault)));
   return Status::OK();
