@@ -28,7 +28,7 @@ jobs:
 
       - template: telemetry-steps.yml
 
-      - task: Use${{ parameters.PYTHON_VERSION }}@0
+      - task: UsePythonVersion@0
         inputs:
           versionSpec: $(${{ parameters.PYTHON_VERSION }})
           addToPath: true
