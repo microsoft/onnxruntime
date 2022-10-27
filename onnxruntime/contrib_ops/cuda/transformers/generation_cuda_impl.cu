@@ -4,7 +4,9 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "cub/util_type.cuh"
-#include "contrib_ops/cuda/transformers/beam_search_impl.h"
+#include <cub/device/device_segmented_radix_sort.cuh>
+#include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
+
 
 namespace onnxruntime {
 namespace contrib {
@@ -297,6 +299,124 @@ void LaunchUpdateGptKernel(const int32_t* old_mask_data,
   UpdateGptInputsKernel<int32_t><<<gridSize, blockSize, 0, stream>>>(
       old_mask_data, mask_data, next_positions, batch_beam_size, current_length);
 }
+
+// bugbug: merge those kernels into one
+template <typename T>
+size_t GetTempStorageSize(const T *d_keys_in,
+                          const int* d_values_in,
+                          int* d_offsets,
+                          int num_items,
+                          int num_segments,
+                          cudaStream_t stream) {
+    size_t temp_storage_bytes = 0;
+    cub::DeviceSegmentedRadixSort::SortPairsDescending(nullptr,
+                                                       temp_storage_bytes,
+                                                       d_keys_in,
+                                                       (T*)nullptr,
+                                                       d_values_in,
+                                                       (int*)nullptr,
+                                                       num_items,
+                                                       num_segments,
+                                                       d_offsets,
+                                                       d_offsets + 1,
+                                                       0,
+                                                       sizeof(T) * 8,
+                                                       stream);
+    return temp_storage_bytes;
+}
+
+template size_t GetTempStorageSize(
+  const float *d_keys_in,
+  const int* d_values_in,
+  int* d_offsets,
+  int num_items,
+  int num_segments,
+  cudaStream_t stream);
+
+template size_t GetTempStorageSize(
+  const half *d_keys_in,
+  const int* d_values_in,
+  int* d_offsets,
+  int num_items,
+  int num_segments,
+  cudaStream_t stream);
+
+// bugbug: merge to one kernel
+__global__ void SetupParamsKernel(int* d_values_in,
+                                  int* d_offsets,
+                                  int batch_size,
+                                  int vocab_size) {
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+  int total_elements = batch_size * vocab_size;
+  if (index < total_elements) {
+    d_values_in[index] = index % vocab_size;
+  }
+  if (index < batch_size + 1) {
+    d_offsets[index] = index * vocab_size;
+  }
+}
+
+void LaunchSetupParamsKernel(int* d_values_in,
+                             int* d_offsets,
+                             int batch_size,
+                             int vocab_size,
+                             cudaStream_t stream) {
+int total_elements = batch_size * vocab_size;
+constexpr int blockSize = 256;
+const int gridSize = (total_elements + blockSize - 1) / blockSize;
+SetupParamsKernel<<<gridSize, blockSize, 0, stream>>>(d_values_in,
+                                                      d_offsets,
+                                                      batch_size,
+                                                      vocab_size);
+}
+
+template <typename T>
+void LaunchSortPairsDescending(void *d_temp_storage,
+                               size_t temp_storage_bytes,
+                               const T *d_keys_in,
+                               T *d_keys_out,
+                               const int *d_values_in,
+                               int *d_values_out,
+                               int num_items,
+                               int num_segments,
+                               int *d_offsets,
+                               cudaStream_t stream) {
+  cub::DeviceSegmentedRadixSort::SortPairsDescending(d_temp_storage,
+                                                     temp_storage_bytes,
+                                                     d_keys_in,
+                                                     d_keys_out,
+                                                     d_values_in,
+                                                     d_values_out,
+                                                     num_items,
+                                                     num_segments,
+                                                     d_offsets,
+                                                     d_offsets + 1,
+                                                     0,
+                                                     sizeof(T) * 8,
+                                                     stream);
+}
+
+template void LaunchSortPairsDescending(void *d_temp_storage,
+                                        size_t temp_storage_bytes,
+                                        const float *d_keys_in,
+                                        float *d_keys_out,
+                                        const int *d_values_in,
+                                        int *d_values_out,
+                                        int num_items,
+                                        int num_segments,
+                                        int *d_offsets,
+                                        cudaStream_t stream);
+
+template void LaunchSortPairsDescending(void *d_temp_storage,
+                                        size_t temp_storage_bytes,
+                                        const half *d_keys_in,
+                                        half *d_keys_out,
+                                        const int *d_values_in,
+                                        int *d_values_out,
+                                        int num_items,
+                                        int num_segments,
+                                        int *d_offsets,
+                                        cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

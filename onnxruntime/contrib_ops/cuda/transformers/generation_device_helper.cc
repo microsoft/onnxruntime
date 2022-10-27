@@ -4,13 +4,14 @@
 #include <utility>
 #include <memory>
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/math/topk_impl.h"
 #include "core/providers/cuda/math/softmax.h"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
 #include "core/framework/ort_value.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 #include <cuda_runtime.h>
-#include "contrib_ops/cuda/transformers/beam_search_impl.h"
+#include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
@@ -555,7 +556,53 @@ Status GreedySearchProcessLogits(
   ORT_UNUSED_PARAMETER(output_scores);
 
   if (do_sampling) {
-    ORT_UNUSED_PARAMETER(do_sampling);
+    // bugbug: move this outside probably in execute()?
+    size_t bytes = SafeInt<size_t>(sizeof(int)) * 2 * parameters->batch_size * parameters->vocab_size +
+                   SafeInt<size_t>(sizeof(int)) * (parameters->batch_size + 1) +
+                   SafeInt<size_t>(sizeof(CudaT)) * parameters->batch_size * parameters->vocab_size +
+                   SafeInt<size_t>(sizeof(float) * parameters->batch_size * parameters->vocab_size);
+    void* data = allocator->Alloc(bytes);
+    BufferUniquePtr workspace_buffer(data, BufferDeleter(allocator));
+    int* d_index_buffer_in = reinterpret_cast<int*>(workspace_buffer.get());
+    int* d_index_buffer_out = d_index_buffer_in + parameters->batch_size * parameters->vocab_size;
+    int* d_offset_buffer = d_index_buffer_out + parameters->batch_size * parameters->vocab_size;
+    CudaT* d_sorted_score_buffer = reinterpret_cast<CudaT*>(d_offset_buffer + parameters->batch_size + 1);
+    float* d_softmaxed_score_buffer = reinterpret_cast<float*>(d_sorted_score_buffer + parameters->batch_size * parameters->vocab_size);
+
+    size_t temp_storage_bytes = cuda::GetTempStorageSize(reinterpret_cast<CudaT*>(next_token_scores.data()),
+                                                         d_index_buffer_in,
+                                                         d_offset_buffer,
+                                                         parameters->vocab_size,
+                                                         parameters->batch_size,
+                                                         cuda_stream);
+
+    cuda::LaunchSetupParamsKernel(d_index_buffer_in,
+                                  d_offset_buffer,
+                                  parameters->batch_size,
+                                  parameters->vocab_size,
+                                  cuda_stream);
+
+    void* temp_storage = allocator->Alloc(temp_storage_bytes);
+    BufferUniquePtr temp_storage_buffer(temp_storage, BufferDeleter(allocator));
+
+    cuda::LaunchSortPairsDescending(temp_storage_buffer.get(),
+                                    temp_storage_bytes,
+                                    reinterpret_cast<CudaT*>(next_token_scores.data()),
+                                    d_sorted_score_buffer,
+                                    d_index_buffer_in,
+                                    d_index_buffer_out,
+                                    parameters->vocab_size,
+                                    parameters->batch_size,
+                                    d_offset_buffer,
+                                    cuda_stream);
+
+    dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
+                                                                   d_softmaxed_score_buffer,
+                                                                   d_sorted_score_buffer,
+                                                                   parameters->vocab_size,
+                                                                   parameters->vocab_size,
+                                                                   parameters->batch_size);
+
 
   } else {
     // next_tokens = torch.argmax(scores, dim=-1)
