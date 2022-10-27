@@ -116,7 +116,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     s_.z_data = nullptr;
   }
   bool input_dims_changed = (s_.last_x_dims != x_dims);
-  bool w_dims_changed = (s_.last_w_dims.AsShapeVector() != w_dims);
+  bool w_dims_changed = (s_.last_w_dims != w_dims);
   if (input_dims_changed || w_dims_changed) {
     if (input_dims_changed)
       s_.last_x_dims = gsl::make_span(x_dims);
