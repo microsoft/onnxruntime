@@ -278,10 +278,12 @@ class PosixEnv : public Env {
 
   // Return the number of physical cores
   int GetNumPhysicalCpuCores() const override {
+#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
 #ifdef CPUINFO_SUPPORTED
     if(cpuinfo_available_) {
       return gsl::narrow<int>(cpuinfo_get_cores_count());
     }
+#endif
 #endif
     // We guess the number of cores
     return DefaultNumCores();
@@ -290,9 +292,9 @@ class PosixEnv : public Env {
   std::vector<LogicalProcessors> GetThreadAffinityMasks() const override {
 
     std::vector<LogicalProcessors> ret;
+#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
 #ifdef CPUINFO_SUPPORTED
     if (cpuinfo_available_) {
-#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
       // We currently do not implement affinity on more than 64 cores.
       auto num_phys_cores = cpuinfo_get_cores_count();
       ret.reserve(num_phys_cores);
@@ -309,9 +311,9 @@ class PosixEnv : public Env {
         }
         ret.push_back(std::move(th_aff));
        }
-#endif
+#endif  // CPUINFO_SUPPORTED
     }
-#endif // CPUINFO_SUPPORTED
+#endif
     // Just the size of the thread-pool
     if(ret.empty()) {
       ret.resize(GetNumPhysicalCpuCores());
@@ -581,17 +583,17 @@ class PosixEnv : public Env {
   }
 
  private:
-  PosixEnv()  {
+  Telemetry telemetry_provider_;
+#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_AIX)
 #ifdef CPUINFO_SUPPORTED
+  PosixEnv()  {
     cpuinfo_available_ = cpuinfo_initialize();
     if(!cpuinfo_available_) {
       LOGS_DEFAULT(INFO) << "cpuinfo_initialize failed";
     }
-#endif
   }
-  Telemetry telemetry_provider_;
-#ifdef CPUINFO_SUPPORTED
   bool cpuinfo_available_{false};
+#endif
 #endif
 };
 
