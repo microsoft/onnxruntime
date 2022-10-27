@@ -262,6 +262,7 @@ size_t BFCArena::RoundedBytes(size_t bytes) {
 }
 
 void* BFCArena::Alloc(size_t size) {
+  /*
   if (use_shared_) {
     if (size == 6291456) {
       // std::cout << "Reusing ptr1" << std::endl;
@@ -273,6 +274,7 @@ void* BFCArena::Alloc(size_t size) {
 
     //std::cout << "Allocating new for size: " << size << std::endl;
   }
+  */
 
   return AllocateRawInternal(size, false);
 }

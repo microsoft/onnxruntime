@@ -111,10 +111,10 @@ ONNX_OPERATOR_KERNEL_EX(
 }  // namespace cuda
 
 AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId device_id,
-                                                        size_t /*gpu_mem_limit*/,
-                                                        ArenaExtendStrategy /*arena_extend_strategy*/,
+                                                        size_t gpu_mem_limit,
+                                                        ArenaExtendStrategy arena_extend_strategy,
                                                         CUDAExecutionProviderExternalAllocatorInfo external_allocator_info,
-                                                        OrtArenaCfg* /*default_memory_arena_cfg*/) {
+                                                        OrtArenaCfg* default_memory_arena_cfg) {
   if (external_allocator_info.UseExternalAllocator()) {
     AllocatorCreationInfo default_memory_info(
         [external_allocator_info](OrtDevice::DeviceId id) {
@@ -128,12 +128,11 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
 
     return CreateAllocator(default_memory_info);
   } else {
-    /*
-    void* ptr1 = nullptr;
-    cudaMalloc(&ptr1, 6291456);
+    //void* ptr1 = nullptr;
+    //cudaMalloc(&ptr1, 6291456);
 
-    void* ptr2 = nullptr;
-    cudaMalloc(&ptr2, 25165824);
+    //void* ptr2 = nullptr;
+    //cudaMalloc(&ptr2, 25165824);
 
     AllocatorCreationInfo default_memory_info(
         [](OrtDevice::DeviceId id) {
@@ -142,16 +141,12 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
         device_id,
         true,
         {default_memory_arena_cfg ? *default_memory_arena_cfg
-                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)},
-         ptr1,
-         ptr2,
-         true);
+                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)});
 
     // CUDA malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
-    */
 
-    return std::make_shared<CUDAMemoryPoolAllocator>(device_id, CUDA);
+    // return std::make_shared<CUDAMemoryPoolAllocator>(device_id, CUDA);
   }
 }
 
