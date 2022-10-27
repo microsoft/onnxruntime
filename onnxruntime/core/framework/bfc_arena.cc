@@ -264,10 +264,10 @@ size_t BFCArena::RoundedBytes(size_t bytes) {
 void* BFCArena::Alloc(size_t size) {
   if (use_shared_) {
     if (size == 6291456) {
-      std::cout << "Reusing ptr1" << std::endl;
+      // std::cout << "Reusing ptr1" << std::endl;
       return ptr1_;
     } else if (size == 25165824) {
-      std::cout << "Reusing ptr2" << std::endl;
+      // std::cout << "Reusing ptr2" << std::endl;
       return ptr2_;
     }
 
