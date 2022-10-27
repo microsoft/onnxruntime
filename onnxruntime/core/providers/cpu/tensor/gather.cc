@@ -119,7 +119,7 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
       memcpy(dst_base + dst_offset, src_base + src_offset, gsl::narrow<size_t>(block_size));
     }
   };
-  concurrency::ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(M * N), static_cast<double>(block_size),
+  concurrency::ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(M) * N, static_cast<double>(block_size),
                                           [&lambda](ptrdiff_t first, ptrdiff_t last) {
                                             for (int index = static_cast<int>(first), end = static_cast<int>(last); index < end; ++index) {
                                               lambda(index);
@@ -138,12 +138,12 @@ Status Gather::Compute(OpKernelContext* context) const {
   bool is_string_type = p.input_tensor->IsDataTypeString();
 
   const size_t element_bytes = p.input_tensor->DataType()->Size();
-  const int64_t block = input_data_shape.SizeFromDimension(SafeInt<size_t>(p.axis + 1));
-  const int64_t block_size = SafeInt<int64_t>(block * element_bytes);
+  const int64_t block = input_data_shape.SizeFromDimension(SafeInt<size_t>(p.axis) + 1);
+  const int64_t block_size = SafeInt<int64_t>(element_bytes) * block ;
   const int64_t M = input_data_shape.SizeToDimension(gsl::narrow<size_t>(p.axis));
   const int64_t N = p.indices_tensor->Shape().Size();
   const int64_t data_batch_bytes = input_data_shape.SizeFromDimension(gsl::narrow<size_t>(p.axis)) * element_bytes;
-  const int64_t gathered_batch_bytes = SafeInt<int64_t>(N * block * element_bytes);
+  const int64_t gathered_batch_bytes = N * block * SafeInt<int64_t>(element_bytes);
 
   const auto* src_base = static_cast<const uint8_t*>(p.input_tensor->DataRaw());
   auto* dst_base = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());

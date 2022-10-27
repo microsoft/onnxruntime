@@ -41,7 +41,7 @@ class BifurcationDetector : public OpKernel {
       // No prediction tokens. Output tokens equals to current tokens.
       out_tokens = context->Output(0, cur_tokens->Shape());
       auto* out_tokens_data = static_cast<int64_t*>(out_tokens->MutableDataRaw());
-      memcpy(out_tokens_data, cur_tokens_data, SafeInt<size_t>(cur_tokens_len * sizeof(int64_t)));
+      memcpy(out_tokens_data, cur_tokens_data, SafeInt<size_t>(cur_tokens_len) * sizeof(int64_t));
     } else {
       const auto* pred_tokens_data = static_cast<const int64_t*>(pred_tokens->DataRaw());
       const int64_t prev_suffix_match_idx_data = static_cast<const int64_t*>(prev_suffix_match_idx->DataRaw())[0];
@@ -59,8 +59,8 @@ class BifurcationDetector : public OpKernel {
       // pred_bifur_idx in [0, pred_tokens_len - 1]
       out_tokens = context->Output(0, TensorShape({cur_tokens_len + pred_bifur_idx + 1}));
       auto* out_tokens_data = static_cast<int64_t*>(out_tokens->MutableDataRaw());
-      memcpy(out_tokens_data, cur_tokens_data, SafeInt<size_t>(cur_tokens_len * sizeof(int64_t)));
-      memcpy(out_tokens_data + cur_tokens_len, pred_tokens_data, SafeInt<size_t>((pred_bifur_idx + 1) * sizeof(int64_t)));
+      memcpy(out_tokens_data, cur_tokens_data, SafeInt<size_t>(cur_tokens_len) * sizeof(int64_t));
+      memcpy(out_tokens_data + cur_tokens_len, pred_tokens_data, SafeInt<size_t>(pred_bifur_idx + 1) * sizeof(int64_t));
     }
 
     // Detect suffix match index in source tokens, between source tokens and output tokens.

@@ -197,7 +197,7 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
     // If the output was not allocated inplace with the sum tensor, then copy here.
     const auto* sum_data = Sum->Data<float>();
     if (y_data != sum_data) {
-      memcpy(y_data, sum_data, SafeInt<size_t>(sum_shape.Size() * sizeof(float)));
+      memcpy(y_data, sum_data, SafeInt<size_t>(sum_shape.Size()) * sizeof(float));
     }
   }
 
@@ -322,12 +322,12 @@ Status NchwcUpsample::Compute(OpKernelContext* context) const {
     const auto interpolation_w = ComputeInterpolation(input_w, output_w, scales_[3]);
 
     const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
-    const ptrdiff_t total_work = SafeInt<ptrdiff_t>(((batch_count * nchwc_channels) / nchwc_block_size) * output_h);
+    const ptrdiff_t total_work =((SafeInt<ptrdiff_t>(batch_count) * nchwc_channels) / nchwc_block_size) * output_h;
     // Partition the work with the goal of generating the following number of
     // elements, so that operations involving a smaller number of columns will
     // process more rows per worker.
     constexpr ptrdiff_t worker_goal = 16 * 1024;
-    ptrdiff_t work_per_worker = std::max<ptrdiff_t>(worker_goal /  SafeInt<ptrdiff_t>(output_w * nchwc_block_size), 1);
+    ptrdiff_t work_per_worker = std::max<ptrdiff_t>(worker_goal /  (SafeInt<ptrdiff_t>(output_w) * nchwc_block_size), 1);
     ptrdiff_t worker_count = std::max<ptrdiff_t>(total_work / work_per_worker, 1);
 
     auto upsample_worker = [&](ptrdiff_t batch) {

@@ -265,7 +265,7 @@ Status ScatterData(
     // We start at num_dims - 2 because we already pre-populated
     // the last element above
     for (auto i = int64_t(num_dims - 2); i >= 0; --i) {
-      dim_block_size[gsl::narrow<size_t>(i)] = input_data_shape[SafeInt<size_t>(i + 1)] * dim_block_size[SafeInt<size_t>(i + 1)];
+      dim_block_size[gsl::narrow<size_t>(i)] = input_data_shape[SafeInt<size_t>(i) + 1] * dim_block_size[SafeInt<size_t>(i) + 1];
     }
   }
 

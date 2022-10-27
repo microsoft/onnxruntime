@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <core/common/safeint.h>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
@@ -24,7 +25,7 @@ class NGramRepeatBlock : public OpKernel {
     const auto* scores_source = static_cast<const float*>(scores->DataRaw());
     auto* scores_target = static_cast<float*>(output->MutableDataRaw());
     if (scores_source != scores_target) {
-      memcpy(scores_target, scores_source, gsl::narrow_cast<size_t>(scores->Shape().Size() * sizeof(float)));
+      memcpy(scores_target, scores_source, SafeInt<size_t>(scores->Shape().Size()) * sizeof(float));
     }
 
     const auto& input_ids_dims = input_ids->Shape().GetDims();
@@ -35,7 +36,7 @@ class NGramRepeatBlock : public OpKernel {
     int64_t cur_len = input_ids_dims[1];
     ORT_ENFORCE(scores_dims[0] == batch_size);
     int64_t vocab_size = scores_dims[1];
-
+    
     if (cur_len + 1 < ngram_size_) {
       return Status::OK();
     }

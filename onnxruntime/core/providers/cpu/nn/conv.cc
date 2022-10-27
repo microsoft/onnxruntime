@@ -79,7 +79,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * col_buffer_size);
+    auto* col_data = alloc->Alloc(sizeof(T) * SafeInt<size_t>(col_buffer_size));
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(std::move(alloc)));
   }
 
@@ -205,7 +205,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     // If the output was not allocated inplace with the sum tensor, then copy here.
     const auto* sum_data = Sum->Data<float>();
     if (Ydata != sum_data) {
-      memcpy(Ydata, sum_data, SafeInt<size_t>(sum_shape.Size() * sizeof(float)));
+      memcpy(Ydata, sum_data, SafeInt<size_t>(sum_shape.Size()) * sizeof(float));
     }
     Beta = 1.0f;
   }
@@ -232,7 +232,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     Beta,
                     thread_pool);
 
-    auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(SafeInt<size_t>(sizeof(float)) * WorkingBufferSize)
+    auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * SafeInt<size_t>(WorkingBufferSize))
                                                : nullptr;
     BufferUniquePtr working_buffer(working_data, BufferDeleter(std::move(alloc)));
 
@@ -253,7 +253,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
     const int64_t col_buffer_size = kernel_dim * output_image_size;
 
-    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * col_buffer_size);
+    auto* col_data = alloc->Alloc(sizeof(float) * SafeInt<size_t>(col_buffer_size));
     BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
     auto* col_buffer_data = static_cast<float*>(col_buffer.get());
 

@@ -242,7 +242,7 @@ Status Gemm<T>::Compute(OpKernelContext* context) const {
   ComputeGemm(trans_A_, trans_B_, M, N, K, alpha_, A->Data<T>(), B->Data<T>(), beta_,
               c_data, c_shape, y_data, thread_pool);
 
-  ComputeActivation(y_data, SafeInt<size_t>(M * N), thread_pool);
+  ComputeActivation(y_data, SafeInt<size_t>(M) * N, thread_pool);
 
   return Status::OK();
 }
@@ -297,7 +297,7 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
         thread_pool);
   }
 
-  ComputeActivation(y_data, SafeInt<size_t>(M * N), thread_pool);
+  ComputeActivation(y_data, SafeInt<size_t>(M) * N, thread_pool);
 
   return Status::OK();
 }
