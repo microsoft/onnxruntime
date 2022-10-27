@@ -19,7 +19,7 @@ enum GPUInfo {
   BF16SUPPORT
 };
 
-std::once_flag flag1;
+std::once_flag flag1, flag2;
 // dnnl::engin::kind::gpu represents actual HW and we want to limit how much we instantiate the hardware
 // This code has been designed so that it can be called multiple times.  The engine will only be created
 // the first call.
@@ -82,14 +82,27 @@ bool IsGPUBF16Supported() {
 }
 
 bool IsBF16Supported() {
+  static bool use_all_bf16_hardware = false;
   if(IsGPURuntimeAvalible() && IsGPUBF16Supported()){
     return true;
   }
+  std::call_once(flag2, []() {
+    const std::string bf16_env = onnxruntime::GetEnvironmentVar("ORT_DNNL_USE_ALL_BF16_HW");
+    if (!bf16_env.empty()) {
+      use_all_bf16_hardware = (std::stoi(bf16_env) == 0 ? false : true);
+    }
+      });
+
   // HasAVX512Skylake checks for AVX512BW which can run bfloat16 but
   // is slower than float32 by 3x to 4x.
+  // By default the AVX512BW ISA is not used. It is still useful for validation
+  // so it can be enabled by setting the environment variable ORT_DNNL_USE_ALL_BF16_HW=1
+  if (use_all_bf16_hardware && CPUIDInfo::GetCPUIDInfo().HasAVX512Skylake()) {
+    return true;
+  }
+  
   // If AVX512-BF16 or AMX-BF16 exist then bfloat16 ops are HW accelerated
-  if (CPUIDInfo::GetCPUIDInfo().HasAVX512Skylake() ||
-      CPUIDInfo::GetCPUIDInfo().HasAVX512_BF16() ||
+  if (CPUIDInfo::GetCPUIDInfo().HasAVX512_BF16() ||
       CPUIDInfo::GetCPUIDInfo().HasAMX_BF16()) {
     return true;
   }
