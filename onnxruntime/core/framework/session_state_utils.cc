@@ -173,7 +173,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
     // Status copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
 
-    Status copy_status = data_transfer_mgr.Randomize(*p_tensor);
+    //Status copy_status = data_transfer_mgr.Randomize(*p_tensor);
+    Status copy_status = Status::OK();
 
     if (!copy_status.IsOK()) {
       if (copy_status.ErrorMessage().empty()) {
