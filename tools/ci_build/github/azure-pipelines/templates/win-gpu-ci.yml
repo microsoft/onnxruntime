@@ -45,8 +45,8 @@ parameters:
 - name: MachinePool
   type: string
 
-- name: DocUpdateNeeded
-  displayName: Run Tests?
+- name: GenerateDocumentation
+  displayName: Generate updated documentation. Requires build to have occurred and `--gen_doc` to be specified
   type: boolean
   default: false
 
@@ -58,7 +58,7 @@ jobs:
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     setVcvars: true
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
-    DocUpdateNeeded: ${{ parameters.DocUpdateNeeded }}
+    DocUpdateNeeded: false  # Set to true during document generation if there are diffs
     skipComponentGovernanceDetection: true
   workspace:
     clean: all
@@ -106,7 +106,7 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
 
-  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
+  - ${{ if or(eq(parameters.RunOnnxRuntimeTests, true), eq(parameters.GenerateDocumentation, true)) }}:
       - powershell: |
          $Env:USE_MSVC_STATIC_RUNTIME=1
          $Env:ONNX_ML=1
@@ -266,7 +266,15 @@ jobs:
           testRunTitle: 'Unit Test Run'
         condition: succeededOrFailed()
 
-  # if the validation from --gen_doc failed it sets a variable so we can publish the latest version of the docs
+  - ${{ if eq(parameters.GenerateDocumentation, true) }}:
+    - task: PythonScript@0
+      displayName: 'Generate documentation'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --gen_doc validate'
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+  # if the validation from --gen_doc failed it sets DocUpdateNeeded so we can publish the latest version of the docs
   # as an artifact, allowing a developer to download this and replace the current version instead of having to build
   # and generate the docs locally themselves. handle each of the two md files separately - simpler than copying
   # them to another location and publishing from there in a single task.
