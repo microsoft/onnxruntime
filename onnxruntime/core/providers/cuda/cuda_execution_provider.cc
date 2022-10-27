@@ -128,7 +128,7 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
 
     return CreateAllocator(default_memory_info);
   } else {
-
+    /*
     void* ptr1 = nullptr;
     cudaMalloc(&ptr1, 6291456);
 
@@ -149,6 +149,9 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
 
     // CUDA malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
+    */
+
+    return std::make_shared<CUDAMemoryPoolAllocator>();
   }
 }
 

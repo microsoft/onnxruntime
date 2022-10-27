@@ -26,6 +26,29 @@ class CUDAAllocator : public IAllocator {
   void SetDevice(bool throw_when_fail) const;
 };
 
+class CUDAMemoryPoolAllocator : public IAllocator {
+ public:
+  CUDAMemoryPoolAllocator(OrtDevice::DeviceId device_id, const char* name)
+      : IAllocator(
+            OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, device_id),
+                          device_id, OrtMemTypeDefault)) {}
+  void* Alloc(size_t size) override;
+  void* Reserve(size_t size) override;
+  void Free(void* p) override;
+  FencePtr CreateFence(const SessionState* session_state) override;
+  ~CUDAMemoryPoolAllocator();
+
+ private:
+  void CheckDevice(bool throw_when_fail) const;
+  void SetDevice(bool throw_when_fail) const;
+
+  std::unordered_set<void*> reserved_ptrs_;
+  
+  std::unordered_map<void*, size_t> alloc_ptr_to_size_;
+  std::unordered_map<size_t, std::vector<void*>> size_to_alloc_ptrs_;
+};
+
 class CUDAExternalAllocator : public CUDAAllocator {
   typedef void* (*ExternalAlloc)(size_t size);
   typedef void (*ExternalFree)(void* p);
