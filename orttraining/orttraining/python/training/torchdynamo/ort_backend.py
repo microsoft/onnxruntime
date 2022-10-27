@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 import logging
-from typing import Any, Callable, Dict, List, Mapping, Set, Tuple, Union
+from typing import Any, Callable, Dict, Mapping, Set, Tuple, Union
 
 import numpy as np
 import onnx
@@ -281,28 +281,31 @@ def _create_onnx_session(onnx_proto, device):
     return onnxruntime.InferenceSession(onnx_proto, providers=["CPUExecutionProvider"])
 
 
-def _get_onnx_devices(values: Tuple[torch.Tensor]) -> List[ORTC.OrtDevice]:
-    devices: List[ORTC.OrtDevice] = []
-    first_device = values[0].device
-    for value in values:
-        assert value.device == first_device, "All values must be on the same device"
-        device_id = value.device.index or 0
-        devices.append(
-            ORTC.OrtDevice(
-                _get_ort_device_type(value.device.type, device_id), ORTC.OrtDevice.default_memory(), device_id
-            )
+def _get_onnx_devices(values: Tuple[torch.Tensor]) -> Tuple[ORTC.OrtDevice]:
+    assert all(value.device == values[0].device for value in values), "All values must be on the same device."
+
+    def _device_id_or_zero(device_id: int) -> int:
+        return device_id or 0
+
+    devices: Tuple[ORTC.OrtDevice] = tuple(
+        ORTC.OrtDevice(
+            _get_ort_device_type(value.device.type, _device_id_or_zero(value.device.index)),
+            ORTC.OrtDevice.default_memory(),
+            _device_id_or_zero(value.device.index),
         )
+        for value in values
+    )
     return devices
 
 
 def _run_onnx_session_with_ortvaluevector(
     sess: onnxruntime.InferenceSession,
-    input_names: List[str],
+    input_names: Tuple[str],
     inputs: Tuple[torch.Tensor],
-    input_devices: List[ORTC.OrtDevice],
-    output_names: List[str],
+    input_devices: Tuple[ORTC.OrtDevice],
+    output_names: Tuple[str],
     outputs: Tuple[torch.Tensor],
-    output_devices: List[ORTC.OrtDevice],
+    output_devices: Tuple[ORTC.OrtDevice],
 ):
     _nvtx_range_push("contiguous")
     inputs = tuple(a.contiguous() for a in inputs)
@@ -360,14 +363,14 @@ class OrtExecutionInfo:
         self.sessions: Dict[torch.fx.GraphModule, onnxruntime.InferenceSession] = {}
         # self.input_names[mod] contains all input names in the ONNX model exported from mod.
         # self.input_names[mod][i] is the name of the i-th positional input of the graph in mod.
-        self.input_names: Dict[torch.fx.GraphModule, List[str]] = {}
+        self.input_names: Dict[torch.fx.GraphModule, Tuple[str]] = {}
         # Similar to self.input_names, but for outputs of the graph.
-        self.output_names: Dict[torch.fx.GraphModule, List[str]] = {}
+        self.output_names: Dict[torch.fx.GraphModule, Tuple[str]] = {}
         # self.input_devices[mod] contains devices of inputs fed to mod.forward (excluding self).
         # self.input_devices[mod][i] is the i-th positional input's device.
-        self.input_devices: Dict[torch.fx.GraphModule, List[ORTC.OrtDevice]] = {}
+        self.input_devices: Dict[torch.fx.GraphModule, Tuple[ORTC.OrtDevice]] = {}
         # Similar to self.input_devices, but for outputs of the graph.
-        self.output_devices: Dict[torch.fx.GraphModule, List[ORTC.OrtDevice]] = {}
+        self.output_devices: Dict[torch.fx.GraphModule, Tuple[ORTC.OrtDevice]] = {}
         # This is a debug flag. When True, this backend will compare its
         self.assert_allclose_to_baseline: bool = False
         # We need example outputs to determine output schema of ORT run.
@@ -422,8 +425,8 @@ class OrtBackend:
             onnx_model = _create_onnx_model(onnx_proto)
             # TODO(wechi): ORT session should provide a API to extract
             # input and output names from the underlying model.
-            input_names = [input.name for input in onnx_model.graph.input]
-            output_names = [output.name for output in onnx_model.graph.output]
+            input_names = tuple(input.name for input in onnx_model.graph.input)
+            output_names = tuple(output.name for output in onnx_model.graph.output)
             input_devices = _get_onnx_devices(args)
             # Cache devices for inputs and outputs. They are used to invoke
             # ORT session. Output devices indicate where (e.g., GPU or CPU)
