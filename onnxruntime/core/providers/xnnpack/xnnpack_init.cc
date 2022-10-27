@@ -1,8 +1,10 @@
 
 #include "xnnpack_init.h"
-#include <mutex>
+
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
+
+#include "xnnpack.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -44,38 +46,23 @@ void xnn_aligned_deallocate(void* context, void* pointer) {
 }
 }  // namespace
 
-AllocatorPtr XnnpackInitWrapper::GetOrCreateAllocator() {
-  std::lock_guard<OrtMutex> lock(mutex);
-
-  if (!ort_allocator_) {
-    // create our allocator
-    AllocatorCreationInfo allocator_info(
-        [](int) {
-          return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
-                                                              OrtAllocatorType::OrtDeviceAllocator));
-        });
-    ort_allocator_ = CreateAllocator(allocator_info);
-  }
-  return ort_allocator_;
-}
-
-void XnnpackInitWrapper::InitXnnpackWithAllocatorAndAddRef(AllocatorPtr allocator) {
-  increase_ref();
-
-  static std::once_flag once;
-  std::call_once(once, [allocator, this]() {
-    ort_allocator_ = allocator;
-    xnn_allocator_wrapper_ = {&ort_allocator_,
-                              xnn_allocate,
-                              xnn_reallocate,
-                              xnn_deallocate,
-                              xnn_aligned_allocate,
-                              xnn_aligned_deallocate};
-    const xnn_status st = xnn_initialize(&xnn_allocator_wrapper_);
-    if (st != xnn_status_success) {
-      ORT_THROW("XNNPACK initialization failed with status ", st);
-    }
-  });
+std::pair<AllocatorPtr, xnn_allocator*> GetOrCreateAllocator() {
+  // create our allocator
+  AllocatorCreationInfo const allocator_info(
+      [](int) {
+        // lazy create the allocator
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
+                                                            OrtAllocatorType::OrtDeviceAllocator));
+      });
+  // thread safe and create only once
+  static AllocatorPtr ort_allocator = CreateAllocator(allocator_info);
+  static xnn_allocator xnn_allocator_wrapper_ = {&ort_allocator,
+                                                 xnn_allocate,
+                                                 xnn_reallocate,
+                                                 xnn_deallocate,
+                                                 xnn_aligned_allocate,
+                                                 xnn_aligned_deallocate};
+  return {ort_allocator, &xnn_allocator_wrapper_};
 }
 
 }  // namespace xnnpack

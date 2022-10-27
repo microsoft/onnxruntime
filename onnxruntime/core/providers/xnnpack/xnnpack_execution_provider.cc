@@ -108,7 +108,7 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
     cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
 
     if (!cpu_alloc) {
-      cpu_alloc = XnnpackInitWrapper::GetInstance().GetOrCreateAllocator();
+      cpu_alloc = GetOrCreateAllocator().first;
       // enable sharing of our allocator
       allocator_manager.InsertAllocator(cpu_alloc);
     }
@@ -116,7 +116,10 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
     InsertAllocator(cpu_alloc);
   }
 
-  XnnpackInitWrapper::GetInstance().InitXnnpackWithAllocatorAndAddRef(cpu_alloc);
+  const xnn_status st = xnn_initialize(GetOrCreateAllocator().second);
+  if (st != xnn_status_success) {
+    ORT_THROW("XNNPACK initialization failed with status ", st);
+  }
 }
 
 // For ops are not lay-out sensitive and does not defined in
@@ -273,8 +276,8 @@ std::shared_ptr<KernelRegistry> XnnpackExecutionProvider::GetKernelRegistry() co
 }
 
 XnnpackExecutionProvider::~XnnpackExecutionProvider() {
+  xnn_deinitialize();
   pthreadpool_destroy(xnnpack_thread_pool_);
-  XnnpackInitWrapper::GetInstance().release_ref();
 }
 
 }  // namespace onnxruntime
