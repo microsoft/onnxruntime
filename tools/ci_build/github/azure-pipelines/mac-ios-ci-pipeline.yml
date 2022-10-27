@@ -63,12 +63,9 @@ jobs:
   pool:
     vmImage: 'macOS-11'
   variables:
-    - name: BuildXnnpack
-      value: false
-    - MACOSX_DEPLOYMENT_TARGET: '10.14'
-    - isMain: $[eq(variables['Build.SourceBranch'], 'refs/heads/main')]
+    MACOSX_DEPLOYMENT_TARGET: '10.14'
   timeoutInMinutes: 100
-  condition: or(eq('${{ parameters.doThing }}', 'true'), eq(variables.isMain, 'true'))
+  condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
   steps:
     - script: |
         /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
