@@ -43,30 +43,6 @@ bool IsForwardPassOperator(int64_t op_order_in_topological_sort, int64_t boundar
   return op_order_in_topological_sort <= boundary_op_order_in_topological_sort;
 }
 
-/**
- * enum TensorProto_DataType : int {
-  TensorProto_DataType_UNDEFINED = 0,
-  TensorProto_DataType_FLOAT = 1,
-  TensorProto_DataType_UINT8 = 2,
-  TensorProto_DataType_INT8 = 3,
-  TensorProto_DataType_UINT16 = 4,
-  TensorProto_DataType_INT16 = 5,
-  TensorProto_DataType_INT32 = 6,
-  TensorProto_DataType_INT64 = 7,
-  TensorProto_DataType_STRING = 8,
-  TensorProto_DataType_BOOL = 9,
-  TensorProto_DataType_FLOAT16 = 10,
-  TensorProto_DataType_DOUBLE = 11,
-  TensorProto_DataType_UINT32 = 12,
-  TensorProto_DataType_UINT64 = 13,
-  TensorProto_DataType_COMPLEX64 = 14,
-  TensorProto_DataType_COMPLEX128 = 15,
-  TensorProto_DataType_BFLOAT16 = 16
-};
- *
- *
-*/
-
 static size_t GetElementSize(const ONNX_NAMESPACE::DataType& tensor_type) {
   const ONNX_NAMESPACE::TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
   MLDataType ml_data_type = DataTypeImpl::TypeFromProto(type_proto);
@@ -76,6 +52,7 @@ static size_t GetElementSize(const ONNX_NAMESPACE::DataType& tensor_type) {
   return elt_type->Size();
 }
 
+// TODO(pengwa): extend this function to be more general.
 float InputOutputSizeRatio(const Node* node) {
   if (node->OpType().compare("Cast") == 0) {
     const NodeArg* input = node->InputDefs()[0];
@@ -428,7 +405,7 @@ bool MemoryAlleviation::IsNodeRecomputable(const Node& node,
 
   subgraph_desc.total_frequency += 1;
 
-  // Update the subgraph frequency map - key is the subgraph string representation, value is number of apperances.
+  // Update the subgraph frequency map - key is the subgraph string representation, value is number of appearances.
   for (size_t output_index : candidate_output_args_map.at(&node)) {
     auto shape_str = TensorShapeProtoToString(node.OutputDefs()[output_index]->Shape());
     subgraph_desc.shape_str_frequency[shape_str]++;
