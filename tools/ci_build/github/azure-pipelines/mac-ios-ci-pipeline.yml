@@ -60,16 +60,13 @@ jobs:
       displayName: (CoreML EP) Build onnxruntime for iOS x86_64 and run tests using simulator
 
 - job: iOS_CI_XNNPACK_on_Mac
-  parameters:
-  - name: BuildXnnpack
-    default: false # value passed to the condition
-    type: boolean
   pool:
     vmImage: 'macOS-11'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
-  variables:
     isMain: $[eq(variables['Build.SourceBranch'], 'refs/heads/main')]
+    - name: BuildXnnpack
+      value: false
   timeoutInMinutes: 100
   condition: or(eq('${{ parameters.doThing }}', 'true'), eq(variables.isMain, 'true'))
   steps:
