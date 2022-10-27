@@ -17,6 +17,8 @@
 
 namespace onnxruntime {
 
+void RunOnUnload(std::function<void()> function);
+
 // Logical device representation.
 class ROCMExecutionProvider : public IExecutionProvider {
  public:
@@ -36,9 +38,9 @@ class ROCMExecutionProvider : public IExecutionProvider {
     return nullptr;
   }
 
-  Status SetComputeStream(void* stream) override;
+  Status SetComputeStream(void* stream);  // TODO: this function should be deleted
 
-  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
+  void* GetComputeStream() const { return static_cast<void*>(stream_); }  //TODO: this function should be deleted
 
   rocblas_handle PerThreadRocblasHandle() {
     return GetPerThreadContext().RocblasHandle();
@@ -49,8 +51,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
   }
 
   template <typename T>
-  const T* GetConstOnes(size_t count) {
-    return GetPerThreadContext().template GetConstOnes<T>(count);
+  const T* GetConstOnes(size_t count, hipStream_t stream) {
+    return GetPerThreadContext().template GetConstOnes<T>(count, stream);
   }
 
   // Add CPU buffer to a buffer pool.
@@ -121,6 +123,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+
  private:
   ROCMExecutionProviderInfo info_;
   hipDeviceProp_t device_prop_;
@@ -138,6 +142,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
   // different threads may create CPU buffers at the same time. Releasing
   // buffers also needs this mutex.
   OrtMutex deferred_release_mutex_;
+  bool use_ep_level_unified_stream_ = true; // TODO: default false
 
   class PerThreadContext final {
    public:
@@ -154,22 +159,22 @@ class ROCMExecutionProvider : public IExecutionProvider {
     }
 
     template <typename T>
-    const T* GetConstOnes(size_t count) {
+    const T* GetConstOnes(size_t count, hipStream_t stream) {
       if (std::is_same<T, float>::value) {
         if (!constant_ones_float_) {
           constant_ones_float_ = rocm::CreateConstantOnes<float>();
         }
-        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream, count));
       } else if (std::is_same<T, double>::value) {
         if (!constant_ones_double_) {
           constant_ones_double_ = rocm::CreateConstantOnes<double>();
         }
-        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream, count));
       } else if (std::is_same<T, half>::value) {
         if (!constant_ones_half_) {
           constant_ones_half_ = rocm::CreateConstantOnes<half>();
         }
-        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream_, count));
+        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream, count));
       } else {
         return nullptr;
       }

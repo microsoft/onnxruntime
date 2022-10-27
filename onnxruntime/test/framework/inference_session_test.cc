@@ -365,8 +365,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     st = GetProviderInfo_CUDA().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
 #endif
 #ifdef USE_ROCM
-    hipStream_t stream = static_cast<hipStream_t>(gpu_provider->GetComputeStream());
-    st = GetProviderInfo_ROCM().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get());
+    st = GetProviderInfo_ROCM().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
 #endif
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
@@ -1595,8 +1594,8 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
 
 #if USE_TENSORRT
   // previous run with graph being optimized, one of If node’s both subgraphs become empty, so TRT EP won’t assign this If node to TRT and later ORT assign it to CUDA.
-  // we also want to test graph not being optimized and TRT EP should also be able to run it and make the whole graph run on TRT. 
-  so.graph_optimization_level = TransformerLevel::Default; 
+  // we also want to test graph not being optimized and TRT EP should also be able to run it and make the whole graph run on TRT.
+  so.graph_optimization_level = TransformerLevel::Default;
   InferenceSession session_object_2{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object_2.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
   status = session_object_2.Load(model_file_name);

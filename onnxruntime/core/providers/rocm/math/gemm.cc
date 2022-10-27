@@ -106,7 +106,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           N, M, 1,
           /*alpha*/ &one,
           b_data, N,
-          GetConstOnes<HipT>(M), 1,
+          GetConstOnes<HipT>(M, GetRocmStreamFromContext(ctx)), 1,
           /*beta*/ &zero,
           out_data, N));
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
@@ -117,7 +117,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           rocblas_operation_none,
           N, M, 1,
           /*alpha*/ &one,
-          GetConstOnes<HipT>(N), N,
+          GetConstOnes<HipT>(N, GetRocmStreamFromContext(ctx)), N,
           b_data, 1,
           /*beta*/ &zero,
           out_data, N));

@@ -102,6 +102,8 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
             da_data,
             TensorShape({}),
             MIOPEN_REDUCE_TENSOR_ADD,
+            MiopenHandle(), // TODO: multi-stream
+            context->GetComputeStream(),
             a_output_dims)));
       }
       break;
@@ -131,6 +133,8 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
             db_data,
             TensorShape({}),
             MIOPEN_REDUCE_TENSOR_ADD,
+            MiopenHandle(), // TODO: multi-stream
+            context->GetComputeStream(),
             b_output_dims)));
       }
       break;
@@ -176,6 +180,8 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
             db_data,
             b_shape,
             MIOPEN_REDUCE_TENSOR_ADD,
+            MiopenHandle(), // TODO: multi-stream
+            context->GetComputeStream(),
             b_output_dims)));
       }
       break;
@@ -223,6 +229,8 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
             da_data,
             a_shape,
             MIOPEN_REDUCE_TENSOR_ADD,
+            MiopenHandle(), // TODO: multi-stream
+            context->GetComputeStream(),
             a_output_dims)));
       }
 
@@ -234,6 +242,8 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
             db_data,
             b_shape,
             MIOPEN_REDUCE_TENSOR_ADD,
+            MiopenHandle(), // TODO: multi-stream
+            context->GetComputeStream(),
             b_output_dims)));
       }
     }

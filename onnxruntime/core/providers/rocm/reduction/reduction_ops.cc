@@ -157,11 +157,15 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     OutT* Y,
     const TensorShape& output_shape,
     miopenReduceTensorOp_t miopen_reduce_op,
+    miopenHandle_t miopen_handle,
+    onnxruntime::Stream* stream,
     TensorShapeVector& output_dims) const {
   typedef typename ToHipType<T>::MappedType HipT;
   typedef typename ToHipType<OutT>::MappedType HipOutT;
   miopenDataType_t miopen_type_X = MiopenTensor::GetDataType<HipT>();
   const auto rank = input_shape.NumDimensions();
+
+  auto hip_stream = stream ? static_cast<hipStream_t>(stream->handle) : nullptr;
 
   // Block of fast matrix reduction.
   if (fast_reduction_) {
@@ -171,7 +175,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     switch (applicable_matrix_reduction) {
       case ApplicableMatrixReduction::Rows: {
         return reduce_matrix_rows(
-            Stream(),
+            hip_stream,
             reinterpret_cast<const HipT*>(X),
             reinterpret_cast<HipOutT*>(Y),
             m, n, false);
@@ -187,9 +191,9 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   IAllocatorUniquePtr<float> temp_X;
   if (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
     // ArgMax/ArgMin with FP16 are not supported by miopen, so convert input to fp32 then call miopen
-    temp_X = GetScratchBuffer<float>(input_count);
+    temp_X = GetScratchBuffer<float>(input_count, stream);
     miopen_type_X = miopenFloat;
-    Impl_Cast<HipT, float>(Stream(), reinterpret_cast<const HipT*>(X), temp_X.get(), input_shape.Size());
+    Impl_Cast<HipT, float>(hip_stream, reinterpret_cast<const HipT*>(X), temp_X.get(), input_shape.Size());
   }
 
   // MIOpen requires at least 3D input, so pad 1s if needed
@@ -215,11 +219,11 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_miopen, miopen_type_X));
   size_t workspace_bytes = 0;
   MIOPEN_RETURN_IF_ERROR(miopenGetReductionWorkspaceSize(MiopenHandle(), reduce_desc, input_tensor, output_tensor, &workspace_bytes));
-  auto workspace_rocm = GetScratchBuffer<HipT>(workspace_bytes);
+  auto workspace_rocm = GetScratchBuffer<HipT>(workspace_bytes, stream);
 
   size_t indices_bytes = 0;
   MIOPEN_RETURN_IF_ERROR(miopenGetReductionIndicesSize(MiopenHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
-  auto indices_rocm = GetScratchBuffer<uint32_t>(indices_bytes);
+  auto indices_rocm = GetScratchBuffer<uint32_t>(indices_bytes, stream);
 
   // need to allocate a separate buffer for ArgMin/ArgMax comparsion output
   auto output_count = output_shape.Size();
@@ -228,7 +232,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     IAllocatorUniquePtr<T> input_data_buffer(nullptr, [](T*) {});
     HipT* input_data = nullptr;
     if (calculate_sqt_) {
-      input_data_buffer = GetScratchBuffer<T>(input_count);
+      input_data_buffer = GetScratchBuffer<T>(input_count, stream);
       input_data = reinterpret_cast<HipT*>(input_data_buffer.get());
       fast_divmod tmp_div;
       Impl_Mul<HipT>(Stream(), static_cast<int32_t>(SimpleBroadcast::NoBroadcast), nullptr,
@@ -242,7 +246,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
       ORT_RETURN_IF_ERROR(reduce_max_desc.Set(MIOPEN_REDUCE_TENSOR_MAX, miopen_type_X, MIOPEN_REDUCE_TENSOR_NO_INDICES));
       size_t indices_bytes_max = 0;
       MIOPEN_RETURN_IF_ERROR(miopenGetReductionIndicesSize(MiopenHandle(), reduce_max_desc, input_tensor, output_tensor, &indices_bytes_max));
-      auto indices_rocm_max = GetScratchBuffer<uint32_t>(indices_bytes);
+      auto indices_rocm_max = GetScratchBuffer<uint32_t>(indices_bytes, stream);
       MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
           MiopenHandle(), reduce_max_desc, indices_rocm_max.get(), indices_bytes_max, workspace_rocm.get(), workspace_bytes,
           &one, input_tensor, reinterpret_cast<const HipT*>(X),
@@ -250,9 +254,9 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
 
       // Exp(X-ReduceMax)
       const TensorShape rhs_shape(output_dims);
-      auto exp_result_buffer = GetScratchBuffer<T>(input_count);
+      auto exp_result_buffer = GetScratchBuffer<T>(input_count, stream);
       auto exp_result = exp_result_buffer.get();
-      auto log_sum_result_buffer = GetScratchBuffer<T>(output_count);
+      auto log_sum_result_buffer = GetScratchBuffer<T>(output_count, stream);
       auto log_sum_result = log_sum_result_buffer.get();
       BinaryElementwisePreparation prepare;
       ORT_RETURN_IF_ERROR(prepare.BinaryElementwiseBroadcastPrepareHelper(input_shape, rhs_shape, input_shape));
@@ -311,13 +315,13 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
     }
   } else {  // For ArgMax & ArgMin ops, use the indicies as the output with int64 type
     if (temp_X) {
-      auto temp_output = GetScratchBuffer<float>(output_count);
+      auto temp_output = GetScratchBuffer<float>(output_count, stream);
       MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
           MiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes, workspace_rocm.get(), workspace_bytes,
           &one, input_tensor, temp_X.get(),
           &zero, output_tensor, temp_output.get()));
     } else {
-      auto temp_output = GetScratchBuffer<HipT>(output_count);
+      auto temp_output = GetScratchBuffer<HipT>(output_count, stream);
       MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
           MiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes, workspace_rocm.get(), workspace_bytes,
           &one, input_tensor, reinterpret_cast<const HipT*>(X),
@@ -351,6 +355,8 @@ template Status ReduceKernel<true>::ReduceKernelShared<float, float, MIOPEN_REDU
     float* Y,
     const TensorShape& output_shape,
     miopenReduceTensorOp_t miopen_reduce_op,
+    miopenHandle_t miopen_handle,
+    onnxruntime::Stream* stream,
     TensorShapeVector& output_dims) const;
 
 template Status ReduceKernel<true>::ReduceKernelShared<MLFloat16, MLFloat16, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
@@ -359,6 +365,8 @@ template Status ReduceKernel<true>::ReduceKernelShared<MLFloat16, MLFloat16, MIO
     MLFloat16* Y,
     const TensorShape& output_shape,
     miopenReduceTensorOp_t miopen_reduce_op,
+    miopenHandle_t miopen_handle,
+    onnxruntime::Stream* stream,
     TensorShapeVector& output_dims) const;
 
 // `input_shape_override` (if provided) is the input shape for compute purposes
@@ -435,7 +443,7 @@ template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
 Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, miopenReduceTensorOp_t miopen_reduce_op,
                          gsl::span<const int64_t> axes,
-                         bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+                         bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction, Stream* ort_stream,
                          const TensorShape* input_shape_override) {
   typedef typename ToHipType<T>::MappedType HipT;
   const TensorShape& input_shape = input_shape_override ? *input_shape_override : input.Shape();
@@ -445,7 +453,7 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
   auto& output_dims = prepare_reduce_metadata.output_dims;
   auto& input_dims_miopen = prepare_reduce_metadata.input_dims_miopen;
   auto& output_dims_miopen = prepare_reduce_metadata.output_dims_miopen;
-  hipStream_t stream = static_cast<hipStream_t>(rocm_ep.GetComputeStream());
+  hipStream_t stream = ort_stream ? static_cast<hipStream_t>(ort_stream->handle) : nullptr;
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
     assert(output.Shape().Size() == 0);
@@ -746,7 +754,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, miopenR
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
 
   return ReduceComputeCore<T, ReduceTensorIndices>(*rocm_ep_, *X, prepare_reduce_metadata, *Y, miopen_reduce_op, axes,
-                                                   calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
+                                                   calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction, OrtStream(ctx));
 }
 
 #define SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(T)                                                                              \
@@ -844,7 +852,7 @@ template <typename T, miopenReduceTensorIndices_t ReduceTensorIndices>
 std::unique_ptr<Tensor> ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op, AllocatorPtr allocator,
                                       const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                                      bool fast_reduction, const TensorShape* input_shape_override) {
+                                      bool fast_reduction, Stream* stream, const TensorShape* input_shape_override) {
   PrepareReduceMetadata prepare_reduce_metadata;
   auto status = PrepareForReduce(&input,
                                  keep_dims,
@@ -859,7 +867,7 @@ std::unique_ptr<Tensor> ReduceCompute(ROCMExecutionProvider& rocm_ep, miopenRedu
   auto output = Tensor::Create(input.DataType(), prepare_reduce_metadata.squeezed_output_dims, std::move(allocator));
 
   status = ReduceComputeCore<T, ReduceTensorIndices>(rocm_ep, input, prepare_reduce_metadata, *output, miopen_reduce_op, axes,
-                                                     calculate_log, calculate_sqt, log_sum_exp, fast_reduction, input_shape_override);
+                                                     calculate_log, calculate_sqt, log_sum_exp, fast_reduction, stream, input_shape_override);
 
   if (!status.IsOK()) {
     ORT_THROW(ONNXRUNTIME, FAIL, "Failed to perform reduce op: ", status.ErrorMessage());
@@ -875,7 +883,7 @@ template std::unique_ptr<Tensor> ReduceCompute<float, MIOPEN_REDUCE_TENSOR_NO_IN
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-    bool fast_reduction, const TensorShape* input_shape_override);
+    bool fast_reduction, Stream* stream, const TensorShape* input_shape_override);
 
 // template std::unique_ptr<Tensor> ReduceCompute<double, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
 //     ROCMExecutionProvider& rocm_ep, miopenReduceTensorOp_t miopen_reduce_op,
@@ -889,7 +897,7 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, MIOPEN_REDUCE_TENSOR_N
     AllocatorPtr allocator,
     const Tensor& input, gsl::span<const int64_t> axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-    bool fast_reduction, const TensorShape* input_shape_override);
+    bool fast_reduction, Stream* stream, const TensorShape* input_shape_override);
 
 }  // namespace ReductionOps
 

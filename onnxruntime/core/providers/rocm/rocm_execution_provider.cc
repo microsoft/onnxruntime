@@ -5,10 +5,10 @@
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/rocm_allocator.h"
-#include "core/providers/rocm/rocm_fence.h"
 #include "core/providers/rocm/rocm_fwd.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/rocm_profiler.h"
+#include "core/providers/rocm/rocm_stream_handle.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/rocm/rocm_contrib_kernels.h"
@@ -33,13 +33,14 @@ class Memcpy final : public OpKernel {
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
       Tensor* Y = ctx->Output(0, X->Shape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
-      return Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
+      const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+      return gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream());
     } else if (X_type->IsSparseTensorType()) {
       const auto* X = ctx->Input<SparseTensor>(0);
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
       SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output sparse tensor.");
-      return X->Copy(Info().GetDataTransferManager(), Info().GetKernelDef().ExecQueueId(), *Y);
+      return X->Copy(Info().GetDataTransferManager(), *Y);
     } else if (X_type->IsTensorSequenceType()) {
       const TensorSeq* X = ctx->Input<TensorSeq>(0);
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor sequence is nullptr.");
@@ -57,7 +58,8 @@ class Memcpy final : public OpKernel {
       for (size_t i = 0; i < X_size; ++i) {
         const Tensor& source_tensor = X->Get(i);
         std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
-        Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor, Info().GetKernelDef().ExecQueueId());
+        const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(source_tensor.Location().device, target_tensor->Location().device);
+        Status retval = gpu_data_transfer->CopyTensorAsync(source_tensor, *target_tensor, ctx->GetComputeStream());
         if (!retval.IsOK()) {
           return retval;
         }
@@ -2273,7 +2275,7 @@ static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> ROCMExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<onnxruntime::GPUDataTransfer>(static_cast<hipStream_t>(GetComputeStream()), info_.do_copy_in_default_stream);
+  return std::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -2406,4 +2408,27 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 }
 
+void ROCMExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+  // This allocator must be the same to the allocator
+  // used in AllocateBufferOnCPUPinned.
+  auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  if (use_ep_level_unified_stream_)
+    RegisterRocmStreamHandles(stream_handle_registry,
+                              OrtDevice::GPU,
+                              allocator,
+                              !IsGraphCaptureEnabled(),
+                              stream_,
+                              use_ep_level_unified_stream_,
+                              GetPerThreadContext().MiopenHandle(),
+                              GetPerThreadContext().RocblasHandle());
+  else
+    RegisterRocmStreamHandles(stream_handle_registry,
+                              OrtDevice::GPU,
+                              allocator,
+                              !IsGraphCaptureEnabled(),
+                              stream_,
+                              use_ep_level_unified_stream_,
+                              GetPerThreadContext().MiopenHandle(),
+                              GetPerThreadContext().RocblasHandle());
+}
 }  // namespace onnxruntime

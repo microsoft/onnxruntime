@@ -54,9 +54,10 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
-  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
+  void* GetComputeStream() const { return static_cast<void*>(stream_); }  // TODO: this function should be deleted
 
   std::unique_ptr<IndexedSubGraph> GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const;
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
 
 private:
   bool fp16_enable_ = false;

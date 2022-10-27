@@ -84,7 +84,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   ROCBLAS_RETURN_IF_ERROR(rocblasGemmHelper(
       rocblas, rocblas_operation_none, rocblas_operation_none, n, m, 1, &one,
       reinterpret_cast<const HipT*>(bias->Data<T>()), n,
-      GetConstOnes<HipT>(m), 1,
+      GetConstOnes<HipT>(m, Stream(context)), 1,
       &zero, reinterpret_cast<HipT*>(gemm_buffer.get()), n));
 
   // Gemm, note that ROCM assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.

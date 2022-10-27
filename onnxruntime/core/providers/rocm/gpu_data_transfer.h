@@ -17,14 +17,15 @@ enum HIPStreamType : int {
 
 class GPUDataTransfer : public IDataTransfer {
  public:
-  GPUDataTransfer(hipStream_t stream, bool do_copy_in_default_stream = true);
-  ~GPUDataTransfer();
+  GPUDataTransfer() {};
+  ~GPUDataTransfer() {};
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 
   // Dumpen MSVC warning about not fully overriding
   using IDataTransfer::CopyTensor;
-  common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
+  //common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
+  common::Status CopyTensorAsync(const Tensor& src, Tensor& dst, Stream* stream) const override;
 
   hipStream_t GetStream(int queue_id) const {
     ORT_ENFORCE(queue_id >= 0 && queue_id < kTotalHipStreams);

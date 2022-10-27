@@ -82,7 +82,7 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
   return rocm::ReductionOps::ReduceCompute<T>(*static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_, MIOPEN_REDUCE_TENSOR_ADD,
                                               allocator, input, reduce_axes,
                                               keep_dims, false, false, false,
-                                              true, input_shape_override);
+                                              true, nullptr/*TODO*/, input_shape_override);
 }
 
 // ROCM EP specific Diagonal helper
