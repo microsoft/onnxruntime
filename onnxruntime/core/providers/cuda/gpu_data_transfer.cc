@@ -4,6 +4,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_common.h"
+#include "core/providers/cuda/tensor/scatter_nd_impl.h"
 
 // use default stream for copy for now, to avoid racing in BFC arena as in issue #4829
 // note this may cause some models to run slower if there are ops running on CPU
@@ -35,6 +36,11 @@ GPUDataTransfer::~GPUDataTransfer() {
 bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
   return src_device.Type() == OrtDevice::GPU || src_device.MemType() == OrtDevice::MemType::CUDA_PINNED ||
          dst_device.Type() == OrtDevice::GPU || dst_device.MemType() == OrtDevice::MemType::CUDA_PINNED;
+}
+
+common::Status GPUDataTransfer::Randomize(Tensor& dst) const {
+  cuda::cudaRandomUniform(dst.MutableDataRaw(), dst.SizeInBytes());
+  return Status::OK();
 }
 
 common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {

@@ -28,6 +28,7 @@ class IDataTransfer {
 
   virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
   virtual common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const = 0;
+  virtual common::Status Randomize(Tensor& dst) const { ORT_THROW("Unimplemented"); };
 
   struct SrcDstPair {
     std::reference_wrapper<const Tensor> src;

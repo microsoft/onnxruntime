@@ -4,6 +4,7 @@
 #include "core/providers/cuda/tensor/scatter_nd_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/atomic/common.cuh"
+#include <curand_kernel.h>
 
 namespace onnxruntime {
 namespace cuda {
@@ -126,6 +127,22 @@ Status ScatterNDImpl(
   }
 
   return Status::OK();
+}
+
+
+__global__ void cuda_random_uniform_kernel(half* buffer, const int size) {
+  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  curandState_t local_state;
+  curand_init((unsigned long long int)1337, idx, 0, &local_state);
+  for (int index = idx; index < size; index += blockDim.x * gridDim.x) {
+    buffer[index] = (half)(curand_uniform(&local_state) * 0.2f - 0.1f);
+    // buffer[index] = (T)(0.0f);
+  }
+}
+
+
+void cudaRandomUniform(void* buffer, const int size) {
+  cuda_random_uniform_kernel<T><<<256, 256>>>(reinterpret_cast<half*>(buffer), size);
 }
 
 }  // namespace cuda
