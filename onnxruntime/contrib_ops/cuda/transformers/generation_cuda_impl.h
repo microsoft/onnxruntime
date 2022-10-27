@@ -84,6 +84,16 @@ void LaunchSortPairsDescending(void *d_temp_storage,
                                int *d_offsets,
                                cudaStream_t stream);
 
+template <typename T>
+void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
+                              const int* d_sorted_indices,
+                              T* d_logits_in_out,
+                              float top_p,
+                              float filter_value,
+                              int batch_size,
+                              int vocab_size,
+                              cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

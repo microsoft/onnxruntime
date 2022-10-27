@@ -361,13 +361,13 @@ void LaunchSetupParamsKernel(int* d_values_in,
                              int batch_size,
                              int vocab_size,
                              cudaStream_t stream) {
-int total_elements = batch_size * vocab_size;
-constexpr int blockSize = 256;
-const int gridSize = (total_elements + blockSize - 1) / blockSize;
-SetupParamsKernel<<<gridSize, blockSize, 0, stream>>>(d_values_in,
-                                                      d_offsets,
-                                                      batch_size,
-                                                      vocab_size);
+  int total_elements = batch_size * vocab_size;
+  constexpr int blockSize = 256;
+  const int gridSize = (total_elements + blockSize - 1) / blockSize;
+  SetupParamsKernel<<<gridSize, blockSize, 0, stream>>>(d_values_in,
+                                                        d_offsets,
+                                                        batch_size,
+                                                        vocab_size);
 }
 
 template <typename T>
@@ -417,6 +417,79 @@ template void LaunchSortPairsDescending(void *d_temp_storage,
                                         int num_segments,
                                         int *d_offsets,
                                         cudaStream_t stream);
+
+// A trick here: cumuliative sum of the sorted logits is a temporarily variable in the kernel.
+template <typename T>
+__global__ void FilterLogitsKernel(float* d_sorted_logits_in,
+                                   const int* d_sorted_indices,
+                                   T* d_logits_in_out,
+                                   float top_p,
+                                   float filter_value,
+                                   int batch_size,
+                                   int vocab_size) {
+  int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+  int vocab_idx = index % vocab_size;
+  int batch_id = index / vocab_size;
+  int start_index = batch_id * vocab_size;
+
+  int count = vocab_idx;
+  float sum = 0.0f;
+  while (count != 0) {
+    sum += d_sorted_logits_in[start_index];
+    ++start_index;
+    --count;
+  }
+
+  if (sum > top_p) {
+    // Shift the indices to the right by one according to the Turing implementation.
+    int shifted_index = index + 1;
+    if (shifted_index % vocab_size != 0) {
+      int original_index = batch_id * vocab_size + d_sorted_indices[shifted_index];
+      d_logits_in_out[original_index] = (T)filter_value;
+    }
+  }
+}
+
+template <typename T>
+void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
+                              const int* d_sorted_indices,
+                              T* d_logits_in_out,
+                              float top_p,
+                              float filter_value,
+                              int batch_size,
+                              int vocab_size,
+                              cudaStream_t stream) {
+  int total_elements = batch_size * vocab_size;
+  constexpr int blockSize = 256;
+  const int gridSize = (total_elements + blockSize - 1) / blockSize;
+  FilterLogitsKernel<<<gridSize, blockSize, 0, stream>>>(d_sorted_logits_in,
+                                                         d_sorted_indices,
+                                                         d_logits_in_out,
+                                                         top_p,
+                                                         filter_value,
+                                                         batch_size,
+                                                         vocab_size);
+}
+
+template void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
+                                       const int* d_sorted_indices,
+                                       float* d_logits_in_out,
+                                       float top_p,
+                                       float filter_value,
+                                       int batch_size,
+                                       int vocab_size,
+                                       cudaStream_t stream);
+
+template void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
+                                       const int* d_sorted_indices,
+                                       half* d_logits_in_out,
+                                       float top_p,
+                                       float filter_value,
+                                       int batch_size,
+                                       int vocab_size,
+                                       cudaStream_t stream);
+
 
 }  // namespace cuda
 }  // namespace contrib
