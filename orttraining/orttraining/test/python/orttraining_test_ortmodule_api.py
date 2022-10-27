@@ -1696,9 +1696,6 @@ def test_aten_group_norm():
 
 @pytest.mark.parametrize("input_rank", (3, 4, 5))
 @pytest.mark.parametrize("use_factor", (True, False))
-#TODO(pengwa): fix this.
-@pytest.mark.skipif(Version(torch.__version__) >= Version("1.13.0"),
-    reason="torch.nn.functional.interpolate conversion introduced Resize, ORT gradient builder fail to handle.")
 def test_aten_upsample_nearest(input_rank, use_factor):
     class _NeuralNetUpsampleNearest(torch.nn.Module):
         def __init__(self):
@@ -1713,7 +1710,7 @@ def test_aten_upsample_nearest(input_rank, use_factor):
 
     device = "cuda"
     pt_model = _NeuralNetUpsampleNearest().to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model))
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="test_aten_upsample_nearest"))
 
     def run_step(model, input):
         prediction = model(input)
