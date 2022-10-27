@@ -14,7 +14,7 @@ torch.manual_seed(42)
 
 
 class TestTorchDynamoOrt(unittest.TestCase):
-    """Containers of tests for TorchDynamo ORT backend."""
+    """Containers of tests for TorchDynamo ORT (DORT) backend."""
 
     def test_elementwise_model(self):
         """Test DORT with a pure function."""

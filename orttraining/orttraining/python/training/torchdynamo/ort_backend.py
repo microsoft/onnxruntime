@@ -325,7 +325,7 @@ def _run_onnx_session_with_ortvaluevector(
 
     _nvtx_range_push("run_with_ortvaluevector")
     run_options = onnxruntime.RunOptions()
-    run_options.synchronize_execution_providers = False
+    run_options.synchronize_execution_providers = True
     sess.run_with_ortvaluevector(run_options, input_names, ort_inputs, output_names, ort_outputs, output_devices)
     _nvtx_range_pop()
 
@@ -392,10 +392,13 @@ class OrtBackend:
             output_devices = self.ort_execution_info.output_devices[graph_module]
             prim_outputs = self.ort_execution_info.example_outputs[graph_module]
         else:
-            # TODO(wechi): this is a workaround for #84311.
+            # TODO(wechi): this is a workaround for #84311 in PyTorch.
             _move_placeholder_to_front(graph_module)
-            # Store reference outputs. They are used to indicate output
+            # Generate reference outputs. They are used to indicate output
             # tensors' types and devices when calling ORT.
+            #
+            # WARNING: The downstream code should not change prim_outputs and
+            # this backend should always produces output with schema identical to prim_outputs'.
             prim_outputs = FakeTensorProp(graph_module).propagate(*args, **kwargs)
             self.ort_execution_info.example_outputs[graph_module] = prim_outputs
             # Compile the torch.fx.GraphModule into a torch.jit.ScriptModule.
@@ -445,9 +448,9 @@ class OrtBackend:
             _nvtx_range_pop()
             if self.ort_execution_info.assert_allclose_to_baseline:
                 # Compute baseline.
-                baeline_outputs = torch._prims.executor.execute(graph_module, *args, executor="aten")
+                baseline_outputs = torch._prims.executor.execute(graph_module, *args, executor="aten")
                 # Ensure every output tensor is close to the corresponding baseline.
-                for onnx_output, baseline_output in zip(onnx_outputs, baeline_outputs):
+                for onnx_output, baseline_output in zip(onnx_outputs, baseline_outputs):
                     _assert_allclose_with_detailed_error_message(onnx_output, baseline_output)
             return onnx_outputs
         else:
