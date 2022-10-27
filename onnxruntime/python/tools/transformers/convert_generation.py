@@ -875,7 +875,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     if args.custom_attention_mask:
         inputs.append("attention_mask")
-    elif not is_greedysearch:
+    else:
         inputs.append("")
 
     outputs = ["sequences"]
@@ -1139,6 +1139,18 @@ def test_torch_performance(
     return get_latency_result(torch_latency, batch_size)
 
 
+def create_attention_mask(input_ids, pad_token_id):
+    attention_mask = np.ones(input_ids.shape, dtype=np.int32)
+    for i in range(input_ids.shape[0]):
+        abs_pos = 0
+        for j in range(input_ids.shape[1]):
+            if input_ids[i][j] == pad_token_id and abs_pos == 0:
+                attention_mask[i][j] = 0
+            else:
+                abs_pos += 1
+    return attention_mask
+
+
 def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = None, is_greedy: bool = False):
     """Test GPT-2 model
 
@@ -1249,6 +1261,9 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
             for bad_word_id in bad_words_ids:
                 vocab_mask[bad_word_id] = 0
         inputs["vocab_mask"] = vocab_mask
+
+    if args.custom_attention_mask:
+        inputs["attention_mask"] = create_attention_mask(input_ids, pad_token_id)
 
     batch_size = input_ids.shape[0]
     if args.prefix_vocab_mask:
@@ -1455,15 +1470,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
         inputs["vocab_mask"] = vocab_mask
 
     if args.custom_attention_mask:
-        attention_mask = np.ones(input_ids.shape, dtype=np.int32)
-        for i in range(input_ids.shape[0]):
-            abs_pos = 0
-            for j in range(input_ids.shape[1]):
-                if input_ids[i][j] == pad_token_id and abs_pos == 0:
-                    attention_mask[i][j] = 0
-                else:
-                    abs_pos += 1
-        inputs["attention_mask"] = attention_mask
+        inputs["attention_mask"] = create_attention_mask(input_ids, pad_token_id)
 
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
@@ -1565,9 +1572,6 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
             args.decoder_onnx and not args.encoder_decoder_init_onnx
         ):
             raise ValueError("--decoder_onnx shall use together with --encoder_decoder_init_onnx")
-    else:
-        if args.custom_attention_mask:
-            raise NotImplementedError("custom_attention_mask is only supported in t5 with beam search")
 
     is_greedy = args.num_beams == 1 and args.num_return_sequences == 1
 

@@ -3,12 +3,25 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/providers/run_options_config_keys.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
 namespace test {
+
+namespace {
+
+const onnxruntime::RunOptions run_options = []() {
+  onnxruntime::RunOptions options{};
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOpTesterRunOptionsConfigTestTunableOp, "true"));
+  return options;
+}();
+
+const constexpr auto run_with_tunable_op = &run_options;
+
+}  // namespace
 
 template <typename T>
 struct MatMulTestData {
@@ -154,7 +167,9 @@ void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant
       // NNAPI: currently fails for the "test 2D empty input" case
       excluded_providers.insert(kNnapiExecutionProvider);
     }
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+    test.ConfigExcludeEps(excluded_providers)
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
   }
 }
 
@@ -218,7 +233,9 @@ TEST(MathOpTest, MatMul_Float16) {
   test.AddInput<MLFloat16>("A", {2, 4}, f_A);
   test.AddInput<MLFloat16>("B", {4, 3}, f_B);
   test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: fp16 is not supported
+  test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 #endif
 
@@ -237,12 +254,19 @@ TEST(MathOpTest, MatMul_BFloat16) {
   test.AddInput<BFloat16>("B", {4, 3}, MakeBFloat16({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
   test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  test.Config(run_with_tunable_op);
 #ifdef USE_CUDA
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-  execution_providers.push_back(DefaultRocmExecutionProvider());
+  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/true));
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+
+  execution_providers.clear();
+  execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
 #endif
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
 }
 #endif
 
@@ -285,9 +309,10 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights) {
 
   // Session 1
   {
-    auto ep_vec = cpu_ep();
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+    test.Config(so)
+        .Config(run_with_tunable_op)
+        .ConfigEps(cpu_ep())
+        .RunWithConfig(&number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
     // Assert that no pre-packed weights have been shared thus far
     ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
   }
@@ -307,9 +332,10 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights) {
   // Session 2
   {
     size_t number_of_pre_packed_weights_counter_session_2 = 0;
-    auto ep_vec = cpu_ep();
-    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
-             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+    test.Config(so)
+        .Config(run_with_tunable_op)
+        .ConfigEps(cpu_ep())
+        .RunWithConfig(&number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
 
     // Assert that the same number of weights were pre-packed in both sessions
     ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);
