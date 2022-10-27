@@ -90,9 +90,9 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   auto y_scale_data = *(y_scale->Data<float>());
 
   const int64_t output_scale_size = b_scale->Shape().Size();
-  std::vector<float> output_scales(gsl::narrow_cast<size_t>(output_scale_size));
+  std::vector<float> output_scales(gsl::narrow<size_t>(output_scale_size));
   for (int64_t i = 0; i < output_scale_size; i++) {
-    output_scales[gsl::narrow_cast<size_t>(i)] = (a_scale_data * b_scale_data[gsl::narrow_cast<size_t>(i)] / y_scale_data);
+    output_scales[gsl::narrow<size_t>(i)] = (a_scale_data * b_scale_data[gsl::narrow<size_t>(i)] / y_scale_data);
   }
 
   const size_t num_gemms = helper.OutputOffsets().size();

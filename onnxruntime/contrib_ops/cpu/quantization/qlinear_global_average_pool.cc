@@ -32,7 +32,7 @@ Status ComputeQLinearGlobalAvgPool(
       const T8Bits* input = (const T8Bits*)(x + (first * image_size));
       T8Bits* output = (T8Bits*)(y + first);
       std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), last - first));
-      MlasQLinearGlobalAveragePoolNchw(input, x_scale, x_zero_point, output, y_scale, y_zero_point, last - first, gsl::narrow_cast<size_t>(image_size), acc_buffer.data());
+      MlasQLinearGlobalAveragePoolNchw(input, x_scale, x_zero_point, output, y_scale, y_zero_point, last - first, gsl::narrow<size_t>(image_size), acc_buffer.data());
     };
     concurrency::ThreadPool::TryParallelFor(
         tp, static_cast<std::ptrdiff_t>(N * C), {1.0 * image_size, 1.0, 8.0 * image_size}, worker);
@@ -40,11 +40,11 @@ Status ComputeQLinearGlobalAvgPool(
     auto worker = [=](std::ptrdiff_t first, std::ptrdiff_t last) {
       const T8Bits* input = x + first * C * image_size;
       T8Bits* output = y + first * C;
-      std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), gsl::narrow_cast<size_t>(C)));
-      std::vector<T8Bits> zero_buffer(MlasQLinearSafePaddingElementCount(sizeof(T8Bits), gsl::narrow_cast<size_t>(C)), 0);
+      std::vector<int32_t> acc_buffer(MlasQLinearSafePaddingElementCount(sizeof(int32_t), gsl::narrow<size_t>(C)));
+      std::vector<T8Bits> zero_buffer(MlasQLinearSafePaddingElementCount(sizeof(T8Bits), gsl::narrow<size_t>(C)), 0);
       MlasQLinearGlobalAveragePoolNhwc(
           input, x_scale, x_zero_point, output, y_scale, y_zero_point,
-          last - first, gsl::narrow_cast<size_t>(image_size), gsl::narrow_cast<size_t>(C), gsl::narrow_cast<size_t>(C), acc_buffer.data(), zero_buffer.data());
+          last - first, gsl::narrow<size_t>(image_size), gsl::narrow<size_t>(C), gsl::narrow<size_t>(C), acc_buffer.data(), zero_buffer.data());
     };
     concurrency::ThreadPool::TryParallelFor(
         tp, static_cast<std::ptrdiff_t>(N),

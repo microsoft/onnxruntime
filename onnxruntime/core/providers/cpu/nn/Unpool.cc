@@ -91,11 +91,11 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
 
   Tensor* Y = context->Output(0, shape);
   auto* Y_data = Y->MutableData<float>();
-  auto out = gsl::make_span(Y_data, gsl::narrow_cast<size_t>(Y->Shape().Size()));
+  auto out = gsl::make_span(Y_data, gsl::narrow<size_t>(Y->Shape().Size()));
   std::fill_n(out.data(), out.size(), 0.f);
 
   for (auto cur_elem = 0; cur_elem < total_elements; ++cur_elem) {
-    out[gsl::narrow_cast<size_t>(I_data[gsl::narrow_cast<size_t>(cur_elem)])] = X_data[gsl::narrow_cast<size_t>(cur_elem)];
+    out[gsl::narrow<size_t>(I_data[gsl::narrow<size_t>(cur_elem)])] = X_data[gsl::narrow<size_t>(cur_elem)];
   }
 
   return Status::OK();

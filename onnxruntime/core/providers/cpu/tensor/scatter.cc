@@ -3,6 +3,7 @@
 
 //https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
 #include <type_traits>
+#include <core/common/safeint.h>
 
 #include "gsl/gsl"
 
@@ -173,10 +174,10 @@ Status GetIndices(
   const auto& input_data_shape = data_input.Shape();
   const auto* indices_data_raw = indices_input.Data<TIndex>();
   const auto num_indices = indices_input.Shape().Size();
-  const auto axis_dim_limit = input_data_shape[gsl::narrow_cast<size_t>(axis)];
+  const auto axis_dim_limit = input_data_shape[gsl::narrow<size_t>(axis)];
 
   std::vector<int64_t> indices_data_result;
-  indices_data_result.reserve(gsl::narrow_cast<size_t>(num_indices));
+  indices_data_result.reserve(gsl::narrow<size_t>(num_indices));
 
   for (int64_t i = 0; i < num_indices; ++i) {
     const int64_t idx = static_cast<int64_t>(indices_data_raw[i]);
@@ -264,14 +265,14 @@ Status ScatterData(
     // We start at num_dims - 2 because we already pre-populated
     // the last element above
     for (auto i = int64_t(num_dims - 2); i >= 0; --i) {
-      dim_block_size[gsl::narrow_cast<size_t>(i)] = input_data_shape[gsl::narrow_cast<size_t>(i + 1)] * dim_block_size[gsl::narrow_cast<size_t>(i + 1)];
+      dim_block_size[gsl::narrow<size_t>(i)] = input_data_shape[SafeInt<size_t>(i + 1)] * dim_block_size[SafeInt<size_t>(i + 1)];
     }
   }
 
   const auto* update_data = static_cast<const Tdata*>(updates_input->DataRaw());
   // For every update we compute the destination offset and copy it there
   for (int64_t index = 0; index < num_indices;) {
-    const auto axis_idx = indices_data[gsl::narrow_cast<size_t>(index)];
+    const auto axis_idx = indices_data[gsl::narrow<size_t>(index)];
 
     // Compute the offset
     // See comments above for dim_block_size
@@ -279,9 +280,9 @@ Status ScatterData(
     for (size_t i = 0; i < num_dims; ++i) {
       if (i == size_t(axis)) {
         // replace the counter with the update index for this dim
-        dst_offset += gsl::narrow_cast<size_t>(axis_idx * dim_block_size[gsl::narrow_cast<size_t>(i)]);
+        dst_offset += gsl::narrow<size_t>(axis_idx * dim_block_size[gsl::narrow<size_t>(i)]);
       } else {
-        dst_offset += gsl::narrow_cast<size_t>(dim_counters[gsl::narrow_cast<size_t>(i)] * dim_block_size[gsl::narrow_cast<size_t>(i)]);
+        dst_offset += gsl::narrow<size_t>(dim_counters[gsl::narrow<size_t>(i)] * dim_block_size[gsl::narrow<size_t>(i)]);
       }
     }
 
@@ -293,15 +294,15 @@ Status ScatterData(
     // Increment counters
     // See comments for dim_counters above
     for (auto i = int64_t(num_dims - 1); i >= 0; --i) {
-      auto v = ++dim_counters[gsl::narrow_cast<size_t>(i)];
-      assert(v <= upd_shape[gsl::narrow_cast<size_t>(i)]);
-      if (v < upd_shape[gsl::narrow_cast<size_t>(i)]) {
+      auto v = ++dim_counters[gsl::narrow<size_t>(i)];
+      assert(v <= upd_shape[gsl::narrow<size_t>(i)]);
+      if (v < upd_shape[gsl::narrow<size_t>(i)]) {
         // No carry, done
         break;
       }
       // No carry for the most significant dim
       assert(i > 0);
-      dim_counters[gsl::narrow_cast<size_t>(i)] = 0;
+      dim_counters[gsl::narrow<size_t>(i)] = 0;
     }
   }
   return Status::OK();
