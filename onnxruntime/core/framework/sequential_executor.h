@@ -18,8 +18,8 @@
 namespace onnxruntime {
 class SequentialExecutor : public IExecutor {
  public:
-  SequentialExecutor(const bool& terminate_flag = false, const bool only_execute_path_to_fetches = false)
-      : terminate_flag_{terminate_flag}, only_execute_path_to_fetches_(only_execute_path_to_fetches) {}
+  SequentialExecutor(const bool& terminate_flag = false, const bool /*only_execute_path_to_fetches*/ = false)
+      : terminate_flag_{terminate_flag}, only_execute_path_to_fetches_(true) {}
 
   common::Status Execute(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                          gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
