@@ -63,10 +63,10 @@ jobs:
   pool:
     vmImage: 'macOS-11'
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.14'
-    isMain: $[eq(variables['Build.SourceBranch'], 'refs/heads/main')]
     - name: BuildXnnpack
       value: false
+    - MACOSX_DEPLOYMENT_TARGET: '10.14'
+    - isMain: $[eq(variables['Build.SourceBranch'], 'refs/heads/main')]
   timeoutInMinutes: 100
   condition: or(eq('${{ parameters.doThing }}', 'true'), eq(variables.isMain, 'true'))
   steps:
