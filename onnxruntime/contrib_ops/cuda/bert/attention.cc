@@ -64,12 +64,14 @@ template<typename T>
 Attention<T>::~Attention() {
   if (use_data_ptr_ && data_ptr_ != nullptr) {
     std::cout << "Deallocating data ptr" << std::endl;
-    cudaFree(data_ptr_);
+    //cudaFree(data_ptr_);
   }
 }
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
+  cudaDeviceSynchronize();
+
   const Tensor* input = context->Input<Tensor>(0);
   
   if (use_data_ptr_ && data_ptr_ == nullptr) {
