@@ -30,7 +30,7 @@ jobs:
 
       - task: UsePythonVersion@0
         inputs:
-          versionSpec: $(${{ parameters.PYTHON_VERSION }})
+          versionSpec: ${{ parameters.PYTHON_VERSION }}
           addToPath: true
           architecture: 'x64'
 
