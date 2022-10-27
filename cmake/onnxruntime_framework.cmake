@@ -35,7 +35,30 @@ endif()
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_framework_srcs})
 
+if (onnxruntime_USE_CLOUD)
+  list(APPEND onnxruntime_framework_srcs
+	"${ONNXRUNTIME_ROOT}/core/providers/cloud/cloud_executor.h"
+	"${ONNXRUNTIME_ROOT}/core/providers/cloud/cloud_executor.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/cloud/endpoint_invoker.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cloud/endpoint_invoker.cc"
+  )
+endif()
+
 onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_srcs})
+
+if (onnxruntime_USE_CLOUD)
+#option(CURL_USE_SCHANNEL ON)
+#add_subdirectory(external/curl)
+link_directories(${TRITON_ROOT}/lib)
+link_directories(${CURL_LIB_PATH})
+#target_include_directories(onnxruntime_framework PRIVATE external/curl/include ${TRITON_ROOT}/include)
+target_include_directories(onnxruntime_framework PRIVATE ${TRITON_ROOT}/include)
+target_link_libraries(onnxruntime_framework PRIVATE libcurl httpclient_static)
+if (WIN32)
+  target_link_libraries(onnxruntime_framework PRIVATE ws2_32 crypt32 Wldap32)
+endif()
+endif()
+
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_framework PRIVATE ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()

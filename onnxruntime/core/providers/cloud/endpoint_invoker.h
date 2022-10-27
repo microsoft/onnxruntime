@@ -23,8 +23,8 @@ class EndPointInvoker {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(EndPointInvoker);
 
   static std::unique_ptr<EndPointInvoker> CreateInvoker(const EndPointConfig& config);
-  virtual TensorPtrArray Send(ConstTensorPtrArray ort_inputs) const = 0;
-  const onnxruntime::Status GetStaus() const { return status_; }
+  virtual void Send(gsl::span<const OrtValue> ort_inputs, std::vector<OrtValue>& ort_outputs) const = 0;
+  const onnxruntime::Status& GetStaus() const { return status_; }
  protected:
   EndPointConfig config_;
   mutable onnxruntime::Status status_ = onnxruntime::Status::OK();

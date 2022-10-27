@@ -1974,7 +1974,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
 
       ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                                                   session_options_.execution_mode, run_options.terminate, run_logger,
+                                                   run_options.config_options.configurations.count("use_cloud") ? ExecutionMode::ORT_CLOUD : session_options_.execution_mode,
+                                                   run_options.terminate, run_logger,
                                                    run_options.only_execute_path_to_fetches));
     }
     ORT_CATCH(const std::exception& e) {

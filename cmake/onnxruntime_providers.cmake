@@ -1595,27 +1595,27 @@ if (onnxruntime_USE_CANN)
 endif()
 
 if (onnxruntime_USE_CLOUD)
-  add_subdirectory(external/curl)
+  #add_subdirectory(external/curl)
   file(GLOB_RECURSE onnxruntime_providers_cloud_src CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/cloud/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/cloud/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/cloud/cloud_provider_factory_creator.*"
+    "${ONNXRUNTIME_ROOT}/core/providers/cloud/cloud_execution_provider.*"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cloud_src})
   onnxruntime_add_static_library(onnxruntime_providers_cloud ${onnxruntime_providers_cloud_src})
   add_dependencies(onnxruntime_providers_cloud onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_cloud PRIVATE external/curl/include)
   onnxruntime_add_include_to_target(onnxruntime_providers_cloud onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers onnxruntime_providers_shared)
-  target_link_libraries(onnxruntime_providers_cloud PRIVATE onnx onnxruntime_common onnxruntime_framework libcurl)
+  #target_link_libraries(onnxruntime_providers_cloud PRIVATE onnx onnxruntime_common onnxruntime_framework libcurl)
+  target_link_libraries(onnxruntime_providers_cloud PRIVATE onnx onnxruntime_common onnxruntime_framework)
   set_target_properties(onnxruntime_providers_cloud PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_cloud PROPERTIES LINKER_LANGUAGE CXX)
   
-  target_include_directories(onnxruntime_providers_cloud PRIVATE ${TRITON_ROOT}/include)
-  # target_link_directories(onnxruntime_providers_cloud PRIVATE ${TRITON_ROOT}/lib)
-  link_directories(${TRITON_ROOT}/lib)
-  target_link_libraries(onnxruntime_providers_cloud PRIVATE httpclient_static)
-  if (WIN32)
-    target_link_libraries(onnxruntime_providers_cloud PRIVATE ws2_32 crypt32 Wldap32)
-  endif()
+  #target_include_directories(onnxruntime_providers_cloud PRIVATE ${TRITON_ROOT}/include)
+  #link_directories(${TRITON_ROOT}/lib)
+  #target_link_libraries(onnxruntime_providers_cloud PRIVATE httpclient_static)
+  #if (WIN32)
+  #  target_link_libraries(onnxruntime_providers_cloud PRIVATE ws2_32 crypt32 Wldap32)
+  #endif()
 
   install(TARGETS onnxruntime_providers_cloud
           ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
