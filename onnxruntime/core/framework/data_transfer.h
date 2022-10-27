@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <vector>
+#include "core/common/common.h"
 
 struct OrtDevice;
 
