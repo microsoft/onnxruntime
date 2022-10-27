@@ -10,8 +10,7 @@ namespace onnxruntime {
 namespace xnnpack {
 namespace {
 void* xnn_allocate(void* context, size_t size) {
-  IAllocator* allocator = (*reinterpret_cast<AllocatorPtr*>(context)).get();
-  return allocator->Alloc(size);
+  return (static_cast<IAllocator*>(context))->Alloc(size);
 }
 
 void* xnn_reallocate(void* context, void* pointer, size_t size) {
@@ -23,8 +22,7 @@ void* xnn_reallocate(void* context, void* pointer, size_t size) {
 
 void xnn_deallocate(void* context, void* pointer) {
   if (pointer != nullptr) {
-    IAllocator* allocator = (*reinterpret_cast<AllocatorPtr*>(context)).get();
-    allocator->Free(pointer);
+    (static_cast<IAllocator*>(context))->Free(pointer);
   }
 }
 
@@ -55,8 +53,8 @@ std::pair<AllocatorPtr, xnn_allocator*> GetOrCreateAllocator() {
                                                             OrtAllocatorType::OrtDeviceAllocator));
       });
   // thread safe and create only once
-  static AllocatorPtr ort_allocator = CreateAllocator(allocator_info);
-  static xnn_allocator xnn_allocator_wrapper_ = {&ort_allocator,
+  static const AllocatorPtr ort_allocator = CreateAllocator(allocator_info);
+  static xnn_allocator xnn_allocator_wrapper_ = {ort_allocator.get(),
                                                  xnn_allocate,
                                                  xnn_reallocate,
                                                  xnn_deallocate,
