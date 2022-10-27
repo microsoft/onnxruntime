@@ -213,6 +213,12 @@ else()
                         -s VERBOSE=0 \
                         -s NO_FILESYSTEM=1 \
                         ${WASM_API_EXCEPTION_CATCHING} \
+                        -s ASYNCIFY=1 \
+                        -s ASYNCIFY_STACK_SIZE=8192 \
+                        -s ASYNCIFY_ADVISE=1 \
+                        -s ASYNCIFY_DEBUG=2 \
+                        -s ASYNCIFY_IGNORE_INDIRECT=0 \
+                        -s ASYNCIFY_REMOVE=OrtInit \
                         --no-entry")
 
   if (onnxruntime_USE_JS)
