@@ -3,24 +3,17 @@
 
 // Summary: The Ort C++ API is a header only wrapper around the Ort C API.
 //
-// The C++ API simplifies usage by returning values directly instead of error codes, throwing exceptions on errors
-// and automatically releasing resources in the destructors. The primary purpose of C++ API is exception safety so
-// all the resources follow RAII and do not leak memory.
-//
-// Each of the C++ wrapper classes holds only a pointer to the C internal object. Treat them like smart pointers.
-// To create an empty object, pass 'nullptr' to the constructor (for example, Env e{nullptr};). However, you can't use them
-// until you assign an instance that actually holds an underlying object.
-//
-// For Ort objects only move assignment between objects is allowed, there are no copy constructors.
-// Some objects have explicit 'Clone' methods for this purpose.
-//
-// ConstXXXX types are copyable since they do not own the underlying C object, so you can pass them to functions as arguments
-// by value or by reference. ConstXXXX types are restricted to const only interfaces.
-//
-// UnownedXXXX are similar to ConstXXXX but also allow non-const interfaces.
-//
-// The lifetime of the corresponding owning object must eclipse the lifetimes of the ConstXXXX/UnownedXXXX types. They exists so you do not
-// have to fallback to C types and the API with the usual pitfalls. In general, do not use C API from your C++ code.
+// The C++ API turns the C API into C++ objects with methods and destructors.
+// For the methods, values are returned directly and exceptions are thrown in case of errors. Standard C++ practices
+// like std::unique_ptr are used to show ownership.
+// 
+// As the C++ types are the C types, it is very easy to use both the C++ wrappers and C API interchangeably. This could
+// be useful for anyone having a custom OrtAllocator vs the wrapper's use of std::string and the default C++ allocator.
+// 
+// Technical explanation on how it works: The C types are still opaque types, this header defines the opaque types
+// in a way that allows the compiler to call methods on them and destroy them, but they are never constructed/copied/etc
+// by value. They can only be created by other API methods, never by make_unique or new (it won't work, so do not worry
+// about accidentally doing the wrong thing).
 
 #pragma once
 #include "onnxruntime_c_api.h"
@@ -110,7 +103,8 @@ struct BFloat16_t {
 
 static_assert(sizeof(BFloat16_t) == sizeof(uint16_t), "Sizes must match");
 
-// Used as an imaginary member variable in the wrapped types to prevent accidental value construction or copying
+// This is added as a member variable in the wrapped types to prevent accidental construction/copying
+// Since the wrapped types are never instantiated by value, this member doesn't really exist. The types are still opaque.
 struct Abstract
 {
   Abstract() = delete;
