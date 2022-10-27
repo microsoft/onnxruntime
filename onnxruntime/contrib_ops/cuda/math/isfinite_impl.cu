@@ -23,7 +23,7 @@ __global__ void IsAllFiniteMultiTensorImpl(ChunkGroup<1> chunks, bool* output) {
 
   const TSrc* chunk_ptr = tensor_ptr + chunk_start_idx;
   bool result = true;
-#pragma unroll(4)
+#pragma unroll 4
   for (int i = threadIdx.x; i < chunk_size; i += blockDim.x) {
     if (isinf_only) {
       result &= !IsInfScalar(chunk_ptr[i]);

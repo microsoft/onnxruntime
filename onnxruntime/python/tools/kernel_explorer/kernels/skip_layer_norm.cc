@@ -63,6 +63,30 @@ class SkipLayerNormRegular : public IKernelExplorer {
 };
 
 template <typename T>
+class SkipLayerNormStaticSelection : public IKernelExplorer {
+ public:
+  SkipLayerNormStaticSelection(DeviceArray& output, DeviceArray& input, DeviceArray& skip,
+                               DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
+                               float epsilon, int hidden_size, int element_count)
+      : params_(this->Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
+                static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), static_cast<T*>(beta.ptr()),
+                static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
+
+  void Run() override {
+    ORT_THROW_IF_ERROR((contrib::rocm::SkipLayerNormStaticSelection<T>(&params_)));
+  }
+
+  bool IsSupported() {
+    Status status = contrib::rocm::SkipLayerNormStaticSelection<T>(&params_);
+    return status.IsOK();
+  }
+
+ private:
+  using ParamsT = contrib::rocm::SkipLayerNormParams<T>;
+  ParamsT params_{};
+};
+
+template <typename T>
 class SkipLayerNormTunable : public IKernelExplorer {
  public:
   SkipLayerNormTunable(DeviceArray& output, DeviceArray& input, DeviceArray& skip,
@@ -113,15 +137,15 @@ class SkipLayerNormTunable : public IKernelExplorer {
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 320)                        \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 384)
 
-#define REGISTER_TUNABLE_OP(type)                                              \
-  py::class_<SkipLayerNormTunable<type>>(m, "SkipLayerNorm_" #type "_Tunable") \
-      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&,    \
-                    DeviceArray&, DeviceArray&,                                \
-                    float, int, int>())                                        \
-      .def("SetRepeats", &SkipLayerNormTunable<type>::SetRepeats)              \
-      .def("Profile", &SkipLayerNormTunable<type>::Profile)                    \
-      .def("Run", &SkipLayerNormTunable<type>::Run)                            \
-      .def("IsSupported", &SkipLayerNormTunable<type>::IsSupported);
+#define REGISTER_OP_TYPED(name, type)                                       \
+  py::class_<name<type>>(m, #name "_" #type)                                \
+      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&, \
+                    DeviceArray&, DeviceArray&,                             \
+                    float, int, int>())                                     \
+      .def("SetRepeats", &name<type>::SetRepeats)                           \
+      .def("Profile", &name<type>::Profile)                                 \
+      .def("Run", &name<type>::Run)                                         \
+      .def("IsSupported", &name<type>::IsSupported);
 
 void InitSkipLayerNorm(py::module m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormSmall, half);
@@ -129,8 +153,11 @@ void InitSkipLayerNorm(py::module m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormRegular, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormRegular, float);
 
-  REGISTER_TUNABLE_OP(half);
-  REGISTER_TUNABLE_OP(float);
+  REGISTER_OP_TYPED(SkipLayerNormTunable, half);
+  REGISTER_OP_TYPED(SkipLayerNormTunable, float);
+
+  REGISTER_OP_TYPED(SkipLayerNormStaticSelection, half);
+  REGISTER_OP_TYPED(SkipLayerNormStaticSelection, float);
 }
 
 }  // namespace onnxruntime
