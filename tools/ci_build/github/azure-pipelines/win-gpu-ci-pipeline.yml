@@ -98,4 +98,4 @@ stages:
         RunStaticCodeAnalysis: false
         GenerateDocumentation: true
         ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
-        MachinePool: Win-CPU-2019   # onnxruntime-Win2019-GPU-dml
+        MachinePool: onnxruntime-Win2019-GPU-dml
