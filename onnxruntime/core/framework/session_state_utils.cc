@@ -98,7 +98,7 @@ static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
-                                             OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
+                                             OrtValue& ort_value, const DataTransferManager& /*data_transfer_mgr*/,
                                              bool use_device_allocator_for_initializers = false) {
   if (bool(alloc) == (m != nullptr)) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
