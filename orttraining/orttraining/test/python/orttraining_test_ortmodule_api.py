@@ -1710,7 +1710,7 @@ def test_aten_upsample_nearest(input_rank, use_factor):
 
     device = "cuda"
     pt_model = _NeuralNetUpsampleNearest().to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="test_aten_upsample_nearest"))
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="test_aten_upsample_nearest", log_level=LogLevel.VERBOSE))
 
     def run_step(model, input):
         prediction = model(input)
