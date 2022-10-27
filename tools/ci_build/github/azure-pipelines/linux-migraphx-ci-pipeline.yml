@@ -65,18 +65,20 @@ jobs:
     displayName: 'Build onnxruntime'
 
   - task: CmdLine@2
-    displayName: 'Delete Unnecessary Files'
+    displayName: 'Save Necessary Files'
     inputs:
       script: |
-        rm -rf $(Build.BinariesDirectory)/RelWithDebInfo/onnxruntime $(Build.BinariesDirectory)/RelWithDebInfo/pybind11
-        rm -f $(Build.BinariesDirectory)/RelWithDebInfo/CMakeFiles
-        rm -rf $(Build.BinariesDirectory)/RelWithDebInfo/_deps
+        mkdir $(Build.BinariesDirectory)/RelWithDebInfo_upload
+        cp $(Build.BinariesDirectory)/RelWithDebInfo/onnxruntime_test_all $(Build.BinariesDirectory)/RelWithDebInfo_upload
+        cp $(Build.BinariesDirectory)/RelWithDebInfo/libonnxruntime_providers* $(Build.BinariesDirectory)/RelWithDebInfo_upload
+        cp $(Build.BinariesDirectory)/RelWithDebInfo/libcustom_op_library.so $(Build.BinariesDirectory)/RelWithDebInfo_upload
+        cp -r $(Build.BinariesDirectory)/RelWithDebInfo/testdata/ $(Build.BinariesDirectory)/RelWithDebInfo_upload
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Artifact'
     inputs:
       artifactName: 'drop-linux'
-      targetPath: '$(Build.BinariesDirectory)/RelWithDebInfo'
+      targetPath: '$(Build.BinariesDirectory)/RelWithDebInfo_upload'
 
   - template: templates/clean-agent-build-directory-step.yml
 
