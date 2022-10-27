@@ -6,6 +6,7 @@
 #include "core/framework/allocatormgr.h"
 #include "cuda_fence.h"
 #include "gpu_data_transfer.h"
+#include <iostream>
 
 namespace onnxruntime {
 
@@ -95,7 +96,6 @@ void CUDAAllocator::Free(void* p) {
 }
 
 void* CUDAMemoryPoolAllocator::Alloc(size_t size) {
-  ORT_ENFORCE(size == 0, "Alloc not supported");
   if (size == 0) {
     return nullptr;
   }
@@ -103,6 +103,7 @@ void* CUDAMemoryPoolAllocator::Alloc(size_t size) {
   auto iter = size_to_alloc_ptrs_.find(size);
 
   if (iter != size_to_alloc_ptrs_.end() && iter->second.size() > 0) {
+    std::cout << "Re-using in new allocator" << std::endl;
     void* p = iter->second.back();
     iter->second.pop_back();
     return p;
@@ -120,11 +121,12 @@ void* CUDAMemoryPoolAllocator::Alloc(size_t size) {
     size_to_alloc_ptrs_.insert({size, temp});
   }
 
+  std::cout << "Allocating in new allocator" << std::endl;
   return p;
 }
 
 void* CUDAMemoryPoolAllocator::Reserve(size_t size) {
-  ORT_ENFORCE(size == 0, "Reserve not supported");
+  std::cout << "Reserving in new allocator" << std::endl;
   void* p = nullptr;
   if (size > 0) {
     cudaMalloc((void**)&p, size);
