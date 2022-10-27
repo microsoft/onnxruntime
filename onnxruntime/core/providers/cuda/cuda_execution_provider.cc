@@ -151,7 +151,7 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
     return CreateAllocator(default_memory_info);
     */
 
-    return std::make_shared<CUDAMemoryPoolAllocator>();
+    return std::make_shared<CUDAMemoryPoolAllocator>(device_id, CUDA);
   }
 }
 
