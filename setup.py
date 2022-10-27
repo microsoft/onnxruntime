@@ -56,9 +56,7 @@ rocm_version = None
 is_rocm = False
 is_openvino = False
 # The following arguments are mutually exclusive
-if parse_arg_remove_boolean(sys.argv, "--use_cuda") or parse_arg_remove_boolean(sys.argv, "--use_tensorrt"):
-    # The "onnxruntime-gpu" package published at pypi.org contains both GPU EP and Tensort EP.
-    package_name = "onnxruntime-gpu"
+if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
 elif parse_arg_remove_boolean(sys.argv, "--use_rocm"):
@@ -70,8 +68,6 @@ elif parse_arg_remove_boolean(sys.argv, "--use_openvino"):
     package_name = "onnxruntime-openvino"
 elif parse_arg_remove_boolean(sys.argv, "--use_dnnl"):
     package_name = "onnxruntime-dnnl"
-elif parse_arg_remove_boolean(sys.argv, "--use_dml"):
-    package_name = "onnxruntime-directml"
 elif parse_arg_remove_boolean(sys.argv, "--use_tvm"):
     package_name = "onnxruntime-tvm"
 elif parse_arg_remove_boolean(sys.argv, "--use_vitisai"):

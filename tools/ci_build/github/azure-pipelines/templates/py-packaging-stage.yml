@@ -265,7 +265,7 @@ stages:
         parameters:
           MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
           PYTHON_VERSION: '3.7'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80" ${{ parameters.build_py_parameters }}
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
@@ -273,7 +273,7 @@ stages:
         parameters:
           MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
           PYTHON_VERSION: '3.8'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80" ${{ parameters.build_py_parameters }}
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
@@ -281,7 +281,7 @@ stages:
         parameters:
           MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
           PYTHON_VERSION: '3.9'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80" ${{ parameters.build_py_parameters }}
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu
 
@@ -289,7 +289,7 @@ stages:
         parameters:
           MACHINE_POOL: 'onnxruntime-gpu-winbuild-t4'
           PYTHON_VERSION: '3.10'
-          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80" ${{ parameters.build_py_parameters }}
+          EP_BUILD_FLAGS: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.4.1.5.Windows10.x86_64.cuda-11.6.cudnn8.4" --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6"  --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
           ENV_SETUP_SCRIPT: setup_env_gpu.bat
           EP_NAME: gpu            
 
@@ -297,7 +297,7 @@ stages:
         parameters:
           MACHINE_POOL: 'aiinfra-dml-winbuild'
           PYTHON_VERSION: '3.7'
-          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos ${{ parameters.build_py_parameters }}
+          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
 
@@ -305,7 +305,7 @@ stages:
         parameters:
           MACHINE_POOL: 'aiinfra-dml-winbuild'
           PYTHON_VERSION: '3.8'
-          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos ${{ parameters.build_py_parameters }}
+          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
 
@@ -313,7 +313,7 @@ stages:
         parameters:
           MACHINE_POOL: 'aiinfra-dml-winbuild'
           PYTHON_VERSION: '3.9'
-          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos ${{ parameters.build_py_parameters }}
+          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
 
@@ -321,7 +321,7 @@ stages:
         parameters:
           MACHINE_POOL: 'aiinfra-dml-winbuild'
           PYTHON_VERSION: '3.10'
-          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos ${{ parameters.build_py_parameters }}
+          EP_BUILD_FLAGS: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
           ENV_SETUP_SCRIPT: setup_env.bat
           EP_NAME: directml
      
