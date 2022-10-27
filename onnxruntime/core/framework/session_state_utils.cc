@@ -171,9 +171,9 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
     // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 
-    //Status copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
+    Status copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
 
-    Status copy_status = data_transfer_mgr.Randomize(*p_tensor);
+    //Status copy_status = data_transfer_mgr.Randomize(*p_tensor);
 
     if (!copy_status.IsOK()) {
       if (copy_status.ErrorMessage().empty()) {
