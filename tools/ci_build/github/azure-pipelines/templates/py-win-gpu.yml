@@ -16,7 +16,7 @@ parameters:
   type: string
 
 jobs:
-- job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ parameters.PYTHON_VERSION }}
+- job: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}
   timeoutInMinutes: 240
   workspace:
     clean: all
