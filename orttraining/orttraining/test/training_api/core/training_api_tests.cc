@@ -430,6 +430,11 @@ TEST(TrainingApiTest, ModuleExportModelForInferencingCUDA) {
   TestModuleExport(providers);
 }
 
+TEST(TrainingApiTest, ModuleExportModelForInferencingCUDA) {
+  std::vector<std::shared_ptr<IExecutionProvider>> providers{onnxruntime::test::DefaultCudaExecutionProvider()};
+  TestModuleExport(providers);
+}
+
 TEST(TrainingApiTest, OptimStep) {
   auto model_uri = MODEL_FOLDER "training_model.onnx";
   auto optim_uri = MODEL_FOLDER "adamw.onnx";
