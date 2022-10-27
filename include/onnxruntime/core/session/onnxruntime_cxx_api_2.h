@@ -882,32 +882,6 @@ struct OrtValue
   Ort::Abstract make_abstract;
 };
 
-namespace Ort
-{
-/// <summary>
-/// Represents native memory allocation coming from one of the
-/// OrtAllocators registered with OnnxRuntime.
-/// Use it to wrap an allocation made by an allocator
-/// so it can be automatically released when no longer needed.
-/// </summary>
-struct MemoryAllocation {
-  MemoryAllocation(OrtAllocator* allocator, void* p, size_t size);
-  ~MemoryAllocation();
-  MemoryAllocation(const MemoryAllocation&) = delete;
-  MemoryAllocation& operator=(const MemoryAllocation&) = delete;
-  MemoryAllocation(MemoryAllocation&&) noexcept;
-  MemoryAllocation& operator=(MemoryAllocation&&) noexcept;
-
-  void* get() { return p_; }
-  size_t size() const { return size_; }
-
- private:
-  OrtAllocator* allocator_;
-  void* p_;
-  size_t size_;
-};
-}
-
 /** \brief Wrapper around ::OrtAllocator
 *
 * Named OrtAllocator2 because OrtAllocator is already defined, so must wrap it through inheritance
@@ -918,9 +892,8 @@ struct OrtAllocator2 : OrtAllocator {
   static std::unique_ptr<OrtAllocator2> Create(const OrtSession& session, const OrtMemoryInfo*);
 
   void* Alloc(size_t size);
-  Ort::MemoryAllocation GetAllocation(size_t size);
   void Free(void* p);
-  const OrtMemoryInfo* GetInfo() const;
+  const OrtMemoryInfo& GetInfo() const;
 
   static void operator delete(void* p) { Ort::api->ReleaseAllocator(reinterpret_cast<OrtAllocator*>(p)); }
   Ort::Abstract make_abstract;
@@ -1049,191 +1022,6 @@ struct OrtOp {
 
 namespace Ort {
 
-/// <summary>
-/// This entire structure is deprecated, but we not marking
-/// it as a whole yet since we want to preserve for the next release.
-/// </summary>
-struct CustomOpApi {
-  CustomOpApi(const OrtApi& api) : api_(api) {}
-
-  /** \deprecated use Ort::Value::GetTensorTypeAndShape()
-   * [[deprecated]]
-   * This interface produces a pointer that must be released. Not exception safe.
-   */
-  [[deprecated("use Ort::Value::GetTensorTypeAndShape()")]] OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);
-
-  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetElementCount()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetElementCount()")]] size_t GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info);
-
-  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetElementType()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetElementType()")]] ONNXTensorElementDataType GetTensorElementType(const OrtTensorTypeAndShapeInfo* info);
-
-  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetDimensionsCount()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetDimensionsCount()")]] size_t GetDimensionsCount(_In_ const OrtTensorTypeAndShapeInfo* info);
-
-  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetShape()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetShape()")]] void GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length);
-
-  /** \deprecated
-   * [[deprecated]]
-   * This interface sets dimensions to TensorTypeAndShapeInfo, but has no effect on the OrtValue.
-   */
-  [[deprecated("Do not use")]] void SetDimensions(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count);
-
-  /** \deprecated use Ort::Value::GetTensorMutableData()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  template <typename T>
-  [[deprecated("use Ort::Value::GetTensorMutableData()")]] T* GetTensorMutableData(_Inout_ OrtValue* value);
-
-  /** \deprecated use Ort::Value::GetTensorData()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  template <typename T>
-  [[deprecated("use Ort::Value::GetTensorData()")]] const T* GetTensorData(_Inout_ const OrtValue* value);
-
-  /** \deprecated use Ort::Value::GetTensorMemoryInfo()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::Value::GetTensorMemoryInfo()")]] const OrtMemoryInfo* GetTensorMemoryInfo(_In_ const OrtValue* value);
-
-  /** \deprecated use Ort::TensorTypeAndShapeInfo::GetShape()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::TensorTypeAndShapeInfo::GetShape()")]] std::vector<int64_t> GetTensorShape(const OrtTensorTypeAndShapeInfo* info);
-
-  /** \deprecated use TensorTypeAndShapeInfo instances for automatic ownership.
-   * [[deprecated]]
-   * This interface is not exception safe.
-   */
-  [[deprecated("use TensorTypeAndShapeInfo")]] void ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* input);
-
-  /** \deprecated use Ort::KernelContext::GetInputCount
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::KernelContext::GetInputCount")]] size_t KernelContext_GetInputCount(const OrtKernelContext* context);
-
-  /** \deprecated use Ort::KernelContext::GetInput
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::KernelContext::GetInput")]] const OrtValue* KernelContext_GetInput(const OrtKernelContext* context, _In_ size_t index);
-
-  /** \deprecated use Ort::KernelContext::GetOutputCount
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::KernelContext::GetOutputCount")]] size_t KernelContext_GetOutputCount(const OrtKernelContext* context);
-
-  /** \deprecated use Ort::KernelContext::GetOutput
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::KernelContext::GetOutput")]] OrtValue* KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index, _In_ const int64_t* dim_values, size_t dim_count);
-
-  /** \deprecated use Ort::KernelContext::GetGPUComputeStream
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::KernelContext::GetGPUComputeStream")]] void* KernelContext_GetGPUComputeStream(const OrtKernelContext* context);
-
-  /** \deprecated use Ort::ThrowOnError()
-   * [[deprecated]]
-   * This interface is redundant.
-   */
-  [[deprecated("use Ort::ThrowOnError()")]] void ThrowOnError(OrtStatus* result);
-
-  /** \deprecated use Ort::OpAttr
-   * [[deprecated]]
-   * This interface is not exception safe.
-   */
-  [[deprecated("use Ort::OpAttr")]] OrtOpAttr* CreateOpAttr(_In_ const char* name,
-                                                            _In_ const void* data,
-                                                            _In_ int len,
-                                                            _In_ OrtOpAttrType type);
-
-  /** \deprecated use Ort::OpAttr
-   * [[deprecated]]
-   * This interface is not exception safe.
-   */
-  [[deprecated("use Ort::OpAttr")]] void ReleaseOpAttr(_Frees_ptr_opt_ OrtOpAttr* op_attr);
-
-  /** \deprecated use Ort::Op
-   * [[deprecated]]
-   * This interface is not exception safe.
-   */
-  [[deprecated("use Ort::Op")]] OrtOp* CreateOp(_In_ const OrtKernelInfo* info,
-                                                _In_ const char* op_name,
-                                                _In_ const char* domain,
-                                                _In_ int version,
-                                                _In_opt_ const char** type_constraint_names,
-                                                _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                                                _In_opt_ int type_constraint_count,
-                                                _In_opt_ const OrtOpAttr* const* attr_values,
-                                                _In_opt_ int attr_count,
-                                                _In_ int input_count,
-                                                _In_ int output_count);
-
-  /** \deprecated use Ort::Op::Invoke
-   * [[deprecated]]
-   * This interface is redundant
-   */
-  [[deprecated("use Ort::Op::Invoke")]] void InvokeOp(_In_ const OrtKernelContext* context,
-                                                      _In_ const OrtOp* ort_op,
-                                                      _In_ const OrtValue* const* input_values,
-                                                      _In_ int input_count,
-                                                      _Inout_ OrtValue* const* output_values,
-                                                      _In_ int output_count);
-
-  /** \deprecated use Ort::Op for automatic lifespan management.
-   * [[deprecated]]
-   * This interface is not exception safe.
-   */
-  [[deprecated("use Ort::Op")]] void ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op);
-
-  /** \deprecated use Ort::KernelInfo for automatic lifespan management or for
-   * querying attributes
-   * [[deprecated]]
-   * This interface is redundant
-   */
-  template <typename T>  // T is only implemented for std::vector<float>, std::vector<int64_t>, float, int64_t, and string
-  [[deprecated("use Ort::KernelInfo::GetAttribute")]] T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
-
-  /** \deprecated use Ort::KernelInfo::Copy
-   * querying attributes
-   * [[deprecated]]
-   * This interface is not exception safe
-   */
-  [[deprecated("use Ort::KernelInfo::Copy")]] OrtKernelInfo* CopyKernelInfo(_In_ const OrtKernelInfo* info);
-
-  /** \deprecated use Ort::KernelInfo for lifespan management
-   * querying attributes
-   * [[deprecated]]
-   * This interface is not exception safe
-   */
-  [[deprecated("use Ort::KernelInfo")]] void ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_copy);
-
- private:
-  const OrtApi& api_;
-};
-
 template <typename TOp, typename TKernel>
 struct CustomOpBase : OrtCustomOp {
   CustomOpBase() {
@@ -1250,14 +1038,8 @@ struct CustomOpBase : OrtCustomOp {
     OrtCustomOp::GetOutputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputType(index); };
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) { static_cast<TKernel*>(op_kernel)->Compute(context); };
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-#pragma warning(disable : 26409)
-#endif
-    OrtCustomOp::KernelDestroy = [](void* op_kernel) { delete static_cast<TKernel*>(op_kernel); };
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
+    OrtCustomOp::KernelDestroy = [](void* op_kernel) { std::unique_ptr{static_cast<TKernel*>(op_kernel)}; };
+
     OrtCustomOp::GetInputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputCharacteristic(index); };
     OrtCustomOp::GetOutputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputCharacteristic(index); };
   }
@@ -1267,13 +1049,8 @@ struct CustomOpBase : OrtCustomOp {
 
   // Default implementations of GetInputCharacteristic() and GetOutputCharacteristic() below
   // (inputs and outputs are required by default)
-  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /*index*/) const {
-    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
-  }
-
-  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
-    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
-  }
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /*index*/) const { return ORT_INPUT_OUTPUT_REQUIRED; }
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const { return ORT_INPUT_OUTPUT_REQUIRED; }
 };
 
 }  // namespace Ort

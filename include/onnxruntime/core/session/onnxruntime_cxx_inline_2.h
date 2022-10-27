@@ -31,6 +31,8 @@ struct StandardAllocator : OrtAllocator
 
 inline StandardAllocator standard_allocator;
 
+// Used on methods that return a std::string. This implements an OrtAllocator that Allocates memory directly
+// from a std::string.
 struct StringAllocator : OrtAllocator
 {
   StringAllocator() : OrtAllocator{}
@@ -56,23 +58,6 @@ struct StringAllocator : OrtAllocator
 private:
   std::string string_;
 };
-
-} // namespace Ort
-
-inline std::unique_ptr<OrtStatus> OrtStatus::Create(OrtErrorCode code, const std::string& what) {
-  return std::unique_ptr<OrtStatus>{Ort::api->CreateStatus(code, what.c_str())};
-}
-
-inline std::string OrtStatus::GetErrorMessage() const {
-  std::string message(Ort::api->GetErrorMessage(this));
-  return message;
-}
-
-inline OrtErrorCode OrtStatus::GetErrorCode() const {
-  return Ort::api->GetErrorCode(this);
-}
-
-namespace Ort {
 
 // This template converts a C++ type into it's ONNXTensorElementDataType
 template <typename T>
@@ -104,43 +89,29 @@ struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType t
 template <>
 struct TypeToTensorType<bool> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL; };
 
-inline MemoryAllocation::MemoryAllocation(OrtAllocator* allocator, void* p, size_t size)
-    : allocator_(allocator), p_(p), size_(size) {
-}
-
-inline MemoryAllocation::~MemoryAllocation() {
-  if (p_ != nullptr) {
-    // We do not throw out of destructor
-    auto ret = api->AllocatorFree(allocator_, p_);
-    static_cast<void>(ret);
-  }
-}
-
-inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) noexcept : allocator_(nullptr), p_(nullptr), size_(0) {
-  *this = std::move(o);
-}
-
-inline MemoryAllocation& MemoryAllocation::operator=(MemoryAllocation&& o) noexcept {
-  OrtAllocator* alloc = nullptr;
-  void* p = nullptr;
-  size_t sz = 0;
-
-  // Swap out this
-  std::swap(alloc, allocator_);
-  std::swap(p, p_);
-  std::swap(sz, size_);
-
-  // Swap with incoming
-  std::swap(allocator_, o.allocator_);
-  std::swap(p_, o.p_);
-  std::swap(size_, o.size_);
-
-  // Destroy this instance if needed
-  MemoryAllocation this_alloc(alloc, p, sz);
-  return *this;
+inline std::vector<std::string> GetAvailableProviders() {
+  int len;
+  char** providers;
+  ThrowOnError(api->GetAvailableProviders(&providers, &len));
+  std::vector<std::string> available_providers(providers, providers + len);
+  ThrowOnError(api->ReleaseAvailableProviders(providers, len));
+  return available_providers;
 }
 
 } // namespace Ort
+
+inline std::unique_ptr<OrtStatus> OrtStatus::Create(OrtErrorCode code, const std::string& what) {
+  return std::unique_ptr<OrtStatus>{Ort::api->CreateStatus(code, what.c_str())};
+}
+
+inline std::string OrtStatus::GetErrorMessage() const {
+  std::string message(Ort::api->GetErrorMessage(this));
+  return message;
+}
+
+inline OrtErrorCode OrtStatus::GetErrorCode() const {
+  return Ort::api->GetErrorCode(this);
+}
 
 inline void* OrtAllocator2::Alloc(size_t size) {
   void* out;
@@ -148,21 +119,14 @@ inline void* OrtAllocator2::Alloc(size_t size) {
   return out;
 }
 
-inline Ort::MemoryAllocation OrtAllocator2::GetAllocation(size_t size) {
-  void* out;
-  Ort::ThrowOnError(Ort::api->AllocatorAlloc(this, size, &out));
-  Ort::MemoryAllocation result(this, out, size);
-  return result;
-}
-
 inline void OrtAllocator2::Free(void* p) {
   Ort::ThrowOnError(Ort::api->AllocatorFree(this, p));
 }
 
-inline const OrtMemoryInfo* OrtAllocator2::GetInfo() const {
+inline const OrtMemoryInfo& OrtAllocator2::GetInfo() const {
   const OrtMemoryInfo* out;
   Ort::ThrowOnError(Ort::api->AllocatorGetInfo(this, &out));
-  return out;
+  return *out;
 }
 
 inline OrtAllocator2 &OrtAllocator2::GetWithDefaultOptions() {
@@ -722,11 +686,14 @@ inline std::unique_ptr<OrtTypeInfo> OrtSession::GetOverridableInitializerTypeInf
 
 inline std::vector<std::unique_ptr<OrtValue>> OrtSession::Run(const OrtRunOptions* run_options, const char* const* input_names, const OrtValue* const* input_values, size_t input_count,
                                               const char* const* output_names, size_t output_count) {
-  static_assert(sizeof(std::unique_ptr<OrtValue>)==sizeof(OrtValue*), "Must be true so that we can reinterpret cast the vector to a simple array of pointers");
-  std::vector<std::unique_ptr<OrtValue>> output_values(output_count);
-  auto raw_output_values=reinterpret_cast<OrtValue**>(output_values.data());
-  Run(run_options, input_names, input_values, input_count, output_names, raw_output_values, output_count);
-  return output_values;
+  std::vector<OrtValue*> output_values(output_count);
+  std::vector<std::unique_ptr<OrtValue>> results(output_count); // Allocate before Run() so that if it fails, it fails before we have unowned OrtValue*s in output_values
+  Run(run_options, input_names, input_values, input_count, output_names, output_values.data(), output_count);
+
+  for(auto i=0;i<output_count;i++)
+    results[i]=std::unique_ptr<OrtValue>{output_values[i]};
+
+  return results;
 }
 
 inline void OrtSession::Run(const OrtRunOptions* run_options, const char* const* input_names, const OrtValue* const* input_values, size_t input_count,
@@ -1253,231 +1220,3 @@ inline void OrtOp::Invoke(const OrtKernelContext* context,
   Ort::ThrowOnError(Ort::api->InvokeOp(context, this, input_values, static_cast<int>(input_count),
                                       output_values, static_cast<int>(output_count)));
 }
-
-namespace Ort {
-
-inline void CustomOpApi::ThrowOnError(OrtStatus* status) {
-  Ort::ThrowOnError(status);
-}
-
-template <>
-inline float CustomOpApi::KernelInfoGetAttribute<float>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
-  float out;
-  Ort::ThrowOnError(api_.KernelInfoGetAttribute_float(info, name, &out));
-  return out;
-}
-
-template <>
-inline int64_t CustomOpApi::KernelInfoGetAttribute<int64_t>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
-  int64_t out;
-  Ort::ThrowOnError(api_.KernelInfoGetAttribute_int64(info, name, &out));
-  return out;
-}
-
-template <>
-inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
-  size_t size = 0;
-  std::string out;
-
-  // Feed nullptr for the data buffer to query the true size of the string attribute
-  OrtStatus* status = api_.KernelInfoGetAttribute_string(info, name, nullptr, &size);
-
-  if (status == nullptr) {
-    out.resize(size);
-    Ort::ThrowOnError(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
-    out.resize(size - 1);  // remove the terminating character '\0'
-  } else {
-    Ort::ThrowOnError(status);
-  }
-  return out;
-}
-
-template <>
-inline std::vector<float> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name) {
-  size_t size = 0;
-  std::vector<float> out;
-
-  // Feed nullptr for the data buffer to query the true size of the attribute
-  OrtStatus* status = api_.KernelInfoGetAttributeArray_float(info, name, nullptr, &size);
-
-  if (status == nullptr) {
-    out.resize(size);
-    Ort::ThrowOnError(api_.KernelInfoGetAttributeArray_float(info, name, out.data(), &size));
-  } else {
-    Ort::ThrowOnError(status);
-  }
-  return out;
-}
-
-template <>
-inline std::vector<int64_t> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name) {
-  size_t size = 0;
-  std::vector<int64_t> out;
-
-  // Feed nullptr for the data buffer to query the true size of the attribute
-  OrtStatus* status = api_.KernelInfoGetAttributeArray_int64(info, name, nullptr, &size);
-
-  if (status == nullptr) {
-    out.resize(size);
-    Ort::ThrowOnError(api_.KernelInfoGetAttributeArray_int64(info, name, out.data(), &size));
-  } else {
-    Ort::ThrowOnError(status);
-  }
-  return out;
-}
-inline OrtTensorTypeAndShapeInfo* CustomOpApi::GetTensorTypeAndShape(_In_ const OrtValue* value) {
-  OrtTensorTypeAndShapeInfo* out;
-  Ort::ThrowOnError(api_.GetTensorTypeAndShape(value, &out));
-  return out;
-}
-
-inline size_t CustomOpApi::GetTensorShapeElementCount(_In_ const OrtTensorTypeAndShapeInfo* info) {
-  size_t out;
-  Ort::ThrowOnError(api_.GetTensorShapeElementCount(info, &out));
-  return out;
-}
-
-inline ONNXTensorElementDataType CustomOpApi::GetTensorElementType(const OrtTensorTypeAndShapeInfo* info) {
-  ONNXTensorElementDataType out;
-  Ort::ThrowOnError(api_.GetTensorElementType(info, &out));
-  return out;
-}
-
-inline size_t CustomOpApi::GetDimensionsCount(_In_ const OrtTensorTypeAndShapeInfo* info) {
-  size_t out;
-  Ort::ThrowOnError(api_.GetDimensionsCount(info, &out));
-  return out;
-}
-
-inline void CustomOpApi::GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length) {
-  Ort::ThrowOnError(api_.GetDimensions(info, dim_values, dim_values_length));
-}
-
-inline void CustomOpApi::SetDimensions(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count) {
-  Ort::ThrowOnError(api_.SetDimensions(info, dim_values, dim_count));
-}
-
-template <typename T>
-inline T* CustomOpApi::GetTensorMutableData(_Inout_ OrtValue* value) {
-  T* data;
-  Ort::ThrowOnError(api_.GetTensorMutableData(value, reinterpret_cast<void**>(&data)));
-  return data;
-}
-
-inline const OrtMemoryInfo* CustomOpApi::GetTensorMemoryInfo(_In_ const OrtValue* value) {
-  const OrtMemoryInfo* mem_info;
-  Ort::ThrowOnError(api_.GetTensorMemoryInfo(value, &mem_info));
-  return mem_info;
-}
-
-template <typename T>
-inline const T* CustomOpApi::GetTensorData(_Inout_ const OrtValue* value) {
-  return GetTensorData<T>(value);
-}
-
-inline std::vector<int64_t> CustomOpApi::GetTensorShape(const OrtTensorTypeAndShapeInfo* info) {
-  size_t out;
-  Ort::ThrowOnError(api_.GetDimensionsCount(info, &out));
-  std::vector<int64_t> output(out);
-  Ort::ThrowOnError(api_.GetDimensions(info, output.data(), out));
-  return output;
-}
-
-inline void CustomOpApi::ReleaseTensorTypeAndShapeInfo(OrtTensorTypeAndShapeInfo* input) {
-  api_.ReleaseTensorTypeAndShapeInfo(input);
-}
-
-inline size_t CustomOpApi::KernelContext_GetInputCount(const OrtKernelContext* context) {
-  size_t out;
-  Ort::ThrowOnError(api_.KernelContext_GetInputCount(context, &out));
-  return out;
-}
-
-inline const OrtValue* CustomOpApi::KernelContext_GetInput(const OrtKernelContext* context, _In_ size_t index) {
-  const OrtValue* out;
-  Ort::ThrowOnError(api_.KernelContext_GetInput(context, index, &out));
-  return out;
-}
-
-inline size_t CustomOpApi::KernelContext_GetOutputCount(const OrtKernelContext* context) {
-  size_t out;
-  Ort::ThrowOnError(api_.KernelContext_GetOutputCount(context, &out));
-  return out;
-}
-
-inline OrtValue* CustomOpApi::KernelContext_GetOutput(OrtKernelContext* context, _In_ size_t index,
-                                                      _In_ const int64_t* dim_values, size_t dim_count) {
-  OrtValue* out;
-  Ort::ThrowOnError(api_.KernelContext_GetOutput(context, index, dim_values, dim_count, &out));
-  return out;
-}
-
-inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelContext* context) {
-  void* out;
-  Ort::ThrowOnError(api_.KernelContext_GetGPUComputeStream(context, &out));
-  return out;
-}
-
-inline OrtOpAttr* CustomOpApi::CreateOpAttr(_In_ const char* name,
-                                            _In_ const void* data,
-                                            _In_ int len,
-                                            _In_ OrtOpAttrType type) {
-  OrtOpAttr* op_attr{};
-  Ort::ThrowOnError(api_.CreateOpAttr(name, data, len, type, &op_attr));
-  return op_attr;
-}
-
-inline void CustomOpApi::ReleaseOpAttr(_Frees_ptr_opt_ OrtOpAttr* op_attr) {
-  api_.ReleaseOpAttr(op_attr);
-}
-
-inline OrtOp* CustomOpApi::CreateOp(_In_ const OrtKernelInfo* info,
-                                    _In_ const char* op_name,
-                                    _In_ const char* domain,
-                                    _In_ int version,
-                                    _In_opt_ const char** type_constraint_names,
-                                    _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
-                                    _In_opt_ int type_constraint_count,
-                                    _In_opt_ const OrtOpAttr* const* attr_values,
-                                    _In_opt_ int attr_count,
-                                    _In_ int input_count,
-                                    _In_ int output_count) {
-  OrtOp* ort_op{};
-  Ort::ThrowOnError(api_.CreateOp(info, op_name, domain, version, type_constraint_names, type_constraint_values,
-                                  type_constraint_count, attr_values, attr_count, input_count, output_count, &ort_op));
-  return ort_op;
-}
-
-inline void CustomOpApi::InvokeOp(_In_ const OrtKernelContext* context,
-                                  _In_ const OrtOp* ort_op,
-                                  _In_ const OrtValue* const* input_values,
-                                  _In_ int input_count,
-                                  _Inout_ OrtValue* const* output_values,
-                                  _In_ int output_count) {
-  Ort::ThrowOnError(api_.InvokeOp(context, ort_op, input_values, input_count, output_values, output_count));
-}
-
-inline void CustomOpApi::ReleaseOp(_Frees_ptr_opt_ OrtOp* ort_op) {
-  api_.ReleaseOp(ort_op);
-}
-
-inline OrtKernelInfo* CustomOpApi::CopyKernelInfo(_In_ const OrtKernelInfo* info) {
-  OrtKernelInfo* info_copy{};
-  Ort::ThrowOnError(api_.CopyKernelInfo(info, &info_copy));
-  return info_copy;
-}
-
-inline void CustomOpApi::ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_copy) {
-  api_.ReleaseKernelInfo(info_copy);
-}
-
-inline std::vector<std::string> GetAvailableProviders() {
-  int len;
-  char** providers;
-  ThrowOnError(api->GetAvailableProviders(&providers, &len));
-  std::vector<std::string> available_providers(providers, providers + len);
-  ThrowOnError(api->ReleaseAvailableProviders(providers, len));
-  return available_providers;
-}
-
-}  // namespace Ort
