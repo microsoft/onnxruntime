@@ -212,11 +212,24 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, int64_t)  \
   BINARY_OP_VERSIONED_HFD(name, startver, endver)
 
+#define BINARY_OP_VERSIONED_UZILHFD_DIV(name, startver, endver)   \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint32_t) \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint64_t) \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, int32_t)  \
+  BINARY_OP_VERSIONED_HFD(name, startver, endver)
+
 #define BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(name, startver, endver) \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint32_t)         \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint64_t)         \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, int32_t)          \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, int64_t)          \
+  BINARY_OP_VERSIONED_HFD(name, startver, endver)                     \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, BFloat16)
+
+#define BINARY_OP_VERSIONED_UZILHFD_WITH_BF16_DIV(name, startver, endver) \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint32_t)         \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint64_t)         \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, int32_t)          \
   BINARY_OP_VERSIONED_HFD(name, startver, endver)                     \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, BFloat16)
 
@@ -231,6 +244,12 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_OP_TYPED(name, ver, uint64_t) \
   BINARY_OP_TYPED(name, ver, int32_t)  \
   BINARY_OP_TYPED(name, ver, int64_t)  \
+  BINARY_OP_HFD(name, ver)
+
+#define BINARY_OP_UZILHFD_DIV(name, ver)   \
+  BINARY_OP_TYPED(name, ver, uint32_t) \
+  BINARY_OP_TYPED(name, ver, uint64_t) \
+  BINARY_OP_TYPED(name, ver, int32_t)  \
   BINARY_OP_HFD(name, ver)
 
 #define BINARY_OP_REGISTER_VERSIONED_OIL(name, startver, endver)                      \
@@ -298,17 +317,17 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 BINARY_OP_VERSIONED_UZILHFD(Add, 7, 12)
 BINARY_OP_VERSIONED_UZILHFD(Sub, 7, 12)
 BINARY_OP_VERSIONED_UZILHFD(Mul, 7, 12)
-BINARY_OP_VERSIONED_UZILHFD(Div, 7, 12)
+BINARY_OP_VERSIONED_UZILHFD_DIV(Div, 7, 12)
 
 BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Add, 13, 13)
 BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Sub, 13, 13)
 BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Mul, 13, 13)
-BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Div, 13, 13)
+BINARY_OP_VERSIONED_UZILHFD_WITH_BF16_DIV(Div, 13, 13)
 
 BINARY_OP_UZILHFD(Add, 14)
 BINARY_OP_UZILHFD(Sub, 14)
 BINARY_OP_UZILHFD(Mul, 14)
-BINARY_OP_UZILHFD(Div, 14)
+BINARY_OP_UZILHFD_DIV(Div, 14)
 
 BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(Pow, Pow_7, 7, 11)
 BINARY_LOGICALOP_TYPED(And, 7, bool)
