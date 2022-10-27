@@ -95,7 +95,7 @@ void CUDAAllocator::Free(void* p) {
 }
 
 void* CUDAMemoryPoolAllocator::Alloc(size_t size) {
-  ORT_ENFORCE(size == 0);
+  ORT_ENFORCE(size == 0, "Alloc not supported");
   if (size == 0) {
     return nullptr;
   }
@@ -124,7 +124,7 @@ void* CUDAMemoryPoolAllocator::Alloc(size_t size) {
 }
 
 void* CUDAMemoryPoolAllocator::Reserve(size_t size) {
-  ORT_ENFORCE(size == 0);
+  ORT_ENFORCE(size == 0, "Reserve not supported");
   void* p = nullptr;
   if (size > 0) {
     cudaMalloc((void**)&p, size);
