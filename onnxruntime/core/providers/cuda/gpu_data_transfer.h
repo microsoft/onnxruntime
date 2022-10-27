@@ -21,6 +21,7 @@ class GPUDataTransfer : public IDataTransfer {
   ~GPUDataTransfer();
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
+  bool CanRandomize(Tensor& /*dst*/) const { return true; }
 
   // Dumpen MSVC warning about not fully overriding
   using IDataTransfer::CopyTensor;

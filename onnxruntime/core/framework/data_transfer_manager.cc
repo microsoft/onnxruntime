@@ -31,6 +31,16 @@ Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst) const {
   return CopyTensor(src, dst, 0);
 }
 
+common::Status DataTransferManager::Randomize(Tensor& dst) const {
+  for (auto& data_transfer : datatransfers_) {
+    if (data_transfer->CanRandomize(dst)) {
+      return data_transfer->Randomize(dst);
+    }
+  }
+
+  ORT_THROW("Should not reach here");
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 common::Status DataTransferManager::CopySparseTensor(const SparseTensor& src, SparseTensor& dst) const {
   return CopySparseTensor(src, dst, 0);

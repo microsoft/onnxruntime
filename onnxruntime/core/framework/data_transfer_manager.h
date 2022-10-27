@@ -20,6 +20,7 @@ class DataTransferManager {
 
   const IDataTransfer* GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const;
 
+  common::Status Randomize(Tensor& dst) const;
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const;
   common::Status CopyTensors(const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) const;

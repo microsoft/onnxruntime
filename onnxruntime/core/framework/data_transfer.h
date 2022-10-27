@@ -6,7 +6,6 @@
 #include <functional>
 #include <vector>
 #include "core/common/common.h"
-
 struct OrtDevice;
 
 namespace onnxruntime {
@@ -29,7 +28,8 @@ class IDataTransfer {
 
   virtual common::Status CopyTensor(const Tensor& src, Tensor& dst) const;
   virtual common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const = 0;
-  virtual common::Status Randomize(Tensor& /*dst*/) const { ORT_THROW("Unimplemented"); };
+  virtual bool CanRandomize(Tensor& /*dst*/) const { return false; }
+  virtual common::Status Randomize(Tensor& /*dst*/) const { ORT_THROW("Unimplemented"); }
 
   struct SrcDstPair {
     std::reference_wrapper<const Tensor> src;
