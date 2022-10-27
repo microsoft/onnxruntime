@@ -26,7 +26,7 @@ struct Pool1DTask final {
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
     for (int64_t c = begin; c < end; ++c) {
-      operator()(c);
+      operator()(gsl::narrow_cast<size_t>(c));
     }
   }
   void operator()(std::ptrdiff_t c) const {
@@ -75,7 +75,7 @@ struct Pool2DTask final {
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
     for (int64_t c = begin; c < end; ++c) {
-      operator()(c);
+      operator()(gsl::narrow_cast<size_t>(c));
     }
   }
 
@@ -138,7 +138,7 @@ struct Pool3DTask final {
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
     for (int64_t c = begin; c < end; ++c) {
-      operator()(c);
+      operator()(gsl::narrow_cast<size_t>(c));
     }
   }
 
@@ -200,7 +200,7 @@ struct MaxPool1DTask final {
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
     for (int64_t c = begin; c < end; ++c) {
-      operator()(c);
+      operator()(gsl::narrow_cast<size_t>(c));
     }
   }
   void operator()(std::ptrdiff_t c) const {
@@ -253,7 +253,7 @@ struct MaxPool2DTask final {
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
     for (int64_t c = begin; c < end; ++c) {
-      operator()(c);
+      operator()(gsl::narrow_cast<size_t>(c));
     }
   }
 
@@ -319,7 +319,7 @@ struct MaxPool3DTask {
 
   void operator()(std::ptrdiff_t begin, std::ptrdiff_t end) const {
     for (int64_t c = begin; c < end; ++c) {
-      operator()(c);
+      operator()(gsl::narrow_cast<size_t>(c));
     }
   }
 

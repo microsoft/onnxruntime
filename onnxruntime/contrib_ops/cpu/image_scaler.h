@@ -39,11 +39,11 @@ class ImageScaler final : public OpKernel {
     }
 
     Tensor* Y = context->Output(0, TensorShape({N, C, H, W}));
-    ConstEigenArrayMap<T> X_arr(X->Data<T>(), H * W, N * C);
-    EigenArrayMap<T> Y_arr(Y->MutableData<T>(), H * W, N * C);
+    ConstEigenArrayMap<T> X_arr(X->Data<T>(), gsl::narrow_cast<size_t>(H * W), gsl::narrow_cast<size_t>(N * C));
+    EigenArrayMap<T> Y_arr(Y->MutableData<T>(), gsl::narrow_cast<size_t>(H * W), gsl::narrow_cast<size_t>(N * C));
 
     for (int64_t nc = 0; nc < N * C; ++nc) {
-      Y_arr.col(nc) = scale_ * X_arr.col(nc) + bias_[nc % C];
+      Y_arr.col(gsl::narrow_cast<size_t>(nc)) = scale_ * X_arr.col(gsl::narrow_cast<size_t>(nc)) + bias_[gsl::narrow_cast<size_t>(nc % C)];
     }
     return Status::OK();
   }

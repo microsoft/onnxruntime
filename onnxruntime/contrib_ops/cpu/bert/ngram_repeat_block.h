@@ -24,7 +24,7 @@ class NGramRepeatBlock : public OpKernel {
     const auto* scores_source = static_cast<const float*>(scores->DataRaw());
     auto* scores_target = static_cast<float*>(output->MutableDataRaw());
     if (scores_source != scores_target) {
-      memcpy(scores_target, scores_source, scores->Shape().Size() * sizeof(float));
+      memcpy(scores_target, scores_source, gsl::narrow_cast<size_t>(scores->Shape().Size()) * sizeof(float));
     }
 
     const auto& input_ids_dims = input_ids->Shape().GetDims();
@@ -68,7 +68,7 @@ class NGramRepeatBlock : public OpKernel {
 
     concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
     concurrency::ThreadPool::TryParallelFor(
-        tp, batch_size, static_cast<double>(cur_len * ngram_size_),
+        tp, gsl::narrow_cast<std::ptrdiff_t>(batch_size) , static_cast<double>(cur_len * ngram_size_),
         [&lambda](ptrdiff_t first, ptrdiff_t last) {
           for (auto b = static_cast<int64_t>(first), end = static_cast<int64_t>(last); b < end; ++b) {
             lambda(b);
