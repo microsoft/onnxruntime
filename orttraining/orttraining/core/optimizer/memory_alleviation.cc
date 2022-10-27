@@ -545,7 +545,7 @@ bool MemoryAlleviation::ModifyGraphForRecompute(Graph& graph,
                                                 int64_t boundary_op_order_in_topological_sort,
                                                 AlleviationSubGraphStores& subgraph_stores, Node* node) const {
   bool graph_is_modified = false;
-  if (subgraph_stores.SubGraphCount() == 0) {
+  if (subgraph_stores.SubGraphDescCount() == 0) {
     return graph_is_modified;
   }
 
@@ -667,7 +667,6 @@ Status MemoryAlleviation::ApplyImpl(Graph& graph, bool& modified, int /*graph_le
   // The reason we do reversed topological order is that we want the later layers' recompute nodes can be appended
   // earlier than the earlier layers, in this way, the execution order of later layers will be in front of the earlier
   // layers.
-  // InlinedHashMap<std::string, int> subgraph_str_to_applied_frequency;
   for (int i = static_cast<int>(node_ids.size()) - 1; i >= 0; --i) {
     Node* p_node = graph.GetNode(node_ids[i]);
     if (p_node == nullptr) {
@@ -752,8 +751,7 @@ void MemoryAlleviation::PrintSummary(const AlleviationSubGraphStores& recompute_
     for (auto subgraph_it = stores.subgraph_descs.begin(); subgraph_it != stores.subgraph_descs.end();
          ++subgraph_it) {
       std::string freq_info;
-      if (subgraph_it->second.user_alleviation_config.type != AlleviationType::None &&
-          subgraph_it->second.user_alleviation_config.requested_count != -1)
+      if (subgraph_it->second.user_alleviation_config.type != AlleviationType::None)
         freq_info = " (requested_count=" + std::to_string(subgraph_it->second.user_alleviation_config.requested_count) +
                     ", actual applied_count=" +
                     std::to_string(subgraph_it->second.applied_count) + ")";
@@ -773,7 +771,7 @@ void MemoryAlleviation::PrintSummary(const AlleviationSubGraphStores& recompute_
   print_info_from_stores("Recompute", recompute_stores);
   print_info_from_stores("RecomputeWithCompromise", recompute_with_compromise_stores);
 
-  LOGS(logger, WARNING) << summary.str() << "\n";
+  LOGS(logger, INFO) << summary.str() << "\n";
 }
 
 }  // namespace onnxruntime

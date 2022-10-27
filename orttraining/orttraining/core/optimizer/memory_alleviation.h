@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <charconv>
-
 #include "core/common/inlined_containers.h"
 #include "core/common/string_utils.h"
 #include "core/optimizer/graph_transformer.h"
@@ -14,7 +12,7 @@ namespace onnxruntime {
 /**
 @Class MemoryAlleviation
 
-Find and recompute/offload activations for found subgraphs.
+Find recomputable subgraphs and enable according to user configs.
 */
 
 class MemoryAlleviation : public GraphTransformer {
@@ -50,30 +48,47 @@ class MemoryAlleviation : public GraphTransformer {
   struct UserAlleviationConfig {
     AlleviationType type;
     int requested_count;
-    int stride{1};
   };
 
   struct EntryOperatorConfig {
     InlinedVector<int> input_arg_indices;  // input index to iterate further (bottom up)
   };
 
+  /**
+   * @brief Struct to store properties of a specific subgraph.
+   */
   struct AlleviationSubGraphDesc {
     AlleviationSubGraphDesc() = default;
 
+    // A string to represent the subgraph, used as a unique "ID" for a unique subgraph.
+    std::string subgraph_representative_str;
+
     InlinedHashMap<std::string, int> shape_str_frequency;  // shape string to frequency
     UserAlleviationConfig user_alleviation_config;
-    std::string subgraph_representative_str;  // a string to represent the subgraph.
-    int total_frequency{0};
-    int applied_count{0};
-    int skip_count{0};
+    int total_frequency{0};  // The occurrence of this subgraph pattern in the graph.
+
+    int applied_count{0};  // The number of times this subgraph pattern has been really applied in this transformer.
+    int skip_count{0};     // The number of times this subgraph instances will skipped in reversed topological order.
     float saving_ratio{1.0f};
   };
 
+  /**
+   * @brief A struct to maintain the information of recomputable subgraphs.
+   * Imagine we loop all nodes finding recomputable subgraphs, we want to store them first.
+   * Afterwards, we optionally pick up some of them to apply alleviation according to user configs.
+   *
+   * subgraph_descs is a map from subgraph string representation to its subgraph related configurations.
+   * recompute_graphs is a map from activation producer node pointers to its recomputable subgraph nodes.
+   *
+   * When we AddRecomputeSubGraphInstance, we must provider its corresponding subgraph desc in the parameter.
+   * Then we can know for each subgraph instance, what's the subgraph str representation, and what's the alleviation
+   * config.
+   */
   struct AlleviationSubGraphStores {
     // nodes in typo order, and a string to represent the subgraph.
     using GraphInstanceInfo = std::pair<InlinedVector<const Node*>, std::string>;
 
-    size_t SubGraphCount() const {
+    size_t SubGraphDescCount() const {
       return subgraph_descs.size();
     }
 
@@ -89,7 +104,6 @@ class MemoryAlleviation : public GraphTransformer {
     AlleviationSubGraphDesc& CreateSubGraphDesc(const std::string& subgraph_string,
                                                 UserAlleviationConfig& config) {
       ORT_ENFORCE(!Contains(subgraph_string), "Subgraph string already exists.", subgraph_string);
-      std::cout << "CreateSubGraphDesc for " << subgraph_string << std::endl;
       subgraph_descs[subgraph_string].user_alleviation_config = config;
       subgraph_descs[subgraph_string].subgraph_representative_str = subgraph_string;
       return subgraph_descs[subgraph_string];
@@ -99,11 +113,8 @@ class MemoryAlleviation : public GraphTransformer {
                                       const InlinedVector<const Node*>& nodes_in_topological_order,
                                       const AlleviationSubGraphDesc& subgraph_desc) {
       ORT_ENFORCE(recompute_graphs.find(node) == recompute_graphs.end());
-      std::cout << "AddRecomputeSubGraphInstance for " << subgraph_desc.subgraph_representative_str << std::endl;
       recompute_graphs[node] = std::make_pair(nodes_in_topological_order, subgraph_desc.subgraph_representative_str);
     }
-
-    // GetSubGraphInstanceFromStashedActivationProducer
 
     bool ContainsRecomputeSubGraphInstance(const Node* node) const {
       return recompute_graphs.find(node) != recompute_graphs.end();
@@ -135,7 +146,8 @@ class MemoryAlleviation : public GraphTransformer {
    * @param fw_op_output_arg_used_map Collected activation usage mapping.
    *   - key: node arg name
    *   - value: a pair of bool, representing whether the activation is used by forward nodes or by backward nodes.
-   * @return int64_t value The boundary op (for example YieldOp) order in topological order. If no boundary op found, return -1;
+   * @return int64_t value The boundary op (for example YieldOp) order in topological order. If no boundary op found,
+   *  return -1;
    */
   int64_t PrepareForTransformation(const Graph& graph,
                                    ActivationUsedMap& fw_op_output_arg_used_map,
@@ -163,18 +175,45 @@ class MemoryAlleviation : public GraphTransformer {
    * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
    * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
    *   Used to re-order the collected subgraph nodes.
-   * @param nodes_in_topological_order Collected vector of nodes of found subgraph, in the order of the topological sorted.
+   * @param nodes_in_topological_order Collected vector of nodes of found subgraph, in the order of the topological
+   *  sorted.
+   * @param logger Logger.
+   * @param compromise_stashed_activation Whether to compromise stashed activation, e.g. if we cannot find a
+   * recomputable subgraph to save a stashed activation, we can compromise to find a recomputable subgraph to reduce the
+   * size of stashed activation.
+   * @param can_compromise_stashed_activation A bool return value, to indicate there is opportunaties for finding a
+   * compromised subgraph.
    * @return Status
    */
   Status SelectRecomputeSubgraph(const Node& node,
                                  const InlinedVector<size_t>& node_output_index_candidates,
                                  const ActivationUsedMap& fw_op_output_arg_used_map,
-                                 const InlinedHashMap<NodeIndex, size_t>& node_index_to_its_order_in_topological_sort_map,
+                                 const InlinedHashMap<NodeIndex, size_t>&
+                                     node_index_to_its_order_in_topological_sort_map,
                                  InlinedVector<const Node*>& nodes_in_topological_order,
                                  const logging::Logger& logger,
                                  bool compromise_stashed_activation,
                                  bool& can_compromise_stashed_activation) const;
 
+  /**
+   * @brief For the node producing stashed activation, check whether a recomputable subgraph can be found or not.
+   *
+   * @param node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
+   * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
+   * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
+   *   Used to re-order the collected subgraph nodes.
+   * @param candidate_output_args_map A map from node to its candidate activations, which are consumed by both fw and
+   *  bw ops.
+   * @param subgraph_stores A store to maintain all found subgraphs.
+   * @param logger Logger.
+   * @param compromise_stashed_activation Whether to compromise stashed activation, e.g. if we cannot find a
+   * recomputable subgraph to save a stashed activation, we can compromise to find a recomputable subgraph to reduce the
+   * size of stashed activation.
+   * @param can_compromise_stashed_activation A bool return value, to indicate there is opportunaties for finding a
+   * compromised subgraph.
+   * @return true If find a recomputable subgraph;
+   * @return false Otherwise.
+   */
   bool IsNodeRecomputable(const Node& node,
                           const ActivationUsedMap& fw_op_output_arg_used_map,
                           const InlinedHashMap<NodeIndex, size_t>&
@@ -237,10 +276,8 @@ class MemoryAlleviation : public GraphTransformer {
 
   // The op types that are supported predefined.
   InlinedHashMap<std::string, EntryOperatorConfig> recomputable_op_type_to_input_arg_index_map_;
-
   // User enabled map of the subgraph string representation to the alleviation type.
   InlinedHashMap<std::string, UserAlleviationConfig> pattern_subgraph_to_user_alleviation_config_map_;
-
   std::string memory_alleviation_config_;
   ProbeLevel level_;
 };
