@@ -49,7 +49,6 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed memory size calculation");
     }
 
-    // std::cout << "Reserving" << std::endl;
     p_data = alloc->Reserve(mem_size);
   }
 
