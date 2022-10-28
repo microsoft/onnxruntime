@@ -570,12 +570,12 @@ Status GreedySearchProcessLogits(
     float* d_sorted_softmaxed_score_buffer = reinterpret_cast<float*>(d_sorted_score_buffer + parameters->batch_size * parameters->vocab_size);
     float* d_softmaxed_score_buffer = d_sorted_softmaxed_score_buffer + parameters->batch_size * parameters->vocab_size;
 
-    size_t temp_storage_bytes = cuda::GetTempStorageSize(reinterpret_cast<CudaT*>(next_token_scores.data()),
-                                                         d_index_buffer_in,
-                                                         d_offset_buffer,
-                                                         parameters->vocab_size,
-                                                         parameters->batch_size,
-                                                         cuda_stream);
+    size_t temp_storage_bytes = cuda::GetTempStorageSize<CudaT>(reinterpret_cast<CudaT*>(next_token_scores.data()),
+                                                                d_index_buffer_in,
+                                                                d_offset_buffer,
+                                                                parameters->vocab_size,
+                                                                parameters->batch_size,
+                                                                cuda_stream);
 
     cuda::LaunchSetupParamsKernel(d_index_buffer_in,
                                   d_offset_buffer,
@@ -586,16 +586,16 @@ Status GreedySearchProcessLogits(
     void* temp_storage = allocator->Alloc(temp_storage_bytes);
     BufferUniquePtr temp_storage_buffer(temp_storage, BufferDeleter(allocator));
 
-    cuda::LaunchSortPairsDescending(temp_storage_buffer.get(),
-                                    temp_storage_bytes,
-                                    reinterpret_cast<CudaT*>(next_token_scores.data()),
-                                    d_sorted_score_buffer,
-                                    d_index_buffer_in,
-                                    d_index_buffer_out,
-                                    parameters->vocab_size,
-                                    parameters->batch_size,
-                                    d_offset_buffer,
-                                    cuda_stream);
+    cuda::LaunchSortPairsDescending<CudaT>(temp_storage_buffer.get(),
+                                           temp_storage_bytes,
+                                           reinterpret_cast<CudaT*>(next_token_scores.data()),
+                                           d_sorted_score_buffer,
+                                           d_index_buffer_in,
+                                           d_index_buffer_out,
+                                           parameters->vocab_size,
+                                           parameters->batch_size,
+                                           d_offset_buffer,
+                                           cuda_stream);
 
     dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
                                                                    d_sorted_softmaxed_score_buffer,
@@ -604,14 +604,14 @@ Status GreedySearchProcessLogits(
                                                                    parameters->vocab_size,
                                                                    parameters->batch_size);
 
-    cuda::LaunchFilterLogitsKernel(d_sorted_softmaxed_score_buffer,
-                                   d_index_buffer_out,
-                                   reinterpret_cast<CudaT*>(next_token_scores.data()),
-                                   parameters->top_p,
-                                   parameters->filter_value,
-                                   parameters->batch_size,
-                                   parameters->vocab_size,
-                                   cuda_stream);
+    cuda::LaunchFilterLogitsKernel<CudaT>(d_sorted_softmaxed_score_buffer,
+                                          d_index_buffer_out,
+                                          reinterpret_cast<CudaT*>(next_token_scores.data()),
+                                          parameters->top_p,
+                                          parameters->filter_value,
+                                          parameters->batch_size,
+                                          parameters->vocab_size,
+                                          cuda_stream);
 
     // bugbug: actually we can only do softmax at the very beginning and sort the softmaxed scores.
     // Not sure if the order change will affect the result.

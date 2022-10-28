@@ -38,6 +38,16 @@ REGISTER_KERNEL_TYPED(float)
 
 namespace transformers {
 
+void Sampling::Init(const OpKernelInfo& info) {
+  this->Init(info);
+}
+
+Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state,
+                                            const std::string& attribute_name,
+                                            const SessionState& subgraph_session_state) {
+  return this->SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state);
+}
+
 Status Sampling::Compute(OpKernelContext* ctx) const {
   auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
 
