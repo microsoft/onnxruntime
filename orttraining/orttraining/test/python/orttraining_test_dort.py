@@ -9,12 +9,13 @@ from torch.nn import functional as F
 
 from onnxruntime.training.torchdynamo.register_backend import aot_ort
 
-# Make computation deterministic.
-torch.manual_seed(42)
-
 
 class TestTorchDynamoOrt(unittest.TestCase):
     """Containers of tests for TorchDynamo ORT (DORT) backend."""
+
+    def setUp(self):
+        # Make computation deterministic.
+        torch.manual_seed(42)
 
     def test_elementwise_model(self):
         """Test DORT with a pure function."""
@@ -48,6 +49,8 @@ class TestTorchDynamoOrt(unittest.TestCase):
             torch.testing.assert_close(tensor_y, tensor_y_new)
             torch.testing.assert_close(tensor_x_grad, tensor_x_grad_new)
 
+        # Run 5 times because ORT runs have side effects and we want to make sure
+        # the code is correct with them.
         for _ in range(5):
             run_elementwise_model()
 
@@ -104,6 +107,8 @@ class TestTorchDynamoOrt(unittest.TestCase):
             for grad, grad_new in zip(grads, grads_new):
                 torch.testing.assert_close(grad, grad_new)
 
+        # Run 5 times because ORT runs have side effects and we want to make sure
+        # the code is correct with them.
         for _ in range(5):
             run_mnist_model()
 

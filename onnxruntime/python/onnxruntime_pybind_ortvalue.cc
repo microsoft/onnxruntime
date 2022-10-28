@@ -327,7 +327,7 @@ void addOrtValueMethods(pybind11::module& m) {
           const std::vector<int64_t>& shape = shapes.at(i);
           int64_t data_ptr = data_ptrs.at(i);
 
-          ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
+          ORT_ENFORCE(data_ptr, "Pointer to data memory is not valid");
 
           PyArray_Descr* dtype;
           if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {

@@ -67,7 +67,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device=None):
     if len(ortvalues) == 0:
         return tuple()
 
-    if device and "ort" == device.type:
+    if device is not None and "ort" == device.type:
         if not hasattr(C, "to_aten_ort_device_tensor"):
             raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
         return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)

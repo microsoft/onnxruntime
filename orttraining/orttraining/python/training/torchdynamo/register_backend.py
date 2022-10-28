@@ -12,8 +12,8 @@ from .ort_backend import OrtBackend
 
 
 class AotOrt(AotAutogradStrategy):
-    def __init__(self, graph_mmodule: torch.fx.GraphModule, example_inputs):
-        super().__init__(graph_mmodule, example_inputs)
+    def __init__(self, graph_module: torch.fx.GraphModule, example_inputs):
+        super().__init__(graph_module, example_inputs)
 
         self.ort = OrtBackend()
         self.populate_aten2aten_decomps()
@@ -62,8 +62,8 @@ class AOTAutogradOrtWithContext:
     def __init__(self):
         self.backend_ctx_ctor = lambda: torch.jit.fuser("none")
 
-    def __call__(self, gm: torch.fx.GraphModule, example_inputs):
-        return AotOrt.compile_fn(gm, example_inputs)
+    def __call__(self, graph_module: torch.fx.GraphModule, example_inputs):
+        return AotOrt.compile_fn(graph_module, example_inputs)
 
 
 aot_ort = AOTAutogradOrtWithContext()
