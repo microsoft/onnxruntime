@@ -586,12 +586,6 @@ if(onnxruntime_USE_XNNPACK)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_xnnpack)
 endif()
 
-if(onnxruntime_USE_ROCM)
-  find_library(HIP_LIB amdhip64 REQUIRED)
-  list(APPEND onnxruntime_test_providers_libs ${HIP_LIB})
-endif()
-
-
 if(WIN32)
   if (onnxruntime_USE_TVM)
     list(APPEND disabled_warnings ${DISABLED_WARNINGS_FOR_TVM})
