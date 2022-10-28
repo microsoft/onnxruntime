@@ -18,26 +18,17 @@ struct AllocatorCreationInfo {
   AllocatorCreationInfo(AllocatorFactory device_alloc_factory,
                         OrtDevice::DeviceId device_id = 0,
                         bool use_arena = true,
-                        OrtArenaCfg arena_cfg = {0, -1, -1, -1, -1},
-                        void* ptr1 = nullptr,
-                        void* ptr2 = nullptr,
-                        bool use_shared = false)
+                        OrtArenaCfg arena_cfg = {0, -1, -1, -1, -1})
       : device_alloc_factory(device_alloc_factory),
         device_id(device_id),
         use_arena(use_arena),
-        arena_cfg(arena_cfg),
-        ptr1_(ptr1),
-        ptr2_(ptr2),
-        use_shared_(use_shared) {
+        arena_cfg(arena_cfg) {
   }
 
   AllocatorFactory device_alloc_factory;
   OrtDevice::DeviceId device_id;
   bool use_arena;
   OrtArenaCfg arena_cfg;
-  void* ptr1_;
-  void* ptr2_;
-  bool use_shared_;
 };
 
 // Returns an allocator (an instance of IAllocator) based on the creation info provided.

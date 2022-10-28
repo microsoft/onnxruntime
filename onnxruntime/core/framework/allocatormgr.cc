@@ -59,10 +59,7 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
                                                    arena_extend_str,
                                                    initial_chunk_size_bytes,
                                                    max_dead_bytes_per_chunk,
-                                                   initial_growth_chunk_size_bytes,
-                                                   info.ptr1_,
-                                                   info.ptr2_,
-                                                   info.use_shared_));
+                                                   initial_growth_chunk_size_bytes));
   } else {
     return device_allocator;
   }

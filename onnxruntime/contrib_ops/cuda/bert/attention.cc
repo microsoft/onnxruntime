@@ -54,30 +54,11 @@ static inline bool HasFusedFp16Kernel(int sm, int head_size, int sequence_length
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
   disable_fused_runner_ = sizeof(T) != 2 || ParseEnvironmentVariableWithDefault<bool>(kDisableFusedAttention, false);
-  // use_data_ptr_ = info.node().Name() == "Attention_0";
-  use_data_ptr_ = false;
-  if (use_data_ptr_) {
-    std::cout << "Using data pointer instead of input" << std::endl;
-  }
-}
-
-template<typename T>
-Attention<T>::~Attention() {
-  if (use_data_ptr_ && data_ptr_ != nullptr) {
-    std::cout << "Deallocating data ptr" << std::endl;
-    //cudaFree(data_ptr_);
-  }
 }
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
-  
-  if (use_data_ptr_ && data_ptr_ == nullptr) {
-    std::cout << "Allocating data ptr" << std::endl;
-    cudaMalloc(&data_ptr_, (size_t)(ceil(input->SizeInBytes()/ 256.)) * 256);
-  }
-
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
@@ -168,8 +149,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
-      use_data_ptr_ ? reinterpret_cast<const CudaT*>(data_ptr_) : reinterpret_cast<const CudaT*>(input->Data<T>()), 
-      k,
+      reinterpret_cast<const CudaT*>(input->Data<T>()), k,
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,

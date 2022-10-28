@@ -63,10 +63,7 @@ class BFCArena : public IAllocator {
            ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
            int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
            int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
-           int initial_growth_chunk_size_bytes = DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES,
-           void* ptr1 = nullptr,
-           void* ptr2 = nullptr,
-           bool use_shared = false);
+           int initial_growth_chunk_size_bytes = DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES);
 
   ~BFCArena() override;
 
@@ -478,10 +475,6 @@ class BFCArena : public IAllocator {
   bool consider_first_allocation_region_for_shrinkage_;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
-
-  void* ptr1_ = nullptr;
-  void* ptr2_ = nullptr;
-  bool use_shared_ = false;
 };
 #ifdef __GNUC__
 #pragma GCC diagnostic pop

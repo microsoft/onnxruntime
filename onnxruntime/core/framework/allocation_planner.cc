@@ -16,7 +16,6 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include <iostream>
 
 using namespace onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -1040,7 +1039,6 @@ class PlannerImpl {
           }
         } else {
           // otherwise: allocate a new buffer for this output
-          std::cout << "Cannot re-use for: " << pnode->Name() << std::endl;
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
           AllocPlan(current).program_counter.AddStart(program_counter);
         }

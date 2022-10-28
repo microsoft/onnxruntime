@@ -18,14 +18,11 @@ template <typename T>
 class Attention final : public CudaKernel, public AttentionBase {
  public:
   Attention(const OpKernelInfo& info);
-  ~Attention();
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
   bool disable_fused_runner_;
   mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
-  mutable void* data_ptr_ = nullptr;
-  bool use_data_ptr_ = false;
 };
 
 }  // namespace cuda
