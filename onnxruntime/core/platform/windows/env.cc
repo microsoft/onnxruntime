@@ -27,7 +27,7 @@ limitations under the License.
 #include <fcntl.h>
 #include <io.h>
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
