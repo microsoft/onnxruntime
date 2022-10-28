@@ -61,7 +61,8 @@ def _get_ort_device_type(device_type: str, device_index: int):
 
 
 logger = logging.getLogger(__name__)
-# Uncomment the following line to print out development info.
+# Uncomment the following lines to print out development info.
+# logging.basicConfig(level=logging.INFO)
 # logger.setLevel(logging.INFO)
 
 
@@ -120,6 +121,18 @@ def _get_support_dictionaries_and_decomposition_tables() -> Tuple[
             op_overload = getattr(op_overload_packet, overload)
             support_dictionary[op_overload] = None
 
+    # No decomposition table. OpOverload in this table shouldn't be found
+    # in aten2aten_decomposition_table.
+    # The symbols in this set will be replaced by torch.ops.aten.to.dtype in replace_to_copy_with_to because
+    # only aten.to has ONNX exporter.
+    # If the replacement fails, ONNX exporter will fail because only aten.to has ONNX exporter.
+    # TODO(wechi): For a long-term solution, we need to ensure every op used in op decomposision has
+    # an exporter.
+    no_decomposition_table: Set[torch._ops.OpOverload] = {
+        torch.ops.aten._to_copy.default,  # type: ignore
+        torch.ops.aten._to_copy.out,  # type: ignore
+    }
+
     # decomposition_table currently contains both aten2aten and aten2prim decompositions
     # This is a hack to separate them, as ONNX only recognizes aten symbols.
     aten2aten_decomposition_table: Dict[torch._ops.OpOverload, Callable] = {}
@@ -132,6 +145,8 @@ def _get_support_dictionaries_and_decomposition_tables() -> Tuple[
         if "torch._refs" in decomp_fn.__module__:
             aten2prim_decomposition_table[op_overload] = decomp_fn
         else:
+            if op_overload in no_decomposition_table:
+                continue
             # Assume ONNX can express ops after decomposition.
             # If no, exporter will fail and the user need to
             # remove this decomposition rule.
@@ -234,17 +249,26 @@ def _move_placeholder_to_front(graph_module: torch.fx.GraphModule) -> None:
         first_not_placeholder.prepend(placeholder)
 
 
+def _replace_to_copy_with_to(fx_module: torch.fx.GraphModule) -> None:
+    # aten._to_copy doesn't have exporter so we replace it with aten.to.
+    for node in fx_module.graph.nodes:
+
+        if (
+            isinstance(node.target, torch._ops.OpOverload)
+            and node.target.overloadpacket == torch.ops.aten._to_copy  # type: ignore
+        ):
+            if len(node.args) == 1 and len(node.kwargs) == 1 and "dtype" in node.kwargs:
+                node.target = torch.ops.aten.to.dtype  # type: ignore
+            else:
+                raise RuntimeError("aten._to_copy must be replaced with other ONNX-supported aten ops.")
+    fx_module.recompile()
+
+
 def _fx_to_torchscript(
     fx_module: torch.fx.GraphModule,
 ) -> torch.jit.ScriptModule:
-    for node in fx_module.graph.nodes:
-        if (
-            node.target == torch.ops.aten._to_copy  # type: ignore
-            and len(node.args) == 1
-            and len(node.kwargs) == 1
-            and "dtype" in node.kwargs
-        ):
-            node.target = torch.ops.aten.to  # type: ignore
+    """Convert torch.fx.Graph to torch.jit.ScriptModule."""
+
     for node in fx_module.graph.nodes:
         new_kwargs = {}
         for k, v in node.kwargs.items():
@@ -498,6 +522,7 @@ class OrtBackend:
             partitioned_prim_graph_module = self.partitioner_cache[graph_module]
         else:
             prim_graph_module = make_fx(graph_module, decomposition_table=aten2aten_decomp)(*args)
+            _replace_to_copy_with_to(prim_graph_module)
             partitioner = CapabilityBasedPartitioner(
                 prim_graph_module, self.supported_ops, allows_single_node_partition=False
             )
