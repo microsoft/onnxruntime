@@ -1016,11 +1016,7 @@ if (CPUINFO_SUPPORTED)
   endif()
 endif()
 
-# GSL
-set(GSL_DIR "${REPO_ROOT}/cmake/external/GSL")
-add_subdirectory(${GSL_DIR} EXCLUDE_FROM_ALL)
-set(GSL_TARGET "Microsoft.GSL::GSL")
-set(GSL_INCLUDE_DIR "$<TARGET_PROPERTY:${GSL_TARGET},INTERFACE_INCLUDE_DIRECTORIES>")
+include(gsl)
 
 include(eigen)
 
