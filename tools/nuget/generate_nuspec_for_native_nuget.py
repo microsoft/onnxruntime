@@ -122,8 +122,7 @@ def parse_arguments():
         choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "tvm", "None"],
         help="The selected execution provider for this build.",
     )
-    parser.add_argument("--dependency_id", required=False, default="None", type=str, help="ependency id.")
-    parser.add_argument("--dependency_version", required=False, default="None", type=str, help="dependency version.")
+    parser.add_argument("--sdk_info", required=False, default="", type=str, help="dependency SDK information.")
 
     return parser.parse_args()
 
@@ -181,12 +180,7 @@ def generate_repo_url(list, repo_url, commit_id):
     list.append('<repository type="git" url="' + repo_url + '"' + ' commit="' + commit_id + '" />')
 
 
-def generate_dependencies(xml_text, package_name, version, dependency_id, dependency_version):
-    if package_name in ("Microsoft.ML.OnnxRuntime.Snpe", "Microsoft.ML.OnnxRuntime.Snpe_Win"):
-        xml_text.append("<dependencies>")
-        xml_text.append('<dependency id="' + dependency_id + '" version="' + dependency_version + '"/>')
-        xml_text.append("</dependencies>")
-        return
+def generate_dependencies(xml_text, package_name, version):
 
     dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.9.1"/>'
 
@@ -263,7 +257,7 @@ def get_env_var(key):
     return os.environ.get(key)
 
 
-def generate_release_notes(list):
+def generate_release_notes(list, dependency_sdk_info):
     list.append("<releaseNotes>")
     list.append("Release Def:")
 
@@ -279,6 +273,9 @@ def generate_release_notes(list):
         + "Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId="
         + (build_id if build_id is not None else "")
     )
+
+    if dependency_sdk_info:
+        list.append("Dependency SDK: " + dependency_sdk_info)
 
     list.append("</releaseNotes>")
 
@@ -297,9 +294,9 @@ def generate_metadata(list, args):
     generate_project_url(metadata_list, "https://github.com/Microsoft/onnxruntime")
     generate_repo_url(metadata_list, "https://github.com/Microsoft/onnxruntime.git", args.commit_id)
     generate_dependencies(
-        metadata_list, args.package_name, args.package_version, args.dependency_id, args.dependency_version
+        metadata_list, args.package_name, args.package_version
     )
-    generate_release_notes(metadata_list)
+    generate_release_notes(metadata_list, args.sdk_info)
     metadata_list.append("</metadata>")
 
     list += metadata_list
@@ -313,7 +310,7 @@ def generate_files(list, args):
     is_cuda_gpu_package = args.package_name == "Microsoft.ML.OnnxRuntime.Gpu"
     is_dml_package = args.package_name == "Microsoft.ML.OnnxRuntime.DirectML"
     is_windowsai_package = args.package_name == "Microsoft.AI.MachineLearning"
-    is_snpe_package_win = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe_Win"
+    is_snpe_package = args.package_name == "Microsoft.ML.OnnxRuntime.Snpe"
 
     includes_winml = is_windowsai_package
     includes_directml = (is_dml_package or is_windowsai_package) and (
@@ -489,7 +486,7 @@ def generate_files(list, args):
                 + '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.pdb" />'
             )
 
-    if args.package_name == "Microsoft.ML.OnnxRuntime.Snpe_Win":
+    if args.package_name == "Microsoft.ML.OnnxRuntime.Snpe":
         files_list.append(
             "<file src=" + '"' + os.path.join(args.native_build_path, "onnx_test_runner.exe") + runtimes + " />"
         )
@@ -527,13 +524,6 @@ def generate_files(list, args):
                 files_list.append(
                     "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
                 )
-    elif args.package_name == "Microsoft.ML.OnnxRuntime.Snpe":
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(args.native_build_path, "libonnxruntime.so")
-            + '" target="runtimes\\android-arm64\\native" />'
-        )
     else:
         files_list.append(
             "<file src="
@@ -842,7 +832,7 @@ def generate_files(list, args):
             files_list.append("<file src=" + '"' + windowsai_net50_props + '" target="build\\net5.0" />')
             files_list.append("<file src=" + '"' + windowsai_net50_targets + '" target="build\\net5.0" />')
 
-    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package or is_snpe_package_win:
+    if is_cpu_package or is_cuda_gpu_package or is_dml_package or is_mklml_package or is_snpe_package:
         # Process props file
         source_props = os.path.join(
             args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "props.xml"
@@ -858,25 +848,14 @@ def generate_files(list, args):
         )
         os.system(copy_command + " " + source_props + " " + target_props)
         files_list.append("<file src=" + '"' + target_props + '" target="build\\native" />')
-        if not is_snpe_package_win:
+        if not is_snpe_package:
             files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard1.1" />')
             files_list.append("<file src=" + '"' + target_props + '" target="build\\netstandard2.0" />')
 
         # Process targets file
-        if is_snpe_package_win:
-            source_targets = os.path.join(
-                args.sources_path,
-                "csharp",
-                "src",
-                "Microsoft.ML.OnnxRuntime",
-                "targets",
-                "netstandard",
-                "targets_snpe.xml",
-            )
-        else:
-            source_targets = os.path.join(
-                args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "targets.xml"
-            )
+        source_targets = os.path.join(
+            args.sources_path, "csharp", "src", "Microsoft.ML.OnnxRuntime", "targets", "netstandard", "targets.xml"
+        )
         target_targets = os.path.join(
             args.sources_path,
             "csharp",
@@ -888,7 +867,7 @@ def generate_files(list, args):
         )
         os.system(copy_command + " " + source_targets + " " + target_targets)
         files_list.append("<file src=" + '"' + target_targets + '" target="build\\native" />')
-        if not is_snpe_package_win:
+        if not is_snpe_package:
             files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard1.1" />')
             files_list.append("<file src=" + '"' + target_targets + '" target="build\\netstandard2.0" />')
 
