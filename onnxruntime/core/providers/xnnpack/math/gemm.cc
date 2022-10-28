@@ -14,60 +14,55 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
 
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
-    const auto& input_defs = node.InputDefs();
-
-    if (input_defs.size() <= 2) {
-      break;
-    }
+    ConstPointerContainer<std::vector<NodeArg*>> input_defs = node.InputDefs();
 
     const auto alpha = node.GetAttributes().find("alpha");
-    if ((*alpha).second.f() != 1.0) break;
+    if (!(*alpha).second.has_f() && (*alpha).second.f() != 1.0) break;
 
     const auto beta = node.GetAttributes().find("beta");
-    if ((*beta).second.has_f() && (*beta).second.f() != 1.0) break;
+    if (!(*beta).second.has_f() && (*beta).second.f() != 1.0) break;
 
-    const auto& A_arg = *input_defs[0];
-    const auto& B_arg = *input_defs[1];
-    const auto& C_arg = *input_defs[2];
+    const NodeArg* A_arg = input_defs[0];
+    const NodeArg* B_arg = input_defs[1];
+    const NodeArg* C_arg = input_defs.size() <= 2 ? nullptr : input_defs[2];
+
+    // Right now assuming C matrix is exists
+    if (!C_arg) break;
 
     // we only support float currently
-    const auto* A_type = A_arg.TypeAsProto();
-    const auto* B_type = B_arg.TypeAsProto();
-    const auto* C_type = C_arg.TypeAsProto();
+    const auto* A_type = A_arg->TypeAsProto();
 
-    if (A_type == nullptr || B_type == nullptr || C_type == nullptr ||
-        A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
-        B_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
-        C_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (A_type == nullptr || 
+        A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       break;
     }
 
     // B & C matrices must be constant
-    if (!graph.IsConstantInitializer(B_arg.Name(), true)) {
+    if (!graph.IsConstantInitializer(B_arg->Name(), true)) {
       break;
     }
 
-    if (!graph.IsConstantInitializer(C_arg.Name(), true)) {
+    if (input_defs[2]->Exists() && !graph.IsConstantInitializer(C_arg->Name(), true)) {
       break;
     }
 
     // making sure we are dealing with MatMul
-    const auto* A_shape = A_arg.Shape();
-    const auto* B_shape = B_arg.Shape();
-    const auto* C_shape = C_arg.Shape();
+    const ONNX_NAMESPACE::TensorShapeProto* A_shape = A_arg->Shape();
+    const ONNX_NAMESPACE::TensorShapeProto* B_shape = B_arg->Shape();
+    const ONNX_NAMESPACE::TensorShapeProto* C_shape = C_arg->Shape();
 
-    if (!A_shape || A_shape->dim_size() > 3) {
+    if (!A_shape || A_shape->dim_size() >= 3) {
       break;
     }
 
-    if (!B_shape || B_shape->dim_size() > 3) {
+    if (!B_shape || B_shape->dim_size() >= 3) {
       break;
     }
 
-    if (!C_shape || C_shape->dim_size() > 3) {
+    if (!C_shape || C_shape->dim_size() >= 3) {
       break;
     }
-
+    
     if (C_shape->dim(0).dim_value() != B_shape->dim(1).dim_value() && C_shape->dim(0).dim_value() != B_shape->dim(0).dim_value()){
       break;
     }
@@ -82,7 +77,7 @@ bool Gemm::IsGemmOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer&
 Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info) {
   const auto& node{Node()};
 
-  ORT_ENFORCE(info.GetAttr<float>("alpha", &alpha_).IsOK());
+  info.GetAttrOrDefault<float>("alpha", &alpha_, 1.f);
   info.GetAttrOrDefault<float>("beta", &beta_, 1.f);
 
   const auto& input_defs = node.InputDefs();
@@ -91,20 +86,17 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info) {
 
   // A - MxK 
   if (trans_A_ == CblasNoTrans) {
-    M = shapeA->dim_size() == 3 ? shapeA->dim(1).dim_value() : shapeA->dim(0).dim_value() > 1 ? shapeA->dim(0).dim_value()
-                                                                                              : 1;
-    K = shapeA->dim_size() == 3 ? shapeA->dim(2).dim_value() : shapeA->dim(1).dim_value();
+    M_ = shapeA->dim(0).dim_value() > 1 ? shapeA->dim(0).dim_value() : 1;
+    K_ = shapeA->dim(1).dim_value();
   } else {
-    M = shapeA->dim_size() == 3 ? shapeA->dim(2).dim_value() : shapeA->dim(1).dim_value();
-    K = shapeA->dim_size() == 3 ? shapeA->dim(1).dim_value() : shapeA->dim(0).dim_value() > 1 ? shapeA->dim(0).dim_value() 
-                                                                                              : 1;
+    M_ = shapeA->dim(1).dim_value();
+    K_ = shapeA->dim(0).dim_value() > 1 ? shapeA->dim(0).dim_value() : 1;
   }
   // B - KxN
   if (trans_B_ == CblasNoTrans) {
-    N = shapeB->dim_size() == 3 ? shapeB->dim(2).dim_value() : shapeB->dim(1).dim_value();
+    N_ = shapeB->dim(1).dim_value();
   } else {
-    N = shapeB->dim_size() == 3 ? shapeB->dim(1).dim_value() : shapeB->dim(0).dim_value() > 1 ? shapeB->dim(0).dim_value()
-                                                                                              : 1;
+    N_ = shapeB->dim(0).dim_value() > 1 ? shapeB->dim(0).dim_value() : 1;
   }
 }
 
@@ -141,7 +133,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         trans_B_ == CblasNoTrans ? B_.Shape()[0] : B_.Shape()[1],  // size_t input_stride,
         trans_B_ == CblasNoTrans ? B_.Shape()[1] : B_.Shape()[0],  // size_t output_stride,
         B_.Data<float>(),             // const float* kernel,
-        tensor.Data<float>(),           // const float* bias,
+        tensor.Data<float>(),         // const float* bias,
         output_min,
         output_max,
         flags,
@@ -164,15 +156,15 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 Status Gemm::Compute(OpKernelContext* context) const {
   pthreadpool_t t_pool = GetThreadPool();
   const auto* A = context->Input<Tensor>(0);
-  auto Y = context->Output(0, {M, N});
+  auto Y = context->Output(0, {M_, N_});
 
   // if input is empty tensor, return as nothing need to be calculated and we've set the shape for the output
-  if (M == 0 || N == 0)
+  if (M_ == 0 || N_ == 0)
     return Status::OK();
 
   xnn_status status = xnn_setup_fully_connected_nc_f32(
       op0_.get(),
-      trans_A_ == CblasNoTrans ? M : K,  // Number of rows to multiply 
+      trans_A_ == CblasNoTrans ? M_ : K_,  // Number of rows to multiply 
       A->Data<float>(),
       Y->MutableData<float>(),
       t_pool);

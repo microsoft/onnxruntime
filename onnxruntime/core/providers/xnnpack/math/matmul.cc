@@ -13,9 +13,6 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
 
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
-    const auto alpha = node.GetAttributes().find("alpha");
-    if ((*alpha).second.f() != 1.0) break;
-
     auto input_defs = node.InputDefs();
 
     if (input_defs.size() != 2) {
@@ -27,23 +24,19 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
 
     // Support only float
     const auto* A_type = A_arg.TypeAsProto();
-    const auto* B_type = B_arg.TypeAsProto();
 
     const auto* A_shape = A_arg.Shape();
     const auto* B_shape = B_arg.Shape();
 
-    if (A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
-        B_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    if (A_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       break;
     }
 
-    if (!A_shape || A_shape->dim_size() != 2 ||
-        (A_shape->dim(0).dim_value() != 1 && A_shape->dim(1).dim_value() != 1)) {
+    if (A_shape->dim_size() != 2 || A_shape->dim(1).dim_value() == 0 || A_shape->dim(0).dim_value() == 0) {
       break;
     }
 
-    if (!B_shape || B_shape->dim_size() != 2 || 
-        (B_shape->dim(0).dim_value() != 1 && B_shape->dim(1).dim_value() != 1)) {
+    if (B_shape->dim_size() >= 2 || B_shape->dim(1).dim_value()==0 || B_shape->dim(0).dim_value()==0) {
       break;
     }
 
@@ -61,40 +54,42 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
 
 MatMul::MatMul(const OpKernelInfo& info) : XnnpackKernel(info) {
   int64_t temp;
-  ORT_ENFORCE(info.GetAttr<int64_t>("transA", &temp).IsOK());
+  info.GetAttrOrDefault<int64_t>("transA", &temp, 0);
   trans_A_ = temp == 0 ? CblasNoTrans : CblasTrans;
 
-  ORT_ENFORCE(info.GetAttr<int64_t>("transB", &temp).IsOK());
+  info.GetAttrOrDefault<int64_t>("transB", &temp, 0);
   trans_B_ = temp == 0 ? CblasNoTrans : CblasTrans;
 }
 
-Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                       /*out*/ bool& is_packed,
-                       /*out*/ PrePackedWeights* /*Not used*/) {
-  is_packed = false;
+Status MatMul::Compute(OpKernelContext* ctx) const {
+  const Tensor* a = ctx->Input<Tensor>(0);
+  const Tensor* b = ctx->Input<Tensor>(1);
 
-  if (input_idx == 0 || input_idx == 2) {
-    return Status::OK();
-  }
+  const bool trans_a = trans_A_ && a->Shape().NumDimensions() != 1;
+  const bool trans_b = trans_B_ && b->Shape().NumDimensions() != 1;
 
-  myAlloc = alloc;
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape(), !trans_a, !trans_b));
 
-  is_packed = true;
-
-  uint32_t flags = XNN_FLAG_TRANSPOSE_WEIGHTS;
+  pthreadpool_t t_pool = GetThreadPool();
+  
+  uint32_t flags = trans_B_ == CblasNoTrans ? XNN_FLAG_TRANSPOSE_WEIGHTS : 0;
   float output_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
   float output_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
-  xnn_status status = xnn_status::xnn_status_uninitialized;
 
+  const size_t M = std::max(static_cast<size_t>(helper.M()), (size_t)1);
+  const size_t N = std::max(static_cast<size_t>(helper.N()), (size_t)1);
+  const size_t K = std::max(static_cast<size_t>(helper.K()), (size_t)1);
+   
+  xnn_status status = xnn_status::xnn_status_uninitialized;
   struct xnn_operator* p = nullptr;
-  b_shape_ = tensor.Shape();
   status = xnn_create_fully_connected_nc_f32(
-      trans_B_ == CblasNoTrans ? tensor.Shape()[0] : tensor.Shape()[1],  // size_t input_channels,
-      trans_B_ == CblasNoTrans ? tensor.Shape()[1] : tensor.Shape()[0],  // size_t output_channels,
-      trans_B_ == CblasNoTrans ? tensor.Shape()[0] : tensor.Shape()[1],  // size_t input_stride,
-      trans_B_ == CblasNoTrans ? tensor.Shape()[1] : tensor.Shape()[0],  // size_t output_stride,
-      tensor.Data<float>(),  // const float* kernel,
-      nullptr,               // const float* bias,
+      K,  // size_t input_channels,
+      N,  // size_t output_channels,
+      K,  // size_t input_stride,
+      N,  // size_t output_stride,
+      b->Data<float>(),                                  // const float* kernel,
+      nullptr,                                               // const float* bias,
       output_min,
       output_max,
       flags,
@@ -109,16 +104,6 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_f32 returned ", status);
   }
 
-  op0_.reset(p);
-
-  return Status::OK();
-}
-
-Status MatMul::Compute(OpKernelContext* ctx) const {
-  const Tensor* a = ctx->Input<Tensor>(0);
-  pthreadpool_t t_pool = GetThreadPool();
-  MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   if (y->Shape().Size() == 0)
@@ -126,9 +111,9 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
 
   auto* y_data = y->MutableData<float>();
 
-  xnn_status status = xnn_setup_fully_connected_nc_f32(
-      op0_.get(),
-      trans_A_ == CblasNoTrans ? a->Shape()[0] : a->Shape()[1],
+  status = xnn_setup_fully_connected_nc_f32(
+      p,
+      M,
       a->Data<float>(),
       y_data,
       t_pool);
@@ -137,7 +122,7 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_setup_fully_connected_nc_f32 returned ", status);
   }
 
-  status = xnn_run_operator(op0_.get(), nullptr);
+  status = xnn_run_operator(p, nullptr);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_run_operator returned ", status);
   }

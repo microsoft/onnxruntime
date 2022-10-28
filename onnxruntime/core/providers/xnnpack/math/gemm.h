@@ -29,9 +29,9 @@ class Gemm : protected GemmBase, public XnnpackKernel {
  private:
   Tensor B_;
 
-  int64_t M=-1;
-  int64_t K=-1;
-  int64_t N=-1;
+  int64_t M_=-1;
+  int64_t K_=-1;
+  int64_t N_=-1;
 
   std::optional<std::pair<float, float>> clip_min_max_;
 
