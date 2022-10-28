@@ -92,7 +92,7 @@ TEST(OptimizerTest, Basic) {
     // if that is the case, OpKernelContext instance construction will throw in the next step
     // and fail the test
 
-    OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, logger);
+    OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, nullptr, logger);
 
     auto st = kernel->Compute(&op_kernel_context);
     ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();

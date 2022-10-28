@@ -37,7 +37,21 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const 
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
                gsl::span<const int64_t> strides)
-    : alloc_info_(allocator->Info()) {
+    : Tensor(
+          p_type,
+          shape,
+          allocator->Info(),
+          [allocator](size_t len) { return allocator->Alloc(len); },
+          [allocator](void* buf) { allocator->Free(buf); },
+          strides) {
+}
+
+Tensor::Tensor(MLDataType p_type,
+               const TensorShape& shape,
+               const OrtMemoryInfo& alloc_info,
+               BufferCreateFn create_fn,
+               BufferFreeFn delete_fn,
+               gsl::span<const int64_t> strides) : alloc_info_(alloc_info) {
   ORT_ENFORCE(p_type != nullptr);
 #ifdef ENABLE_TRAINING
   int64_t shape_size = 1;
@@ -59,22 +73,35 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
     if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_size), p_type->Size(), &len))
       ORT_THROW("tensor failed memory size calculation");
 
-    p_data = allocator->Alloc(len);
+    p_data = create_fn(len);
   }
-
-  Init(p_type, shape, p_data, allocator, 0L, strides);
+  Init(p_type, shape, p_data, delete_fn, 0L, strides);
 }
 
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
                ptrdiff_t offset, gsl::span<const int64_t> strides)
     : alloc_info_(deleter->Info()) {
   ORT_ENFORCE(p_type != nullptr);
-  Init(p_type, shape, p_data, deleter, offset, strides);
+  // capture the allocator pointer to hold reference.
+  Init(
+      p_type, shape, p_data, [deleter](void* buf) { deleter->Free(buf); }, offset, strides);
 }
 
 void Tensor::InitOrtValue(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
                           OrtValue& ort_value, gsl::span<const int64_t> strides) {
   auto p_tensor = std::make_unique<Tensor>(elt_type, shape, std::move(allocator), strides);
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+}
+
+void Tensor::InitOrtValue(MLDataType elt_type,
+                          const TensorShape& shape,
+                          const OrtMemoryInfo& alloc_info,
+                          BufferCreateFn create_fn,
+                          BufferFreeFn delete_fn,
+                          OrtValue& ort_value,
+                          gsl::span<const int64_t> strides) {
+  auto p_tensor = std::make_unique<Tensor>(elt_type, shape, alloc_info, create_fn, delete_fn, strides);
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 }
@@ -99,7 +126,11 @@ size_t Tensor::SizeInBytes() const {
   return ret;
 }
 
-void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data, AllocatorPtr deleter, ptrdiff_t offset,
+void Tensor::Init(MLDataType p_type,
+                  const TensorShape& shape,
+                  void* p_raw_data,
+                  BufferFreeFn delete_fn,
+                  ptrdiff_t offset,
                   gsl::span<const int64_t> strides) {
   int64_t shape_size = shape.Size();
   if (shape_size < 0) ORT_THROW("shape.Size() must >=0");
@@ -110,10 +141,10 @@ void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data,
   p_data_ = p_raw_data;
   // if caller passed in a deleter, that means this tensor own this buffer
   // we will release the buffer when this tensor is deconstructed.
-  buffer_deleter_ = std::move(deleter);
+  buffer_delete_fn_ = std::move(delete_fn);
   // for string tensors, if this tensor own the buffer (caller passed in the deleter)
   // do the placement new for strings on pre-allocated buffer.
-  if (buffer_deleter_ && IsDataTypeString()) {
+  if (buffer_delete_fn_ && IsDataTypeString()) {
     utils::ConstructStrings(p_data_, shape_size);
   }
   byte_offset_ = offset;
@@ -130,7 +161,7 @@ void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data,
 
 Tensor::Tensor(Tensor&& other) noexcept
     : p_data_(other.p_data_),
-      buffer_deleter_(other.buffer_deleter_),
+      buffer_delete_fn_(other.buffer_delete_fn_),
       shape_(other.shape_),
       dtype_(other.dtype_),
       alloc_info_(other.alloc_info_),
@@ -138,7 +169,7 @@ Tensor::Tensor(Tensor&& other) noexcept
   other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
   other.shape_ = TensorShape(std::vector<int64_t>(1, 0));
   other.p_data_ = nullptr;
-  other.buffer_deleter_ = nullptr;
+  other.buffer_delete_fn_ = nullptr;
   other.byte_offset_ = 0;
 }
 
@@ -151,13 +182,13 @@ Tensor& Tensor::operator=(Tensor&& other) noexcept {
     alloc_info_ = other.alloc_info_;
     byte_offset_ = other.byte_offset_;
     p_data_ = other.p_data_;
-    buffer_deleter_ = other.buffer_deleter_;
+    buffer_delete_fn_ = other.buffer_delete_fn_;
 
     other.dtype_ = DataTypeImpl::GetType<float>()->AsPrimitiveDataType();
     other.shape_ = TensorShape(std::vector<int64_t>(1, 0));
     other.p_data_ = nullptr;
     other.byte_offset_ = 0;
-    other.buffer_deleter_ = nullptr;
+    other.buffer_delete_fn_ = nullptr;
   }
   return *this;
 }
@@ -167,11 +198,11 @@ Tensor::~Tensor() {
 }
 
 void Tensor::ReleaseBuffer() {
-  if (buffer_deleter_) {
+  if (buffer_delete_fn_) {
     if (IsDataTypeString()) {
       utils::DestroyStrings(p_data_, shape_.Size());
     }
-    buffer_deleter_->Free(p_data_);
+    buffer_delete_fn_(p_data_);
   }
 }
 

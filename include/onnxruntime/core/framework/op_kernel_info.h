@@ -7,6 +7,7 @@
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/op_node_proto_helper.h"
+#include "core/framework/stream_handles.h"
 #include "core/graph/graph_viewer.h"
 #include "gsl/gsl"
 
@@ -15,6 +16,7 @@ namespace onnxruntime {
 class OrtValueNameIdxMap;
 class FuncManager;
 class DataTransferManager;
+struct AllocPlanPerValue;
 
 // A very light-weight class, which works as an aggregated
 // view of all data needed for constructing a Kernel instance.
@@ -24,7 +26,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   explicit OpKernelInfo(const onnxruntime::Node& node,
                         const KernelDef& kernel_def,
                         const IExecutionProvider& execution_provider,
-                        const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
+                        const InlinedHashMap<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
                         const DataTransferManager& data_transfer_mgr);
 
@@ -53,7 +55,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   // For non cpu/cuda case, this pointer should be set so that function kernel
   // will delegate kernel compute call to <execution_provider> compute call.
   gsl::not_null<const ::onnxruntime::IExecutionProvider*> execution_provider_;
-  const std::unordered_map<int, OrtValue>& constant_initialized_tensors_;
+  const InlinedHashMap<int, OrtValue>& constant_initialized_tensors_;
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;

@@ -896,10 +896,7 @@ std::vector<OrtValue> OpTester::ExecuteModel(
       size_t idx = 0;
       for (auto& expected_data : output_data_) {
         OrtValue& ort_value = fetches[idx];
-        if (ort_value.Fence())
-          ort_value.Fence()->BeforeUsingAsInput(
-              onnxruntime::kCpuExecutionProvider, 0);
-
+        
         if (expected_data.def_.Exists()) {           // optional edges won't exist (so skip them)
           if (!expected_data.data_.IsAllocated()) {  // optional type output (None)
             EXPECT_TRUE(!ort_value.IsAllocated())

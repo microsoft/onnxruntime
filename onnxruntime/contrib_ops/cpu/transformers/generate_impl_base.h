@@ -37,7 +37,7 @@ class GenerateBase {
   GenerateBase(OpKernelContextInternal& context,
                const SessionState& decoder_session_state,
                concurrency::ThreadPool* thread_pool,
-               void* cuda_stream,
+               Stream* ort_stream,
                IConsoleDumper* cuda_dumper,
                const GenerationDeviceHelper::TopkFunc& topk_func,
                const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func)
@@ -45,7 +45,7 @@ class GenerateBase {
         decoder_session_state_(decoder_session_state),
         thread_pool_(thread_pool),
         implicit_inputs_(context_.GetImplicitInputs()),
-        cuda_stream_(cuda_stream),
+        ort_stream_(ort_stream),
         cuda_dumper_(cuda_dumper),
         cpu_allocator_(nullptr),
         temp_space_allocator_(nullptr),
@@ -153,7 +153,7 @@ class GenerateBase {
 
 
  protected:
-  bool IsCuda() const { return cuda_stream_ != nullptr; }
+  bool IsCuda() const { return ort_stream_ != nullptr; }
 
   const IConsoleDumper* GetConsoleDumper() const { return IsCuda() ? cuda_dumper_ : &(cpu_dumper_); }
 
@@ -165,7 +165,7 @@ class GenerateBase {
 
   const std::vector<const OrtValue*>& implicit_inputs_;
 
-  void* cuda_stream_;
+  Stream* ort_stream_;
 
   IConsoleDumper* cuda_dumper_;
   CpuTensorConsoleDumper cpu_dumper_;

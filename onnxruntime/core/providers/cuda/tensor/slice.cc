@@ -239,7 +239,7 @@ Status Slice<dynamic>::CallSliceImp(size_t element_size, size_t dimension_count,
   const auto* input_tensor = ctx->Input<Tensor>(0);
   auto* output_tensor = ctx->Output(0, output_shape);
 
-  return SliceImpCore(Stream(),
+  return SliceImpCore(Stream(ctx),
                       input_tensor->DataRaw(),
                       output_tensor->MutableDataRaw(),
                       element_size,

@@ -186,7 +186,7 @@ void Scan<9>::Init(const OpKernelInfo& info) {
   }
 
   device_helpers_.transpose_func = [](const gsl::span<const size_t>& permutations, const Tensor& input,
-                                      Tensor& output) -> Status {
+                                      Tensor& output, Stream* /*no stream needed for cpu*/) -> Status {
     return TransposeBase::DoTranspose(permutations, input, output);
   };
 
@@ -356,7 +356,8 @@ Status ScanImpl::SetupInputs() {
 
       OrtValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
 
-      status = device_helpers_.transpose_func(permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
+      status = device_helpers_.transpose_func(permutations, input_tensor, *transpose_output.GetMutable<Tensor>(),
+                                              context_.GetComputeStream());
       ORT_RETURN_IF_ERROR(status);
 
       inputs_.push_back(transpose_output);
@@ -485,7 +486,8 @@ Status ScanImpl::TransposeOutput() {
       Tensor* output = context_.Output(output_index, new_shape);
       ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
 
-      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output);
+      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output, 
+                                              context_.GetComputeStream());
       ORT_RETURN_IF_ERROR(status);
     }
   }

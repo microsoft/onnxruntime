@@ -384,9 +384,9 @@ TEST(CApiTest, custom_op_handler) {
 #ifdef USE_CUDA
   cudaStream_t compute_stream = nullptr;
   cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
-  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
+  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider};
 #else
-  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
   Ort::CustomOpDomain custom_op_domain("");
@@ -415,9 +415,9 @@ TEST(CApiTest, standalone_op_handler) {
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
 #ifdef USE_CUDA
-  StandaloneCustomOp standalone_op{onnxruntime::kCudaExecutionProvider, nullptr};
+  StandaloneCustomOp standalone_op{onnxruntime::kCudaExecutionProvider};
 #else
-  StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
   Ort::CustomOpDomain custom_op_domain("");
@@ -552,9 +552,9 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
 #ifdef USE_CUDA
   cudaStream_t compute_stream = nullptr;
   cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
-  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
+  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCudaExecutionProvider};
 #else
-  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
   Ort::CustomOpDomain custom_op_domain("");
@@ -758,9 +758,9 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
-  MyCustomOp custom_op_cpu{onnxruntime::kCpuExecutionProvider, nullptr};
+  MyCustomOp custom_op_cpu{onnxruntime::kCpuExecutionProvider};
   // We are going to test session creation only - hence it is not a problem to use the default stream as the compute stream for the custom op
-  MyCustomOp custom_op_cuda{onnxruntime::kCudaExecutionProvider, nullptr};
+  MyCustomOp custom_op_cuda{onnxruntime::kCudaExecutionProvider};
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op_cpu);
   custom_op_domain.Add(&custom_op_cuda);

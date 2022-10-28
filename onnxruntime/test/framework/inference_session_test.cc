@@ -362,12 +362,11 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                                                   shape,
                                                                   cpu_allocator);
 #ifdef USE_CUDA
-    cudaStream_t stream = static_cast<cudaStream_t>(gpu_provider->GetComputeStream());
-    st = GetProviderInfo_CUDA().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
+    st = GetProviderInfo_CUDA().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
 #endif
 #ifdef USE_ROCM
     hipStream_t stream = static_cast<hipStream_t>(gpu_provider->GetComputeStream());
-    st = GetProviderInfo_ROCM().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
+    st = GetProviderInfo_ROCM().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get());
 #endif
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
@@ -879,12 +878,17 @@ TEST(InferenceSessionTests, ConfigureVerbosityLevel) {
 
   ASSERT_TRUE(have_log_entry_with_vlog_session_msg);
 
-  bool have_log_entry_with_vlog_run_msg =
-      (std::find_if(msgs.begin(), msgs.end(),
-                    [&](std::string msg) { return msg.find("Size of execution plan vector") != string::npos; }) !=
-       msgs.end());
+  //bool have_log_entry_with_vlog_run_msg =
+  //    (std::find_if(msgs.begin(), msgs.end(),
+  //                  [&](std::string msg) { return msg.find("Size of execution plan vector") != string::npos; }) !=
+  //     msgs.end());
 
-  ASSERT_TRUE(have_log_entry_with_vlog_run_msg);
+  //ASSERT_TRUE(have_log_entry_with_vlog_run_msg);
+
+  bool has_num_streams_msg =
+      (std::find_if(msgs.begin(), msgs.end(), [&](std::string msg) { return msg.find("Number of streams") != string::npos; }) != msgs.end());
+
+  ASSERT_TRUE(has_num_streams_msg);
 #endif
 }
 
@@ -2059,8 +2063,8 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
 }
 
 #ifdef USE_CUDA
-
-TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
+// disable it, since we are going to enable parallel execution with cuda ep
+TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   SessionOptions so;
@@ -2180,6 +2184,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 TEST(InferenceSessionTests, ModelThatTriggersAllocationPlannerToReuseDoubleTensorForStringTensor) {
   SessionOptions so;
 
+  so.session_log_severity_level = 0;
   so.session_logid = "InferenceSessionTests.ModelThatTriggersAllocationPlannerBug";
 
   InferenceSession session_object{so, GetEnvironment()};

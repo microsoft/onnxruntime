@@ -16,6 +16,7 @@
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
@@ -198,7 +199,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
   std::vector<OrtValue> feeds;
   std::vector<OrtValue> fetches;
-  std::unordered_map<size_t, IExecutor::CustomAllocator> fetch_allocators;
+  InlinedHashMap<size_t, IExecutor::CustomAllocator> fetch_allocators;
 
   feeds.resize(num_inputs);
   fetches.resize(num_variadic_outputs);
@@ -272,7 +273,8 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
     // Create Executor and run graph.
     status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
-                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger());
+                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger(),
+                                    context.GetComputeStream());
 
     ORT_RETURN_IF_ERROR(status);
 

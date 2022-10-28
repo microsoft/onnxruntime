@@ -28,9 +28,11 @@ Status Einsum::Compute(OpKernelContext* context) const {
 
 Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs,
                              AllocatorPtr allocator, concurrency::ThreadPool* tp) const {
-  cublasHandle_t cublas_handle = cuda_ep_->PerThreadCublasHandle();
-
-  EinsumOp::EinsumCudaAssets einsum_cuda_assets(cublas_handle, cuda_ep_);
+  auto* stream = context->GetComputeStream();
+  ORT_RETURN_IF(!stream, "stream is null");
+  auto* cuda_stream = static_cast<CudaStream*>(stream);
+  cublasHandle_t cublas_handle = cuda_stream ? cuda_stream->cublas_handle_ : nullptr;
+  EinsumOp::EinsumCudaAssets einsum_cuda_assets(cublas_handle, cuda_ep_, stream);
 
   // EinsumComputePreprocessor section -
   auto einsum_compute_preprocessor = EinsumComputePreprocessor::Create(*einsum_equation_preprocessor_, inputs, allocator,

@@ -131,7 +131,7 @@ Status OptimizerExecutionFrame::Info::TryFindKernel(const Node* node, const Kern
 static Status TryCreateKernel(const Node& node,
                               const KernelRegistry& kernel_registry,
                               const IExecutionProvider& execution_provider,
-                              const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
+                              const InlinedHashMap<int, OrtValue>& constant_initialized_tensors,
                               const OrtValueNameIdxMap& ort_value_name_idx_map,
                               FuncManager& funcs_mgr,
                               const DataTransferManager& data_transfer_mgr,

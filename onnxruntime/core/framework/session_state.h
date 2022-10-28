@@ -18,6 +18,7 @@
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_providers.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/prepacked_weights_container.h"
@@ -35,6 +36,11 @@
 #include "core/platform/threadpool.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
+#endif
+
+#include "core/framework/stream_handles.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/program_region.h"
 #endif
 
 namespace flatbuffers {
@@ -55,6 +61,7 @@ class OpKernel;
 class NodeIndexInfo;
 struct SequentialExecutionPlan;
 struct MemoryPatternGroup;
+class DeviceStreamCollection;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 class MemoryInfo;
 #endif
@@ -94,20 +101,7 @@ class SessionState {
                profiling::Profiler& profiler,
                bool use_deterministic_compute = false,
                bool enable_mem_reuse = true,
-               PrepackedWeightsContainer* prepacked_weights_container = nullptr)
-      : graph_(graph),
-        execution_providers_(execution_providers),
-        logger_(logger),
-        profiler_(profiler),
-        enable_mem_pattern_(enable_mem_pattern),
-        thread_pool_(thread_pool),
-        inter_op_thread_pool_(inter_op_thread_pool),
-        data_transfer_mgr_(data_transfer_mgr),
-        use_deterministic_compute_(use_deterministic_compute),
-        enable_mem_reuse_(enable_mem_reuse),
-        prepacked_weights_container_(prepacked_weights_container) {
-    SetupAllocators();
-  }
+               PrepackedWeightsContainer* prepacked_weights_container = nullptr);
 
   ~SessionState() {
     for (auto& kvp : deleter_for_initialized_tensors_) {
@@ -156,14 +150,14 @@ class SessionState {
    * execution frame to setup the appropriate OrtValue vectors.
    * The lifetime of returned OrtValues are limited by this SessionState object.
    */
-  const std::unordered_map<int, OrtValue>& GetInitializedTensors() const;
+  const InlinedHashMap<int, OrtValue>& GetInitializedTensors() const;
 
   /**
    * Gets the map of ort_value_index to initialized tensors (e.g. weights) that are constant
    * and cannot be overridden at runtime.
    * The lifetime of returned OrtValues are limited by this SessionState object.
    */
-  const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
+  const InlinedHashMap<int, OrtValue>& GetConstantInitializedTensors() const;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   bool IsSparseInitializer(int ort_value_index) const;
@@ -191,6 +185,9 @@ class SessionState {
 
   // execution plan. nullptr until FinalizeSessionState is called
   const SequentialExecutionPlan* GetExecutionPlan() const;
+
+  const std::vector<AllocPlanPerValue>& GetPerAllocPlan() const;
+
   /**
   Get the logger for this session.
   Falls back to returning Logging::LoggingManager::DefaultLogger if SetLogger has not been called.
@@ -297,10 +294,9 @@ class SessionState {
   InlinedVector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
 
   const NodeIndexInfo& GetNodeIndexInfo() const;
-
-#if !defined(ORT_MINIMAL_BUILD)
-  void UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs);
-  const InlinedHashSet<NodeIndex>* GetToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs) const;
+#ifdef ENABLE_TRAINING
+  void UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs);
+  const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
 #endif
 
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
@@ -329,8 +325,12 @@ class SessionState {
     return subgraph_session_states_;
   }
 
+  std::unique_ptr<DeviceStreamCollection> AcquireDeviceStreamCollection() const;
+
+  void RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const;
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-  void IncrementGraphExecutionCounter() {
+  void
+  IncrementGraphExecutionCounter() {
     ++graph_executions_counter_;
   }
 
@@ -338,6 +338,10 @@ class SessionState {
     return graph_executions_counter_;
   }
 #endif
+
+  IStreamCommandHandleRegistry& GetStreamHandleRegistryInstance() const {
+    return *stream_handles_registry_;
+  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
@@ -447,9 +451,9 @@ class SessionState {
   OrtValueNameIdxMap ort_value_name_idx_map_;
 
   // initialized tensors
-  std::unordered_map<int, OrtValue> initialized_tensors_;  // key is ort_value_index
+  InlinedHashMap<int, OrtValue> initialized_tensors_;  // key is ort_value_index
   // subset of initialized_tensors_ that are constant and cannot be overridden at runtime
-  std::unordered_map<int, OrtValue> constant_initialized_tensors_;
+  InlinedHashMap<int, OrtValue> constant_initialized_tensors_;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   // This is an auxiliary lookup to check if the OrtValue was actually a sparse tensor
@@ -509,7 +513,7 @@ class SessionState {
   // prepacked_weights_container_ can be nullptr if no caching is required for prepacked weights
   PrepackedWeightsContainer* const prepacked_weights_container_{};
 
-#if !defined(ORT_MINIMAL_BUILD)
+#ifdef ENABLE_TRAINING
 #ifndef DISABLE_ABSEIL
   InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
 #else
@@ -542,6 +546,11 @@ class SessionState {
   // Counter for number of times the session graph has been executed
   size_t graph_executions_counter_ = 0;
 #endif
+  std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
+
+  // lock for the device stream pool
+  mutable OrtMutex device_stream_pool_mutex_;
+  mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
 };
 
 }  // namespace onnxruntime

@@ -151,7 +151,8 @@ class StandAloneKernelContext : public OpKernelContext {
                           int output_count,
                           AllocatorPtr allocator,
                           onnxruntime::concurrency::ThreadPool* threadpool,
-                          const logging::Logger& logger) : OpKernelContext(threadpool, logger),
+                          const logging::Logger& logger,
+                          Stream* stream) : OpKernelContext(threadpool, logger, stream),
                                                            input_values_(input_values),
                                                            input_count_(input_count),
                                                            output_values_(output_values),
@@ -217,32 +218,8 @@ class StandAloneKernelContext : public OpKernelContext {
     return Status::OK();
   }
 
-  Fence_t InputFence(int index) const override {
-    if (index >= input_count_) {
-      return nullptr;
-    } else {
-      return input_values_[index]->Fence();
-    }
-  }
-
-  Fence_t ImplicitInputFence(int) const override {
-    return nullptr;
-  }
-
-  Fence_t OutputFence(int index) const override {
-    if (index >= output_count_) {
-      return nullptr;
-    } else {
-      return output_values_[index]->Fence();
-    }
-  }
-
   int GetDeviceId() const override {
     return 0;
-  }
-
-  void* GetComputeStream() const override {
-    return nullptr;
   }
 
  protected:
@@ -400,7 +377,7 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   kernel_def_builder->SinceVersion(version);
   auto kernel_def = kernel_def_builder->Build();
 
-  static std::unordered_map<int, OrtValue> kEmptyValueMap;
+  static InlinedHashMap<int, OrtValue> kEmptyValueMap;
   static OrtValueNameIdxMap kEmptyNameMap;
 
   OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def, *ep, kEmptyValueMap, kEmptyNameMap, kernel_info->GetDataTransferManager());
@@ -432,7 +409,8 @@ onnxruntime::Status InvokeOp(_In_ const OrtKernelContext* context,
                                                 output_count,
                                                 allocator,
                                                 ctx->GetOperatorThreadPool(),
-                                                ctx->Logger());
+                                                ctx->Logger(),
+                                                ctx->GetComputeStream());
   return kernel->Compute(&standalone_kernel_ctx);
 }
 

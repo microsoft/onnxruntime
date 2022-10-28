@@ -27,7 +27,6 @@ class BeamSearch : public IControlFlowKernel {
       : IControlFlowKernel(info),
         encoder_feeds_fetches_manager_(nullptr),
         decoder_feeds_fetches_manager_(nullptr),
-        cuda_stream_(nullptr),
         dumper_(nullptr) {
     Init(info);
   }
@@ -41,7 +40,6 @@ class BeamSearch : public IControlFlowKernel {
                                     const SessionState& subgraph_session_state) override;
 
  protected:
-  void SetComputeStream(void* stream) { cuda_stream_ = stream; }
   void SetConsoleDumper(IConsoleDumper* dumper) { dumper_ = dumper; }
 
   // device helpers that is same for both GPT and encoder-decoder models.
@@ -124,8 +122,6 @@ class BeamSearch : public IControlFlowKernel {
   std::unique_ptr<T5DecoderSubgraph> t5_decoder_subgraph_;
   FeedsFetchesManager* encoder_feeds_fetches_manager_;
   FeedsFetchesManager* decoder_feeds_fetches_manager_;
-
-  void* cuda_stream_;
 
   IConsoleDumper* dumper_;
 

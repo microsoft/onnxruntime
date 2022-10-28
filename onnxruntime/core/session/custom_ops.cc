@@ -71,7 +71,9 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_string, _In_ const OrtKernel
 }
 
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out) {
-  *out = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
+  auto* stream = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
+  if (stream)
+    *out = stream->GetHandle();
   return nullptr;
 };
 

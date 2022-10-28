@@ -15,20 +15,19 @@ struct Input {
 };
 
 struct MyCustomKernel {
-  MyCustomKernel(const OrtKernelInfo* /*info*/, void* compute_stream)
-      : compute_stream_(compute_stream) {
+  MyCustomKernel(const OrtApi& ort_api, const OrtKernelInfo* /*info*/)
+      : ort_(ort_api) {
   }
 
   void Compute(OrtKernelContext* context);
 
  private:
-  void* compute_stream_;
+  const OrtApi& ort_;
 };
 
 struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
-  explicit MyCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
-
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyCustomKernel(info, compute_stream_); };
+  explicit MyCustomOp(const char* provider) : provider_(provider) {}
+  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const { return new MyCustomKernel(api, info); };
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -43,25 +42,23 @@ struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
 
  private:
   const char* provider_{"CPUExecutionProvider"};
-  void* compute_stream_;
 };
 
 struct MyCustomKernelMultipleDynamicInputs {
-  MyCustomKernelMultipleDynamicInputs(const OrtKernelInfo* /*info*/, void* compute_stream)
-      : compute_stream_(compute_stream) {
+  MyCustomKernelMultipleDynamicInputs(const OrtApi& ort_api, const OrtKernelInfo* /*info*/)
+      : ort_(ort_api) {
   }
 
   void Compute(OrtKernelContext* context);
 
  private:
-  void* compute_stream_;
+  const OrtApi& ort_;
 };
 
 struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDynamicInputs, MyCustomKernelMultipleDynamicInputs> {
-  explicit MyCustomOpMultipleDynamicInputs(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
-
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { 
-    return new MyCustomKernelMultipleDynamicInputs(info, compute_stream_); 
+  explicit MyCustomOpMultipleDynamicInputs(const char* provider) : provider_(provider) {}
+  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const {
+    return new MyCustomKernelMultipleDynamicInputs(api, info);
   };
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
@@ -78,7 +75,6 @@ struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDyn
 
  private:
   const char* provider_;
-  void* compute_stream_;
 };
 
 struct MyCustomKernelWithOptionalInput {
@@ -155,7 +151,7 @@ struct MyCustomOpWithAttributes : Ort::CustomOpBase<MyCustomOpWithAttributes, My
   const char* provider_;
 };
 
-//Slice array of floats or doubles between [from, to) and save to output
+// Slice array of floats or doubles between [from, to) and save to output
 struct SliceCustomOpKernel {
   SliceCustomOpKernel(const OrtKernelInfo* /*info*/) {
   }
@@ -193,7 +189,7 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
 };
 
 struct StandaloneCustomKernel {
-  StandaloneCustomKernel(const OrtKernelInfo* info, void*);
+  StandaloneCustomKernel(const OrtKernelInfo* info);
   ~StandaloneCustomKernel();
   void Compute(OrtKernelContext* context);
 
@@ -213,9 +209,9 @@ struct StandaloneCustomKernel {
 };
 
 struct StandaloneCustomOp : Ort::CustomOpBase<StandaloneCustomOp, StandaloneCustomKernel> {
-  explicit StandaloneCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+  explicit StandaloneCustomOp(const char* provider) : provider_(provider) {}
 
-  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new StandaloneCustomKernel(info, compute_stream_); };
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new StandaloneCustomKernel(info); };
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -229,5 +225,4 @@ struct StandaloneCustomOp : Ort::CustomOpBase<StandaloneCustomOp, StandaloneCust
 
  private:
   const char* provider_;
-  void* compute_stream_;
 };

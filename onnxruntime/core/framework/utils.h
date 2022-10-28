@@ -10,9 +10,6 @@
 #include "core/framework/iexecutor.h"
 #include "core/framework/session_state.h"
 #include "core/framework/session_options.h"
-#ifdef ENABLE_TRAINING
-#include "core/framework/partial_graph_execution_state.h"
-#endif
 
 namespace onnxruntime {
 class ExecutionProviders;
@@ -26,6 +23,11 @@ class IExecutionProvider;
 class Node;
 class Tensor;
 struct KernelCreateInfo;
+#ifdef ENABLE_TRAINING
+struct PartialGraphExecutionState;
+typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
+typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
+#endif
 
 namespace logging {
 class Logger;
@@ -83,22 +85,27 @@ void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
-                            bool only_execute_path_to_fetches = false);
+                            bool only_execute_path_to_fetches = false,
+                            Stream* parent_stream = nullptr);
 
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
                                    const OrtValueCachePtr& cache,
-                                   int32_t partial_graph_index);
+                                   // TODO: merge the change in https://github.com/microsoft/onnxruntime/commit/34ebf7d3dd32e14295a409db08a667d6d236aeb6
+                                   const bool& terminate_flag,
+                                   int32_t partial_graph_index,
+                                   Stream* parent_stream);
 #endif
 
 // Execute a subgraph. The feeds_fetches_manager should have been finalized prior to calling this function.
 // See IControlFlowNode::SetupSubgraphExecutionInfo usage in the control flow kernels.
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
+                               const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                               Stream* parent_stream);
 
 bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
 

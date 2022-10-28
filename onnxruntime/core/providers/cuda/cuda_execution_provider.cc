@@ -6,7 +6,6 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/cuda_fence.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/cuda_profiler.h"
@@ -18,6 +17,8 @@
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cuda/cuda_training_kernels.h"
 #endif
+
+#include "core/providers/cuda/cuda_stream_handle.h"
 
 using namespace onnxruntime::common;
 
@@ -34,54 +35,73 @@ class Memcpy final : public OpKernel {
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
       Tensor* Y = ctx->Output(0, X->Shape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
-      return Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
-    } else if (X_type->IsSparseTensorType()) {
-      const auto* X = ctx->Input<SparseTensor>(0);
-      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
-      SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
-      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output sparse tensor.");
-      return X->Copy(Info().GetDataTransferManager(), Info().GetKernelDef().ExecQueueId(), *Y);
-    } else if (X_type->IsTensorSequenceType()) {
-      const TensorSeq* X = ctx->Input<TensorSeq>(0);
-      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor sequence is nullptr.");
-      TensorSeq* Y = ctx->Output<TensorSeq>(0);
-      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor sequence.");
-      auto X_dtype = X->DataType();
-      Y->SetType(X_dtype);
-      AllocatorPtr alloc;
+      // do we support async copy?
+      auto& src_device = X->Location().device;
+      auto& dst_device = Y->Location().device;
 
-      // If we are copying contents to CUDA, the allocator to use
-      // to allocate the buffers of the new tensors in the sequence
-      // can be temp space allocator associated with the CUDA EP
-      if (Node().OpType() == "MemcpyFromHost") {
-        auto status = ctx->GetTempSpaceAllocator(&alloc);
-        if (!status.IsOK()) {
-          return Status(common::ONNXRUNTIME, common::FAIL,
-                        "Memcpy cuda: unable to get an allocator.");
-        }
+      if (!((src_device.Type() == OrtDevice::CPU && src_device.MemType() != OrtDevice::MemType::CUDA_PINNED) ||
+            (dst_device.Type() == OrtDevice::CPU && dst_device.MemType() != OrtDevice::MemType::CUDA_PINNED))) {
+        auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+        ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream()));
+        return Status::OK();
       } else {
-        // If we are copying contents to CPU (op type is "MemcpyToHost"),
-        // the allocator to use to allocate the buffers of the new tensors
-        // in the sequence will be the allocator from the CPU EP
-        auto status = ctx->GetTempSpaceCPUAllocator(&alloc);
-        if (!status.IsOK()) {
-          return Status(common::ONNXRUNTIME, common::FAIL,
-                        "Memcpy cuda: unable to get the CPU allocator.");
-        }
+        auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+        ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(*X, *Y, ctx->GetComputeStream()));
+        return Status::OK();
       }
-      auto X_size = X->Size();
-      for (size_t i = 0; i < X_size; ++i) {
-        const Tensor& source_tensor = X->Get(i);
-        std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
-        Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor, Info().GetKernelDef().ExecQueueId());
-        if (!retval.IsOK()) {
-          return retval;
+    } else {
+      // TODO: support aysnc copy for sparse tensor
+
+      // sync the stream frist, since it is a sync memory copy
+      cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle()));
+      if (X_type->IsSparseTensorType()) {
+        const auto* X = ctx->Input<SparseTensor>(0);
+        ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
+        SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
+        ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output sparse tensor.");
+        return X->Copy(Info().GetDataTransferManager(), *Y);
+      } else if (X_type->IsTensorSequenceType()) {
+        const TensorSeq* X = ctx->Input<TensorSeq>(0);
+        ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor sequence is nullptr.");
+        TensorSeq* Y = ctx->Output<TensorSeq>(0);
+        ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor sequence.");
+        auto X_dtype = X->DataType();
+        Y->SetType(X_dtype);
+        AllocatorPtr alloc;
+
+        // If we are copying contents to CUDA, the allocator to use
+        // to allocate the buffers of the new tensors in the sequence
+        // can be temp space allocator associated with the CUDA EP
+        if (Node().OpType() == "MemcpyFromHost") {
+          auto status = ctx->GetTempSpaceAllocator(&alloc);
+          if (!status.IsOK()) {
+            return Status(common::ONNXRUNTIME, common::FAIL,
+                          "Memcpy cuda: unable to get an allocator.");
+          }
+        } else {
+          // If we are copying contents to CPU (op type is "MemcpyToHost"),
+          // the allocator to use to allocate the buffers of the new tensors
+          // in the sequence will be the allocator from the CPU EP
+          auto status = ctx->GetTempSpaceCPUAllocator(&alloc);
+          if (!status.IsOK()) {
+            return Status(common::ONNXRUNTIME, common::FAIL,
+                          "Memcpy cuda: unable to get the CPU allocator.");
+          }
         }
-        Y->Add(std::move(*target_tensor));
+        auto X_size = X->Size();
+        for (size_t i = 0; i < X_size; ++i) {
+          const Tensor& source_tensor = X->Get(i);
+          std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
+          Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor);
+          if (!retval.IsOK()) {
+            return retval;
+          }
+          Y->Add(std::move(*target_tensor));
+        }
+        return Status::OK();
       }
-      return Status::OK();
+      return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type.");
     }
-    return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type.");
   }
 };
 
@@ -93,7 +113,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
-        .ExecQueueId(kCudaStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
@@ -104,7 +123,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
-        .ExecQueueId(kCudaStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
@@ -135,18 +153,21 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
         device_id,
         true,
         {default_memory_arena_cfg ? *default_memory_arena_cfg
-                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)});
+                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)},
+        // make it stream aware
+        true,
+        // enable cross stream sharing?
+        false);
 
     // CUDA malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
   }
 }
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t gpu_mem_limit,
-                                                          ArenaExtendStrategy arena_extend_strategy, CUDAExecutionProviderExternalAllocatorInfo external_allocator_info,
-                                                          OrtArenaCfg* default_memory_arena_cfg) {
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t /*gpu_mem_limit*/,
+                                                          ArenaExtendStrategy /*arena_extend_strategy*/, CUDAExecutionProviderExternalAllocatorInfo /*external_allocator_info*/,
+                                                          OrtArenaCfg* /*default_memory_arena_cfg*/) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
-  stream_ = stream;
 
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUBLAS_CALL_THROW(cublasLtCreate(&cublas_lt_handle_));
@@ -155,11 +176,10 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
   CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
 
-  // CUDA malloc/free is expensive so always use an arena
-  allocator_ = CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
-
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  cuda_graph_.SetStream(stream_);
+  cuda_graph_.SetStream(stream);
+#else
+  ORT_UNUSED_PARAMETER(stream);
 #endif
 }
 
@@ -212,12 +232,19 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 
   if (info.has_user_compute_stream) {
     external_stream_ = true;
+    use_ep_level_unified_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
   } else {
     if (info.external_allocator_info.UseExternalAllocator()) {
+      use_ep_level_unified_stream_ = true;
       stream_ = nullptr;
-    } else {
+    } else if (info.enable_cuda_graph) {
+      // current cuda graph implementation only works with single stream
+      // use EP level unified stream for all the reqeust
       CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+      use_ep_level_unified_stream_ = true;
+    } else {
+      stream_ = nullptr;
     }
   }
 
@@ -227,10 +254,6 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
-  // Prevent memory leak when people don't call
-  // OnRunStart and OnRunEnd when calling CudaKernel's.
-  ORT_IGNORE_RETURN_VALUE(EnqueueDeferredRelease());
-
   // clean up thread local context caches
   {
     std::lock_guard<OrtMutex> lock(context_state_.mutex);
@@ -278,7 +301,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<cudaStream_t>(GetComputeStream()), info_.gpu_mem_limit,
+      context = std::make_shared<PerThreadContext>(info_.device_id, stream_, info_.gpu_mem_limit,
                                                    info_.arena_extend_strategy, info_.external_allocator_info, info_.default_memory_arena_cfg);
     } else {
       context = context_state_.retired_context_pool.back();
@@ -320,111 +343,23 @@ void CUDAExecutionProvider::ReleasePerThreadContext() const {
 }
 
 AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  // Pinned memory allocator is shared between threads, but CUDA memory allocator is per-thread or it may cause result changes
-  // A hypothesis is that arena allocator is not aligned with CUDA output cache, and data from different kernel writes may
-  // cause cacheline to contain dirty data.
   if (mem_type == OrtMemTypeDefault) {
-    return GetPerThreadContext().GetAllocator();
-  } else {
-    return IExecutionProvider::GetAllocator(id, mem_type);
+    auto cuda_alloc = IExecutionProvider::GetAllocator(id, mem_type);
+    if (!cuda_alloc) {
+      // this means the program invoke GetAllocator before RegsiterAllocators,
+      // which only happnens in some UTs.
+      // here is a hack to return another allocator instance.
+      // need to fix this in the future.
+      return CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
+                                 info_.external_allocator_info, info_.default_memory_arena_cfg);
+    }
   }
+
+  return IExecutionProvider::GetAllocator(id, mem_type);
 }
 
 Status CUDAExecutionProvider::Sync() const {
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
-  return Status::OK();
-}
-
-void CUDAExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
-  // when not running in InferenceSession (e.g. Test)
-  // it's OK to not remember the deferred release ptr
-  // as the actual memory will be cleaned in arena allocator dtor
-
-  // This function should only record pointers returned by
-  // AllocateBufferOnCPUPinned.
-
-  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
-  cudaStream_t stream = static_cast<cudaStream_t>(GetComputeStream());
-  auto it = deferred_release_buffer_pool_.find(stream);
-  if (it != deferred_release_buffer_pool_.end()) {
-    it->second.push_back(p);
-  } else {
-    deferred_release_buffer_pool_[stream] = {p};
-  }
-}
-
-struct CpuBuffersInfo {
-  // This struct stores the information needed
-  // to release CPU buffers allocated for GPU kernels.
-  // It's used to enqueue their release after
-  // associated GPU kernels in a CUDA stream.
-
-  // This is a CPU allocator in CUDA EP.
-  // It must be the one used to allocate the
-  // following pointers.
-  AllocatorPtr allocator;
-  // buffers[i] is the i-th pointer added by
-  // AddDeferredReleaseCPUPtr for a specific
-  // CUDA stream. For example, this fields
-  // should contain all values in
-  // deferred_release_buffer_pool_[my_stream]
-  // when release my_stream's (type: cudaStream_t)
-  // buffers.
-  std::vector<void*> buffers;
-};
-
-static void CUDART_CB ReleaseCpuBufferCallback(void* raw_info) {
-  // The passed-in raw_info is a unmanaged pointer from
-  // std::unique_ptr<CpuBuffersInfo>.release().
-  // We rewrap raw_info as std::unique_ptr<CpuBuffersInfo> so that
-  // it will be cleaned up automatically at the end of this function.
-  std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
-  cpu_buffers_info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
-  for (auto ptr : cpu_buffers_info->buffers) {
-    cpu_buffers_info->allocator->Free(ptr);
-  }
-}
-
-Status CUDAExecutionProvider::EnqueueDeferredRelease() {
-  // Release CPU buffers allocated for CUDA kernels (type: CudaKernel).
-  // They have to be released outside CUDA kernels because they must be alive
-  // during asynchronous GPU computation even after the CPU part (e.g,
-  // CudaKernel::ComputeInternal) already return.
-  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
-  for (auto it = deferred_release_buffer_pool_.begin(); it != deferred_release_buffer_pool_.end(); ++it) {
-    // it->first: a CUDA stream.
-    // it->second: CPU buffers associated with kernels running on it->first.
-    // This iteration enqueues a callback to release all buffers
-    // in it->second on it->first.
-
-    auto stream = it->first;
-    auto& buffers = it->second;
-    // Allocate a heap object to extend the lifetime of allocator and buffer pointers.
-    std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
-    // This allocator must be the same to the allocator
-    // used in AllocateBufferOnCPUPinned.
-    cpu_buffers_info->allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-    cpu_buffers_info->buffers = buffers;
-    // Release the ownership of cpu_buffers_info so that the underlying
-    // object will keep alive until the end of ReleaseCpuBufferCallback.
-    if (cpu_buffers_info->allocator->Info().alloc_type == OrtArenaAllocator) {
-      // Release memory asynchronously to avoid blocking the compute stream.
-      CUDA_RETURN_IF_ERROR(cudaLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release()));
-    } else {
-      // Per
-      // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#implicit-synchronization
-      // cudaHostFree doesn't block stream, so a synchronitation is needed to make sure no kernels
-      // are using the host memory.
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-      // cudaFreeHost and all other CUDA APIs cannot be called by cudaLaunchHostFunc per spec.
-      // So we just do synchrous release.
-      ReleaseCpuBufferCallback(cpu_buffers_info.release());
-    }
-  }
-  // All buffers are scheduled for release.
-  // Let's clear releated information so that
-  // those buffers won't be released twice.
-  deferred_release_buffer_pool_.clear();
   return Status::OK();
 }
 
@@ -450,13 +385,8 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
     }
   }
 
-  // Enqueue deferred CPU memory release on related streams.
-  // This will release all deferred-release CPU buffers allocated
-  // before calling OnRunEnd.
-  ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
-
   if (sync_stream) {
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(stream_)));
   }
 
   // The reason of !IsGraphCaptureEnabled():
@@ -473,18 +403,6 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
     ReleasePerThreadContext();
   }
 
-  return Status::OK();
-}
-
-Status CUDAExecutionProvider::SetComputeStream(void* stream) {
-  if (stream != stream_) {
-    if (stream_) {
-      CUDA_RETURN_IF_ERROR(cudaStreamDestroy(stream_));
-    }
-
-    external_stream_ = true;
-    stream_ = static_cast<cudaStream_t>(stream);
-  }
   return Status::OK();
 }
 
@@ -2418,7 +2336,7 @@ static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<onnxruntime::GPUDataTransfer>(static_cast<cudaStream_t>(GetComputeStream()), info_.do_copy_in_default_stream);
+  return std::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -2571,6 +2489,30 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 
     InsertAllocator(cuda_cpu_alloc);
   }
+}
+
+void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+  // This allocator must be the same to the allocator
+  // used in AllocateBufferOnCPUPinned.
+  auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  if (use_ep_level_unified_stream_)
+    RegisterCudaStreamHandles(stream_handle_registry,
+                              OrtDevice::GPU,
+                              allocator,
+                              !IsGraphCaptureEnabled(),
+                              stream_,
+                              use_ep_level_unified_stream_,
+                              GetPerThreadContext().CudnnHandle(),
+                              GetPerThreadContext().CublasHandle());
+  else
+    RegisterCudaStreamHandles(stream_handle_registry,
+                              OrtDevice::GPU,
+                              allocator,
+                              !IsGraphCaptureEnabled(),
+                              stream_,
+                              use_ep_level_unified_stream_,
+                              GetPerThreadContext().CudnnHandle(),
+                              GetPerThreadContext().CublasHandle());
 }
 
 }  // namespace onnxruntime

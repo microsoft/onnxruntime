@@ -7,16 +7,22 @@
 
 namespace onnxruntime {
 
+using BufferFreeFn = std::function<void(void*)>;
+
 // TODO: Do we need this class or is IAllocator::MakeUniquePtr sufficient/better
 class BufferDeleter {
  public:
-  BufferDeleter() : alloc_(nullptr) {}
+  BufferDeleter() = default;
   BufferDeleter(AllocatorPtr alloc)
-      : alloc_(std::move(alloc)) {}
+      : buffer_delete_fn_([alloc](void* buf) { alloc->Free(buf); }) {}
+
+  explicit BufferDeleter(BufferFreeFn buff_delete_fn)
+      : buffer_delete_fn_(std::move(buff_delete_fn)) {}
 
   void operator()(void* p) const {
-    if (alloc_)
-      alloc_->Free(p);
+    if (buffer_delete_fn_) {
+      buffer_delete_fn_(p);
+    }
   }
 
  private:
@@ -28,7 +34,8 @@ class BufferDeleter {
   // A weak_ptr may be a choice to reduce the impact, but that require to
   // change our current allocator mgr to use shared_ptr. Will revisit it
   // later.
-  AllocatorPtr alloc_;
+  // the buffer_delete_fn is a std::function which hold the reference to allocator ptr
+  BufferFreeFn buffer_delete_fn_{nullptr};
 };
 
 using BufferUniquePtr = std::unique_ptr<void, BufferDeleter>;

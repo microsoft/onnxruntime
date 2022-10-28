@@ -132,7 +132,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
     const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
     int num_beam,
-    void* stream) {
+    Stream* stream) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // Allocate subgraph inputs from same device as inputs of encoder subgraph.

@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "core/framework/session_state.h"
@@ -21,6 +21,65 @@
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
+
+static inline std::string GetWaitKey(const OrtDevice::DeviceType notificaiton_device_type, const OrtDevice::DeviceType executor_device_type) {
+  return std::to_string(notificaiton_device_type) + ":" + std::to_string(executor_device_type);
+}
+
+class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
+ public:
+  // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
+  // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
+  WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType notification_owner_device_type, const OrtDevice::DeviceType executor_device_type) const override {
+    auto it = notification_wait_map_.find(GetWaitKey(notification_owner_device_type, executor_device_type));
+    return it == notification_wait_map_.end() ? nullptr : it->second;
+  }
+
+  CreateStreamFn GetCreateStreamFn(const OrtDevice::DeviceType device_type) const override {
+    auto it = create_stream_map_.find(device_type);
+    return it == create_stream_map_.end() ? nullptr : it->second;
+  }
+
+  void RegisterWaitFn(const OrtDevice::DeviceType notification_device_type, const OrtDevice::DeviceType device_type, WaitNotificationFn fn) override {
+    notification_wait_map_.insert({GetWaitKey(notification_device_type, device_type), fn});
+  }
+
+  void RegisterCreateStreamFn(const OrtDevice::DeviceType device_type, CreateStreamFn f) override {
+    create_stream_map_.insert({device_type, f});
+  }
+
+  StreamCommandHandleRegistryImpl() = default;
+
+ private:
+  InlinedHashMap<std::string, WaitNotificationFn> notification_wait_map_;
+  InlinedHashMap<OrtDevice::DeviceType, CreateStreamFn> create_stream_map_;
+};
+
+SessionState::SessionState(Graph& graph,
+                           const ExecutionProviders& execution_providers,
+                           bool enable_mem_pattern,
+                           concurrency::ThreadPool* thread_pool,
+                           concurrency::ThreadPool* inter_op_thread_pool,
+                           const DataTransferManager& data_transfer_mgr,
+                           const logging::Logger& logger,
+                           profiling::Profiler& profiler,
+                           bool use_deterministic_compute,
+                           bool enable_mem_reuse,
+                           PrepackedWeightsContainer* prepacked_weights_container)
+    : graph_(graph),
+      execution_providers_(execution_providers),
+      logger_(logger),
+      profiler_(profiler),
+      enable_mem_pattern_(enable_mem_pattern),
+      thread_pool_(thread_pool),
+      inter_op_thread_pool_(inter_op_thread_pool),
+      data_transfer_mgr_(data_transfer_mgr),
+      use_deterministic_compute_(use_deterministic_compute),
+      enable_mem_reuse_(enable_mem_reuse),
+      prepacked_weights_container_(prepacked_weights_container),
+      stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>()) {
+  SetupAllocators();
+}
 
 void SessionState::SetupAllocators() {
   for (const auto& provider : execution_providers_) {
@@ -185,6 +244,20 @@ const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {
   return &p_seq_exec_plan_.value();
 }
 
+void Print(const std::string& type, gsl::span<const AllocPlanPerValue> alloc_plans) {
+  std::cout << type << std::endl;
+  int i = 0;
+  for (const auto& alloc_plan : alloc_plans) {
+    std::cout << i << ": " << alloc_plan.alloc_kind << ", " << (long long)alloc_plan.value_type << ", " << alloc_plan.location.name << std::endl;
+    i++;
+  }
+  std::cout << std::endl;
+}
+
+const std::vector<AllocPlanPerValue>& SessionState::GetPerAllocPlan() const {
+  return p_seq_exec_plan_->allocation_plan;
+}
+
 Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
                                           bool constant, bool sparse) {
   auto p = initialized_tensors_.insert({ort_value_index, ort_value});
@@ -211,9 +284,9 @@ Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& o
   return Status::OK();
 }
 
-const std::unordered_map<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
+const InlinedHashMap<int, OrtValue>& SessionState::GetInitializedTensors() const { return initialized_tensors_; }
 
-const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTensors() const {
+const InlinedHashMap<int, OrtValue>& SessionState::GetConstantInitializedTensors() const {
   return constant_initialized_tensors_;
 }
 
@@ -271,7 +344,7 @@ static Status KernelUseSharedPrePackedBuffers(OpKernel& kernel, int input_idx,
 
   for (const auto& prepacked_buffer : prepacked_weights.buffers_) {
     // BufferDeleter is nullptr because the kernel should not delete the shared buffer - it can only use it
-    shared_prepacked_buffers.emplace_back(prepacked_buffer.get(), BufferDeleter(nullptr));
+    shared_prepacked_buffers.emplace_back(prepacked_buffer.get(), BufferDeleter(static_cast<BufferFreeFn>(nullptr)));
   }
 
   bool used_shared_buffers = false;
@@ -313,7 +386,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
           do {
             int ort_value_idx;
             if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
-              std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
+              InlinedHashMap<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
 
               if (constant_initialized_tensors.count(ort_value_idx)) {
                 bool is_packed = false;
@@ -537,9 +610,10 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
 
   // Try to resolve shapes for activations.
   auto& node_index_info = GetNodeIndexInfo();
-  for (auto& node_plan : exe_plan->execution_plan) {
-    int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
-    auto* node = graph_viewer_->GetNode(node_plan.node_index);
+  auto& execution_order = exe_plan->node_execution_order_in_training;
+  for (auto& node_idx : execution_order) {
+    int node_index = node_index_info.GetNodeOffset(node_idx);
+    auto* node = graph_viewer_->GetNode(node_idx);
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
                        static_cast<int>(node->ImplicitInputDefs().size());
 
@@ -577,6 +651,7 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
     const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
     if (!ml_type->IsTensorType())
       continue;
+
     const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
     if (exe_plan->allocation_plan[ml_value_idx].alloc_kind == AllocKind::kAllocate &&
         ml_data_type != DataTypeImpl::GetType<std::string>()) {
@@ -598,11 +673,11 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
       ORT_RETURN_IF_ERROR(mem_planner.TraceAllocation(ml_value_idx, counter, size));
     }
   }
-
+  // TODO: add check for single stream
   // Allocate all other activations.
-  for (auto& node_plan : exe_plan->execution_plan) {
-    int node_index = node_index_info.GetNodeOffset(node_plan.node_index);
-    auto* node = graph_viewer_->GetNode(node_plan.node_index);
+  for (auto& step_index : execution_order) {
+    int node_index = node_index_info.GetNodeOffset(step_index);
+    auto* node = graph_viewer_->GetNode(step_index);
     int output_start = node_index + static_cast<int>(node->InputDefs().size()) +
                        static_cast<int>(node->ImplicitInputDefs().size());
     // allocate output
@@ -616,6 +691,14 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
       const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
       if (!ml_type->IsTensorType())
         continue;
+
+      auto* ep = GetExecutionProviders().Get(*node);
+      auto device_id = exe_plan->allocation_plan[ml_value_idx].location.device.Id();
+      auto ep_main_allocator = ep->GetAllocator(device_id, OrtMemType::OrtMemTypeDefault);
+      ORT_ENFORCE(ep_main_allocator);
+      if (exe_plan->allocation_plan[ml_value_idx].location != ep_main_allocator->Info())
+        continue;
+
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
       size_t size = 0;
       TryCalculateSizeFromResolvedShape(ml_value_idx, resolved_shapes, size);
@@ -636,14 +719,20 @@ Status SessionState::GeneratePatternGroupCache(gsl::span<const OrtValue> tensor_
     }
 
     // release nodes
-    for (int index = node_plan.free_from_index; index <= node_plan.free_to_index; ++index) {
-      auto ml_value_idx = exe_plan->to_be_freed[index];
+    auto& release_actions = exe_plan->node_release_list[step_index];
+    for (auto it = release_actions.begin(); it != release_actions.end(); ++it) {
+      auto& action = exe_plan->release_actions[*it];
+      // if the value consumed by multiple stream, we can't pre-release it statically.
+      if (action.ref_count != 1)
+        continue;
+
+      auto ml_value_idx = action.value_index;
       const auto* ml_type = exe_plan->allocation_plan[ml_value_idx].value_type;
       if (!ml_type->IsTensorType())
         continue;
       const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
       if (ml_data_type != DataTypeImpl::GetType<std::string>()) {
-        ORT_RETURN_IF_ERROR(mem_planner.TraceFree(ml_value_idx));
+        ORT_RETURN_IF_ERROR(mem_planner.TraceFree(static_cast<int>(ml_value_idx)));
       }
     }
   }
@@ -698,6 +787,28 @@ void SessionState::ResolveMemoryPatternFlag() {
         break;
       }
     }
+
+    // if there are nodes belong to the same device be partitioned to multiple streams
+    // disable the memory pattern because the execution order is not fixed.
+    // TODO: we can improve memory pattern to support multiple streams
+    bool multi_stream = false;
+    auto cmp = [](const OrtDevice& op1, const OrtDevice& op2) {
+      if (op1.Type() != op2.Type()) return op1.Type() < op2.Type();
+      if (op1.MemType() != op2.MemType()) return op1.MemType() < op2.MemType();
+      return op1.Id() < op2.Id();
+    };
+    std::set<OrtDevice, decltype(cmp)> device_set(cmp);
+    auto& streams = GetExecutionPlan()->execution_plan;
+    for (auto& logic_stream : streams) {
+      if (device_set.find(logic_stream->device_) != device_set.end()) {
+        multi_stream = true;
+        break;
+      }
+      device_set.insert(logic_stream->device_);
+    }
+
+    if (multi_stream)
+      enable_mem_pattern_ = false;
 
     // For subgraphs, the implicit inputs need to meet the same crieria
     // as the explicit inputs for memory pattern to be enabled
@@ -853,8 +964,8 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
   return *node_index_info_;
 }
 
-#if !defined(ORT_MINIMAL_BUILD)
-void SessionState::UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs) {
+#ifdef ENABLE_TRAINING
+void SessionState::UpdateToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) {
   InlinedVector<int> sorted_idxs;
   sorted_idxs.reserve(fetch_mlvalue_idxs.size());
   sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
@@ -879,10 +990,12 @@ void SessionState::UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_id
   // Reversely traverse to get reachable nodes.
   graph_.ReverseDFSFrom(
       nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
+
+  // global start, end doesn't matters
   to_be_executed_nodes_.emplace(std::move(sorted_idxs), std::move(reachable_nodes));
 }
 
-const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedNodes(
+const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedRange(
     gsl::span<int const> fetch_mlvalue_idxs) const {
   InlinedVector<int> sorted_idxs;
   sorted_idxs.reserve(fetch_mlvalue_idxs.size());
@@ -891,8 +1004,7 @@ const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedNodes(
   auto it = to_be_executed_nodes_.find(sorted_idxs);
   return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
 }
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif
 
 Status SessionState::CreateSubgraphSessionState() {
   for (auto& node : graph_.Nodes()) {
@@ -1228,6 +1340,14 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                   });
   }
 
+  // TODO: we avoid instantiate it in subgraph session state
+
+  // register stream handles from EP instances
+  auto& eps = GetExecutionProviders();
+  for (auto& ep : eps) {
+    ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance());
+  }
+
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
 
@@ -1236,7 +1356,14 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                     execution_providers_, kernel_create_info_map_,
                                                     subgraphs_kernel_create_info_maps,
                                                     outer_scope_node_arg_to_location_map,
-                                                    ort_value_name_idx_map_, context, p_seq_exec_plan_));
+                                                    ort_value_name_idx_map_, context,
+                                                    this->GetStreamHandleRegistryInstance(),
+                                                    /*provider_stream_map,
+                                                    read_op_map_from_str(session_options.grouped_ops),*/
+                                                    session_options.config_options.GetConfigOrDefault(kNodePartitionConfigFile, ""),
+                                                    Logger(),
+                                                    p_seq_exec_plan_));
+
 // Record the allocation plan
 
 // Uncomment the below to dump the allocation plan to std::cout
@@ -1375,6 +1502,43 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   }
 
   return Status::OK();
+}
+
+static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
+                               DeviceStreamCollection& device_stream_map,
+                               IStreamCommandHandleRegistry& stream_handle_registry) {
+  for (size_t i = 0; i < execution_plan.execution_plan.size(); ++i) {
+    auto& logic_stream = execution_plan.execution_plan[i];
+    if (logic_stream->steps_.size() > 0) {
+      auto create_stream_fn = stream_handle_registry.GetCreateStreamFn(logic_stream->device_.Type());
+      if (create_stream_fn) {
+        auto device_stream = create_stream_fn(logic_stream->device_);
+        device_stream_map.SetDeviceStream(i, std::move(device_stream));
+      } else {
+        device_stream_map.SetDeviceStream(i, nullptr);
+      }
+    } else {
+      device_stream_map.SetDeviceStream(i, nullptr);
+    }
+  }
+}
+
+std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollection() const {
+  std::lock_guard<onnxruntime::OrtMutex> lock(mem_patterns_lock_);
+  if (!device_stream_pool_.empty()) {
+    auto device_stream = std::move(device_stream_pool_.back());
+    device_stream_pool_.pop_back();
+    return device_stream;
+  } else {
+    auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *this);
+    BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
+    return device_stream;
+  }
+}
+
+void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const {
+  std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
+  device_stream_pool_.emplace_back(std::move(device_stream_collection));
 }
 
 }  // namespace onnxruntime

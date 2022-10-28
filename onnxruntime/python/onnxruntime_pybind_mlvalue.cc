@@ -176,7 +176,7 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
 
 std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
   // Using default stream
-  return GetProviderInfo_CUDA().CreateGPUDataTransfer(nullptr);
+  return GetProviderInfo_CUDA().CreateGPUDataTransfer();
 }
 
 #endif

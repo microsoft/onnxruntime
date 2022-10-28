@@ -117,7 +117,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  cublasHandle_t cublas = CublasHandle();
+  cublasHandle_t cublas = GetCublasHandle(context);
   constexpr size_t element_size = sizeof(T);
 
   IAllocatorUniquePtr<T> gemm_buffer;
@@ -127,7 +127,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
     int k = parameters.input_hidden_size;
     size_t gemm_buffer_size = static_cast<size_t>(batch_size) * sequence_length * n * element_size;
-    gemm_buffer = GetScratchBuffer<T>(gemm_buffer_size);
+    gemm_buffer = GetScratchBuffer<T>(gemm_buffer_size, OrtStream(context));
 
     typedef typename ToCudaType<T>::MappedType CudaT;
     CudaT one = ToCudaType<T>::FromFloat(1.0f);
@@ -151,7 +151,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.total_sequence_length,
                                                    fused_runner);
 
-  auto work_space = GetScratchBuffer<void>(workSpaceSize);
+  auto work_space = GetScratchBuffer<void>(workSpaceSize, OrtStream(context));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
@@ -168,7 +168,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
 
-  return QkvToContext<CudaT>(device_prop, cublas, Stream(), parameters, data, reinterpret_cast<void*>(fused_runner));
+  return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data, reinterpret_cast<void*>(fused_runner));
 }
 
 }  // namespace cuda

@@ -25,7 +25,8 @@ Status GptSubgraph::CreateInitialFeeds(
     std::vector<OrtValue>& feeds,
     const GenerationDeviceHelper::CreateGptInputsFunc& create_gpt_inputs_func,
     const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-    IAllocatorUniquePtr<char>& buffer) {
+    IAllocatorUniquePtr<char>& buffer,
+    Stream* ort_stream) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   const IExecutionProvider* provider = GetProvider();
@@ -70,6 +71,7 @@ Status GptSubgraph::CreateInitialFeeds(
                                              expanded_attention_mask));
 
   ORT_RETURN_IF_ERROR(add_to_feeds_func(provider,
+                                        ort_stream,
                                         {expanded_input_ids, expanded_position_ids, expanded_attention_mask},
                                         feeds,
                                         buffer));

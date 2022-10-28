@@ -32,7 +32,10 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   // Do computation
 #ifdef USE_CUDA
   // Launch on stream 0 or user provided stream
-  cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
+  void* stream;
+  Ort::ThrowOnError(ort_.KernelContext_GetGPUComputeStream(context, &stream));
+  cudaStream_t cuda_stream = static_cast<cudaStream_t>(stream);
+  cuda_add(size, out, X, Y, cuda_stream);
   // cudaStreamSynchronize(nullptr);
   // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
   // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
@@ -42,7 +45,7 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   //     and use the same compute stream to launch the custom op.
   // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
 #else
-  ORT_UNUSED_PARAMETER(compute_stream_);
+  ORT_UNUSED_PARAMETER(ort_);
   for (int64_t i = 0; i < size; i++) {
     out[i] = X[i] + Y[i];
   }
@@ -71,7 +74,10 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
   // Do computation
 #ifdef USE_CUDA
   // Launch on stream 0 or user provided stream
-  cuda_add(size, out, X, Y, compute_stream_ == nullptr ? 0 : reinterpret_cast<cudaStream_t>(compute_stream_));
+  void* stream;
+  Ort::ThrowOnError(ort_.KernelContext_GetGPUComputeStream(context, &stream));
+  cudaStream_t cuda_stream = static_cast<cudaStream_t>(stream);
+  cuda_add(size, out, X, Y, cuda_stream);
   // cudaStreamSynchronize(nullptr);
   // If everything is setup correctly, custom op implementations need not have such explicit synchronization logic as above.
   // To make sure custom kernels and ORT CUDA kernels are implicitly synchronized:
@@ -81,7 +87,7 @@ void MyCustomKernelMultipleDynamicInputs::Compute(OrtKernelContext* context) {
   //     and use the same compute stream to launch the custom op.
   // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
 #else
-  ORT_UNUSED_PARAMETER(compute_stream_);
+  ORT_UNUSED_PARAMETER(ort_);
   for (int64_t i = 0; i < size; i++) {
     out[i] = static_cast<float>(X[i] + Y[i]);
   }
@@ -209,7 +215,7 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
   }
 }
 
-StandaloneCustomKernel::StandaloneCustomKernel(const OrtKernelInfo* k_info, void*) {
+StandaloneCustomKernel::StandaloneCustomKernel(const OrtKernelInfo* k_info) {
   Ort::ConstKernelInfo info{k_info};
   info_copy_ = info.Copy();
 
@@ -407,7 +413,7 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
   Ort::OpAttr strides = Ort::OpAttr("strides", &stride_values, 1, OrtOpAttrType::ORT_OP_ATTR_INTS);
 
   const Ort::OpAttr conv_attrs[] = {std::move(dilations), std::move(group), std::move(kernel_shape),
-    std::move(pads), std::move(strides)};
+                                    std::move(pads), std::move(strides)};
   auto op_conv = Ort::Op::Create(info_copy_, "Conv", "", 11,
                                  type_constraint_names,
                                  type_constraint_values,
@@ -420,7 +426,7 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
                                 -0.34991076588630676f, -0.22024285793304443f, 0.23085933923721313f, -0.4575521945953369f,
                                 -0.17685726284980774f, -0.06030535697937012f, -0.3996139168739319f, -0.19385704398155212f,
                                 -0.10454908013343811f, -0.14503943920135498f, -0.31941986083984375f, -0.15372398495674133f};
-  
+
   auto X = Ort::Value::CreateTensor(mem_info, reinterpret_cast<float*>(X_value.data()), X_value.size(), reinterpret_cast<int64_t*>(X_shape.data()), X_shape.size());
 
   std::vector<int64_t> W_shape = {2, 1, 2};
@@ -456,13 +462,13 @@ void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
   Ort::KernelContext ctx(context);
   auto input_X = ctx.GetInput(0);
   auto input_Y = ctx.GetInput(1);
-  
+
   auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
   auto output = ctx.GetOutput(0, dimensions);
 
   const OrtValue* inputs[2] = {input_X, input_Y};
   OrtValue* outputs[1] = {output};
-  
+
   op_add_.Invoke(context, inputs, 2, outputs, 1);
 #ifndef USE_CUDA
   InvokeTopK(context);

@@ -123,7 +123,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
 
   // Execute the kernel and fetch outputs.
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs, outputs);
-  OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, DefaultLoggingManager().DefaultLogger());
+  OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, nullptr, DefaultLoggingManager().DefaultLogger());
   ASSERT_STATUS_OK(kernel->Compute(&op_kernel_context));
   ASSERT_STATUS_OK(frame.GetOutputs(outputs));
 

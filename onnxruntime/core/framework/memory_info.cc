@@ -6,6 +6,7 @@
 #include "core/framework/memory_info.h"
 #include "core/framework/mem_pattern.h"
 #include "core/framework/ort_value.h"
+#include "core/common/inlined_containers.h"
 
 #include <fstream>
 #include <map>
@@ -91,7 +92,7 @@ void MemoryInfo::RecordTensorDeviceAllocInfo(const OrtValueIndex idx, const OrtV
   tensors_memory_info_map_.at(AllocPlan(idx)->location)[type].AddAllocMemory(idx, mb);
 }
 
-void MemoryInfo::RecordInitializerAllocInfo(const std::unordered_map<int, OrtValue>& tensor_map) {
+void MemoryInfo::RecordInitializerAllocInfo(const InlinedHashMap<int, OrtValue>& tensor_map) {
   for (const auto& item : tensor_map) {
     ORT_ENFORCE(AllocPlan(item.first));
     RecordTensorDeviceAllocInfo(item.first, item.second, MapType::Initializer);

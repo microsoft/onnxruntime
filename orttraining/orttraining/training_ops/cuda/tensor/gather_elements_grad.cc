@@ -77,7 +77,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
   Tensor* dX = context->Output(0, data_shape);
   if (data_shape.Size() == 0) return Status::OK();
 
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes(), Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes(), Stream(context)));
 
   GatherScatterElementsArgs args;
   args.indices_size = indices_shape.Size();
@@ -101,7 +101,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
   }
 
   utils::MLTypeCallDispatcher<MLFloat16, float, double> t_disp(dtype);
-  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(), dY->DataRaw(), indices_tensor->DataRaw(), dX->MutableDataRaw(),
+  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), dY->DataRaw(), indices_tensor->DataRaw(), dX->MutableDataRaw(),
                                                indices_tensor->DataType()->Size(), args);
 }
 
