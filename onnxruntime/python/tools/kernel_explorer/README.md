@@ -26,9 +26,9 @@ rocm_home="/opt/rocm"
         onnxruntime_DEV_MODE=OFF \
     --skip_submodule_sync --skip_tests \
     --use_rocm --rocm_home=${rocm_home} --nccl_home=${rocm_home} \
-    --build_wheel \
+    --build_wheel
 
-cmake --build ${build_dir}/${config} --target kernel_explorer
+cmake --build ${build_dir}/${config} --target kernel_explorer --parallel
 ```
 
 ## Run
