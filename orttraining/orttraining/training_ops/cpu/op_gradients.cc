@@ -9,9 +9,13 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cpu/tensor/transpose.h"
+#include "core/util/math.h"
+#include "core/util/math_cpuonly.h"
+#include <unsupported/Eigen/SpecialFunctions>
 
 namespace onnxruntime {
 namespace contrib {
+
 ONNX_OPERATOR_KERNEL_EX(
     ReluGrad,
     kMSDomain,
