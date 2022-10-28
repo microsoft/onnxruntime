@@ -3,6 +3,7 @@
 
 #include "core/optimizer/selectors_actions/helpers.h"
 
+#include "core/common/narrow.h"
 #include "core/common/span_utils.h"
 #include "core/optimizer/selectors_actions/actions.h"
 
@@ -108,7 +109,7 @@ Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& s
   };
 
   if (move_info.copy_all) {
-    for (int i = 0, end = gsl::narrow<int>(src_defs.size()); i < end; ++i) {
+    for (int i = 0, end = narrow<int>(src_defs.size()); i < end; ++i) {
       ORT_RETURN_IF_ERROR(process(i));
     }
   } else {

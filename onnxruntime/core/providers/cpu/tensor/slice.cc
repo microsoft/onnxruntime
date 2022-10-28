@@ -6,6 +6,7 @@
 #include <limits>
 #include <unordered_map>
 
+#include "core/common/narrow.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
@@ -83,7 +84,7 @@ static void FlattenOutputDims(gsl::span<const int64_t> input_dimensions,
   int num_to_combine = 0;
   for (int64_t i = static_cast<int64_t>(starts.size()) - 1; i >= 0; --i) {
     // if we're keeping all the data for the dimension and not reversing the direction we can potentially combine it
-    if (steps[gsl::narrow<size_t>(i)] == 1 && input_dimensions[gsl::narrow<size_t>(i)] == output_dims[gsl::narrow<size_t>(i)])
+    if (steps[narrow<size_t>(i)] == 1 && input_dimensions[narrow<size_t>(i)] == output_dims[narrow<size_t>(i)])
       ++num_to_combine;
     else
       break;
@@ -182,13 +183,13 @@ Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
                     "Starts and steps shape mismatch");
 
   const auto size = start_tensor.Shape().Size();
-  input_starts.reserve(gsl::narrow<size_t>(size));
-  input_ends.reserve(gsl::narrow<size_t>(size));
+  input_starts.reserve(narrow<size_t>(size));
+  input_ends.reserve(narrow<size_t>(size));
   if (nullptr != axes_tensor)
-    input_axes.reserve(gsl::narrow<size_t>(size));
+    input_axes.reserve(narrow<size_t>(size));
   // Slice V10
   if (nullptr != steps_tensor)
-    input_steps.reserve(gsl::narrow<size_t>(size));
+    input_steps.reserve(narrow<size_t>(size));
 
   // check for type reduction of supported indices types
   constexpr bool int32_enabled = utils::HasType<EnabledIndicesTypes, int32_t>();

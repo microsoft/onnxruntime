@@ -3,8 +3,9 @@
 
 #pragma once
 
-#include <core/common/safeint.h>
 #include "core/common/common.h"
+#include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
 
@@ -36,7 +37,7 @@ class NGramRepeatBlock : public OpKernel {
     int64_t cur_len = input_ids_dims[1];
     ORT_ENFORCE(scores_dims[0] == batch_size);
     int64_t vocab_size = scores_dims[1];
-    
+
     if (cur_len + 1 < ngram_size_) {
       return Status::OK();
     }
@@ -69,7 +70,7 @@ class NGramRepeatBlock : public OpKernel {
 
     concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
     concurrency::ThreadPool::TryParallelFor(
-        tp, gsl::narrow<std::ptrdiff_t>(batch_size) , static_cast<double>(cur_len * ngram_size_),
+        tp, narrow<std::ptrdiff_t>(batch_size), static_cast<double>(cur_len * ngram_size_),
         [&lambda](ptrdiff_t first, ptrdiff_t last) {
           for (auto b = static_cast<int64_t>(first), end = static_cast<int64_t>(last); b < end; ++b) {
             lambda(b);
