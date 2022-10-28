@@ -979,7 +979,7 @@ static Status CopySparseData(size_t n_sparse_elements,
     // entries in format {NNZ, rank}
     ORT_ENFORCE(indices_shape[1] > 0 && static_cast<size_t>(indices_shape[1]) == dims.size());
     auto rank = static_cast<size_t>(indices_shape[1]);
-    const int64_t* cur_index = indices_data.data();
+    auto cur_index = indices_data.begin();
     std::vector<size_t> multipliers;
     multipliers.resize(rank);
 
@@ -1003,7 +1003,7 @@ static Status CopySparseData(size_t n_sparse_elements,
       cur_index += rank;
     }
 
-    ORT_ENFORCE(cur_index == indices_data.data() + indices_data.size());
+    ORT_ENFORCE(cur_index == indices_data.end());
   } else {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Invalid SparseTensor indices. Should be rank 0 or 1. Got:",
                              indices_shape);
