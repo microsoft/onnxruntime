@@ -74,7 +74,7 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
         // jsepUpload(src, dst, size)
         (dataOffset: number, gpuDataId: number, size: number) => {
           // eslint-disable-next-line no-console
-          console.log('jsepUpload');
+          console.log(`jsepUpload: dataOffset=${dataOffset}, gpuDataId=${gpuDataId}, size=${size}`);
           const data = module.HEAPU8.subarray(dataOffset, dataOffset + size);
           backend.upload(gpuDataId, data);
         },
@@ -87,14 +87,7 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
               // eslint-disable-next-line no-console
               console.log(`jsepDownload: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
 
-              // eslint-disable-next-line no-console
-              console.log(`jsepDownload: before download: ${
-                  new Float32Array(data.buffer, data.byteOffset, data.byteLength).join(',')}`);
-
               await backend.download(gpuDataId, data);
-              // eslint-disable-next-line no-console
-              console.log(`jsepDownload: after download: ${
-                  new Float32Array(data.buffer, data.byteOffset, data.byteLength).join(',')}`);
             },
 
         // jsepCreateKernel
@@ -105,8 +98,6 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
 
         // jsepRun
         (kernel: number, contextDataOffset: number) => {
-          // eslint-disable-next-line no-console
-          console.log('jsepRun');
           const context = new OpKernelContext(module, backend, contextDataOffset);
           return backend.computeKernel(kernel, context);
         });

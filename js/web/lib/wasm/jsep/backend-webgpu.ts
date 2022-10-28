@@ -25,7 +25,8 @@ export class WebGpuBackend {
   gpuDataManager: GpuDataManager;
   programManager: ProgramManager;
 
-  kernels: Map<number, [RunFunction, unknown]>;
+  // TODO: remove value[0]. the string is only for debug
+  kernels: Map<number, [string, RunFunction, unknown]>;
 
   commandEncoder: GPUCommandEncoder|null = null;
   computePassEncoder: GPUComputePassEncoder|null = null;
@@ -164,7 +165,7 @@ export class WebGpuBackend {
     if (op.length > 1 && typeof op[1] !== 'undefined') {
       processedAttribute = op[1](attribute);
     }
-    this.kernels.set(kernelId, [op[0], processedAttribute]);
+    this.kernels.set(kernelId, [name, op[0], processedAttribute]);
   }
 
   releaseKernel(kernelId: number): void {
@@ -176,7 +177,10 @@ export class WebGpuBackend {
     if (!kernel) {
       throw new Error(`kernel not created: ${kernelId}`);
     }
-    const [kernelEntry, attributes] = kernel;
+    const [name, kernelEntry, attributes] = kernel;
+
+    // eslint-disable-next-line no-console
+    console.log(`[JS] Start to run kernel "${name}"...`);
     return kernelEntry(context, attributes);
   }
 }
