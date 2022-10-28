@@ -127,23 +127,23 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def generate_id(list, package_name):
-    list.append("<id>" + package_name + "</id>")
+def generate_id(line_list, package_name):
+    line_list.append("<id>" + package_name + "</id>")
 
 
-def generate_version(list, package_version):
-    list.append("<version>" + package_version + "</version>")
+def generate_version(line_list, package_version):
+    line_list.append("<version>" + package_version + "</version>")
 
 
-def generate_authors(list, authors):
-    list.append("<authors>" + authors + "</authors>")
+def generate_authors(line_list, authors):
+    line_list.append("<authors>" + authors + "</authors>")
 
 
-def generate_owners(list, owners):
-    list.append("<owners>" + owners + "</owners>")
+def generate_owners(line_list, owners):
+    line_list.append("<owners>" + owners + "</owners>")
 
 
-def generate_description(list, package_name):
+def generate_description(line_list, package_name):
     description = ""
 
     if package_name == "Microsoft.AI.MachineLearning":
@@ -153,40 +153,38 @@ def generate_description(list, package_name):
             "This package contains native shared library artifacts " "for all supported platforms of ONNX Runtime."
         )
 
-    list.append("<description>" + description + "</description>")
+    line_list.append("<description>" + description + "</description>")
 
 
-def generate_copyright(list, copyright):
-    list.append("<copyright>" + copyright + "</copyright>")
+def generate_copyright(line_list, copyright):
+    line_list.append("<copyright>" + copyright + "</copyright>")
 
 
-def generate_tags(list, tags):
-    list.append("<tags>" + tags + "</tags>")
+def generate_tags(line_list, tags):
+    line_list.append("<tags>" + tags + "</tags>")
 
 
-def generate_icon(list, icon_file):
-    list.append("<icon>" + icon_file + "</icon>")
+def generate_icon(line_list, icon_file):
+    line_list.append("<icon>" + icon_file + "</icon>")
 
 
-def generate_license(list):
-    list.append('<license type="file">LICENSE.txt</license>')
+def generate_license(line_list):
+    line_list.append('<license type="file">LICENSE.txt</license>')
 
 
-def generate_project_url(list, project_url):
-    list.append("<projectUrl>" + project_url + "</projectUrl>")
+def generate_project_url(line_list, project_url):
+    line_list.append("<projectUrl>" + project_url + "</projectUrl>")
 
 
-def generate_repo_url(list, repo_url, commit_id):
-    list.append('<repository type="git" url="' + repo_url + '"' + ' commit="' + commit_id + '" />')
+def generate_repo_url(line_list, repo_url, commit_id):
+    line_list.append('<repository type="git" url="' + repo_url + '"' + ' commit="' + commit_id + '" />')
 
 
 def generate_dependencies(xml_text, package_name, version):
-
     dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.9.1"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
-
         # Support .Net Core
         xml_text.append('<group targetFramework="net5.0">')
         xml_text.append(dml_dependency)
@@ -199,7 +197,6 @@ def generate_dependencies(xml_text, package_name, version):
         xml_text.append('<group targetFramework="native">')
         xml_text.append(dml_dependency)
         xml_text.append("</group>")
-
         xml_text.append("</dependencies>")
     else:
         include_dml = package_name == "Microsoft.ML.OnnxRuntime.DirectML"
@@ -257,30 +254,30 @@ def get_env_var(key):
     return os.environ.get(key)
 
 
-def generate_release_notes(list, dependency_sdk_info):
-    list.append("<releaseNotes>")
-    list.append("Release Def:")
+def generate_release_notes(line_list, dependency_sdk_info):
+    line_list.append("<releaseNotes>")
+    line_list.append("Release Def:")
 
     branch = get_env_var("BUILD_SOURCEBRANCH")
-    list.append("\t" + "Branch: " + (branch if branch is not None else ""))
+    line_list.append("\t" + "Branch: " + (branch if branch is not None else ""))
 
     version = get_env_var("BUILD_SOURCEVERSION")
-    list.append("\t" + "Commit: " + (version if version is not None else ""))
+    line_list.append("\t" + "Commit: " + (version if version is not None else ""))
 
     build_id = get_env_var("BUILD_BUILDID")
-    list.append(
+    line_list.append(
         "\t"
         + "Build: https://aiinfra.visualstudio.com/Lotus/_build/results?buildId="
         + (build_id if build_id is not None else "")
     )
 
     if dependency_sdk_info:
-        list.append("Dependency SDK: " + dependency_sdk_info)
+        line_list.append("Dependency SDK: " + dependency_sdk_info)
 
-    list.append("</releaseNotes>")
+    line_list.append("</releaseNotes>")
 
 
-def generate_metadata(list, args):
+def generate_metadata(line_list, args):
     metadata_list = ["<metadata>"]
     generate_id(metadata_list, args.package_name)
     generate_version(metadata_list, args.package_version)
@@ -293,16 +290,14 @@ def generate_metadata(list, args):
     generate_license(metadata_list)
     generate_project_url(metadata_list, "https://github.com/Microsoft/onnxruntime")
     generate_repo_url(metadata_list, "https://github.com/Microsoft/onnxruntime.git", args.commit_id)
-    generate_dependencies(
-        metadata_list, args.package_name, args.package_version
-    )
+    generate_dependencies(metadata_list, args.package_name, args.package_version)
     generate_release_notes(metadata_list, args.sdk_info)
     metadata_list.append("</metadata>")
 
-    list += metadata_list
+    line_list += metadata_list
 
 
-def generate_files(list, args):
+def generate_files(line_list, args):
     files_list = ["<files>"]
 
     is_cpu_package = args.package_name in ["Microsoft.ML.OnnxRuntime", "Microsoft.ML.OnnxRuntime.OpenMP"]
@@ -1002,7 +997,7 @@ def generate_files(list, args):
     )
     files_list.append("</files>")
 
-    list += files_list
+    line_list += files_list
 
 
 def generate_nuspec(args):
