@@ -594,7 +594,7 @@ TEST_P(ModelTest, Run) {
     BrokenTest t = {ToUTF8String(test_case_name), ""};
     auto iter = broken_tests.find(t);
     auto opset_version = model_info->GetNominalOpsetVersion();
-    if (iter != broken_tests.end() && 
+    if (iter != broken_tests.end() &&
         (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
          iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end() )) {
       SkipTest("It's in broken_tests");
@@ -842,6 +842,9 @@ TEST_P(ModelTest, Run) {
 #endif
 #ifdef USE_ARMNN
   provider_names.push_back(ORT_TSTR("armnn"));
+#endif
+#ifdef USE_DML
+  provider_names.push_back(ORT_TSTR("dml"));
 #endif
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
