@@ -18,6 +18,8 @@ class EmbedLayerNorm final : public CudaKernel {
 
  private:
   float epsilon_;
+  void* random_data_1_ = nullptr;
+  void* random_data_2_ = nullptr;
 };
 
 }  // namespace cuda
