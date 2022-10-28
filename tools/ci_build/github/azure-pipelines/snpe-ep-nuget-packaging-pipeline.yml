@@ -3,6 +3,11 @@ parameters:
   displayName: Snpe Windows SDK path
   type: string
   default: C:\data\local\SNPE\snpe_win-1.61.46.3724
+
+- name: snpe_sdk_info
+  displayName: Snpe SDK Version Information
+  type: string
+  default: snpe_win-1.61.46
   
 - name: ort_package_version
   displayName: OnnxRuntime Nuget package version
@@ -23,11 +28,6 @@ parameters:
   displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
   type: boolean
   default: false
-
-- name: snpe_sdk_info
-  displayName: Snpe SDK Version Information
-  type: string
-  default: snpe_win-1.61.46
 
 jobs:
 
