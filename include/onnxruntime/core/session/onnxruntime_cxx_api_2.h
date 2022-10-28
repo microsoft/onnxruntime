@@ -15,6 +15,29 @@
 // by value. They can only be created by other API methods, never by make_unique or new (it won't work, so do not worry
 // about accidentally doing the wrong thing).
 
+/* Example usage:
+
+NOTE: The std::unique_ptr<t>s could just be 'auto', it's expanded for clarity
+
+Ort::InitApi();
+std::unique_ptr<OrtEnv> p_env=OrtEnv::Create(ORT_LOGGING_LEVEL_WARNING, "test");
+
+std::unique_ptr<OrtMemoryInfo> p_memory_info = OrtMemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+std::unique_ptr<OrtValue> p_input_tensor = OrtValue::CreateTensor<float>(*p_memory_info, input_image_.data(), input_image_.size(), input_shape_.data(), input_shape_.size());
+std::unique_ptr<OrtValue> _output_tensor = OrtValue::CreateTensor<float>(*p_memory_info, results_.data(), results_.size(), output_shape_.data(), output_shape_.size());
+
+std::unique_ptr<OrtSession> p_session_ = OrtSession::Create(*p_env, L"model.onnx", nullptr)};
+
+const char *input_names[] = { "Input3" };
+const char *output_names[] = { "Plus214_Output_0" };
+
+OrtValue *input=p_input_tensor_.get();
+OrtValue *output=p_output_tensor_.get();
+
+p_session_->Run(nullptr, input_names, &input, 1, output_names, &output, 1);
+
+*/
+
 #pragma once
 #include "onnxruntime_c_api.h"
 #include <memory>
@@ -22,7 +45,7 @@
 #include <vector>
 #include <unordered_map>
 
-/** \brief All C++ Onnxruntime APIs are defined inside this namespace
+/** \brief Free functions and a few helpers are defined inside this namespace. Otherwise all types are the C API types
  *
  */
 namespace Ort {
@@ -112,6 +135,23 @@ struct Abstract
   void operator=(const Abstract&) = delete;
 };
 
+/** \brief Wrapper around ::OrtAllocator
+*
+* Defined inside the Ort namespace because 'OrtAllocator' is already defined as a struct in the C header (just without methods)
+*/
+struct Allocator : OrtAllocator {
+
+  static Allocator& GetWithDefaultOptions(); ///< ::OrtAllocator default instance that is owned by Onnxruntime
+  static std::unique_ptr<Allocator> Create(const OrtSession& session, const OrtMemoryInfo*);
+
+  void* Alloc(size_t size);
+  void Free(void* p);
+  const OrtMemoryInfo& GetInfo() const;
+
+  static void operator delete(void* p) { Ort::api->ReleaseAllocator(reinterpret_cast<OrtAllocator*>(p)); }
+  Ort::Abstract make_abstract;
+};
+
 }
 
 /** \brief The Status that holds ownership of OrtStatus received from C API
@@ -161,6 +201,7 @@ struct OrtEnv {
  *
  */
 struct OrtCustomOpDomain {
+
   /// \brief Wraps OrtApi::CreateCustomOpDomain
   static std::unique_ptr<OrtCustomOpDomain> Create(const char* domain);
 
@@ -429,17 +470,9 @@ struct OrtTensorTypeAndShapeInfo {
   ONNXTensorElementDataType GetElementType() const;  ///< Wraps OrtApi::GetTensorElementType
   size_t GetElementCount() const;                    ///< Wraps OrtApi::GetTensorShapeElementCount
 
-  size_t GetDimensionsCount() const;  ///< Wraps OrtApi::GetDimensionsCount
-
-  /** \deprecated use GetShape() returning std::vector
-   * [[deprecated]]
-   * This interface is unsafe to use
-   */
-  [[deprecated("use GetShape()")]] void GetDimensions(int64_t* values, size_t values_count) const;  ///< Wraps OrtApi::GetDimensions
-
-  void GetSymbolicDimensions(const char** values, size_t values_count) const;  ///< Wraps OrtApi::GetSymbolicDimensions
-
   std::vector<int64_t> GetShape() const;  ///< Uses GetDimensionsCount & GetDimensions to return a std::vector of the shape
+
+  std::vector<const char*> GetSymbolicDimensions() const;  ///< Wraps OrtApi::GetSymbolicDimensions
 
   static void operator delete(void* p) { Ort::api->ReleaseTensorTypeAndShapeInfo(reinterpret_cast<OrtTensorTypeAndShapeInfo*>(p)); }
   Ort::Abstract make_abstract;
@@ -876,23 +909,6 @@ struct OrtValue
   Ort::Abstract make_abstract;
 };
 
-/** \brief Wrapper around ::OrtAllocator
-*
-* Named OrtAllocator2 because OrtAllocator is already defined, so must wrap it through inheritance
-*/
-struct OrtAllocator2 : OrtAllocator {
-
-  static OrtAllocator2& GetWithDefaultOptions(); ///< ::OrtAllocator default instance that is owned by Onnxruntime
-  static std::unique_ptr<OrtAllocator2> Create(const OrtSession& session, const OrtMemoryInfo*);
-
-  void* Alloc(size_t size);
-  void Free(void* p);
-  const OrtMemoryInfo& GetInfo() const;
-
-  static void operator delete(void* p) { Ort::api->ReleaseAllocator(reinterpret_cast<OrtAllocator*>(p)); }
-  Ort::Abstract make_abstract;
-};
-
 /** \brief Wrapper around ::OrtIoBinding
  *
  */
@@ -966,18 +982,18 @@ struct OrtKernelContext {
   Ort::Abstract make_abstract;
 };
 
-struct OrtKernelInfo{
+struct OrtKernelInfo {
 
   std::unique_ptr<OrtKernelInfo> Clone() const;
 
-  template <typename T>  // R is only implemented for float, int64_t, and string
+  template <typename T>  // T is only implemented for float, int64_t, and string
   T GetAttribute(const char* name) const {
     T val;
     GetAttr(name, val);
     return val;
   }
 
-  template <typename T>  // R is only implemented for std::vector<float>, std::vector<int64_t>
+  template <typename T>  // T is only implemented for std::vector<float>, std::vector<int64_t>
   std::vector<T> GetAttributes(const char* name) const {
     std::vector<T> result;
     GetAttrs(name, result);

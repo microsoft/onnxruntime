@@ -98,6 +98,34 @@ inline std::vector<std::string> GetAvailableProviders() {
   return available_providers;
 }
 
+inline void* Allocator::Alloc(size_t size) {
+  void* out;
+  ThrowOnError(api->AllocatorAlloc(this, size, &out));
+  return out;
+}
+
+inline void Allocator::Free(void* p) {
+  ThrowOnError(api->AllocatorFree(this, p));
+}
+
+inline const OrtMemoryInfo& Allocator::GetInfo() const {
+  const OrtMemoryInfo* out;
+  ThrowOnError(api->AllocatorGetInfo(this, &out));
+  return *out;
+}
+
+inline Allocator& Allocator::GetWithDefaultOptions() {
+  OrtAllocator* p;
+  ThrowOnError(api->GetAllocatorWithDefaultOptions(&p));
+  return *static_cast<Allocator*>(p);
+}
+
+inline std::unique_ptr<Allocator> Allocator::Create(const OrtSession& sess, const OrtMemoryInfo* mem_info) {
+  OrtAllocator* p;
+  ThrowOnError(api->CreateAllocator(&sess, mem_info, &p));
+  return std::unique_ptr<Allocator>{static_cast<Ort::Allocator*>(p)};
+}
+
 } // namespace Ort
 
 inline std::unique_ptr<OrtStatus> OrtStatus::Create(OrtErrorCode code, const std::string& what) {
@@ -111,34 +139,6 @@ inline std::string OrtStatus::GetErrorMessage() const {
 
 inline OrtErrorCode OrtStatus::GetErrorCode() const {
   return Ort::api->GetErrorCode(this);
-}
-
-inline void* OrtAllocator2::Alloc(size_t size) {
-  void* out;
-  Ort::ThrowOnError(Ort::api->AllocatorAlloc(this, size, &out));
-  return out;
-}
-
-inline void OrtAllocator2::Free(void* p) {
-  Ort::ThrowOnError(Ort::api->AllocatorFree(this, p));
-}
-
-inline const OrtMemoryInfo& OrtAllocator2::GetInfo() const {
-  const OrtMemoryInfo* out;
-  Ort::ThrowOnError(Ort::api->AllocatorGetInfo(this, &out));
-  return *out;
-}
-
-inline OrtAllocator2 &OrtAllocator2::GetWithDefaultOptions() {
-  OrtAllocator *p;
-  Ort::ThrowOnError(Ort::api->GetAllocatorWithDefaultOptions(&p));
-  return *static_cast<OrtAllocator2*>(p);
-}
-
-inline std::unique_ptr<OrtAllocator2> OrtAllocator2::Create(const OrtSession& sess, const OrtMemoryInfo* mem_info) {
-  OrtAllocator *p;
-  Ort::ThrowOnError(Ort::api->CreateAllocator(&sess, mem_info, &p));
-  return std::unique_ptr<OrtAllocator2>{static_cast<OrtAllocator2*>(p)};
 }
 
 inline std::string OrtMemoryInfo::GetAllocatorName() const {
@@ -777,22 +777,20 @@ inline size_t OrtTensorTypeAndShapeInfo::GetElementCount() const {
   return static_cast<size_t>(out);
 }
 
-inline size_t OrtTensorTypeAndShapeInfo::GetDimensionsCount() const {
+inline size_t GetDimensionsCount(const OrtTensorTypeAndShapeInfo *p) {
   size_t out;
-  Ort::ThrowOnError(Ort::api->GetDimensionsCount(this, &out));
+  Ort::ThrowOnError(Ort::api->GetDimensionsCount(p, &out));
   return out;
 }
 
-inline void OrtTensorTypeAndShapeInfo::GetDimensions(int64_t* values, size_t values_count) const {
-  Ort::ThrowOnError(Ort::api->GetDimensions(this, values, values_count));
-}
-
-inline void OrtTensorTypeAndShapeInfo::GetSymbolicDimensions(const char** values, size_t values_count) const {
-  Ort::ThrowOnError(Ort::api->GetSymbolicDimensions(this, values, values_count));
+inline std::vector<const char*> OrtTensorTypeAndShapeInfo::GetSymbolicDimensions() const {
+  std::vector<const char*> out(GetDimensionsCount(this), nullptr);
+  Ort::ThrowOnError(Ort::api->GetSymbolicDimensions(this, out.data(), out.size()));
+  return out;
 }
 
 inline std::vector<int64_t> OrtTensorTypeAndShapeInfo::GetShape() const {
-  std::vector<int64_t> out(GetDimensionsCount(), 0);
+  std::vector<int64_t> out(GetDimensionsCount(this), 0);
   Ort::ThrowOnError(Ort::api->GetDimensions(this, out.data(), out.size()));
   return out;
 }
