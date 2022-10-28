@@ -748,13 +748,6 @@ inline AllocatedStringPtr ConstSessionImpl<T>::GetOverridableInitializerNameAllo
 }
 
 template <typename T>
-inline AllocatedStringPtr ConstSessionImpl<T>::EndProfilingAllocated(OrtAllocator* allocator) const {
-  char* out;
-  ThrowOnError(GetApi().SessionEndProfiling(this->p_, allocator, &out));
-  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
-}
-
-template <typename T>
 inline uint64_t ConstSessionImpl<T>::GetProfilingStartTimeNs() const {
   uint64_t out;
   ThrowOnError(GetApi().SessionGetProfilingStartTimeNs(this->p_, &out));
@@ -812,6 +805,13 @@ inline void SessionImpl<T>::Run(const RunOptions& run_options, const char* const
 template <typename T>
 inline void SessionImpl<T>::Run(const RunOptions& run_options, const IoBinding& io_binding) {
   ThrowOnError(GetApi().RunWithBinding(this->p_, run_options, io_binding));
+}
+
+template <typename T>
+inline AllocatedStringPtr SessionImpl<T>::EndProfilingAllocated(OrtAllocator* allocator) {
+  char* out;
+  ThrowOnError(GetApi().SessionEndProfiling(this->p_, allocator, &out));
+  return AllocatedStringPtr(out, detail::AllocatedFree(allocator));
 }
 
 }  // namespace detail
