@@ -5,6 +5,7 @@
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "embed_layer_norm.h"
 #include "embed_layer_norm_impl.h"
+#include "core/providers/cuda/tensor/scatter_nd_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -61,25 +62,32 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   int sequence_length = static_cast<int>(input_dims[1]);
   size_t element_size = sizeof(T);
 
-  return LaunchEmbedLayerNormKernel(
-          Stream(),
-          output->MutableData<T>(),
-          mask_index->MutableData<int32_t>(),
-          input_ids->Data<int32_t>(),
-          nullptr == segment_ids ? nullptr : segment_ids->Data<int32_t>(),
-          nullptr == mask ? nullptr : mask->Data<int32_t>(),
-          gamma->Data<T>(),
-          beta->Data<T>(),
-          word_embedding->Data<T>(),
-          position_embedding->Data<T>(),
-          nullptr == segment_embedding ? nullptr : segment_embedding->Data<T>(),
-          epsilon_,
-          static_cast<int>(hidden_size),
-          batch_size,
-          sequence_length,
-          element_size,
-          embedding_sum == nullptr ? nullptr : embedding_sum->MutableData<T>(),
-          position_ids == nullptr ? nullptr : position_ids->Data<int32_t>());
+  auto status = LaunchEmbedLayerNormKernel(
+      Stream(),
+      output->MutableData<T>(),
+      mask_index->MutableData<int32_t>(),
+      input_ids->Data<int32_t>(),
+      nullptr == segment_ids ? nullptr : segment_ids->Data<int32_t>(),
+      nullptr == mask ? nullptr : mask->Data<int32_t>(),
+      gamma->Data<T>(),
+      beta->Data<T>(),
+      word_embedding->Data<T>(),
+      position_embedding->Data<T>(),
+      nullptr == segment_embedding ? nullptr : segment_embedding->Data<T>(),
+      epsilon_,
+      static_cast<int>(hidden_size),
+      batch_size,
+      sequence_length,
+      element_size,
+      embedding_sum == nullptr ? nullptr : embedding_sum->MutableData<T>(),
+      position_ids == nullptr ? nullptr : position_ids->Data<int32_t>());
+
+  ORT_IGNORE_RETURN_VALUE(status);
+
+  std::cout << "EmbedLayerNorm randomization starts" << std::endl;
+  cuda::cudaRandomUniform(Stream(), output->MutableDataRaw(), static_cast<int>(output->Shape().Size()));
+
+  return Status::OK();
 }
 
 }  // namespace cuda
