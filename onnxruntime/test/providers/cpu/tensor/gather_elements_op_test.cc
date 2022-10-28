@@ -384,7 +384,7 @@ TEST(GatherElementsOpTest, IndicesOutOfBounds) {
   // skip TensorRT because it doesn't support out of bounds indices
   test.Run(OpTester::ExpectResult::kExpectFailure, "",
            {kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
-            kTensorrtExecutionProvider});
+            kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(GatherElementsOpTest, BigIndices) {

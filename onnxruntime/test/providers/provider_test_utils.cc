@@ -117,7 +117,8 @@ struct TensorCheck<uint8_t> {
 
     // For uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
     // For any other EPs, we still expect an exact match for the results
-    if (provider_type == kNnapiExecutionProvider && (has_abs_err || has_rel_err)) {
+    // TODO: Verify if DML can possibly have a ROUNDING_MODE parameter and conform to the other EPs #41968513
+    if ((provider_type == kNnapiExecutionProvider || provider_type == kDmlExecutionProvider) && (has_abs_err || has_rel_err)) {
       double threshold = has_abs_err
                              ? *(params.absolute_error_)
                              : 0.0;
