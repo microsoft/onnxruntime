@@ -67,7 +67,7 @@
 #endif
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
-#include "core/framework/execution_context.h"
+#include "core/framework/stream_execution_context.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
@@ -1796,9 +1796,9 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
     }
 #endif
     ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
-                                                        run_logger, state, cache, run_options.terminate, 
+                                                        run_logger, state, cache, run_options.terminate,
                                                         partial_graph_index,
-                                                        /*parent stream*/nullptr));
+                                                        /*parent stream*/ nullptr));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

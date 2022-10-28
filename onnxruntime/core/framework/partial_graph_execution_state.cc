@@ -3,7 +3,7 @@
 #ifdef ENABLE_TRAINING
 #include "core/framework/partial_graph_execution_state.h"
 #include "core/framework/session_state.h"
-#include "core/framework/execution_context.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/execution_frame.h"
 
 namespace onnxruntime {
@@ -56,12 +56,12 @@ DeviceStreamCollection& PartialGraphExecutionState::GetDeviceStreamCollection(co
   return *device_stream_collection_;
 }
 
-ExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
-                                                                  gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
-                                                                  const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                                                  const SessionState& session_state,
-                                                                  const logging::Logger& sess_logger,
-                                                                  const DeviceStreamCollection& device_streams) {
+StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
+                                                                        gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
+                                                                        const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                                                        const SessionState& session_state,
+                                                                        const logging::Logger& sess_logger,
+                                                                        const DeviceStreamCollection& device_streams) {
   if (execution_context_ == nullptr) {
     auto* execution_plan = session_state.GetExecutionPlan();
     LOGS(sess_logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();
@@ -71,7 +71,7 @@ ExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<cons
         valid_streams++;
     }
 
-    execution_context_ = std::make_unique<ExecutionContext>(
+    execution_context_ = std::make_unique<StreamExecutionContext>(
         session_state,
         valid_streams,
         execution_plan->notification_owners,

@@ -11,7 +11,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/platform/env.h"
 #include "core/framework/data_types.h"
-#include "core/framework/execution_context.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel.h"
@@ -135,8 +135,9 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
   BarrierStep(size_t id) : SequentialExecutionPlan::ExecutionStep(),
                            barrier_id{id} {}
 
-  Status Execute(ExecutionContext* ctx,
+  Status Execute(StreamExecutionContext* ctx,
                  size_t /*stream_idx*/,
+                 SessionScope& /*session_scope*/,
                  const bool& /*terminate_flag*/,
                  bool& continue_flag) override {
     continue_flag = ctx->DecCountDownBarrier(barrier_id);
@@ -159,8 +160,9 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
                                                                    wait_handle(handle),
                                                                    notification_idx(idx) {}
 
-  Status Execute(ExecutionContext* ctx,
+  Status Execute(StreamExecutionContext* ctx,
                  size_t stream_idx,
+                 SessionScope& /*session_scope*/,
                  const bool& /*terminate_flag*/,
                  bool& continue_flag) override {
     ORT_ENFORCE(wait_handle, "WaitOnEPStep.wait_handle is null");
@@ -190,8 +192,9 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
   LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(),
                                       node_index{index} {}
 
-  Status Execute(ExecutionContext* ctx,
+  Status Execute(StreamExecutionContext* ctx,
                  size_t stream_idx,
+                 SessionScope& session_scope,
                  const bool& terminate_flag,
                  bool& continue_flag) override {
     if (!continue_flag) {
@@ -205,7 +208,7 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
       return Status::OK();
     }
 #endif
-    onnxruntime::Status status = ExecuteKernel(*ctx, node_index, stream_idx, terminate_flag);
+    onnxruntime::Status status = ExecuteKernel(*ctx, node_index, stream_idx, terminate_flag, session_scope);
     continue_flag = status.IsOK();
     return status;
   }
@@ -225,8 +228,9 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
   ActivateNotificationStep(NotificationIndex notification_index) : SequentialExecutionPlan::ExecutionStep(),
                                                                    notification_idx(notification_index) {}
 
-  Status Execute(ExecutionContext* ctx,
+  Status Execute(StreamExecutionContext* ctx,
                  size_t stream_idx,
+                 SessionScope& /*session_scope*/,
                  const bool& /*terminate_flag*/,
                  bool& continue_flag) override {
     if (ctx->GetNotification(notification_idx)) {
@@ -252,11 +256,12 @@ class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
   TriggerDownstreamStep(size_t trigger_point_index) : SequentialExecutionPlan::ExecutionStep(),
                                                       trigger_point_index(trigger_point_index) {}
 
-  Status Execute(ExecutionContext* ctx,
+  Status Execute(StreamExecutionContext* ctx,
                  size_t /*stream_idx*/,
+                 SessionScope& session_scope,
                  const bool& terminate_flag,
                  bool& continue_flag) override {
-    ScheduleDownstream(*ctx, trigger_point_index, ctx->SingleThreadMode(), terminate_flag);
+    ScheduleDownstream(*ctx, trigger_point_index, ctx->SingleThreadMode(), terminate_flag, session_scope);
     continue_flag = true;
     return Status::OK();
   }
@@ -1454,10 +1459,10 @@ class PlannerImpl {
 
   Status ComputeReusePlan() {
     auto* backup_context = context_;
-    ParallelPlannerContext parallel_context;
+    SequentialPlannerContext no_mem_reuse_context(ExecutionMode::ORT_PARALLEL, ExecutionOrder::DEFAULT, false);
     if (!IsSingleStream()) {
       // use parallel execution context to generate a baseline first (no memory sharing)
-      context_ = &parallel_context;
+      context_ = &no_mem_reuse_context;
     }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     // copy the use counts to a vector, before computing reuse
@@ -1862,7 +1867,7 @@ class PlannerImpl {
 
   void PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
                             const std::string& partition_config_file) {
-    auto partitioner = INodePartitioner::CreateNodePartitioner(logger, partition_config_file);
+    auto partitioner = IGraphPartitioner::CreateNodePartitioner(logger, partition_config_file);
     auto status = partitioner->GetStatus();
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     partitioner->PartitionNodes(graph_viewer_, execution_providers, stream_nodes_);
@@ -2308,15 +2313,15 @@ Status SequentialPlanner::CreatePlan(
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// TODO: update the keyword in the config file
+InlinedHashMap<std::string, IGraphPartitioner::GraphPartitioningStrategy> IGraphPartitioner::name_type_map = {{std::string{"DummyPartition"}, GraphPartitioningStrategy::DeviceBasedPartition}};
 
-InlinedHashMap<std::string, INodePartitioner::NodePartitionerType> INodePartitioner::name_type_map = {{std::string{"DummyPartition"}, NodePartitionerType::DummyPartition}};
-
-class DummyPartitioner : public INodePartitioner {
+class DeviceBasedPartitioner : public IGraphPartitioner {
  public:
-  DummyPartitioner(const logging::Logger& logger, const std::string& configuration_file) : INodePartitioner(logger, configuration_file) {
+  DeviceBasedPartitioner(const logging::Logger& logger, const std::string& configuration_file) : IGraphPartitioner(logger, configuration_file) {
     Initialize();
   }
-  ~DummyPartitioner() {
+  ~DeviceBasedPartitioner() {
     if (need_dump_) {
       DumpPartition();
     }
@@ -2335,8 +2340,8 @@ class DummyPartitioner : public INodePartitioner {
   bool need_dump_ = false;
   static const std::string name;
 };
-
-const std::string DummyPartitioner::name = "DummyPartition";
+// TODO: update the keyword
+const std::string DeviceBasedPartitioner::name = "DummyPartition";
 
 /*
 Format of the configuration file for dummpy partition:
@@ -2355,7 +2360,7 @@ line 8: node_name,node_name,node_name ...        # list of nodes on 2nd stream o
   if_stream.close();                                 \
   return;
 
-void DummyPartitioner::Initialize() {
+void DeviceBasedPartitioner::Initialize() {
   if (configuration_file_.empty()) {
     return;
   }
@@ -2366,7 +2371,7 @@ void DummyPartitioner::Initialize() {
       EXIT_ON_ERR("configuration file should start with a line of partition name");
     }
     if (std::getline(if_stream, line)) {
-      auto columns = INodePartitioner::Split(line, ':');
+      auto columns = IGraphPartitioner::Split(line, ':');
       if (columns.size() != 2 || columns[0] != "Devices") {
         EXIT_ON_ERR("2nd line of configuration file should be of format: ExecutionProviders,<an integer>");
       }
@@ -2376,7 +2381,7 @@ void DummyPartitioner::Initialize() {
       }
       for (int i = 0; i < eps; ++i) {
         if (std::getline(if_stream, line)) {
-          columns = INodePartitioner::Split(line, ':');
+          columns = IGraphPartitioner::Split(line, ':');
           if (columns.size() != 2) {
             EXIT_ON_ERR("invalid configuration - failed to read execution provider stream setting")
           }
@@ -2388,7 +2393,7 @@ void DummyPartitioner::Initialize() {
         num_streams_ += num_current_stream;
       }
       while (getline(if_stream, line)) {
-        node_names_by_stream_.push_back(INodePartitioner::Split(line, ','));
+        node_names_by_stream_.push_back(IGraphPartitioner::Split(line, ','));
         if (node_names_by_stream_.back().empty()) {
           EXIT_ON_ERR("invalid configuration - the line of node names is empty");
         }
@@ -2403,7 +2408,7 @@ void DummyPartitioner::Initialize() {
   }
 }
 
-void DummyPartitioner::DumpPartition() const {
+void DeviceBasedPartitioner::DumpPartition() const {
   if (configuration_file_.empty()) {
     return;
   }
@@ -2422,13 +2427,13 @@ void DummyPartitioner::DumpPartition() const {
     }
     of_stream.close();
   } else {
-    LOGS(logger_, WARNING) << "DummyPartitioner failed to dump configuration to file: " << configuration_file_;
+    LOGS(logger_, WARNING) << "DeviceBasedPartitioner failed to dump configuration to file: " << configuration_file_;
   }
 }
 
-void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_viewer,
-                                      const ExecutionProviders& execution_providers,
-                                      std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
+void DeviceBasedPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_viewer,
+                                            const ExecutionProviders& execution_providers,
+                                            std::vector<InlinedVector<NodeIndex>>& stream_nodes) {
   if (!status_.IsOK()) {
     return;  // input configuration has errors, do nothing
   }
@@ -2486,7 +2491,7 @@ void DummyPartitioner::PartitionNodes(const onnxruntime::GraphViewer& graph_view
   }
 }
 
-InlinedVector<std::string> INodePartitioner::Split(const std::string& line, char splitor) {
+InlinedVector<std::string> IGraphPartitioner::Split(const std::string& line, char splitor) {
   InlinedVector<std::string> columns;
   std::string column;
   std::stringstream ss;
@@ -2497,9 +2502,9 @@ InlinedVector<std::string> INodePartitioner::Split(const std::string& line, char
   return columns;
 }
 
-std::unique_ptr<INodePartitioner> INodePartitioner::CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file) {
+std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateNodePartitioner(const logging::Logger& logger, const std::string& configuration_file) {
   std::string cfg_file = configuration_file;
-  INodePartitioner::NodePartitionerType partitioner_type = INodePartitioner::NodePartitionerType::DummyPartition;
+  IGraphPartitioner::GraphPartitioningStrategy partitioner_type = IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
   if (!cfg_file.empty()) {
     std::ifstream if_stream(cfg_file);
     if (if_stream.is_open()) {
@@ -2516,9 +2521,9 @@ std::unique_ptr<INodePartitioner> INodePartitioner::CreateNodePartitioner(const 
       of_stream.close();
     }
   }  // else means configuration will not be written to a file
-  std::unique_ptr<INodePartitioner> node_partitioner;
-  if (partitioner_type == INodePartitioner::NodePartitionerType::DummyPartition) {
-    node_partitioner.reset(new DummyPartitioner(logger, cfg_file));
+  std::unique_ptr<IGraphPartitioner> node_partitioner;
+  if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition) {
+    node_partitioner.reset(new DeviceBasedPartitioner(logger, cfg_file));
   }
 
   return node_partitioner;

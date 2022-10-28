@@ -12,7 +12,7 @@
 
 namespace onnxruntime {
 
-class ExecutionContext;
+class StreamExecutionContext;
 class DeviceStreamCollection;
 
 struct PartialGraphExecutionState {
@@ -30,16 +30,16 @@ struct PartialGraphExecutionState {
 
   ProgramRegion& GetProgramRegions(const SessionState& session_state);
 
-  ExecutionContext& GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
-                                        gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
-                                        const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                        const SessionState& session_state,
-                                        const logging::Logger& sess_logger,
-                                        const DeviceStreamCollection& device_streams);
+  StreamExecutionContext& GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
+                                              gsl::span<const int>& fetch_mlvalue_idxs, std::vector<OrtValue>& fetches,
+                                              const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                              const SessionState& session_state,
+                                              const logging::Logger& sess_logger,
+                                              const DeviceStreamCollection& device_streams);
   DeviceStreamCollection& GetDeviceStreamCollection(const SessionState& session_state);
 
  private:
-  std::unique_ptr<ExecutionContext> execution_context_;
+  std::unique_ptr<StreamExecutionContext> execution_context_;
   size_t program_counter_start_{0};
   size_t program_counter_end_{0};
 

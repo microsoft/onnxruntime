@@ -1,4 +1,6 @@
-#include "core/framework/execution_context.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/bfc_arena.h"
@@ -7,30 +9,28 @@
 
 namespace onnxruntime {
 
-ExecutionContext::ExecutionContext(const SessionState& sess_state,
-                                   int32_t num_streams,
-                                   gsl::span<const size_t> notification_owners,
-                                   gsl::span<const int> feed_mlvalue_idxs,
-                                   gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
-                                   std::vector<OrtValue>& fetches,
-                                   const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                                   size_t num_barriers,
-                                   const logging::Logger& sess_logger,
-                                   const DeviceStreamCollection& device_stream_map,
-                                   bool single_thread_mode) : session_state_(&sess_state),
-                                                              frame_(feed_mlvalue_idxs,
-                                                                     feeds,
-                                                                     fetch_mlvalue_idxs,
-                                                                     fetches,
-                                                                     fetch_allocators,
-                                                                     sess_state,
-                                                                     device_stream_map.GetStreams()),
-                                                              logger_(&sess_logger),
-                                                              release_plan_(
-                                                                  new std::atomic_int[sess_state.GetExecutionPlan()->release_actions.size()]),
-                                                              device_stream_map_(device_stream_map),
-                                                              count_down_barriers_(num_barriers),
-                                                              single_thread_mode_(single_thread_mode) {
+StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
+                                                int32_t num_streams,
+                                                gsl::span<const size_t> notification_owners,
+                                                gsl::span<const int> feed_mlvalue_idxs,
+                                                gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                                                std::vector<OrtValue>& fetches,
+                                                const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                                                size_t num_barriers,
+                                                const logging::Logger& sess_logger,
+                                                const DeviceStreamCollection& device_stream_map,
+                                                bool single_thread_mode) : session_state_(&sess_state),
+                                                                           frame_(feed_mlvalue_idxs,
+                                                                                  feeds,
+                                                                                  fetch_mlvalue_idxs,
+                                                                                  fetches,
+                                                                                  fetch_allocators,
+                                                                                  sess_state,
+                                                                                  device_stream_map.GetStreams()),
+                                                                           logger_(&sess_logger),
+                                                                           device_stream_map_(device_stream_map),
+                                                                           count_down_barriers_(num_barriers),
+                                                                           single_thread_mode_(single_thread_mode) {
   auto device_streams = device_stream_map_.GetStreams();
   notifications_.reserve(notification_owners.size());
   for (size_t i = 0; i < notification_owners.size(); ++i) {
@@ -40,6 +40,8 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
     else
       notifications_.push_back(nullptr);
   }
+  std::atomic_int* p_release_plan_buffer = new std::atomic_int[sess_state.GetExecutionPlan()->release_actions.size()];
+  release_plan_ = std::unique_ptr<std::atomic_int[]>(p_release_plan_buffer);
 
   // init barreris
   for (size_t i = 0; i < num_barriers; ++i) {
@@ -54,41 +56,41 @@ ExecutionContext::ExecutionContext(const SessionState& sess_state,
   }
 }
 
-const SessionState& ExecutionContext::GetSessionState() const { return *session_state_; }
+const SessionState& StreamExecutionContext ::GetSessionState() const { return *session_state_; }
 
-const logging::Logger& ExecutionContext::GetLogger() const { return *logger_; }
+const logging::Logger& StreamExecutionContext ::GetLogger() const { return *logger_; }
 
-ExecutionFrame& ExecutionContext::GetExecutionFrame() { return frame_; }
+ExecutionFrame& StreamExecutionContext ::GetExecutionFrame() { return frame_; }
 
-synchronize::Notification* ExecutionContext::GetNotification(size_t idx) { return notifications_[idx].get(); }
+synchronize::Notification* StreamExecutionContext ::GetNotification(size_t idx) { return notifications_[idx].get(); }
 
-bool ExecutionContext::DecCountDownBarrier(size_t barrier_id) {
+bool StreamExecutionContext ::DecCountDownBarrier(size_t barrier_id) {
   return count_down_barriers_[barrier_id].Dec();
 }
 
-Stream* ExecutionContext::GetDeviceStream(size_t idx) {
+Stream* StreamExecutionContext ::GetDeviceStream(size_t idx) {
   ORT_ENFORCE(idx < device_stream_map_.NumStreams());
   return device_stream_map_.GetStreams()[idx];
 }
 
-const Status& ExecutionContext::TaskStatus() const {
+const Status& StreamExecutionContext ::TaskStatus() const {
   return task_status_;
 }
 
-void ExecutionContext::CompleteTask() {
+void StreamExecutionContext ::CompleteTask() {
   remain_tasks_.Dec();
 }
 
-void ExecutionContext::AddTask() {
+void StreamExecutionContext ::AddTask() {
   remain_tasks_.Inc();
 }
 
-void ExecutionContext::WaitAll() {
+void StreamExecutionContext ::WaitAll() {
   while (remain_tasks_.Get())
     onnxruntime::concurrency::SpinPause();
 }
 
-void ExecutionContext::SetStatus(Status& status) {
+void StreamExecutionContext ::SetStatus(Status& status) {
   // TODO: if multiple worker report non-ok status,
   // what is our strategy? currently we just keep
   // a random one. as long as it is not OK, the
@@ -97,9 +99,9 @@ void ExecutionContext::SetStatus(Status& status) {
     task_status_ = status;
 }
 
-ExecutionContext::~ExecutionContext() {}
+StreamExecutionContext ::~StreamExecutionContext() {}
 
-void ExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
+void StreamExecutionContext ::RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
   auto* execution_plan = session_state_->GetExecutionPlan();
   for (auto idx : execution_plan->node_release_list[node_index]) {
     if (--release_plan_[idx] == 0) {
@@ -109,7 +111,7 @@ void ExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index) {
   }
 }
 
-void RunSince(size_t stream_idx, ExecutionContext& ctx, const bool& terminate_flag, size_t since) {
+void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope, const bool& terminate_flag, size_t since) {
   if (!ctx.TaskStatus().IsOK()) {
     // already in bad status, terminate it
     ctx.CompleteTask();
@@ -148,7 +150,7 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, const bool& terminate_fl
     bool continue_flag = true;
     Status status;
     ORT_TRY {
-      status = logic_stream->steps_[since]->Execute(&ctx, stream_idx, terminate_flag, continue_flag);
+      status = logic_stream->steps_[since]->Execute(&ctx, stream_idx, session_scope, terminate_flag, continue_flag);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -185,7 +187,7 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, const bool& terminate_fl
     bool continue_flag = true;
     Status status;
     ORT_TRY {
-      status = logic_stream->steps_[since]->Execute(&ctx, stream_idx, terminate_flag, continue_flag);
+      status = logic_stream->steps_[since]->Execute(&ctx, stream_idx, session_scope, terminate_flag, continue_flag);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -210,10 +212,11 @@ void RunSince(size_t stream_idx, ExecutionContext& ctx, const bool& terminate_fl
   return;
 }
 
-void ScheduleDownstream(ExecutionContext& ctx,
+void ScheduleDownstream(StreamExecutionContext& ctx,
                         size_t trigger,
                         bool single_thread_mode,
-                        const bool& terminate_flag) {
+                        const bool& terminate_flag,
+                        SessionScope& session_scope) {
   auto* ctx_ptr = &ctx;
   auto* plan = ctx.GetSessionState().GetExecutionPlan();
   auto& downstream_map = plan->downstream_map;
@@ -224,8 +227,8 @@ void ScheduleDownstream(ExecutionContext& ctx,
       // increase the task count before schedule down-stream
       ctx.AddTask();
       concurrency::ThreadPool::Schedule(tp,
-                                        [ctx_ptr, downstream, &terminate_flag]() {
-                                          RunSince(downstream.first, *ctx_ptr, terminate_flag, downstream.second);
+                                        [ctx_ptr, downstream, &terminate_flag, &session_scope]() {
+                                          RunSince(downstream.first, *ctx_ptr, session_scope, terminate_flag, downstream.second);
                                         });
     }
   }

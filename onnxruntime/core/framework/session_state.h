@@ -18,7 +18,7 @@
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_providers.h"
-#include "core/framework/execution_context.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/prepacked_weights_container.h"

@@ -1,3 +1,5 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 #pragma once
 #include "core/common/logging/logging.h"
 #include "core/framework/device_stream_collection.h"
@@ -24,7 +26,7 @@ typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 // 1. a execution frame
 // 2. a collection of device stream instances that kernels can launch to.
 // 3. a set of notification instances needed to perform synchronization in current execution plan.
-class ExecutionContext {
+class StreamExecutionContext {
  public:
   /*
    * LIMITATION:
@@ -54,17 +56,17 @@ class ExecutionContext {
     std::atomic_int_fast32_t v_;
   };
 
-  ExecutionContext(const SessionState& sess_state,
-                   int32_t num_streams,
-                   gsl::span<const size_t> notification_owners,
-                   gsl::span<const int> feed_mlvalue_idxs,
-                   gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
-                   std::vector<OrtValue>& fetches,
-                   const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                   size_t num_barriers,
-                   const logging::Logger& sess_logger,
-                   const DeviceStreamCollection& device_stream_map,
-                   bool single_thread_mode);
+  StreamExecutionContext(const SessionState& sess_state,
+                         int32_t num_streams,
+                         gsl::span<const size_t> notification_owners,
+                         gsl::span<const int> feed_mlvalue_idxs,
+                         gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                         std::vector<OrtValue>& fetches,
+                         const InlinedHashMap<size_t, IExecutor::CustomAllocator>& fetch_allocators,
+                         size_t num_barriers,
+                         const logging::Logger& sess_logger,
+                         const DeviceStreamCollection& device_stream_map,
+                         bool single_thread_mode);
 
   const SessionState& GetSessionState() const;
 
@@ -111,15 +113,7 @@ class ExecutionContext {
   }
 #endif
 
-  ~ExecutionContext();
-
-  SessionScope* GetSessionScope() {
-    return session_scope_;
-  }
-
-  void SetSessionScope(SessionScope* session_scope) {
-    session_scope_ = session_scope;
-  }
+  ~StreamExecutionContext();
 
 #ifdef ENABLE_TRAINING
   const ProgramRegion* GetCurrentRange() {
@@ -150,7 +144,6 @@ class ExecutionContext {
   std::vector<CountDownBarrier> count_down_barriers_;
   CountDownBarrier remain_tasks_;
   Status task_status_{Status::OK()};
-  SessionScope* session_scope_{};
 #ifdef ENABLE_TRAINING
   const ProgramRegion* program_range_{nullptr};
   OrtValueCachePtr cache_{nullptr};
@@ -164,10 +157,15 @@ class ExecutionContext {
 using NotificationIndex = size_t;
 
 // Execute the stream at index 'stream_idx' with execution context 'ctx', from step 'since'.
-void RunSince(size_t stream_idx, ExecutionContext& ctx, const bool& terminate_flag, size_t since);
+void RunSince(size_t stream_idx,
+              StreamExecutionContext& ctx,
+              SessionScope& session_scope,
+              const bool& terminate_flag,
+              size_t since);
 // Schedule the downstream jobs from other streams at 'trigger' step, based on the execution plan.
-void ScheduleDownstream(ExecutionContext& ctx,
+void ScheduleDownstream(StreamExecutionContext& ctx,
                         size_t trigger,
                         bool single_thread_mode,
-                        const bool& terminate_flag);
+                        const bool& terminate_flag,
+                        SessionScope& session_scope);
 }  // namespace onnxruntime
