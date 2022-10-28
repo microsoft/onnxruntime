@@ -28,6 +28,7 @@ namespace tunable {
 struct OpParams {
   OpParams() : stream{} {}
   explicit OpParams(hipStream_t stream) : stream(stream) {}
+  virtual ~OpParams() = default;
   virtual std::string Signature() const = 0;
   hipStream_t stream;
 };
@@ -80,7 +81,9 @@ class TunableOp {
     int id;
     if (tuning_) {
       if (kernel_map_.find(params->Signature()) == kernel_map_.end()) {
-        id = FindFastest(params);
+        auto maybe_proxy_params = this->PreTuning(params);
+        id = FindFastest(maybe_proxy_params);
+        PostTuning(maybe_proxy_params);
         kernel_map_.insert({params->Signature(), id});
       } else {
         id = kernel_map_[params->Signature()];
@@ -98,6 +101,18 @@ class TunableOp {
 
   void DisableTuning() {
     tuning_ = false;
+  }
+
+  // We might want to do some tricks to the `params`, e.g., some op will use a buffer for input and output at the same
+  // time, so it will do inplace update to it. If we blindly tune over the `params`, there will be accumulated update
+  // to that buffer during FindFastest, which is an undesired side effect. In this case, we must prepare a new (proxy)
+  // params struct for the tuning to avoid this side effect.
+  virtual const ParamsT* PreTuning(const ParamsT* params) {
+    return params;
+  }
+
+  virtual void PostTuning(const ParamsT* /*params*/) {
+    // Do nothing if we are not playing around with params
   }
 
   virtual ~TunableOp() = default;

@@ -21,7 +21,7 @@ class SimpleModelWithCrossEntropyLoss(onnxblock.TrainingModel):
 
 def _create_training_models():
     # Given
-    device = "cuda"
+    device = "cpu"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
     pt_model, onnx_model = _get_models(device, batch_size, input_size, hidden_size, output_size)
 
@@ -82,11 +82,11 @@ def test_train_step():
         fetches = model(forward_inputs)
 
         # Calculate loss using pytorch model to compare it with Module's output.
-        pt_outputs = pt_model(torch.from_numpy(inputs).to("cuda"))
+        pt_outputs = pt_model(torch.from_numpy(inputs))
         loss_fn = torch.nn.CrossEntropyLoss()
-        pt_loss = loss_fn(pt_outputs, torch.from_numpy(labels).to("cuda").long())
+        pt_loss = loss_fn(pt_outputs, torch.from_numpy(labels).long())
 
-        assert fetches[0] == pt_loss.item()
+        assert np.allclose(fetches[0], pt_loss.detach().numpy())
 
 
 def test_eval_step():
@@ -211,3 +211,25 @@ def test_copy_buffer_to_parameters():
 
         # Make sure the saved parameters are the same as the old parameters.
         assert np.array_equal(old_output_params.numpy(), saved_params.numpy())
+
+
+def test_export_model_for_inferencing():
+    # Initialize Models
+    simple_model, onnx_model, _, eval_model, _ = _create_training_models()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Save models & checkpoint files to load them later.
+        checkpoint_file_path, model_file_path, eval_model_file_path = _get_test_models_path(
+            temp_dir, simple_model, onnx_model, eval_model=eval_model
+        )
+
+        # Create Checkpoint State.
+        state = CheckpointState(checkpoint_file_path)
+
+        # Create a Module.
+        model = Module(model_file_path, state, eval_model_file_path)
+
+        # Export inference model
+        inference_model_file_path = os.path.join(temp_dir, "inference_model.onnx")
+        model.export_model_for_inferencing(inference_model_file_path, ["output-0"])
+        assert os.path.exists(inference_model_file_path)
