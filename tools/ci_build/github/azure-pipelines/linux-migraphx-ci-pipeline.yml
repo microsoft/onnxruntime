@@ -22,18 +22,18 @@ jobs:
     clean: true
     submodules: recursive
 
+  - task: CmdLine@2
+    inputs:
+      script: |
+        df -h
+        docker ps -a
+    displayName: 'Check disk space'
+
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/pai/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/pai
       Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
-
-
-  - task: CmdLine@2
-    inputs:
-      script: |
-        df -h
-    displayName: 'Check disk space'
 
   - task: CmdLine@2
     inputs:
