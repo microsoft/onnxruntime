@@ -557,6 +557,11 @@ TEST(SliceTest, Slice2D_ReverseAllAxes) {
 }
 
 TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_1) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
