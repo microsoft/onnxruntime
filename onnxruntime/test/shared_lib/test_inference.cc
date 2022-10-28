@@ -392,20 +392,48 @@ TEST(CApiTest, custom_op_handler) {
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
 
-  auto mem_type = custom_op.GetInputMemoryType(0);
-
 #ifdef USE_CUDA
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
                        custom_op_domain, nullptr, nullptr, false, compute_stream);
   cudaStreamDestroy(compute_stream);
-  ASSERT_EQ(mem_type, OrtMemType::OrtMemTypeDefault);
 #else
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
                        custom_op_domain, nullptr);
-  ASSERT_EQ(mem_type, OrtMemType::OrtMemTypeDefault);
 #endif
+}
+
+#ifdef USE_CUDA
+TEST(CApiTest, custom_op_set_input_memory_type) {
+  std::cout << "Running custom op inference" << std::endl;
+
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  cudaStream_t compute_stream = nullptr;
+  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
+  MyCustomOpSecondInputOnCpu custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
+
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&custom_op);
+
+  auto x_mem_type = custom_op.GetInputMemoryType(0);
+  auto y_mem_type = custom_op.GetInputMemoryType(1);
+  ASSERT_EQ(x_mem_type, OrtMemType::OrtMemTypeDefault);
+  ASSERT_EQ(y_mem_type, OrtMemType::OrtMemTypeCPUInput);
+
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
+                       custom_op_domain, nullptr, nullptr, false, compute_stream);
+  cudaStreamDestroy(compute_stream);
 
 }
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
 // disable test in reduced-op-build since TOPK and GRU are excluded there
