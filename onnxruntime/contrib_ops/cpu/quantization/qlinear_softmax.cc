@@ -70,9 +70,6 @@ QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
   auto input_defs = node.InputDefs();
   auto input_type = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
   is_signed_ = (input_type == ONNX_NAMESPACE::TensorProto_DataType_INT8);
-  const auto* x_shape = input_defs[0]->Shape();
-  ORT_ENFORCE(x_shape != nullptr && x_shape->dim_size() > 0, "input_shape of QLinearSoftmax must be existed");
-  int rank = x_shape->dim_size();
 
   int64_t opset = -1;
   Status status = info.GetAttr<int64_t>("opset", &opset);
@@ -89,12 +86,15 @@ QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
     axis_ = opset_ < OPSET13 ? 1 : -1;
   }
 
-  axis_ = static_cast<int>(HandleNegativeAxis(axis_, int64_t(rank)));
-  auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
-  int64_t reduce_size = opset_ < OPSET13 ? input_shape.SizeFromDimension(axis_) : input_shape[axis_];
-  // reduce_size could be negative if input-shape has a dynamic axis
-  if (reduce_size > 0) {
-    BuildLookupTableIfFixed(info, fixed_lookup_table_, reduce_size, is_signed_);
+  const auto* x_shape = input_defs[0]->Shape();
+  if (x_shape != nullptr && x_shape->dim_size() > 0) {
+    axis_ = static_cast<int>(HandleNegativeAxis(axis_, int64_t(x_shape->dim_size())));
+    auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
+    int64_t reduce_size = opset_ < OPSET13 ? input_shape.SizeFromDimension(axis_) : input_shape[axis_];
+    // reduce_size could be negative if input-shape has a dynamic axis
+    if (reduce_size > 0) {
+      BuildLookupTableIfFixed(info, fixed_lookup_table_, reduce_size, is_signed_);
+    }
   }
 }
 
@@ -102,19 +102,22 @@ QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
 Status QLinearSoftmax::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
-  auto* Y = ctx->Output(0, X_shape);
-
   // edge case. one or more dims with value of 0. nothing to do
   if (X_shape.Size() == 0) {
     return Status::OK();
   }
+
+  auto axis = static_cast<int>(HandleNegativeAxis(axis_, int64_t(X_shape.NumDimensions())));
+
+  auto* Y = ctx->Output(0, X_shape);
+
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-  const size_t D = opset_ < OPSET13 ? X_shape.SizeFromDimension(axis_) : X_shape[axis_];
+  const size_t D = opset_ < OPSET13 ? X_shape.SizeFromDimension(axis) : X_shape[axis];
   EXP_OUT_DTYPE tmp_lookup_table[256];
   gsl::span<const EXP_OUT_DTYPE> lookup_table = GetLookupTable(ctx, tmp_lookup_table, D);
 
   if (opset_ < OPSET13) {
-    return ComputeInternal(ctx, *X, *Y, lookup_table, axis_, thread_pool);
+    return ComputeInternal(ctx, *X, *Y, lookup_table, axis, thread_pool);
   } else {
     return ComputeImplOpset13(ctx, *X, *Y, lookup_table, thread_pool);
   }
