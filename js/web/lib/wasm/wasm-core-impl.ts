@@ -332,13 +332,10 @@ export const run = async(
           outputValuesOffset, runOptionsHandle);
 
       // eslint-disable-next-line @typescript-eslint/naming-convention
-      const prom = (wasm as {OrtRunPromise?: Promise<void>}).OrtRunPromise;
-      if (prom) {
-        await prom;
+      const runPromise = wasm.jsepRunPromise;
+      if (runPromise && typeof runPromise.then !== 'undefined') {
+        errorCode = await runPromise;
       }
-
-      // eslint-disable-next-line no-console
-      console.log(`OrtRun() errorcode=${errorCode}`);
 
       const output: SerializableTensor[] = [];
 

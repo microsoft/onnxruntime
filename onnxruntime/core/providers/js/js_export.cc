@@ -8,14 +8,12 @@
 const void * JsepOutput(void * context, int index, void * data) {
     uint32_t * data_offset = reinterpret_cast<uint32_t *>(data);
     uint32_t dim = *data_offset++;
-    printf("JsepOutput: dim=%u\n",dim);
     size_t dim_size = static_cast<size_t>(dim);
     std::vector<int64_t> dims;
     dims.reserve(dim_size);
     dims.resize(dim_size);
     for (size_t i = 0; i < dim_size; i++) {
         dims[i] = static_cast<int64_t>(*data_offset++);
-        printf("dim[%zu]=%lld\n",i, dims[i]);
     }
 
     auto output = reinterpret_cast<onnxruntime::OpKernelContext*>(context)->Output(index, onnxruntime::TensorShape(dims));

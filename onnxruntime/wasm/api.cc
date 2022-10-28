@@ -242,7 +242,6 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
     }                                                             \
   } while (false)
 
-printf("OrtGetTensorData>>0\n");
   OrtTensorTypeAndShapeInfo* info = nullptr;
   OrtAllocator* allocator = nullptr;
   size_t* p_dims = nullptr;
@@ -251,11 +250,9 @@ printf("OrtGetTensorData>>0\n");
   ONNXType tensor_type;
   RETURN_ERROR_CODE_IF_ERROR(GetValueType, tensor, &tensor_type);
   if ( tensor_type != ONNX_TYPE_TENSOR ) {
-printf("OrtGetTensorData>> tensor_type=%d\n", (int)(tensor_type));
     return ORT_FAIL;
   }
 
-printf("OrtGetTensorData>>1\n");
   RETURN_ERROR_CODE_IF_ERROR(GetTensorTypeAndShape, tensor, &info);
 
   size_t dims_len = 0;
@@ -266,7 +263,6 @@ printf("OrtGetTensorData>>1\n");
 
   RELEASE_AND_RETURN_ERROR_CODE_IF_ERROR(GetTensorMutableData, tensor, data);
 
-printf("OrtGetTensorData>>2\n");
   ONNXTensorElementDataType type;
   RELEASE_AND_RETURN_ERROR_CODE_IF_ERROR(GetTensorElementType, info, &type);
   *data_type = static_cast<int>(type);
@@ -362,11 +358,9 @@ int OrtRun(OrtSession* session,
            const char** input_names, const ort_tensor_handle_t* inputs, size_t input_count,
            const char** output_names, size_t output_count, ort_tensor_handle_t* outputs,
            OrtRunOptions* run_options) {
-  EM_ASM({ Module["OrtRunPromise"] = new Promise((r) => {Module["OrtRunPromiseResolve"] = r;}); });
-  printf("OrtRun start\n");
+  EM_ASM({ Module["jsepRunPromise"] = new Promise((r) => {Module.jsepRunPromiseResolve = r;}); });
   auto status_code = CHECK_STATUS(Run, session, run_options, input_names, inputs, input_count, output_names, output_count, outputs);
-  printf("OrtRun end\n");
-  EM_ASM({ Module["OrtRunPromiseResolve"](); });
+  EM_ASM({ Module.jsepRunPromiseResolve($0); }, status_code);
   return status_code;
 }
 
