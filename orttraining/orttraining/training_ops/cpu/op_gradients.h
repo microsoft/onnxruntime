@@ -34,6 +34,20 @@ class SigmoidGrad final : public OpKernel {
 };
 
 template <typename T>
+class QuickGeluGrad final : public OpKernel {
+ public:
+  explicit QuickGeluGrad(const OpKernelInfo& info) : OpKernel(info) {
+    alpha_ = info.GetAttrOrDefault<float>("alpha", 1.702f);
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QuickGeluGrad);
+  float alpha_;
+};
+
+template <typename T>
 class TanhGrad final : public OpKernel {
  public:
   explicit TanhGrad(const OpKernelInfo& info) : OpKernel(info) {
