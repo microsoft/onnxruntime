@@ -15,11 +15,12 @@ class EmbedLayerNorm final : public CudaKernel {
  public:
   EmbedLayerNorm(const OpKernelInfo& op_kernel_info);
   Status ComputeInternal(OpKernelContext* ctx) const override;
+  ~EmbedLayerNorm();
 
  private:
   float epsilon_;
-  void* random_data_1_ = nullptr;
-  void* random_data_2_ = nullptr;
+  mutable void* random_data_ = nullptr;
+  bool should_randomize_ = ParseEnvironmentVariableWithDefault<bool>("ORT_RANDOMIZE", false);
 };
 
 }  // namespace cuda

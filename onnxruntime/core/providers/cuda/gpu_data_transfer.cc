@@ -40,7 +40,7 @@ bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_
 }
 
 common::Status GPUDataTransfer::Randomize(Tensor& dst) const {
-  std::cout << "Randomization starts" << std::endl;
+  std::cout << "Randomizing weights" << std::endl;
   cuda::cudaRandomUniform(GetStream(kCudaStreamDefault), dst.MutableDataRaw(), dst.Shape().Size());
   cudaDeviceSynchronize();
 

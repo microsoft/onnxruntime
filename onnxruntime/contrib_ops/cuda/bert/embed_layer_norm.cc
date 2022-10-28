@@ -31,9 +31,6 @@ template <typename T>
 EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
-
-  cudaMalloc(&random_data_1_, 196608);
-  cudaMalloc(&random_data_2_, 6291456);
 }
 
 template <typename T>
@@ -87,17 +84,22 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
 
   ORT_IGNORE_RETURN_VALUE(status);
 
-  // cuda::cudaRandomUniform(Stream(), output->MutableDataRaw(), static_cast<int>(output->Shape().Size()));
-
-  if (output->SizeInBytes() == 196608) {
-    cudaMemcpyAsync(output->MutableDataRaw(), random_data_1_, output->SizeInBytes(), cudaMemcpyDeviceToDevice);
-  } else if (output->SizeInBytes() == 6291456) {
-    cudaMemcpyAsync(output->MutableDataRaw(), random_data_2_, output->SizeInBytes(), cudaMemcpyDeviceToDevice);  
-  } else {
-    ORT_THROW("Should not reach here");
+  if (should_randomize_ && random_data_ == nullptr) {
+    cudaMalloc(&random_data_, output->SizeInBytes());
   }
 
+  if (should_randomize_) {
+    cudaMemcpyAsync(output->MutableDataRaw(), random_data_, output->SizeInBytes(), cudaMemcpyDeviceToDevice);
+  } 
+
   return Status::OK();
+}
+
+template <typename T>
+EmbedLayerNorm<T>::~EmbedLayerNorm() {
+  if (random_data_ != nullptr) {
+    cudaFree(random_data_);  
+  }
 }
 
 }  // namespace cuda

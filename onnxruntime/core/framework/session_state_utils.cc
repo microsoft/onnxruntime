@@ -26,6 +26,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_allocator.h"
+#include "core/platform/env_var_utils.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
 #endif
@@ -169,13 +170,15 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
     // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 
+    bool should_randomize = ParseEnvironmentVariableWithDefault<bool>("ORT_RANDOMIZE", false);
+
     Status copy_status = Status::OK();
 
-    if (tensor_proto.name().find("Attention_") != std::string::npos ||
+    if (should_randomize && (tensor_proto.name().find("Attention_") != std::string::npos ||
         tensor_proto.name().find("MatMul_") != std::string::npos ||
         tensor_proto.name().find("dense.bias") != std::string::npos ||
         tensor_proto.name().find("LayerNorm.weight") != std::string::npos ||
-        tensor_proto.name().find("LayerNorm.bias") != std::string::npos) {
+        tensor_proto.name().find("LayerNorm.bias") != std::string::npos)) {
       copy_status = data_transfer_mgr.Randomize(*p_tensor);
     } else {
       copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
