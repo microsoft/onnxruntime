@@ -245,6 +245,21 @@ TEST_P(ModelTest, Run) {
       {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"opset12"}},
+      // models from model zoo
+      {"BERT-Squad-int8", "failed in training", {"opset12"}},
+      {"DenseNet-121-12-int8", "failed in training", {"opset12"}},
+      {"EfficientNet-Lite4-int8", "failed in training", {"opset11"}},
+      {"EfficientNet-Lite4-qdq", "failed in training", {"opset11"}},
+      {"Faster R-CNN R-50-FPN-int8", "failed in training", {"opset12"}},
+      {"Inception-1-int8", "failed in training", {"opset12"}},
+      {"MobileNet v2-1.0-int8", "failed in traning", {"opset12"}},
+      {"MobileNet v2-1.0-qdq", "failed in training", {"opset12"}},
+      {"ResNet50-qdq", "failed in training", {"opset12"}},
+      {"ResNet50_int8", "failed in training", {"opset12"}},
+      {"ShuffleNet-v2-int8", "failed in training", {"opset12"}},
+      {"SSD-int8", "failed in training", {"opset12"}},
+      {"VGG 16-int8", "failed in training", {"opset12"}},
+      {"YOLOv3-12-int8", "failed in training", {"opset12"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
@@ -594,7 +609,7 @@ TEST_P(ModelTest, Run) {
     BrokenTest t = {ToUTF8String(test_case_name), ""};
     auto iter = broken_tests.find(t);
     auto opset_version = model_info->GetNominalOpsetVersion();
-    if (iter != broken_tests.end() && 
+    if (iter != broken_tests.end() &&
         (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
          iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end() )) {
       SkipTest("It's in broken_tests");
@@ -931,7 +946,16 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight"),
       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded"),
       ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob"),
-      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded")};
+      ORT_TSTR("softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded"),
+      // models from model zoo
+      ORT_TSTR("Tiny YOLOv3"),
+      ORT_TSTR("BERT-Squad"),
+      ORT_TSTR("YOLOv3"),
+      ORT_TSTR("Candy"),
+      ORT_TSTR("SSD"),
+      ORT_TSTR("ResNet101_DUC_HDC-12"),
+      ORT_TSTR("YOLOv3-12")
+      };
   static const ORTCHAR_T* dml_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"),
                                                   ORT_TSTR("mlperf_ssd_mobilenet_300"),
                                                   ORT_TSTR("mask_rcnn"),
