@@ -704,6 +704,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetSigmoidGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetQuickGeluGradient) {
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"QuickGeluGrad", kMSDomain, 1}, {GO(0), I(0)}, {GI(0)}, SrcNodeAttributes())};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxGradient) {
   return std::vector<NodeDef>{
       NodeDef(OpDef{SrcNodeOpsetVersion() < 13 ? "SoftmaxGrad" : "SoftmaxGrad_13", kMSDomain, 1},
