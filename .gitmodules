@@ -78,6 +78,3 @@
 [submodule "cmake/external/XNNPACK"]
 	path = cmake/external/XNNPACK
 	url = https://github.com/google/XNNPACK.git
-[submodule "cmake/external/GSL"]
-	path = cmake/external/GSL
-	url = https://github.com/microsoft/GSL.git
