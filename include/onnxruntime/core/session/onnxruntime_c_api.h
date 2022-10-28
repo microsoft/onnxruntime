@@ -3644,7 +3644,11 @@ struct OrtCustomOp {
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetInputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetOutputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
 
-  // Returns the memory type of the input tensors
+  // Returns the memory type of the input tensors. This API allows the custom op
+  // to place the inputs on specific devices. By default, it returns
+  // OrtMemTypeDefault, which means the input is placed on the default device for
+  // the execution provider. If the inputs need to be with different memory tyeps,
+  // this function can be overriden to return the specific memory types.
   OrtMemType(ORT_API_CALL* GetInputMemoryType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
 };
 
