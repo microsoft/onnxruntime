@@ -79,6 +79,13 @@ jobs:
     displayName: 'Build onnxruntime'
 
   - task: CmdLine@2
+    inputs:
+      script: |
+        df -h
+        docker ps -a
+    displayName: 'Check disk space'
+
+  - task: CmdLine@2
     displayName: 'Save Necessary Files'
     inputs:
       script: |
