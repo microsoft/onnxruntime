@@ -70,7 +70,7 @@ jobs:
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
   timeoutInMinutes: 100
-  condition: or(${{if eq(parameters.BuildXnnpack, 'true') }}, ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main')}})
+  condition: or(eq('${{parameters.BuildXnnpack}}', 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   steps:
     - script: |
         /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
