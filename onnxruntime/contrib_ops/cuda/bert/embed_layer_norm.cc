@@ -85,6 +85,7 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_IGNORE_RETURN_VALUE(status);
 
   if (should_randomize_ && random_data_ == nullptr) {
+    std::cout << "Generating random input" << std::endl;
     cudaMalloc(&random_data_, output->SizeInBytes());
   }
 
