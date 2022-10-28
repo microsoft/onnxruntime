@@ -1887,6 +1887,11 @@ if (onnxruntime_USE_ROCM)
     set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
   endif()
 
+  # NOTE: Following flags are extracted from hipcc via HIPCC_VERBOSE=7 hipcc foo.cc
+  # -mllvm pass the next flag to underlying llvm, not clang itself
+  # -amdgpu-early-inline-all=true is critical for kernel code
+  set(CMAKE_HIP_FLAGS "-mllvm -amdgpu-early-inline-all=true -mllvm -amdgpu-function-calls=false ${CMAKE_HIP_FLAGS}")
+
   if (NOT onnxruntime_HIPIFY_PERL)
     set(onnxruntime_HIPIFY_PERL ${onnxruntime_ROCM_HOME}/hip/bin/hipify-perl)
   endif()
