@@ -112,6 +112,7 @@ std::unordered_map<std::string, std::string> disabledTests(
      {"coreml_DecisionTreeClassifier_OpenML_312_scene_opset7", disabledTestDefaultReason},
      {"coreml_DecisionTreeClassifier_OpenML_1464_blood_transfusion_opset7", disabledTestDefaultReason},
      {"coreml_AgeNet_ImageNet_opset7", disabledTestDefaultReason},
+     {"mask_rcnn_R_50_FPN_1x_opset10", "mask_rcnn generated with incorrect implementation https://github.com/microsoft/onnxruntime/pull/7354. ONNX issue: https://github.com/onnx/onnx/issues/3428."},
 
      // GPU specific cases:
 

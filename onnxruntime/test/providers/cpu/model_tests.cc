@@ -195,6 +195,8 @@ TEST_P(ModelTest, Run) {
       {"shape_start_negative_1", "type error", {}},
       {"simple_rnn_batchwise", "type error", {}},
       {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
+      {"mask_rcnn_R_50_FPN_1x", "mask_rcnn generated incorrectly https://github.com/microsoft/onnxruntime/pull/7354. "
+        "ONNX issue: https://github.com/onnx/onnx/issues/3428."},
 #ifdef ENABLE_TRAINING
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -594,7 +596,7 @@ TEST_P(ModelTest, Run) {
     BrokenTest t = {ToUTF8String(test_case_name), ""};
     auto iter = broken_tests.find(t);
     auto opset_version = model_info->GetNominalOpsetVersion();
-    if (iter != broken_tests.end() && 
+    if (iter != broken_tests.end() &&
         (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
          iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end() )) {
       SkipTest("It's in broken_tests");
