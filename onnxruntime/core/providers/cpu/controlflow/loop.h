@@ -3,7 +3,6 @@
 
 #pragma once
 #include <functional>
-#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/framework/feeds_fetches_manager.h"

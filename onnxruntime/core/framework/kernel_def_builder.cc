@@ -7,8 +7,6 @@
 #include <unordered_set>
 #include <string>
 
-#include "core/common/gsl.h"
-
 namespace onnxruntime {
 namespace {
 

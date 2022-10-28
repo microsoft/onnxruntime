@@ -3,7 +3,6 @@
 
 #pragma once
 #include <functional>
-#include "core/common/gsl.h"
 
 #include "core/providers/cpu/controlflow/scan.h"
 

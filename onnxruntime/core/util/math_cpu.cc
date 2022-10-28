@@ -19,7 +19,6 @@
 #include "core/util/math.h"
 
 #include <algorithm>
-#include "core/common/gsl.h"
 #include "core/common/narrow.h"
 #include "core/mlas/inc/mlas.h"
 #if defined(__GNUC__)

@@ -7,8 +7,6 @@
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/ml/ml_common.h"
 
-#include "core/common/gsl.h"
-
 namespace onnxruntime {
 namespace ml {
 

@@ -11,8 +11,6 @@
 
 #include "core/providers/cpu/controlflow/scan_utils.h"
 
-#include "core/common/gsl.h"
-
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"

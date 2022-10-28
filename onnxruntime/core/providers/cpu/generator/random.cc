@@ -25,8 +25,6 @@ limitations under the License.
 #include <chrono>
 #include <random>
 
-#include "core/common/gsl.h"
-
 #include "core/common/eigen_common_wrapper.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel_type_control_utils.h"

@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/common/gsl.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/framework/random_generator.h"
