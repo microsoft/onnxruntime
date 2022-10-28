@@ -80,8 +80,7 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
 
         if (offset + length <= tensor_data_span.size()) {
           Initializer i(tensor_proto, tensor_data_dir_path);
-          const auto* i_data = i.data<int32_t>();
-          EXPECT_EQ(gsl::make_span(i_data, i.size()), tensor_data_span.subspan(offset, length));
+          EXPECT_EQ(i.DataAsSpan<int32_t>(), tensor_data_span.subspan(offset, length));
         } else {
           EXPECT_THROW(Initializer i(tensor_proto, tensor_data_dir_path), OnnxRuntimeException);
         }
