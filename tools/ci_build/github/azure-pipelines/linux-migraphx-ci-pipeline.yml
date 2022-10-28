@@ -22,6 +22,7 @@ jobs:
     inputs:
       script: |
         df -h
+        du -h --max-depth=1 /mnt/vss/_work/
         docker ps -a
     displayName: 'Check disk space'
 
@@ -39,6 +40,7 @@ jobs:
     inputs:
       script: |
         df -h
+        du -h --max-depth=1 /mnt/vss/_work/
         docker ps -a
     displayName: 'Check disk space'
 
@@ -82,6 +84,7 @@ jobs:
     inputs:
       script: |
         df -h
+        du -h --max-depth=1 /mnt/vss/_work/
         docker ps -a
     displayName: 'Check disk space'
 
