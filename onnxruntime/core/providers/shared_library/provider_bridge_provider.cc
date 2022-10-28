@@ -535,28 +535,63 @@ std::unique_ptr<EinsumTypedComputeProcessor<MLFloat16>> EinsumTypedComputeProces
 
 #ifndef DISABLE_CONTRIB_OPS
 namespace contrib {
-Status embed_layer_norm::CheckInputs(const OpKernelContext* context, bool quantizedVersion) { return g_host_cpu.embed_layer_norm__CheckInputs(context, quantizedVersion); }
-Status bias_gelu_helper::CheckInputs(const OpKernelContext* context) { return g_host_cpu.bias_gelu_helper__CheckInputs(context); }
-Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const TensorShape& mask_shape, const TensorShape& global_weights_shape, const TensorShape& global_bias_shape, const TensorShape& global_shape) const {
-  return g_host_cpu.LongformerAttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape);
+Status embed_layer_norm::CheckInputs(const OpKernelContext* context, bool quantizedVersion) {
+  return g_host_cpu.embed_layer_norm__CheckInputs(context, quantizedVersion);
 }
 
-Status AttentionBase::CheckInputs(const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const Tensor* extra_add_qk, const int max_threads_per_block) const {
-  return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_index, past, extra_add_qk, max_threads_per_block);
+Status bias_gelu_helper::CheckInputs(const OpKernelContext* context) { return g_host_cpu.bias_gelu_helper__CheckInputs(context); }
+
+Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape,
+                                            const TensorShape& weights_shape,
+                                            const TensorShape& bias_shape,
+                                            const TensorShape& mask_shape,
+                                            const TensorShape& global_weights_shape,
+                                            const TensorShape& global_bias_shape,
+                                            const TensorShape& global_shape) const {
+  return g_host_cpu.LongformerAttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_shape,
+                                                         global_weights_shape, global_bias_shape, global_shape);
 }
-Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) const {
-  return g_host_cpu.AttentionBase__GetPresent(this, context, past, batch_size, head_size, sequence_length, past_sequence_length);
+
+Status AttentionBase::CheckInputs(const TensorShape& input_shape,
+                                  const TensorShape* weights_shape,
+                                  const TensorShape& bias_shape,
+                                  const Tensor*& mask_index,
+                                  const Tensor* past,
+                                  const Tensor* extra_add_qk,
+                                  const Tensor* key,
+                                  const Tensor* value,
+                                  void* parameters,
+                                  const int max_threads_per_block) const {
+  return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
+                                               mask_index, past, extra_add_qk,
+                                               key, value, parameters,
+                                               max_threads_per_block);
+}
+Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
+                                  int sequence_length, int& past_sequence_length) const {
+  return g_host_cpu.AttentionBase__GetPresent(this, context, past, batch_size, head_size,
+                                              sequence_length, past_sequence_length);
 }
 
 namespace transformers {
 void BeamSearch::Init(const OpKernelInfo& info) { g_host_cpu.BeamSearch__Init(this, info); }
+
 Status BeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.BeamSearch__Compute(this, ctx); }
-Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+
+Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
+                                              const SessionState& subgraph_session_state) {
+  return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
+}
 
 void GreedySearch::Init(const OpKernelInfo& info) { g_host_cpu.GreedySearch__Init(this, info); }
-Status GreedySearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.GreedySearch__Compute(this, ctx); }
-Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
 
+Status GreedySearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.GreedySearch__Compute(this, ctx); }
+
+Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name,
+                                                const SessionState& subgraph_session_state) {
+  return g_host_cpu.GreedySearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name,
+                                                             subgraph_session_state);
+}
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN

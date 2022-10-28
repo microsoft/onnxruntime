@@ -48,8 +48,13 @@ static bool CheckFirstAdd(Node& add, ProviderType providertype) {
     if (!utils::HasDimValue(add_input1_shape->dim(i)) ||
         !utils::HasDimValue(add_input2_shape->dim(i)) ||
         add_input1_shape->dim(i).dim_value() != add_input2_shape->dim(i).dim_value()) {
-      is_valid_input = false;
-      break;
+      // Allow dimension only has dim_param.
+      if (!utils::HasDimParam(add_input1_shape->dim(i)) ||
+          !utils::HasDimParam(add_input2_shape->dim(i)) ||
+          add_input1_shape->dim(i).dim_param() != add_input2_shape->dim(i).dim_param()) {
+        is_valid_input = false;
+        break;
+      }
     }
   }
   return is_valid_input;

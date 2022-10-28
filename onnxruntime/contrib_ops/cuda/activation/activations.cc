@@ -50,6 +50,7 @@ UNARY_ACTIVATION_OP_HFD(Affine, 1, kOnnxDomain);
 UNARY_ACTIVATION_OP_HFD(ParametricSoftplus, 1, kOnnxDomain);
 UNARY_ACTIVATION_OP_HFD(ScaledTanh, 1, kOnnxDomain);
 UNARY_ACTIVATION_OP_HFD(Gelu, 1, kMSDomain);
+UNARY_ACTIVATION_OP_HFD(QuickGelu, 1, kMSDomain);
 
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, MLFloat16)
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, float)
