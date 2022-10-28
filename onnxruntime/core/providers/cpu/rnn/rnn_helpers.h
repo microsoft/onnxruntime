@@ -278,8 +278,8 @@ inline void ComputeGemm(const int M,
 // helper to convert a span to a raw pointer
 // after validating the memory covered by the span supports the size required
 template <typename T>
-const T* SafeRawConstPointer(typename gsl::span<T>::iterator cur,
-                             typename gsl::span<T>::iterator end,
+const T* SafeRawConstPointer(typename gsl::span<const T>::iterator cur,
+                             typename gsl::span<const T>::iterator end,
                              size_t size) {
   ORT_ENFORCE(cur + size <= end);
   return &*cur;
@@ -288,7 +288,7 @@ const T* SafeRawConstPointer(typename gsl::span<T>::iterator cur,
 // helper to convert a span to a raw pointer
 // after validating the memory covered by the span supports the size required
 template <typename T>
-const T* SafeRawConstPointer(gsl::span<T> span, size_t offset, size_t size) {
+const T* SafeRawConstPointer(gsl::span<const T> span, size_t offset, size_t size) {
   ORT_ENFORCE(offset + size <= size_t(span.size()));
   return span.data();
 }

@@ -495,8 +495,7 @@ void UniDirectionalGru<T>::Compute(const gsl::span<const T>& inputs_arg,
                                    const gsl::span<const T>& recurrent_weights,
                                    gsl::span<T>& outputs,
                                    gsl::span<T>& final_hidden_state) {
-  using span_T_const_iter = typename gsl::span<T>::iterator;  // hack to compile...
-  //using span_T_const_iter = typename gsl::span<T>::const_iterator;
+  using span_T_const_iter = typename gsl::span<const T>::iterator;
   using span_T_iter = typename gsl::span<T>::iterator;
 
   // copy inputs_arg as we may change it to point to inputs_reverse_

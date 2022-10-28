@@ -69,6 +69,7 @@ class UniDirectionalAttnLstm {
   }
 
  private:
+  using span_T_const_iter = typename gsl::span<const T>::iterator;
   using span_T_iter = typename gsl::span<T>::iterator;
 
   void SetNumThreads();

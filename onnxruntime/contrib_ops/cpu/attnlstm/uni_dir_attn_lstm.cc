@@ -162,7 +162,7 @@ void UniDirectionalAttnLstm<T>::LoadPeepholeWeights(const gsl::span<const T>& pe
   DumpMatrix("P[f]", peephole_weights.data() + (i++ * hidden_size_), 1, hidden_size_);
 
   auto copy_weight = [this, &peephole_weights](int offset, gsl::span<T>& out) {
-    typename gsl::span<const T>::const_iterator in_iter = peephole_weights.cbegin() + offset;
+    typename gsl::span<const T>::iterator in_iter = peephole_weights.begin() + offset;
     std::copy(in_iter, in_iter + hidden_size_, out.begin());
   };
 
@@ -217,7 +217,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   }
 
   // LSTM Layer
-  gsl::span<const T> batched_hidden_state_one_step = batched_hidden0_;
+  gsl::span<T> batched_hidden_state_one_step = batched_hidden0_;
   gsl::span<T> batched_internal_state_prev_one_step = batched_internal_memory_prev_;
   gsl::span<T> batched_internal_state_clipped_one_step = batched_internal_memory_clipped_;
 
@@ -270,7 +270,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   // logic errors causing bounds violations.
   span_T_iter C_prev_end = batched_internal_state_prev_one_step.end();
   span_T_iter C_prev_clipped_end = batched_internal_state_clipped_one_step.end();
-  auto previous_state_end = batched_hidden_state_one_step.end();
+  span_T_const_iter previous_state_end = batched_hidden_state_one_step.end();
 
   {
     span_T_iter c_prev = batched_internal_state_prev_one_step.begin();
@@ -278,7 +278,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
     // hidden state can be provided as input for first step, so need to special case that.
     // after the first step this will switch to the output from the previous step
-    auto previous_state = batched_hidden_state_one_step.begin();
+    span_T_const_iter previous_state = batched_hidden_state_one_step.begin();
 
     //run through steps sequentially
     for (int step = 0; step < max_sequence_length; step++) {
