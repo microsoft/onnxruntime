@@ -124,7 +124,7 @@ void RunSession(InferenceSession& session_object,
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(dims_y);
   EXPECT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<MLFloat16> found(rtensor.template Data<MLFloat16>(), rtensor.template Data<MLFloat16>() + expected_shape.Size());
+  const std::vector<MLFloat16> found(rtensor.Data<MLFloat16>(), rtensor.Data<MLFloat16>() + expected_shape.Size());
   ASSERT_EQ(found.size(), values_y.size());
   for (size_t i = 0; i < found.size(); i++)
     ASSERT_EQ(found[i].val, values_y[i].val);

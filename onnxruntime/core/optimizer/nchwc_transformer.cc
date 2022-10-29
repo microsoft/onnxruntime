@@ -1042,7 +1042,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
     }
 
     Initializer sizes{*sizes_tensor_proto, graph_.ModelPath()};
-    auto* sizes_data = sizes.template data<int64_t>();
+    auto* sizes_data = sizes.data<int64_t>();
 
     // The sizes data can only be used if the input shape is static and the
     // effective scaling must be an integer.
@@ -1072,7 +1072,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
     }
 
     Initializer scales{*scales_tensor_proto, graph_.ModelPath()};
-    auto* scales_data = scales.template data<float>();
+    auto* scales_data = scales.data<float>();
 
     // Cast the scales to integers and verify that the scales are positive and
     // round trip back to floating point.

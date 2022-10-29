@@ -445,4 +445,5 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41 = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_SSE41>,
     MLAS_GEMM_U8S8_KERNEL_SSE41::PackedK,
     MLAS_GEMM_U8S8_KERNEL_SSE41::PackedStrides.K,
+    1  // assembly kernel M stride
 };

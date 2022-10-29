@@ -10,14 +10,13 @@ import warnings
 from onnxruntime.capi import _pybind_state as C
 
 
-def get_ort_device_type(device):
-    device_type = device if type(device) is str else device.type.lower()
+def get_ort_device_type(device_type, device_index):
     if device_type == "cuda":
         return C.OrtDevice.cuda()
     elif device_type == "cpu":
         return C.OrtDevice.cpu()
     elif device_type == "ort":
-        return C.get_ort_device(device.index).device_type()
+        return C.get_ort_device(device_index).device_type()
     else:
         raise Exception("Unsupported device type: " + device_type)
 
@@ -183,6 +182,8 @@ class Session:
         :param output_names: name of the outputs
         :param input_feed: dictionary ``{ input_name: input_value }``
         :param run_options: See :class:`onnxruntime.RunOptions`.
+        :return: list of results, every result is either a numpy array,
+            a sparse tensor, a list or a dictionary.
 
         ::
 
@@ -229,6 +230,8 @@ class Session:
             for n, v in input_dict_ort_values.items():
                 input_dict[n] = v._get_c_value()
             result = sess.run_with_ort_values(input_dict, output_names, run_options)
+            if not isinstance(result, C.OrtValueVector):
+                raise TypeError("run_with_ort_values() must return a instance of type 'OrtValueVector'.")
             ort_values = [OrtValue(v) for v in result]
             return ort_values
 
@@ -453,7 +456,7 @@ class IOBinding:
         self._iobinding.bind_input(
             name,
             C.OrtDevice(
-                get_ort_device_type(device_type),
+                get_ort_device_type(device_type, device_id),
                 C.OrtDevice.default_memory(),
                 device_id,
             ),
@@ -500,7 +503,7 @@ class IOBinding:
             self._iobinding.bind_output(
                 name,
                 C.OrtDevice(
-                    get_ort_device_type(device_type),
+                    get_ort_device_type(device_type, device_id),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -511,7 +514,7 @@ class IOBinding:
             self._iobinding.bind_output(
                 name,
                 C.OrtDevice(
-                    get_ort_device_type(device_type),
+                    get_ort_device_type(device_type, device_id),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -535,12 +538,10 @@ class IOBinding:
         Returns the output OrtValues from the Run() that preceded the call.
         The data buffer of the obtained OrtValues may not reside on CPU memory
         """
-        returned_ortvalues = []
-
-        for ortvalue in self._iobinding.get_outputs():
-            returned_ortvalues.append(OrtValue(ortvalue))
-
-        return returned_ortvalues
+        outputs = self._iobinding.get_outputs()
+        if not isinstance(outputs, C.OrtValueVector):
+            raise TypeError("get_outputs() must return an instance of type 'OrtValueVector'.")
+        return [OrtValue(ortvalue) for ortvalue in outputs]
 
     def copy_outputs_to_cpu(self):
         """Copy output contents to CPU (if on another device). No-op if already on the CPU."""
@@ -592,7 +593,7 @@ class OrtValue:
             C.OrtValue.ortvalue_from_numpy(
                 numpy_obj,
                 C.OrtDevice(
-                    get_ort_device_type(device_type),
+                    get_ort_device_type(device_type, device_id),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -618,7 +619,7 @@ class OrtValue:
                 shape,
                 element_type,
                 C.OrtDevice(
-                    get_ort_device_type(device_type),
+                    get_ort_device_type(device_type, device_id),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -740,7 +741,7 @@ class OrtDevice:
     def make(ort_device_name, device_id):
         return OrtDevice(
             C.OrtDevice(
-                get_ort_device_type(ort_device_name),
+                get_ort_device_type(ort_device_name, device_id),
                 C.OrtDevice.default_memory(),
                 device_id,
             )

@@ -72,7 +72,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int N = gsl::narrow_cast<int>(helper.N());
   int K = gsl::narrow_cast<int>(helper.K());
   auto* Y = ctx->Output(0, {M, N});
-  CudaT* out_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
+  CudaT* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -80,7 +80,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   // broadcast bias if needed and is present
   if (beta_ != 0 && B != nullptr) {
     auto& b_shape = B->Shape();
-    const CudaT* b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
+    const CudaT* b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
     if (b_shape.Size() == 1) {
       // if B is (), (1,) or (1, 1), broadcast the scalar
       CUBLAS_RETURN_IF_ERROR(cublasCopyHelper(
@@ -130,9 +130,9 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
       trans_A_ ? CUBLAS_OP_T : CUBLAS_OP_N,
       N, M, K,
       &alpha,
-      reinterpret_cast<const CudaT*>(W->template Data<T>()),
+      reinterpret_cast<const CudaT*>(W->Data<T>()),
       (trans_B_ ? K : N),
-      reinterpret_cast<const CudaT*>(X->template Data<T>()),
+      reinterpret_cast<const CudaT*>(X->Data<T>()),
       (trans_A_ ? M : K),
       // ideally we need to set the output buffer contents to 0 if bias is missing,
       // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer

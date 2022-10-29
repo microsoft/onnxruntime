@@ -192,7 +192,7 @@ IEngine : IUnknown {
   (IInspectable * sequence, winml::TensorKind key_kind, winml::TensorKind value_kind, IValue * value) PURE;
 
   STDMETHOD(GetSequenceOfTensorValues)
-  (_winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) PURE;
+  (_In_ _winml::IValue* sequence_value, _Out_ std::vector<winrt::com_ptr<_winml::IValue>>& out_values) PURE;
 
   STDMETHOD(GetNumberOfIntraOpThreads)
   (uint32_t * num_threads) PURE;
@@ -202,6 +202,11 @@ IEngine : IUnknown {
 
   STDMETHOD(GetNamedDimensionOverrides)
   (wfc::IMapView<winrt::hstring, uint32_t>& overrides) PURE;
+};
+
+MIDL_INTERFACE("69fbc1d5-66ff-4c79-b14d-fad288dbf8ca")
+IThreading : IUnknown {
+
 };
 
 MIDL_INTERFACE("8ac0b6b9-4561-492b-b63d-a07bdd8292c6")
@@ -230,9 +235,13 @@ IEngineBuilder : IUnknown {
   STDMETHOD(SetIntraOpThreadSpinning)
   (bool allow_spinning) PURE;
 
+  STDMETHOD(SetThreadPool)
+  (IThreading* thread_pool) PURE;
+
   STDMETHOD(CreateEngine)
   (IEngine **out) PURE;
 };
+
 
 MIDL_INTERFACE("5eddd25a-70ad-46ef-a445-78fbaf792c2f")
 IEngineFactory : IUnknown {
@@ -240,7 +249,7 @@ IEngineFactory : IUnknown {
   (_In_ const char* model_path, _In_ size_t len, _Outptr_ IModel** out) PURE;
 
   STDMETHOD(CreateModel)
-  (_In_ void* data, _In_ size_t size, _Outptr_ IModel** out) PURE;
+  (_In_opt_ void* data, _In_ size_t size, _Outptr_ IModel** out) PURE;
 
   STDMETHOD(CreateEmptyModel)
   (_In_ int64_t opset, _Outptr_ IModel * *out) PURE;
@@ -256,9 +265,9 @@ IEngineFactory : IUnknown {
 
   STDMETHOD(CreateTensorDescriptorInfo)
   (
-      winml::TensorKind kind,
-      int64_t* dims,
-      size_t num_dims,
+      _In_ winml::TensorKind kind,
+      _In_ int64_t* dims,
+      _In_ size_t num_dims,
       _Out_ IDescriptorInfo **info) PURE;
 
   STDMETHOD(CreateSequenceDescriptorInfo)
@@ -266,6 +275,9 @@ IEngineFactory : IUnknown {
 
   STDMETHOD(CreateMapDescriptorInfo)
   (_Out_ IDescriptorInfo **info) PURE;
+
+  STDMETHOD(CreateThreadPool)
+  (_In_ bool allow_spinning, _In_ uint32_t num_intra_op_threads, _Out_ IThreading** thread_pool) PURE;
 };
 
 }  // namespace _winml

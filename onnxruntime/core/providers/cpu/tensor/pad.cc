@@ -72,16 +72,10 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
-using Pad2Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
-    kCpuExecutionProvider, kOnnxDomain, Pad, 2, Input, 0);
 using EnabledPad2Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 2, Input, 0);
-using Pad11Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
-    kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0);
 using EnabledPad11Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0);
-using Pad13Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
-    kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0);
 using EnabledPad13Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0);
 
@@ -97,7 +91,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     2, 10,
     KernelDefBuilder().TypeConstraint(
         "T",
-        BuildKernelDefConstraintsFromTypeList<Pad2Types>(),
         BuildKernelDefConstraintsFromTypeList<EnabledPad2Types>()),
     Pad);
 
@@ -110,7 +103,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11, 12,
     KernelDefBuilder().TypeConstraint(
         "T",
-        BuildKernelDefConstraintsFromTypeList<Pad11Types>(),
         BuildKernelDefConstraintsFromTypeList<EnabledPad11Types>()),
     Pad);
 
@@ -120,7 +112,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint(
             "T",
-            BuildKernelDefConstraintsFromTypeList<Pad13Types>(),
             BuildKernelDefConstraintsFromTypeList<EnabledPad13Types>()),
     Pad);
 
@@ -494,7 +485,7 @@ Status Pad::Compute(OpKernelContext* ctx) const {
                 "Pads tensor should be a 1D tensor of shape [2 * input_rank] "
                 "or a 2D tensor of shape [1, 2 * input_rank]");
 
-    const int64_t* pads_tensor_raw_data = pads_tensor.template Data<int64_t>();
+    const int64_t* pads_tensor_raw_data = pads_tensor.Data<int64_t>();
     size_t pads_size = static_cast<size_t>(pads_tensor.Shape().Size());
     ORT_ENFORCE(pads_size == 2 * data_rank,
                 "Pads tensor size should be equal to twice the input dimension count ");

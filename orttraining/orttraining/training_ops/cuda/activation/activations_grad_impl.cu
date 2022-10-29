@@ -17,6 +17,14 @@ struct OP_GeluGrad : public CtxGeluGrad {
   }
 };
 
+template <>
+struct OP_GeluGrad<half> : public CtxGeluGrad {
+  __device__ __inline__ half operator()(const half& dy, const half& x) const {
+    return static_cast<half>(
+        ComputeGeluGradScalar(static_cast<float>(dy), static_cast<float>(x), gelu_computation_mode::Default{}));
+  }
+};
+
 template <typename T>
 struct OP_FastGeluGrad : public CtxGeluGrad {
   __device__ __inline__ T operator()(const T& dy, const T& x) const {
@@ -35,6 +43,17 @@ template <typename T>
 struct OP_SigmoidGrad : public CtxSigmoidGrad {
   __device__ __inline__ T operator()(const T& dy, const T& y) const {
     return dy * y * ((T)1 - y);
+  }
+};
+
+template <typename T>
+struct OP_QuickGeluGrad : public CtxQuickGeluGrad {
+  __device__ __inline__ T operator()(const T& dy, const T& x) const {
+    T v = x * static_cast<T>(alpha);
+    T one = static_cast<T>(1.f);
+    T zero = static_cast<T>(0.f);
+    T sigmoid = v >= zero ? one / (one + _Exp(-v)) : one - one / (one + _Exp(v));
+    return dy * sigmoid * (one + v * (one - sigmoid));
   }
 };
 

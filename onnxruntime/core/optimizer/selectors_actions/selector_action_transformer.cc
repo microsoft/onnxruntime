@@ -8,6 +8,7 @@
 #include <iterator>
 #include <utility>
 
+#include "core/graph/op_identifier_utils.h"
 #include "core/graph/runtime_optimization_record_container.h"
 
 namespace onnxruntime {
@@ -146,11 +147,31 @@ static Status MatchAndProcess(
         break;
       }
 
-      graph.MutableRuntimeOptimizations().AddRecord(
-          transformer_name,
-          RuntimeOptimizationRecord{selector_action_entry.name,
-                                    node_selection,
-                                    action_saved_state.produced_nodes});
+      RuntimeOptimizationRecord::ProducedOpIdVector produced_op_ids{};
+      produced_op_ids.reserve(action_saved_state.produced_node_op_schemas.size());
+
+      for (const auto op_schema : action_saved_state.produced_node_op_schemas) {
+        produced_op_ids.push_back(utils::MakeOpId(*op_schema));
+        if (save_context->record_produced_node_op_schema) {
+          status = save_context->record_produced_node_op_schema(*op_schema);
+          if (!status.IsOK()) {
+            break;
+          }
+        }
+      }
+
+      // handle break out of above for loop on error
+      if (!status.IsOK()) {
+        break;
+      }
+
+      RuntimeOptimizationRecord runtime_optimization_record{selector_action_entry.name,
+                                                            node_selection,
+                                                            std::move(produced_op_ids)};
+
+      graph.MutableRuntimeOptimizations().AddRecord(transformer_name,
+                                                    std::move(runtime_optimization_record));
+
     } else {
       status = action.Run(graph, node_group);
       if (!status.IsOK()) {
@@ -191,21 +212,20 @@ Status SelectorActionTransformer::ApplySelectorsAndActions(
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_num_nodes, NodeIndex post_action_max_num_nodes,
-                                             const RuntimeOptimizationRecord& record,
-                                             Graph& graph) {
+static Status SetOpSinceVersionForProducedNodes(NodeIndex pre_action_max_num_nodes,
+                                                NodeIndex post_action_max_num_nodes,
+                                                const RuntimeOptimizationRecord& record,
+                                                Graph& graph) {
   assert(post_action_max_num_nodes >= pre_action_max_num_nodes);
 
   const auto num_new_node_indices = post_action_max_num_nodes - pre_action_max_num_nodes;
 
-  auto produced_node_it = record.produced_nodes.begin();
-  const auto produced_nodes_end = record.produced_nodes.end();
-
-  std::unordered_map<NodeIndex, HashValue> node_index_to_kernel_def_hash{};
+  auto produced_op_id_it = record.produced_op_ids.begin();
+  const auto produced_op_ids_end = record.produced_op_ids.end();
 
   for (NodeIndex i = 0; i < num_new_node_indices; ++i) {
     const NodeIndex new_node_idx = pre_action_max_num_nodes + i;
-    const auto* new_node = graph.GetNode(new_node_idx);
+    auto* new_node = graph.GetNode(new_node_idx);
 
     // only account for new nodes that still exist
     // an action could add a temporary node and then remove it
@@ -213,18 +233,23 @@ static Status RegisterProducedNodesWithGraph(NodeIndex pre_action_max_num_nodes,
       continue;
     }
 
-    ORT_RETURN_IF(produced_node_it == produced_nodes_end,
+    ORT_RETURN_IF(produced_op_id_it == produced_op_ids_end,
                   "Not enough produced nodes in the runtime optimization record.");
 
-    node_index_to_kernel_def_hash.emplace(new_node_idx, produced_node_it->kernel_def_hash);
+    ORT_RETURN_IF(new_node->Domain() != produced_op_id_it->domain ||
+                      new_node->OpType() != produced_op_id_it->op_type,
+                  "New node op (", new_node->Domain(), ':', new_node->OpType(),
+                  ") does not match produced node op in runtime optimization record (",
+                  produced_op_id_it->domain, ':', produced_op_id_it->op_type, ").");
 
-    ++produced_node_it;
+    assert(new_node->SinceVersion() == -1);
+
+    new_node->SetSinceVersion(produced_op_id_it->since_version);
+
+    ++produced_op_id_it;
   }
 
-  ORT_RETURN_IF(produced_node_it != produced_nodes_end, "Too many produced nodes in the runtime optimization record.");
-
-  graph.MutableRuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash.merge(
-      node_index_to_kernel_def_hash);
+  ORT_RETURN_IF(produced_op_id_it != produced_op_ids_end, "Too many produced nodes in the runtime optimization record.");
 
   return Status::OK();
 }
@@ -261,10 +286,8 @@ Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
 
     const NodeIndex post_action_num_nodes = graph.MaxNodeIndex();
 
-    ORT_RETURN_IF_ERROR(RegisterProducedNodesWithGraph(pre_action_num_nodes, post_action_num_nodes,
-                                                       record, graph));
-
-    ++graph.MutableRuntimeOptimizationReplayCtx().num_replayed_optimizations;
+    ORT_RETURN_IF_ERROR(SetOpSinceVersionForProducedNodes(pre_action_num_nodes, post_action_num_nodes,
+                                                          record, graph));
   }
 
   return Status::OK();

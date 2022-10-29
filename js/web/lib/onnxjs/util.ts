@@ -624,7 +624,7 @@ export class ShapeUtil {
    * originalDims = [2,2] and shapeHints = [0,-1] will return [2,2]
    * originalDims = [2,2] and shapeHints = [4] will return [4]
    * originalDims = [2,2] and shapeHints = [5] will throw an exception
-   * https://github.com/onnx/onnx/blob/master/docs/Operators.md#Reshape
+   * https://github.com/onnx/onnx/blob/main/docs/Operators.md#Reshape
    */
 
   static calculateReshapedDims(originalDims: readonly number[], shapeHints: ArrayLike<number>): number[] {
@@ -791,7 +791,7 @@ export class ShapeUtil {
 
     // set all axes indices to 1 in outputDims and check for duplicates
     for (let i = 0; i < axes.length; i++) {
-      const axis = ShapeUtil.normalizeAxis(axes[i], dims.length);
+      const axis = ShapeUtil.normalizeAxis(axes[i], outputDims.length);
       if (axis >= outputDims.length) {
         throw new Error('\'axes\' has an out of range axis');
       }

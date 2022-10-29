@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {env} from 'onnxruntime-common';
+
 import {Logger, Profiler} from '../../instrument';
 
 import {GlslPreprocessor} from './glsl-preprocessor';

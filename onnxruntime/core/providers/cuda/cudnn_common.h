@@ -139,5 +139,118 @@ inline double ClampCudnnBatchNormEpsilon(double epsilon) {
   return epsilon;
 }
 
+inline cudnnStatus_t
+BatchNormalizationForwardInferenceHelper(cudnnHandle_t handle,
+                                         cudnnBatchNormMode_t mode,
+                                         const void *alpha,
+                                         const void *beta,
+                                         const cudnnTensorDescriptor_t xDesc,
+                                         const void *x,
+                                         const cudnnTensorDescriptor_t yDesc,
+                                         void *y,
+                                         const cudnnTensorDescriptor_t bnScaleBiasMeanVarDesc,
+                                         const void *bnScale,
+                                         const void *bnBias,
+                                         const void *estimatedMean,
+                                         const void *estimatedVariance,
+                                         double epsilon) {
+  return cudnnBatchNormalizationForwardInference(handle,
+                                                 mode,
+                                                 alpha,
+                                                 beta,
+                                                 xDesc,
+                                                 x,
+                                                 yDesc,
+                                                 y,
+                                                 bnScaleBiasMeanVarDesc,
+                                                 bnScale,
+                                                 bnBias,
+                                                 estimatedMean,
+                                                 estimatedVariance,
+                                                 epsilon);
+}
+
+inline cudnnStatus_t
+BatchNormalizationForwardTrainingHelper(cudnnHandle_t handle,
+                                        cudnnBatchNormMode_t mode,
+                                        const void *alpha,
+                                        const void *beta,
+                                        const cudnnTensorDescriptor_t xDesc,
+                                        const void *x,
+                                        const cudnnTensorDescriptor_t yDesc,
+                                        void *y,
+                                        const cudnnTensorDescriptor_t bnScaleBiasMeanVarDesc,
+                                        const void *bnScale,
+                                        const void *bnBias,
+                                        double exponentialAverageFactor,
+                                        void *resultRunningMean,
+                                        void *resultRunningVariance,
+                                        double epsilon,
+                                        void *resultSaveMean,
+                                        void *resultSaveInvVariance) {
+  return cudnnBatchNormalizationForwardTraining(handle,
+                                                mode,
+                                                alpha,
+                                                beta,
+                                                xDesc,
+                                                x,
+                                                yDesc,
+                                                y,
+                                                bnScaleBiasMeanVarDesc,
+                                                bnScale,
+                                                bnBias,
+                                                exponentialAverageFactor,
+                                                resultRunningMean,
+                                                resultRunningVariance,
+                                                epsilon,
+                                                resultSaveMean,
+                                                resultSaveInvVariance);
+}
+
+inline cudnnStatus_t
+LRNCrossChannelForwardHelper(cudnnHandle_t handle,
+                             cudnnLRNDescriptor_t normDesc,
+                             cudnnLRNMode_t lrnMode,
+                             const void *alpha,
+                             const cudnnTensorDescriptor_t xDesc,
+                             const void *x,
+                             const void *beta,
+                             const cudnnTensorDescriptor_t yDesc,
+                             void *y) {
+  return cudnnLRNCrossChannelForward(handle, normDesc, lrnMode, alpha, xDesc, x, beta, yDesc, y);
+}
+
+inline cudnnStatus_t
+SetLRNDescriptorHelper(cudnnLRNDescriptor_t normDesc,
+                       unsigned lrnN,
+                       double lrnAlpha,
+                       double lrnBeta,
+                       double lrnK) {
+  return cudnnSetLRNDescriptor(normDesc, lrnN, lrnAlpha, lrnBeta, lrnK);
+}
+
+inline cudnnStatus_t
+PoolingForwardHelper(cudnnHandle_t handle,
+                     const cudnnPoolingDescriptor_t poolingDesc,
+                     const void *alpha,
+                     const cudnnTensorDescriptor_t xDesc,
+                     const void *x,
+                     const void *beta,
+                     const cudnnTensorDescriptor_t yDesc,
+                     void *y) {
+  return cudnnPoolingForward(handle, poolingDesc, alpha, xDesc, x, beta, yDesc, y);
+}
+
+inline cudnnStatus_t
+SetPoolingNdDescriptorHelper(cudnnPoolingDescriptor_t poolingDesc,
+                             const cudnnPoolingMode_t mode,
+                             const cudnnNanPropagation_t maxpoolingNanOpt,
+                             int nbDims,
+                             const int windowDimA[],
+                             const int paddingA[],
+                             const int strideA[]) {
+  return cudnnSetPoolingNdDescriptor(poolingDesc, mode, maxpoolingNanOpt, nbDims, windowDimA, paddingA, strideA);
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime

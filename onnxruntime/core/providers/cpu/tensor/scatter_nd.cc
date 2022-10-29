@@ -17,8 +17,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     element_type_lists::All);
 }
 
-using ScatterNDDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, ScatterND, Input, 0);
 using EnabledScatterNDDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ScatterND, Input, 0);
 
@@ -28,7 +26,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterNDDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
@@ -38,7 +35,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     15,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterNDDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
@@ -47,7 +43,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     16,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<ScatterNDDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
@@ -131,8 +126,8 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
 
   auto output_tensor = context->Output(0, input_shape);
 
-  const auto* src_base = input_tensor->template Data<TData>();
-  auto* dst_base = output_tensor->template MutableData<TData>();
+  const auto* src_base = input_tensor->Data<TData>();
+  auto* dst_base = output_tensor->MutableData<TData>();
   const bool is_string_type = input_tensor->IsDataTypeString();
 
   auto last_indice_dimension = indice_shape[indice_shape.NumDimensions() - 1];
@@ -140,9 +135,9 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
   // Re-use input for output. If input/output Tensor* are the same, do not copy.
   if (src_base != dst_base) {
     if (is_string_type) {
-      const auto* str_begin = input_tensor->template Data<std::string>();
+      const auto* str_begin = input_tensor->Data<std::string>();
       const std::string* str_end = str_begin + input_shape.Size();
-      auto* dst = output_tensor->template MutableData<std::string>();
+      auto* dst = output_tensor->MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
       memcpy((void*)dst_base, (const void*)src_base, input_tensor->SizeInBytes());
@@ -157,12 +152,12 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
   }
 
   p.element_to_copy = input_shape.SizeFromDimension(last_indice_dimension);
-  const int64_t* indice_offset = indice_tensor->template Data<int64_t>();
+  const int64_t* indice_offset = indice_tensor->Data<int64_t>();
   auto offset_count = indice_shape.Size() / last_indice_dimension;  // Times to copy
   p.element_offsets.assign(offset_count, 0LL);
 
-  p.input_base = update_tensor->template Data<TData>();
-  p.output_base = output_tensor->template MutableData<TData>();
+  p.input_base = update_tensor->Data<TData>();
+  p.output_base = output_tensor->MutableData<TData>();
 
   for (int64_t i = 0; i < offset_count; ++i) {
     for (int64_t j = 0; j < last_indice_dimension; ++j) {

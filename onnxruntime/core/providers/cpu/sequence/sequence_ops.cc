@@ -31,7 +31,7 @@ Status SequenceLength::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<TensorSeq>(0);
 
   auto* Y = context->Output(0, {});
-  auto* Y_data = Y->template MutableData<int64_t>();
+  auto* Y_data = Y->MutableData<int64_t>();
   *Y_data = static_cast<int64_t>(X->Size());
 
   return Status::OK();
@@ -328,8 +328,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
 }  // namespace op_kernel_type_control
 
 namespace {
-using SplitToSequenceDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, SplitToSequence, Input, 0);
 using EnabledSplitToSequenceDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, SplitToSequence, Input, 0);
 }  // namespace
@@ -339,7 +337,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     11,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<SplitToSequenceDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledSplitToSequenceDataTypes>())
         .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
         .TypeConstraint("I", std::vector<MLDataType>{
@@ -509,7 +506,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
   auto output_dimensions = input_shape.AsShapeVector();
   std::vector<Tensor> tensors;
   int64_t input_offset = 0;
-  const T* input_data = input.template Data<T>();
+  const T* input_data = input.Data<T>();
   for (int i = 0; i < num_outputs; ++i) {
     // update size of dimension for axis we're splitting on while considering uneven split
     int split_size;
@@ -523,7 +520,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context.GetTempSpaceAllocator(&alloc));
     Tensor output_tensor(input.DataType(), onnxruntime::TensorShape(output_dimensions), alloc);
-    T* output_data = output_tensor.template MutableData<T>();
+    T* output_data = output_tensor.MutableData<T>();
 
     ::onnxruntime::math::CopyMatrix<T>(
         before_dims,                                       // M

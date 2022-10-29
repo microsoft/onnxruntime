@@ -35,7 +35,7 @@ static void RunTest(const std::vector<float>& x_vals,
 }
 
 TEST(SoftmaxOperator, Simple) {
-  // https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax
+  // https://github.com/onnx/onnx/blob/main/docs/Operators.md#Softmax
   //    x = np.array([[-1, 0, 1]]).astype(np.float32)
   //    y = np.exp(x) / np.sum(np.exp(x), axis = 1) #expected output[[0.09003058, 0.24472848, 0.66524094]]
 
@@ -71,7 +71,7 @@ TEST(SoftmaxOperator, Simple_fp16) {
 
   test.AddInput<MLFloat16>("X", dimensions, f_X);
   test.AddOutput<MLFloat16>("Y", dimensions, f_Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 #endif
 
@@ -96,7 +96,7 @@ TEST(SoftmaxOperator, Simple_bfloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif

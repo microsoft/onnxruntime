@@ -8,6 +8,9 @@
 #include "cxxopts.hpp"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/providers/provider_factory_creators.h"
+#include "core/session/onnxruntime_c_api.h"
+
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
@@ -15,11 +18,6 @@
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/models/runner/data_loader.h"
-
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
-}
 
 #include <condition_variable>
 #include <mutex>
@@ -75,7 +73,7 @@ int main(int argc, char* argv[]) {
                                                   -1};
 
   std::unique_ptr<Environment> env;
-  ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Enviroment creation fails.");
+  ORT_ENFORCE(Environment::Create(nullptr, env) == Status::OK(), "Environment creation fails.");
   ORT_ENFORCE(parse_arguments(argc, argv, params) == Status::OK(), "Parsing command-line argument fails");
 
   // Set up MPI.
@@ -117,7 +115,7 @@ int main(int argc, char* argv[]) {
   Status st;
   OrtCUDAProviderOptions xp_info{};
   xp_info.device_id = static_cast<OrtDevice::DeviceId>(world_rank);
-  auto cuda_factory = CreateExecutionProviderFactory_Cuda(&xp_info);
+  auto cuda_factory = CudaProviderFactoryCreator::Create(&xp_info);
   st = session_object.RegisterExecutionProvider(cuda_factory->CreateProvider());
   ORT_ENFORCE(st == Status::OK(), "MPI rank ", world_rank, ": ", st.ErrorMessage());
 

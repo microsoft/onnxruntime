@@ -498,7 +498,7 @@ class ContainerChecker {
         ORT_ENFORCE(++index < c.size(), "Sequence is missing type entry for its element");
         constexpr int32_t prim_type = ToTensorProtoElementType<T>();
         // Check if this is a primitive type and it matches
-        ORT_IF_CONSTEXPR(prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+        if constexpr(prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
           return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
                  c[index].IsPrimType(prim_type);
         }
@@ -528,7 +528,7 @@ class ContainerChecker {
       }
       ORT_ENFORCE(++index < c.size(), "Map is missing type entry for its value");
       constexpr int32_t val_type = ToTensorProtoElementType<V>();
-      ORT_IF_CONSTEXPR(val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+      if constexpr(val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
         return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
                c[index].IsPrimType(val_type);
       }

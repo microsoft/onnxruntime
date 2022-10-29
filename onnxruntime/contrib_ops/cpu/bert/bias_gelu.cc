@@ -32,11 +32,11 @@ Status BiasGelu<T, use_approximation>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(bias_gelu_helper::CheckInputs(context));
 
   const Tensor* input = context->Input<Tensor>(0);
-  const T* input_data = input->template Data<T>();
+  const T* input_data = input->Data<T>();
   int64_t elem_count = input->Shape().Size();
 
   Tensor* output = context->Output(0, input->Shape());
-  T* output_data = output->template MutableData<T>();
+  T* output_data = output->MutableData<T>();
 
   const Tensor* bias = context->Input<Tensor>(1);
   if (nullptr == bias) {
@@ -60,7 +60,7 @@ Status BiasGelu<T, use_approximation>::Compute(OpKernelContext* context) const {
               p_output[i] = value * (static_cast<T>(C) * value * value + static_cast<T>(B));
             }
 
-            MlasComputeTanh(p_output, p_output, count);
+            MlasComputeTanh(p_output, p_output,gsl::narrow_cast<size_t>(count));
 
             for (int64_t i = 0; i < count; i++) {
               p_output[i] = 0.5f * p_input[i] * (p_output[i] + 1.0f);
@@ -71,7 +71,7 @@ Status BiasGelu<T, use_approximation>::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  const T* bias_data = bias->template Data<T>();
+  const T* bias_data = bias->Data<T>();
   int64_t bias_len = bias->Shape().Size();
 
   AllocatorPtr alloc;
@@ -106,7 +106,7 @@ void BiasGelu<T, use_approximation>::AddBiasGelu(
       temp[i] = value * 0.5f;
     }
 
-    MlasComputeTanh(output, output, count);
+    MlasComputeTanh(output, output,gsl::narrow_cast<size_t>(count));
 
     for (int64_t i = 0; i < count; i++) {
       output[i] = temp[i] * (output[i] + 1.0f);
@@ -118,7 +118,7 @@ void BiasGelu<T, use_approximation>::AddBiasGelu(
       temp[i] = value * 0.5f;
     }
 
-    MlasComputeErf(output, output, count);
+    MlasComputeErf(output, output,gsl::narrow_cast<size_t>(count));
 
     for (int64_t i = 0; i < count; i++) {
       output[i] = temp[i] * (output[i] + 1.0f);

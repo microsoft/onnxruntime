@@ -36,8 +36,8 @@ class MeanVarianceNormalization_0 : public OpKernel {
     const int64_t W = dims[3];
 
     Tensor* Y = context->Output(0, {N, C, H, W});
-    const T* Xdata = X->template Data<T>();
-    T* Ydata = Y->template MutableData<T>();
+    const T* Xdata = X->Data<T>();
+    T* Ydata = Y->MutableData<T>();
 
     const int64_t sample_size = H * W;
     Eigen::Array<float, Eigen::Dynamic, 1> mean(C, 1);
@@ -105,10 +105,15 @@ class MeanVarianceNormalization_1 final : public MeanVarianceNormalization_0<T> 
     if (!info.GetAttrs("axes", axes).IsOK()) {
       axes = {0, 2, 3};
     }
-    if (find(axes.begin(), axes.end(), 1) != axes.end()) {
+    constexpr int64_t cross_channel_axes[] = {0, 1, 2, 3};
+    constexpr int64_t batch_spatial_axes[] = {0, 2, 3};
+
+    if (std::equal(std::begin(axes), std::end(axes), std::begin(cross_channel_axes), std::end(cross_channel_axes))) {
       this->across_channels_ = true;
-    } else {
+    } else if (std::equal(std::begin(axes), std::end(axes), std::begin(batch_spatial_axes), std::end(batch_spatial_axes))) {
       this->across_channels_ = false;
+    } else {
+      ORT_THROW("MeanVarianceNormalization CPU EP only supports NHW and NCHW reduction for axes attribute.");
     }
     this->normalize_variance_ = 1;
   }

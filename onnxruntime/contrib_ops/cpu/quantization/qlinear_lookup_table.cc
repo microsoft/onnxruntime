@@ -56,10 +56,10 @@ void QlinearBuildLookupTable(uint8_t* table,
 
   const float X_scale = *(tensor_x_scale->Data<float>());
   const T X_zero_point =
-    (tensor_x_zero_point == nullptr) ? static_cast<T>(0) : *(tensor_x_zero_point->template Data<T>());
+    (tensor_x_zero_point == nullptr) ? static_cast<T>(0) : *(tensor_x_zero_point->Data<T>());
   const float Y_scale = *(tensor_y_scale->Data<float>());
   const T Y_zero_point =
-    (tensor_y_zero_point == nullptr) ? static_cast<T>(0) : *(tensor_y_zero_point->template Data<T>());
+    (tensor_y_zero_point == nullptr) ? static_cast<T>(0) : *(tensor_y_zero_point->Data<T>());
 
   float dequantized_input[256];
   float dequantized_output[256];

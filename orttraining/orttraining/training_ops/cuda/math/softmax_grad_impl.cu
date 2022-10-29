@@ -20,25 +20,34 @@
 
 #include "orttraining/training_ops/cuda/math/softmax_grad_impl.h"
 
+#include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/math/softmax_common.h"
 #include "core/providers/cuda/math/softmax_warpwise_impl.cuh"
+#include "core/providers/cuda/shared_inc/accumulation_type.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 template <typename input_t, typename output_t, typename acc_t, int log2_elements, bool is_log_softmax>
-__global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, const input_t* output, int batch_size, int stride, int element_count) {
-  // WARP_SIZE and WARP_BATCH must match the return values batches_per_warp and warp_size of method warp_softmax_backward_kernel.
+__global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, const input_t* output,
+                                      int element_count, int batch_count) {
+  // WARP_SIZE and WARP_BATCH must match the return values batches_per_warp and warp_size of method
+  // warp_softmax_backward_kernel.
   constexpr int next_power_of_two = 1 << log2_elements;
   constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
+#ifdef USE_ROCM
+  constexpr int WARP_BATCH = 1;
+#else
   constexpr int WARP_BATCH = (next_power_of_two <= 128) ? 2 : 1;
+#endif
 
   int first_batch = (blockDim.y * blockIdx.x + threadIdx.y) * WARP_BATCH;
 
-  // batch_size might not be a multiple of WARP_BATCH. Check how
+  // batch_count might not be a multiple of WARP_BATCH. Check how
   // many batches have to computed within this WARP.
-  int local_batches = batch_size - first_batch;
+  int local_batches = batch_count - first_batch;
   if (local_batches > WARP_BATCH)
     local_batches = WARP_BATCH;
 
@@ -46,7 +55,7 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
   int local_idx = threadIdx.x % WARP_SIZE;
 
   // the first element to process by the current thread
-  int thread_offset = first_batch * stride + local_idx;
+  int thread_offset = first_batch * element_count + local_idx;
   grad += thread_offset;
   output += thread_offset;
   gradInput += thread_offset;
@@ -120,22 +129,26 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
   }
 }
 
-template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-void dispatch_softmax_backward(cudaStream_t stream, output_t* grad_input, const input_t* grad, const input_t* output, int softmax_elements, int softmax_elements_stride, int batch_count) {
-  if (softmax_elements == 0) {
-    return;
-  } else {
-    int log2_elements = log2_ceil(softmax_elements);
+template <typename T>
+Status SoftmaxGradImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* input_grad, const T* output_grad,
+                       const T* softmax_output, int element_count, int batch_count, bool is_log_softmax) {
+  if (element_count == 0) return Status::OK();
+  if (element_count <= 1024 && element_count * sizeof(T) <= 4096) {
+    typedef AccumulationType_t<T> AccT;
+    int log2_elements = log2_ceil(element_count);
     const int next_power_of_two = 1 << log2_elements;
 
     // This value must match the WARP_SIZE constexpr value computed inside softmax_warp_backward.
-    int warp_size = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
+    int warp_size = std::min(next_power_of_two, GPU_WARP_SIZE_HOST);
 
     // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_backward.
+#ifdef USE_ROCM
+    int batches_per_warp = 1;
+    constexpr int threads_per_block = 256;
+#else
     int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
-
-    // use 128 threads per block to maximimize gpu utilization
     constexpr int threads_per_block = 128;
+#endif
 
     int warps_per_block = (threads_per_block / warp_size);
     int batches_per_block = warps_per_block * batches_per_warp;
@@ -143,64 +156,54 @@ void dispatch_softmax_backward(cudaStream_t stream, output_t* grad_input, const 
     dim3 threads(warp_size, warps_per_block, 1);
     // Launch code would be more elegant if C++ supported FOR CONSTEXPR
     switch (log2_elements) {
-      case 0:  // 1
-        softmax_warp_backward<input_t, output_t, acc_t, 0, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(grad_input, grad, output, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 1:  // 2
-        softmax_warp_backward<input_t, output_t, acc_t, 1, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(grad_input, grad, output, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 2:  // 4
-        softmax_warp_backward<input_t, output_t, acc_t, 2, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(grad_input, grad, output, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 3:  // 8
-        softmax_warp_backward<input_t, output_t, acc_t, 3, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(grad_input, grad, output, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 4:  // 16
-        softmax_warp_backward<input_t, output_t, acc_t, 4, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(grad_input, grad, output, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 5:  // 32
-        softmax_warp_backward<input_t, output_t, acc_t, 5, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(grad_input, grad, output, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 6:  // 64
-        softmax_warp_backward<input_t, output_t, acc_t, 6, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(grad_input, grad, output, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 7:  // 128
-        softmax_warp_backward<input_t, output_t, acc_t, 7, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(grad_input, grad, output, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 8:  // 256
-        softmax_warp_backward<input_t, output_t, acc_t, 8, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(grad_input, grad, output, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 9:  // 512
-        softmax_warp_backward<input_t, output_t, acc_t, 9, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(grad_input, grad, output, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      case 10:  // 1024
-        softmax_warp_backward<input_t, output_t, acc_t, 10, is_log_softmax>
-            <<<blocks, threads, 0, stream>>>(grad_input, grad, output, batch_count, softmax_elements_stride, softmax_elements);
-        break;
-      default:
-        break;
+#define CASE_LOG2_ELEMENTS(log2_elements_value)                                                                  \
+  case log2_elements_value: {                                                                                    \
+    if (is_log_softmax) {                                                                                        \
+      softmax_warp_backward<T, T, AccT, log2_elements_value, true>                                               \
+          <<<blocks, threads, 0, stream>>>(input_grad, output_grad, softmax_output, element_count, batch_count); \
+    } else {                                                                                                     \
+      softmax_warp_backward<T, T, AccT, log2_elements_value, false>                                              \
+          <<<blocks, threads, 0, stream>>>(input_grad, output_grad, softmax_output, element_count, batch_count); \
+    }                                                                                                            \
+  } break
+      CASE_LOG2_ELEMENTS(0);   // 1
+      CASE_LOG2_ELEMENTS(1);   // 2
+      CASE_LOG2_ELEMENTS(2);   // 4
+      CASE_LOG2_ELEMENTS(3);   // 8
+      CASE_LOG2_ELEMENTS(4);   // 16
+      CASE_LOG2_ELEMENTS(5);   // 32
+      CASE_LOG2_ELEMENTS(6);   // 64
+      CASE_LOG2_ELEMENTS(7);   // 128
+      CASE_LOG2_ELEMENTS(8);   // 256
+      CASE_LOG2_ELEMENTS(9);   // 512
+      CASE_LOG2_ELEMENTS(10);  // 1024
+#undef CASE_LOG2_ELEMENTS
     }
+    return Status::OK();
   }
+
+  const int64_t dims[]{batch_count, 1, 1, element_count};  // cudnn expects 4D shape in NCHW format
+  const auto alpha = Consts<T>::One;
+  const auto beta = Consts<T>::Zero;
+  CudnnTensor input_tensor, output_tensor;
+  ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<T>()));
+  ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<T>()));
+  return SoftmaxBackward(cudnn_handle, is_log_softmax, &alpha, input_tensor, softmax_output, output_grad, &beta,
+                         output_tensor, input_grad);
 }
 
-#define SPECIALIZED_SOFTMAX_GRAD_IMPL(input_t, output_t, acc_t) \
-template void dispatch_softmax_backward<input_t, output_t, acc_t, false>(cudaStream_t stream, input_t * grad_input, const output_t* grad, const output_t* output, int softmax_elements, int softmax_elements_stride, int batch_count); \
-template void dispatch_softmax_backward<input_t, output_t, acc_t, true>(cudaStream_t stream, input_t * grad_input, const output_t* grad, const output_t* output, int softmax_elements, int softmax_elements_stride, int batch_count);
+#define SPECIALIZED_SOFTMAX_GRAD_IMPL(type)                                                                     \
+  template Status SoftmaxGradImpl<type>(cudaStream_t stream, cudnnHandle_t cudnn_handle, type * input_grad,     \
+                                        const type* output_grad, const type* softmax_output, int element_count, \
+                                        int batch_count, bool is_log_softmax);
 
-SPECIALIZED_SOFTMAX_GRAD_IMPL(float, float, float)
-SPECIALIZED_SOFTMAX_GRAD_IMPL(half, half, float)
-SPECIALIZED_SOFTMAX_GRAD_IMPL(double, double, double)
-SPECIALIZED_SOFTMAX_GRAD_IMPL(BFloat16, BFloat16, float)
+SPECIALIZED_SOFTMAX_GRAD_IMPL(float)
+SPECIALIZED_SOFTMAX_GRAD_IMPL(half)
+SPECIALIZED_SOFTMAX_GRAD_IMPL(BFloat16)
+#ifdef USE_CUDA
+SPECIALIZED_SOFTMAX_GRAD_IMPL(double)
+#endif
 
+#undef SPECIALIZED_SOFTMAX_GRAD_IMPL
 }
 }

@@ -24,7 +24,7 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   auto x_ptr = ctx->Input<Tensor>(0);
   ORT_ENFORCE(x_ptr != nullptr);
   auto& x = *x_ptr;
-  const auto* x_data = x.template Data<float>();
+  const auto* x_data = x.Data<float>();
   const auto num_of_elements = x.Shape().Size();
 
   auto& y = *ctx->Output(0, x.Shape());
@@ -36,14 +36,14 @@ Status DynamicQuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   T zero_point;
   GetQuantizationParameter(x_data, num_of_elements, scale, zero_point, ctx->GetOperatorThreadPool());
 
-  auto* output_scale = y_scale.template MutableData<float>();
+  auto* output_scale = y_scale.MutableData<float>();
   *output_scale = scale;
 
-  auto* output_zp = y_zeropoint.template MutableData<T>();
+  auto* output_zp = y_zeropoint.MutableData<T>();
   *output_zp = zero_point;
 
   // quantize the data
-  auto* output = y.template MutableData<T>();
+  auto* output = y.MutableData<T>();
   ParQuantizeLinear(x_data, output, num_of_elements, scale, zero_point, ctx->GetOperatorThreadPool());
 
   return Status::OK();

@@ -21,6 +21,7 @@ The following environment variables are available for the extensions setup.py
     - ORTMODULE_TORCH_CPP_DIR: ORTModule's internal
     - ONNXRUNTIME_ROCM_VERSION: ROCM version used to build ONNX Runtime package
     - ONNXRUNTIME_CUDA_VERSION: CUDA version used to build ONNX Runtime package
+    - ONNXRUNTIME_FORCE_CUDA: Force CUDA extensions to be used when it is not available to build ONNX Runtime package
 
 TODO: Create a generic mechanism to pass arguments from ORTModule into each extension setup.py
 TODO: Create environment variables to allow extensions to be hosted outside ONNX runtime installation folder

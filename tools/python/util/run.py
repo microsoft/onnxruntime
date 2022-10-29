@@ -18,7 +18,7 @@ def run(
     shell=False,
     env=None,
     check=True,
-    quiet=False
+    quiet=False,
 ):
     """Runs a subprocess.
 

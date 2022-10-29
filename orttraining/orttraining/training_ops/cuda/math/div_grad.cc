@@ -30,7 +30,7 @@ TensorShapeVector prepended_dimension_1(const TensorShape& shape, size_t total_r
 
   TensorShapeVector dims(total_rank, 1);
 
-  // https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
+  // https://github.com/onnx/onnx/blob/main/docs/Broadcasting.md
   // for property 3 of Multidirectional Broadcasting, we need to prepended with a dimension of length 1.
   if (input_rank > 0)
     std::copy(shape.GetDims().begin(), shape.GetDims().end(), &dims[total_rank - input_rank]);

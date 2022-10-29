@@ -1,0 +1,174 @@
+parameters:
+- name: PythonVersion
+  type: string
+
+- name: RocmVersion
+  type: string
+
+- name: BuildConfig
+  type: string
+  default: 'Release'
+
+jobs:
+- job: wheels_python_${{ replace(parameters.PythonVersion,'.','_') }}_rocm_${{ replace(parameters.RocmVersion,'.','_') }}_${{ parameters.BuildConfig }}
+  workspace:
+    clean: all
+  timeoutInMinutes: 180
+  pool: Ubuntu-2004-rocm-aiinfra
+  variables:
+    - name: PythonVersion
+      value: ${{ parameters.PythonVersion }}
+    - name: EnableProfiling
+      ${{ if eq(parameters.BuildConfig, 'Release') }}:
+        value: ''
+      ${{ else }}:
+        value: '--enable_rocm_profiling'
+    - name: ArtifactName
+      ${{ if eq(parameters.BuildConfig, 'Release') }}:
+        value: 'onnxruntime_rocm'
+      ${{ else }}:
+        value: 'onnxruntime_rocm_enable_profiling'
+
+  steps:
+  - task: CmdLine@2
+    displayName: 'check variables'
+    inputs:
+      script: |
+        echo "BuildConfig is "${{ parameters.BuildConfig }} && \
+        echo "EnableProfiling is "${{ variables['EnableProfiling'] }} && \
+        echo "ArtifactName is "${{ variables['ArtifactName'] }}
+
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: set-python-manylinux-variables-step.yml
+  - template: get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm${{ parameters.RocmVersion }}
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: >-
+        --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
+        --build-arg BUILD_UID=$(id -u)
+        --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
+        --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
+        --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
+        --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+      Repository: onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }}
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        docker run --rm \
+          --privileged \
+          --ipc=host \
+          --network=host \
+          --cap-add=SYS_PTRACE \
+          --security-opt seccomp=unconfined \
+          -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /onnxruntime_src \
+          --entrypoint $(PythonManylinuxDir)/bin/python3 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          --user onnxruntimedev \
+          onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }} \
+            /onnxruntime_src/tools/ci_build/build.py \
+              --config ${{ parameters.BuildConfig }} \
+              --use_rocm \
+              --rocm_version=${{ parameters.RocmVersion }} \
+              --rocm_home=/opt/rocm \
+              --nccl_home=/opt/rocm \
+              --update \
+              --parallel \
+              --build_dir /build \
+              --build \
+              --build_wheel \
+              --skip_tests \
+              --enable_training \
+              --cmake_extra_defines \
+                CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
+                onnxruntime_BUILD_UNIT_TESTS=OFF \
+              --enable_training_torch_interop \
+              ${{ variables['EnableProfiling'] }}
+      workingDirectory: $(Build.SourcesDirectory)
+    displayName: 'Build onnxruntime (in container)'
+
+  # All UTs were here are now covered in AMD CI - see orttraining-pai-ci-pipeline.yml
+  # This CI is mainly responsible for packaging. The uploaded whl could be used in the downstream CIs (if any).
+  # For example, docker image build (e.g., PTCA), reporting CI, etc. to further verify the whl as needed.
+  # To view the UTs disabled from this CI - see https://github.com/microsoft/onnxruntime/pull/11945 for examples
+
+  - script: |-
+      echo "Tests will run using HIP_VISIBLES_DEVICES=$HIP_VISIBLE_DEVICES"
+      video_gid=$(getent group | awk '/video/ {split($0,a,":"); print(a[3])}')
+      echo "Found video_gid=$video_gid; attempting to set as pipeline variable"
+      echo "##vso[task.setvariable variable=video]$video_gid"
+      render_gid=$(getent group | awk '/render/ {split($0,a,":"); print(a[3])}')
+      echo "Found render_gid=$render_gid; attempting to set as pipeline variable"
+      echo "##vso[task.setvariable variable=render]$render_gid"
+    condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+    displayName: 'Find video and render gid to be mapped into container'
+
+  - task: CopyFiles@2
+    displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)'
+      Contents: "${{ parameters.BuildConfig }}/dist/*.whl"
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+  - task: CmdLine@2
+    displayName: 'Build Python Documentation'
+    condition: and(succeeded(), ne('${{ parameters.PythonVersion }}', '3.9'), eq('${{ parameters.BuildConfig }}', 'Release'))  # tensorflow not available on python 3.9
+    inputs:
+      script: |
+        mkdir -p $HOME/.onnx
+        docker run --rm \
+          --device=/dev/kfd \
+          --device=/dev/dri \
+          --group-add $(video) \
+          --group-add $(render) \
+          --privileged \
+          --ipc=host \
+          --network=host \
+          --cap-add=SYS_PTRACE \
+          --security-opt seccomp=unconfined \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --entrypoint /bin/bash \
+          -e HIP_VISIBLE_DEVICES \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          -e PythonManylinuxDir=$(PythonManylinuxdir) \
+          onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }} \
+            /onnxruntime_src/tools/ci_build/github/pai/wrap_rocm_python_doc_publisher.sh
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CopyFiles@2
+    displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
+    condition: and(succeeded(), ne('${{ parameters.PythonVersion }}', '3.9'), eq('${{ parameters.BuildConfig }}', 'Release'))  # tensorflow not available on python 3.9
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
+      Contents: '**'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)/training_html_doc'
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Upload Rocm wheel as build artifact'
+    inputs:
+      ArtifactName: ${{ variables['ArtifactName'] }}
+
+  - script: |
+      files=($(Build.ArtifactStagingDirectory)/${{ parameters.BuildConfig }}/dist/*.whl) && \
+      echo ${files[0]} && \
+      python3 tools/ci_build/upload_python_package_to_azure_storage.py \
+          --python_wheel_path ${files[0]} \
+          --final_storage
+    condition: and(succeeded(), eq(variables['DRY_RUN'], '0'))
+    displayName: 'Upload Rocm wheel to release repository'
+
+  - template: component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
+
+  - template: clean-agent-build-directory-step.yml

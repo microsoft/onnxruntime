@@ -66,7 +66,7 @@ def write_to_db(binary_size_data, args):
     client = QueuedIngestClient(kcsb)
     fields = ["build_time", "build_id", "build_project", "commit_id", "os", "arch", "build_config", "size", "Branch"]
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    branch_name = os.environ.get("BUILD_SOURCEBRANCHNAME", "master")
+    branch_name = os.environ.get("BUILD_SOURCEBRANCHNAME", "main")
     rows = []
     for row in binary_size_data:
         rows.append(

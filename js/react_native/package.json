@@ -17,15 +17,15 @@
     "ONNX Runtime"
   ],
   "devDependencies": {
-    "@types/fs-extra": "^9.0.11",
+    "@types/fs-extra": "^9.0.13",
     "@types/jest": "^27.4.0",
-    "@types/react": "^17.0.38",
-    "@types/react-native": "^0.66.15",
+    "@types/react": "^18.0.9",
+    "@types/react-native": "^0.67.7",
     "jest": "^27.4.7",
-    "pod-install": "^0.1.31",
-    "prettier": "^2.0.5",
-    "react": "^17.0.2",
-    "react-native": "^0.67.2",
+    "pod-install": "^0.1.36",
+    "prettier": "^2.6.2",
+    "react": "^18.1.0",
+    "react-native": "^0.69.1",
     "react-native-builder-bob": "^0.18.2",
     "typescript": "^4.5.5"
   },
@@ -38,9 +38,9 @@
     "registry": "https://registry.npmjs.org/"
   },
   "source": "lib/index",
-  "version": "1.12.0",
+  "version": "1.14.0",
   "main": "dist/commonjs/index",
-  "homepage": "https://github.com/Microsoft/onnxruntime/js/react_native#readme",
+  "homepage": "https://github.com/microsoft/onnxruntime/blob/main/js/react_native/README.md",
   "files": [
     "lib",
     "dist",
@@ -48,6 +48,8 @@
     "ios/*.h",
     "ios/*.mm",
     "onnxruntime-react-native.podspec",
+    "app.plugin.js",
+    "unimodule.json",
     "!dist/commonjs/*.js.map",
     "!dist/module/*.js.map",
     "!android/.gitignore",
@@ -58,7 +60,7 @@
     "!android/gradle/wrapper/*.jar",
     "!android/libs"
   ],
-  "description": "Onnxruntime bridge for react native",
+  "description": "ONNX Runtime bridge for react native",
   "repository": "https://github.com/Microsoft/onnxruntime.git",
   "react-native-builder-bob": {
     "source": "lib",
@@ -75,6 +77,7 @@
     "output": "dist"
   },
   "dependencies": {
+    "@expo/config-plugins": "^4.1.5",
     "buffer": "^6.0.3",
     "onnxruntime-common": "file:../common"
   },
@@ -85,10 +88,9 @@
     "test": "jest",
     "pack-common": "cd ../common && npm pack && mv -f onnxruntime-common-*.tgz ../react_native/e2e/onnxruntime-common.tgz",
     "unpack-common": "cd e2e && yarn add --no-lockfile file:./onnxruntime-common.tgz",
-    "pack-libs": "yarn prepack-e2e && npm pack && mv -f onnxruntime-react-native-*.tgz e2e/onnxruntime-react-native.tgz",
+    "pack-libs": "npm pack --ort-js-pack-mode=e2e && mv -f onnxruntime-react-native-*.tgz e2e/onnxruntime-react-native.tgz",
     "unpack-libs": "cd e2e && yarn add --no-lockfile file:./onnxruntime-react-native.tgz",
-    "prepack-rel": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
-    "prepack-e2e": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack-e2e",
+    "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
     "pods": "cd e2e && pod-install --quiet",
     "e2e": "yarn --cwd e2e"
   },

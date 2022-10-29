@@ -8,8 +8,9 @@
 namespace onnxruntime {
 OrtValuePatternPlanner::OrtValuePatternPlanner(const ExecutionPlanBase& execution_plan, bool trace_using_counters)
     : execution_planner_(execution_plan) {
+  planner_map_.reserve(execution_plan.GetAllLocations().size());
   for (auto& location : execution_plan.GetAllLocations()) {
-    planner_map_.emplace(location, std::make_unique<MemPatternPlanner>(trace_using_counters));
+    planner_map_.emplace(location, trace_using_counters);
   }
 }
 
@@ -24,7 +25,7 @@ common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx,
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
   }
 
-  it->second->TraceAllocation(ort_value_idx, counter, size);
+  it->second.TraceAllocation(ort_value_idx, counter, size);
   return common::Status::OK();
 }
 #endif
@@ -36,7 +37,7 @@ common::Status OrtValuePatternPlanner::TraceAllocation(int ort_value_idx, size_t
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
   }
 
-  it->second->TraceAllocation(ort_value_idx, size);
+  it->second.TraceAllocation(ort_value_idx, size);
   return common::Status::OK();
 }
 
@@ -47,16 +48,17 @@ common::Status OrtValuePatternPlanner::TraceFree(int ort_value_index) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
   }
 
-  it->second->TraceFree(ort_value_index);
+  it->second.TraceFree(ort_value_index);
   return common::Status::OK();
 }
 
-common::Status OrtValuePatternPlanner::GeneratePatterns(MemoryPatternGroup* out) {
-  if (!out) return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+common::Status OrtValuePatternPlanner::GeneratePatterns(MemoryPatternGroup& out) {
 
+  out.locations.reserve(planner_map_.size());
+  out.patterns.reserve(planner_map_.size());
   for (auto& it : planner_map_) {
-    out->locations.push_back(it.first);
-    out->patterns.push_back(it.second->GenerateMemPattern());
+    out.locations.push_back(it.first);
+    out.patterns.push_back(it.second.GenerateMemPattern());
   }
 
   return common::Status::OK();

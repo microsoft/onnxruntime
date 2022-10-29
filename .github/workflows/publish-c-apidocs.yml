@@ -1,6 +1,8 @@
 name: Update C/C++ API Docs
 on:
-  workflow_dispatch
+  push:
+    branches:
+      - main
 
 jobs:
   publish:
@@ -10,7 +12,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Install doxygen and dependencies
         run: |
-          sudo apt update 
+          sudo apt update
           sudo apt-get install libclang-9-dev
           sudo apt-get install libclang-cpp9
           wget https://www.doxygen.nl/files/doxygen-1.9.2.linux.bin.tar.gz
@@ -26,18 +28,16 @@ jobs:
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
-          clean: false    
+          clean: false
       - name: Move API docs into target area
         run: |
           rm -rf docs/api/c
-          mv build/doxygen/html docs/api/c   
+          mv build/doxygen/html docs/api/c
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3
         with:
           branch: gh-pages-pr
           base: gh-pages
           title: '[Automated]: Update C/C++ API docs'
-          commit-message: 'Update C/C++ API docs to commit ${{ steps.vars.outputs.sha_short }}'   
-          add-paths: docs/api/c   
-
- 
+          commit-message: 'Update C/C++ API docs to commit ${{ steps.vars.outputs.sha_short }}'
+          add-paths: docs/api/c

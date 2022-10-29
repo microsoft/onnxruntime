@@ -2,7 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# This file is used by Linux Multi GPU TensorRT CI Pipeline,Linux Nuphar CI Pipeline,Linux OpenVINO CI Pipeline,orttraining-linux-gpu-ci-pipeline
+# This file is used by Linux Multi GPU TensorRT CI Pipeline,Linux OpenVINO CI Pipeline,orttraining-linux-gpu-ci-pipeline
 set -e -o -x
 
 id
@@ -35,7 +35,7 @@ if [ $BUILD_OS = "yocto" ]; then
     cd build
     . /opt/fsl-imx-xwayland/$YOCTO_FOLDER/environment-setup-aarch64-poky-linux
     alias cmake="/usr/bin/cmake -DCMAKE_TOOLCHAIN_FILE=$OECORE_NATIVE_SYSROOT/usr/share/cmake/OEToolchainConfig.cmake"
-    cmake ../cmake -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_MKLDNN=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_NUPHAR_TVM=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_NUPHAR=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES:PATH=/opt/fsl-imx-xwayland/$YOCTO_FOLDER/sysroots/aarch64-poky-linux/usr/include -DCMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES:PATH=/opt/fsl-imx-xwayland/$YOCTO_FOLDER/sysroots/aarch64-poky-linux/usr/include -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc
+    cmake ../cmake -Donnxruntime_RUN_ONNX_TESTS=OFF -Donnxruntime_GENERATE_TEST_REPORTS=ON -Donnxruntime_DEV_MODE=ON -DPYTHON_EXECUTABLE=/usr/bin/python3 -Donnxruntime_USE_CUDA=OFF -Donnxruntime_USE_NSYNC=OFF -Donnxruntime_CUDNN_HOME= -Donnxruntime_USE_JEMALLOC=OFF -Donnxruntime_ENABLE_PYTHON=OFF -Donnxruntime_BUILD_CSHARP=OFF -Donnxruntime_USE_EIGEN_FOR_BLAS=ON -Donnxruntime_USE_OPENBLAS=OFF -Donnxruntime_USE_ACL=ON -Donnxruntime_USE_MKLDNN=OFF -Donnxruntime_USE_MKLML=OFF -Donnxruntime_USE_LLVM=OFF -Donnxruntime_ENABLE_MICROSOFT_INTERNAL=OFF -Donnxruntime_USE_EIGEN_THREADPOOL=OFF -Donnxruntime_BUILD_UNIT_TESTS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_IMPLICIT_INCLUDE_DIRECTORIES:PATH=/opt/fsl-imx-xwayland/$YOCTO_FOLDER/sysroots/aarch64-poky-linux/usr/include -DCMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES:PATH=/opt/fsl-imx-xwayland/$YOCTO_FOLDER/sysroots/aarch64-poky-linux/usr/include -DONNX_CUSTOM_PROTOC_EXECUTABLE=/usr/bin/protoc
 
     make -j$(nproc)
 else
@@ -60,9 +60,10 @@ else
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Release $COMMON_BUILD_ARGS \
-            --use_tensorrt --tensorrt_home /workspace/tensorrt \
+            --tensorrt_placeholder_builder \
+            --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ \
             --cuda_home /usr/local/cuda \
-            --cudnn_home /usr/local/cuda $BUILD_EXTR_PAR
+            --cudnn_home /usr/lib/x86_64-linux-gnu/ $BUILD_EXTR_PAR
     else #cpu and openvino
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Release $COMMON_BUILD_ARGS $BUILD_EXTR_PAR

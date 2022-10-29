@@ -8,7 +8,7 @@
   },
   "author": "fs-eire",
   "module": "dist/lib/index.js",
-  "version": "1.12.0",
+  "version": "1.14.0",
   "jsdelivr": "dist/ort-common.min.js",
   "scripts": {
     "prepare": "tsc && webpack"

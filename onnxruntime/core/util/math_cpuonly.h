@@ -43,6 +43,13 @@
 #pragma GCC diagnostic ignored "-Wclass-memaccess"
 #endif
 
+// cmake/external/eigen\Eigen/src/SparseCore/TriangularSolver.h:273:13:
+// error: variable 'count' set but not used [-Werror,-Wunused-but-set-variable]
+//   Index count = 0;
+#ifdef HAS_UNUSED_BUT_SET_VARIABLE
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#endif
+
 #ifdef HAS_DEPRECATED_DECLARATIONS
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif

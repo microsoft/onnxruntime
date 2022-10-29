@@ -284,6 +284,99 @@ MlasQLinearMulKernel(
     }
 }
 
+#elif defined(MLAS_VSX_INTRINSICS)
+
+template<typename DataType, bool IsScalarB>
+static
+void
+MlasQLinearMulKernel(
+    const DataType* InputA,
+    float ScaleA,
+    int32_t ZeroPointA,
+    const DataType* InputB,
+    float ScaleB,
+    int32_t ZeroPointB,
+    float ScaleC,
+    int32_t ZeroPointC,
+    DataType* OutputC,
+    size_t N
+    )
+{
+    const float MinimumValue = (float)((int)std::numeric_limits<DataType>::min() - ZeroPointC);
+    const float MaximumValue = (float)((int)std::numeric_limits<DataType>::max() - ZeroPointC);
+
+    auto ZeroPointAVector = vec_splats(int32_t(ZeroPointA));
+    auto ZeroPointBVector = vec_splats(int32_t(ZeroPointB));
+    auto ZeroPointCVector = vec_splats(float(ZeroPointC));
+
+    auto ScaleAVector = vec_splats(ScaleA);
+    auto ScaleBVector = vec_splats(ScaleB);
+    auto ScaleCVector = vec_splats(ScaleC);
+
+    auto MinimumVector = vec_splats(MinimumValue);
+    auto MaximumVector = vec_splats(MaximumValue);
+
+    float ValueB;
+    __vector float ValueBVector;
+
+    if (IsScalarB) {
+        ValueB = ScaleB * (int32_t(InputB[0]) - ZeroPointB);
+        ValueBVector = vec_splats(ValueB);
+    }
+
+    while (N >= 4) {
+        __vector int32_t IntegerAVector {InputA[0], InputA[1], InputA[2], InputA[3]};
+        auto IntegerVector = vec_sub(IntegerAVector, ZeroPointAVector);
+        auto ValueAVector = vec_mul(ScaleAVector, vec_ctf(IntegerVector, 0));
+
+        if (!IsScalarB) {
+            __vector int32_t IntegerBVector {InputB[0], InputB[1], InputB[2], InputB[3]};
+            IntegerVector = vec_sub(IntegerBVector, ZeroPointBVector);
+            ValueBVector = vec_mul(ScaleBVector, vec_ctf(IntegerVector, 0));
+        }
+
+        auto ValueCVector = vec_div(vec_mul(ValueAVector, ValueBVector), ScaleCVector);
+        ValueCVector = vec_min(vec_max(ValueCVector, MinimumVector), MaximumVector);
+        ValueCVector = vec_nearbyint(vec_add(ValueCVector, ZeroPointCVector));
+
+        auto IntegerValueCVector = vec_signed(ValueCVector);
+        OutputC[0] = (DataType) IntegerValueCVector[0];
+        OutputC[1] = (DataType) IntegerValueCVector[1];
+        OutputC[2] = (DataType) IntegerValueCVector[2];
+        OutputC[3] = (DataType) IntegerValueCVector[3];
+
+        OutputC += 4;
+        InputA += 4;
+        InputB += 4;
+
+        N -= 4;
+
+        // Suppress wrong GCC warnings
+        MLAS_UNREFERENCED_PARAMETER(ValueAVector);
+    }
+
+    while (N > 0) {
+        float ValueA = ScaleA * (int32_t(*InputA) - ZeroPointA);
+        if (!IsScalarB) {
+            ValueB = ScaleB * (int32_t(*InputB) - ZeroPointB);
+        }
+        float ValueC = (ValueA * ValueB) / ScaleC;
+        ValueC = std::min(std::max(ValueC, MinimumValue), MaximumValue);
+
+        *OutputC = (DataType)(int32_t)std::nearbyintf(ValueC + ZeroPointC);
+
+        InputA++;
+        InputB++;
+        OutputC++;
+        N--;
+    }
+
+    // Suppress wrong GCC warnings
+    MLAS_UNREFERENCED_PARAMETER(ScaleAVector);
+    MLAS_UNREFERENCED_PARAMETER(ScaleBVector);
+    MLAS_UNREFERENCED_PARAMETER(ValueBVector);
+}
+
 #else
 
 // Pure C++ implementation.

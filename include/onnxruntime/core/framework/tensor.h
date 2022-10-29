@@ -36,15 +36,10 @@ namespace onnxruntime {
 */
 class Tensor final {
  public:
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) {
-    return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
-  }
 
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data,
-                                        const OrtMemoryInfo& alloc, ptrdiff_t offset = 0,
-                                        gsl::span<const int64_t> strides = {}) {
-    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset, strides);
-  }
+  // NB! Removing Create() methods returning unique_ptr<Tensor>. Still available in other EPs that are dynamically linked.
+  // Strive not to allocate Tensor with new/delete as it is a shallow class and using it by value is just fine.
+  // Use InitOrtValue() methods to allocate for OrtValue.
 
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 
@@ -80,7 +75,8 @@ class Tensor final {
    * Deprecated. The orginal design is this Tensor class won't do any allocation / release.
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
-  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator);
+  Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator,
+         gsl::span<const int64_t> strides = {});
 
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
@@ -90,10 +86,12 @@ class Tensor final {
   /// <param name="shape"></param>
   /// <param name="allocator"></param>
   /// <param name="ort_value"></param>
+  /// <param name="strides"></param>
   static void InitOrtValue(MLDataType elt_type,
                            const TensorShape& shape,
                            std::shared_ptr<IAllocator> allocator,
-                           OrtValue& ort_value);
+                           OrtValue& ort_value,
+                           gsl::span<const int64_t> strides = {});
 
   /**
    * Create tensor with given type, shape, pre-allocated memory and allocator which will be used to free the pre-allocated memory.

@@ -35,7 +35,7 @@ __global__ void _TenaryElementWise(
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
+      // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/main/docs/Broadcasting.md
       CUDA_LONG cond_index = (CondIndexType == BroadcastIndexType::NoBroadcast ? id : 0);
       CUDA_LONG x_index = (XIndexType == BroadcastIndexType::NoBroadcast ? id : 0);
       CUDA_LONG y_index = (YIndexType == BroadcastIndexType::NoBroadcast ? id : 0);

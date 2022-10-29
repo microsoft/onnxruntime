@@ -27,6 +27,7 @@ std::unique_ptr<OrtTensorRTProviderOptions> get_default_trt_provider_options() {
   tensorrt_options->trt_engine_decryption_enable = false;
   tensorrt_options->trt_engine_decryption_lib_path = "";
   tensorrt_options->trt_force_sequential_engine_build = false;
+  tensorrt_options->trt_context_memory_sharing_enable = false;
 
   return tensorrt_options;
 }
@@ -66,6 +67,7 @@ void run_ort_trt2() {
 
   // print number of model input nodes
   size_t num_input_nodes = session.GetInputCount();
+  std::vector<Ort::AllocatedStringPtr> input_node_names_ptr;
   std::vector<const char*> input_node_names(num_input_nodes);
   std::vector<int64_t> input_node_dims;  // simplify... this model has only 1 input node {1, 3, 224, 224}.
                                          // Otherwise need vector<vector<>>
@@ -75,9 +77,10 @@ void run_ort_trt2() {
   // iterate over all input nodes
   for (int i = 0; i < num_input_nodes; i++) {
     // print input node names
-    char* input_name = session.GetInputName(i, allocator);
-    printf("Input %d : name=%s\n", i, input_name);
-    input_node_names[i] = input_name;
+    auto input_name = session.GetInputNameAllocated(i, allocator);
+    printf("Input %d : name=%s\n", i, input_name.get());
+    input_node_names[i] = input_name.get();
+    input_node_names_ptr.push_back(std::move(input_name));
 
     // print input node types
     Ort::TypeInfo type_info = session.GetInputTypeInfo(i);
@@ -152,8 +155,8 @@ void run_ort_trt2() {
 
 void ort_trt_run_with_default_options() {
   //*************************************************************************
-  // initialize  enviroment...one enviroment per process
-  // enviroment maintains thread pools and other state info
+  // initialize  environment...one environment per process
+  // environment maintains thread pools and other state info
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
 
   // initialize session options if needed
@@ -191,6 +194,7 @@ void ort_trt_run_with_default_options() {
 
   // print number of model input nodes
   size_t num_input_nodes = session.GetInputCount();
+  std::vector<Ort::AllocatedStringPtr> input_node_names_ptr;
   std::vector<const char*> input_node_names(num_input_nodes);
   std::vector<int64_t> input_node_dims;  // simplify... this model has only 1 input node {1, 3, 224, 224}.
                                          // Otherwise need vector<vector<>>
@@ -200,9 +204,10 @@ void ort_trt_run_with_default_options() {
   // iterate over all input nodes
   for (int i = 0; i < num_input_nodes; i++) {
     // print input node names
-    char* input_name = session.GetInputName(i, allocator);
-    printf("Input %d : name=%s\n", i, input_name);
-    input_node_names[i] = input_name;
+    auto input_name = session.GetInputNameAllocated(i, allocator);
+    printf("Input %d : name=%s\n", i, input_name.get());
+    input_node_names[i] = input_name.get();
+    input_node_names_ptr.push_back(std::move(input_name));
 
     // print input node types
     Ort::TypeInfo type_info = session.GetInputTypeInfo(i);
@@ -307,6 +312,7 @@ void run_ort_trt() {
 
   // print number of model input nodes
   size_t num_input_nodes = session.GetInputCount();
+  std::vector<Ort::AllocatedStringPtr> input_node_names_ptr;
   std::vector<const char*> input_node_names(num_input_nodes);
   std::vector<int64_t> input_node_dims;  // simplify... this model has only 1 input node {1, 3, 224, 224}.
                                          // Otherwise need vector<vector<>>
@@ -316,9 +322,10 @@ void run_ort_trt() {
   // iterate over all input nodes
   for (int i = 0; i < num_input_nodes; i++) {
     // print input node names
-    char* input_name = session.GetInputName(i, allocator);
-    printf("Input %d : name=%s\n", i, input_name);
-    input_node_names[i] = input_name;
+    auto input_name = session.GetInputNameAllocated(i, allocator);
+    printf("Input %d : name=%s\n", i, input_name.get());
+    input_node_names[i] = input_name.get();
+    input_node_names_ptr.push_back(std::move(input_name));
 
     // print input node types
     Ort::TypeInfo type_info = session.GetInputTypeInfo(i);

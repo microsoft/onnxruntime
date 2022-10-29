@@ -1,358 +1,298 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <ctime>
+#include <cstdlib>
+
 #include "gtest/gtest.h"
+#include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#include "test/providers/kernel_compute_test_utils.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
 
-template <typename T>
-void RunTypedTest() {
-  // Skip tensorrt for INT8 tests
-  bool exclude_tensorrt = std::is_same<T, int8_t>::value;
+namespace {
 
-  // int32_t indices - axis 0
-  OpTester test1("GatherElements", 11);
-
-  test1.AddAttribute<int64_t>("axis", 0LL);
-  test1.AddInput<T>("data", {2, 3},
-                    {0, 1, 2, 3, 4, 5});
-  test1.AddInput<int32_t>("indices", {1, 2}, {0, 1});
-  test1.AddOutput<T>("output", {1, 2},
-                     {0, 4});
-  if (exclude_tensorrt) {
-    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test1.Run();
+template <typename T, typename TIndex>
+void GetData(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& indices_dims,
+             const std::vector<int64_t>& indices_strides, int64_t axis, std::vector<T>& input_data,
+             std::vector<TIndex>& indices_data, std::vector<T>& output_data) {
+  size_t input_size = static_cast<size_t>(detail::SizeFromDims(input_dims));
+  size_t indices_size = static_cast<size_t>(detail::SizeFromDims(indices_dims, indices_strides));
+  bool is_strided_indices = !indices_strides.empty();
+  size_t output_size = is_strided_indices ? static_cast<size_t>(detail::SizeFromDims(indices_dims)) : indices_size;
+  input_data = ValueRange<T>(input_size, static_cast<T>(1.0f), static_cast<T>(1.0f));
+  size_t rank = input_dims.size();
+  std::vector<int64_t> input_strides(rank);
+  std::vector<int64_t> output_strides(rank);
+  input_strides[rank - 1] = output_strides[rank - 1] = 1;
+  if (rank > 1) {
+    for (size_t i = rank - 1; i > 0; --i) {
+      input_strides[i - 1] = input_dims[i] * input_strides[i];
+      output_strides[i - 1] = indices_dims[i] * output_strides[i];
+    }
   }
 
-  // int32_t indices - axis 1
-  OpTester test2("GatherElements", 11);
-  test2.AddAttribute<int64_t>("axis", 1LL);
-  test2.AddInput<T>("data", {2, 2},
-                    {1, 2,
-                     3, 4});
-  test2.AddInput<int32_t>("indices", {2, 2},
-                          {0, 0,
-                           1, 0});
-  test2.AddOutput<T>("output", {2, 2},
-                     {1, 1,
-                      4, 3});
-  if (exclude_tensorrt) {
-    test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test2.Run();
+  indices_data.resize(indices_size);
+  output_data.resize(output_size);
+  std::srand(static_cast<unsigned>(std::time(0)));
+  for (size_t i = 0; i < indices_size; ++i) {
+    // Negative index possible.
+    indices_data[i] =
+        static_cast<TIndex>((static_cast<int64_t>(std::rand()) % (input_dims[axis] * 2)) - input_dims[axis]);
   }
-
-  // int64_t indices - axis 1
-  OpTester test3("GatherElements", 11);
-  test3.AddAttribute<int64_t>("axis", 1LL);
-  test3.AddInput<T>("data", {2, 2},
-                    {1, 2,
-                     3, 4});
-  test3.AddInput<int64_t>("indices", {2, 2},
-                          {0, 0,
-                           1, 0});
-  test3.AddOutput<T>("output", {2, 2},
-                     {1, 1,
-                      4, 3});
-  if (exclude_tensorrt) {
-    test3.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test3.Run();
-  }
-
-  // negative indices - axis 1
-  OpTester test4("GatherElements", 11);
-  test4.AddAttribute<int64_t>("axis", 1LL);
-  test4.AddInput<T>("data", {2, 2},
-                    {1, 2,
-                     3, 4});
-  test4.AddInput<int64_t>("indices", {2, 2},
-                          {0, 0,
-                           -1, -1});
-  test4.AddOutput<T>("output", {2, 2},
-                     {1, 1,
-                      4, 4});
-  // skip TensorRT because it doesn't support negative indices				  
-  test4.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-
-  // indices out of bounds
-  OpTester test5("GatherElements", 11);
-  test5.AddAttribute<int64_t>("axis", 1LL);
-  test5.AddInput<T>("data", {2, 2},
-                    {1, 2,
-                     3, 4});
-  test5.AddInput<int64_t>("indices", {2, 2},
-                          {0, 0,
-                           2, 2});
-  test5.AddOutput<T>("output", {2, 2},
-                     {1, 1,
-                      4, 4});
-  // skip nuphar, which will not throw error message but will ensure no out-of-bound access
-  // skip cuda as the cuda kernel won't throw the error message
-  // skip openvino which will not throw error message but will ensure no out-of-bound access
-  // skip TensorRT because it doesn't support out of bounds indices
-  test5.Run(OpTester::ExpectResult::kExpectFailure,
-            "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is 2",
-            {kNupharExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
-
-  // 3D input - axis 1
-  OpTester test6("GatherElements", 11);
-  test6.AddAttribute<int64_t>("axis", 1LL);
-  test6.AddInput<T>("data", {2, 2, 2},
-                    {1, 2,
-                     3, 4,
-                     5, 6,
-                     7, 8});
-  test6.AddInput<int64_t>("indices", {1, 2, 1},
-                          {0, 1});
-  test6.AddOutput<T>("output", {1, 2, 1}, {1, 3});
-  if (exclude_tensorrt) {
-    test6.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test6.Run();
-  }
-
-  // 3D input - axis 2
-  OpTester test7("GatherElements", 11);
-  test7.AddAttribute<int64_t>("axis", 2LL);
-  test7.AddInput<T>("data", {2, 2, 2},
-                    {1, 2,
-                     3, 4,
-                     5, 6,
-                     7, 8});
-  test7.AddInput<int64_t>("indices", {1, 2, 1},
-                          {0, 1});
-  test7.AddOutput<T>("output", {1, 2, 1}, {1, 4});
-  if (exclude_tensorrt) {
-    test7.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test7.Run();
-  }
-
-  // 2D input - axis 1
-  OpTester test8("GatherElements", 11);
-  test8.AddAttribute<int64_t>("axis", 1LL);
-  test8.AddInput<T>("data", {3, 3},
-                    {1, 2, 3,
-                     4, 5, 6,
-                     7, 8, 9});
-  test8.AddInput<int64_t>("indices", {3, 2},
-                          {1, 0, 0, 1, 0, 1});
-  test8.AddOutput<T>("output", {3, 2}, {2, 1, 4, 5, 7, 8});
-  if (exclude_tensorrt) {
-    test8.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test8.Run();
-  }
-
-  // 2D input - axis 1
-  OpTester test9("GatherElements", 11);
-  test9.AddAttribute<int64_t>("axis", 0LL);
-  test9.AddInput<T>("data", {3, 3},
-                    {1, 2, 3,
-                     4, 5, 6,
-                     7, 8, 9});
-  test9.AddInput<int64_t>("indices", {3, 2},
-                          {1, 0, 0, 1, 0, 1});
-  test9.AddOutput<T>("output", {3, 2}, {4, 2, 1, 5, 1, 5});
-  if (exclude_tensorrt) {
-    test9.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test9.Run();
-  }
-
-  // 1D input - axis 0
-  OpTester test10("GatherElements", 11);
-  test10.AddAttribute<int64_t>("axis", 0LL);
-  test10.AddInput<T>("data", {3},
-                     {1, 2, 3});
-  test10.AddInput<int64_t>("indices", {2},
-                           {1, 0});
-  test10.AddOutput<T>("output", {2}, {2, 1});
-  if (exclude_tensorrt) {
-    test10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
-  } else {
-    test10.Run();
+  for (size_t i = 0; i < output_size; ++i) {
+    int64_t input_offset = 0;
+    int64_t remain = static_cast<int64_t>(i);
+    int64_t indices_offset = is_strided_indices ? 0 : remain;
+    for (size_t j = 0; j < rank; ++j) {
+      int64_t q = remain / output_strides[j];
+      if (static_cast<int64_t>(j) != axis) input_offset += q * input_strides[j];
+      if (is_strided_indices) indices_offset += q * indices_strides[j];
+      remain = remain % output_strides[j];
+    }
+    int64_t index = static_cast<int64_t>(indices_data[indices_offset]);
+    input_offset += (index < 0 ? index + input_dims[axis] : index) * input_strides[axis];
+    output_data[i] = input_data[input_offset];
   }
 }
 
+template <typename T, typename TIndex>
+void RunTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
+             bool has_axis = false, int64_t axis = 0LL) {
+  std::vector<T> input_data;
+  std::vector<TIndex> indices_data;
+  std::vector<T> output_data;
+  int64_t new_axis = axis < 0 ? axis + static_cast<int64_t>(input_dims.size()) : axis;
+  GetData(input_dims, indices_dims, {}, new_axis, input_data, indices_data, output_data);
+  OpTester test("GatherElements", 11);
+  if (has_axis) test.AddAttribute<int64_t>("axis", axis);
+  test.AddInput<T>("data", input_dims, input_data);
+  test.AddInput<TIndex>("indices", indices_dims, indices_data);
+  test.AddOutput<T>("output", indices_dims, output_data);
+  // Skip tensorrt for INT8 tests.
+  if (std::is_same<T, int8_t>::value) {
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test.Run();
+  }
+}
+
+template <typename T>
+void RunTestWrapper() {
+  RunTest<T, int32_t>({2, 3}, {1, 2});
+  RunTest<T, int32_t>({2, 2}, {2, 2}, true, 1LL);
+  RunTest<T, int64_t>({2, 2}, {2, 2}, true, -1LL);
+  RunTest<T, int32_t>({2, 2, 2}, {1, 2, 1}, true, 1LL);
+  RunTest<T, int32_t>({2, 2, 1}, {1, 2, 1}, true, 1LL);
+  RunTest<T, int32_t>({1, 2, 2}, {1, 2, 1}, true, 1LL);
+  RunTest<T, int64_t>({2, 2, 2}, {1, 2, 1}, true, 2LL);
+  RunTest<T, int32_t>({3, 3}, {3, 2}, true, 1LL);
+  RunTest<T, int64_t>({3, 3}, {3, 2});
+  RunTest<T, int32_t>({3}, {2}, true, 0LL);
+
+  // ([2,2,2],[2,2,2],axis=0) coalesce to ([2,4],[2,4],axis=0)
+  RunTest<T, int32_t>({2, 2, 2}, {2, 2, 2});
+
+  // ([2,2,2],[3,2,2],axis=0) coalesce to ([2,4],[3,4],axis=0)
+  RunTest<T, int64_t>({2, 2, 2}, {3, 2, 2}, true);
+
+  // ([2,2,2,3],[3,2,2,2],axis=0) coalesce to ([2,4,3],[3,4,2],axis=0)
+  RunTest<T, int32_t>({2, 2, 2, 3}, {3, 2, 2, 2}, true, 0LL);
+
+  // ([2,2,3,3,2],[2,2,3,2,2],axis=0) coalesce to ([2,6,3,2],[2,6,2,2],axis=0)
+  RunTest<T, int64_t>({2, 2, 3, 3, 2}, {2, 2, 3, 2, 2});
+
+  // ([2,2,1,3,1],[2,2,1,2,1],axis=0) coalesce to ([2,2,3],[2,2,2],axis=0)
+  RunTest<T, int32_t>({2, 2, 1, 3, 1}, {2, 2, 1, 2, 1});
+
+  // No coalesce
+  RunTest<T, int64_t>({2, 3, 2}, {2, 3, 2}, true, -2LL);
+
+  // ([2,2,2],[2,2,3],axis=2) coalesce to ([4,2],[4,3],axis=1)
+  RunTest<T, int64_t>({2, 2, 2}, {2, 2, 3}, true, 2LL);
+
+  // ([2,2,3,2],[2,2,2,3],axis=-1) coalesce to ([4,3,2],[4,2,3],axis=2)
+  RunTest<T, int32_t>({2, 2, 3, 2}, {2, 2, 2, 3}, true, -1LL);
+
+  // ([2,1,2,3,1,2],[2,1,2,2,1,2],axis=5) coalesce to ([4,3,2],[4,2,2],axis=2)
+  RunTest<T, int64_t>({2, 1, 2, 3, 1, 2}, {2, 1, 2, 2, 1, 2}, true, 5LL);
+
+  // ([2,1,2,2,3,2,2],[2,1,2,3,2,2,2],axis=3) coalesce to ([4,2,3,4],[4,3,2,4],axis=1)
+  RunTest<T, int32_t>({2, 1, 2, 2, 3, 2, 2}, {2, 1, 2, 3, 2, 2, 2}, true, 3LL);
+
+  // ([2,1,1,2,3,2,3],[2,1,1,2,3,2,2],axis=-5) coalesce to ([2,1,12,3],[2,1,12,2],axis=1)
+  RunTest<T, int64_t>({2, 1, 1, 2, 3, 2, 3}, {2, 1, 1, 2, 3, 2, 2}, true, -5LL);
+}
+
 template <>
-void RunTypedTest<bool>() {
+void RunTestWrapper<bool>() {
   // 3D input - axis 2
   OpTester test1("GatherElements", 11);
   test1.AddAttribute<int64_t>("axis", 2LL);
-  test1.AddInput<bool>("data", {2, 2, 2},
-                       {true, false,
-                        true, false,
-                        true, false,
-                        true, false});
-  test1.AddInput<int64_t>("indices", {1, 2, 1},
-                          {0, 1});
+  test1.AddInput<bool>("data", {2, 2, 2}, {true, false, true, false, true, false, true, false});
+  test1.AddInput<int64_t>("indices", {1, 2, 1}, {0, 1});
   test1.AddOutput<bool>("output", {1, 2, 1}, {true, false});
   test1.Run();
 }
 
 template <>
-void RunTypedTest<std::string>() {
+void RunTestWrapper<std::string>() {
   // int32_t indices - axis 0
   OpTester test1("GatherElements", 11);
   test1.AddAttribute<int64_t>("axis", 0LL);
-  test1.AddInput<std::string>("data", {2, 3},
-                              {"a", "b", "c", "d", "e", "f"});
+  test1.AddInput<std::string>("data", {2, 3}, {"a", "b", "c", "d", "e", "f"});
   test1.AddInput<int32_t>("indices", {1, 2}, {0, 1});
-  test1.AddOutput<std::string>("output", {1, 2},
-                               {"a", "e"});
+  test1.AddOutput<std::string>("output", {1, 2}, {"a", "e"});
   test1.Run();
 
   // int32_t indices - axis 1
   OpTester test2("GatherElements", 11);
   test2.AddAttribute<int64_t>("axis", 1LL);
-  test2.AddInput<std::string>("data", {2, 2},
-                              {"a", "b",
-                               "c", "d"});
-  test2.AddInput<int32_t>("indices", {2, 2},
-                          {0, 0,
-                           1, 0});
-  test2.AddOutput<std::string>("output", {2, 2},
-                               {"a", "a",
-                                "d", "c"});
+  test2.AddInput<std::string>("data", {2, 2}, {"a", "b", "c", "d"});
+  test2.AddInput<int32_t>("indices", {2, 2}, {0, 0, 1, 0});
+  test2.AddOutput<std::string>("output", {2, 2}, {"a", "a", "d", "c"});
   test2.Run();
 
   // negative indices - axis 1
   OpTester test3("GatherElements", 11);
   test3.AddAttribute<int64_t>("axis", 1LL);
-  test3.AddInput<std::string>("data", {2, 2},
-                              {"a", "b",
-                               "c", "d"});
-  test3.AddInput<int32_t>("indices", {2, 2},
-                          {0, 0,
-                           -1, -1});
-  test3.AddOutput<std::string>("output", {2, 2},
-                               {"a", "a",
-                                "d", "d"});
+  test3.AddInput<std::string>("data", {2, 2}, {"a", "b", "c", "d"});
+  test3.AddInput<int32_t>("indices", {2, 2}, {0, 0, -1, -1});
+  test3.AddOutput<std::string>("output", {2, 2}, {"a", "a", "d", "d"});
   test3.Run();
 
   // indices out of bounds
   OpTester test4("GatherElements", 11);
   test4.AddAttribute<int64_t>("axis", 1LL);
-  test4.AddInput<std::string>("data", {2, 2},
-                              {"a", "b",
-                               "c", "d"});
-  test4.AddInput<int32_t>("indices", {2, 2},
-                          {0, 0,
-                           -3, -3});
-  test4.AddOutput<std::string>("output", {2, 2},
-                               {"a", "a",
-                                "d", "d"});
-  // skip nuphar, which will not throw error message but will ensure no out-of-bound access
+  test4.AddInput<std::string>("data", {2, 2}, {"a", "b", "c", "d"});
+  test4.AddInput<int32_t>("indices", {2, 2}, {0, 0, -3, -3});
+  test4.AddOutput<std::string>("output", {2, 2}, {"a", "a", "c", "c"});
   // skip Openvino, which will not throw error message but will ensure no out-of-bound access
-  test4.Run(OpTester::ExpectResult::kExpectFailure,
-            "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is -3",
-            {kNupharExecutionProvider, kOpenVINOExecutionProvider});
+  test4.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Out of range value in index tensor",
+            {kOpenVINOExecutionProvider});
 
   // 3D input - axis 1
   OpTester test5("GatherElements", 11);
   test5.AddAttribute<int64_t>("axis", 1LL);
-  test5.AddInput<std::string>("data", {2, 2, 2},
-                              {"a", "b",
-                               "c", "d",
-                               "e", "f",
-                               "g", "h"});
-  test5.AddInput<int32_t>("indices", {1, 2, 1},
-                          {0, 1});
-  test5.AddOutput<std::string>("output", {1, 2, 1},
-                               {"a", "c"});
+  test5.AddInput<std::string>("data", {2, 2, 2}, {"a", "b", "c", "d", "e", "f", "g", "h"});
+  test5.AddInput<int32_t>("indices", {1, 2, 1}, {0, 1});
+  test5.AddOutput<std::string>("output", {1, 2, 1}, {"a", "c"});
   test5.Run();
 
   // 3D input - axis 2
   OpTester test6("GatherElements", 11);
   test6.AddAttribute<int64_t>("axis", 2LL);
-  test6.AddInput<std::string>("data", {2, 2, 2},
-                              {"a", "b",
-                               "c", "d",
-                               "e", "f",
-                               "g", "h"});
-  test6.AddInput<int32_t>("indices", {1, 2, 1},
-                          {0, 1});
-  test6.AddOutput<std::string>("output", {1, 2, 1},
-                               {"a", "d"});
+  test6.AddInput<std::string>("data", {2, 2, 2}, {"a", "b", "c", "d", "e", "f", "g", "h"});
+  test6.AddInput<int32_t>("indices", {1, 2, 1}, {0, 1});
+  test6.AddOutput<std::string>("output", {1, 2, 1}, {"a", "d"});
   test6.Run();
 
   // 2D input - axis 1
   OpTester test7("GatherElements", 11);
   test7.AddAttribute<int64_t>("axis", 1LL);
-  test7.AddInput<std::string>("data", {3, 3},
-                              {"a", "b", "c",
-                               "d", "e", "f",
-                               "g", "h", "i"});
-  test7.AddInput<int64_t>("indices", {3, 2},
-                          {1, 0, 0, 1, 0, 1});
+  test7.AddInput<std::string>("data", {3, 3}, {"a", "b", "c", "d", "e", "f", "g", "h", "i"});
+  test7.AddInput<int64_t>("indices", {3, 2}, {1, 0, 0, 1, 0, 1});
   test7.AddOutput<std::string>("output", {3, 2}, {"b", "a", "d", "e", "g", "h"});
   test7.Run();
 
   // 2D input - axis 2
   OpTester test8("GatherElements", 11);
   test8.AddAttribute<int64_t>("axis", 0LL);
-  test8.AddInput<std::string>("data", {3, 3},
-                              {"a", "b", "c",
-                               "d", "e", "f",
-                               "g", "h", "i"});
-  test8.AddInput<int64_t>("indices", {3, 2},
-                          {1, 0, 0, 1, 0, 1});
+  test8.AddInput<std::string>("data", {3, 3}, {"a", "b", "c", "d", "e", "f", "g", "h", "i"});
+  test8.AddInput<int64_t>("indices", {3, 2}, {1, 0, 0, 1, 0, 1});
   test8.AddOutput<std::string>("output", {3, 2}, {"d", "b", "a", "e", "a", "e"});
   test8.Run();
 }
 
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+template <typename T, typename TIndex>
+void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
+                          std::initializer_list<int64_t> indices_strides = {}, bool has_axis = false,
+                          int64_t axis = 0LL) {
+  std::vector<T> input_data;
+  std::vector<TIndex> indices_data;
+  std::vector<T> output_data;
+  int64_t new_axis = axis < 0 ? axis + static_cast<int64_t>(input_dims.size()) : axis;
+  GetData(input_dims, indices_dims, indices_strides, new_axis, input_data, indices_data, output_data);
+#ifdef USE_CUDA
+  const char* provider = kCudaExecutionProvider;
+#else  // USE_ROCM
+  const char* provider = kRocmExecutionProvider;
+#endif
+  KernelComputeTester test("GatherElements", provider);
+  if (has_axis) test.AddAttribute<int64_t>("axis", axis);
+  test.AddInput<T>("data", input_dims, input_data);
+  test.AddInput<TIndex>("indices", indices_dims, indices_data, indices_strides);
+  test.AddOutput<T>("output", indices_dims, output_data);
+  test.Run();
+}
+
+template <typename T>
+void RunKernelComputeTestWrapper() {
+  // Contiguous indices.
+  RunKernelComputeTest<T, int32_t>({2, 3}, {1, 2});
+
+  // Strided indices.
+  RunKernelComputeTest<T, int64_t>({3, 3}, {3, 2}, {1, 2});
+  RunKernelComputeTest<T, int32_t>({3, 3}, {3, 2}, {2, 0}, true, 1LL);
+  RunKernelComputeTest<T, int64_t>({3}, {2}, {0}, true, 0LL);
+
+  // No coalesce.
+  RunKernelComputeTest<T, int64_t>({2, 3, 2}, {2, 3, 2}, {6, 0, 1}, true, -1LL);
+  RunKernelComputeTest<T, int32_t>({2, 3, 3, 3}, {2, 3, 3, 4}, {36, 0, 4, 1}, true, -1LL);
+
+  // Coalesce to ([6,3,3],[6,3,4],strides=[12,0,1],axis=2).
+  RunKernelComputeTest<T, int64_t>({2, 3, 3, 3}, {2, 3, 3, 4}, {36, 12, 0, 1}, true, 3LL);
+}
+#endif
+
+}  // namespace
+
 // Disable TensorRT due to missing int8 calibrator
-TEST(GatherElementsOpTest, int8_t) {
-  RunTypedTest<int8_t>();
-}
+TEST(GatherElementsOpTest, int8_t) { RunTestWrapper<int8_t>(); }
 
-TEST(GatherElementsOpTest, int16_t) {
-  RunTypedTest<int16_t>();
-}
+TEST(GatherElementsOpTest, int16_t) { RunTestWrapper<int16_t>(); }
 
-TEST(GatherElementsOpTest, int32_t) {
-  RunTypedTest<int32_t>();
-}
+TEST(GatherElementsOpTest, int32_t) { RunTestWrapper<int32_t>(); }
 
-TEST(GatherElementsOpTest, int64_t) {
-  RunTypedTest<int64_t>();
-}
+TEST(GatherElementsOpTest, int64_t) { RunTestWrapper<int64_t>(); }
 
-TEST(GatherElementsOpTest, uint8_t) {
-  RunTypedTest<uint8_t>();
-}
+TEST(GatherElementsOpTest, uint8_t) { RunTestWrapper<uint8_t>(); }
 
-TEST(GatherElementsOpTest, uint16_t) {
-  RunTypedTest<uint16_t>();
-}
+TEST(GatherElementsOpTest, uint16_t) { RunTestWrapper<uint16_t>(); }
 
-TEST(GatherElementsOpTest, uint32_t) {
-  RunTypedTest<uint32_t>();
-}
+TEST(GatherElementsOpTest, uint32_t) { RunTestWrapper<uint32_t>(); }
 
-TEST(GatherElementsOpTest, uint64_t) {
-  RunTypedTest<uint64_t>();
-}
+TEST(GatherElementsOpTest, uint64_t) { RunTestWrapper<uint64_t>(); }
 
-TEST(GatherElementsOpTest, float) {
-  RunTypedTest<float>();
-}
+TEST(GatherElementsOpTest, float) { RunTestWrapper<float>(); }
 
-TEST(GatherElementsOpTest, double) {
-  RunTypedTest<double>();
-}
+TEST(GatherElementsOpTest, double) { RunTestWrapper<double>(); }
 
-TEST(GatherElementsOpTest, bool) {
-  RunTypedTest<bool>();
-}
+TEST(GatherElementsOpTest, MLFloat16) { RunTestWrapper<MLFloat16>(); }
 
-TEST(GatherElementsOpTest, string) {
-  RunTypedTest<std::string>();
+TEST(GatherElementsOpTest, bool) { RunTestWrapper<bool>(); }
+
+TEST(GatherElementsOpTest, string) { RunTestWrapper<std::string>(); }
+
+TEST(GatherElementsOpTest, IndicesOutOfBounds) {
+  // indices out of bounds
+  OpTester test("GatherElements", 11);
+  test.AddAttribute<int64_t>("axis", 1LL);
+  test.AddInput<float>("data", {2, 2}, {1, 2, 3, 4});
+  test.AddInput<int64_t>("indices", {2, 2}, {0, 0, 2, 2});
+  test.AddOutput<float>("output", {2, 2}, {1, 1, 3, 3});
+  // skip cuda as the cuda kernel won't throw the error message
+  // skip openvino which will not throw error message but will ensure no out-of-bound access
+  // skip TensorRT because it doesn't support out of bounds indices
+  test.Run(OpTester::ExpectResult::kExpectFailure, "",
+           {kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
+            kTensorrtExecutionProvider});
 }
 
 TEST(GatherElementsOpTest, BigIndices) {
@@ -372,6 +312,14 @@ TEST(GatherElementsOpTest, BigIndices) {
   test1.AddOutput<float>("output", {1, kNumIndices}, output);
   test1.Run();
 }
+
+#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+TEST(GatherElementsOpTest, Strided_float) { RunKernelComputeTestWrapper<float>(); }
+
+TEST(GatherElementsOpTest, Strided_double) { RunKernelComputeTestWrapper<double>(); }
+
+TEST(GatherElementsOpTest, Strided_MLFloat16) { RunKernelComputeTestWrapper<MLFloat16>(); }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

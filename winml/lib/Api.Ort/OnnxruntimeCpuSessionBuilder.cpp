@@ -48,6 +48,8 @@ OnnxruntimeCpuSessionBuilder::CreateSessionOptions(
 HRESULT
 OnnxruntimeCpuSessionBuilder::CreateSession(
     OrtSessionOptions* options,
+    OrtThreadPool* inter_op_thread_pool,
+    OrtThreadPool* intra_op_thread_pool,
     OrtSession** session) {
   RETURN_HR_IF_NULL(E_POINTER, session);
 
@@ -58,7 +60,7 @@ OnnxruntimeCpuSessionBuilder::CreateSession(
   RETURN_IF_FAILED(engine_factory_->GetOrtEnvironment(&ort_env));
 
   OrtSession* ort_session_raw;
-  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->CreateSessionWithoutModel(ort_env, options, &ort_session_raw),
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->CreateSessionWithoutModel(ort_env, options, inter_op_thread_pool, intra_op_thread_pool, &ort_session_raw),
                           engine_factory_->UseOrtApi());
 
   auto ort_session = UniqueOrtSession(ort_session_raw, ort_api->ReleaseSession);

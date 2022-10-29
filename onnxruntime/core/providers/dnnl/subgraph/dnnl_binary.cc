@@ -1,6 +1,7 @@
 #include "dnnl_binary.h"
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
+#include "dnnl_util.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -10,18 +11,7 @@ DnnlBinary::DnnlBinary() {}
 void DnnlBinary::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto eng = sp.GetEngine();
 
-  dnnl::algorithm algo;
-  if (node.OpType() == "Add") {
-    algo = dnnl::algorithm::binary_add;
-  } else if (node.OpType() == "Mul") {
-    algo = dnnl::algorithm::binary_mul;
-  } else if (node.OpType() == "Sub") {
-    algo = dnnl::algorithm::binary_sub;
-  } else if (node.OpType() == "Div") {
-    algo = dnnl::algorithm::binary_div;
-  } else {
-    ORT_THROW("op type not supported");
-  }
+  dnnl::algorithm algo = dnnl_util::OrtOperatorToDnnlAlgorithm(node.OpType());
 
   // GetMemory in OrtFormat. Broadcasting and mix format binary ops can result in computation failure
   auto binary_src0_mem = sp.GetMemoryInOrtFormat(node.Input(IN_A), eng);

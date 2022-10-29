@@ -64,8 +64,8 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
     ORT_RETURN_IF_ERROR(UnaryElementwise::Prepare(context, &p));                                           \
     Impl_##x(                                                                                              \
         Stream(),                                                                                          \
-        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->template Data<T>()),   \
-        reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->template MutableData<T>()), \
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(p.input_tensor->Data<T>()),   \
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(p.output_tensor->MutableData<T>()), \
         p.output_tensor->Shape().Size());                                                                  \
                                                                                                            \
     return Status::OK();                                                                                   \

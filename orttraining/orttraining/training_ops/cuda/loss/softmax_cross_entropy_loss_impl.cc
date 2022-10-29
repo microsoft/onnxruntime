@@ -28,7 +28,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create())                                                        \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                           \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),                      \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),                     \
       Class<T, Tin>);
 
 #define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version) \
@@ -40,7 +40,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
       kCudaExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),   \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),  \
       Class<T, Tin>);
 
 template <typename T, typename Tin>
@@ -122,8 +122,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
 
   IAllocatorUniquePtr<T> weight_data_nd = GetScratchBuffer<T>(N_D);
   T* weight_data_nd_data = weight_data_nd.get();
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(weight_data_nd_data, 0, N_D * sizeof(T), Stream()));
-  ComputeWeightsSoftmaxCrossEntropyImpl(Stream(),
+  ComputeSoftmaxCrossEntropyWeightsImpl(Stream(),
                                         label_data,
                                         reinterpret_cast<const CudaT*>(weight_data),
                                         N_D, C,
@@ -148,7 +147,7 @@ Status SoftmaxCrossEntropyLoss<T, Tin>::ComputeInternal(OpKernelContext* ctx) co
         reduction_buffer.get(),
         buffer_size));
   } else {
-    const TBuf normalize_factor = static_cast<TBuf>(1.0f);
+    constexpr TBuf normalize_factor = static_cast<TBuf>(1.0f);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(TBuf), cudaMemcpyHostToDevice, Stream()));
   }
 
@@ -198,10 +197,11 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   const Tensor& label = *ctx->Input<Tensor>(2);
   const Tensor* p_weight = ctx->Input<Tensor>(3);
   const Tensor* p_ignore_index = ctx->Input<Tensor>(4);
+  const Tensor* p_bias = ctx->Input<Tensor>(5);
   int64_t ignore_index = ignore_index_;
   if (p_ignore_index) {
     ORT_ENFORCE(p_ignore_index->Shape().IsScalar(), "ignore_index should be a scalar.");
-    ignore_index = *(p_ignore_index->template Data<int64_t>());
+    ignore_index = *(p_ignore_index->Data<int64_t>());
   }
 
   const TensorShape probability_shape{log_prob.Shape()};
@@ -214,10 +214,10 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   int64_t C;
   onnxruntime::contrib::GetNDCFromLogitAndLabelShape(probability_shape, label_shape, N_D, C);
   Tensor* d_logit = ctx->Output(0, probability_shape);
-  const T* dY_data = dY.template Data<T>();
-  const T* log_prob_data = log_prob.template Data<T>();
-  const Tin* label_data = label.template Data<Tin>();
-  T* d_logit_data = d_logit->template MutableData<T>();
+  const T* dY_data = dY.Data<T>();
+  const T* log_prob_data = log_prob.Data<T>();
+  const Tin* label_data = label.Data<Tin>();
+  T* d_logit_data = d_logit->MutableData<T>();
   const T* weight_data = nullptr;
   OrtValue transpose_output;
   TensorShapeVector new_shape;
@@ -231,18 +231,17 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
     onnxruntime::contrib::GetPermutationAndShape(true, probability_shape, new_shape, permutations);
     transpose_output = AllocateTensorInMLValue(log_prob.DataType(), new_shape, alloc);
     ORT_RETURN_IF_ERROR(cuda::Transpose::DoTranspose(cuda::Transpose(info), permutations, log_prob, *transpose_output.GetMutable<Tensor>()));
-    log_prob_data = (*transpose_output.GetMutable<Tensor>()).template Data<T>();
+    log_prob_data = (*transpose_output.GetMutable<Tensor>()).Data<T>();
   }
 
   if (p_weight) {
     const Tensor& weight = *p_weight;
-    weight_data = weight.template Data<T>();
+    weight_data = weight.Data<T>();
   }
 
   IAllocatorUniquePtr<T> weight_data_nd = GetScratchBuffer<T>(N_D);
   T* weight_data_nd_data = weight_data_nd.get();
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(weight_data_nd_data, 0, N_D * sizeof(T), Stream()));
-  ComputeWeightsSoftmaxCrossEntropyImpl(Stream(),
+  ComputeSoftmaxCrossEntropyWeightsImpl(Stream(),
                                         label_data,
                                         reinterpret_cast<const CudaT*>(weight_data),
                                         N_D, C,
@@ -265,9 +264,11 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
         reduction_buffer.get(),
         buffer_size));
   } else {
-    const TBuf normalize_factor = static_cast<TBuf>(1.0f);
+    constexpr TBuf normalize_factor = static_cast<TBuf>(1.0f);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(TBuf), cudaMemcpyHostToDevice, Stream()));
   }
+
+  const T* bias_data = p_bias ? p_bias->Data<T>() : nullptr;
 
   SoftmaxCrossEntropyLossGradImpl(Stream(),
                                   reinterpret_cast<const CudaT*>(dY_data),
@@ -275,6 +276,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
                                   label_data,
                                   reinterpret_cast<const CudaT*>(weight_data_nd_data),
                                   normalize_factor_data.get(),
+                                  reinterpret_cast<const CudaT*>(bias_data),
                                   N_D,
                                   C,
                                   ReductionType::NONE == reduction_,
@@ -318,7 +320,7 @@ INSTANTIATE_COMPUTE_SPARSE(SoftmaxCrossEntropyLossGrad, BFloat16, int64_t, kMSDo
                                     (*KernelDefBuilder::Create())                                     \
                                         .InputMemoryType(OrtMemTypeCPUInput, CpuInputIndex)           \
                                         .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-                                        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>())    \
+                                        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>())   \
                                         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
                                     ClassName<T, Tin>);
 

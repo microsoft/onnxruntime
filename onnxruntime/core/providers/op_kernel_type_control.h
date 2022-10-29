@@ -5,6 +5,7 @@
 
 #include "boost/mp11.hpp"
 
+#include "core/common/basic_types.h"
 #include "core/common/type_list.h"
 #include "core/common/type_set_utils.h"
 
@@ -41,12 +42,8 @@
 namespace onnxruntime {
 namespace op_kernel_type_control {
 
-enum class OpArgDirection {
-  Input,
-  Output
-};
-
 using OpArgIndex = size_t;
+using OpArgDirection = ArgType;
 
 // constant to use for type lists that are valid across all opsets
 constexpr int kAllOpSets = -1;
@@ -172,7 +169,7 @@ struct EnabledTypes {
   ::onnxruntime::op_kernel_type_control::tags::OpArg<                           \
       ::onnxruntime::op_kernel_type_control::                                   \
           ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(OpDomain, OpName), \
-      ::onnxruntime::op_kernel_type_control::OpArgDirection::ArgDirection,      \
+      ::onnxruntime::op_kernel_type_control::OpArgDirection::k##ArgDirection,      \
       ArgIndex>
 
 // INTERNAL
@@ -364,37 +361,6 @@ struct EnabledTypes {
   ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(OpProvider, OpDomain, OpName,                      \
                                            ::onnxruntime::op_kernel_type_control::kAllOpSets, \
                                            ArgDirection, ArgIndex, __VA_ARGS__)
-
-/**
- * TypeList type with the default types for a given Op kernel argument.
- *
- * @param OpProvider The Op provider.
- * @param OpDomain The Op domain.
- * @param OpName The Op name.
- * @param OpSet The opset to use for the default types list.
- * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
- * @param ArgIndex Index of the given Op kernel argument.
- */
-#define ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(                     \
-    OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex) \
-  ::onnxruntime::op_kernel_type_control::                        \
-      ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_DEFAULT_TYPES_HOLDER(     \
-          OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex)::types
-
-/**
- * TypeList type with the default types for a given Op kernel argument that are valid for all opsets.
- *
- * @param OpProvider The Op provider.
- * @param OpDomain The Op domain.
- * @param OpName The Op name.
- * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
- * @param ArgIndex Index of the given Op kernel argument.
- */
-#define ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(                                  \
-    OpProvider, OpDomain, OpName, ArgDirection, ArgIndex)                                \
-  ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(OpProvider, OpDomain, OpName,                      \
-                                      ::onnxruntime::op_kernel_type_control::kAllOpSets, \
-                                      ArgDirection, ArgIndex)
 
 /**
  * TypeList type with the enabled types for a given Op kernel argument.

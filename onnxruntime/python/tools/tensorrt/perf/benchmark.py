@@ -6,20 +6,55 @@ import logging
 import os
 import pprint
 import re
+import subprocess
 import sys
 import time
 import timeit
 from datetime import datetime
 
 import coloredlogs
-import numpy
 import numpy as np
-import pandas as pd
-from float16 import *
-from onnx import numpy_helper
-from perf_utils import *
+from perf_utils import (
+    acl,
+    acl_ep,
+    avg_ending,
+    basic,
+    calculate_cuda_op_percentage,
+    calculate_trt_latency_percentage,
+    calculate_trt_op_percentage,
+    cpu,
+    cpu_ep,
+    cuda,
+    cuda_ep,
+    cuda_fp16,
+    disable,
+    enable_all,
+    extended,
+    get_output,
+    get_profile_metrics,
+    get_total_ops,
+    is_standalone,
+    memory_ending,
+    model_title,
+    ort_provider_list,
+    percentile_ending,
+    pretty_print,
+    provider_list,
+    second,
+    second_session_ending,
+    session_ending,
+    standalone_trt,
+    standalone_trt_fp16,
+    table_headers,
+    trt,
+    trt_ep,
+    trt_fp16,
+)
 
-import onnxruntime
+import onnxruntime  # isort:skip
+import onnx  # isort:skip
+from onnx import numpy_helper  # isort:skip
+import pandas as pd  # isort:skip
 
 debug = False
 sys.path.append(".")
@@ -103,7 +138,7 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
         onnx_model_path,
         "--duration=50",
         "--percentile=90",
-        "--workspace=4096",
+        "--memPoolSize=workspace:4096",
     ]
     command.extend([inputs_arg])
 
@@ -164,15 +199,15 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
 
 def get_latency_result(runtimes, batch_size):
     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
-    latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
+    latency_variance = np.var(runtimes, dtype=np.float64) * 1000.0
     throughput = batch_size * (1000.0 / latency_ms)
 
     result = {
         "test_times": len(runtimes),
         "latency_variance": "{:.2f}".format(latency_variance),
-        "latency_90_percentile": "{:.2f}".format(numpy.percentile(runtimes, 90) * 1000.0),
-        "latency_95_percentile": "{:.2f}".format(numpy.percentile(runtimes, 95) * 1000.0),
-        "latency_99_percentile": "{:.2f}".format(numpy.percentile(runtimes, 99) * 1000.0),
+        "latency_90_percentile": "{:.2f}".format(np.percentile(runtimes, 90) * 1000.0),
+        "latency_95_percentile": "{:.2f}".format(np.percentile(runtimes, 95) * 1000.0),
+        "latency_99_percentile": "{:.2f}".format(np.percentile(runtimes, 99) * 1000.0),
         "average_latency_ms": "{:.2f}".format(latency_ms),
         "QPS": "{:.2f}".format(throughput),
     }
@@ -235,7 +270,14 @@ def get_max_memory():
     df = pd.read_csv(MEMORY_FILE)
     pid = df["pid"].iloc[0]
     mem_series = df.loc[df["pid"] == pid, " used_gpu_memory [MiB]"]
-    max_mem = max(mem_series.str.replace(" MiB", "").astype(int))
+
+    try:
+        max_mem = max(mem_series.str.replace(" MiB", "").astype(int))
+    except ValueError:
+        # This exception occurs when nvidia-smi is unable to compute used memory.
+        # Ex: running these scripts in a Windows-hosted VM, such as WSL2
+        max_mem = 0
+
     return max_mem
 
 
@@ -346,9 +388,9 @@ def inference_ort(
                     args.io_binding,
                     io_binding,
                 )
-            if args.input_data == "fix": 
-                runtime = runtime[1:] # remove warmup
-            runtimes += runtime  
+            if args.input_data == "fix":
+                runtime = runtime[1:]  # remove warmup
+            runtimes += runtime
 
         except Exception as e:
             logger.error(e)
@@ -1101,7 +1143,7 @@ def run_onnxruntime(args, models):
     model_to_fail_ep = {}  # model -> failing ep
     model_to_session = {}  # models -> session creation time
 
-    if args.running_mode == "benchmark":
+    if args.running_mode == "benchmark" and os.path.exists(SESSION_FILE):
         model_to_session = read_map_from_file(SESSION_FILE)
 
     ep_list = []
@@ -1160,7 +1202,7 @@ def run_onnxruntime(args, models):
             if "ORT-TRT" in ep:
                 trt_ep_options["trt_fp16_enable"] = "True" if "Fp16" in ep else "False"
 
-            fp16 = False
+            convert_input_fp16 = False
 
             # use float16.py for cuda fp16 only
             if cuda_fp16 == ep:
@@ -1172,7 +1214,7 @@ def run_onnxruntime(args, models):
                 else:
                     try:
                         model_path = convert_model_from_float_to_float16(model_path)
-                        fp16 = True
+                        convert_input_fp16 = True
                     except Exception as e:
                         logger.error(e)
                         update_fail_model_map(model_to_fail_ep, name, ep, "script error", e)
@@ -1181,12 +1223,9 @@ def run_onnxruntime(args, models):
                 # handle test data
                 if "test_data_path_fp16" in model_info:
                     test_data_dir = model_info["test_data_path_fp16"]
-                    fp16 = False
+                    convert_input_fp16 = False
 
-            if standalone_trt_fp16 == ep:
-                fp16 = True
-
-            inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
+            inputs, ref_outputs = get_test_data(convert_input_fp16, test_data_dir, all_inputs_shape)
             # generate random input data
             if args.input_data == "random":
                 inputs = generate_onnx_model_random_input(args.test_times, inputs[0])
@@ -1210,7 +1249,7 @@ def run_onnxruntime(args, models):
                             name,
                             model_path,
                             all_inputs_shape,
-                            fp16,
+                            ep == standalone_trt_fp16,
                             args.track_memory,
                         )
                     except Exception as e:
@@ -1264,7 +1303,7 @@ def run_onnxruntime(args, models):
                         "engine": "onnxruntime",
                         "version": onnxruntime.__version__,
                         "device": ep,
-                        "fp16": fp16,
+                        "fp16": convert_input_fp16,
                         "io_binding": args.io_binding,
                         "graph_optimizations": args.graph_enablement,
                         "enable_cache": args.trt_ep_options.get("trt_engine_cache_enable", "False"),
@@ -1432,18 +1471,18 @@ def calculate_gain(value, ep1, ep2):
 
 def add_improvement_information(model_to_latency):
     for key, value in model_to_latency.items():
-        if "ORT-TRT" in value and "ORT-CUDA" in value:
+        if trt in value and cuda in value:
             gain = calculate_gain(value, trt, cuda)
             value[trt_cuda_gain] = "{:.2f} %".format(gain)
-            if trt_fp16 in value and cuda_fp16 in value:
-                gain = calculate_gain(value, trt_fp16, cuda_fp16)
-                value[trt_cuda_fp16_gain] = "{:.2f} %".format(gain)
-        if "ORT-TRT" in value and is_standalone(value):
+        if trt_fp16 in value and cuda_fp16 in value:
+            gain = calculate_gain(value, trt_fp16, cuda_fp16)
+            value[trt_cuda_fp16_gain] = "{:.2f} %".format(gain)
+        if trt in value and standalone_trt in value:
             gain = calculate_gain(value, trt, standalone_trt)
             value[trt_native_gain] = "{:.2f} %".format(gain)
-            if trt_fp16 in value and standalone_trt_fp16 in value:
-                gain = calculate_gain(value, trt_fp16, standalone_trt_fp16)
-                value[trt_native_fp16_gain] = "{:.2f} %".format(gain)
+        if trt_fp16 in value and standalone_trt_fp16 in value:
+            gain = calculate_gain(value, trt_fp16, standalone_trt_fp16)
+            value[trt_native_fp16_gain] = "{:.2f} %".format(gain)
 
 
 def output_details(results, csv_filename):
@@ -1591,8 +1630,11 @@ def output_status(results, csv_filename):
 
 
 def output_specs(info, csv_filename):
-    cpu_version = info["cpu_info"][2]
-    gpu_version = info["gpu_info"][0]
+    cpu_infos = info["cpu_info"]
+    gpu_infos = info["gpu_info"]
+
+    cpu_version = cpu_infos[2] if len(cpu_infos) > 2 else "Unknown"
+    gpu_version = gpu_infos[0] if len(gpu_infos) > 0 else "Unknown"
     tensorrt_version = info["trt"] + " , *All ORT-TRT and TRT are run in Mixed Precision mode (Fp16 and Fp32)."
     cuda_version = info["cuda"]
     cudnn_version = info["cudnn"]
@@ -2029,7 +2071,8 @@ def parse_arguments():
         "-z",
         "--track_memory",
         required=False,
-        default=True,
+        default=False,
+        action="store_true",
         help="Track CUDA and TRT Memory Usage",
     )
 

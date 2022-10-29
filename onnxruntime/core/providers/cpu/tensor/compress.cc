@@ -36,7 +36,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
 
   const auto* condition = ctx->Input<Tensor>(1);
   auto condition_length = condition->Shape().Size();
-  auto condition_data = condition->template Data<bool>();
+  auto condition_data = condition->Data<bool>();
 
   int64_t positive_condition_count = 0;
   // if has axis, we need to compress on dimension[axis], otherwise compress on the flattened input data

@@ -17,7 +17,7 @@ namespace Dml
         virtual void Compute(const MLOperatorKernelContext& kernelContext);
 
     protected:
-        ComPtr<IExecutionProvider> m_executionProvider; 
+        ComPtr<IExecutionProvider> m_executionProvider;
         ComPtr<IDMLDevice> m_dmlDevice;
 
         // Tensor descs ordered based on index arrays passed to Initialize
@@ -43,11 +43,32 @@ namespace Dml
             uint32_t minDimensionCount = NchwDimensionCount
             );
 
+        // This first tries to create TensorDesc with the given input and output shapes, no broadcasting.
+        // If the shapes are not present, then it will try to create TensorDesc with the shapes from the actual input tensors and shape inference.
+        // The inputShapes and kernelInputIndices should have same length. Same for outputShapes and kernelOutputIndices.
+        void InitializeWithShapes(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices = std::nullopt,
+            const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices = std::nullopt,
+            const std::optional<gsl::span<gsl::span<const uint32_t>>> inputShapes = std::nullopt,
+            const std::optional<gsl::span<gsl::span<const uint32_t>>> outputShapes = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
+            );
+
         bool AllowHalfPrecisionComputation() const;
         DML_EXECUTION_FLAGS GetExecutionFlags() const;
 
         void SetDmlOperatorDesc(
-            const DML_OPERATOR_DESC& operatorDesc, 
+            const DML_OPERATOR_DESC& operatorDesc,
+            const MLOperatorKernelCreationContext& kernelInfo
+            );
+
+        // This method only works with DML_GRAPH.
+        // To make it work without DML_GRAPH, we need to add new functionality 
+        // in DMLX i.e. DMLX should also give access to DML_OPERATOR_DESC 
+        // rather than IDMLOperator.
+        void SetDmlOperatorGraphDesc(
+            const MLOperatorGraphDesc&& operatorGraphDesc,
             const MLOperatorKernelCreationContext& kernelInfo
             );
 
@@ -55,11 +76,11 @@ namespace Dml
             const DML_OPERATOR_DESC& operatorDesc,
             const MLOperatorKernelContext& kernelInfo
             );
-        
+
         // Tensors ordered based on index arrays passed to Initialize
         std::vector<IMLOperatorTensor*> GetInputTensors(const MLOperatorKernelContext& kernelContext);
         std::vector<IMLOperatorTensor*> GetOutputTensors(const MLOperatorKernelContext& kernelContext);
-        
+
         // Retrieves the input/output tensors to be supplied to DirectML for execution. These differ from
         // Get[Input|Output]Tensors in that they account for the binding requirements of DML, instead of
         // unconditionally retrieving all input and output tensors.
@@ -106,10 +127,20 @@ namespace Dml
             ) const;
 
     private:
-        // For each input or output of the DML kernel, the corresponding input or output of the original 
+        // For each input or output of the DML kernel, the corresponding input or output of the original
         // kernel.  Entries for unused DML inputs are nullopt.
         std::vector<std::optional<uint32_t>> m_kernelInputIndices;
         std::vector<std::optional<uint32_t>> m_kernelOutputIndices;
+
+        void ConvertToDmlGraphDesc(const MLOperatorGraphDesc& operatorGraphDesc,
+                                   _Out_ DML_GRAPH_DESC& graphDesc,
+                                   _Inout_ std::vector<ComPtr<IDMLOperator>>& dmlOperators,
+                                   _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
+                                   _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
+                                   _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
+                                   _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
+                                   _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
+        
     };
 
 } // namespace Dml

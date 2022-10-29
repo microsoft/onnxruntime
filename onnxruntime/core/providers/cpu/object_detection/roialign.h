@@ -29,7 +29,6 @@ class RoiAlignBase {
       } else {
         ORT_THROW("Invalid mode of value ", mode, " specified. It should be either avg or max");
       }
-      mode_ = mode == "avg" ? RoiAlignMode::avg : RoiAlignMode::max;
     }
 
     // output_height
@@ -63,6 +62,13 @@ class RoiAlignBase {
         half_pixel_ = true;
       else
         half_pixel_ = false;
+    }
+
+    if (mode_ == RoiAlignMode::max && sampling_ratio_ != 1) {
+      // TODO(fdwr): Issue #6146. ORT 1.13 will correct the incorrect summation of max mode with PR #7354.
+      LOGS_DEFAULT(WARNING) << "The existing summation for max mode and sampling ratios besides 1 is incorrect "
+                            << "and will be fixed in the next ORT 1.13 release. Thus the results of RoiAlign "
+                            << "will be different.";
     }
   }
 

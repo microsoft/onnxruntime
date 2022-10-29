@@ -2,32 +2,34 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+# pylint: disable=W0511
 
-from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
-from onnxruntime.capi import _pybind_state as C
-from onnxruntime.tools import pytorch_export_contrib_ops
-from ._fallback_exceptions import ORTModuleDeviceException, wrap_exception, ORTModuleIOError
-from ._torch_module_pytorch import TorchModulePytorch
-from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
-from ._custom_gradient_registry import CustomGradientRegistry
-from . import _onnx_models
-from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
-
-import os
 import copy
 import functools
 import inspect
-from onnx import TensorProto
-import torch
-from torch.utils.dlpack import from_dlpack, to_dlpack
-from torch._C import _from_dlpack
+import os
+import random
 import traceback
-from typing import List
 import types
 import warnings
 from distutils.version import LooseVersion
-import random
+from typing import List
+
 import numpy as np
+import torch
+from torch._C import _from_dlpack
+from torch.utils.dlpack import to_dlpack
+
+from onnxruntime.capi import _pybind_state as C
+from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
+from onnxruntime.tools import pytorch_export_contrib_ops
+
+from . import _onnx_models
+from ._custom_gradient_registry import CustomGradientRegistry
+from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
+from ._fallback_exceptions import ORTModuleDeviceException, ORTModuleIOError, wrap_exception
+from ._torch_module_pytorch import TorchModulePytorch
+from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp_extension
 
 
 def get_random_states():
@@ -56,6 +58,8 @@ def _ortvalue_from_torch_tensor(torch_tensor):
     is_bool_tensor = torch_tensor.dtype == torch.bool
     if is_bool_tensor and LooseVersion(torch.__version__) >= LooseVersion("1.10.0"):
         torch_tensor = torch_tensor.to(torch.uint8)
+    if torch_tensor.device.type == "ort":
+        return C.aten_ort_tensor_to_ort_value(torch_tensor)
     return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
 
 
@@ -89,32 +93,6 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
         for i in range(0, len(bool_indices)):
             j = bool_indices[i]
             res[j] = res[j].to(torch.bool)
-
-    return tuple(res)
-
-
-def _ortvalues_to_torch_tensor_list(ortvalues, device, c_class=False):
-    if len(ortvalues) == 0:
-        return tuple()
-
-    if "ort" == device.type:
-        if not hasattr(C, "to_aten_ort_device_tensor"):
-            raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
-        return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
-
-    if not isinstance(ortvalues, list):
-        raise TypeError("ortvalues must be a list not %r." % type(ortvalues))
-
-    if c_class:
-        res = [_from_dlpack(ov.to_dlpack()) for ov in ortvalues]
-        for i in range(0, len(res)):
-            if ortvalues[i].element_type() == TensorProto.BOOL:
-                res[i] = res[i].to(torch.bool)
-    else:
-        res = [_from_dlpack(ov._ortvalue.to_dlpack()) for ov in ortvalues]
-        for i in range(0, len(res)):
-            if ortvalues[i]._ortvalue.element_type() == TensorProto.BOOL:
-                res[i] = res[i].to(torch.bool)
 
     return tuple(res)
 

@@ -24,6 +24,6 @@ template <typename T>
 Status GetTopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
                AllocatorPtr allocator,
                onnxruntime::concurrency::ThreadPool* threadpool,
-               std::unique_ptr<Tensor>& output_values,
-               std::unique_ptr<Tensor>& output_indices);
+               Tensor& output_values,
+               Tensor& output_indices);
 }  // namespace onnxruntime

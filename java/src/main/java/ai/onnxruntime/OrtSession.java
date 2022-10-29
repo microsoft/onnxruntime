@@ -371,7 +371,7 @@ public class OrtSession implements AutoCloseable {
    * @return A Map from String to NodeInfo.
    */
   private static Map<String, NodeInfo> wrapInMap(NodeInfo[] infos) {
-    Map<String, NodeInfo> output = new LinkedHashMap<>();
+    Map<String, NodeInfo> output = new LinkedHashMap<>(OrtUtil.capacityFromSize(infos.length));
 
     for (NodeInfo info : infos) {
       output.put(info.getName(), info);
@@ -912,18 +912,6 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds Nuphar as an execution backend.
-     *
-     * @param allowUnalignedBuffers Allow unaligned memory buffers.
-     * @param settings See the documentation for valid settings strings.
-     * @throws OrtException If there was an error in native code.
-     */
-    public void addNuphar(boolean allowUnalignedBuffers, String settings) throws OrtException {
-      checkClosed();
-      addNuphar(OnnxRuntime.ortApiHandle, nativeHandle, allowUnalignedBuffers ? 1 : 0, settings);
-    }
-
-    /**
      * Adds TVM as an execution backend.
      *
      * @param settings See the documentation for valid settings strings.
@@ -985,6 +973,27 @@ public class OrtSession implements AutoCloseable {
     public void addCoreML(EnumSet<CoreMLFlags> flags) throws OrtException {
       checkClosed();
       addCoreML(OnnxRuntime.ortApiHandle, nativeHandle, OrtFlags.aggregateToInt(flags));
+    }
+
+    /**
+     * Adds Xnnpack as an execution backend. Needs to list all options here if a new option
+     * supported. current supported options: {}
+     *
+     * @param providerOptions options pass to XNNPACK EP for initialization.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addXnnpack(Map<String, String> providerOptions) throws OrtException {
+      checkClosed();
+      String[] providerOptionKey = new String[providerOptions.size()];
+      String[] providerOptionVal = new String[providerOptions.size()];
+      int i = 0;
+      for (Map.Entry<String, String> entry : providerOptions.entrySet()) {
+        providerOptionKey[i] = entry.getKey();
+        providerOptionVal[i] = entry.getValue();
+        i++;
+      }
+      addExecutionProvider(
+          OnnxRuntime.ortApiHandle, nativeHandle, "XNNPACK", providerOptionKey, providerOptionVal);
     }
 
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
@@ -1081,10 +1090,6 @@ public class OrtSession implements AutoCloseable {
     private native void addNnapi(long apiHandle, long nativeHandle, int nnapiFlags)
         throws OrtException;
 
-    private native void addNuphar(
-        long apiHandle, long nativeHandle, int allowUnalignedBuffers, String settings)
-        throws OrtException;
-
     private native void addTvm(long apiHandle, long nativeHandle, String settings)
         throws OrtException;
 
@@ -1097,6 +1102,14 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
+        throws OrtException;
+
+    private native void addExecutionProvider(
+        long apiHandle,
+        long nativeHandle,
+        String epName,
+        String[] providerOptionKey,
+        String[] providerOptionVal)
         throws OrtException;
   }
 
@@ -1259,9 +1272,6 @@ public class OrtSession implements AutoCloseable {
      * @param values The output values.
      */
     Result(String[] names, OnnxValue[] values) {
-      map = new LinkedHashMap<>();
-      list = new ArrayList<>();
-
       if (names.length != values.length) {
         throw new IllegalArgumentException(
             "Expected same number of names and values, found names.length = "
@@ -1269,6 +1279,9 @@ public class OrtSession implements AutoCloseable {
                 + ", values.length = "
                 + values.length);
       }
+
+      map = new LinkedHashMap<>(OrtUtil.capacityFromSize(names.length));
+      list = new ArrayList<>(names.length);
 
       for (int i = 0; i < names.length; i++) {
         map.put(names[i], values[i]);

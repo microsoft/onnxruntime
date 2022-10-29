@@ -71,12 +71,15 @@ function(bundle_static_library bundled_target_name)
     add_dependencies(bundling_target ${target_name})
   endforeach()
 
-  add_library(${bundled_target_name} STATIC IMPORTED)
+  add_library(${bundled_target_name} STATIC IMPORTED GLOBAL)
+  set_target_properties(${bundled_target_name}
+    PROPERTIES
+      IMPORTED_LOCATION ${bundled_target_full_name})
   foreach(target_name IN ITEMS ${ARGN})
-    set_target_properties(${bundled_target_name}
-      PROPERTIES
-        IMPORTED_LOCATION ${bundled_target_full_name}
-        INTERFACE_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:${target_name},INTERFACE_INCLUDE_DIRECTORIES>)
+    set_property(TARGET ${bundled_target_name} APPEND
+      PROPERTY INTERFACE_INCLUDE_DIRECTORIES $<TARGET_PROPERTY:${target_name},INTERFACE_INCLUDE_DIRECTORIES>)
+    set_property(TARGET ${bundled_target_name} APPEND
+      PROPERTY INTERFACE_COMPILE_DEFINITIONS $<TARGET_PROPERTY:${target_name},INTERFACE_COMPILE_DEFINITIONS>)
   endforeach()
   add_dependencies(${bundled_target_name} bundling_target)
 endfunction()
@@ -105,6 +108,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_mlas
       onnxruntime_optimizer
       onnxruntime_providers
+      ${PROVIDERS_XNNPACK}
       onnxruntime_session
       onnxruntime_util
       re2::re2
@@ -168,10 +172,14 @@ else()
     onnxruntime_mlas
     onnxruntime_optimizer
     onnxruntime_providers
+    ${PROVIDERS_XNNPACK}
     onnxruntime_session
     onnxruntime_util
     re2::re2
   )
+  if (onnxruntime_USE_XNNPACK)
+    target_link_libraries(onnxruntime_webassembly PRIVATE XNNPACK)
+  endif()
 
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
@@ -181,6 +189,8 @@ else()
 
   set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "             \
                         -s \"EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}\" \
+                        -s \"EXPORTED_FUNCTIONS=_malloc,_free\"                     \
+                        -s MAXIMUM_MEMORY=4294967296                                \
                         -s WASM=1                                                   \
                         -s NO_EXIT_RUNTIME=0                                        \
                         -s ALLOW_MEMORY_GROWTH=1                                    \
@@ -215,19 +225,17 @@ else()
   endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmThreaded -s USE_PTHREADS=1")
     if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmSimdThreaded -s USE_PTHREADS=1")
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd-threaded")
     else()
-      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmThreaded -s USE_PTHREADS=1")
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-threaded")
     endif()
   else()
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasm")
     if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmSimd")
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd")
     else()
-      set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasm")
       set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm")
     endif()
   endif()

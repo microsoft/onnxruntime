@@ -109,6 +109,16 @@ Return Value:
 }
 
 
+int32_t
+MlasQgemmGetKernelOutputCnt(
+    bool AIsSigned,
+    bool BIsSigned
+    )
+{
+    const auto* dispatch = MlasGemmQuantGetDispatch(AIsSigned, BIsSigned);
+    return int32_t(dispatch->StrideM);
+}
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
@@ -191,6 +201,15 @@ MlasGemmBatch(
         MlasGemmQuantThreaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
     });
 }
+
+
+int32_t
+MlasSymmQgemmGetKernelOutputCnt()
+{
+    const MLAS_SYMM_QGEMM_DISPATCH* dispatch = GetMlasPlatform().SymmQgemmDispatch;
+    return int32_t(dispatch->StrideM);
+}
+
 
 void
 MLASCALL

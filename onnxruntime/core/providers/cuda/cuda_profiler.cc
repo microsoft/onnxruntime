@@ -7,6 +7,8 @@
 #include <string>
 #include <iostream>
 
+#include "core/common/profiler_common.h"
+
 namespace onnxruntime {
 
 namespace profiling {
@@ -126,7 +128,7 @@ void CudaProfiler::EndProfiling(TimePoint start_time, Events& events) {
                                                                          {"block_y", std::to_string(stat.block_y_)},
                                                                          {"block_z", std::to_string(stat.block_z_)}};
       EventRecord event{
-          KEVENT, -1, -1, stat.name_, DUR(profiling_start, stat.start_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}};
+          KEVENT, -1, -1, demangle(stat.name_), DUR(profiling_start, stat.start_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}};
       auto ts = id_map[stat.correlation_id];
       if (event_map.find(ts) == event_map.end()) {
         event_map.insert({ts, {event}});

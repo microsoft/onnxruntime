@@ -32,7 +32,7 @@ __global__ void _BinaryElementWise(
     if (id < N) {
       CUDA_LONG lhs_index = (lhs_need_compute ? 0 : id);
       CUDA_LONG rhs_index = (rhs_need_compute ? 0 : id);
-      // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
+      // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/main/docs/Broadcasting.md
       CUDA_LONG offset = id;
 #pragma unroll
       for (auto dim = 0; dim < fdm_output_strides.Capacity(); dim++) {
@@ -74,7 +74,7 @@ __global__ void _BinaryElementWiseSimple(
     const T1* lhs_data,
     const T2* rhs_data,
     T* output_data,
-    const FuncT& func,
+    const FuncT func,
     CUDA_LONG N) {
   CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T1 lvalue[NumElementsPerThread];
@@ -188,7 +188,7 @@ void BinaryElementWiseNoBroadcastImpl(
     size_t count) {
   if (count == 0)  // special case where there's a dim value of 0 in the output shape
     return;
-  
+
   #ifdef USE_ROCM
   const int num_elements_per_thread = 2;
   const int num_threads_per_block = 512;

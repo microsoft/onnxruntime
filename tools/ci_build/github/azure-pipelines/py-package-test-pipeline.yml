@@ -1,0 +1,52 @@
+resources:
+  pipelines:
+  - pipeline: build
+    source: 'Python packaging pipeline'
+    trigger: true 
+    
+jobs:
+- template: templates/py-packaging-linux-test.yml
+  parameters:
+    arch: 'x86_64'
+    machine_pool: 'Linux-CPU'
+    device: 'CPU'
+
+- template: templates/py-packaging-linux-test.yml
+  parameters:
+    arch: 'aarch64'
+    machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
+    device: 'CPU'
+
+- template: templates/py-packaging-linux-test.yml
+  parameters:
+    arch: 'x86_64'
+    machine_pool: 'Onnxruntime-Linux-GPU'
+    device: 'GPU'
+    python_wheel_suffix: '_gpu'
+
+- job: Final
+  dependsOn:
+  - Linux_Test_CPU_x86_64
+  - Linux_Test_CPU_aarch64
+  - Linux_Test_GPU_x86_64
+  #Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
+  condition: and(succeeded(), eq(variables['Build.Reason'], 'ResourceTrigger'))
+  timeoutInMinutes: 60
+  variables:
+    skipComponentGovernanceDetection: true
+  workspace:
+    clean: all
+  pool: Azure-Pipelines-EO-Windows2022-aiinfra
+  steps:
+  - task: PowerShell@2
+    displayName: 'Add Build Tag'    
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+    inputs:
+      targetType: inline
+      script: |
+        $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
+        $headers.Add("Authorization", "Bearer $env:SYSTEM_ACCESSTOKEN")
+        $headers.Add("Content-Type", "application/json")
+        $uri = "https://dev.azure.com/aiinfra/Lotus/_apis/build/builds/$(resources.pipeline.build.runID)/tags/test%20pass?api-version=6.0"
+        Invoke-RestMethod -Uri $uri -Headers $headers -Method PUT

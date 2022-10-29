@@ -100,7 +100,7 @@ TEST(OptimizerTest, Basic) {
     std::vector<OrtValue> fetches;
     ASSERT_STATUS_OK(frame.GetOutputs(fetches));
     auto& tensor = fetches[0].Get<Tensor>();
-    const std::vector<int32_t> found(tensor.template Data<int32_t>(), tensor.template Data<int32_t>() + tensor_dim);
+    const std::vector<int32_t> found(tensor.Data<int32_t>(), tensor.Data<int32_t>() + tensor_dim);
     std::vector<int32_t> expected;
     for (int j = 0; j < tensor_dim; j++) {
       expected.push_back(3 * j);

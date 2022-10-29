@@ -59,28 +59,18 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     int32_t, int64_t);
 }
 
-using RandomNormalOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, RandomNormal, Output, 0);
 using EnabledRandomNormalOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomNormal, Output, 0);
 
-using RandomUniformOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, RandomUniform, Output, 0);
 using EnabledRandomUniformOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomUniform, Output, 0);
 
-using RandomNormalLikeOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, RandomNormalLike, Output, 0);
 using EnabledRandomNormalLikeOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomNormalLike, Output, 0);
 
-using RandomUniformLikeOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, RandomUniformLike, Output, 0);
 using EnabledRandomUniformLikeOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, RandomUniformLike, Output, 0);
 
-using MultinomialOutputTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
-    kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0);
 using EnabledMultinomialOutputTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Multinomial, Output, 0);
 
@@ -99,7 +89,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     1,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<RandomNormalOutputTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledRandomNormalOutputTypes>()),
     RandomNormal);
 
@@ -108,7 +97,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     1,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraintsFromTypeList<RandomUniformOutputTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledRandomUniformOutputTypes>()),
     RandomUniform);
 
@@ -118,7 +106,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("T2",
-                        BuildKernelDefConstraintsFromTypeList<RandomNormalLikeOutputTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledRandomNormalLikeOutputTypes>()),
     RandomNormalLike);
 
@@ -128,18 +115,16 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
         .TypeConstraint("T2",
-                        BuildKernelDefConstraintsFromTypeList<RandomUniformLikeOutputTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledRandomUniformLikeOutputTypes>()),
     RandomUniformLike);
 
-// https://github.com/onnx/onnx/blob/master/docs/Operators.md#multinomial
+// https://github.com/onnx/onnx/blob/main/docs/Operators.md#multinomial
 ONNX_CPU_OPERATOR_KERNEL(
     Multinomial,
     7,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T2",
-                        BuildKernelDefConstraintsFromTypeList<MultinomialOutputTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledMultinomialOutputTypes>()),
     Multinomial);
 
@@ -238,16 +223,16 @@ static Status MultinomialCompute(OpKernelContext* ctx,
   // implementation copied from Tensorflow with some changes such as using the std::uniform_real_distribution
   // instead of the Philox RNG.
   Eigen::array<int64_t, 2> X_dims = {{batch_size, num_classes}};
-  ConstMatrix<float> logits = ConstMatrix<float>(X.template Data<float>(), X_dims);
+  ConstMatrix<float> logits = ConstMatrix<float>(X.Data<float>(), X_dims);
 
   Eigen::array<int64_t, 2> Y_dims = {{batch_size, num_samples}};
-  Matrix<OutputType> output = Matrix<OutputType>(Y.template MutableData<OutputType>(), Y_dims);
+  Matrix<OutputType> output = Matrix<OutputType>(Y.MutableData<OutputType>(), Y_dims);
 
   // BEGIN create temporary tensor
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
   auto cdf_data = static_cast<double*>(alloc->Alloc(SafeInt<size_t>(sizeof(double)) * num_classes));
-  BufferUniquePtr cdf_buffer(cdf_data, BufferDeleter(alloc));
+  BufferUniquePtr cdf_buffer(cdf_data, BufferDeleter(std::move(alloc)));
   Eigen::array<int64_t, 1> cdf_dims = {{num_classes}};
   auto cdf = EigenVector<double>(cdf_data, cdf_dims);
   // END create temporary tensor

@@ -1,0 +1,22 @@
+{{!Copyright (c) Microsoft. All rights reserved. Licensed under the MIT license. See LICENSE file in the project root for full license information.}}
+
+<div id="sidetoggle">
+  <div>
+    {{^_disableSideFilter}}
+    <div class="sidefilter">
+      <form class="toc-filter">
+        <span class="glyphicon glyphicon-filter filter-icon"></span>
+        <span class="glyphicon glyphicon-remove clear-icon" id="toc_filter_clear"></span>
+        <input type="text" id="toc_filter_input" placeholder="{{__global.tocFilter}}" onkeypress="if(event.keyCode==13) {return false;}">
+      </form>
+    </div>
+    {{/_disableSideFilter}}
+    <div class="sidetoc">
+      <div class="toc" id="toc">
+        {{^leaf}}
+          {{>partials/li}}
+        {{/leaf}}
+      </div>
+    </div>
+  </div>
+</div>

@@ -52,7 +52,7 @@ def gen(model_path, use_transpose_matmul, scale_input_0, scale_input_1, scale_ou
             matmul_op,
             "",
             matmul_domain,
-            **matmul_attrs
+            **matmul_attrs,
         )
     )
 

@@ -69,7 +69,7 @@ const calculateSize = (dims: readonly unknown[]): number => {
 };
 
 export class Tensor implements TensorInterface {
-  //#region constructors
+  // #region constructors
   constructor(type: TensorType, data: TensorDataType|readonly number[]|readonly boolean[], dims?: readonly number[]);
   constructor(data: TensorDataType|readonly boolean[], dims?: readonly number[]);
   constructor(
@@ -165,18 +165,18 @@ export class Tensor implements TensorInterface {
     this.data = data;
     this.size = size;
   }
-  //#endregion
+  // #endregion
 
-  //#region fields
+  // #region fields
   readonly dims: readonly number[];
   readonly type: TensorType;
   readonly data: TensorDataType;
   readonly size: number;
-  //#endregion
+  // #endregion
 
-  //#region tensor utilities
+  // #region tensor utilities
   reshape(dims: readonly number[]): Tensor {
     return new Tensor(this.type, this.data, dims);
   }
-  //#endregion
+  // #endregion
 }

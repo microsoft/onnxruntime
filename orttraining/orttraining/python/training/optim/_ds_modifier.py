@@ -10,11 +10,12 @@
 # - has_overflow_partitioned_grads_serial : https://github.com/microsoft/DeepSpeed/blob/d8e9ef6f99e27bb95e10bd146d145b3372b4cfda/deepspeed/runtime/zero/stage2.py#L1799
 # --------------------------------------------------------------------------
 
-import torch
 import types
 import warnings
-from distutils.version import LooseVersion
+
+import torch
 from numpy import inf
+from packaging.version import Version
 
 from ._modifier import FP16OptimizerModifier, check_overflow, check_overflow_for_grads
 from ._multi_tensor_apply import MultiTensorApply
@@ -27,19 +28,28 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         super().__init__(optimizer)
 
     def can_be_modified(self):
-        try:
-            import deepspeed
+        import deepspeed
 
-            v = LooseVersion(deepspeed.__version__)
-            if v > LooseVersion("0.5.4") or v < LooseVersion("0.4.0"):
-                warnings.warn("Unsupported DeepSpeed version to override, skipped.", UserWarning)
-                return False
-        except Exception as _:
+        # This modifier relies on the implementation of has_overflow_serial, get_grad_norm_direct,
+        # and has_overflow_partitioned_grads_serial
+        # in https://github.com/microsoft/DeepSpeed/blob/master/deepspeed/runtime/zero/stage_1_and_2.py.
+        # Everytime if we want to update this version supporting list to a newer version,
+        # we need to check if the implementation of these functions are changed.
+        # An easy way to check is to check the history of this file, if there is no change during the update,
+        # it's safe to update the version supporting list. Otherwise, or the file is moved or renamed,
+        # we need to check the implementation of these functions in detail.
+        ds_version = Version(deepspeed.__version__)
+        if ds_version > Version("0.7.3") or ds_version < Version("0.4.0"):
+            warnings.warn(
+                "Skip modifying optimizer because of unsupported DeepSpeed version {}, "
+                "supported version: 0.4.0 - 0.7.3.".format(deepspeed.__version__),
+                UserWarning,
+            )
             return False
 
         return self.check_requirements(
             ["has_overflow_serial", "get_grad_norm_direct", "has_overflow_partitioned_grads_serial"],
-            require_apex=True,
+            require_apex=False,
             require_torch_non_finite_check=True,
         )
 
@@ -47,7 +57,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         warnings.warn("DeepSpeed fp16_optimizer functions are overrided with faster implementation.", UserWarning)
 
         def get_grad_norm_direct(target, gradients, params, norm_type=2):
-            import amp_C
+            from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
 
             def is_model_parallel_parameter(p):
                 return hasattr(p, "model_parallel") and p.model_parallel
@@ -95,7 +105,10 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
                     # Multi-tensor applier takes a function and a list of list
                     # and performs the operation on that list all in one kernel.
                     grad_norm, _ = multi_tensor_applier(
-                        amp_C.multi_tensor_l2norm, dummy_overflow_buf, [grads_for_norm], False  # no per-parameter norm
+                        fused_ops.multi_tensor_l2norm,
+                        dummy_overflow_buf,
+                        [fused_ops.TorchTensorVector(grads_for_norm)],
+                        False,  # no per-parameter norm
                     )
                     # Since we will be summing across data parallel groups,
                     # we need the pow(norm-type).
@@ -141,7 +154,8 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
             #### END OF THE ORIGINAL IMPLEMENTATION ####
 
             #### THIS IS THE FASTER IMPLEMENTATION ####
-            for i in range(len(target.fp16_groups)):
+            groups = target.fp16_groups if hasattr(target, "fp16_groups") else target.bit16_groups
+            for i in range(len(groups)):
                 grad_data = [grad.data for grad in target.averaged_gradients[i] if grad is not None]
                 if check_overflow_for_grads(grad_data):
                     return True

@@ -14,6 +14,7 @@ import numpy as np
 import onnx
 from onnx import helper, numpy_helper
 from onnx import onnx_pb as onnx_proto
+from packaging import version
 
 logger = logging.getLogger(__name__)
 
@@ -75,11 +76,11 @@ def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finit
         # convert raw_data (bytes type)
         if tensor.raw_data:
             # convert n.raw_data to float
-            float32_list = np.fromstring(tensor.raw_data, dtype="float32")
+            float32_list = np.frombuffer(tensor.raw_data, dtype="float32")
             # convert float to float16
             float16_list = convert_np_to_float16(float32_list, min_positive_val, max_finite_val)
             # convert float16 to bytes and write back to raw_data
-            tensor.raw_data = float16_list.tostring()
+            tensor.raw_data = float16_list.tobytes()
     return tensor
 
 
@@ -170,7 +171,7 @@ def convert_float_to_float16(
     assert max_finite_val <= float(np.finfo(np.float16).max), "invalid max_finite_val. largest float16 value: 65504"
 
     func_infer_shape = None
-    if not disable_shape_infer and onnx.__version__ >= "1.2":
+    if not disable_shape_infer and version.parse(onnx.__version__) >= version.parse("1.2.0"):
         try:
             from onnx.shape_inference import infer_shapes
 
@@ -379,11 +380,15 @@ def float_to_float16_max_diff(tensor, min_positive_val=5.96e-08, max_finite_val=
     if tensor.data_type != onnx_proto.TensorProto.FLOAT:
         raise ValueError("Expected tensor data type is float.")
 
+    float32_data = None
     if tensor.float_data:
         float32_data = np.array(tensor.float_data)
 
     if tensor.raw_data:
-        float32_data = np.fromstring(tensor.raw_data, dtype="float32")
+        float32_data = np.frombuffer(tensor.raw_data, dtype="float32")
+
+    if float32_data is None:
+        raise RuntimeError("external data not loaded!")
 
     float16_data = convert_np_to_float16(float32_data, min_positive_val, max_finite_val)
     return np.amax(np.abs(float32_data - np.float32(float16_data)))

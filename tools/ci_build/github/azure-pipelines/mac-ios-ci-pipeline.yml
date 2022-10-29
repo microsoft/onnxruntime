@@ -1,5 +1,10 @@
+parameters:
+- name: BuildXnnpack
+  default: false
+  type: boolean
+
 jobs:
-- job: iOS_CI_on_Mac
+- job: iOS_CI_CPU_on_Mac
   pool:
     vmImage: 'macOS-11'
   variables:
@@ -28,6 +33,21 @@ jobs:
           --parallel
       displayName: (CPU EP) Build onnxruntime for iOS x86_64 and run tests using simulator
 
+
+- job: iOS_CI_CoreML_on_Mac
+  pool:
+    vmImage: 'macOS-11'
+  variables:
+    MACOSX_DEPLOYMENT_TARGET: '10.14'
+  timeoutInMinutes: 150
+  steps:
+    - script: |
+        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+          $(Build.SourcesDirectory) \
+          $(Build.BinariesDirectory)/protobuf \
+          $(Build.BinariesDirectory)/protobuf_install
+      displayName: Build Host Protoc
+
     - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
           --skip_submodule_sync \
@@ -43,3 +63,34 @@ jobs:
           --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
           --parallel
       displayName: (CoreML EP) Build onnxruntime for iOS x86_64 and run tests using simulator
+
+- job: iOS_CI_XNNPACK_on_Mac
+  pool:
+    vmImage: 'macOS-11'
+  variables:
+    MACOSX_DEPLOYMENT_TARGET: '10.14'
+  timeoutInMinutes: 100
+  condition: or(eq('${{parameters.BuildXnnpack}}', 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  steps:
+    - script: |
+        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+          $(Build.SourcesDirectory) \
+          $(Build.BinariesDirectory)/protobuf \
+          $(Build.BinariesDirectory)/protobuf_install
+      displayName: Build Host Protoc
+
+    - script: |
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+          --skip_submodule_sync \
+          --build_dir $(Build.BinariesDirectory)/iOS_xnnpack \
+          --use_xnnpack \
+          --ios \
+          --ios_sysroot iphonesimulator  \
+          --osx_arch x86_64 \
+          --apple_deploy_target 11.0 \
+          --use_xcode \
+          --config RelWithDebInfo \
+          --build_apple_framework \
+          --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
+          --parallel
+      displayName: (XNNPACK EP) Build onnxruntime for iOS x86_64 and run tests using simulator

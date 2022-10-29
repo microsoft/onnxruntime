@@ -92,9 +92,11 @@ static constexpr WinmlAdapterApi winml_adapter_api_1 = {
     &winmla::OperatorGetNumOutputs,
     &winmla::OperatorGetOutputName,
     &winmla::JoinModels,
+    &winmla::CreateThreadPool,
 
     // Release
-    &winmla::ReleaseModel
+    &winmla::ReleaseModel,
+    &winmla::ReleaseThreadPool,
 };
 
 const WinmlAdapterApi* ORT_API_CALL OrtGetWinMLAdapter(_In_ uint32_t ort_version) NO_EXCEPTION {

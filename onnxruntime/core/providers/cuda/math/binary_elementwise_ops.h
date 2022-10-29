@@ -57,7 +57,7 @@ struct BinaryElementwisePreparation {
                              [&C](int64_t dim) { if (dim != 1) C = dim; return (dim != 1); })) {
         int32_t dim_C = gsl::narrow_cast<int32_t>(std::find(rhs_dims.begin(), rhs_dims.end(), C) - rhs_dims.begin() + output_shape.NumDimensions() - rhs_shape.NumDimensions());
         int64_t N = output_shape.SizeToDimension(dim_C);
-        int64_t H = (dim_C < out_rank - 1 ? output_shape.SizeFromDimension(dim_C + 1) : 1);
+        int64_t H = (dim_C < out_rank - 1 ? output_shape.SizeFromDimension(static_cast<size_t>(dim_C) + 1) : 1);
 
         std::vector<int64_t> new_output_dims;
         if (N == 1) {
@@ -80,7 +80,7 @@ struct BinaryElementwisePreparation {
       auto offset = out_rank - lhs_rank;
       for (auto i = offset; i < out_rank; ++i) {
         // the stride for broadcast dimension is kept as 0
-        if (lhs_shape.GetDims()[i - offset] != 1) {
+        if (lhs_shape.GetDims()[static_cast<size_t>(i) - offset] != 1) {
           lhs_padded_strides[i] = original_lhs_padded_strides[i];
         }
       }
@@ -92,7 +92,7 @@ struct BinaryElementwisePreparation {
       auto offset = out_rank - rhs_rank;
       for (auto i = offset; i < out_rank; ++i) {
         // the stride for broadcast dimension is kept as 0
-        if (rhs_shape.GetDims()[i - offset] != 1) {
+        if (rhs_shape.GetDims()[static_cast<size_t>(i) - offset] != 1) {
           rhs_padded_strides[i] = original_rhs_padded_strides[i];
         }
       }
@@ -212,6 +212,18 @@ class PRelu final : public BinaryElementwise<ShouldBroadcast> {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
+};
+
+class Mod final : public BinaryElementwise<ShouldBroadcast> {
+ public:
+  Mod(const OpKernelInfo& info) : BinaryElementwise(info) {
+    int64_t fmod = info.GetAttrOrDefault<int64_t>("fmod", 0LL);
+    fmod_ = fmod != 0;
+  }
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  bool fmod_{false};
 };
 
 template <typename T, typename CudaT>

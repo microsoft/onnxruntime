@@ -50,7 +50,7 @@ __global__ void _ElementWiseWithStrideTwo(
     if (id < N / 2) {
       CUDA_LONG lhs_index = (lhs_need_compute ? 0 : id);
       CUDA_LONG rhs_index = (rhs_need_compute ? 0 : id);
-      // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
+      // compute indexes with broadcasting rules: https://github.com/onnx/onnx/blob/main/docs/Broadcasting.md
       CUDA_LONG offset = id;
 #pragma unroll
       for (auto dim = 0; dim < fdm_output_strides.Capacity(); dim++) {

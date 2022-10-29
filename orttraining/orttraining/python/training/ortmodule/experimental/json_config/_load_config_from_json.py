@@ -81,18 +81,6 @@ def _load_enable_custom_autograd_function(ortmodule_config_accessor, data):
     ortmodule_config_accessor._enable_custom_autograd_function = data.EnableCustomAutogradFunction
 
 
-def _load_allow_layer_norm_mod_precision(ortmodule_config_accessor, data):
-    """Loads AllowLayerNormModPrecision from json file onto ORTModule."""
-
-    assert hasattr(data, _load_allow_layer_norm_mod_precision.loading_key)
-    log.info(f"Found keyword {_load_allow_layer_norm_mod_precision.loading_key} in json. Loading attributes from file.")
-
-    assert isinstance(
-        data.AllowLayerNormModPrecision, bool
-    ), f"{_load_allow_layer_norm_mod_precision.loading_key} must be a boolean"
-    ortmodule_config_accessor._allow_layer_norm_mod_precision = data.AllowLayerNormModPrecision
-
-
 def _load_enable_grad_acc_optimization(ortmodule_config_accessor, data):
     """Loads EnableGradAccOptimization from json file onto ORTModule."""
 
@@ -218,7 +206,6 @@ def _define_load_function_keys():
     _load_propagate_cast_ops.loading_key = "PropagateCastOps"
     _load_use_external_gpu_allocator.loading_key = "UseExternalGPUAllocator"
     _load_enable_custom_autograd_function.loading_key = "EnableCustomAutogradFunction"
-    _load_allow_layer_norm_mod_precision.loading_key = "AllowLayerNormModPrecision"
     _load_enable_grad_acc_optimization.loading_key = "EnableGradAccOptimization"
     _load_run_symbolic_shape_infer.loading_key = "RunSymbolicShapeInference"
     _load_use_static_shape.loading_key = "UseStaticShape"
@@ -242,7 +229,6 @@ def load_from_json(ortmodule, path=None):
         },
         "UseExternalGPUAllocator" : false, # bool flag
         "EnableCustomAutogradFunction": true, # bool flag
-        "AllowLayerNormModPrecision": true, # bool flag
         "EnableGradAccOptimization": true, # bool flag
         "UseStaticShape": true, # bool flag
         "RunSymbolicShapeInference": false, # bool flag
@@ -299,7 +285,6 @@ def load_from_json(ortmodule, path=None):
         _load_propagate_cast_ops.loading_key: _load_propagate_cast_ops,
         _load_use_external_gpu_allocator.loading_key: _load_use_external_gpu_allocator,
         _load_enable_custom_autograd_function.loading_key: _load_enable_custom_autograd_function,
-        _load_allow_layer_norm_mod_precision.loading_key: _load_allow_layer_norm_mod_precision,
         _load_enable_grad_acc_optimization.loading_key: _load_enable_grad_acc_optimization,
         _load_run_symbolic_shape_infer.loading_key: _load_run_symbolic_shape_infer,
         _load_use_static_shape.loading_key: _load_use_static_shape,

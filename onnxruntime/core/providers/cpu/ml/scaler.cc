@@ -4,7 +4,7 @@
 #include "core/providers/cpu/ml/scaler.h"
 
 /**
-https://github.com/onnx/onnx/blob/master/onnx/defs/traditionalml/defs.cc
+https://github.com/onnx/onnx/blob/main/onnx/defs/traditionalml/defs.cc
 ONNX_OPERATOR_SCHEMA(Scaler)
 .SetDomain("ai.onnx.ml")
 .SetDoc(R"DOC(
@@ -76,8 +76,8 @@ common::Status ScalerOp<T>::Compute(OpKernelContext* context) const {
   const Tensor& X = *context->Input<Tensor>(0);
   const TensorShape& x_shape = X.Shape();
   Tensor* Y = context->Output(0, x_shape);
-  const T* x_data = X.template Data<T>();
-  auto* y_data = Y->template MutableData<float>();
+  const T* x_data = X.Data<T>();
+  auto* y_data = Y->MutableData<float>();
   auto x_dims = x_shape.GetDims();
   if (x_dims.empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid argument: input has empty dimensions.");

@@ -7,7 +7,7 @@ import {OnnxValue} from './onnx-value';
 /* eslint-disable @typescript-eslint/no-redeclare */
 
 export declare namespace InferenceSession {
-  //#region input/output types
+  // #region input/output types
 
   type OnnxValueMapType = {readonly [name: string]: OnnxValue};
   type NullableOnnxValueMapType = {readonly [name: string]: OnnxValue | null};
@@ -36,9 +36,9 @@ export declare namespace InferenceSession {
    */
   type ReturnType = OnnxValueMapType;
 
-  //#endregion
+  // #endregion
 
-  //#region session options
+  // #region session options
 
   /**
    * A set of configurations for session behavior.
@@ -117,7 +117,7 @@ export declare namespace InferenceSession {
 
     /**
      * Log severity level. See
-     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+     * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/logging/severity.h
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
@@ -132,7 +132,7 @@ export declare namespace InferenceSession {
 
     /**
      * Store configurations for a session. See
-     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
+     * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/
      * onnxruntime_session_options_config_keys.h
      *
      * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
@@ -153,17 +153,18 @@ export declare namespace InferenceSession {
     extra?: Record<string, unknown>;
   }
 
-  //#region execution providers
+  // #region execution providers
 
   // Currently, we have the following backends to support execution providers:
   // Backend Node.js binding: supports 'cpu' and 'cuda'.
-  // Backend WebAssembly: supports 'wasm'.
+  // Backend WebAssembly: supports 'cpu', 'wasm' and 'xnnpack'.
   // Backend ONNX.js: supports 'webgl'.
   interface ExecutionProviderOptionMap {
     cpu: CpuExecutionProviderOption;
     cuda: CudaExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
+    xnnpack: XnnpackExecutionProviderOption;
   }
 
   type ExecutionProviderName = keyof ExecutionProviderOptionMap;
@@ -183,17 +184,19 @@ export declare namespace InferenceSession {
   }
   export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'wasm';
-    // TODO: add flags
   }
   export interface WebGLExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webgl';
     // TODO: add flags
   }
-  //#endregion
+  export interface XnnpackExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'xnnpack';
+  }
+  // #endregion
 
-  //#endregion
+  // #endregion
 
-  //#region run options
+  // #region run options
 
   /**
    * A set of configurations for inference run behavior
@@ -201,7 +204,7 @@ export declare namespace InferenceSession {
   export interface RunOptions {
     /**
      * Log severity level. See
-     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+     * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/logging/severity.h
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
@@ -230,7 +233,7 @@ export declare namespace InferenceSession {
 
     /**
      * Set a single run configuration entry. See
-     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
+     * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/
      * onnxruntime_run_options_config_keys.h
      *
      * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
@@ -248,23 +251,23 @@ export declare namespace InferenceSession {
     extra?: Record<string, unknown>;
   }
 
-  //#endregion
+  // #endregion
 
-  //#region value metadata
+  // #region value metadata
 
   // eslint-disable-next-line @typescript-eslint/no-empty-interface
   interface ValueMetadata {
     // TBD
   }
 
-  //#endregion
+  // #endregion
 }
 
 /**
  * Represent a runtime instance of an ONNX model.
  */
 export interface InferenceSession {
-  //#region run()
+  // #region run()
 
   /**
    * Execute the model asynchronously with the given feeds and options.
@@ -287,9 +290,9 @@ export interface InferenceSession {
   run(feeds: InferenceSession.FeedsType, fetches: InferenceSession.FetchesType,
       options?: InferenceSession.RunOptions): Promise<InferenceSession.ReturnType>;
 
-  //#endregion
+  // #endregion
 
-  //#region profiling
+  // #region profiling
 
   /**
    * Start profiling.
@@ -301,9 +304,9 @@ export interface InferenceSession {
    */
   endProfiling(): void;
 
-  //#endregion
+  // #endregion
 
-  //#region metadata
+  // #region metadata
 
   /**
    * Get input names of the loaded model.
@@ -325,11 +328,11 @@ export interface InferenceSession {
   //  */
   // readonly outputMetadata: ReadonlyArray<Readonly<InferenceSession.ValueMetadata>>;
 
-  //#endregion
+  // #endregion
 }
 
 export interface InferenceSessionFactory {
-  //#region create()
+  // #region create()
 
   /**
    * Create a new inference session and load model asynchronously from an ONNX model file.
@@ -370,7 +373,7 @@ export interface InferenceSessionFactory {
    */
   create(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<InferenceSession>;
 
-  //#endregion
+  // #endregion
 }
 
 // eslint-disable-next-line @typescript-eslint/naming-convention

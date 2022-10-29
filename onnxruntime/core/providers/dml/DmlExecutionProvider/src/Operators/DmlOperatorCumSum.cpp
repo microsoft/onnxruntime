@@ -51,6 +51,7 @@ public:
     }
 };
 
-DML_OP_DEFINE_CREATION_FUNCTION(CumSum, DmlOperatorCumSum);
+DML_OP_DEFINE_CREATION_FUNCTION(CumSum11, DmlOperatorCumSum);
+DML_OP_DEFINE_CREATION_FUNCTION(CumSum14, DmlOperatorCumSum);
 
 } // namespace Dml

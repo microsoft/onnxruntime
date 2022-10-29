@@ -99,12 +99,12 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),
                 "Pads tensor should be a 1D tensor of shape [2 * input_rank] or a 2D tensor of shape [1, 2 * input_rank]");
 
-    const int64_t* pads_tensor_raw_data = pads_tensor.template Data<int64_t>();
+    const int64_t* pads_tensor_raw_data = pads_tensor.Data<int64_t>();
     size_t pads_size = static_cast<size_t>(pads_tensor.Shape().Size());
     ORT_ENFORCE(pads_size == 2 * static_cast<size_t>(dimension_count),
                 "Pads tensor size should be equal to twice the input dimension count ");
 
-    pads.reserve(2 * dimension_count);
+    pads.reserve(2LL * dimension_count);
     for (size_t i = 0; i < pads_size; ++i) {
       pads.push_back(pads_tensor_raw_data[i]);
     }
@@ -123,7 +123,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       ORT_ENFORCE(utils::IsPrimitiveDataType<T>(value_tensor->DataType()) &&
                       value_tensor->Shape().Size() == 1,
                   "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
-      raw_value = value_tensor->template Data<T>()[0];
+      raw_value = value_tensor->Data<T>()[0];
       value = ToCudaValue<T>(raw_value);
     }
     p_pads = &pads;
@@ -159,7 +159,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       std::all_of(p_slices->begin(), p_slices->end(), [](const int64_t v) { return v == 0; }) &&
       output_shape.Size() > 0) {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-        output_tensor.template MutableData<T>(), input_tensor.template Data<T>(),
+        output_tensor.MutableData<T>(), input_tensor.Data<T>(),
         sizeof(typename ToCudaType<T>::MappedType) * output_shape.Size(),
         cudaMemcpyDeviceToDevice, Stream()));
     return Status::OK();
@@ -192,8 +192,8 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
         lower_pads[width_dim],
         value,
         static_cast<int>(mode_),
-        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.template Data<T>()),
-        reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_tensor.template MutableData<T>()),
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.Data<T>()),
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_tensor.MutableData<T>()),
         output_tensor.Shape().Size());
 
     return Status::OK();
@@ -213,9 +213,9 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       lower_pads,
       value,
       static_cast<int>(mode_),
-      reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.template Data<T>()),
+      reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.Data<T>()),
       fdm_output_strides,
-      reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_tensor.template MutableData<T>()),
+      reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_tensor.MutableData<T>()),
       output_tensor.Shape().Size());
 
   return Status::OK();

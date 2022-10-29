@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <utility>
 #include <variant>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <gsl/gsl>
@@ -203,7 +205,7 @@ class OpTester {
 
   // Set whether the NodeArg created by AddInput/AddOutput should include shape information
   // for Tensor types. If not added, shape inferencing should resolve. If added, shape inferencing
-  // should validate. Default is to not add.
+  // should validate. Default is to add.
   // Additionally a symbolic dimension will be added if symbolic_dim matches a dimension in the input.
   OpTester& AddShapeToTensorData(bool add_shape = true, int symbolic_dim = -1) {
     add_shape_to_tensor_data_ = add_shape;
@@ -400,8 +402,9 @@ class OpTester {
   }
 
   template <typename T>
-  void AddSeqOutput(const char* name, const SeqTensors<T>& seq_tensors) {
-    AddSeqData<T>(output_data_, name, &seq_tensors);
+  void AddSeqOutput(const char* name, const SeqTensors<T>& seq_tensors,
+                    float rel_error = 0.0f, float abs_error = 0.0f) {
+    AddSeqData<T>(output_data_, name, &seq_tensors, false, rel_error, abs_error);
   }
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
@@ -450,8 +453,9 @@ class OpTester {
 
   template <typename T>
   void AddOptionalTypeSeqOutput(const char* name,
-                                const SeqTensors<T>* seq_tensors) {
-    AddSeqData<T>(output_data_, name, seq_tensors, true);
+                                const SeqTensors<T>* seq_tensors,
+                                float rel_error = 0.0f, float abs_error = 0.0f) {
+    AddSeqData<T>(output_data_, name, seq_tensors, true, rel_error, abs_error);
   }
 
 #endif
@@ -500,7 +504,7 @@ class OpTester {
   void AddOutput(const char* name, std::initializer_list<int64_t> dims, const T* p_values, const size_t size,
                  bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
     const DimsVariant dims_var = std::vector<int64_t>(dims);
-    AddData(output_data_, name, dims, p_values, size, false,
+    AddData(output_data_, name, dims_var, p_values, size, false,
             sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
 
@@ -682,7 +686,7 @@ class OpTester {
   }
 
   // Generate the reference outputs with the model file
-  void AddReferenceOutputs(const std::string& model_path);
+  void AddReferenceOutputs(const std::string& model_path, float abs_error = 0.0f);
 
   void AddCustomOpRegistry(std::shared_ptr<CustomRegistry> registry) {
     custom_schema_registries_.push_back(registry->GetOpschemaRegistry());
@@ -723,6 +727,17 @@ class OpTester {
   enum class ExpectResult { kExpectSuccess,
                             kExpectFailure };
 
+  OpTester& Config(const SessionOptions& sess_options);
+  OpTester& Config(ExpectResult expect_result, const std::string& expected_failure_string);
+  OpTester& ConfigExcludeEps(const std::unordered_set<std::string>& excluded_provider_types);
+  OpTester& Config(const RunOptions* run_options);
+  OpTester& ConfigEps(std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers);
+  OpTester& Config(const Graph::ResolveOptions& resolve_options);
+
+  void RunWithConfig(size_t* number_of_pre_packed_weights_counter = nullptr,
+                     size_t* number_of_shared_pre_packed_weights_counter = nullptr);
+
+  // [[deprecated("Use builder pattern Config* and RunWithConfig")]]
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
@@ -730,6 +745,7 @@ class OpTester {
            ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL,
            const Graph::ResolveOptions& resolve_options = {});
 
+  // [[deprecated("Use builder pattern Config* and RunWithConfig")]]
   void Run(SessionOptions session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,
            const std::string& expected_failure_string = "",
@@ -830,6 +846,19 @@ class OpTester {
                                      const std::string& provider_type,
                                      bool allow_released_onnx_opset_only = true);
 
+  struct RunContext {
+    SessionOptions session_options{};
+    ExpectResult expect_result{ExpectResult::kExpectSuccess};
+    std::string expected_failure_string{};
+    std::unordered_set<std::string> excluded_provider_types = {};
+    const RunOptions* run_options{};
+    bool run_with_specified_eps{false};
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers{};
+    Graph::ResolveOptions resolve_options{};
+  };
+
+  RunContext ctx_{};
+
   const char* op_;
   std::vector<Data> input_data_;
   std::vector<Data> output_data_;
@@ -893,7 +922,7 @@ class OpTester {
         // values *could* be nullptr for a non-optional tensor if it is empty.
         // Update the data buffer of the input only if values if non-nullptr.
         if (values != nullptr) {
-          auto* data_ptr = value.GetMutable<Tensor>()->template MutableData<T>();
+          auto* data_ptr = value.GetMutable<Tensor>()->MutableData<T>();
           for (int64_t i = 0; i < values_count; i++) {
             data_ptr[i] = values[i];
           }
@@ -942,10 +971,27 @@ class OpTester {
   }
 
  private:
+  // Execute the model for a single execution providers combination
+  void ExecuteModelForEps(
+      std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers,
+      onnxruntime::Model& model,
+      SessionOptions sess_options,
+      onnxruntime::test::OpTester::ExpectResult expect_result,
+      const std::string& expected_failure_string,
+      const onnxruntime::RunOptions* run_options,
+      const std::unordered_map<std::string, OrtValue>& feeds,
+      const std::vector<std::string>& output_names,
+      const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries,
+      bool try_assign_ep_for_nodes,
+      bool allow_released_onnx_opset_only,
+      size_t* number_of_pre_packed_weights_counter,
+      size_t* number_of_shared_pre_packed_weights_counter);
+
   template <typename T>
   void AddSeqData(std::vector<Data>& data, const char* name,
                   const SeqTensors<T>* seq_tensors,
-                  bool is_optional_sequence_tensor_type = false) {
+                  bool is_optional_sequence_tensor_type = false,
+                  float rel_error = 0.0f, float abs_error = 0.0f) {
 #if defined(DISABLE_OPTIONAL_TYPE)
     if (is_optional_sequence_tensor_type) {
       ORT_THROW("Optional type is not supported in this build");
@@ -953,12 +999,14 @@ class OpTester {
 #endif
 
     std::unique_ptr<TensorSeq> ptr;
+    SequenceTensorTypeProto<T> sequence_tensor_proto;
 
     if (seq_tensors) {
       auto num_tensors = seq_tensors->tensors.size();
       std::vector<Tensor> tensors;
       tensors.resize(num_tensors);
       auto elem_type = DataTypeImpl::GetType<T>();
+
       for (size_t i = 0; i < num_tensors; ++i) {
         TensorShape shape{seq_tensors->tensors[i].shape};
         auto values_count = static_cast<int64_t>(seq_tensors->tensors[i].data.size());
@@ -972,9 +1020,31 @@ class OpTester {
                         shape,
                         allocator);
 
-        auto* data_ptr = tensor.template MutableData<T>();
+        auto* data_ptr = tensor.MutableData<T>();
         for (int64_t x = 0; x < values_count; ++x) {
           data_ptr[x] = seq_tensors->tensors[i].data[x];
+        }
+
+        if (add_shape_to_tensor_data_) {
+          auto* output_tensor_type = sequence_tensor_proto.proto.mutable_sequence_type()
+                                         ->mutable_elem_type()
+                                         ->mutable_tensor_type();
+          if (i == 0) {
+            ONNX_NAMESPACE::TensorShapeProto* seq_input_shape = output_tensor_type->mutable_shape();
+            output_tensor_type->set_elem_type(utils::ToTensorProtoElementType<T>());
+            for (size_t j = 0; j < shape.NumDimensions(); ++j) {
+              auto dim = seq_input_shape->add_dim();
+              dim->set_dim_value(shape[j]);
+            }
+          } else {
+            ONNX_NAMESPACE::TensorShapeProto shape_proto;
+            for (size_t j = 0; j < shape.NumDimensions(); ++j) {
+              auto dim = shape_proto.add_dim();
+              dim->set_dim_value(shape[j]);
+            }
+
+            ONNX_NAMESPACE::UnionShapeInfo(shape_proto, *output_tensor_type);
+          }
         }
       }
 
@@ -988,7 +1058,6 @@ class OpTester {
     // nullptr means None OrtValue which we will skip inserting into the feeds
     value.Init(ptr ? ptr.release() : nullptr, mltype, mltype->GetDeleteFunc());
 
-    SequenceTensorTypeProto<T> sequence_tensor_proto;
 #if !defined(DISABLE_OPTIONAL_TYPE)
     OptionalTypeProto optional_type_proto(sequence_tensor_proto.proto);
     auto node_arg = NodeArg(name, !is_optional_sequence_tensor_type
@@ -998,7 +1067,18 @@ class OpTester {
     auto node_arg = NodeArg(name, &sequence_tensor_proto.proto);
 #endif
 
-    data.push_back(Data(std::move(node_arg), std::move(value), optional<float>(), optional<float>()));
+    optional<float> rel;
+    optional<float> abs;
+
+    if (rel_error != 0.0f) {
+      rel = rel_error;
+    }
+
+    if (abs_error != 0.0f) {
+      abs = abs_error;
+    }
+
+    data.push_back(Data(std::move(node_arg), std::move(value), std::move(rel), std::move(abs)));
   }
 
   std::vector<int64_t> GetDimsForProto(gsl::span<const int64_t> dims);

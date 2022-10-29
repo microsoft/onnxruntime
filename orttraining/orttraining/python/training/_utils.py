@@ -4,13 +4,14 @@
 # --------------------------------------------------------------------------
 
 import importlib.util
-import numpy as np
 import os
 import sys
+from functools import wraps
+
+import numpy as np
 import torch
 from onnx import TensorProto
-
-from functools import wraps
+from packaging.version import Version
 
 
 def get_device_index(device):
@@ -94,7 +95,11 @@ def dtype_torch_to_numpy(torch_dtype):
         return np.int8
     elif torch_dtype == torch.uint8:
         return np.uint8
-    elif torch_dtype == torch.complex32 or torch_dtype == torch.complex64:
+    elif torch_dtype == torch.complex64 or (
+        # complex32 is missing in torch-1.11.
+        (Version(torch.__version__) < Version("1.11.0") or Version(torch.__version__) >= Version("1.12.0"))
+        and torch_dtype == torch.complex32
+    ):
         # NOTE: numpy doesn't support complex32
         return np.complex64
     elif torch_dtype == torch.complex128 or torch_dtype == torch.cdouble:
@@ -108,7 +113,7 @@ def dtype_torch_to_numpy(torch_dtype):
 def dtype_onnx_to_torch(onnx_type):
     """Converts ONNX types to PyTorch types
 
-    Reference: https://github.com/onnx/onnx/blob/master/onnx/onnx.in.proto (enum DataType)
+    Reference: https://github.com/onnx/onnx/blob/main/onnx/onnx.in.proto (enum DataType)
                https://pytorch.org/docs/stable/tensors.html
     """
     onnx_types = [

@@ -18,6 +18,16 @@ parameters:
   default: "tools/ci_build/get_docker_image.py" 
 
 steps:
+- ${{ if contains(parameters.Dockerfile, 'manylinux') }}:
+    - checkout: manylinux
+    - script: |
+        mv manylinux onnxruntime
+        mv onnxruntime ..
+        cd ..
+        rmdir $(Build.SourcesDirectory)
+        mv onnxruntime $(Build.SourcesDirectory)
+      displayName: "Move Manylinux source code to ORT folder"
+
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, true) }}:
   - template: with-container-registry-steps.yml
     parameters:

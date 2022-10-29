@@ -13,178 +13,111 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, bool is_log_softmax>
-Status SoftMaxGradComputeHelper(
-    cudaStream_t stream,
-    const T* dY,
-    const TensorShape& input_shape,
-    const T* Y,
-    T* dX,
-    cudnnHandle_t handle,
-    int64_t axis) {
-  typedef typename ToCudaType<T>::MappedType CudaT;
-
-  const int64_t normalized_axis = HandleNegativeAxis(axis, input_shape.NumDimensions());
-
-  int64_t N = input_shape.SizeToDimension(normalized_axis);
-  int64_t D = input_shape.SizeFromDimension(normalized_axis);
-  std::vector<int64_t> dims({N, 1, 1, D});  // cudnn expects 4D shape in NCHW format
-
-  auto dY_data = reinterpret_cast<const CudaT*>(dY);
-  auto Y_data = reinterpret_cast<const CudaT*>(Y);
-  auto dX_data = reinterpret_cast<CudaT*>(dX);
-
-  if (D <= 1024 && D * sizeof(T) <= 4096) {
-    dispatch_softmax_backward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
-        stream, dX_data, dY_data, Y_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
-    return Status::OK();
-  }
-
-  const auto alpha = Consts<CudaT>::One;
-  const auto beta = Consts<CudaT>::Zero;
-  CudnnTensor input_tensor;
-  CudnnTensor output_tensor;
-  ORT_RETURN_IF_ERROR(input_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
-  ORT_RETURN_IF_ERROR(output_tensor.Set(dims, CudnnTensor::GetDataType<CudaT>()));
-  CUDNN_RETURN_IF_ERROR(
-      cudnnSoftmaxBackward(
-          handle,
-          is_log_softmax ? CUDNN_SOFTMAX_LOG : CUDNN_SOFTMAX_ACCURATE,
-          CUDNN_SOFTMAX_MODE_INSTANCE,
-          &alpha,
-          input_tensor,
-          Y_data,
-          input_tensor,
-          dY_data,
-          &beta,
-          output_tensor,
-          dX_data));
-
-  return Status::OK();
-}
-
-#define REGISTER_GRADIENT_KERNEL_TYPED(T)                                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      SoftmaxGrad,                                                                         \
-      kMSDomain,                                                                           \
-      1,                                                                                   \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      SoftmaxGrad<T>);                                                                     \
-                                                                                           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      SoftmaxGrad_13,                                                                      \
-      kMSDomain,                                                                           \
-      1,                                                                                   \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      SoftmaxGrad<T>);                                                                     \
-                                                                                           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      LogSoftmaxGrad,                                                                      \
-      kMSDomain,                                                                           \
-      1,                                                                                   \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      SoftmaxGrad<T>);                                                                     \
-                                                                                           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
-      LogSoftmaxGrad_13,                                                                   \
-      kMSDomain,                                                                           \
-      1,                                                                                   \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      SoftmaxGrad<T>);
+namespace {
 
 template <typename T>
-Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
+struct DispatchSoftmaxGradImpl {
+  Status operator()(cudaStream_t stream, cudnnHandle_t cudnn_handle, Tensor* dX, const Tensor* dY, const Tensor* Y,
+                    int element_count, int batch_count, bool is_log_softmax) {
+    typedef typename ToCudaType<T>::MappedType CudaT;
+    CudaT* input_grad_data = reinterpret_cast<CudaT*>(dX->MutableData<T>());
+    const CudaT* output_grad_data = reinterpret_cast<const CudaT*>(dY->Data<T>());
+    const CudaT* softmax_output_data = reinterpret_cast<const CudaT*>(Y->Data<T>());
+    return SoftmaxGradImpl<CudaT>(stream, cudnn_handle, input_grad_data, output_grad_data, softmax_output_data,
+                                  element_count, batch_count, is_log_softmax);
+  }
+};
+
+}  // namespace
+
+// MIOpen doesn't support double so ROCm kernel doesn't have double support for now.
+#ifdef USE_ROCM
+#define SOFTMAX_GRAD_TYPES float, MLFloat16, BFloat16
+#else
+#define SOFTMAX_GRAD_TYPES float, double, MLFloat16, BFloat16
+#endif
+
+#define REGISTER_SOFTMAX_GRAD_KERNEL(name)                                                                \
+  ONNX_OPERATOR_KERNEL_EX(                                                                                \
+      name, kMSDomain, 1, kCudaExecutionProvider,                                                         \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<SOFTMAX_GRAD_TYPES>()), \
+      SoftmaxGrad);
+
+REGISTER_SOFTMAX_GRAD_KERNEL(SoftmaxGrad)
+REGISTER_SOFTMAX_GRAD_KERNEL(SoftmaxGrad_13)
+REGISTER_SOFTMAX_GRAD_KERNEL(LogSoftmaxGrad)
+REGISTER_SOFTMAX_GRAD_KERNEL(LogSoftmaxGrad_13)
+
+#undef REGISTER_SOFTMAX_GRAD_KERNEL
+
+Status SoftmaxGrad::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* dY = ctx->Input<Tensor>(0);
   const TensorShape& input_shape{dY->Shape()};
   const Tensor* Y = ctx->Input<Tensor>(1);
   Tensor* dX = ctx->Output(0, input_shape);
   size_t rank = input_shape.NumDimensions();
-  const size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, rank));
-  bool is_transpose_required = opset_ >= 13 && axis != (rank - 1);
+  size_t axis = static_cast<size_t>(HandleNegativeAxis(axis_, rank));
+  bool is_transpose_required = is_since_opset_13_ && axis != (rank - 1);
 
   std::unique_ptr<Tensor> transposed_dY;
   std::unique_ptr<Tensor> transposed_Y;
-  std::vector<int64_t> transposed_input_dims;
-  std::unique_ptr<Tensor> intermediate_output;  // output that the softmax implementation will write into while using transposed input
-  std::vector<size_t> permutation(rank);
+  std::unique_ptr<Tensor> transposed_dX;
+  InlinedVector<size_t> permutation(rank);
+
+  int batch_count = static_cast<int>(input_shape.SizeToDimension(axis));
+  int element_count = static_cast<int>(input_shape.SizeFromDimension(axis));
 
   if (is_transpose_required) {
     AllocatorPtr alloc;
-    auto status = ctx->GetTempSpaceAllocator(&alloc);
-    if (!status.IsOK())
-      return status;
-
-    std::iota(std::begin(permutation), std::end(permutation), 0);
+    ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
 
     // swap the innermost dim with the dim corresponding to axis
+    std::iota(std::begin(permutation), std::end(permutation), 0);
     permutation[axis] = rank - 1;
     permutation[rank - 1] = axis;
 
-    transposed_input_dims.reserve(rank);
+    TensorShapeVector transposed_input_dims;
     for (auto e : permutation) {
-      transposed_input_dims.push_back(input_shape[e]);
+      transposed_input_dims.emplace_back(input_shape[e]);
     }
+    TensorShape transposed_input_shape(transposed_input_dims);
 
     // Allocate a temporary tensor to hold transposed input
-    auto temp_input0 = Tensor::Create(Y->DataType(), TensorShape(transposed_input_dims), alloc);
-
-    // Perform the transpose
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(prop_,
-                                               Stream(),
-                                               CublasHandle(),
-                                               permutation, *Y, *temp_input0));
+    auto temp_input0 = Tensor::Create(Y->DataType(), transposed_input_shape, alloc);
+    ORT_RETURN_IF_ERROR(
+        Transpose::DoTranspose(GetDeviceProp(), Stream(), CublasHandle(), permutation, *Y, *temp_input0));
     transposed_Y = std::move(temp_input0);
-    auto temp_input1 = Tensor::Create(Y->DataType(), TensorShape(transposed_input_dims), alloc);
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(prop_,
-                                               Stream(),
-                                               CublasHandle(),
-                                               permutation, *dY, *temp_input1));
+
+    auto temp_input1 = Tensor::Create(dY->DataType(), transposed_input_shape, alloc);
+    ORT_RETURN_IF_ERROR(
+        Transpose::DoTranspose(GetDeviceProp(), Stream(), CublasHandle(), permutation, *dY, *temp_input1));
     transposed_dY = std::move(temp_input1);
 
     // Allocate memory for the intermediate output
-    intermediate_output = Tensor::Create(dX->DataType(), TensorShape(transposed_input_dims), alloc);
-  }
-  const T* dY_data = is_transpose_required ? transposed_dY->template Data<T>() : dY->template Data<T>();
-  const T* Y_data = is_transpose_required ? transposed_Y->template Data<T>() : Y->template Data<T>();
-  T* dX_data = is_transpose_required ? intermediate_output->template MutableData<T>() : dX->template MutableData<T>();
-  const TensorShape* compute_input_shape = is_transpose_required ? &transposed_Y->Shape() : &input_shape;
-  Status status;
-  if (log_softmax_) {
-    status = SoftMaxGradComputeHelper<T, true>(Stream(), dY_data, *compute_input_shape, Y_data, dX_data, CudnnHandle(), is_transpose_required ? static_cast<int64_t>(rank) - 1 : axis);
-  } else {
-    status = SoftMaxGradComputeHelper<T, false>(Stream(), dY_data, *compute_input_shape, Y_data, dX_data, CudnnHandle(), is_transpose_required ? static_cast<int64_t>(rank) - 1 : axis);
+    transposed_dX = Tensor::Create(dX->DataType(), transposed_input_shape, alloc);
+
+    axis = rank - 1;
+    element_count = static_cast<int>(transposed_input_dims[rank - 1]);
+    batch_count = static_cast<int>(input_shape.Size()) / element_count;
   }
 
-  if (!status.IsOK()) {
-    return status;
-  }
+  utils::MLTypeCallDispatcher<SOFTMAX_GRAD_TYPES> t_disp(dY->GetElementType());
+  Status status = t_disp.InvokeRet<Status, DispatchSoftmaxGradImpl>(
+      Stream(), CudnnHandle(), is_transpose_required ? transposed_dX.get() : dX,
+      is_transpose_required ? transposed_dY.get() : dY, is_transpose_required ? transposed_Y.get() : Y, element_count,
+      batch_count, is_log_softmax_);
+  ORT_RETURN_IF_ERROR(status);
 
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering
-    ORT_RETURN_IF_ERROR(Transpose::DoTranspose(prop_,
-                                               Stream(),
-                                               CublasHandle(),
-                                               permutation, *intermediate_output, *dX));
+    ORT_RETURN_IF_ERROR(
+        Transpose::DoTranspose(GetDeviceProp(), Stream(), CublasHandle(), permutation, *transposed_dX, *dX));
   }
+
   return Status::OK();
 }
 
-#define SPECIALIZED_GRADIENT(T)     \
-  REGISTER_GRADIENT_KERNEL_TYPED(T) \
-  template Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const;
-
-SPECIALIZED_GRADIENT(float)
-SPECIALIZED_GRADIENT(double)
-SPECIALIZED_GRADIENT(MLFloat16)
-SPECIALIZED_GRADIENT(BFloat16)
+#undef SOFTMAX_GRAD_TYPES
 
 }  // namespace cuda
 }  // namespace onnxruntime

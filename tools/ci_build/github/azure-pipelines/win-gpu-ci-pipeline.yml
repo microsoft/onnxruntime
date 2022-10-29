@@ -1,3 +1,26 @@
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+
 parameters:
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
@@ -13,15 +36,14 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --gen_doc validate --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
-        DocUpdateNeeded: true
-
+        MachinePool: onnxruntime-Win2019-GPU-T4
 
 - stage: training
   dependsOn: []
@@ -31,15 +53,16 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --enable_training --use_cuda --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --skip_onnx_tests --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52
+        additionalBuildFlags: --enable_pybind --enable_training --use_cuda --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6" --skip_onnx_tests --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
+        MachinePool: onnxruntime-Win2019-GPU-training-T4
         isTraining: true
-     
+
 - stage: dml
   dependsOn: []
   jobs:
@@ -48,11 +71,31 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --use_dml --enable_wcos  --use_winml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0
+        additionalBuildFlags: --enable_pybind --use_dml --enable_wcos  --use_winml
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
-        ORT_EP_NAME: DML     
+        ORT_EP_NAME: DML
+        # DirectML cannot run on T4 GPUs.
+        MachinePool: onnxruntime-Win2019-GPU-dml
 
+- stage: kernelDocumentation
+  dependsOn: []
+  jobs:
+    - template: templates/win-gpu-ci.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env_cuda_11.bat
+        buildArch: x64
+        # note: need to specify `--gen_doc` when creating the build config so it has to be in additionalBuildFlags
+        additionalBuildFlags: --gen_doc validate --skip_tests --enable_pybind --use_dml --use_cuda --cuda_version=11.6 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75 --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: false
+        RunStaticCodeAnalysis: false
+        GenerateDocumentation: true
+        ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
+        MachinePool: onnxruntime-Win2019-GPU-T4

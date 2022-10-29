@@ -20,6 +20,8 @@ class OnnxruntimeDmlSessionBuilder : public Microsoft::WRL::RuntimeClass<
 
   HRESULT STDMETHODCALLTYPE CreateSession(
       OrtSessionOptions* options,
+      OrtThreadPool* inter_op_thread_pool,
+      OrtThreadPool* intra_op_thread_pool,
       OrtSession** session) override;
 
   HRESULT STDMETHODCALLTYPE Initialize(

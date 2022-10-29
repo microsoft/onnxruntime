@@ -24,7 +24,7 @@ enum RNN_Input_Index {
 };
 
 // Onnx RNN/GRU/LSTM only support 1 layer
-const int RNN_NUM_LAYERS = 1;
+constexpr int RNN_NUM_LAYERS = 1;
 
 class CudnnRNN {
  public:

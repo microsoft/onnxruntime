@@ -6,6 +6,7 @@ import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, TextureType} from '../types';
 import {getCoordsDataType} from '../utils';
+
 import {getChannels, unpackFromChannel} from './packing-utils';
 
 const unpackProgramMetadata = {

@@ -131,20 +131,26 @@ static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_prot
   std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
   ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
 
-  if (tensor_proto_dir != nullptr) {
-    external_file_path = onnxruntime::ConcatPathComponent<ORTCHAR_T>(tensor_proto_dir, external_data_info->GetRelPath());
-  } else {
-    external_file_path = external_data_info->GetRelPath();
-  }
+  const auto& location = external_data_info->GetRelPath();
 
-  file_offset = external_data_info->GetOffset();
+  if (location == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
+    external_file_path = location;
+  } else {
+    if (tensor_proto_dir != nullptr) {
+      external_file_path = onnxruntime::ConcatPathComponent<ORTCHAR_T>(tensor_proto_dir,
+                                                                       external_data_info->GetRelPath());
+    } else {
+      external_file_path = external_data_info->GetRelPath();
+    }
+  }
 
   ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
   const size_t external_data_length = external_data_info->GetLength();
-
   ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
-                    "TensorProto: ", tensor_proto.name(), " external data size mismatch. Computed size: ", *&tensor_byte_size,
-                    ", external_data.length: ", external_data_length);
+                    "TensorProto: ", tensor_proto.name(), " external data size mismatch. Computed size: ",
+                    *&tensor_byte_size, ", external_data.length: ", external_data_length);
+
+  file_offset = external_data_info->GetOffset();
 
   return Status::OK();
 }
@@ -256,7 +262,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
                              ") does not match the data size(", tensor.field_size(), ") in proto");         \
     auto& data = tensor.field_name();                                                                       \
     for (auto data_iter = data.cbegin(); data_iter != data.cend(); ++data_iter)                             \
-      *p_data++ = *reinterpret_cast<const T*>(data_iter);                                                   \
+      *p_data++ = static_cast<T>(*data_iter);                                                               \
     return Status::OK();                                                                                    \
   }
 
@@ -488,14 +494,14 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
   return TensorShape(std::move(tensor_shape_vec));
 }
 
-std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+TensorShape GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   const auto& dims = tensor_proto.dims();
   std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
   for (int i = 0; i < dims.size(); ++i) {
     tensor_shape_vec[i] = dims[i];
   }
 
-  return tensor_shape_vec;
+  return TensorShape(std::move(tensor_shape_vec));
 }
 
 struct UnInitializeParam {
@@ -582,20 +588,46 @@ static Status GetFileContent(
   return Status::OK();
 }
 
-Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path, const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                 void*& ext_data_buf, size_t& ext_data_len, OrtCallback& ext_data_deleter)
-{
+Status GetExtDataFromTensorProto(const Env& env, const ORTCHAR_T* model_path,
+                                 const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                 void*& ext_data_buf, SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
-  ORT_ENFORCE(model_path);
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
-  ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+  if (model_path != nullptr) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+  }
   const ORTCHAR_T* t_prot_dir_s = tensor_proto_dir.size() == 0 ? nullptr : tensor_proto_dir.c_str();
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
-  SafeInt<size_t> raw_data_safe_len;
-  ORT_RETURN_IF_ERROR(GetExternalDataInfo(tensor_proto, t_prot_dir_s, external_data_file_path, file_offset, raw_data_safe_len));
-  ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), file_offset, raw_data_safe_len, ext_data_buf, ext_data_deleter));
-  ext_data_len = raw_data_safe_len;
+  SafeInt<size_t> raw_data_safe_len = 0;
+  ORT_RETURN_IF_ERROR(GetExternalDataInfo(tensor_proto, t_prot_dir_s, external_data_file_path, file_offset,
+                                          raw_data_safe_len));
+
+  if (external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
+    // the value in location is the memory address of the data
+    ext_data_buf = reinterpret_cast<void*>(file_offset);
+    ext_data_len = raw_data_safe_len;
+    ext_data_deleter = OrtCallback{nullptr, nullptr};
+  } else {
+    size_t file_length;
+    // error reporting is inconsistent across platforms. Make sure the full path we attempted to open is included.
+    auto status = env.GetFileLength(external_data_file_path.c_str(), file_length);
+    if (!status.IsOK()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileLength for ", ToUTF8String(external_data_file_path),
+                             " failed:", status.ErrorMessage());
+    }
+
+    SafeInt<FileOffsetType> end_of_read(file_offset);
+    end_of_read += raw_data_safe_len;
+    ORT_RETURN_IF(file_offset < 0 || end_of_read > gsl::narrow<FileOffsetType>(file_length),
+                  "External initializer: ", tensor_proto.name(),
+                  " offset: ", file_offset, " size to read: ", static_cast<size_t>(raw_data_safe_len),
+                  " given file_length: ", file_length, " are out of bounds or can not be read in full.");
+    ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), file_offset, raw_data_safe_len,
+                                       ext_data_buf, ext_data_deleter));
+    ext_data_len = raw_data_safe_len;
+  }
+
   return Status::OK();
 }
 
@@ -618,8 +650,8 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                            const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            Tensor& tensor) {
   // Validate tensor compatibility
-  std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
-  if (gsl::make_span(tensor_shape_vec) != tensor.Shape().GetDims()) {
+  TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
+  if (tensor_shape != tensor.Shape()) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "TensorProtoToTensor() tensor shape mismatch!");
   }
   const DataTypeImpl* const source_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
@@ -632,34 +664,10 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
   void* raw_data = nullptr;
   SafeInt<size_t> raw_data_len = 0;
   AutoDelete deleter_for_file_data;
+  OrtCallback& d = deleter_for_file_data.d;
 
   if (utils::HasExternalData(tensor_proto)) {
-    // Get the external data info
-    std::basic_string<ORTCHAR_T> external_data_file_path;
-    FileOffsetType file_offset;
-    std::basic_string<ORTCHAR_T> tensor_proto_dir;
-    if (model_path != nullptr) {
-      ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
-    }
-    ORT_RETURN_IF_ERROR(GetExternalDataInfo(
-        tensor_proto,
-        tensor_proto_dir.size() == 0 ? nullptr : tensor_proto_dir.c_str(),
-        external_data_file_path, file_offset, raw_data_len));
-
-    size_t file_length;
-    ORT_RETURN_IF_ERROR(env.GetFileLength(external_data_file_path.c_str(), file_length));
-
-    SafeInt<FileOffsetType> end_of_read(file_offset);
-    end_of_read += raw_data_len;
-    ORT_RETURN_IF(file_offset < 0 || end_of_read > gsl::narrow<FileOffsetType>(file_length),
-                  "External initializer: ", tensor_proto.name(),
-                  " offset: ", file_offset, " size to read: ", static_cast<size_t>(raw_data_len), " given file_length: ", file_length,
-                  " are out of bounds or can not be read in full.");
-
-    // load the file
-    ORT_RETURN_IF_ERROR(GetFileContent(
-        env, external_data_file_path.c_str(), file_offset, raw_data_len,
-        raw_data, deleter_for_file_data.d));
+    ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, raw_data, raw_data_len, d));
   } else if (utils::HasRawData(tensor_proto)) {
     raw_data = const_cast<char*>(tensor_proto.raw_data().data());
     // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data
@@ -739,7 +747,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* model_path,
   }
 
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
-  TensorShape tensor_shape{GetTensorShapeFromTensorProto(tensor_proto)};
+  TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::unique_ptr<Tensor> tensorp = std::make_unique<Tensor>(type, tensor_shape, m.GetBuffer(), m.GetAllocInfo());
   if (tensorp->SizeInBytes() > m.GetLen()) {
@@ -790,7 +798,7 @@ ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto
 
 ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor, const std::string& tensor_proto_name) {
   // Given we are using the raw_data field in the protobuf, this will work only for little-endian format.
-  ORT_IF_CONSTEXPR(endian::native != endian::little) {
+  if constexpr (endian::native != endian::little) {
     ORT_THROW("Big endian not supported");
   }
 
@@ -1138,10 +1146,9 @@ static void SetIndices(gsl::span<int64_t> gathered_indices,
   auto* ind_dest = reinterpret_cast<T*>(raw_indices.data());
   size_t dest_index = 0;
   for (auto src_index : gathered_indices) {
-    ORT_IF_CONSTEXPR(sizeof(T) == sizeof(int8_t)) {
+    if constexpr (sizeof(T) == sizeof(int8_t)) {
       ind_dest[dest_index] = static_cast<T>(src_index);
-    }
-    else {
+    } else {
       auto* dst = ind_dest + dest_index;
       T v = static_cast<T>(src_index);
       memcpy(dst, &v, sizeof(T));

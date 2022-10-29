@@ -10,4 +10,10 @@ namespace onnxruntime {
 /** A computed hash value. */
 using HashValue = uint64_t;
 
+/** The type of an argument (input or output).*/
+enum class ArgType : uint8_t {
+  kInput,
+  kOutput,
+};
+
 }  // namespace onnxruntime

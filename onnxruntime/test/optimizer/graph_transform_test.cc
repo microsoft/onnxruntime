@@ -19,14 +19,15 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/attention_fusion.h"
+#include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
-#include "core/optimizer/bias_dropout_fusion.h"
-#include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
+#include "core/optimizer/computation_reduction.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
+#include "core/optimizer/constant_sharing.h"
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_act_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
@@ -38,10 +39,11 @@
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/expand_elimination.h"
 #include "core/optimizer/fast_gelu_fusion.h"
+#include "core/optimizer/gather_to_split_fusion.h"
 #include "core/optimizer/gelu_approximation.h"
 #include "core/optimizer/gelu_fusion.h"
-#include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_activation_fusion.h"
+#include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_config.h"
@@ -49,6 +51,7 @@
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/isinf_reducesum_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
@@ -56,14 +59,14 @@
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/propagate_cast_ops.h"
+#include "core/optimizer/quick_gelu_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
-#include "core/optimizer/isinf_reducesum_fusion.h"
-#include "core/optimizer/propagate_cast_ops.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
@@ -73,13 +76,18 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"
 #include "test/framework/test_utils.h"
+#include "test/optimizer/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
-#include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/temp_dir.h"
+#include "test/util/include/test_utils.h"
+#ifdef ENABLE_TRAINING
+#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
+#endif
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -710,6 +718,37 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
   ASSERT_TRUE(op_to_count["Relu"] == 0);  // Relu removed from graph
 }
 
+// Currently the ConvAddRelu fusion is only backed by a float kernel for the
+// the CUDA EP.
+
+// When we see the corresponding pattern for the fp16 data type, the fusion
+// should not be triggered as there is no kernel to back the fused pattern.
+
+// TODO(hasesh): Limit the test to using the CUDA EP for now as the level of
+// data type support in other compatible EPs is still yet to be ascertained.
+
+// TODO(hasesh): If at all the fp16 type is supported for the fusion, adjust/remove
+// this test.
+TEST_F(GraphTransformationTests, FuseCudaConvAddRelu_UnsupportedType) {
+  auto model_uri = MODEL_FOLDER "fusion/conv_add_relu_fp16.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Add"], 1);
+  ASSERT_EQ(op_to_count["Relu"], 1);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Add"], 1);   // Add not removed from graph (fusion not triggered)
+  ASSERT_EQ(op_to_count["Relu"], 1);  // Relu not removed from graph (fusion not triggered)
+}
+
 // Conv->Add->Relu will be left intact since there is Identity depend on Add
 TEST_F(GraphTransformationTests, FuseCudaConvAddReluIdentity) {
   auto model_uri = MODEL_FOLDER "fusion/conv_add_relu_identity.onnx";
@@ -751,7 +790,6 @@ TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
 }
 
 #endif
-
 
 #if !defined(DISABLE_CONTRIB_OPS)
 // Conv->Add->Relu will be transformed to FusedConv
@@ -822,6 +860,7 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
   std::unordered_map<PathString, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"}};
 #else
   std::unordered_map<PathString, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"},
+                                                               {ORT_TSTR("fusion/conv_relu_opset12.onnx"), "Relu"},
                                                                {ORT_TSTR("fusion/conv_clip.onnx"), "Clip"},
                                                                {ORT_TSTR("fusion/conv_sigmoid.onnx"), "Sigmoid"},
                                                                {ORT_TSTR("fusion/conv_tanh.onnx"), "Tanh"},
@@ -1964,8 +2003,8 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims_prod);
   ASSERT_EQ(expected_shape, rtensor.Shape());
-  const std::vector<MLFloat16> found(rtensor.template Data<MLFloat16>(),
-                                     rtensor.template Data<MLFloat16>() + expected_dims_prod.size());
+  const std::vector<MLFloat16> found(rtensor.Data<MLFloat16>(),
+                                     rtensor.Data<MLFloat16>() + expected_dims_prod.size());
   ASSERT_EQ(expected_values_prod, found);
 }
 
@@ -3470,6 +3509,218 @@ TEST_F(GraphTransformationTests, FastGeluFusionWithCastsTest3) {
   ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
 }
 
+TEST_F(GraphTransformationTests, QuickGelu) {
+  // Sigmoid(x*alpha)*x, float
+  {
+    const float alpha = 1.702f;
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* alpha_arg = builder.MakeInitializer<float>({}, {alpha});
+      auto* mul_out_0 = builder.MakeIntermediate();
+      auto* sigmoid_out = builder.MakeIntermediate();
+      auto* mul_out_1 = builder.MakeOutput();
+
+      builder.AddNode("Mul", {input_arg, alpha_arg}, {mul_out_0});
+      builder.AddNode("Sigmoid", {mul_out_0}, {sigmoid_out});
+      builder.AddNode("Mul", {sigmoid_out, input_arg}, {mul_out_1});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 2);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 1);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "QuickGelu") {
+          auto& attrs = node.GetAttributes();
+          ASSERT_TRUE(attrs.find("alpha") != attrs.end());
+          ASSERT_EQ(alpha, attrs.at("alpha").f());
+        }
+      }
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // x*Sigmoid(alpha*x), MLFloat16
+  {
+    const float alpha = -1.f;
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+      auto* alpha_arg = builder.MakeInitializer<MLFloat16>({}, {static_cast<MLFloat16>(alpha)});
+      auto* mul_out_0 = builder.MakeIntermediate();
+      auto* sigmoid_out = builder.MakeIntermediate();
+      auto* mul_out_1 = builder.MakeOutput();
+
+      builder.AddNode("Mul", {alpha_arg, input_arg}, {mul_out_0});
+      builder.AddNode("Sigmoid", {mul_out_0}, {sigmoid_out});
+      builder.AddNode("Mul", {input_arg, sigmoid_out}, {mul_out_1});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 2);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 1);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "QuickGelu") {
+          auto& attrs = node.GetAttributes();
+          ASSERT_TRUE(attrs.find("alpha") != attrs.end());
+          ASSERT_EQ(alpha, attrs.at("alpha").f());
+        }
+      }
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // Sigmoid's output is consumed by other node.
+  {
+    const float alpha = 1.702f;
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* alpha_arg = builder.MakeInitializer<float>({}, {alpha});
+      auto* mul_out_0 = builder.MakeIntermediate();
+      auto* sigmoid_out = builder.MakeIntermediate();
+      auto* mul_out_1 = builder.MakeOutput();
+      auto* identity_out = builder.MakeOutput();
+
+      builder.AddNode("Mul", {alpha_arg, input_arg}, {mul_out_0});
+      builder.AddNode("Sigmoid", {mul_out_0}, {sigmoid_out});
+      builder.AddNode("Mul", {input_arg, sigmoid_out}, {mul_out_1});
+      builder.AddNode("Identity", {sigmoid_out}, {identity_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 2);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 2);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 0);
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // First Mul's output is consumed by other node.
+  {
+    const float alpha = -1.f;
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+      auto* alpha_arg = builder.MakeInitializer<MLFloat16>({}, {static_cast<MLFloat16>(alpha)});
+      auto* mul_out_0 = builder.MakeIntermediate();
+      auto* sigmoid_out = builder.MakeIntermediate();
+      auto* mul_out_1 = builder.MakeOutput();
+      auto* identity_out = builder.MakeOutput();
+
+      builder.AddNode("Mul", {alpha_arg, input_arg}, {mul_out_0});
+      builder.AddNode("Sigmoid", {mul_out_0}, {sigmoid_out});
+      builder.AddNode("Mul", {input_arg, sigmoid_out}, {mul_out_1});
+      builder.AddNode("Identity", {mul_out_0}, {identity_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 2);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 2);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 0);
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // Sigmoid(x)*x, float
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* sigmoid_out = builder.MakeIntermediate();
+      auto* mul_out = builder.MakeOutput();
+
+      builder.AddNode("Sigmoid", {input_arg}, {sigmoid_out});
+      builder.AddNode("Mul", {sigmoid_out, input_arg}, {mul_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 1);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 1);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "QuickGelu") {
+          auto& attrs = node.GetAttributes();
+          ASSERT_TRUE(attrs.find("alpha") != attrs.end());
+          ASSERT_EQ(1.0f, attrs.at("alpha").f());
+        }
+      }
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // x*Sigmoid(x), MLFloat16
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+      auto* sigmoid_out = builder.MakeIntermediate();
+      auto* mul_out = builder.MakeOutput();
+
+      builder.AddNode("Sigmoid", {input_arg}, {sigmoid_out});
+      builder.AddNode("Mul", {input_arg, sigmoid_out}, {mul_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 1);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 1);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Mul"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["Sigmoid"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.QuickGelu"], 1);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "QuickGelu") {
+          auto& attrs = node.GetAttributes();
+          ASSERT_TRUE(attrs.find("alpha") != attrs.end());
+          ASSERT_EQ(1.0f, attrs.at("alpha").f());
+        }
+      }
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<QuickGeluFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
 struct BiasSoftmaxFusionTester {
   std::shared_ptr<Model> p_model_;
   Status model_load_;
@@ -3511,11 +3762,8 @@ struct BiasSoftmaxFusionTester {
     }
   }
 
-  void TestFusionOccurs(int expected_broadcast_axis) {
+  void TestFusionOccurs(int expected_axis, bool expected_is_inner_broadcast) {
     ASSERT_STATUS_OK(model_load_);
-
-    int expected_softmax_axis = 1;
-    GetAxis("Softmax", "axis", &expected_softmax_axis);
 
     ASSERT_STATUS_OK(graph_transformation_mgr_.ApplyTransformers(p_model_->MainGraph(), TransformerLevel::Level2, *logger_));
     std::map<std::string, int> op_to_count = CountOpsInGraph(p_model_->MainGraph());
@@ -3524,12 +3772,12 @@ struct BiasSoftmaxFusionTester {
     ASSERT_EQ(op_to_count["Softmax"], 0);
     ASSERT_EQ(op_to_count["com.microsoft.BiasSoftmax"], 1);
 
-    int actual_softmax_axis, actual_broadcast_axis;
-    ASSERT_TRUE(GetAxis("BiasSoftmax", "softmax_axis", &actual_softmax_axis));
-    ASSERT_EQ(actual_softmax_axis, expected_softmax_axis);
+    int actual_axis = 1, actual_broadcast_type = 1;
+    ASSERT_TRUE(GetAxis("BiasSoftmax", "axis", &actual_axis));
+    ASSERT_EQ(actual_axis, expected_axis);
 
-    ASSERT_TRUE(GetAxis("BiasSoftmax", "broadcast_axis", &actual_broadcast_axis));
-    ASSERT_EQ(actual_broadcast_axis, expected_broadcast_axis);
+    ASSERT_TRUE(GetAxis("BiasSoftmax", "is_inner_broadcast", &actual_broadcast_type));
+    ASSERT_EQ(actual_broadcast_type, expected_is_inner_broadcast ? 1 : 0);
   }
 
   void TestNoFusionOccurs() {
@@ -3553,25 +3801,37 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_GpuOnly) {
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Rocm) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get(), kRocmExecutionProvider);
-  tester.TestFusionOccurs(1);
+  tester.TestFusionOccurs(1, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Cuda) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(1);
+  tester.TestFusionOccurs(1, true);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_Simple_Opset13_DefaultAxis) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_simple_no_axis_opset13.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestFusionOccurs(1, true);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BFloat16_Input) {
+  auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_bfloat16.onnx";
+  BiasSoftmaxFusionTester tester(model_uri, logger_.get());
+  tester.TestNoFusionOccurs();
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_MiddleOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(3);
+  tester.TestFusionOccurs(6, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_ReversedInputs) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_middleones_reversed.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(3);
+  tester.TestFusionOccurs(6, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BadAxis) {
@@ -3583,19 +3843,99 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_BadAxis) {
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_AllLeadingOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_allleadingones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(0);
+  tester.TestFusionOccurs(6, true);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_SomeLeadingOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_someleadingones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(0);
+  tester.TestFusionOccurs(6, false);
 }
 
 TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_NoLeadingOnes) {
   auto model_uri = MODEL_FOLDER "fusion/bias_softmax_fusion_noleadingones.onnx";
   BiasSoftmaxFusionTester tester(model_uri, logger_.get());
-  tester.TestFusionOccurs(0);
+  tester.TestFusionOccurs(6, false);
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    for (auto& node : graph.Nodes()) node.SetExecutionProviderType(kCudaExecutionProvider);
+    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"], 1);
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "BiasSoftmax") {
+        auto& attrs = node.GetAttributes();
+        ASSERT_TRUE(attrs.find("axis") != attrs.end());
+        ASSERT_TRUE(attrs.find("is_inner_broadcast") != attrs.end());
+        ASSERT_EQ(6, static_cast<int>(attrs.at("axis").i()));
+        ASSERT_EQ(static_cast<int>(attrs.at("is_inner_broadcast").i()), 0);
+      }
+    }
+  };
+
+  // Input and bias have different ranks.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3, 2, 3, 3, 3}});
+      auto* bias_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+      auto* add_out = builder.MakeIntermediate();
+      auto* softmax_out = builder.MakeOutput();
+
+      builder.AddNode("Add", {input_arg, bias_arg}, {add_out});
+      builder.AddNode("Softmax", {add_out}, {softmax_out}).AddAttribute("axis", static_cast<int64_t>(6));
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
+    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // Input and bias have same rank.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3, 2, 3, 3, 3}});
+      auto* bias_arg = builder.MakeInput<float>({{1, 1, 1, 1, 2, 3, 3, 3}});
+      auto* add_out = builder.MakeIntermediate();
+      auto* softmax_out = builder.MakeOutput();
+
+      builder.AddNode("Add", {input_arg, bias_arg}, {add_out});
+      builder.AddNode("Softmax", {add_out}, {softmax_out}).AddAttribute("axis", static_cast<int64_t>(6));
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
+    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OpSet13InValidAxis) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{2, 3, 3, 3, 2, 3, 3, 3}});
+    auto* bias_arg = builder.MakeInput<float>({{2, 3, 3, 3}});
+    auto* add_out = builder.MakeIntermediate();
+    auto* softmax_out = builder.MakeOutput();
+
+    builder.AddNode("Add", {input_arg, bias_arg}, {add_out});
+    builder.AddNode("Softmax", {add_out}, {softmax_out}).AddAttribute("axis", static_cast<int64_t>(6));
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) {
+    for (auto& node : graph.Nodes()) node.SetExecutionProviderType(kCudaExecutionProvider);
+    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["Softmax"], 1);
+    ASSERT_EQ(CountOpsInGraph(graph)["com.microsoft.BiasSoftmax"], 0);
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
+  TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+                       pre_graph_checker, post_graph_checker);
 }
 
 static void TestBiasDropoutFusion(const PathString& file_path, const logging::Logger& logger, const int add_count = 0) {
@@ -3629,6 +3969,50 @@ TEST_F(GraphTransformationTests, BiasDropoutFusionTest) {
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_same_shape_fusion_dim_is_param.onnx", *logger_);
   TestBiasDropoutFusion(MODEL_FOLDER "fusion/bias_dropout_residual_same_shape_fusion_dim_is_param.onnx", *logger_);
 }
+
+#ifdef ENABLE_TRAINING
+static void TestBitmaskDropoutFusion(const PathString& file_path, bool is_bias_dropout, const logging::Logger& logger,
+                                     const int add_count, const int dropout_count, const int bitmask_dropout_count,
+                                     const int bias_dropout_count, const int bitmask_bias_dropout_count,
+                                     const int dropout_grad_count, const int bitmask_dropout_grad_count) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, logger).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  if (is_bias_dropout) {
+    ASSERT_STATUS_OK(
+        graph_transformation_mgr.Register(std::make_unique<BiasDropoutFusion>(), TransformerLevel::Level2));
+  } else {
+    ASSERT_STATUS_OK(
+        graph_transformation_mgr.Register(std::make_unique<BitmaskDropoutReplacement>(), TransformerLevel::Level2));
+  }
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, logger));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Add"], add_count);
+  ASSERT_EQ(op_to_count["Dropout"], dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BitmaskDropout"], bitmask_dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BiasDropout"], bias_dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BitmaskBiasDropout"], bitmask_bias_dropout_count);
+  ASSERT_EQ(op_to_count["com.microsoft.DropoutGrad"], dropout_grad_count);
+  ASSERT_EQ(op_to_count["com.microsoft.BitmaskDropoutGrad"], bitmask_dropout_grad_count);
+}
+
+TEST_F(GraphTransformationTests, BitmaskDropoutFusionTest) {
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_replacement_basic.onnx", false, *logger_, 0, 0, 1, 0, 0,
+                           0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_dropout_replacement_multiple_mask_uses.onnx", false, *logger_,
+                           0, 1, 0, 0, 0, 1, 0);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_replacement_basic.onnx", false, *logger_, 0, 0, 0,
+                           0, 1, 0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_basic.onnx", true, *logger_, 0, 0, 0, 0, 1,
+                           0, 1);
+  TestBitmaskDropoutFusion(MODEL_FOLDER "fusion/bitmask_bias_dropout_fusion_residual.onnx", true, *logger_, 0, 0, 0, 0,
+                           1, 0, 1);
+}
+#endif
 
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/layer_norm.onnx";
@@ -3800,27 +4184,9 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   }
 }
 
-TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_PrecisionChangeDisallowed) {
-  auto model_uri = MODEL_FOLDER "fusion/simplified_layer_norm_with_casts.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
-
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
-
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Div"] == 1);
-  ASSERT_TRUE(op_to_count["Add"] == 1);
-  ASSERT_TRUE(op_to_count["ReduceMean"] == 1);
-  ASSERT_TRUE(op_to_count["Pow"] == 1);
-  ASSERT_TRUE(op_to_count["Sqrt"] == 1);
-  ASSERT_TRUE(op_to_count["Cast"] == 2);
-  ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 0);
-}
-
-TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_PrecisionChangeAllowed) {
+// If EP is non-GPU EP or unknown, the sub-graph will be not fused because CPU impl for SimplifiedLayerNormalization
+// doesn't support input and scale having different data types.
+TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest) {
   auto model_uri = MODEL_FOLDER "fusion/simplified_layer_norm_with_casts.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
@@ -3828,7 +4194,27 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_Precisio
 
   InlinedHashSet<std::string_view> compatible_eps;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps, true), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps),
+                                                     TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 0);
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTestCudaEp) {
+  auto model_uri = MODEL_FOLDER "fusion/simplified_layer_norm_with_casts.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+
+  InlinedHashSet<std::string_view> compatible_eps;
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps),
+                                                     TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -3843,10 +4229,12 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_Precisio
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "SimplifiedLayerNormalization") {
       // LayerNormalization should have two inputs.
-      EXPECT_EQ(node.InputDefs().size(), 2u) << "LayerNormalization number of inputs does not equal to 2. Got:" << node.InputDefs().size();
+      EXPECT_EQ(node.InputDefs().size(), 2u)
+          << "LayerNormalization number of inputs does not equal to 2. Got:" << node.InputDefs().size();
       // LayerNormalization input "scale" and "bias" should have the same dimension.
       const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
-      EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+      EXPECT_EQ(scale_shape->dim_size(), 1)
+          << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
     } else if (node.OpType() == "Cast") {
       continue;
     } else {
@@ -4953,6 +5341,770 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       std::map<std::string, int> op_to_count = CountOpsInGraph(transformed_graph);
       ASSERT_EQ(op_to_count["Cast"], expected_casts_count);
     }
+  }
+}
+
+#ifdef ENABLE_TRAINING
+TEST_F(GraphTransformationTests, PropagateCastOpsTests_Gelu) {
+  using Strategy = GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy;
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<MLFloat16>({{2, 3, 3, 3}});
+      auto* cast_out_0 = builder.MakeIntermediate();
+      auto* gelu_out = builder.MakeIntermediate();
+      auto* cast_out_1 = builder.MakeIntermediate();
+      auto* identity_out = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out_0})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Gelu", {cast_out_0}, {gelu_out}, kMSDomain);
+      builder.AddNode("Cast", {gelu_out}, {cast_out_1})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+      builder.AddNode("Identity", {cast_out_1}, {identity_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 0);
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<BFloat16>({{2, -1, 3, -1}});
+      auto* cast_out_0 = builder.MakeIntermediate();
+      auto* gelu_out = builder.MakeIntermediate();
+      auto* cast_out_1 = builder.MakeIntermediate();
+      auto* identity_out = builder.MakeOutput();
+
+      builder.AddNode("Cast", {input_arg}, {cast_out_0})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      builder.AddNode("Gelu", {cast_out_0}, {gelu_out}, kMSDomain);
+      builder.AddNode("Cast", {gelu_out}, {cast_out_1})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16));
+      builder.AddNode("Identity", {cast_out_1}, {identity_out});
+    };
+
+    auto pre_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Cast"], 2);
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<PropagateCastOps>(Strategy::FloodFill, 1);
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+#endif
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [1, 1, 256, 256] (int64_t)
+                 |
+                Neg
+            /    |  \______________________________________________________
+           /     |  256 (int64_t)                                       Cast
+          / ...  | /                                    _________/     /   \      \_____________
+        Add      Add                               ____/    __________/     \________           \
+         |       |  0 (int64_t)  511 (int64_t)    /        /                         \          |
+         |       |  __/    _____/                /        | 128 (int32_t)            |  64 [1] |
+        Clip ... Clip                           /         | /                        |  /       |
+         |        |                            Sub   ...  Sub                        Mul  ...  Mul
+                                                |         |                          |          |
+graph out [1, 1, 256, 256] (int64_t)        graph out [1, 1, 256, 256] (int32_t)   graph out [1, 1, 256, 256] (int32_t)
+
+Be noted:
+ the Add's input initializer 256 is a scalar int64_t;
+ the Sub's input initializer 128 is a scalar int32_t;
+ the Mul's input initializer 64 is a 1-D int32_t.
+*/
+TEST_F(GraphTransformationTests, ConstantSharing_ShareIntTypedInitializer) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_pre = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count_pre.size(), 6U);
+    ASSERT_EQ(op_count_pre["Add"], 3);
+    ASSERT_EQ(op_count_pre["Clip"], 3);
+    ASSERT_EQ(op_count_pre["Sub"], 3);
+    ASSERT_EQ(op_count_pre["Mul"], 3);
+    ASSERT_EQ(op_count_pre["Neg"], 1);
+    ASSERT_EQ(op_count_pre["Cast"], 1);
+    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 15U);
+  };
+
+  std::vector<int64_t> adders{256, 512};
+  std::vector<int32_t> subers{128, 512};
+  std::vector<int32_t> mulers{64, 512};
+  for (size_t test_data_index = 0; test_data_index < adders.size(); ++test_data_index) {
+    int64_t adder = adders[test_data_index];
+    int32_t suber = subers[test_data_index];
+    int32_t muler = mulers[test_data_index];
+    auto post_graph_checker = [adder, suber, muler](Graph& graph) {
+      const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+      ASSERT_EQ(initialized_tensor_set.size(), 5U);
+      const NodeArg* add_initializer = nullptr;
+      const NodeArg* clip_min_initializer = nullptr;
+      const NodeArg* clip_max_initializer = nullptr;
+      const NodeArg* sub_initializer = nullptr;
+      const NodeArg* mul_initializer = nullptr;
+
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType().compare("Add") == 0) {
+          if (!add_initializer) {
+            add_initializer = node.InputDefs()[1];
+            const TensorShapeProto* s = add_initializer->Shape();
+            ASSERT_EQ(s->dim_size(), 0);
+          } else {
+            ASSERT_EQ(add_initializer, node.InputDefs()[1]);
+            CheckShapeEquality(add_initializer->Shape(), node.InputDefs()[1]->Shape());
+          }
+        } else if (node.OpType().compare("Clip") == 0) {
+          if (!clip_min_initializer && !clip_max_initializer) {
+            clip_min_initializer = node.InputDefs()[1];
+            clip_max_initializer = node.InputDefs()[2];
+            const TensorShapeProto* s1 = clip_min_initializer->Shape();
+            const TensorShapeProto* s2 = clip_max_initializer->Shape();
+            ASSERT_EQ(s1->dim_size(), 0);
+            ASSERT_EQ(s2->dim_size(), 0);
+          } else {
+            ASSERT_EQ(clip_min_initializer, node.InputDefs()[1]);
+            ASSERT_EQ(clip_max_initializer, node.InputDefs()[2]);
+            CheckShapeEquality(clip_min_initializer->Shape(), node.InputDefs()[1]->Shape());
+            CheckShapeEquality(clip_max_initializer->Shape(), node.InputDefs()[2]->Shape());
+          }
+        } else if (node.OpType().compare("Sub") == 0) {
+          if (!sub_initializer) {
+            sub_initializer = node.InputDefs()[1];
+            ASSERT_EQ(sub_initializer->Shape()->dim_size(), 0);
+          } else {
+            ASSERT_EQ(sub_initializer, node.InputDefs()[1]);
+            CheckShapeEquality(sub_initializer->Shape(), node.InputDefs()[1]->Shape());
+          }
+        } else if (node.OpType().compare("Mul") == 0) {
+          if (!mul_initializer) {
+            mul_initializer = node.InputDefs()[1];
+            const TensorShapeProto* s = mul_initializer->Shape();
+            ASSERT_EQ(s->dim_size(), 1);
+            auto dim1 = s->dim(0);
+            ASSERT_TRUE(s->dim(0).has_dim_value());
+            ASSERT_EQ(s->dim(0).dim_value(), 1);
+          } else {
+            ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+            CheckShapeEquality(mul_initializer->Shape(), node.InputDefs()[1]->Shape());
+          }
+        }
+      }
+
+      for (const auto& entry : initialized_tensor_set) {
+        InlinedVector<int64_t> values;
+        const bool require_constant = true;
+        NodeArg* initializer_node_arg = graph.GetNodeArg(entry.first);
+        ASSERT_TRUE(optimizer_utils::AppendTensorFromInitializer(graph, *initializer_node_arg, values, require_constant));
+        if (entry.first.compare(add_initializer->Name()) == 0) {
+          ASSERT_EQ(values.size(), 1U);
+          ASSERT_EQ(values[0], adder);
+        } else if (entry.first.compare(clip_min_initializer->Name()) == 0) {
+          ASSERT_EQ(values.size(), 1U);
+          ASSERT_EQ(values[0], 0);
+        } else if (entry.first.compare(clip_max_initializer->Name()) == 0) {
+          ASSERT_EQ(values.size(), 1U);
+          ASSERT_EQ(values[0], 511);
+        } else if (entry.first.compare(sub_initializer->Name()) == 0) {
+          ASSERT_EQ(values.size(), 1U);
+          ASSERT_EQ(values[0], suber);
+        } else if (entry.first.compare(mul_initializer->Name()) == 0) {
+          ASSERT_EQ(values.size(), 1U);
+          ASSERT_EQ(values[0], muler);
+        }
+      }
+
+      auto op_count = CountOpsInGraph(graph);
+      ASSERT_EQ(op_count.size(), 6U);
+      ASSERT_EQ(op_count["Add"], 3);
+      ASSERT_EQ(op_count["Clip"], 3);
+      ASSERT_EQ(op_count["Sub"], 3);
+      ASSERT_EQ(op_count["Mul"], 3);
+      ASSERT_EQ(op_count["Neg"], 1);
+      ASSERT_EQ(op_count["Cast"], 1);
+    };
+
+    auto build_test_case = [adder, suber, muler](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<int64_t>({{1, 1, 256, 256}});
+      auto* neg_out = builder.MakeIntermediate();
+      builder.AddNode("Neg", {input_arg}, {neg_out});
+
+      // test scalar int64_t values.
+      for (size_t i = 0; i < 3; ++i) {
+        auto* add_initializer = builder.MakeScalarInitializer<int64_t>(adder);
+        auto* add_out = builder.MakeIntermediate();
+        auto* clip_out = builder.MakeOutput();
+        auto* clip_min_initializer = builder.MakeScalarInitializer<int64_t>(0);
+        auto* clip_max_initializer = builder.MakeScalarInitializer<int64_t>(511);
+        builder.AddNode("Add", {neg_out, add_initializer}, {add_out});
+        builder.AddNode("Clip", {add_out, clip_min_initializer, clip_max_initializer}, {clip_out});
+      }
+      auto* cast_out = builder.MakeIntermediate();
+      builder.AddNode("Cast", {neg_out}, {cast_out})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
+
+      // test scalar int32_t values.
+      for (size_t i = 0; i < 3; ++i) {
+        auto* sub_initializer = builder.MakeScalarInitializer<int32_t>(suber);
+        auto* sub_out = builder.MakeOutput();
+        builder.AddNode("Sub", {cast_out, sub_initializer}, {sub_out});
+      }
+
+      // test 1-D int32_t values.
+      for (size_t i = 0; i < 3; ++i) {
+        auto* mul_initializer = builder.MakeInitializer<int32_t>({1}, {muler});
+        auto* mul_out = builder.MakeOutput();
+        builder.AddNode("Mul", {cast_out, mul_initializer}, {mul_out});
+      }
+    };
+
+    const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
+    for (auto& opset_version : opsets) {
+      std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+      TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1,
+                           1, pre_graph_checker, post_graph_checker);
+    }
+  }
+}
+
+template <typename T>
+void BuildConstantSharingDivMulGraph(ModelTestBuilder& builder) {
+  auto* input0_arg = builder.MakeInput<T>({{1, 1, 256, 256}});
+  auto* input1_arg = builder.MakeInput<T>({{1, 1, 256, 256}});
+  auto* div_out = builder.MakeIntermediate();
+  builder.AddNode("Div", {input0_arg, input1_arg}, {div_out});
+
+  for (size_t i = 0; i < 12; ++i) {
+    NodeArg* mul_initializer = nullptr;
+    if (std::is_same<T, MLFloat16>::value) {
+      mul_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(math::floatToHalf(1.0f)));
+    } else if (std::is_same<T, float>::value) {
+      mul_initializer = builder.MakeScalarInitializer<float>(1.0f);
+    } else {
+      ASSERT_TRUE(false);
+    }
+    auto* mul_out = builder.MakeOutput();
+    builder.AddNode("Mul", {div_out, mul_initializer}, {mul_out});
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [1, 1, 256, 256] (float|MLFloat16)
+                 |
+                Div
+            /    |       \
+           /     |  1.0   \
+          / ...  |  / ...  \
+        Mul      Mul      Mul
+         |       |         |
+ graph out [1, 1, 256, 256] (float|MLFloat16)
+
+Be noted:
+ the Mul's input initializer 1.0f is a scalar float/MLFloat16.
+*/
+TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatOrHalfTypedInitializer) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_pre = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count_pre.size(), 2U);
+    ASSERT_EQ(op_count_pre["Div"], 1);
+    ASSERT_EQ(op_count_pre["Mul"], 12);
+    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 12U);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    ASSERT_EQ(initialized_tensor_set.size(), 1U);
+    const NodeArg* mul_initializer = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Mul") == 0) {
+        if (!mul_initializer) {
+          mul_initializer = node.InputDefs()[1];
+          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
+        } else {
+          ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+        }
+      }
+    }
+
+    for (const auto& entry : initialized_tensor_set) {
+      if (entry.first.compare(mul_initializer->Name()) == 0) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+        int32_t data_type = tensor_proto->data_type();
+        onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
+        ASSERT_EQ(float_const.size(), 1);
+        float float_const_value;
+        if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+          float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
+        } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+          float_const_value = *(float_const.data<float>());
+        } else {
+          ASSERT_TRUE(false);
+        }
+
+        ASSERT_EQ(float_const_value, 1.0f);
+      }
+    }
+
+    auto op_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count.size(), 2U);
+    ASSERT_EQ(op_count["Div"], 1);
+    ASSERT_EQ(op_count["Mul"], 12);
+  };
+
+  const std::vector<int> opsets{12, 13, 14};  // Clip support int64_t since opset 12
+
+  // Float data type tests.
+  auto build_test_case_float = [&](ModelTestBuilder& builder) {
+    BuildConstantSharingDivMulGraph<float>(builder);
+  };
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+    TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
+                         TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // MLFloat16 data type tests.
+  auto build_test_case_mlfloat16 = [&](ModelTestBuilder& builder) {
+    BuildConstantSharingDivMulGraph<MLFloat16>(builder);
+  };
+
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+    TestGraphTransformer(build_test_case_mlfloat16, opset_version, *logger_, std::move(transformer),
+                         TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [1, 1, 256, 256] (float)
+                 |
+                Div ______________________________
+            /    |                 |              |
+           /     |  1.0float       |  1.0half     |  1.0half
+          / ...  |  / ...          |  /   ...     |  /   ...
+        Mul      Mul              Add            Add
+         |       |                     \          /
+ graph out [1, 1, 256, 256](float)   graph out [1, 1, 256, 256](MLFloat16)
+
+Be noted:
+ the Mul's input initializer 1.0f is a scalar float.
+ the Add's input initializer 1.0f is a scalar MLFloat16.
+*/
+TEST_F(GraphTransformationTests, ConstantSharing_ShareFloatAndHalfTypedInitializer) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_pre = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count_pre.size(), 4U);
+    ASSERT_EQ(op_count_pre["Div"], 1);
+    ASSERT_EQ(op_count_pre["Cast"], 1);
+    ASSERT_EQ(op_count_pre["Mul"], 3);
+    ASSERT_EQ(op_count_pre["Add"], 3);
+    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 6U);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    ASSERT_EQ(initialized_tensor_set.size(), 2U);
+    const NodeArg* mul_initializer = nullptr;
+    const NodeArg* add_initializer = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Mul") == 0) {
+        if (!mul_initializer) {
+          mul_initializer = node.InputDefs()[1];
+          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
+        } else {
+          ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+        }
+      } else if (node.OpType().compare("Add") == 0) {
+        if (!add_initializer) {
+          add_initializer = node.InputDefs()[1];
+          ASSERT_EQ(add_initializer->Shape()->dim_size(), 0);
+        } else {
+          ASSERT_EQ(add_initializer, node.InputDefs()[1]);
+        }
+      }
+    }
+
+    for (const auto& entry : initialized_tensor_set) {
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+      int32_t data_type = tensor_proto->data_type();
+      onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
+      if (entry.first.compare(mul_initializer->Name()) == 0) {
+        ASSERT_EQ(float_const.size(), 1);
+        ASSERT_EQ(data_type, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        float float_const_value = *(float_const.data<float>());
+        ASSERT_EQ(float_const_value, 1.0f);
+      } else if (entry.first.compare(add_initializer->Name()) == 0) {
+        ASSERT_EQ(float_const.size(), 1);
+        ASSERT_EQ(data_type, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+        float float_const_value = math::halfToFloat(float_const.data<MLFloat16>()->val);
+        ASSERT_EQ(float_const_value, 1.0f);
+      }
+    }
+
+    auto op_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count.size(), 4U);
+    ASSERT_EQ(op_count["Div"], 1);
+    ASSERT_EQ(op_count["Mul"], 3);
+    ASSERT_EQ(op_count["Cast"], 1);
+    ASSERT_EQ(op_count["Add"], 3);
+  };
+
+  const std::vector<int> opsets{12, 13, 14};
+
+  auto build_test_case_float = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+    auto* input1_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+    auto* div_out = builder.MakeIntermediate();
+    builder.AddNode("Div", {input0_arg, input1_arg}, {div_out});
+
+    for (size_t i = 0; i < 3; ++i) {
+      NodeArg* mul_initializer = builder.MakeScalarInitializer<float>(1.0f);
+
+      auto* mul_out = builder.MakeOutput();
+      builder.AddNode("Mul", {div_out, mul_initializer}, {mul_out});
+    }
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {div_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+    for (size_t i = 0; i < 3; ++i) {
+      NodeArg* add_initializer = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(math::floatToHalf(1.0f)));
+      auto* add_out = builder.MakeOutput();
+      builder.AddNode("Add", {cast_out, add_initializer}, {add_out});
+    }
+  };
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+    TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
+                         TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [1, 1, 256, 256] (float)
+                 |
+                Div
+            /    |  \______________________________________________________
+           /     |  infinity (float)                                       Cast
+          / ...  | /                                    _________/     /   \      \_____________
+        Sub      Sub                               ____/    __________/     \________           |
+         |       |                                /        /                         \          |
+         |       |                               /        | int64_max (int64_t)      |          |
+         |       |                              /         | /                        |          |
+         |       |                             Mul   ...  Mul                        Mul  ...  Mul
+                                                |         |                          |          |
+graph out [1, 1, 256, 256] (float)        graph out [1, 1, 256, 256] (int64_t)   graph out [1, 1, 256, 256] (int64_t)
+
+Be noted:
+ the Sub's input initializer is a scalar std::numeric_limits<float>::infinity();
+ the Mul's input initializer is a scalar std::numeric_limits<int64_t>::max().
+*/
+TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityInitializer) {
+  auto pre_graph_checker = [&](Graph& graph) {
+    auto op_count_pre = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count_pre.size(), 4U);
+    ASSERT_EQ(op_count_pre["Div"], 1);
+    ASSERT_EQ(op_count_pre["Mul"], 12);
+    ASSERT_EQ(op_count_pre["Sub"], 12);
+    ASSERT_EQ(graph.GetAllInitializedTensors().size(), 24U);
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    ASSERT_EQ(initialized_tensor_set.size(), 2U);
+    const NodeArg* mul_initializer = nullptr;
+    const NodeArg* sub_initializer = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Mul") == 0) {
+        if (!mul_initializer) {
+          mul_initializer = node.InputDefs()[1];
+          ASSERT_EQ(mul_initializer->Shape()->dim_size(), 0);
+        } else {
+          ASSERT_EQ(mul_initializer, node.InputDefs()[1]);
+        }
+      } else if (node.OpType().compare("Sub") == 0) {
+        if (!sub_initializer) {
+          sub_initializer = node.InputDefs()[1];
+          ASSERT_EQ(sub_initializer->Shape()->dim_size(), 0);
+        } else {
+          ASSERT_EQ(sub_initializer, node.InputDefs()[1]);
+        }
+      }
+    }
+
+    for (const auto& entry : initialized_tensor_set) {
+      if (entry.first.compare(mul_initializer->Name()) == 0) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+        onnxruntime::Initializer int64_const{*tensor_proto, graph.ModelPath()};
+        ASSERT_EQ(int64_const.size(), 1);
+        int64_t int64_const_value = *(int64_const.data<int64_t>());
+        ASSERT_EQ(int64_const_value, std::numeric_limits<int64_t>::max());
+      } else if (entry.first.compare(sub_initializer->Name()) == 0) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+        onnxruntime::Initializer float_const{*tensor_proto, graph.ModelPath()};
+        ASSERT_EQ(float_const.size(), 1);
+        float float_const_value = *(float_const.data<float>());
+        ASSERT_EQ(float_const_value, std::numeric_limits<float>::infinity());
+      }
+    }
+
+    auto op_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_count.size(), 4U);
+    ASSERT_EQ(op_count["Div"], 1);
+    ASSERT_EQ(op_count["Mul"], 12);
+    ASSERT_EQ(op_count["Sub"], 12);
+  };
+
+  const std::vector<int> opsets{12, 13, 14};
+
+  // Float data type tests.
+  auto build_test_case_float = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+    auto* input1_arg = builder.MakeInput<float>({{1, 1, 256, 256}});
+    auto* div_out = builder.MakeIntermediate();
+    builder.AddNode("Div", {input0_arg, input1_arg}, {div_out});
+
+    auto* cast_out = builder.MakeIntermediate();
+    builder.AddNode("Cast", {div_out}, {cast_out})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT64));
+    for (size_t i = 0; i < 12; ++i) {
+      NodeArg* mul_initializer = nullptr;
+      mul_initializer = builder.MakeScalarInitializer<int64_t>(std::numeric_limits<int64_t>::max());
+      auto* mul_out = builder.MakeOutput();
+      builder.AddNode("Mul", {cast_out, mul_initializer}, {mul_out});
+    }
+
+    for (size_t i = 0; i < 12; ++i) {
+      NodeArg* sub_initializer = nullptr;
+      sub_initializer = builder.MakeScalarInitializer<float>(std::numeric_limits<float>::infinity());
+      auto* sub_out = builder.MakeOutput();
+      builder.AddNode("Sub", {div_out, sub_initializer}, {sub_out});
+    }
+  };
+  for (auto& opset_version : opsets) {
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+    TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
+                         TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+TEST_F(GraphTransformationTests, GatherToSplitFusion) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* data_arg = builder.MakeInput<float>({{54}});
+    auto* shape_arg = builder.MakeInput<int64_t>({{1}});
+    auto* reshape_out = builder.MakeIntermediate<float>({{2, 3, 3, 3}});
+    auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
+    auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+    auto* gather_index_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(2)});
+    auto* gather_out_1 = builder.MakeIntermediate();
+    auto* gather_out_2 = builder.MakeIntermediate();
+    auto* gather_out_3 = builder.MakeIntermediate();
+    auto* transpose_out_1 = builder.MakeOutput();
+    auto* transpose_out_2 = builder.MakeOutput();
+    auto* transpose_out_3 = builder.MakeOutput();
+
+    builder.AddNode("Reshape", {data_arg, shape_arg}, {reshape_out});
+    builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
+        .AddAttribute("axis", static_cast<int64_t>(2));
+    builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
+        .AddAttribute("axis", static_cast<int64_t>(-2));
+    builder.AddNode("Gather", {reshape_out, gather_index_3}, {gather_out_3})
+        .AddAttribute("axis", static_cast<int64_t>(2));
+    builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+  };
+
+  auto pre_graph_checker = [&](Graph& graph) { ASSERT_EQ(CountOpsInGraph(graph)["Gather"], 3); };
+
+  // OpSet-12
+  {
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Gather"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["Split"], 1);
+      ASSERT_EQ(CountOpsInGraph(graph)["Squeeze"], 3);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "Split") {
+          auto& attrs = node.GetAttributes();
+          ASSERT_TRUE(attrs.find("axis") != attrs.end());
+          ASSERT_EQ(2, static_cast<int>(attrs.at("axis").i()));
+        } else if (node.OpType() == "Squeeze") {
+          auto& attrs = node.GetAttributes();
+          ASSERT_TRUE(attrs.find("axes") != attrs.end());
+          ASSERT_EQ(2, static_cast<int>(attrs.at("axes").ints().at(0)));
+        }
+      }
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
+    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // OpSet-14
+  {
+    auto post_graph_checker = [&](Graph& graph) {
+      ASSERT_EQ(CountOpsInGraph(graph)["Gather"], 0);
+      ASSERT_EQ(CountOpsInGraph(graph)["Split"], 1);
+      ASSERT_EQ(CountOpsInGraph(graph)["Squeeze"], 3);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "Split") {
+          auto& attrs = node.GetAttributes();
+          ASSERT_TRUE(attrs.find("axis") != attrs.end());
+          ASSERT_EQ(2, static_cast<int>(attrs.at("axis").i()));
+        } else if (node.OpType() == "Squeeze") {
+          const NodeArg& input_arg = *(node.InputDefs()[1]);
+          const ONNX_NAMESPACE::TensorProto* tensor_proto =
+              graph_utils::GetConstantInitializer(graph, input_arg.Name());
+          ASSERT_TRUE(tensor_proto != nullptr);
+          Initializer init_const{*tensor_proto, graph.ModelPath()};
+          ASSERT_TRUE(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          ASSERT_EQ(2, static_cast<int>(*(init_const.data<int64_t>())));
+        }
+      }
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+}
+
+TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
+  auto pre_graph_checker = [&](Graph& graph) { ASSERT_EQ(CountOpsInGraph(graph)["Gather"], 3); };
+  auto post_graph_checker = [&](Graph& graph) {
+    ASSERT_EQ(CountOpsInGraph(graph)["Gather"], 3);
+    ASSERT_EQ(CountOpsInGraph(graph)["Split"], 0);
+    ASSERT_EQ(CountOpsInGraph(graph)["Squeeze"], 0);
+  };
+
+  // Invalid shape.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>({{72}});
+      auto* shape_arg = builder.MakeInput<int64_t>({{1}});
+      auto* reshape_out = builder.MakeIntermediate<float>({{2, 3, 4, 3}});
+      auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
+      auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+      auto* gather_index_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(2)});
+      auto* gather_out_1 = builder.MakeIntermediate();
+      auto* gather_out_2 = builder.MakeIntermediate();
+      auto* gather_out_3 = builder.MakeIntermediate();
+      auto* transpose_out_1 = builder.MakeOutput();
+      auto* transpose_out_2 = builder.MakeOutput();
+      auto* transpose_out_3 = builder.MakeOutput();
+
+      builder.AddNode("Reshape", {data_arg, shape_arg}, {reshape_out});
+      builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
+          .AddAttribute("axis", static_cast<int64_t>(2));
+      builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
+          .AddAttribute("axis", static_cast<int64_t>(2));
+      builder.AddNode("Gather", {reshape_out, gather_index_3}, {gather_out_3})
+          .AddAttribute("axis", static_cast<int64_t>(2));
+      builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1})
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+      builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2})
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+      builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3})
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
+    TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // Invalid Gather indices.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>({{54}});
+      auto* shape_arg = builder.MakeInput<int64_t>({{1}});
+      auto* reshape_out = builder.MakeIntermediate<float>({{2, 3, 3, 3}});
+      auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
+      auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+      auto* gather_index_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+      auto* gather_out_1 = builder.MakeIntermediate();
+      auto* gather_out_2 = builder.MakeIntermediate();
+      auto* gather_out_3 = builder.MakeIntermediate();
+      auto* transpose_out_1 = builder.MakeOutput();
+      auto* transpose_out_2 = builder.MakeOutput();
+      auto* transpose_out_3 = builder.MakeOutput();
+
+      builder.AddNode("Reshape", {data_arg, shape_arg}, {reshape_out});
+      builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
+          .AddAttribute("axis", static_cast<int64_t>(2));
+      builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
+          .AddAttribute("axis", static_cast<int64_t>(2));
+      builder.AddNode("Gather", {reshape_out, gather_index_3}, {gather_out_3})
+          .AddAttribute("axis", static_cast<int64_t>(2));
+      builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1})
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+      builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2})
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+      builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3})
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
+  }
+
+  // Invalid Gather axis.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>({{54}});
+      auto* shape_arg = builder.MakeInput<int64_t>({{1}});
+      auto* reshape_out = builder.MakeIntermediate<float>({{2, 3, 3, 3}});
+      auto* gather_index_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
+      auto* gather_index_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+      auto* gather_index_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(2)});
+      auto* gather_out_1 = builder.MakeIntermediate();
+      auto* gather_out_2 = builder.MakeIntermediate();
+      auto* gather_out_3 = builder.MakeIntermediate();
+      auto* transpose_out_1 = builder.MakeOutput();
+      auto* transpose_out_2 = builder.MakeOutput();
+      auto* transpose_out_3 = builder.MakeOutput();
+
+      builder.AddNode("Reshape", {data_arg, shape_arg}, {reshape_out});
+      builder.AddNode("Gather", {reshape_out, gather_index_1}, {gather_out_1})
+          .AddAttribute("axis", static_cast<int64_t>(1));
+      builder.AddNode("Gather", {reshape_out, gather_index_2}, {gather_out_2})
+          .AddAttribute("axis", static_cast<int64_t>(2));
+      builder.AddNode("Gather", {reshape_out, gather_index_3}, {gather_out_3})
+          .AddAttribute("axis", static_cast<int64_t>(3));
+      builder.AddNode("Transpose", {gather_out_1}, {transpose_out_1})
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+      builder.AddNode("Transpose", {gather_out_2}, {transpose_out_2})
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+      builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3})
+          .AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
+    TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                         pre_graph_checker, post_graph_checker);
   }
 }
 

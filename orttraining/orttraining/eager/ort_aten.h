@@ -9,6 +9,12 @@
 #include "ort_util.h"
 #include "ort_ops.h"
 #include "ort_log.h"
+#include "ort_tensor.h"
+
+#define CHECK_STATUS(status) if (!status.IsOK()) { \
+  std::stringstream err; \
+  err << "ORT return failure (line " << __LINE__ << "): " << status.ErrorMessage(); \
+  throw std::runtime_error(err.str()); }
 
 namespace torch_ort {
 namespace eager {
@@ -121,5 +127,24 @@ c10::optional<at::ScalarType> PromoteScalarTypesWithCategory(
 ONNX_NAMESPACE::TensorProto_DataType GetONNXTensorProtoDataType(at::ScalarType dtype);
 
 OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at::ScalarType type);
+void CastToType_out(onnxruntime::ORTInvoker& invoker, const OrtValue& input, OrtValue& output, at::ScalarType type);
+
+void resize_output(
+  onnxruntime::ORTInvoker& invoker,
+  ORTTensorImpl* output,
+  at::IntArrayRef shape);
+
+void resize_impl_ort_(
+  onnxruntime::ORTInvoker& invoker,
+  ORTTensorImpl* self,
+  at::IntArrayRef size);
+
+namespace aten {
+
+// aten::nonzero(Tensor self) -> Tensor
+at::Tensor nonzero(
+  const at::Tensor& self);
+
+} // namespace aten
 } // namespace eager
 } // namespace torch_ort

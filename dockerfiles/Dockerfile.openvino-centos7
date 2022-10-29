@@ -11,7 +11,7 @@ ARG MY_ROOT=/code
 ARG YUM_OV_PACKAGE=intel-openvino-runtime-centos7-2021.4.752.x86_64
 ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime
-ARG ONNXRUNTIME_BRANCH=master
+ARG ONNXRUNTIME_BRANCH=main
 
 ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.4.752
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
@@ -24,7 +24,7 @@ ENV HDDL_INSTALL_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/ext
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:$LD_LIBRARY_PATH
 ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib:/usr/local/lib64:/usr/lib64:/lib64:$LD_LIBRARY_PATH
 
-# Install packages 
+# Install packages
 RUN yum update -y && \
     yum groupinstall "Development Tools" -y && \
     yum install -y yum-utils autoconf automake libtool unzip udev wget zlib-devel libffi-devel openssl-devel boost-devel-1.53.0 && \
@@ -42,7 +42,7 @@ RUN yum update -y && \
     cd /opt/ && wget https://github.com/libusb/libusb/archive/v1.0.22.zip && \
     unzip v1.0.22.zip && rm -rf v1.0.22.zip && cd  /opt/libusb-1.0.22 && \
 # bootstrap steps
-    ./bootstrap.sh && \ 
+    ./bootstrap.sh && \
     ./configure --disable-udev --enable-shared && \
     make -j4 && \
 # configure libusb1.0.22
@@ -64,7 +64,7 @@ RUN yum update -y && \
     cp /opt/intel/openvino_2021/deployment_tools/inference_engine/external/97-myriad-usbboot.rules /etc/udev/rules.d/ && \
     ldconfig && \
 # Install GPU runtime and drivers
-    cd ${MY_ROOT} && \    
+    cd ${MY_ROOT} && \
     mkdir /tmp/opencl && \
     cd /tmp/opencl && \
     yum install -y epel-release && \
@@ -87,8 +87,8 @@ RUN yum update -y && \
     cd /code/ && \
     wget https://www.python.org/ftp/python/3.8.3/Python-3.8.3.tgz && tar xvf Python-3.8.3.tgz && \
     cd Python-3.8*/ && ./configure && make && make install && \
-    cd ../ &&  mkdir -p /usr/bin/Python38 && ln -s Python-3.8.3/ /usr/bin/Python38 && \ 
-# installing dependancies 
+    cd ../ &&  mkdir -p /usr/bin/Python38 && ln -s Python-3.8.3/ /usr/bin/Python38 && \
+# installing dependancies
     yum install -y python3-lxml python3-six libusb.x86_64 && \
     yum clean packages &&  yum clean all && rm -rf /var/cache/yum && \
 # Build onnxruntime

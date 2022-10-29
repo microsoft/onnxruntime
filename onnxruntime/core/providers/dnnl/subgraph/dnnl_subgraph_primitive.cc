@@ -163,7 +163,7 @@ int Product(dnnl::memory::dims d) {
 }
 
 void DnnlSubgraphPrimitive::AddKernels() {
-  std::unordered_set<std::string> binary_ops = {"Add", "Div", "Mul", "Sub"};
+  std::unordered_set<std::string> binary_ops = {"Add", "Div", "Equal", "Greater", "GreaterOrEqual", "Less", "LessOrEqual", "Mul", "Sub"};
   std::unordered_set<std::string> elementwise_ops = {"Abs", "Elu", "Exp", "LeakyRelu", "Log", "Relu", "Round", "Sigmoid", "Softplus", "Sqrt", "Tanh"};
   std::unordered_set<std::string> pool_ops = {"AveragePool", "GlobalAveragePool", "GlobalMaxPool", "MaxPool"};
   std::unordered_set<std::string> reduce_ops = {"ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare"};
@@ -195,9 +195,12 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlGemm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "LRN") {
       DnnlLrn().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulAdd" || node.OpType() == "FusedMatMul") {
+    // MatMulPostOps is a OneDNN only fusion of MatMul and upto 32 elementwise or binary ops
+    // FusedMatMul is a ContribOperator defined here:
+    //    https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#com.microsoft.FusedMatMul
+    } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulPostOps" || node.OpType() == "FusedMatMul") {
       DnnlMatMul().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "MatMulInteger") {
+    } else if (node.OpType() == "MatMulInteger" || node.OpType() == "MatMulIntegerPostOps") {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
     } else if (pool_ops.count(node.OpType())) {
       DnnlPool().CreatePrimitive(*this, node);
@@ -446,7 +449,7 @@ bool DnnlSubgraphPrimitive::HasMemory(std::string memory_name, dnnl::memory::des
   return false;
 }
 
-void DnnlSubgraphPrimitive::SetMemory(DnnlTensor tensor, dnnl::memory mem, bool always_copy_output, bool is_scalar) {
+void DnnlSubgraphPrimitive::SetMemory(const DnnlTensor& tensor, dnnl::memory mem, bool always_copy_output, bool is_scalar) {
   if (always_copy_output) {
     outputs_are_always_copied_.insert(tensor.Name());
   }
@@ -561,7 +564,7 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor
     }
     //keep the same data type from mem_from but reshape the dims with mem_desc
     auto mem_from_reshape_md = mem_from.get_desc();
-    if (transpose) {  
+    if (transpose) {
       //hard coded to transpose 2 dimensional matrix
       //TODO: expand to arbitrary permutation or transpose on given 2 dims for higher dimensional tensors
       mem_from_reshape_md = mem_from_reshape_md.permute_axes({1, 0});
@@ -680,7 +683,7 @@ onnxruntime::common::Status DnnlSubgraphPrimitive::Predict(const std::unordered_
     stream.wait();
   }
 
-  
+
   for (size_t i = 0; i < net_.size(); ++i) {
     net_.at(i).execute(stream, net_args_.at(i));
     stream.wait();
@@ -689,7 +692,7 @@ onnxruntime::common::Status DnnlSubgraphPrimitive::Predict(const std::unordered_
     for (auto e : items_to_print_) {
       auto net_index = e.first;
       auto net_arg_index = e.second;
-      if (net_index == i) {
+      if (net_index == static_cast<int>(i)) {
         PrintMemory(net_args_.at(i)[net_arg_index]);
       }
     }

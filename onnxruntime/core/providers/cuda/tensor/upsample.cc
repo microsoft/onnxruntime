@@ -89,8 +89,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     void* dims_mapping = reinterpret_cast<void*>(dims_mapping_buffer.get());
     ResizeImpl(Stream(), mode_, (int)rank, input_shape, output_shape,
                input_strides, output_div_pitches, scales_vals, roi_vals,
-               reinterpret_cast<const CudaT*>(X->template Data<T>()),
-               reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+               reinterpret_cast<const CudaT*>(X->Data<T>()),
+               reinterpret_cast<CudaT*>(Y->MutableData<T>()),
                output_count, use_extrapolation_, ToCudaType<T>::FromFloat(extrapolation_value_),
                cubic_coeff_a_, exclude_outside_,
                coordinate_transform_mode_, nearest_mode_,
@@ -109,8 +109,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                 input_strides,
                 output_div_pitches,
                 scales_div,
-                reinterpret_cast<const CudaT*>(X->template Data<T>()),
-                reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
+                reinterpret_cast<const CudaT*>(X->Data<T>()),
+                reinterpret_cast<CudaT*>(Y->MutableData<T>()),
                 output_count);
   }
 
@@ -155,8 +155,8 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
     return BaseCompute(context, roi, scales_, output_dims);
   }
 
-  const auto* scales = context->Input<Tensor>(scales_input_idx_);
-  const auto* sizes = context->Input<Tensor>(sizes_input_idx_);
+  const Tensor* scales = context->Input<Tensor>(scales_input_idx_);
+  const Tensor* sizes = context->Input<Tensor>(sizes_input_idx_);
 
   if (scales_cached_) {
     ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
@@ -176,7 +176,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
                 "Either scales or sizes MUST be provided as input.");
     ORT_ENFORCE(sizes->Shape().Size() == static_cast<int64_t>(output_dims.size()),
                 "Resize: input tensor's rank does not match the output tensor's rank.");
-    memcpy(output_dims.data(), sizes->template Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));
+    memcpy(output_dims.data(), sizes->Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));
     ParseScalesDataFromOutputSize(output_dims, X->Shape().GetDims(), scales_array);
   }
 

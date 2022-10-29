@@ -162,7 +162,7 @@ NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) c
     const Node* n = queue.front();
     queue.pop_front();
     const std::unordered_set<size_t>* edges = GetStopGradientEdges(*n);
-    for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {      
+    for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
       if (edges != nullptr && edges->count(edge_it->GetDstArgIndex())) {
         LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
                             << " of node: " << n->Name();
@@ -324,7 +324,8 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
       }
 
       GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad,
-                                               input_args_need_grad, logger_, stashed_tensors_);
+                                               input_args_need_grad, logger_, stashed_tensors_,
+                                               python_op_input_require_grad_info_);
 
       if (node_defs.empty()) {
         LOGS(logger_, WARNING) << "GetGradientForOp() did not create any nodes for node "

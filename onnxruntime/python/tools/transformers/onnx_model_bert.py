@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
-from typing import List
+from typing import List, Optional
 
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_biasgelu import FusionBiasGelu
@@ -12,8 +12,13 @@ from fusion_embedlayer import FusionEmbedLayerNormalization
 from fusion_fastgelu import FusionFastGelu
 from fusion_gelu import FusionGelu
 from fusion_gelu_approximation import FusionGeluApproximation
+from fusion_gemmfastgelu import FusionGemmFastGelu
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
 from fusion_options import FusionOptions
+from fusion_qordered_attention import FusionQOrderedAttention
+from fusion_qordered_gelu import FusionQOrderedGelu
+from fusion_qordered_layernorm import FusionQOrderedLayerNormalization
+from fusion_qordered_matmul import FusionQOrderedMatMul
 from fusion_reshape import FusionReshape
 from fusion_shape import FusionShape
 from fusion_skiplayernorm import FusionBiasSkipLayerNormalization, FusionSkipLayerNormalization
@@ -38,8 +43,8 @@ class BertOnnxModel(OnnxModel):
 
         Args:
             model (ModelProto): the ONNX model
-            num_heads (int, optional): number of attentioin heads. Defaults to 0, and we will detect the parameter automatically.
-            hidden_size (int, optional): hidden dimension. Defaults to 0, and we will detect the parameter automatically.
+            num_heads (int, optional): number of attention heads. Defaults to 0 (detect the parameter automatically).
+            hidden_size (int, optional): hidden dimension. Defaults to 0 (detect the parameter automatically).
         """
         assert (num_heads == 0 and hidden_size == 0) or (num_heads > 0 and hidden_size % num_heads == 0)
 
@@ -49,15 +54,23 @@ class BertOnnxModel(OnnxModel):
 
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
+        self.qordered_attention_fusion = FusionQOrderedAttention(
+            self, self.hidden_size, self.num_heads, self.attention_mask
+        )
         self.utils = FusionUtils(self)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
+        # Only relevant in models with Q-DQ nodes
+        self.qordered_attention_fusion.apply()
 
     def fuse_gelu(self):
         fusion = FusionGelu(self)
         fusion.apply()
         fusion = FusionFastGelu(self)
+        fusion.apply()
+        # Only relevant in models with Q-DQ nodes
+        fusion = FusionQOrderedGelu(self)
         fusion.apply()
 
     def fuse_bias_gelu(self, is_fastgelu):
@@ -66,6 +79,10 @@ class BertOnnxModel(OnnxModel):
 
     def gelu_approximation(self):
         fusion = FusionGeluApproximation(self)
+        fusion.apply()
+
+    def fuse_gemm_fast_gelu(self):
+        fusion = FusionGemmFastGelu(self)
         fusion.apply()
 
     def fuse_add_bias_skip_layer_norm(self):
@@ -91,8 +108,17 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionLayerNormalizationTF(self)
         fusion.apply()
 
+        # Only relevant in models with Q-DQ nodes
+        fusion = FusionQOrderedLayerNormalization(self)
+        fusion.apply()
+
     def fuse_skip_layer_norm(self):
         fusion = FusionSkipLayerNormalization(self)
+        fusion.apply()
+
+    # Only relevant in models with Q-DQ nodes
+    def fuse_qordered_mamtul(self):
+        fusion = FusionQOrderedMatMul(self)
         fusion.apply()
 
     def get_graph_inputs_from_node_type(self, op_type: str, input_indices: List[int], casted: bool):
@@ -337,7 +363,12 @@ class BertOnnxModel(OnnxModel):
         self.clean_graph()
         self.prune_graph()
 
-    def optimize(self, options: FusionOptions = None, add_dynamic_axes=False):
+    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+        if (options is not None) and not options.enable_shape_inference:
+            self.disable_shape_inference()
+
+        self.utils.remove_identity_nodes()
+
         # Remove cast nodes that having same data type of input and output based on symbolic shape inference.
         self.utils.remove_useless_cast_nodes()
 
@@ -358,6 +389,11 @@ class BertOnnxModel(OnnxModel):
             if options is not None:
                 self.attention_mask.set_mask_format(options.attention_mask_format)
             self.fuse_attention()
+
+        # Perform the MatMul fusion after the Attention fusion as we do not
+        # want to fuse the MatMuls inside the Attention subgraphs
+        if (options is None) or options.enable_qordered_matmul:
+            self.fuse_qordered_mamtul()
 
         self.fuse_shape()
 
@@ -382,6 +418,9 @@ class BertOnnxModel(OnnxModel):
         if options is not None and options.enable_gelu_approximation:
             self.gelu_approximation()
 
+        if options is not None and options.enable_gemm_fast_gelu:
+            self.fuse_gemm_fast_gelu()
+
         self.remove_unused_constant()
 
         # Use symbolic batch dimension in input and output.
@@ -398,11 +437,16 @@ class BertOnnxModel(OnnxModel):
         ops = [
             "EmbedLayerNormalization",
             "Attention",
+            "QOrderedAttention",
             "Gelu",
+            "QOrderedGelu",
             "FastGelu",
             "BiasGelu",
+            "GemmFastGelu",
             "LayerNormalization",
+            "QOrderedLayerNormalization",
             "SkipLayerNormalization",
+            "QOrderedMatMul",
         ]
         for op in ops:
             nodes = self.get_nodes_by_op_type(op)
@@ -416,7 +460,7 @@ class BertOnnxModel(OnnxModel):
         """
         op_count = self.get_fused_operator_statistics()
         embed = op_count["EmbedLayerNormalization"]
-        attention = op_count["Attention"]
+        attention = op_count["Attention"] + op_count["QOrderedAttention"]
         gelu = op_count["Gelu"] + op_count["BiasGelu"] + op_count["FastGelu"]
         layer_norm = op_count["LayerNormalization"] + op_count["SkipLayerNormalization"]
         is_perfect = (embed > 0) and (attention > 0) and (attention == gelu) and (layer_norm >= 2 * attention)

@@ -13,7 +13,8 @@ Status CopyIfNotSameBuffer(cudaStream_t stream, const Tensor& source_tensor, Ten
   const T* source = source_tensor.template Data<T>();
   T* target = target_tensor.template MutableData<T>();
   if (target != source) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, source_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice, stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target, source, source_tensor.SizeInBytes(), cudaMemcpyDeviceToDevice,
+                                         stream));
   }
   return Status::OK();
 }

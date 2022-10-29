@@ -4,6 +4,7 @@
 #include "dnnl_elementwise.h"
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
+#include "dnnl_util.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -15,40 +16,29 @@ void DnnlElementwise::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node)
 
   auto elementwise_src_mem = sp.GetMemory(node.Input(IN_X));
   auto src_md = elementwise_src_mem.get_desc();
-  dnnl::algorithm algo;
+  dnnl::algorithm algo = dnnl_util::OrtOperatorToDnnlAlgorithm(node.OpType());
   bool requires_alpha = false;
   float alpha = 0.0;
-  if (node.OpType() == "Abs") {
-    algo = dnnl::algorithm::eltwise_abs;
-  } else if (node.OpType() == "Elu") {
-    requires_alpha = true;
-    alpha = GetAlpha(node, /*default_alpha*/1.0f);
-    algo = dnnl::algorithm::eltwise_elu; 
-  } else if (node.OpType() == "Exp") {
-    algo = dnnl::algorithm::eltwise_exp;
-  } else if (node.OpType() == "LeakyRelu") {
-    requires_alpha = true;
-    alpha = GetAlpha(node, /*default_alpha*/ 0.01f);
-    algo = dnnl::algorithm::eltwise_relu;
-  } else if (node.OpType() == "Log") {
-    algo = dnnl::algorithm::eltwise_log;
-  } else if (node.OpType() == "Relu") {
-    algo = dnnl::algorithm::eltwise_relu;
-  } else if (node.OpType() == "Round") {
-    algo = dnnl::algorithm::eltwise_round;
-  } else if (node.OpType() == "Sigmoid") {
-    // in OneDNN eltwise_logistic is defined as 1/(1 + exp(-x)) which matches the definition of "Sigmoid" in Onnx
-    algo = dnnl::algorithm::eltwise_logistic;
-  } else if (node.OpType() == "Softplus") {
-    // in OneDNN eltwise_soft_relu is defined as ln(1 + exp(x)) which matches the definition of "Softplus" in Onnx
-    algo = dnnl::algorithm::eltwise_soft_relu;
-  } else if (node.OpType() == "Sqrt") {
-    algo = dnnl::algorithm::eltwise_sqrt;
-  } else if (node.OpType() == "Tanh") {
-    algo = dnnl::algorithm::eltwise_tanh;
-  } else {
-    ORT_THROW("op type not supported");
+  switch (algo) {
+    case dnnl::algorithm::eltwise_elu: {
+      requires_alpha = true;
+      alpha = GetAlpha(node, /*default_alpha*/ 1.0f);
+      break;
+    }
+    case dnnl::algorithm::eltwise_relu: {
+      // Need to check operator since both Relu and LeakyRelu are covered by algorithm::eltwise_relu
+      if (node.OpType() == "LeakyRelu") {
+        requires_alpha = true;
+        alpha = GetAlpha(node, /*default_alpha*/ 0.01f);
+      } else {
+        alpha = 0.0;
+      }
+      break;
+    }
+    default:
+      alpha = 0.0;
   }
+
   dnnl::eltwise_forward::primitive_desc elementwise_pd;
   if (requires_alpha) {
     auto elementwise_desc = dnnl::eltwise_forward::desc(dnnl::prop_kind::forward_inference, algo, src_md, alpha);

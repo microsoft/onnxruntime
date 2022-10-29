@@ -5,6 +5,7 @@ import {Tensor} from '../../../tensor';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
+
 import {ConvAttributes} from './conv';
 import {unpackFromChannel} from './packing-utils';
 

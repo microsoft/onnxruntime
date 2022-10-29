@@ -60,7 +60,7 @@ Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
   auto x_dims = (x_shape.IsScalar()) ? kScalarDims.GetDims() : x_shape.GetDims();
   const int64_t x_size = x_shape.Size();
   if (x_size > 0) {
-    auto x_data = reinterpret_cast<const typename ToCudaType<T>::MappedType*>(x->template Data<T>());
+    auto x_data = reinterpret_cast<const typename ToCudaType<T>::MappedType*>(x->Data<T>());
 
     const int number_of_blocks = NonZeroCalcBlockCount(x_size);
     auto prefix_buffer = GetScratchBuffer<int>(number_of_blocks);
@@ -88,7 +88,7 @@ Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
     ORT_ENFORCE(output_tensor, "failed to get first output!");
     CUDA_RETURN_IF_ERROR(NonZeroOutputPositions(
         Stream(), x_data, x_size, x_rank, fdm_x_strides,
-        prefix_counts, nonzero_elements, output_tensor->template MutableData<int64_t>()));
+        prefix_counts, nonzero_elements, output_tensor->MutableData<int64_t>()));
   } else {
     context->Output(0, {x_rank, nonzero_elements});
   }

@@ -361,7 +361,7 @@ class BertModelTest(unittest.TestCase):
             option_fp16,
             option_allreduce_post_accumulation,
             option_gradient_accumulation_steps,
-            option_split_batch
+            option_split_batch,
         )
 
     def test_for_pretraining_mixed_precision_with_gradient_accumulation(self):
@@ -378,7 +378,7 @@ class BertModelTest(unittest.TestCase):
             option_fp16,
             option_allreduce_post_accumulation,
             option_gradient_accumulation_steps,
-            option_split_batch
+            option_split_batch,
         )
 
     def test_for_pretraining_full_precision_all(self):
@@ -396,7 +396,7 @@ class BertModelTest(unittest.TestCase):
             option_fp16,
             option_allreduce_post_accumulation,
             option_gradient_accumulation_steps,
-            option_split_batch
+            option_split_batch,
         )
 
     def test_for_pretraining_full_precision_list_input(self):
@@ -410,7 +410,7 @@ class BertModelTest(unittest.TestCase):
             option_fp16,
             option_allreduce_post_accumulation,
             option_gradient_accumulation_steps,
-            option_split_batch
+            option_split_batch,
         )
 
     def test_for_pretraining_full_precision_dict_input(self):
@@ -424,7 +424,7 @@ class BertModelTest(unittest.TestCase):
             option_fp16,
             option_allreduce_post_accumulation,
             option_gradient_accumulation_steps,
-            option_split_batch
+            option_split_batch,
         )
 
     def test_for_pretraining_full_precision_list_and_dict_input(self):
@@ -438,7 +438,7 @@ class BertModelTest(unittest.TestCase):
             option_fp16,
             option_allreduce_post_accumulation,
             option_gradient_accumulation_steps,
-            option_split_batch
+            option_split_batch,
         )
 
     def test_for_pretraining_full_precision_grad_accumulation_list_input(self):
@@ -452,7 +452,7 @@ class BertModelTest(unittest.TestCase):
             option_fp16,
             option_allreduce_post_accumulation,
             option_gradient_accumulation_steps,
-            option_split_batch
+            option_split_batch,
         )
 
     def test_for_pretraining_full_precision_grad_accumulation_dict_input(self):
@@ -466,7 +466,7 @@ class BertModelTest(unittest.TestCase):
             option_fp16,
             option_allreduce_post_accumulation,
             option_gradient_accumulation_steps,
-            option_split_batch
+            option_split_batch,
         )
 
     def test_for_pretraining_full_precision_grad_accumulation_list_and_dict_input(self):
@@ -480,7 +480,7 @@ class BertModelTest(unittest.TestCase):
             option_fp16,
             option_allreduce_post_accumulation,
             option_gradient_accumulation_steps,
-            option_split_batch
+            option_split_batch,
         )
 
 

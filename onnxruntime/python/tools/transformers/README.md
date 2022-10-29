@@ -25,7 +25,7 @@ For tf2onnx, please refer to its [BERT tutorial](https://github.com/onnx/tensorf
 
 ### GPT-2 Model conversion
 
-Converting GPT-2 model from PyTorch to ONNX is not straightforward when past state is used. We add a tool [convert_to_onnx](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/convert_to_onnx.py) to help you.
+Converting GPT-2 model from PyTorch to ONNX is not straightforward when past state is used. We add a tool [convert_to_onnx](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/convert_to_onnx.py) to help you.
 
 You can use commands like the following to convert a pre-trained PyTorch GPT-2 model to ONNX for given precision (float32, float16 or int8):
 ```
@@ -45,7 +45,7 @@ conda activate longformer
 pip install torch==1.9.1+cpu torchvision==0.10.1+cpu torchaudio==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
 pip install onnx transformers==4.18.0 onnxruntime numpy
 ```
-Next, build the source of [torch extensions for Longformer ONNX exporting](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/torch_extensions) like the following:
+Next, build the source of [torch extensions for Longformer ONNX exporting](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/torch_extensions) like the following:
 ```
 cd onnxruntime/python/tools/transformers/models/longformer/torch_extensions
 python setup.py install
@@ -76,7 +76,7 @@ You can also use command line. Example of optimizing a BERT-large model to use m
 python -m onnxruntime.transformers.optimizer --input bert_large.onnx --output bert_large_fp16.onnx --num_heads 16 --hidden_size 1024 --float16
 ```
 
-You can also download the latest script files from [here](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/). Then run it like the following:
+You can also download the latest script files from [here](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/). Then run it like the following:
 ```console
 python optimizer.py --input bert.onnx --output bert_opt.onnx --model_type bert
 ```
@@ -122,7 +122,7 @@ If your model is not in the list, it might only be partial optimized or not opti
 
 
 ## Benchmark
-There is a bash script [run_benchmark.sh](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/run_benchmark.sh) for running benchmark. You can modify the bash script to choose your options (like models to test, batch sizes, sequence lengths, target device etc) before running.
+There is a bash script [run_benchmark.sh](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/run_benchmark.sh) for running benchmark. You can modify the bash script to choose your options (like models to test, batch sizes, sequence lengths, target device etc) before running.
 
 The bash script will call benchmark.py script to measure inference performance of OnnxRuntime, PyTorch or PyTorch+TorchScript on pretrained models of Huggingface Transformers.
 
@@ -144,7 +144,7 @@ The model has 12 layers and 768 hidden, with input_ids as input.
 | onnxruntime | 1.4.0   | fp32      | 4 | 1.51 | 1.93 | 2.98 | 5.01 | 9.13  | 17.95 | 38.15 |
 | onnxruntime | 1.4.0   | fp16      | 4 | 1.27 | 1.35 | 1.43 | 1.83 | 2.66  | 4.40  | 9.76  |
 
-[run_benchmark.sh](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/run_benchmark.sh) is used to get the results.
+[run_benchmark.sh](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/run_benchmark.sh) is used to get the results.
 
 #### gpt2 (GPT2LMHeadModel)
 
@@ -164,7 +164,7 @@ The model has 12 layers and 768 hidden, with input_ids, position_ids, attention_
 
 Since past state is used, sequence length in input_ids is 1. For example, s=4 means the past sequence length is 4 and the total sequence length is 5.
 
-[benchmark_gpt2.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/models/gpt2/benchmark_gpt2.py) is used to get the results like the following commands:
+[benchmark_gpt2.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/gpt2/benchmark_gpt2.py) is used to get the results like the following commands:
 
 ```console
 python -m onnxruntime.transformers.models.gpt2.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp32

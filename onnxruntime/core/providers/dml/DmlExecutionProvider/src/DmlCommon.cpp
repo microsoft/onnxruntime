@@ -30,16 +30,6 @@ DML_TENSOR_DATA_TYPE GetDmlDataTypeFromMlDataTypeNoThrow(MLOperatorTensorDataTyp
     };
 }
 
-DML_TENSOR_DATA_TYPE Remap64bitDmlDataTypeTo32bit(DML_TENSOR_DATA_TYPE dmlElementType) noexcept
-{
-    switch (dmlElementType)
-    {
-    case DML_TENSOR_DATA_TYPE_UINT64: return DML_TENSOR_DATA_TYPE_UINT32; break;
-    case DML_TENSOR_DATA_TYPE_INT64:  return DML_TENSOR_DATA_TYPE_INT32;  break;
-    default: return dmlElementType;
-    }
-}
-
 bool IsSigned(DML_TENSOR_DATA_TYPE dataType)
 {
     switch (dataType)

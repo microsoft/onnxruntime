@@ -7,25 +7,18 @@
 # --------------------------------------------------------------------------
 import abc
 import itertools
+import uuid
 from enum import Enum
 from pathlib import Path
+from typing import Optional, Sequence
 
 import numpy as np
 import onnx
-from onnx import ModelProto, TensorProto, helper
-from onnx import onnx_pb as onnx_proto
+from onnx import ModelProto, TensorProto, helper, numpy_helper
 
 import onnxruntime
 
-from .quant_utils import (
-    QuantType,
-    apply_plot,
-    clone_model_with_shape_infer,
-    load_model,
-    model_has_infer_metadata,
-    smooth_distribution,
-)
-from .registry import QLinearOpsRegistry
+from .quant_utils import apply_plot, clone_model_with_shape_infer, load_model, smooth_distribution
 
 
 class CalibrationMethod(Enum):
@@ -44,12 +37,21 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
         """generate the input data dict for ONNXinferenceSession run"""
         raise NotImplementedError
 
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        result = self.get_next()
+        if result is None:
+            raise StopIteration
+        return result
+
 
 class CalibraterBase:
     def __init__(
         self,
         model,
-        op_types_to_calibrate=[],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         symmetric=False,
         use_external_data_format=False,
@@ -75,23 +77,18 @@ class CalibraterBase:
         self.symmetric = symmetric
         self.use_external_data_format = use_external_data_format
 
-        # augment graph
         self.augment_model = None
-        self.augment_graph()
-
-        # Create InferenceSession
         self.infer_session = None
         self.execution_providers = ["CPUExecutionProvider"]
-        self._create_inference_session()
 
     def set_execution_providers(self, execution_providers=["CPUExecutionProvider"]):
         """
         reset the execution providers to execute the collect_data. It triggers to re-creating inference session.
         """
         self.execution_providers = execution_providers
-        self._create_inference_session()
+        self.create_inference_session()
 
-    def _create_inference_session(self):
+    def create_inference_session(self):
         """
         create an OnnxRuntime InferenceSession.
         """
@@ -119,7 +116,7 @@ class CalibraterBase:
         tensor_type_to_calibrate = set([TensorProto.FLOAT, TensorProto.FLOAT16])
 
         for node in model.graph.node:
-            if len(self.op_types_to_calibrate) == 0 or node.op_type in self.op_types_to_calibrate:
+            if not self.op_types_to_calibrate or node.op_type in self.op_types_to_calibrate:
                 for tensor_name in itertools.chain(node.input, node.output):
                     if tensor_name in value_infos.keys():
                         vi = value_infos[tensor_name]
@@ -163,7 +160,7 @@ class MinMaxCalibrater(CalibraterBase):
     def __init__(
         self,
         model,
-        op_types_to_calibrate=[],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         symmetric=False,
         use_external_data_format=False,
@@ -181,10 +178,10 @@ class MinMaxCalibrater(CalibraterBase):
         """
         super(MinMaxCalibrater, self).__init__(
             model,
-            op_types_to_calibrate,
-            augmented_model_path,
-            symmetric,
-            use_external_data_format,
+            op_types_to_calibrate=op_types_to_calibrate,
+            augmented_model_path=augmented_model_path,
+            symmetric=symmetric,
+            use_external_data_format=use_external_data_format,
         )
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
@@ -203,52 +200,37 @@ class MinMaxCalibrater(CalibraterBase):
         """
         model = clone_model_with_shape_infer(self.model)
 
-        added_nodes = []
-        added_outputs = []
-        tensors, value_infos = self.select_tensors_to_calibrate(model)
+        tensors, _ = self.select_tensors_to_calibrate(model)
+        reshape_shape_name = str(uuid.uuid4())
+        reshape_shape = numpy_helper.from_array(np.array([1], dtype=np.int64), reshape_shape_name)
+        model.graph.initializer.append(reshape_shape)
 
-        for tensor in tensors:
-
+        def add_reduce_min_max(tensor_name, reduce_op_name):
             # When doing ReduceMax/ReduceMin, ORT can't reduce on dim with value of 0 if 'keepdims' is false.
             # To make the code simple, we always let keepdims to be 1.
             keepdims = 1
 
-            # dim could be:
-            #   [dim_param: "batch_size", dim_value: 256, dim_value: 36, dim_value: 64],
-            #   [dim_value: 0],
-            #   ...
-            # Please see the definition of TensorShapeProto https://github.com/onnx/onnx/blob/master/onnx/onnx.proto#L651
-            dim = value_infos[tensor].type.tensor_type.shape.dim
-            shape = (1,) if len(dim) == 1 else tuple(1 for i in range(len(dim)))
-
-            # Adding ReduceMin nodes
-            reduce_min_name = tensor + "_ReduceMin"
-            reduce_min_node = onnx.helper.make_node(
-                "ReduceMin",
-                [tensor],
-                [tensor + "_ReduceMin"],
-                reduce_min_name,
-                keepdims=keepdims,
+            # Adding ReduceMin/ReduceMax nodes: ReduceMin/ReduceMax -> Reshape-> (output)
+            reduce_output = tensor_name + "_" + reduce_op_name
+            intermediate_output = reduce_output + "_Reshape"
+            reduce_node = onnx.helper.make_node(
+                reduce_op_name, [tensor_name], [intermediate_output], keepdims=keepdims, name=reduce_output
             )
 
-            added_nodes.append(reduce_min_node)
-            added_outputs.append(helper.make_tensor_value_info(reduce_min_node.output[0], TensorProto.FLOAT, shape))
-
-            # Adding ReduceMax nodes
-            reduce_max_name = tensor + "_ReduceMax"
-            reduce_max_node = onnx.helper.make_node(
-                "ReduceMax",
-                [tensor],
-                [tensor + "_ReduceMax"],
-                reduce_max_name,
-                keepdims=keepdims,
+            reshape_node = onnx.helper.make_node(
+                "Reshape",
+                inputs=[intermediate_output, reshape_shape_name],
+                outputs=[reduce_output],
+                name=intermediate_output,
             )
 
-            added_nodes.append(reduce_max_node)
-            added_outputs.append(helper.make_tensor_value_info(reduce_max_node.output[0], TensorProto.FLOAT, shape))
+            model.graph.node.extend([reduce_node, reshape_node])
+            model.graph.output.append(helper.make_tensor_value_info(reduce_output, TensorProto.FLOAT, [1]))
 
-        model.graph.node.extend(added_nodes)
-        model.graph.output.extend(added_outputs)
+        for tensor in tensors:
+            add_reduce_min_max(tensor, "ReduceMin")
+            add_reduce_min_max(tensor, "ReduceMax")
+
         onnx.save(
             model,
             self.augmented_model_path,
@@ -348,7 +330,7 @@ class HistogramCalibrater(CalibraterBase):
     def __init__(
         self,
         model,
-        op_types_to_calibrate=[],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
         method="percentile",
@@ -369,7 +351,11 @@ class HistogramCalibrater(CalibraterBase):
         :param percentile: A float number between [0, 100]. Default 99.99.
         """
         super(HistogramCalibrater, self).__init__(
-            model, op_types_to_calibrate, augmented_model_path, use_external_data_format
+            model,
+            op_types_to_calibrate=op_types_to_calibrate,
+            augmented_model_path=augmented_model_path,
+            symmetric=symmetric,
+            use_external_data_format=use_external_data_format,
         )
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
@@ -377,10 +363,10 @@ class HistogramCalibrater(CalibraterBase):
         self.model_original_outputs = set(output.name for output in self.model.graph.output)
         self.collector = None
         self.method = method
-        self.symmetric = symmetric
         self.num_bins = num_bins
         self.num_quantized_bins = num_quantized_bins
         self.percentile = percentile
+        self.tensors_to_calibrate = None
 
     def augment_graph(self):
         """
@@ -389,15 +375,11 @@ class HistogramCalibrater(CalibraterBase):
         """
         model = clone_model_with_shape_infer(self.model)
 
-        added_nodes = []
-        added_outputs = []
-        tensors, value_infos = self.select_tensors_to_calibrate(model)
+        self.tensors_to_calibrate, value_infos = self.select_tensors_to_calibrate(model)
+        for tensor in self.tensors_to_calibrate:
+            if tensor not in self.model_original_outputs:
+                model.graph.output.append(value_infos[tensor])
 
-        for tensor in tensors:
-            added_outputs.append(value_infos[tensor])
-
-        model.graph.node.extend(added_nodes)
-        model.graph.output.extend(added_outputs)
         onnx.save(
             model,
             self.augmented_model_path,
@@ -431,7 +413,7 @@ class HistogramCalibrater(CalibraterBase):
             for k, v in d.items():
                 merged_dict.setdefault(k, []).append(v)
 
-        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i not in self.model_original_outputs)
+        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i in self.tensors_to_calibrate)
 
         if not self.collector:
             self.collector = HistogramCollector(
@@ -460,7 +442,7 @@ class EntropyCalibrater(HistogramCalibrater):
     def __init__(
         self,
         model,
-        op_types_to_calibrate=[],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
         method="entropy",
@@ -494,7 +476,7 @@ class PercentileCalibrater(HistogramCalibrater):
     def __init__(
         self,
         model,
-        op_types_to_calibrate=[],
+        op_types_to_calibrate: Optional[Sequence[str]] = None,
         augmented_model_path="augmented_model.onnx",
         use_external_data_format=False,
         method="percentile",
@@ -588,14 +570,23 @@ class HistogramCollector(CalibrationDataCollector):
         for tensor, data_arr in name_to_arr.items():
             data_arr = np.asarray(data_arr)
             data_arr = data_arr.flatten()
+            if data_arr.size > 0:
+                min_value = np.min(data_arr)
+                max_value = np.max(data_arr)
+            else:
+                min_value = 0
+                max_value = 0
+
             data_arr = np.absolute(data_arr)  # only consider absolute value
 
             if tensor not in self.histogram_dict:
                 # first time it uses num_bins to compute histogram.
                 hist, hist_edges = np.histogram(data_arr, bins=self.num_bins)
-                self.histogram_dict[tensor] = (hist, hist_edges)
+                self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
             else:
                 old_histogram = self.histogram_dict[tensor]
+                old_min = old_histogram[2]
+                old_max = old_histogram[3]
                 old_hist = old_histogram[0]
                 old_hist_edges = old_histogram[1]
                 temp_amax = np.max(data_arr)
@@ -607,7 +598,7 @@ class HistogramCollector(CalibrationDataCollector):
                     old_hist_edges = np.hstack((old_hist_edges, new_bin_edges))
                 hist, hist_edges = np.histogram(data_arr, bins=old_hist_edges)
                 hist[: len(old_hist)] += old_hist
-                self.histogram_dict[tensor] = (hist, hist_edges)
+                self.histogram_dict[tensor] = (hist, hist_edges, min(old_min, min_value), max(old_max, max_value))
 
     def collect_value(self, name_to_arr):
         """
@@ -706,6 +697,7 @@ class HistogramCollector(CalibrationDataCollector):
             cdf = np.cumsum(hist / total)
             if self.symmetric:
                 idx_right = np.searchsorted(cdf, percentile / 100.0)
+
                 thresholds_dict[tensor] = (
                     -float(hist_edges[idx_right]),
                     float(hist_edges[idx_right]),
@@ -718,7 +710,12 @@ class HistogramCollector(CalibrationDataCollector):
                     float(hist_edges[idx_left]),
                     float(hist_edges[idx_right]),
                 )
-
+            min_value = histogram[2]
+            max_value = histogram[3]
+            if thresholds_dict[tensor][0] < min_value:
+                thresholds_dict[tensor] = (min_value, thresholds_dict[tensor][1])
+            if thresholds_dict[tensor][1] > max_value:
+                thresholds_dict[tensor] = (thresholds_dict[tensor][0], max_value)
             # Plot histogram for debug only
             if False:
                 apply_plot(hist, hist_edges)
@@ -835,25 +832,31 @@ class HistogramCollector(CalibrationDataCollector):
 
         min_kl_divergence_idx = np.argmin(kl_divergence)
         optimal_threshold = thresholds[min_kl_divergence_idx]
-
+        min_value = histogram[2]
+        max_value = histogram[3]
+        if optimal_threshold[0] < min_value:
+            optimal_threshold = (min_value, optimal_threshold[1])
+        if optimal_threshold[1] > max_value:
+            optimal_threshold = (optimal_threshold[0], max_value)
         return optimal_threshold
 
 
 def create_calibrator(
     model,
-    op_types_to_calibrate=[],
+    op_types_to_calibrate: Optional[Sequence[str]] = None,
     augmented_model_path="augmented_model.onnx",
     calibrate_method=CalibrationMethod.MinMax,
     use_external_data_format=False,
     extra_options={},
 ):
 
+    calibrator = None
     if calibrate_method == CalibrationMethod.MinMax:
         # default settings for min-max algorithm
         symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
         moving_average = False if "moving_average" not in extra_options else extra_options["moving_average"]
         averaging_constant = 0.01 if "averaging_constant" not in extra_options else extra_options["averaging_constant"]
-        return MinMaxCalibrater(
+        calibrator = MinMaxCalibrater(
             model,
             op_types_to_calibrate,
             augmented_model_path,
@@ -867,7 +870,7 @@ def create_calibrator(
         num_bins = 128 if "num_bins" not in extra_options else extra_options["num_bins"]
         num_quantized_bins = 128 if "num_quantized_bins" not in extra_options else extra_options["num_quantized_bins"]
         symmetric = False if "symmetric" not in extra_options else extra_options["symmetric"]
-        return EntropyCalibrater(
+        calibrator = EntropyCalibrater(
             model,
             op_types_to_calibrate,
             augmented_model_path,
@@ -881,7 +884,7 @@ def create_calibrator(
         num_bins = 2048 if "num_bins" not in extra_options else extra_options["num_bins"]
         percentile = 99.999 if "percentile" not in extra_options else extra_options["percentile"]
         symmetric = True if "symmetric" not in extra_options else extra_options["symmetric"]
-        return PercentileCalibrater(
+        calibrator = PercentileCalibrater(
             model,
             op_types_to_calibrate,
             augmented_model_path,
@@ -890,5 +893,10 @@ def create_calibrator(
             num_bins=num_bins,
             percentile=percentile,
         )
+
+    if calibrator:
+        calibrator.augment_graph()
+        calibrator.create_inference_session()
+        return calibrator
 
     raise ValueError("Unsupported calibration method {}".format(calibrate_method))

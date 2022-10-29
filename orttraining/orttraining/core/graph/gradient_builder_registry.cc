@@ -12,7 +12,8 @@ GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_co
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad,
                              const logging::Logger& logger,
-                             std::unordered_set<std::string>& stashed_tensors) {
+                             std::unordered_set<std::string>& stashed_tensors,
+                             std::unordered_map<std::string, std::vector<int64_t>>& python_op_input_requires_grads) {
   // REVIEW(bahuang): We don't have a version control for forward to backward op mapping.
   // Current SliceGrad(kMSDomain, 1) only supports Slice(kOnnxDomain, 10/11) because adding grad operator for versions
   // less than 9 is not supported and for Slice we have Slice-1, Slice-10 and Slice-11.
@@ -23,7 +24,7 @@ GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_co
 
   auto gradient_builder = GradientBuilderRegistry::GetInstance().MakeUnique(
       op_type, gradient_graph_config, graph, node, output_args_need_grad, input_args_need_grad, logger,
-      stashed_tensors);
+      stashed_tensors, python_op_input_requires_grads);
 
   ORT_ENFORCE(gradient_builder != nullptr, "The gradient builder has not been registered: ", node->OpType(),
               " for node ", node->Name());
@@ -44,6 +45,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   // Register gradient builders here.
   REGISTER_GRADIENT_BUILDER("Cast", GetCastGradient);
   REGISTER_GRADIENT_BUILDER("Sin", GetSinGradient);
+  REGISTER_GRADIENT_BUILDER("Cos", GetCosGradient);
   REGISTER_GRADIENT_BUILDER("Log", GetLogGradient);
   REGISTER_GRADIENT_BUILDER("Tanh", GetTanhGradient);
   REGISTER_GRADIENT_BUILDER("Sqrt", GetSqrtGradient);
@@ -72,6 +74,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Squeeze", GetSqueezeGradient);
   REGISTER_GRADIENT_BUILDER("Unsqueeze", GetUnsqueezeGradient);
   REGISTER_GRADIENT_BUILDER("Sigmoid", GetSigmoidGradient);
+  REGISTER_GRADIENT_BUILDER("QuickGelu", GetQuickGeluGradient);
   REGISTER_GRADIENT_BUILDER("Softmax", GetSoftmaxGradient);
   REGISTER_GRADIENT_BUILDER("LogSoftmax", GetLogSoftmaxGradient);
   REGISTER_GRADIENT_BUILDER("SoftmaxCrossEntropy", GetSoftmaxCrossEntropyGradient);

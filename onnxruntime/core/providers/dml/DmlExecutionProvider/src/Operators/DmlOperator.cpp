@@ -13,7 +13,7 @@ namespace Dml
     }
 
     void DmlOperator::SetDmlOperatorDesc(
-        const DML_OPERATOR_DESC& operatorDesc, 
+        const DML_OPERATOR_DESC& operatorDesc,
         const MLOperatorKernelCreationContext& kernelInfo
         )
     {
@@ -47,30 +47,43 @@ namespace Dml
 
         if (contextPrivate->IsDmlGraphNode())
         {
-            // Create an edge list using sentinels for unused edges, as required by the SetDmlOperator ABI
-            auto ReplaceUnusedEdgeIndicesWithSentinel = [](gsl::span<const std::optional<uint32_t>> indices)
+            MLOperatorGraphDesc operatorGraphDesc = {};
+            operatorGraphDesc.nodeCount = 1;
+            const DML_OPERATOR_DESC* opDescs{&operatorDesc};
+            operatorGraphDesc.nodesAsOpDesc = &opDescs;
+
+            std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+            for (uint32_t inputIndex = 0; inputIndex < m_kernelInputIndices.size(); inputIndex++)
             {
-                std::vector<uint32_t> ret;
-                ret.reserve(indices.size());
-                for (const std::optional<uint32_t>& index : indices)
+                if (m_kernelInputIndices[inputIndex].has_value())
                 {
-                    ret.push_back(index.has_value() ? index.value() : std::numeric_limits<uint32_t>::max());
+                    DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
+                    inputEdge.GraphInputIndex = *m_kernelInputIndices[inputIndex];
+                    inputEdge.ToNodeIndex = 0;
+                    inputEdge.ToNodeInputIndex = inputIndex;
+                    inputEdges.push_back(inputEdge);
                 }
+            }
+            operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
+            operatorGraphDesc.inputEdges = inputEdges.data();
 
-                return ret;
-            };
 
-            MLOperatorKernelDmlProperties properties = {};
-            auto kernelInputIndices = ReplaceUnusedEdgeIndicesWithSentinel(m_kernelInputIndices);
-            properties.dmlInputCount = static_cast<uint32_t>(kernelInputIndices.size());
-            properties.kernelInputIndices = kernelInputIndices.data();
-            
-            auto kernelOutputIndices = ReplaceUnusedEdgeIndicesWithSentinel(m_kernelOutputIndices);
-            properties.dmlOutputCount = static_cast<uint32_t>(kernelOutputIndices.size());
-            properties.kernelOutputIndices = kernelOutputIndices.data();
-            properties.allowHalfPrecisionComputation = AllowHalfPrecisionComputation();
+            std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
+            for (uint32_t outputIndex = 0; outputIndex < m_kernelOutputIndices.size(); outputIndex++)
+            {
+                if (m_kernelOutputIndices[outputIndex].has_value())
+                {
+                    DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
+                    outputEdge.FromNodeIndex = 0;
+                    outputEdge.FromNodeOutputIndex = outputIndex;
+                    outputEdge.GraphOutputIndex = (*m_kernelOutputIndices[outputIndex]);
+                    outputEdges.push_back(outputEdge);
+                }
+            }
+            operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
+            operatorGraphDesc.outputEdges = outputEdges.data();
 
-            ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(dmlOperator.Get(), &operatorDesc, &properties));
+            ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(&operatorGraphDesc));
         }
         else
         {
@@ -88,7 +101,106 @@ namespace Dml
 
                 m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
             }
-            
+
+            std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
+
+            ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
+                m_compiledOperator.Get(),
+                m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
+                gsl::make_span(initializationInputBindings)));
+        }
+    }
+
+    void DmlOperator::SetDmlOperatorGraphDesc(
+        const MLOperatorGraphDesc&& operatorGraphDesc,
+        const MLOperatorKernelCreationContext& kernelInfo
+        )
+    {
+        // Initialize should only be called once.
+        assert(m_compiledOperator == nullptr);
+
+        // DML doesn't support empty tensors. If an operator is still executable with empty tensors, the empty tensors
+        // should be removed or massaged depending on the definition.
+        for (const TensorDesc& desc : m_inputTensorDescs)
+        {
+            if (OperatorHelper::ContainsEmptyDimensions(desc.GetSizes()))
+            {
+                return;
+            }
+        }
+
+        for (const TensorDesc& desc : m_outputTensorDescs)
+        {
+            if (OperatorHelper::ContainsEmptyDimensions(desc.GetSizes()))
+            {
+                return;
+            }
+        }
+
+        // m_kernelInputIndices should be identity
+        for (uint32_t idx = 0; idx < m_kernelInputIndices.size(); idx++)
+        {
+            if (m_kernelInputIndices[idx] == std::nullopt || !kernelInfo.IsInputValid(*m_kernelInputIndices[idx]))
+            {
+                continue;
+            }
+            assert(m_kernelInputIndices[idx] == idx);
+        }
+
+        // m_kernelOutputIndices should be identity
+        for (uint32_t idx = 0; idx < m_kernelOutputIndices.size(); idx++)
+        {
+            if (m_kernelOutputIndices[idx] == std::nullopt || !kernelInfo.IsOutputValid(*m_kernelOutputIndices[idx]))
+            {
+                continue;
+            }
+            assert(m_kernelOutputIndices[idx] == idx);
+        }
+
+        ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
+        ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
+        if (contextPrivate->IsDmlGraphNode())
+        {
+            ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(&operatorGraphDesc));
+        }
+        else
+        {
+            DML_GRAPH_DESC graphDesc = {};
+            std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes(operatorGraphDesc.nodeCount);
+            std::vector<ComPtr<IDMLOperator>> dmlOperators(operatorGraphDesc.nodeCount);
+            std::vector<DML_OPERATOR_GRAPH_NODE_DESC> dmlOperatorGraphNodes(operatorGraphDesc.nodeCount);
+            std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(operatorGraphDesc.inputEdgeCount);
+            std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(operatorGraphDesc.outputEdgeCount);
+            std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(operatorGraphDesc.intermediateEdgeCount);
+
+            // DML Graph validator will check the validity of the graph. No need to check here.
+            ConvertToDmlGraphDesc(operatorGraphDesc,
+                                  graphDesc,
+                                  dmlOperators,
+                                  dmlOperatorGraphNodes,
+                                  dmlGraphNodes,
+                                  dmlInputEdges,
+                                  dmlOutputEdges,
+                                  dmlIntermediateEdges);
+
+            // compile the graph and create IDMLCompiledOperator
+            Microsoft::WRL::ComPtr<IDMLDevice1> dmlDevice1;
+            DMLX_THROW_IF_FAILED(m_dmlDevice->QueryInterface(IID_PPV_ARGS(&dmlDevice1)));
+            DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
+            ORT_THROW_IF_FAILED(dmlDevice1->CompileGraph(&graphDesc, executionFlags, IID_PPV_ARGS(&m_compiledOperator)));
+
+            UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
+            if (persistentResourceSize > 0)
+            {
+                ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
+                    static_cast<size_t>(persistentResourceSize),
+                    AllocatorRoundingMode::Enabled,
+                    m_persistentResource.GetAddressOf(),
+                    m_persistentResourcePoolingUnk.GetAddressOf()));
+
+                m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
+            }
+
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
 
             ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
@@ -99,7 +211,7 @@ namespace Dml
     }
 
     void DmlOperator::SetDmlOperatorDesc(
-        const DML_OPERATOR_DESC& operatorDesc, 
+        const DML_OPERATOR_DESC& operatorDesc,
         const MLOperatorKernelContext& kernelInfo
         )
     {
@@ -183,7 +295,7 @@ namespace Dml
             else
             {
                 m_inputTensorDescs.push_back(CreateTensorDescFromInput(
-                    kernelInfo, 
+                    kernelInfo,
                     *m_kernelInputIndices[i],
                     TensorAxis::DoNotCoerce,
                     TensorAxis::W,
@@ -205,13 +317,119 @@ namespace Dml
             else
             {
                 m_outputTensorDescs.push_back(CreateTensorDescFromOutput(
-                    kernelInfo, 
+                    kernelInfo,
                     *m_kernelOutputIndices[i],
                     TensorAxis::DoNotCoerce,
                     TensorAxis::W,
                     TensorAxis::RightAligned,
                     outputShape,
                     minDimensionCount));
+            }
+        }
+    }
+
+    void DmlOperator::InitializeWithShapes(
+        const MLOperatorKernelCreationContext& kernelInfo,
+        const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices,
+        const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices,
+        const std::optional<gsl::span<gsl::span<const uint32_t>>> inputShapes,
+        const std::optional<gsl::span<gsl::span<const uint32_t>>> outputShapes,
+        uint32_t minDimensionCount
+        )
+    {
+        if (kernelInputIndices)
+        {
+            m_kernelInputIndices = *kernelInputIndices;
+        }
+        else
+        {
+            m_kernelInputIndices.resize(kernelInfo.GetInputCount());
+            std::iota(m_kernelInputIndices.begin(), m_kernelInputIndices.end(), 0);
+        }
+
+        if (kernelOutputIndices)
+        {
+            m_kernelOutputIndices = *kernelOutputIndices;
+        }
+        else
+        {
+            m_kernelOutputIndices.resize(kernelInfo.GetOutputCount());
+            std::iota(m_kernelOutputIndices.begin(), m_kernelOutputIndices.end(), 0);
+        }
+
+        for (uint32_t i = 0; i < m_kernelInputIndices.size(); i++)
+        {
+            // Update m_kernelInputIndices to reflect optional tensors.
+            if (m_kernelInputIndices[i] == std::nullopt ||
+                !kernelInfo.IsInputValid(*m_kernelInputIndices[i]))
+            {
+                m_kernelInputIndices[i] = std::nullopt;
+                m_inputTensorDescs.push_back(TensorDesc());
+            }
+            else
+            {
+                auto edgeDesc = kernelInfo.GetInputEdgeDescription(*m_kernelInputIndices[i]);
+                assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
+
+                // prioritize the given input shapes
+                TensorDesc tensorDesc;
+                if (inputShapes.has_value() && i < (*inputShapes).size())
+                {
+                    tensorDesc = TensorDesc(
+                        edgeDesc.tensorDataType,
+                        (*inputShapes)[i], // desired
+                        (*inputShapes)[i], // original
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        minDimensionCount,
+                        0
+                    );
+                }
+                else if (kernelInfo.HasTensorShapeDescription())
+                {
+                    std::vector<uint32_t> actualTensorShape = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(*m_kernelInputIndices[i]);
+                    tensorDesc = TensorDesc(
+                        edgeDesc.tensorDataType,
+                        actualTensorShape, // desired
+                        actualTensorShape, // original
+                        TensorAxis::DoNotCoerce,
+                        TensorAxis::W,
+                        TensorAxis::RightAligned,
+                        minDimensionCount,
+                        0
+                    );
+                }
+                m_inputTensorDescs.push_back(tensorDesc);
+            }
+        }
+
+        for (uint32_t i = 0; i < m_kernelOutputIndices.size(); i++)
+        {
+            // Update m_kernelOutputIndices to reflect optional tensors.
+            if (m_kernelOutputIndices[i] == std::nullopt ||
+                !kernelInfo.IsOutputValid(*m_kernelOutputIndices[i]))
+            {
+                m_kernelOutputIndices[i] = std::nullopt;
+                m_outputTensorDescs.push_back(TensorDesc());
+            }
+            else
+            {
+                std::optional<gsl::span<const uint32_t>> outputShape;
+                if (outputShapes.has_value() && i < (*outputShapes).size())
+                {
+                    outputShape = (*outputShapes)[i];
+                }
+
+                m_outputTensorDescs.push_back(CreateTensorDescFromOutput(
+                    kernelInfo,
+                    *m_kernelOutputIndices[i],
+                    TensorAxis::DoNotCoerce,
+                    TensorAxis::W,
+                    TensorAxis::RightAligned,
+                    outputShape,
+                    minDimensionCount
+                ));
             }
         }
     }
@@ -231,7 +449,7 @@ namespace Dml
     bool DmlOperator::AllowHalfPrecisionComputation() const
     {
         // Most of our operators work with float data, but some do not. In those cases
-        // no input params are float tensors. This function returns true if the operator 
+        // no input params are float tensors. This function returns true if the operator
         // works with at least one float16 tensor and has no tensors of float32 type
         bool usesFloat16Tensors = false;
 
@@ -464,7 +682,7 @@ namespace Dml
         }
 
         auto outputShape = outputShapeDescription.GetOutputTensorShape(index);
-        
+
         return TensorDesc(
             edgeDesc.tensorDataType,
             tensorShape ? *tensorShape : outputShape,
@@ -475,6 +693,54 @@ namespace Dml
             minDimensionCount,
             0
             );
+    }
+
+    void DmlOperator::ConvertToDmlGraphDesc(const MLOperatorGraphDesc& operatorGraphDesc,
+                                            _Out_ DML_GRAPH_DESC& graphDesc,
+                                            _Inout_ std::vector<ComPtr<IDMLOperator>>& dmlOperators,
+                                            _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
+                                            _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
+                                            _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
+                                            _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
+                                            _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges)
+    {
+        graphDesc.InputCount = gsl::narrow_cast<uint32_t>(m_kernelInputIndices.size());
+        graphDesc.OutputCount = gsl::narrow_cast<uint32_t>(m_kernelOutputIndices.size());
+
+        // set the graph nodes
+        graphDesc.NodeCount = operatorGraphDesc.nodeCount;
+        for (size_t i = 0; i < graphDesc.NodeCount; ++i)
+        {
+            // Create the operator.
+            ORT_THROW_IF_FAILED(m_dmlDevice->CreateOperator(operatorGraphDesc.nodesAsOpDesc[i], IID_PPV_ARGS(&dmlOperators[i])));
+            dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{dmlOperators[i].Get()};
+            dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
+        }
+        graphDesc.Nodes = dmlGraphNodes.data();
+
+        // set the input edges
+        graphDesc.InputEdgeCount = operatorGraphDesc.inputEdgeCount;
+        for (size_t i = 0; i < operatorGraphDesc.inputEdgeCount; ++i)
+        {
+            dmlInputEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INPUT, &operatorGraphDesc.inputEdges[i]};
+        }
+        graphDesc.InputEdges = dmlInputEdges.data();
+
+        // set the output edges
+        graphDesc.OutputEdgeCount = operatorGraphDesc.outputEdgeCount;
+        for (size_t i = 0; i < operatorGraphDesc.outputEdgeCount; ++i)
+        {
+            dmlOutputEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_OUTPUT, &operatorGraphDesc.outputEdges[i]};
+        }
+        graphDesc.OutputEdges = dmlOutputEdges.data();
+
+        // set the intermediate edges
+        graphDesc.IntermediateEdgeCount = operatorGraphDesc.intermediateEdgeCount;
+        for (size_t i = 0; i < operatorGraphDesc.intermediateEdgeCount; ++i)
+        {
+            dmlIntermediateEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INTERMEDIATE, &operatorGraphDesc.intermediateEdges[i]};
+        }
+        graphDesc.IntermediateEdges = dmlIntermediateEdges.data();
     }
 
 } // namespace Dml

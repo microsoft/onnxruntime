@@ -6,12 +6,20 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_op_type_order
+from onnx import TensorProto, helper, numpy_helper
+from op_test_utils import (
+    TestDataFeeds,
+    check_model_correctness,
+    check_op_type_count,
+    check_op_type_order,
+    create_clip_node,
+)
 
 from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantizationMode, QuantType, quantize_static
 
@@ -93,7 +101,7 @@ class TestQDQExtraOptions(unittest.TestCase):
             {
                 "ActivationSymmetric": True,
                 "AddQDQPairToWeight": True,
-                "OpTypesToExcludeOutputQuantizatioin": [],
+                "OpTypesToExcludeOutputQuantization": [],
             },
         )  # extra_options
         quantizer.quantize_model()
@@ -145,7 +153,6 @@ class TestQDQExtraOptions(unittest.TestCase):
         initializers.append(onnx.numpy_helper.from_array(matmul_weight_data_1, name="Q"))
         matmul_weight_data_2 = np.random.normal(0, 0.1, [5, 5]).astype(np.float32)
         initializers.append(onnx.numpy_helper.from_array(matmul_weight_data_2, name="R"))
-        matmul_weight_data_3 = np.random.normal(0, 0.1, [5, 5]).astype(np.float32)
         initializers.append(onnx.numpy_helper.from_array(matmul_weight_data_2, name="S"))
 
         add_node = onnx.helper.make_node("Add", ["L", "P"], ["T"], name="Add")
@@ -195,7 +202,7 @@ class TestQDQExtraOptions(unittest.TestCase):
             {
                 "ActivationSymmetric": True,
                 "AddQDQPairToWeight": True,
-                "OpTypesToExcludeOutputQuantizatioin": op_types_to_quantize,
+                "OpTypesToExcludeOutputQuantization": op_types_to_quantize,
                 "DedicatedQDQPair": True,
             },
         )  # extra_options
@@ -208,28 +215,36 @@ class TestQDQExtraOptions(unittest.TestCase):
         # QDQ pair shoud not be added to node's output
         for node in quantizer.model.nodes():
             if node.name == "MatMul1":
-                self.assertTrue("T_DequantizeLinear_1" in node.input)
-            if node.name == "MatMul2":
-                self.assertTrue("T_DequantizeLinear_2" in node.input)
-            if node.name == "MatMul3":
-                self.assertTrue("T_DequantizeLinear_3" in node.input)
-            if node.name == "Add":
-                for input in node.input:
-                    self.assertTrue("DequantizeLinear" not in input)
+                self.assertIn("T_DequantizeLinear_Output_1", node.input)
+            elif node.name == "MatMul2":
+                self.assertIn("T_DequantizeLinear_Output_2", node.input)
+            elif node.name == "MatMul3":
+                self.assertIn("T_DequantizeLinear_Output_3", node.input)
+            elif node.name == "Add":
+                self.assertNotIn("L_DequantizeLinear_Output", node.input)
 
             # QDQ pair shoud not be added to MatMul's output
             if node.op_type == "QuantizeLinear":
-                self.assertTrue(
-                    node.input[0]
-                    not in [
-                        "M_QuantizeLinearInput",
-                        "N_QuantizeLinearInput",
-                        "O_QuantizeLinearInput",
-                    ]
+                self.assertNotIn(
+                    node.input[0],
+                    {
+                        "M_QuantizeLinear_Input",
+                        "N_QuantizeLinear_Input",
+                        "O_QuantizeLinear_Input",
+                    },
                 )
 
 
 class TestQDQFormatConv(TestQDQFormat):
+    def check_per_channel_counts(self, model_path, channel_count: int, axis: int = 0):
+        model = onnx.load(Path(model_path))
+        for initializer in model.graph.initializer:
+            dims = initializer.dims
+            # skip if initializer is not a weight
+            if len(dims) > 0:
+                self.assertGreater(len(dims), axis)
+                self.assertEqual(channel_count, dims[axis])
+
     def construct_model_conv(self, output_model_path, input_shape, weight_shape, output_shape, has_bias):
         #    (input)
         #      |
@@ -275,8 +290,9 @@ class TestQDQFormatConv(TestQDQFormat):
         model_fp32_path = "conv_fp32.{}.{}.onnx".format(has_bias, per_channel)
         model_int8_qdq_path = "conv_quant_qdq.{}.{}.onnx".format(has_bias, per_channel)
         model_int8_qop_path = "conv_quant_qop.{}.{}.onnx".format(has_bias, per_channel)
+        channel_count = 16
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
-        self.construct_model_conv(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31], has_bias)
+        self.construct_model_conv(model_fp32_path, [1, 8, 33, 33], [channel_count, 8, 3, 3], [1, 16, 31, 31], has_bias)
         quantize_static(
             model_fp32_path,
             model_int8_qdq_path,
@@ -286,6 +302,7 @@ class TestQDQFormatConv(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            optimize_model=False,
         )
         data_reader.rewind()
         qdq_nodes = {
@@ -294,6 +311,8 @@ class TestQDQFormatConv(TestQDQFormat):
             "DequantizeLinear": 4 if has_bias else 3,
         }
         check_op_type_count(self, model_int8_qdq_path, **qdq_nodes)
+        if per_channel:
+            self.check_per_channel_counts(model_int8_qdq_path, channel_count)
         check_model_correctness(self, model_fp32_path, model_int8_qdq_path, data_reader.get_next())
 
         data_reader.rewind()
@@ -306,6 +325,7 @@ class TestQDQFormatConv(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            optimize_model=False,
         )
         data_reader.rewind()
         qop_nodes = {"QLinearConv": 1, "QuantizeLinear": 1, "DequantizeLinear": 1}
@@ -348,14 +368,7 @@ class TestQDQFormatConvClip(TestQDQFormat):
         conv_node = onnx.helper.make_node("Conv", conv_inputs, conv_outputs, name=conv_name)
 
         # make Clip node
-        clip_min_name = "clip_min"
-        clip_max_name = "clip_max"
-        clip_inputs = [conv_outputs[0], clip_min_name, clip_max_name]
-        clip_outputs = ["clip_output"]
-        clip_name = "clip_node"
-        initializers.append(onnx.numpy_helper.from_array(np.array(-1.0, dtype=np.float32), name=clip_min_name))
-        initializers.append(onnx.numpy_helper.from_array(np.array(1.0, dtype=np.float32), name=clip_max_name))
-        clip_node = onnx.helper.make_node("Clip", clip_inputs, clip_outputs, name=clip_name)
+        clip_node = create_clip_node(conv_outputs[0], "clip_output", "clip_node", initializers)
 
         # make Identity node
         reshape_name = "reshape_node"
@@ -397,6 +410,7 @@ class TestQDQFormatConvClip(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            optimize_model=False,
         )
         data_reader.rewind()
         # topo sort check
@@ -427,6 +441,7 @@ class TestQDQFormatConvClip(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            optimize_model=False,
         )
         data_reader.rewind()
         qop_nodes = {"QLinearConv": 1, "QuantizeLinear": 1, "DequantizeLinear": 1}
@@ -441,7 +456,74 @@ class TestQDQFormatConvClip(TestQDQFormat):
         self.verify(True, False)  # per_channel:True, is_quant_type_int8:False
 
 
+def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
+    """
+    Helper function to generate initializers for test inputs
+    """
+    tensor = np.random.normal(0, 0.3, tensor_shape).astype(tensor_dtype)
+    init = numpy_helper.from_array(tensor, input_name)
+    return init
+
+
+def construct_relu_conv_model(test_model_path: str) -> None:
+    """ Create an ONNX model shaped as:
+    ```
+       (input)
+          |
+         Relu1
+         /   \
+      Conv1   \
+        |      \
+      Relu2  Conv3
+        |      |
+      Conv2    |
+        \      /
+          Add
+           |
+          (AddOut)
+    ```
+    """
+
+    input_vi = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 1, 3])
+    output_vi = helper.make_tensor_value_info("AddOut", TensorProto.FLOAT, [1, 3, 1, 3])
+    w1 = generate_input_initializer([3, 3, 1, 1], np.float32, "W1")
+    b1 = generate_input_initializer([3], np.float32, "B1")
+    w3 = generate_input_initializer([3, 3, 1, 1], np.float32, "W3")
+    b3 = generate_input_initializer([3], np.float32, "B3")
+    w5 = generate_input_initializer([3, 3, 1, 1], np.float32, "W5")
+    b5 = generate_input_initializer([3], np.float32, "B5")
+    relu_node_1 = helper.make_node("Relu", ["input"], ["Relu1Out"], name="Relu1")
+    conv_node_1 = helper.make_node("Conv", ["Relu1Out", "W1", "B1"], ["Conv1Out"], name="Conv1")
+    relu_node_2 = helper.make_node("Relu", ["Conv1Out"], ["Relu2Out"], name="Relu2")
+    conv_node_2 = helper.make_node("Conv", ["Relu2Out", "W3", "B3"], ["Conv2Out"], name="Conv2")
+    conv_node_3 = helper.make_node("Conv", ["Relu1Out", "W5", "B5"], ["Conv3Out"], name="Conv3")
+    add_node = helper.make_node("Add", ["Conv2Out", "Conv3Out"], ["AddOut"], name="Add")
+
+    graph = helper.make_graph(
+        [relu_node_1, conv_node_1, relu_node_2, conv_node_2, conv_node_3, add_node],
+        "test_graph_4",
+        [input_vi],
+        [output_vi],
+    )
+    graph.initializer.add().CopyFrom(w1)
+    graph.initializer.add().CopyFrom(b1)
+    graph.initializer.add().CopyFrom(w3)
+    graph.initializer.add().CopyFrom(b3)
+    graph.initializer.add().CopyFrom(w5)
+    graph.initializer.add().CopyFrom(b5)
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+    onnx.save(model, test_model_path)
+
+
 class TestQDQFormatConvRelu(TestQDQFormat):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="test_qdq_format_conv_relu")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
+
     def construct_model_conv_relu(self, output_model_path, input_shape, weight_shape, output_shape):
         #    (input)
         #      |
@@ -463,13 +545,13 @@ class TestQDQFormatConvRelu(TestQDQFormat):
         initializers.append(onnx.numpy_helper.from_array(conv_weight_data, name=weight_name))
         conv_node = onnx.helper.make_node("Conv", conv_inputs, conv_outputs, name=conv_name)
 
-        # make Clip node
+        # make Relu node
         relu_node = onnx.helper.make_node("Relu", conv_outputs, [output_name], name="Relu")
 
         # make graph
         input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, input_shape)
         output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, output_shape)
-        graph_name = "QDQ_Test_Conv_clip"
+        graph_name = "QDQ_Test_Conv_Relu"
         graph = helper.make_graph(
             [conv_node, relu_node],
             graph_name,
@@ -484,9 +566,9 @@ class TestQDQFormatConvRelu(TestQDQFormat):
 
     def verify(self, per_channel, is_quant_type_int8):
         np.random.seed(1)
-        model_fp32_path = "conv_relu_fp32.{}.onnx".format(per_channel)
-        model_int8_qdq_path = "conv_relu_quant_qdq.{}.onnx".format(per_channel)
-        model_int8_qop_path = "conv_relu_quant_qop.{}.onnx".format(per_channel)
+        model_fp32_path = str(Path(self._tmp_model_dir.name) / "conv_relu_fp32.{}.onnx".format(per_channel))
+        model_int8_qdq_path = str(Path(self._tmp_model_dir.name) / "conv_relu_quant_qdq.{}.onnx".format(per_channel))
+        model_int8_qop_path = str(Path(self._tmp_model_dir.name) / "conv_relu_quant_qop.{}.onnx".format(per_channel))
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})
         self.construct_model_conv_relu(model_fp32_path, [1, 8, 33, 33], [16, 8, 3, 3], [1, 16, 31, 31])
         quantize_static(
@@ -498,6 +580,7 @@ class TestQDQFormatConvRelu(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            optimize_model=False,
         )
         data_reader.rewind()
         # topo sort check
@@ -525,6 +608,7 @@ class TestQDQFormatConvRelu(TestQDQFormat):
             reduce_range=per_channel,
             activation_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
             weight_type=QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+            optimize_model=False,
         )
         data_reader.rewind()
         qop_nodes = {"QLinearConv": 1, "QuantizeLinear": 1, "DequantizeLinear": 1}
@@ -537,6 +621,80 @@ class TestQDQFormatConvRelu(TestQDQFormat):
 
         self.verify(False, False)  # per_channel:False, is_quant_type_int8:False
         self.verify(True, False)  # per_channel:True, is_quant_type_int8:False
+
+    def test_quantize_relu_conv(self):
+        float_model_path = str(Path(self._tmp_model_dir.name) / "float_relu_convs_model.onnx")
+        construct_relu_conv_model(float_model_path)
+        data_reader = self.input_feeds(2, {"input": [1, 3, 1, 3]})
+
+        qdq_model_path = str(Path(self._tmp_model_dir.name) / "qdq_relu_convs_model.onnx")
+        quantize_static(
+            float_model_path,
+            qdq_model_path,
+            data_reader,
+            quant_format=QuantFormat.QDQ,
+            per_channel=False,
+            reduce_range=False,
+            activation_type=QuantType.QInt8,
+            weight_type=QuantType.QInt8,
+            optimize_model=False,
+        )
+
+
+class TestQDQRemovableActivation(TestQDQFormat):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.quant.activation")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
+
+    def construct_model_clip_relu(self, output_model_path, input_shape, output_shape):
+        #    (input)
+        #      |
+        #     Clip
+        #      |
+        #     Relu
+        #      |
+        #    (output)
+        input_name = "input"
+        output_name = "output"
+        initializers = []
+
+        # make Clip node
+        clip_output_name = "clip_output"
+        clip_node = create_clip_node(input_name, clip_output_name, "clip_node", initializers)
+
+        # make Relu node
+        relu_node = onnx.helper.make_node("Relu", [clip_output_name], [output_name], name="Relu")
+
+        # make graph
+        input_tensor = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, input_shape)
+        output_tensor = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, output_shape)
+        graph_name = "QDQ_Test_Clip_Relu"
+        graph = helper.make_graph(
+            [clip_node, relu_node],
+            graph_name,
+            [input_tensor],
+            [output_tensor],
+            initializer=initializers,
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model.ir_version = 7  # use stable onnx ir version
+
+        onnx.save(model, output_model_path)
+
+    def test_activation_only(self):
+        float_model_path = str(Path(self._tmp_model_dir.name) / "float_relu_convs_model.onnx")
+        self.construct_model_clip_relu(float_model_path, [1, 3, 1, 3], [1, 3, 1, 3])
+        data_reader = self.input_feeds(2, {"input": [1, 3, 1, 3]})
+
+        qdq_model_path = str(Path(self._tmp_model_dir.name) / "qdq_relu_convs_model.onnx")
+        quantize_static(float_model_path, qdq_model_path, data_reader, optimize_model=False)
+
+        qop_nodes = {"Clip": 1, "Relu": 1, "QuantizeLinear": 0, "DequantizeLinear": 0}
+        check_op_type_count(self, qdq_model_path, **qop_nodes)
 
 
 if __name__ == "__main__":

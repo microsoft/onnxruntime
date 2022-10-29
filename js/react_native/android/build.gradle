@@ -24,7 +24,7 @@ android {
   compileSdkVersion getExtOrIntegerDefault('compileSdkVersion')
   buildToolsVersion getExtOrDefault('buildToolsVersion')
   defaultConfig {
-    minSdkVersion 24
+    minSdkVersion getExtOrIntegerDefault('minSdkVersion')
     targetSdkVersion getExtOrIntegerDefault('targetSdkVersion')
     versionCode 1
     versionName "1.0"
@@ -132,5 +132,7 @@ dependencies {
 
   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
 
-  implementation "com.microsoft.onnxruntime:onnxruntime-mobile:latest.integration@aar"
+  // Mobile build:
+  // implementation "com.microsoft.onnxruntime:onnxruntime-mobile:latest.integration@aar"
+  implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
 }

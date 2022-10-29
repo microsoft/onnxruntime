@@ -123,7 +123,7 @@ namespace Dml
             }
         }
     } // namespace ActivationHelper
-    
+
     namespace FusionHelpers
     {
         struct OperatorInfo
@@ -148,6 +148,8 @@ namespace Dml
             OperatorInfo{ "ConvTranspose",             onnxruntime::kOnnxDomain, OnnxOperatorSet11::sc_sinceVer_ConvTranspose },
             OperatorInfo{ "BatchNormalization",        onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_BatchNormalization },
             OperatorInfo{ "BatchNormalization",        onnxruntime::kOnnxDomain, OnnxOperatorSet9::sc_sinceVer_BatchNormalization },
+            OperatorInfo{ "BatchNormalization",        onnxruntime::kOnnxDomain, OnnxOperatorSet14::sc_sinceVer_BatchNormalization },
+            OperatorInfo{ "BatchNormalization",        onnxruntime::kOnnxDomain, OnnxOperatorSet15::sc_sinceVer_BatchNormalization },
             OperatorInfo{ "InstanceNormalization",     onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_InstanceNormalization },
             OperatorInfo{ "MeanVarianceNormalization", onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_MeanVarianceNormalization },
             OperatorInfo{ "MeanVarianceNormalization", onnxruntime::kOnnxDomain, OnnxOperatorSet9::sc_sinceVer_MeanVarianceNormalization },
@@ -163,6 +165,7 @@ namespace Dml
             // The filter for activation functions maps to what DML's fused op internally fuses at the shader level.
             OperatorInfo{ "Add",                       onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Add, {"Relu", "LeakyRelu"} },
             OperatorInfo{ "Add",                       onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Add, {"Relu", "LeakyRelu"} },
+            OperatorInfo{ "Add",                       onnxruntime::kOnnxDomain, OnnxOperatorSet14::sc_sinceVer_Add, {"Relu", "LeakyRelu"} },
             OperatorInfo{ "Sum",                       onnxruntime::kOnnxDomain, OnnxOperatorSet8::sc_sinceVer_Sum, {"Relu", "LeakyRelu"}, 2 },
             OperatorInfo{ "Sum",                       onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Sum, {"Relu", "LeakyRelu"}, 2 },
         };
@@ -179,6 +182,7 @@ namespace Dml
             OperatorInfo{ "ScaledTanh",         onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_ScaledTanh },
             OperatorInfo{ "Relu",               onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Relu },
             OperatorInfo{ "Relu",               onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Relu },
+            OperatorInfo{ "Relu",               onnxruntime::kOnnxDomain, OnnxOperatorSet14::sc_sinceVer_Relu },
             OperatorInfo{ "LeakyRelu",          onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_LeakyRelu },
             OperatorInfo{ "PRelu",              onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_PRelu },
             OperatorInfo{ "PRelu",              onnxruntime::kOnnxDomain, OnnxOperatorSet9::sc_sinceVer_PRelu },
@@ -221,7 +225,7 @@ namespace Dml
                 return std::nullopt;
             }
 
-            if (!opIt->activationFilter.empty() && 
+            if (!opIt->activationFilter.empty() &&
                 std::find(opIt->activationFilter.begin(), opIt->activationFilter.end(), activationOpType) ==  opIt->activationFilter.end())
             {
                 return std::nullopt;
@@ -232,8 +236,8 @@ namespace Dml
                 return std::nullopt;
             }
 
-            // All fused ops just have "Fused" prepended to their name (e.g. "Conv" -> "FusedConv").
-            std::string fusedOpType = std::string("Fused").append(candidateOpType);
+            // All fused ops have "DmlFused" prepended to their name (e.g. "Conv" -> "DmlFusedConv").
+            std::string fusedOpType = std::string("DmlFused").append(candidateOpType);
 
             return FusedOpProperties{ std::move(fusedOpType), onnxruntime::kMSDmlDomain };
         }
@@ -446,7 +450,7 @@ namespace Dml
             return *index;
         }
         ML_INVALID_ARGUMENT("Unknown interpolation mode");
-        return (DML_INTERPOLATION_MODE)0;
+        return static_cast<DML_INTERPOLATION_MODE>(0);
     }
     #pragma warning(pop)
 
@@ -464,7 +468,7 @@ namespace Dml
             return *index;
         }
         ML_INVALID_ARGUMENT("Unknown depth/space order");
-        return (DML_DEPTH_SPACE_ORDER)0;
+        return static_cast<DML_DEPTH_SPACE_ORDER>(0);
     }
     #pragma warning(pop)
 

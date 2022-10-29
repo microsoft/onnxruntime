@@ -102,9 +102,9 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   // TODO! refine allocation size for each case.
   cudaMemset(reorganized_w_data.get(), 0, w_size * sizeof(T));
 
-  const T* W_data = W->template Data<T>();
-  const T* R_data = R->template Data<T>();
-  const T* B_data = B == nullptr ? nullptr : B->template Data<T>();
+  const T* W_data = W->Data<T>();
+  const T* R_data = R->Data<T>();
+  const T* B_data = B == nullptr ? nullptr : B->Data<T>();
 
   ORT_RETURN_IF_ERROR(SetCudnnRnnWeightBias(CudnnHandle(), rnn_desc, fake_x_desc, target_w_desc,
                                             reorganized_w_data.get(), W_data, R_data, B_data));
@@ -192,7 +192,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(y_c_desc.Set(dims_hxy, CudnnTensor::GetDataType<CudaT>()));
 
   IAllocatorUniquePtr<T> x_reversed_data;
-  const T* x_data = X->template Data<T>();
+  const T* x_data = X->Data<T>();
   if (reverse_) {
     // reverse input data
     x_reversed_data = GetScratchBuffer<T>(seq_length * batch_size * input_size);
@@ -207,21 +207,21 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   const T* x_data_input = reverse_ ? x_reversed_data.get() : x_data;
 
-  const T* hx_data = (initial_h == nullptr) ? nullptr : initial_h->template Data<T>();
-  const T* cx_data = (initial_c == nullptr) ? nullptr : initial_c->template Data<T>();
-  T* y_h_data = (Y_h == nullptr) ? nullptr : Y_h->template MutableData<T>();
-  T* y_c_data = (Y_c == nullptr) ? nullptr : Y_c->template MutableData<T>();
+  const T* hx_data = (initial_h == nullptr) ? nullptr : initial_h->Data<T>();
+  const T* cx_data = (initial_c == nullptr) ? nullptr : initial_c->Data<T>();
+  T* y_h_data = (Y_h == nullptr) ? nullptr : Y_h->MutableData<T>();
+  T* y_c_data = (Y_c == nullptr) ? nullptr : Y_c->MutableData<T>();
   int64_t output_size = seq_length * num_directions_ * batch_size * hidden_size_;
   T* y_data = nullptr;
   IAllocatorUniquePtr<T> y_alloc_data;
   if (Y != nullptr) {
-    y_data = Y->template MutableData<T>();
+    y_data = Y->MutableData<T>();
   } else {
     y_alloc_data = GetScratchBuffer<T>(output_size);
     y_data = y_alloc_data.get();
   }
 
-  const int32_t* sequence_lens_data = (sequence_lens == nullptr) ? nullptr : sequence_lens->template Data<int32_t>();
+  const int32_t* sequence_lens_data = (sequence_lens == nullptr) ? nullptr : sequence_lens->Data<int32_t>();
 
   CudnnRNN rnn_desc;
   ORT_RETURN_IF_ERROR(rnn_desc.Set(CudnnHandle(),
@@ -249,7 +249,7 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   size_t workspace_bytes;
   CUDNN_RETURN_IF_ERROR(cudnnGetRNNWorkspaceSize(CudnnHandle(), rnn_desc, gsl::narrow_cast<int>(seq_length), x_desc.data(), &workspace_bytes));
   auto workspace_cuda = GetScratchBuffer<void>(workspace_bytes);
-  int32_t zero_seq_count = 0;
+  int64_t zero_seq_count = 0;
   std::vector<int32_t> zero_seq_index_cache(batch_size, 0);
   int64_t zero_seq_index_cache_size = 0;
 
@@ -291,8 +291,8 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (zero_seq_count && num_directions_ > 1) {
       zero_seq_index_cache_size = zero_seq_count * num_directions_;
       zero_seq_index_cache.resize(zero_seq_index_cache_size);
-      for (int i = 0; i < zero_seq_count; ++i) {
-        zero_seq_index_cache[zero_seq_count + i] = static_cast<int32_t>(batch_size + zero_seq_index_cache[i]);
+      for (int64_t i = 0; i < zero_seq_count; ++i) {
+        zero_seq_index_cache[static_cast<size_t>(zero_seq_count) + i] = static_cast<int32_t>(batch_size + zero_seq_index_cache[i]);
       }
     }
 

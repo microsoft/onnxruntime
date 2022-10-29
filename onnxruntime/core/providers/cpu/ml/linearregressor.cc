@@ -28,7 +28,7 @@ LinearRegressor::LinearRegressor(const OpKernelInfo& info)
 }
 
 // Use GEMM for the calculations, with broadcasting of intercepts
-// https://github.com/onnx/onnx/blob/master/docs/Operators.md#Gemm
+// https://github.com/onnx/onnx/blob/main/docs/Operators.md#Gemm
 //
 // X: [num_batches, num_features]
 // coefficients_: [num_targets, num_features]

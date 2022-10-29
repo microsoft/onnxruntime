@@ -1,0 +1,25 @@
+path_classifiers:
+  library:
+    - exclude: cmake
+
+queries:
+  - include: "*"
+
+extraction:
+  cpp:
+    prepare:
+      packages:
+        - ninja-build
+    after_prepare:
+      # Install cmake
+      - mkdir custom_cmake
+      - wget --quiet -O - "https://github.com/Kitware/CMake/releases/download/v3.23.1/cmake-3.23.1-linux-x86_64.tar.gz" | tar --strip-components=1 -xz -C custom_cmake
+      - "export PATH=$(pwd)/custom_cmake/bin:${PATH}"
+    index:
+      build_command:
+        - ./build.sh --cmake_generator Ninja --config Debug --skip_submodule_sync --build_shared_lib --parallel --skip_tests --minimal_build --disable_exceptions --enable_training_ops
+  csharp:
+    index:
+      solution: ["csharp/OnnxRuntime.CSharp.sln"]
+      buildless: true
+      nuget_restore: true

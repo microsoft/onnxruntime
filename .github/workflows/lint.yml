@@ -13,7 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: reviewdog/action-black@v3
+      - name: flake8
+        uses: reviewdog/action-flake8@v3
         with:
           github_token: ${{ secrets.github_token }}
           # Change reviewdog reporter if you need [github-pr-check, github-check, github-pr-review].
@@ -22,19 +23,12 @@ jobs:
           # GitHub Status Check won't become failure with a warning.
           level: error
           filter_mode: file
-      - uses: reviewdog/action-flake8@v3
-        with:
-          github_token: ${{ secrets.github_token }}
-          reporter: github-pr-check
-          level: error
-          filter_mode: file
       - name: pyflakes
         uses: reviewdog/action-pyflakes@v1
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: warning
-          filter_mode: file
       - name: misspell # Check spellings as well
         uses: reviewdog/action-misspell@v1
         with:
@@ -50,14 +44,22 @@ jobs:
           reporter: github-pr-check
           level: info
           filter_mode: file
-      - name: markdownlint
-        uses: reviewdog/action-markdownlint@v0.7
+      - name: pyright
+        uses: jordemort/action-pyright@v1
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
-          level: info
-          filter_mode: file
-          markdownlint_flags: ". --disable MD013 MD041 MD033 MD034"
+          level: warning
+          filter_mode: added
+          lib: true
+      - name: pylint
+        uses: dciborow/action-pylint@0.0.7
+        with:
+          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-check
+          level: warning
+          filter_mode: diff_context
+          glob_pattern: "**/*.py"
 
   lint-python-format:
     # Separated black/isort from other Python linters because we want this job to
@@ -79,12 +81,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
+      - name: Install ninja
+        run: python -m pip install --upgrade ninja
+      - name: Generate compile_commands.json
+        run: |
+          python tools/ci_build/build.py \
+            --cmake_generator "Ninja" \
+            --build_dir build \
+            --update \
+            --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - name: Generate ONNX protobuf files
+        run: cmake --build build/Debug --config Debug --target onnx_proto
+#       - name: Run clang-tidy
+#         uses: ZedThree/clang-tidy-review@526cbfb043719639f1ebdeedae0cc1eacd219d8f
+#         with:
+#           token: ${{ secrets.github_token }}
+#           build_dir: "build/Debug"
+#           config_file: ".clang-tidy"
+#           lgtm_comment_body: ""
       - uses: reviewdog/action-cpplint@master
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: warning
-          flags: --linelength=120
+          flags: --linelength=120 --exclude=java/src/main/native/*.c
+          filter: "-runtime/references"
 
   lint-js:
     name: Lint JavaScript

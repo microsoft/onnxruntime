@@ -1,5 +1,13 @@
+resources:
+  repositories:
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+
 jobs:
-- job: Linux_Build
+- job: BuildAndTestEagerMode
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -8,10 +16,6 @@ jobs:
   - checkout: self
     clean: true
     submodules: recursive
-
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '12.16.3'
 
   - template: templates/get-docker-image-steps.yml
     parameters:
@@ -42,7 +46,6 @@ jobs:
               --parallel \
               --build_eager_mode --enable_training --build_wheel --skip_test
       workingDirectory: $(Build.SourcesDirectory)
-  
   - task: CmdLine@2
     displayName: 'install ortmodule extension and test'
     inputs:
@@ -66,5 +69,76 @@ jobs:
               --parallel \
               --build_eager_mode --enable_training --build_wheel --test"
       workingDirectory: $(Build.SourcesDirectory)
+
+  - template: templates/clean-agent-build-directory-step.yml
+
+# This pipeline builds the latest PyTorch commit from source
+# and use it in ORT tests. See Dockerfile.manylinux2014_lort_cpu
+# for the installation steps. Idally, we should only use one pipeline
+# for eager mode and LazyTensor, but we split them due to recent
+# PyTorch's breaking changes.
+#
+# TODO: once ORT eager mode can run with latest PyTorch commit, we
+# should
+#  1. Set --build_eager_mode when running build.py in the
+#     first "task" below.
+#  2. Copy the second "task" above as the third task below.
+- job: BuildAndTestLazyTensor
+  timeoutInMinutes: 120
+  workspace:
+    clean: all
+  pool: Linux-CPU-2019
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_lort_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuildlort
+
+  - task: CmdLine@2
+    displayName: 'Build ORT for Python 3.9'
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuildlort \
+            /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build --cmake_generator Ninja \
+              --config Release \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --enable_lazy_tensor --enable_training --build_wheel --skip_test \
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: 'Test LORT with Python 3.9'
+    inputs:
+      script: |
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuildlort \
+            bash -c "
+              export LORT_CHECK_BASELINE=1 && \
+              export LORT_DUMP_GRAPH=1 && \
+              export LORT_DUMP_ATEN_OP_HISTORY=1 && \
+              export PYTHONPATH=/build/Release && \
+              /opt/python/cp39-cp39/bin/python3.9 -m pip install /build/Release/dist/*.whl && \
+              /opt/python/cp39-cp39/bin/python3.9 /onnxruntime_src/orttraining/orttraining/test/python/orttraining_test_lort.py"
+      workingDirectory: $(Build.SourcesDirectory)
+      condition: succeededOrFailed()
 
   - template: templates/clean-agent-build-directory-step.yml

@@ -9,7 +9,7 @@
 #include "Eigen/src/Core/arch/Default/Half.h"
 
 namespace onnxruntime {
-// https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsNaN
+// https://github.com/onnx/onnx/blob/main/docs/Operators.md#IsNaN
 #define ADD_TYPED_ISNAN_OP_9(data_type)                                   \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                               \
       IsNaN,                                                              \
@@ -56,7 +56,7 @@ Status IsNaN<MLFloat16>::Compute(OpKernelContext* context) const {
   if (!X_ptr) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Null input ptr");
   }
-  auto X_data = X_ptr->template Data<MLFloat16>();
+  auto X_data = X_ptr->Data<MLFloat16>();
   auto& dims = X_ptr->Shape();
   auto shape_size = dims.Size();
   auto& Y = *context->Output(0, dims);

@@ -1,0 +1,24 @@
+name: Documentation
+description: issues related to documentation additions and revisions
+title: "[Documentation] "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If your request is a question/idea or otherwise not related to a bug/issue or feature request, please submit to [ONNX Runtime GitHub Discussions](https://github.com/microsoft/onnxruntime/discussions).
+        Before submitting your request, please review past submissions to ensure that it is not a duplicate of a known issue.
+  - type: textarea
+    id: doc-descript
+    attributes:
+      label: Describe the documentation issue
+      placeholder: Provide a clear and concise description of the issue with current documentation. For simple fixes, please submit a PR by clicking on the "Edit Page in GitHub" link on any https://onnxruntime.ai/docs page.
+    validations:
+      required: true
+  - type: input
+    id: page-url
+    attributes:
+      label: Page / URL
+      placeholder: Note the page/URL where the documentation issue occurs.
+    validations:
+      required: false

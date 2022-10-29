@@ -79,10 +79,26 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 // has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
 
+/// <summary>
+/// Key for using the ORT format model flatbuffer bytes directly for initializers.
+/// This avoids copying the bytes and reduces peak memory usage during model loading and initialization. 
+/// Requires `session.use_ort_model_bytes_directly` to be true. 
+/// If set, the flatbuffer bytes provided when creating the InferenceSession MUST remain valid for the entire 
+/// duration of the InferenceSession.
+/// </summary>
+static const char* const kOrtSessionOptionsConfigUseORTModelBytesForInitializers =
+    "session.use_ort_model_bytes_for_initializers";
+
 // This should only be specified when exporting an ORT format model for use on a different platform.
 // If the ORT format model will be used on ARM platforms set to "1". For other platforms set to "0"
 // Available since version 1.11.
 static const char* const kOrtSessionOptionsQDQIsInt8Allowed = "session.qdqisint8allowed";
+
+// x64 SSE4.1/AVX2/AVX512(with no VNNI) has overflow problem with quantizied matrix multiplication with U8S8.
+// To avoid this we need to use slower U8U8 matrix multiplication instead. This option, if
+// turned on, use slower U8U8 matrix multiplications. Only effective with AVX2 or AVX512
+// platforms.
+static const char* const kOrtSessionOptionsAvx2PrecisionMode = "session.x64quantprecision";
 
 // Specifies how minimal build graph optimizations are handled in a full build.
 // These optimizations are at the extended level or higher.
@@ -113,6 +129,13 @@ static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "e
 // The feature will not function by default, specify any positive integer, e.g. "4", to enable it.
 // Available since version 1.11.
 static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dynamic_block_base";
+
+// This option allows to decrease CPU usage between infrequent
+// requests and forces any TP threads spinning stop immediately when the last of
+// concurrent Run() call returns.
+// Spinning is restarted on the next Run() call.
+// Applies only to internal thread-pools
+static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.force_spinning_stop";
 
 // "1": all inconsistencies encountered during shape and type inference
 // will result in failures.

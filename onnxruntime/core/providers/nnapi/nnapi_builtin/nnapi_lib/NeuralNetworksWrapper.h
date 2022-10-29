@@ -16,13 +16,15 @@
 // Provides C++ classes to more easily use the Neural Networks API.
 #ifndef ANDROID_ML_NN_RUNTIME_NEURAL_NETWORKS_WRAPPER_H
 #define ANDROID_ML_NN_RUNTIME_NEURAL_NETWORKS_WRAPPER_H
-#include <vector>
 #include <numeric>
+#include <optional>
+#include <vector>
 
 #include "NeuralNetworksTypes.h"
 
-// Move to std::optional when we switch to c++ 17
-#include "core/common/optional.h"
+#include "core/providers/nnapi/nnapi_builtin/builders/shaper.h"
+
+using Shape = onnxruntime::nnapi::Shaper::Shape;
 
 namespace android {
 namespace nn {
@@ -38,9 +40,7 @@ enum class Type {
   TENSOR_QUANT16_SYMM = ANEURALNETWORKS_TENSOR_QUANT16_SYMM,
   TENSOR_FLOAT16 = ANEURALNETWORKS_TENSOR_FLOAT16,
   TENSOR_BOOL8 = ANEURALNETWORKS_TENSOR_BOOL8,
-  FLOAT16 = ANEURALNETWORKS_FLOAT16,
   TENSOR_QUANT8_SYMM_PER_CHANNEL = ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL,
-  TENSOR_QUANT16_ASYMM = ANEURALNETWORKS_TENSOR_QUANT16_ASYMM,
   TENSOR_QUANT8_ASYMM_SIGNED = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED,
 };
 
@@ -81,8 +81,6 @@ inline std::string TypeToStr(const Type& type) {
     return "TENSOR_INT32";
   } else if (type == Type::TENSOR_QUANT8_ASYMM) {
     return "TENSOR_QUANT8_ASYMM";
-  } else if (type == Type::TENSOR_QUANT16_ASYMM) {
-    return "TENSOR_QUANT16_ASYMM";
   } else if (type == Type::TENSOR_QUANT16_SYMM) {
     return "TENSOR_QUANT16_SYMM";
   } else if (type == Type::BOOL) {
@@ -91,8 +89,6 @@ inline std::string TypeToStr(const Type& type) {
     return "TENSOR_FLOAT16";
   } else if (type == Type::TENSOR_BOOL8) {
     return "TENSOR_BOOL8";
-  } else if (type == Type::FLOAT16) {
-    return "FLOAT16";
   } else if (type == Type::TENSOR_QUANT8_SYMM_PER_CHANNEL) {
     return "TENSOR_QUANT8_SYMM_PER_CHANNEL";
   } else if (type == Type::TENSOR_QUANT8_ASYMM_SIGNED) {
@@ -130,11 +126,11 @@ struct SymmPerChannelQuantParams {
 struct OperandType {
   ANeuralNetworksOperandType operandType;
   Type type;
-  std::vector<uint32_t> dimensions;
-  onnxruntime::optional<SymmPerChannelQuantParams> channelQuant;
+  Shape dimensions;
+  std::optional<SymmPerChannelQuantParams> channelQuant;
 
-  explicit OperandType(Type type, const std::vector<uint32_t>& d, float scale = 0.0f, int32_t zeroPoint = 0);
-  explicit OperandType(Type type, const std::vector<uint32_t>& d, SymmPerChannelQuantParams&& channelQuant);
+  explicit OperandType(Type type, const Shape& d, float scale = 0.0f, int32_t zeroPoint = 0);
+  explicit OperandType(Type type, const Shape& d, SymmPerChannelQuantParams&& channelQuant);
 
   OperandType(const OperandType& other);
   OperandType& operator=(const OperandType& other);
@@ -145,7 +141,7 @@ struct OperandType {
   // Get the whole blob size in bytes
   size_t GetOperandBlobByteSize() const;
 
-  void SetDimensions(const std::vector<uint32_t>& d);
+  void SetDimensions(const Shape& d);
 
   operator ANeuralNetworksOperandType() const { return operandType; }
 };

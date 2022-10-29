@@ -3,6 +3,7 @@
 
 /* eslint-disable import/no-internal-modules */
 import {Backend, InferenceSession, SessionHandler} from 'onnxruntime-common';
+
 import {Session} from './onnxjs/session';
 import {OnnxjsSessionHandler} from './onnxjs/session-handler';
 

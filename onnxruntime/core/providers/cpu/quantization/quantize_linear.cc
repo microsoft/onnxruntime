@@ -81,11 +81,11 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   PrepareForQDQ(x.Shape(), x_scale, x_zero_point, axis_, N, broadcast_dim, block_size);
 
-  const float* scale = x_scale.template Data<float>();
-  const T* input = x.template Data<T>();
-  float* output = y.template MutableData<float>();
+  const float* scale = x_scale.Data<float>();
+  const T* input = x.Data<T>();
+  float* output = y.MutableData<float>();
 
-  const T* zero_point = x_zero_point ? x_zero_point->template Data<T>() : nullptr;
+  const T* zero_point = x_zero_point ? x_zero_point->Data<T>() : nullptr;
   if (std::is_same<T, int32_t>::value) {
     ORT_ENFORCE(zero_point == nullptr ||
                     std::all_of(zero_point,
@@ -148,10 +148,10 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   PrepareForQDQ(x.Shape(), y_scale, y_zero_point, axis_, N, broadcast_dim, block_size);
 
-  const T* zero_point = y_zero_point != nullptr ? y_zero_point->template Data<T>() : nullptr;
-  const float* scale = y_scale.template Data<float>();
-  const float* input = x.template Data<float>();
-  T* output = y.template MutableData<T>();
+  const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
+  const float* scale = y_scale.Data<float>();
+  const float* input = x.Data<float>();
+  T* output = y.MutableData<T>();
 
   for (size_t n = 0; n < static_cast<size_t>(N); n++) {
     for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {

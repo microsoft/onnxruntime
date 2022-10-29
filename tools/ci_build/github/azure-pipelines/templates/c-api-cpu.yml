@@ -9,11 +9,6 @@ parameters:
   type: boolean
   default: true
 
-- name: PublishingNuget
-  displayName: Publishing Nuget Packages and report binary size to mysql
-  type: boolean
-  default: true
-
 - name: DoEsrp
   displayName: Run code sign tasks? Must be true if you are doing an Onnx Runtime release.
   type: boolean
@@ -44,80 +39,25 @@ parameters:
   default: 'default'
 
 jobs:
-- job: Linux_C_API_Packaging_CPU_x64
-  workspace:
-    clean: all
-  timeoutInMinutes:  210
-  strategy:
-    matrix:
-      ARCH_x86_64:
-        BASE_IMAGE: centos:7
-        ONNXRUNTIME_ARCH: x64
-        ONNXRUNTIME_CFLAGS: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
-        ONNXRUNTIME_CXXFLAGS: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
-        NODEJS_BINDING_ARCH: x64
-      ARCH_AARCH64:
-        BASE_IMAGE: arm64v8/centos:7
-        ONNXRUNTIME_ARCH: aarch64
-        ONNXRUNTIME_CFLAGS: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
-        ONNXRUNTIME_CXXFLAGS: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
-        NODEJS_BINDING_ARCH: arm64
-  pool: 'Linux-CPU'
-  steps:
-    - template: set-version-number-variables-step.yml
-    - template: get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=$(BASE_IMAGE)"
-        Repository: onnxruntimecpubuildcentos7$(ONNXRUNTIME_ARCH)
+- template: c-api-linux-cpu.yml
+  parameters:
+    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+    BaseImage: 'centos:7'
+    OnnxruntimeArch: 'x64'
+    OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
+    OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
+    OnnxruntimeNodejsBindingArch: 'x64'
+    PoolName: 'Linux-CPU'
 
-    - task: CmdLine@2
-      inputs:
-        script: |
-          mkdir -p $HOME/.onnx
-          docker run --rm -e CFLAGS="$(ONNXRUNTIME_CFLAGS)" -e CXXFLAGS="$(ONNXRUNTIME_CXXFLAGS)" --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos7$(ONNXRUNTIME_ARCH) /bin/bash -c "python3 \
-          /onnxruntime_src/tools/ci_build/build.py --build_java --build_nodejs --build_dir /build --config Release \
-          --skip_submodule_sync  --parallel --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/linux-$(ONNXRUNTIME_ARCH)"
-        workingDirectory: $(Build.SourcesDirectory)
-
-    - script: |
-       set -e -x
-       mkdir $(Build.ArtifactStagingDirectory)/testdata
-       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
-       ls -al $(Build.ArtifactStagingDirectory)
-      displayName: 'Create Artifacts'
-
-    - template: java-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-          arch: 'linux-$(ONNXRUNTIME_ARCH)'
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-$(ONNXRUNTIME_ARCH)'
-          version: '$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
-          nativeLibraryName: 'libonnxruntime4j_jni.so'
-
-    - template: c-api-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-linux-$(ONNXRUNTIME_ARCH)-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString: 'onnxruntime-linux-$(ONNXRUNTIME_ARCH)'
-          libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
-
-    - template: nodejs-artifacts-package-and-publish-steps-posix.yml
-      parameters:
-          arch: '$(NODEJS_BINDING_ARCH)'
-          os: 'linux'
-          artifactName: 'drop-onnxruntime-nodejs-linux-$(ONNXRUNTIME_ARCH)'
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
+- template: c-api-linux-cpu.yml
+  parameters:
+    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+    BaseImage: 'arm64v8/centos:7'
+    OnnxruntimeArch: 'aarch64'
+    OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
+    OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
+    OnnxruntimeNodejsBindingArch: 'arm64'
+    PoolName: 'aiinfra-linux-ARM64-CPU-2019'
 
 - job: MacOS_C_API_Packaging_CPU_x64
   workspace:
@@ -126,7 +66,7 @@ jobs:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
   pool:
     vmImage: 'macOS-11'
-  timeoutInMinutes:  240
+  timeoutInMinutes:  300
   steps:
     - template: set-version-number-variables-step.yml
 
@@ -141,7 +81,7 @@ jobs:
         export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
         export ONNX_ML=1
         export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-        python3 -m pip install numpy==1.16.6 wheel
+        python3 -m pip install numpy wheel
         python3 -m pip install $(Build.SourcesDirectory)/cmake/external/onnx
         sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
       displayName: 'Build and Test MacOS'
@@ -198,7 +138,7 @@ jobs:
     clean: all
   pool:
     vmImage: 'macOS-11'
-  timeoutInMinutes:  180
+  timeoutInMinutes:  300
   steps:
     - template: set-version-number-variables-step.yml
 
@@ -304,6 +244,7 @@ jobs:
   pool: 'Win-CPU-2021'
   dependsOn:
   - Linux_C_API_Packaging_CPU_x64
+  - Linux_C_API_Packaging_CPU_aarch64
   - MacOS_C_API_Packaging_CPU_x64
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
@@ -381,12 +322,15 @@ jobs:
 - job: NuGet_Packaging_CPU
   workspace:
     clean: all
-  pool: 'Win-CPU-2021'
+  # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
+  # VS2019 has no support for net6 and we need to use msbuild (from the VS install) to do the packing
+  pool: 'Azure-Pipelines-EO-Windows2022-aiinfra'
   variables:
     OrtPackageId: ${{ parameters.OrtNugetPackageId }}
     breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
   dependsOn:
   - Linux_C_API_Packaging_CPU_x64
+  - Linux_C_API_Packaging_CPU_aarch64
   - MacOS_C_API_Packaging_CPU_x64
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
@@ -464,7 +408,7 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)/nuget-artifact'
     displayName: 'List artifacts'
 
-  #Reconstruct the build dir
+  # Reconstruct the build dir
   - task: PowerShell@2
     displayName: 'Extract native libraries for addition to nuget native package'
     inputs:
@@ -476,26 +420,49 @@ jobs:
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Create models link'
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 5.7.0
+    displayName: Use Nuget 6.2.1
     inputs:
-      versionSpec: 5.7.0
+      versionSpec: 6.2.1
 
-  - task: MSBuild@1
-    displayName: 'Restore NuGet Packages'
+  - task: PowerShell@2
+    displayName: Install .NET 6 workloads
     inputs:
-      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-      platform: 'Any CPU'
-      configuration: RelWithDebInfo
-      msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
+      targetType: 'inline'
+      script: |
+        dotnet workload install android ios macos
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - task: PowerShell@2
+    displayName: Build Microsoft.ML.OnnxRuntime .NET 6 targets using dotnet
+    inputs:
+      targetType: 'inline'
+      # we don't specify 'Any CPU' as the platform here because if we do it gets added to the output path
+      #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\Any CPU\RelWithDebInfo\net6.0-ios\
+      # which is inconsistent with the msbuild output path for the pre-.net6 targets
+      #   e.g. csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\monoandroid11.0
+      # and makes it harder to do the packing
+      #
+      # 'Any CPU' is the default (first 'mixed' platform specified in the csproj) so this should be fine.
+      script: |
+        dotnet build .\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj -p:SelectedTargets=Net6  -p:Configuration=RelWithDebInfo -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: MSBuild@1
-    displayName: 'Build C#'
+    displayName: 'Restore NuGet Packages and create project.assets.json for pre-.net6 targets'
     inputs:
       solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
       platform: 'Any CPU'
       configuration: RelWithDebInfo
-      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
+      msbuildArguments: '-t:restore -p:SelectedTargets=PreNet6 -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - task: MSBuild@1
+    displayName: 'Build C# for pre-.net6 targets'
+    inputs:
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      platform: 'Any CPU'
+      configuration: RelWithDebInfo
+      msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - template: win-esrp-dll.yml
@@ -503,6 +470,15 @@ jobs:
       FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
       DisplayName: 'ESRP - Sign C# dlls'
       DoEsrp: ${{ parameters.DoEsrp }}
+
+  - task: MSBuild@1
+    displayName: Update projects.assets.json with combined list of all target frameworks
+    inputs:
+      solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
+      platform: 'Any CPU'
+      configuration: RelWithDebInfo
+      msbuildArguments: '-t:restore -p:SelectedTargets=All -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: MSBuild@1
     displayName: 'Build Nuget Packages'
@@ -568,7 +544,7 @@ jobs:
     displayName: 'Run Roslyn Analyzers'
     inputs:
       userProvideBuildInfo: msBuildInfo
-      msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln -p:configuration="RelWithDebInfo" -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
+      msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln -p:configuration="RelWithDebInfo" -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
     condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
 
   - template: component-governance-component-detection-steps.yml
@@ -591,6 +567,7 @@ jobs:
     breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
   dependsOn:
   - Linux_C_API_Packaging_CPU_x64
+  - Linux_C_API_Packaging_CPU_aarch64
   - MacOS_C_API_Packaging_CPU_x64
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
@@ -606,7 +583,7 @@ jobs:
      git checkout -- js/**
      git checkout -- .gitattributes
     workingDirectory: '$(Build.SourcesDirectory)'
-    displayName: 'Testing: force EOL to lf on windows for /js/**' 
+    displayName: 'Testing: force EOL to lf on windows for /js/**'
 
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet (Win x64)'
@@ -856,108 +833,6 @@ jobs:
   parameters:
     JobSuffix : 'macOS_CPU_x64'
 
-- job: Publish_NuGet_Package_And_Report
-  workspace:
-    clean: all
-  variables:
-  - name: GDN_CODESIGN_TARGETDIRECTORY
-    value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-  pool: 'Win-CPU-2021'
-  condition: and (succeeded(), and (${{ parameters.PublishingNuget }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
-  dependsOn:
-  - NuGet_Test_Win_CPU
-  - NuGet_Test_Linux_CPU
-  - NuGet_Test_MacOS
-  steps:
-  - checkout: self
-    submodules: false
-  - template: set-version-number-variables-step.yml
-
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - Signed NuGet Package'
-    inputs:
-      artifactName: 'drop-signed-nuget-CPU'
-      targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
-
-  - template: ../nuget/templates/get-nuget-package-version-as-variable.yml
-    parameters:
-      packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-
-  - task: CmdLine@2
-    displayName: 'Post binary sizes to the dashboard database using command line'
-    inputs:
-      script: |
-          echo changing directory to artifact download path
-          cd $(Build.BinariesDirectory)/nuget-artifact/final-package
-          echo processing nupkg
-          SETLOCAL EnableDelayedExpansion
-          FOR /R %%i IN (*.nupkg) do (
-           set filename=%%~ni
-           IF NOT "!filename:~25,7!"=="Managed" (
-            echo processing %%~ni.nupkg
-            copy %%~ni.nupkg %%~ni.zip
-            echo copied to zip
-            echo listing lib files in the zip
-            REM use a single .csv file to put the data
-            echo os,arch,build_config,size > $(Build.BinariesDirectory)\binary_size_data.txt
-            7z.exe l -slt %%~ni.zip runtimes\linux-x64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
-            7z.exe l -slt %%~ni.zip runtimes\linux-arm64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,aarch64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
-            7z.exe l -slt %%~ni.zip runtimes\osx.10.14-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
-            7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
-            7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
-            )
-          )
-
-  - task: AzureCLI@2
-    displayName: 'Azure CLI'
-    inputs:
-      azureSubscription: AIInfraBuildOnnxRuntimeOSS
-      scriptLocation: inlineScript
-      scriptType: batch
-      inlineScript: |
-        python.exe -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_to_dashboard\requirements.txt && ^
-        python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
-      workingDirectory: '$(Build.BinariesDirectory)'
-
-  - task: DotNetCoreCLI@2
-    displayName: 'Copy Signed Native NuGet Package to Internal NuGet Feed'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      command: 'push'
-      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/${{ parameters.OrtNugetPackageId }}.$(NuGetPackageVersionNumber).nupkg'
-      feedPublish: 'OnnxRuntime'
-
-  - task: DotNetCoreCLI@2
-    displayName: 'Copy Signed Managed NuGet Package to Internal NuGet Feed'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      command: 'push'
-      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
-      feedPublish: 'OnnxRuntime'
-
-  - task: NuGetCommand@2
-    displayName: 'Copy Signed Native NuGet Package to ORT-NIGHTLY'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      command: 'push'
-      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/${{ parameters.OrtNugetPackageId }}.$(NuGetPackageVersionNumber).nupkg'
-      publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
-
-  - task: NuGetCommand@2
-    displayName: 'Copy Signed Managed NuGet Package to ORT-NIGHTLY'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      command: 'push'
-      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
-      publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
-
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
-
 - job: Final_Jar_Testing_Windows
   workspace:
     clean: all
@@ -986,8 +861,8 @@ jobs:
         jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
         popd
         powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -OutFile junit-platform-console-standalone-1.6.2.jar"
-        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -OutFile protobuf-java-3.9.2.jar"
-        java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.9.2.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+        powershell -Command "Invoke-WebRequest https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.20.1/protobuf-java-3.20.1.jar -OutFile protobuf-java-3.20.1.jar"
+        java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.20.1.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)\final-jar'
 
   - template: component-governance-component-detection-steps.yml
@@ -1026,9 +901,9 @@ jobs:
         jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
         popd
         wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
-        wget https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -P ./
+        wget https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.20.1/protobuf-java-3.20.1.jar -P ./
         LD_LIBRARY_PATH=./test:${LD_LIBRARY_PATH}
-        java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+        java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.20.1.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
       workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
   - template: component-governance-component-detection-steps.yml
@@ -1069,10 +944,10 @@ jobs:
           jar xf $(Build.BinariesDirectory)/final-jar/testing.jar
           popd
           wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
-          wget https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -P ./
+          wget https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.20.1/protobuf-java-3.20.1.jar -P ./
           sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
           DYLD_LIBRARY_PATH=./test:${DYLD_LIBRARY_PATH}
-          java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+          java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.20.1.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'
 
   - template: component-governance-component-detection-steps.yml

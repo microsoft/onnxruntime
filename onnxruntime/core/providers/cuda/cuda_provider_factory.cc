@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 
 #include <memory>
@@ -12,9 +12,13 @@
 #include "gsl/gsl"
 
 #include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#ifndef NDEBUG
+#include "core/providers/cuda/test/all_tests.h"
+#endif
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -46,10 +50,6 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
 
 std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
   return std::make_unique<CUDAExecutionProvider>(info_);
-}
-
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(const CUDAExecutionProviderInfo& info) {
-  return std::make_shared<onnxruntime::CUDAProviderFactory>(info);
 }
 
 struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
@@ -109,26 +109,26 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return cuda::Impl_Cast(static_cast<cudaStream_t>(stream), input_data, output_data, count);
   }
 
-  bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
-  bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
+  Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return CudaCall<cudaError, false>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
+  void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg); }
 
   void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) override {
     ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
 
     // Current CUDA device.
     int device;
-    CUDA_CALL(cudaGetDevice(&device));
+    CUDA_CALL_THROW(cudaGetDevice(&device));
 
     if (device != src_location.id) {
       // Need to switch to the allocating device.
-      CUDA_CALL(cudaSetDevice(src_location.id));
+      CUDA_CALL_THROW(cudaSetDevice(src_location.id));
       // Copy from GPU to CPU.
-      CUDA_CALL(cudaMemcpy(dst_ptr, src_ptr, size, cudaMemcpyDeviceToHost));
+      CUDA_CALL_THROW(cudaMemcpy(dst_ptr, src_ptr, size, cudaMemcpyDeviceToHost));
       // Switch back to current device.
-      CUDA_CALL(cudaSetDevice(device));
+      CUDA_CALL_THROW(cudaSetDevice(device));
     } else {
       // Copy from GPU to CPU.
-      CUDA_CALL(cudaMemcpy(dst_ptr, src_ptr, size, cudaMemcpyDeviceToHost));
+      CUDA_CALL_THROW(cudaMemcpy(dst_ptr, src_ptr, size, cudaMemcpyDeviceToHost));
     }
   }
 
@@ -183,13 +183,32 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
   }
 
+#ifndef NDEBUG
+  bool TestAll() override {
+    // TestAll is the entry point of CUDA EP's insternal tests.
+    // Those internal tests are not directly callable from onnxruntime_test_all
+    // because CUDA EP is a shared library now.
+
+    // This is just one test. Call other test functions below.
+    if (!onnxruntime::cuda::test::TestDeferredRelease()) {
+      return false;
+    }
+
+    if (!onnxruntime::cuda::test::TestDeferredReleaseWithoutArena()) {
+      return false;
+    }
+
+    // TODO(wechi): brings disabled tests in onnxruntime/test/providers/cuda/*
+    // back alive here.
+    return false;
+  }
+#endif
 } g_info;
 
 struct CUDA_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-
     // Calling a function like ::cudaDeviceSynchronize will cause CUDA to ensure there is binary code for the current GPU architecture
     // Ideally this will be already part of the binary, but if not, CUDA will JIT it during this call. This can take a very long time
     // (minutes even), so we want to detect when this happens and let the user know why so they can report it properly or even fix it.
@@ -198,7 +217,7 @@ struct CUDA_Provider : Provider {
       auto start_time = std::chrono::steady_clock::now();
       // Do a trivial cuda operation that will cause JIT to occur
       {
-        void** cuda_memory {};
+        void** cuda_memory{};
         ::cudaMalloc(&cuda_memory, 1);
         ::cudaFree(cuda_memory);
       }
