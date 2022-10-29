@@ -26,7 +26,7 @@
 #include "test_fixture.h"
 #include "utils.h"
 #include "custom_op_utils.h"
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -281,7 +281,7 @@ TEST(CApiTest, SparseOutputModel) {
 
   const auto* values_fetch = sparse_output.GetSparseTensorValues<float>();
   auto val_span = gsl::make_span(values_fetch, values.size());
-  ASSERT_TRUE(std::equal(values.cbegin(), values.cend(), val_span.cbegin(), val_span.cend()));
+  ASSERT_TRUE(std::equal(values.cbegin(), values.cend(), val_span.begin(), val_span.end()));
 
   auto indices_ts = sparse_output.GetSparseTensorIndicesTypeShapeInfo(ORT_SPARSE_COO_INDICES);
   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, indices_ts.GetElementType());
@@ -291,7 +291,7 @@ TEST(CApiTest, SparseOutputModel) {
   const int64_t* indices = sparse_output.GetSparseTensorIndicesData<int64_t>(ORT_SPARSE_COO_INDICES, num_indices);
   ASSERT_EQ(num_indices, static_cast<size_t>(indices_shape[0]));
   auto ind_span = gsl::make_span(indices, num_indices);
-  ASSERT_TRUE(std::equal(coo_indices.cbegin(), coo_indices.cend(), ind_span.cbegin(), ind_span.cend()));
+  ASSERT_TRUE(std::equal(coo_indices.cbegin(), coo_indices.cend(), ind_span.begin(), ind_span.end()));
 }
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -363,7 +363,7 @@ TEST(CApiTest, SparseInputModel) {
 
   const auto* result_vals = dense_Y.GetTensorData<float>();
   auto result_span = gsl::make_span(result_vals, Y_result.size());
-  ASSERT_TRUE(std::equal(Y_result.cbegin(), Y_result.cend(), result_span.cbegin(), result_span.cend()));
+  ASSERT_TRUE(std::equal(Y_result.cbegin(), Y_result.cend(), result_span.begin(), result_span.end()));
 }
 #endif  // DISABLE_CONTRIB_OPS
 #endif  // !defined(DISABLE_SPARSE_TENSORS)

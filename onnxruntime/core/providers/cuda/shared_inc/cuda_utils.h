@@ -9,7 +9,7 @@
 #include <memory>
 #include <type_traits>
 #include <vector>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
