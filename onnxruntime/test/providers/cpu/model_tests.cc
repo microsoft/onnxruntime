@@ -6,7 +6,6 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/common/gsl_suppress.h"
 #include "core/session/ort_apis.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"

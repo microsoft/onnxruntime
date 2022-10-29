@@ -3,7 +3,7 @@
 
 #include "core/common/logging/capture.h"
 #include "core/common/logging/logging.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace logging {
@@ -43,7 +43,7 @@ void Capture::ProcessPrintf(msvc_printf_check const char* format, va_list args) 
   const int nbrcharacters = vsnprintf(message.data(), message.size(), format, args);
 #endif
   error = nbrcharacters < 0;
-  truncated = (nbrcharacters >= 0 && static_cast<gsl::index>(nbrcharacters) > message.size());
+  truncated = (nbrcharacters >= 0 && static_cast<size_t>(nbrcharacters) > message.size());
 #endif
 
   if (error) {

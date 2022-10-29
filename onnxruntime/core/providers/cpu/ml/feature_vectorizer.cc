@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/feature_vectorizer.h"
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace ml {
@@ -23,8 +23,8 @@ static void VectorizeTensor(const Tensor& input_tensor, int64_t feature_size, in
                             typename gsl::span<float>::iterator out_iter);
 
 template <typename T>
-static void CopyWithCast(typename gsl::span<const T>::const_iterator begin,
-                         typename gsl::span<const T>::const_iterator end,
+static void CopyWithCast(typename gsl::span<const T>::iterator begin,
+                         typename gsl::span<const T>::iterator end,
                          gsl::span<float>::iterator out_iter);
 
 Status FeatureVectorizer::Compute(OpKernelContext* context) const {
@@ -99,7 +99,7 @@ static void VectorizeTensor(const Tensor& input_tensor, int64_t feature_size, in
 
   auto data = input_tensor.Data<T>();
   auto input = gsl::make_span(data, shape.Size());
-  auto input_iter = input.cbegin();
+  auto input_iter = input.begin();
 
   for (int i = 0; i < N;) {
     // copy each row to the output. iters are passed by value
@@ -115,11 +115,11 @@ static void VectorizeTensor(const Tensor& input_tensor, int64_t feature_size, in
 }
 
 template <typename T>
-static void CopyWithCast(typename gsl::span<const T>::const_iterator begin,
-                         typename gsl::span<const T>::const_iterator end,
+static void CopyWithCast(typename gsl::span<const T>::iterator begin,
+                         typename gsl::span<const T>::iterator end,
                          gsl::span<float>::iterator out_iter) {
   std::for_each(begin, end,
-                [&out_iter](const typename gsl::span<T>::const_reference value) {
+                [&out_iter](const typename gsl::span<const T>::const_reference value) {
                   *out_iter = static_cast<float>(value);
                   ++out_iter;
                 });

@@ -342,11 +342,11 @@ Status SVMClassifier::ComputeImpl(OpKernelContext& ctx,
     int64_t maxclass = -1;
     if (votes_data.size() > 0) {
       auto votes = gsl::make_span<int64_t>(votes_data.data() + (n * class_count_), class_count_);
-      auto it_maxvotes = std::max_element(votes.cbegin(), votes.cend());
-      maxclass = std::distance(votes.cbegin(), it_maxvotes);
+      auto it_maxvotes = std::max_element(votes.begin(), votes.end());
+      maxclass = std::distance(votes.begin(), it_maxvotes);
     } else {
-      auto it_max_weight = std::max_element(cur_scores.cbegin(), cur_scores.cend());
-      maxclass = std::distance(cur_scores.cbegin(), it_max_weight);
+      auto it_max_weight = std::max_element(cur_scores.begin(), cur_scores.end());
+      maxclass = std::distance(cur_scores.begin(), it_max_weight);
       max_weight = *it_max_weight;
     }
 
