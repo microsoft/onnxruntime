@@ -27,19 +27,44 @@ static constexpr const char* event_categor_names_[EVENT_CATEGORY_MAX] = {
 
 // Timing record for all events.
 struct EventRecord {
+  EventRecord() = default;
   EventRecord(EventCategory category,
               int process_id,
               int thread_id,
-              std::string event_name,
+              std::string&& event_name,
               long long time_stamp,
               long long duration,
-              std::unordered_map<std::string, std::string>&& event_args) : cat(category),
-                                                                           pid(process_id),
-                                                                           tid(thread_id),
-                                                                           name(std::move(event_name)),
-                                                                           ts(time_stamp),
-                                                                           dur(duration),
-                                                                           args(event_args) {}
+              std::unordered_map<std::string, std::string>&& event_args)
+                : cat(category),
+                  pid(process_id),
+                  tid(thread_id),
+                  name(std::move(event_name)),
+                  ts(time_stamp),
+                  dur(duration),
+                  args(std::move(event_args)) {}
+
+  EventRecord(EventCategory category,
+              int process_id,
+              int thread_id,
+              const std::string& event_name,
+              long long time_stamp,
+              long long duration,
+              const std::unordered_map<std::string, std::string>& event_args)
+                : cat(category),
+                  pid(process_id),
+                  tid(thread_id),
+                  name(event_name),
+                  ts(time_stamp),
+                  dur(duration),
+                  args(event_args) {}
+
+  EventRecord(EventRecord&& other)
+    : cat(other.cat), pid(other.pid), tid(other.tid), name(std::move(other.name)),
+      ts(other.ts), dur(other.dur), args(std::move(other.args)) {}
+
+  EventRecord& operator = (const EventRecord& other);
+  EventRecord& operator = (EventRecord&& other);
+
   EventCategory cat;
   int pid;
   int tid;
