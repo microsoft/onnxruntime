@@ -18,7 +18,7 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
 
     auto input_defs = node.InputDefs();
 
-    if (input_defs.size() >= 2) {
+    if (input_defs.size() != 2) {
       break;
     }
 
@@ -27,7 +27,6 @@ bool MatMul::IsMatMulOnnxNodeSupported(const NodeUnit& node_unit, const GraphVie
 
     // Support only float
     const auto* A_type = A_arg.TypeAsProto();
-    const auto* B_type = B_arg.TypeAsProto();
 
     const auto* A_shape = A_arg.Shape();
     const auto* B_shape = B_arg.Shape();
