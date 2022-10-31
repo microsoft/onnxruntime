@@ -692,7 +692,7 @@ else()
   endif()
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_ENABLE_TRAINING_ON_DEVICE)
-    message("F16C, FMA and AVX is not supported on Android for on-device training.")
+    message("F16C, FMA and AVX flags are not supported on Android for on-device training.")
   endif()
 
   if (NOT (COMPILER_SUPPORT_MF16C AND COMPILER_SUPPORT_FMA AND COMPILER_SUPPORT_AVX) OR
