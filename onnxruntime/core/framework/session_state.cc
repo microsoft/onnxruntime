@@ -344,7 +344,7 @@ static Status KernelUseSharedPrePackedBuffers(OpKernel& kernel, int input_idx,
 
   for (const auto& prepacked_buffer : prepacked_weights.buffers_) {
     // BufferDeleter is nullptr because the kernel should not delete the shared buffer - it can only use it
-    shared_prepacked_buffers.emplace_back(prepacked_buffer.get(), BufferDeleter(static_cast<BufferFreeFn>(nullptr)));
+    shared_prepacked_buffers.emplace_back(prepacked_buffer.get(), BufferDeleter(nullptr));
   }
 
   bool used_shared_buffers = false;

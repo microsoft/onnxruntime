@@ -554,21 +554,21 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   // no memory pattern, or the pattern is not correct.
   if (!alloc) alloc = GetAllocator(location);
   Stream* current_stream = GetValueStream(ort_value_index);
-  auto create_fn = [this, alloc, current_stream](size_t len) {
+  if (current_stream) {
     auto stream_aware_alloc = AsStreamBasedAllocator(alloc);
-    if (stream_aware_alloc && current_stream) {
+    if (stream_aware_alloc) {
+      size_t len = Tensor::CalculateTensorStorageSize(element_type, shape);
       // the reused memory must from same EP
       auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
           current_stream->GetDevice().Type(), current_stream->GetDevice().Type());
-      return stream_aware_alloc->AllocOnStream(len, current_stream, wait_handle);
+      void* p_data = stream_aware_alloc->AllocOnStream(len, current_stream, wait_handle);
+      Tensor::InitOrtValue(element_type, shape, p_data, std::move(alloc), ort_value);
     } else {
-      return alloc->Alloc(len);
+      Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
     }
-  };
-
-  auto delete_fn = [alloc](void* buf) { if (buf) alloc->Free(buf); };
-
-  Tensor::InitOrtValue(element_type, shape, alloc->Info(), create_fn, delete_fn, ort_value);
+  } else {
+    Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
+  }
 
   // trace the memory allocation.
   // don't trace the memory allocation on string tensors, as it need

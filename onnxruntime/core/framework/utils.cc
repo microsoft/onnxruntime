@@ -78,28 +78,26 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
 
   if (source_mlvalue.IsTensor()) {
     const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
-    auto create_fn = [allocator, target_stream](size_t len) {
-      if (allocator->Info().alloc_type == OrtArenaAllocator) {
-        BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
-        auto* stream_aware_alloc = arena_ptr->AsStreamAwareAreana();
-        if (stream_aware_alloc && target_stream) {
-          return stream_aware_alloc->AllocOnStream(len, target_stream, nullptr);
-        } else {
-          return allocator->Alloc(len);
-        }
+    if (allocator->Info().alloc_type == OrtArenaAllocator) {
+      BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
+      auto* stream_aware_alloc = arena_ptr->AsStreamAwareAreana();
+      if (stream_aware_alloc && target_stream) {
+        size_t len = Tensor::CalculateTensorStorageSize(source_tensor.DataType(), source_tensor.Shape());
+        void* p_data = stream_aware_alloc->AllocOnStream(len, target_stream, nullptr);
+        Tensor::InitOrtValue(source_tensor.DataType(),
+                             source_tensor.Shape(),
+                             p_data,
+                             allocator, target_mlvalue);
       } else {
-        return allocator->Alloc(len);
+        Tensor::InitOrtValue(source_tensor.DataType(),
+                             source_tensor.Shape(),
+                             allocator, target_mlvalue);
       }
-    };
-
-    auto delete_fn = [allocator](void* buf) { if (buf) allocator->Free(buf); };
-    Tensor::InitOrtValue(
-        source_tensor.DataType(),
-        source_tensor.Shape(),
-        allocator->Info(),
-        create_fn,
-        delete_fn,
-        target_mlvalue);
+    } else {
+      Tensor::InitOrtValue(source_tensor.DataType(),
+                           source_tensor.Shape(),
+                           allocator, target_mlvalue);
+    }
   } else if (source_mlvalue.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
     const SparseTensor& source_tensor = source_mlvalue.Get<SparseTensor>();
