@@ -164,6 +164,13 @@ void RoctracerManager::ApiCallback(uint32_t domain, uint32_t cid, const void* ca
   }
 }
 
+static inline std::string PointerToHexString(const void* ptr)
+{
+  std::ostringstream sstr;
+  sstr << std::hex << ptr;
+  return sstr.str();
+}
+
 void RoctracerManager::CreateEventForKernelRecord(const roctracer_record_t* record,
                                                   uint64_t start_time_ns,
                                                   const ApiCallRecord& call_record,
@@ -183,20 +190,13 @@ void RoctracerManager::CreateEventForKernelRecord(const roctracer_record_t* reco
 
   new (&event) EventRecord {
     /* cat = */ EventCategory::KERNEL_EVENT,
-    /* pid = */ record->device_id,
-    /* tid = */ record->queue_id,
+    /* pid = */ -1,
+    /* tid = */ -1,
     /* name = */ std::move(name),
-    /* ts = */ (record->begin_ns - start_time_ns) / 1000,
-    /* dur = */ (record->end_ns - record->begin_ns) / 1000,
+    /* ts = */ (int64_t)(record->begin_ns - start_time_ns) / 1000,
+    /* dur = */ (int64_t)(record->end_ns - record->begin_ns) / 1000,
     /* args = */ std::move(args)
   };
-}
-
-static inline std::string PointerToHexString(const void* ptr)
-{
-  std::ostringstream sstr;
-  sstr << std::hex << ptr;
-  return sstr.str();
 }
 
 void RoctracerManager::CreateEventForMemsetRecord(const roctracer_record_t* record,
@@ -210,24 +210,24 @@ void RoctracerManager::CreateEventForMemsetRecord(const roctracer_record_t* reco
   std::unordered_map<std::string, std::string> args {
     {"stream", call_record.cid_ == HIP_API_ID_hipMemset
                                 ? "0"
-                                : std::to_string(launch_args.args.hipMemsetAsync.stream)},
+                                : PointerToHexString(launch_args.args.hipMemsetAsync.stream)},
     {"dst", dst_string},
     {"size", std::to_string(launch_args.args.hipMemset.sizeBytes)},
     {"value", std::to_string(launch_args.args.hipMemset.value)}
   };
   new (&event) EventRecord {
     /* cat = */ EventCategory::KERNEL_EVENT,
-    /* pid = */ record->device_id,
-    /* tid = */ record->queue_id,
+    /* pid = */ -1,
+    /* tid = */ -1,
     /* name = */ std::move(name),
-    /* ts = */ (record->begin_ns - start_time_ns) / 1000,
-    /* dur = */ (record->end_ns - record->begin_ns) / 1000,
+    /* ts = */ (int64_t)(record->begin_ns - start_time_ns) / 1000,
+    /* dur = */ (int64_t)(record->end_ns - record->begin_ns) / 1000,
     /* args = */ std::move(args)
   };
 }
 
 static inline std::string MemcpyKindToString(hipMemcpyKind kind) {
-  switch(launch_args.args.hipMemcpy.kind) {
+  switch(kind) {
     case hipMemcpyHostToHost:
       return "H2H";
     case hipMemcpyHostToDevice:
@@ -261,11 +261,11 @@ void RoctracerManager::CreateEventForMemcpyRecord(const roctracer_record_t* reco
 
   new (&event) EventRecord {
     /* cat = */ EventCategory::KERNEL_EVENT,
-    /* pid = */ record->device_id,
-    /* tid = */ record->queue_id,
+    /* pid = */ -1,
+    /* tid = */ -1,
     /* name = */ std::move(name),
-    /* ts = */ (record->begin_ns - start_time_ns) / 1000,
-    /* dur = */ (record->end_ns - record->begin_ns) / 1000,
+    /* ts = */ (int64_t)(record->begin_ns - start_time_ns) / 1000,
+    /* dur = */ (int64_t)(record->end_ns - record->begin_ns) / 1000,
     /* args = */ std::move(args)
   };
 }
@@ -294,11 +294,11 @@ void RoctracerManager::CreateEventForMemcpy2DRecord(const roctracer_record_t* re
 
   new (&event) EventRecord {
     /* cat = */ EventCategory::KERNEL_EVENT,
-    /* pid = */ record->device_id,
-    /* tid = */ record->queue_id,
+    /* pid = */ -1,
+    /* tid = */ -1,
     /* name = */ std::move(name),
-    /* ts = */ (record->begin_ns - start_time_ns) / 1000,
-    /* dur = */ (record->end_ns - record->begin_ns) / 1000,
+    /* ts = */ (int64_t)(record->begin_ns - start_time_ns) / 1000,
+    /* dur = */ (int64_t)(record->end_ns - record->begin_ns) / 1000,
     /* args = */ std::move(args)
   };
 }
