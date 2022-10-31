@@ -167,21 +167,81 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<MLFloat16>* p) override { return p->Run(); }
 
 #ifndef DISABLE_CONTRIB_OPS
-  Status embed_layer_norm__CheckInputs(const OpKernelContext* context, bool quantizedVersion) override { return contrib::embed_layer_norm::CheckInputs(context, quantizedVersion); }
-  Status bias_gelu_helper__CheckInputs(const OpKernelContext* context) override { return contrib::bias_gelu_helper::CheckInputs(context); }
-  Status LongformerAttentionBase__CheckInputs(const contrib::LongformerAttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const TensorShape& mask_shape, const TensorShape& global_weights_shape, const TensorShape& global_bias_shape, const TensorShape& global_shape) override {
-    return p->contrib::LongformerAttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape);
+  Status embed_layer_norm__CheckInputs(const OpKernelContext* context, bool quantizedVersion) override {
+    return contrib::embed_layer_norm::CheckInputs(context, quantizedVersion);
   }
-  Status AttentionBase__CheckInputs(const contrib::AttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const Tensor* extra_add_qk, const int max_threads_per_block) override { return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, extra_add_qk, max_threads_per_block); }
-  Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p, OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) override { return p->contrib::AttentionBase::GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length); }
 
-  void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) override { p->contrib::transformers::BeamSearch::Init(info); }
-  Status BeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) override { return p->contrib::transformers::BeamSearch::Compute(ctx); }
-  Status BeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::BeamSearch::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
+  Status bias_gelu_helper__CheckInputs(const OpKernelContext* context) override {
+    return contrib::bias_gelu_helper::CheckInputs(context);
+  }
 
-  void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) override { p->contrib::transformers::GreedySearch::Init(info); }
-  Status GreedySearch__Compute(const contrib::transformers::GreedySearch* p, OpKernelContext* ctx) override { return p->contrib::transformers::GreedySearch::Compute(ctx); }
-  Status GreedySearch__SetupSubgraphExecutionInfo(contrib::transformers::GreedySearch* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::GreedySearch::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
+  Status LongformerAttentionBase__CheckInputs(const contrib::LongformerAttentionBase* p,
+                                              const TensorShape& input_shape,
+                                              const TensorShape& weights_shape,
+                                              const TensorShape& bias_shape,
+                                              const TensorShape& mask_shape,
+                                              const TensorShape& global_weights_shape,
+                                              const TensorShape& global_bias_shape,
+                                              const TensorShape& global_shape) override {
+    return p->contrib::LongformerAttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_shape,
+                                                            global_weights_shape, global_bias_shape, global_shape);
+  }
+
+  Status AttentionBase__CheckInputs(const contrib::AttentionBase* p,
+                                    const TensorShape& input_shape,
+                                    const TensorShape* weights_shape,
+                                    const TensorShape& bias_shape,
+                                    const Tensor*& mask_index,
+                                    const Tensor* past,
+                                    const Tensor* extra_add_qk,
+                                    const Tensor* key,
+                                    const Tensor* value,
+                                    void* parameters,
+                                    const int max_threads_per_block) override {
+    return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past,
+                                                  extra_add_qk,
+                                                  key, value, parameters,
+                                                  max_threads_per_block);
+  }
+
+  Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p,
+                                    OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
+                                    int sequence_length, int& past_sequence_length) override {
+    return p->contrib::AttentionBase::GetPresent(context, past, batch_size, head_size,
+                                                 sequence_length, past_sequence_length);
+  }
+
+  void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::BeamSearch::Init(info);
+  }
+
+  Status BeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) override {
+    return p->contrib::transformers::BeamSearch::Compute(ctx);
+  }
+
+  Status BeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p, const SessionState& session_state,
+                                                const std::string& attribute_name,
+                                                const SessionState& subgraph_session_state) override {
+    return p->contrib::transformers::BeamSearch::SetupSubgraphExecutionInfo(session_state, attribute_name,
+                                                                            subgraph_session_state);
+  }
+
+  void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::GreedySearch::Init(info);
+  }
+
+  Status GreedySearch__Compute(const contrib::transformers::GreedySearch* p, OpKernelContext* ctx) override {
+    return p->contrib::transformers::GreedySearch::Compute(ctx);
+  }
+
+  Status GreedySearch__SetupSubgraphExecutionInfo(contrib::transformers::GreedySearch* p,
+                                                  const SessionState& session_state,
+                                                  const std::string& attribute_name,
+                                                  const SessionState& subgraph_session_state) override {
+    return p->contrib::transformers::GreedySearch::SetupSubgraphExecutionInfo(session_state,
+                                                                              attribute_name,
+                                                                              subgraph_session_state);
+  }
 
 #ifdef ENABLE_ATEN
   Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }

@@ -11,6 +11,7 @@
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
+#include "core/common/span_utils.h"
 #include "core/graph/graph.h"
 #include "core/graph/model.h"
 #include "orttraining/core/graph/gradient_builder_base.h"
@@ -248,7 +249,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
   for (const auto& state : initial_states) {
     const auto& init_tensor = state.second.Get<Tensor>();
     const auto& shape = init_tensor.Shape().GetDims();
-    ASSERT_EQ(shape, gsl::make_span(expected_shape));
+    ASSERT_TRUE(SpanEq(shape, gsl::make_span(expected_shape)));
     const std::vector<float> found(init_tensor.Data<float>(),
                                    init_tensor.Data<float>() + partition_size);
     ASSERT_EQ(expected_vec, found);

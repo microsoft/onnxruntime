@@ -353,7 +353,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
 #if defined(USE_CUDA) || defined(USE_ROCM)
     // in this case we need to copy the tensor from cuda to cpu
     vector<OrtValue>& outputs = io_binding->GetOutputs();
-    ASSERT_EQ(1, outputs.size());
+    ASSERT_EQ(1u, outputs.size());
     auto& rtensor = outputs.front().Get<Tensor>();
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();

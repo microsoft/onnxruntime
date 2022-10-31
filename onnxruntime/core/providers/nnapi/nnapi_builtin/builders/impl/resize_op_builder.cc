@@ -81,8 +81,11 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
   auto input = inputs[0].node_arg.Name();
-  bool use_nchw = model_builder.UseNCHW();
-  ORT_RETURN_IF_ERROR(IsOpInRequiredLayout(use_nchw, node_unit));
+
+  const auto& output_shape = shaper[output];
+  const auto& input_shape = shaper[input];
+
+  const bool input_is_nchw = output_shape[1] == input_shape[1];  // not Channel last
 
   // Check if the quantization scale and ZP is correct
   if (IsQuantizedOp(node_unit)) {
@@ -104,10 +107,9 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   // if the node domain is NHWC it means all the node inputs are converted to NHWC format by the layout transformer.
   // pick the index for height and width based on the format.
-  int h_idx = use_nchw ? 2 : 1;
-  int w_idx = use_nchw ? 3 : 2;
+  int h_idx = input_is_nchw ? 2 : 1;
+  int w_idx = input_is_nchw ? 3 : 2;
 
-  const auto& output_shape = shaper[output];
   int32_t output_h = output_shape[h_idx];
   int32_t output_w = output_shape[w_idx];
 
@@ -117,8 +119,8 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   ADD_SCALAR_OPERAND(model_builder, input_indices, output_h);
 
   if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
-    // using nchw is only available on API level 29
-    ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
+    // using nchw is only available on API level 29+
+    ADD_SCALAR_OPERAND(model_builder, input_indices, input_is_nchw);
   }
 
   // Currently we only support align_corners and half_pixel on bilinear resize
@@ -224,14 +226,16 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
       LOGS_DEFAULT(VERBOSE) << "Input sizes of Resize must be known";
       return false;
     }
-
+    bool input_is_nchw = false;
+    // haven't a good solution to check layout when scale is 1.0F
     // We want to check if the scales or sizes are not trying to resize on N/C channels here
     if (inputs.size() == 3) {  // we are using scales
       const auto& scales_tensor = *initializers.at(inputs[2].node_arg.Name());
-      Initializer unpacked_tensor(scales_tensor);
+      Initializer const unpacked_tensor(scales_tensor);
       auto scales_data = unpacked_tensor.DataAsSpan<float>();
-      float scale_n = scales_data[0];
-      float scale_c = IsNodeLayoutNHWC(node_unit) ? scales_data[3] : scales_data[1];
+      input_is_nchw = scales_data[1] == 1.0F;
+      float const scale_n = scales_data[0];
+      float const scale_c = input_is_nchw ? scales_data[1] : scales_data[3];
       if (scale_n != 1.0f || scale_c != 1.0f) {
         LOGS_DEFAULT(VERBOSE) << "Scales of N/C channel should be 1"
                               << "Resize of N/C channels are not supported"
@@ -243,8 +247,10 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
       const auto& sizes_name = inputs[3].node_arg.Name();
       const auto& sizes_tensor = *initializers.at(sizes_name);
       Initializer unpacked_tensor(sizes_tensor);
-      int channel_idx = IsNodeLayoutNHWC(node_unit) ? 3 : 1;
       auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
+
+      input_is_nchw = sizes_data[1] == input_shape[1];
+      int channel_idx = input_is_nchw ? 1 : 3;
       uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
       uint32_t size_c = SafeInt<uint32_t>(sizes_data[channel_idx]);
       if (size_n != input_shape[0] || size_c != input_shape[channel_idx]) {
@@ -254,6 +260,11 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
                               << ". input_size_c, " << input_shape[channel_idx] << ", output_size_c, " << size_c;
         return false;
       }
+    }
+
+    if (input_is_nchw && params.android_feature_level <= ANEURALNETWORKS_FEATURE_LEVEL_2) {
+      LOGS_DEFAULT(VERBOSE) << "android_feature_level below 29 does not support nchw Resize.";
+      return false;
     }
   }
 

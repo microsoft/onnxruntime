@@ -7,8 +7,6 @@
 #include <array>
 #include <algorithm>
 
-#include "gsl/gsl"
-
 #include "core/common/status.h"
 #include "core/common/common.h"
 #ifdef _WIN32

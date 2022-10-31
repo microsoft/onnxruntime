@@ -629,13 +629,6 @@ struct ConstSessionImpl : Base<T> {
    */
   AllocatedStringPtr GetOverridableInitializerNameAllocated(size_t index, OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
 
-  /** \brief Returns a copy of the profiling file name.
-   *
-   * \param allocator to allocate memory for the copy of the string returned
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
-   */
-  AllocatedStringPtr EndProfilingAllocated(OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionEndProfiling
   uint64_t GetProfilingStartTimeNs() const;                                 ///< Wraps OrtApi::SessionGetProfilingStartTimeNs
   ModelMetadata GetModelMetadata() const;                                   ///< Wraps OrtApi::SessionGetModelMetadata
 
@@ -676,6 +669,14 @@ struct SessionImpl : ConstSessionImpl<T> {
            const char* const* output_names, Value* output_values, size_t output_count);
 
   void Run(const RunOptions& run_options, const IoBinding&);  ///< Wraps OrtApi::RunWithBinding
+
+  /** \brief End profiling and return a copy of the profiling file name.
+   *
+   * \param allocator to allocate memory for the copy of the string returned
+   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+   *  The OrtAllocator instances must be valid at the point of memory release.
+   */
+  AllocatedStringPtr EndProfilingAllocated(OrtAllocator* allocator);  ///< Wraps OrtApi::SessionEndProfiling
 };
 
 }  // namespace detail
@@ -1721,6 +1722,7 @@ struct CustomOpBase : OrtCustomOp {
 
     OrtCustomOp::GetInputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetInputTypeCount(); };
     OrtCustomOp::GetInputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputType(index); };
+    OrtCustomOp::GetInputMemoryType= [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputMemoryType(index); };
 
     OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetOutputTypeCount(); };
     OrtCustomOp::GetOutputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputType(index); };
@@ -1751,7 +1753,13 @@ struct CustomOpBase : OrtCustomOp {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
   }
 
+  // Default implemention of GetInputMemoryType() that returns OrtMemTypeDefault
+  OrtMemType GetInputMemoryType(size_t /*index*/) const {
+    return OrtMemTypeDefault;
+  }
+
   // Declare list of session config entries used by this Custom Op.
+  // This default implementation returns an empty vector of config entries.
   std::vector<std::string> GetSessionConfigKeys() const {
     return std::vector<std::string>{};
   }
