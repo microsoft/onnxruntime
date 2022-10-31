@@ -4,7 +4,6 @@
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/allocatormgr.h"
-#include "core/framework/stream_handles.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/utils.h"
 #include "core/session/ort_apis.h"
@@ -113,19 +112,17 @@ void CPUAllocator::Free(void* p) {
   AllocatorDefaultFree(p);
 }
 
-std::function<void*(size_t)> GetAllocationFn(std::shared_ptr<IAllocator>& alloc, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
+void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
   if (use_reserve)
-    return [alloc](size_t size) { return alloc->Reserve(size); };
-  return [alloc, stream, wait_fn](size_t size) {
-    if (alloc->Info().alloc_type == OrtArenaAllocator) {
-      BFCArena* arena_ptr = static_cast<BFCArena*>(alloc.get());
-      auto* stream_aware_alloc = arena_ptr->AsStreamAwareAreana();
-      if (stream_aware_alloc) {
-        return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
-      }
+    return allocator->Reserve(size);
+  if (stream && allocator->Info().alloc_type == OrtArenaAllocator) {
+    BFCArena* arena_ptr = static_cast<BFCArena*>(allocator.get());
+    auto* stream_aware_alloc = arena_ptr->AsStreamAwareAreana();
+    if (stream_aware_alloc) {
+      return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
     }
-    return alloc->Alloc(size);
-  };
+  }
+  return allocator->Alloc(size);
 }
 }  // namespace onnxruntime
 
