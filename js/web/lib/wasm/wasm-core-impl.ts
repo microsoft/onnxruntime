@@ -38,7 +38,7 @@ const activeSessions = new Map<number, SessionMetadata>();
    const modelDataOffset = wasm._malloc(model.byteLength);
    wasm.HEAPU8.set(model, modelDataOffset);
    return [modelDataOffset, model.byteLength];
- }
+ };
 
  export const createSessionFinalize =
  (modelData: SerializableModeldata, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {

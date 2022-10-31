@@ -162,12 +162,13 @@ export const createSessionAllocate =
 };
 
 export const createSessionFinalize =
-    async(modeldata: SerializableModeldata, options?: InferenceSession.SessionOptions): Promise<SerializableSessionMetadata> => {
+    async (modeldata: SerializableModeldata, options?: InferenceSession.SessionOptions):
+    Promise<SerializableSessionMetadata> => {
   if (!BUILD_DEFS.DISABLE_WASM_PROXY && isProxy()) {
     ensureWorker();
     return new Promise<SerializableSessionMetadata>((resolve, reject) => {
       createSessionFinalizeCallbacks.push([resolve, reject]);
-      const message: OrtWasmMessage = {type: 'create_finalize', in : {modeldata, options}};
+      const message: OrtWasmMessage = { type: 'create_finalize', in: { modeldata, options } };
       proxyWorker!.postMessage(message);
     });
   } else {
