@@ -1,9 +1,9 @@
 #pragma once
 
 #include <atomic>
+#include <map>
 #include <memory>
 #include <mutex>
-#include <stack>
 #include <unordered_map>
 #include <vector>
 
@@ -85,7 +85,7 @@ public:
 
   void StartLogging();
   void StopLogging();
-  void Consume(uint64_t client_handle, const TimePoint& start_time, Events& events);
+  void Consume(uint64_t client_handle, const TimePoint& start_time, std::map<uint64_t, Events>& events);
 
   bool PushCorrelation(uint64_t client_handle, uint64_t external_correlation_id);
   void PopCorrelation(uint64_t& popped_correlation_id);
@@ -113,11 +113,9 @@ private:
 
   std::mutex unprocessed_activity_buffers_lock_;
   std::vector<RoctracerActivityBuffer> unprocessed_activity_buffers_;
+  std::mutex activity_buffer_processor_mutex_;
   std::mutex api_call_args_lock_;
   std::unordered_map<uint64_t, ApiCallRecord> api_call_args_;
-
-  // Keyed on client_id / client_handle
-  std::unordered_map<uint64_t, std::unique_ptr<std::mutex>> per_client_locks_;
 
   // Keyed on external_correlation_id -> client_id/client_handle
   std::unordered_map<uint64_t, uint64_t> external_correlation_id_to_client_;
@@ -126,10 +124,11 @@ private:
   std::unordered_map<uint64_t, uint64_t> roctracer_correlation_to_external_correlation_;
 
   // client_id/client_handle -> external_correlation_id -> events
-  std::unordered_map<uint64_t, std::unordered_map<uint64_t, Events>> per_client_events_by_ext_correlation_;
+  std::mutex event_list_mutex_;
+  std::unordered_map<uint64_t, std::map<uint64_t, Events>> per_client_events_by_ext_correlation_;
   uint64_t next_client_id_ = 1;
   bool logging_enabled_ = false;
-  std::mutex global_op_mutex_;
+  std::mutex roctracer_manager_mutex_;
   roctracer_pool_t* activity_pool_;
 };
 

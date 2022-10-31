@@ -52,22 +52,19 @@ RoctracerManager::~RoctracerManager() {
 }
 
 uint64_t RoctracerManager::RegisterClient() {
-  std::lock_guard<std::mutex> lock(global_op_mutex_);
+  std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
   auto res = next_client_id_++;
-  per_client_locks_[res] = std::make_unique<std::mutex>();
   per_client_events_by_ext_correlation_.insert({res, {}});
   return res;
 }
 
 void RoctracerManager::DeregisterClient(uint64_t client_handle) {
-  std::lock_guard<std::mutex> lock(global_op_mutex_);
-  auto it = per_client_locks_.find(client_handle);
+  std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
   per_client_events_by_ext_correlation_.erase(client_handle);
-  per_client_locks_.erase(client_handle);
 }
 
 void RoctracerManager::StartLogging() {
-  std::lock_guard<std::mutex> lock(global_op_mutex_);
+  std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
   if (logging_enabled_) {
     return;
   }
@@ -83,7 +80,7 @@ void RoctracerManager::StartLogging() {
 }
 
 void RoctracerManager::StopLogging() {
-  std::lock_guard<std::mutex> lock(global_op_mutex_);
+  std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
   if (!logging_enabled_) {
     return;
   }
@@ -95,7 +92,9 @@ void RoctracerManager::StopLogging() {
   logging_enabled_ = false;
 }
 
-void RoctracerManager::Consume(uint64_t client_handle, const TimePoint& start_time, Events& events) {
+void RoctracerManager::Consume(uint64_t client_handle, const TimePoint& start_time,
+                               std::map<uint64_t, Events>& events) {
+  events.clear();
   std::vector<RoctracerActivityBuffer> activity_buffers;
   {
     std::lock_guard<std::mutex> lock(unprocessed_activity_buffers_lock_);
@@ -103,10 +102,21 @@ void RoctracerManager::Consume(uint64_t client_handle, const TimePoint& start_ti
     unprocessed_activity_buffers_.clear();
   }
 
-  ProcessActivityBuffers(activity_buffers);
+  {
+    // Ensure that at most one thread is working through the activity buffers at any time.
+    std::lock_guard<std::mutex> lock(activity_buffer_processor_mutex_);
+    ProcessActivityBuffers(activity_buffers, start_time);
+    std::lock_guard<std::mutex> lock(event_list_mutex_);
+    auto it = per_client_events_by_ext_correlation_.find(client_handle);
+    if (it == per_client_events_by_ext_correlation_.end()) {
+      return;
+    }
+    std::swap(events, it->second);
+  }
 }
 
 bool RoctracerManager::PushCorrelation(uint64_t client_handle, uint64_t external_correlation_id) {
+  std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
   auto it = per_client_events_by_ext_correlation_.find(client_handle);
   if (it == per_client_events_by_ext_correlation_.end()) {
     return false;
@@ -119,6 +129,7 @@ bool RoctracerManager::PushCorrelation(uint64_t client_handle, uint64_t external
 }
 
 void RoctracerManager::PopCorrelation(uint64_t& popped_external_correlation_id) {
+  std::lock_guard<std::mutex> lock(roctracer_manager_mutex_);
   roctracer_activity_pop_external_correlation_id(&popped_external_correlation_id);
   external_correlation_id_to_client_.erase(popped_external_correlation_id);
 }
