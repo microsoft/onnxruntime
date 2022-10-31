@@ -3,8 +3,7 @@
 
 #pragma once
 
-#include <gsl/gsl>
-
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/execution_provider.h"  // for IExecutionProvider::IKernelLookup
 #include "core/graph/graph_viewer.h"

@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -44,6 +45,11 @@ TEST(TensorOpTest, ReshapeWithEmptyInput) {
 }
 
 TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: The input tensor cannot be reshaped to the requested shape. Input shape:{1,0}, requested shape:{1,0,-1}";
+  }
+
   {
     OpTester test("Reshape");
     test.AddInput<float>("data", {1, 0}, std::vector<float>());
@@ -86,6 +92,11 @@ TEST(TensorOpTest, Reshape_WithOutAllowZero) {
 }
 
 TEST(TensorOpTest, Reshape_WithAllowZero) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
   OpTester test("Reshape", 14);
 
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
@@ -99,6 +110,11 @@ TEST(TensorOpTest, Reshape_WithAllowZero) {
 }
 
 TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
   OpTester test("Reshape");
 
   test.AddInput<float>("data", {0, 3, 4}, std::vector<float>());
@@ -132,6 +148,11 @@ TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero) {
 }
 
 TEST(TensorOpTest, Reshape_UnknownDimWithAllowZero) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
   OpTester test("Reshape", 14);
 
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));

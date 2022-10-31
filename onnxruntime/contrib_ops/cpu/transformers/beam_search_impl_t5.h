@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/span_utils.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"  // for DEBUG_GENERATION
 #include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
@@ -214,7 +215,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                 cpu_state,
                                                 iteration_counter));
     ++current_length;  // Increase sequence length after a new token is generated.
-    ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(beam_next_tokens.as_span<const int32_t>(),
+    ORT_RETURN_IF_ERROR(decoder_subgraph_.CreateInitialFeeds(ReinterpretAsSpan<const int32_t>(beam_next_tokens),
                                                              this->implicit_inputs_,
                                                              encoder_feeds,
                                                              encoder_fetches,
@@ -284,8 +285,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
           decoder_fetches,
           decoder_feeds,
           num_present_outputs,
-          beam_next_tokens.as_span<const int32_t>(),
-          beam_indices.as_span<const int32_t>(),
+          ReinterpretAsSpan<const int32_t>(beam_next_tokens),
+          ReinterpretAsSpan<const int32_t>(beam_indices),
           parameters->num_beams,
           decoder_subgraph_.GetFirstPastInputIndex(),
           decoder_subgraph_.GetFirstPresentOutputIndex(),
@@ -316,7 +317,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   if (output_scores != nullptr) {
     gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
     gsl::span<const float> source = gsl::span<const float>(beam_state.scores.data(), beam_state.scores.size());
-    assert(target.length() == source.length());
+    assert(target.size() == source.size());
     ORT_RETURN_IF_ERROR(this->device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
   }
 

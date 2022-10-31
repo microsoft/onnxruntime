@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/nn/conv.h"
+#include "core/common/span_utils.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
 #include "core/providers/rocm/tensor/slice.h"
 
@@ -80,7 +81,7 @@ Status SliceOutUnwantedOutputSection(hipStream_t stream,
   ORT_THROW_IF_ERROR(SliceBase::PrepareForCompute(starts, ends, axes, compute_metadata));
 
   // As a sanity check, ensure that the slice operator's output shape matches with the expected output shape
-  ORT_ENFORCE(gsl::make_span(compute_metadata.output_dims_) == output_dims);
+  ORT_ENFORCE(SpanEq(gsl::make_span(compute_metadata.output_dims_), output_dims));
 
   return SliceRocm::Impl(stream, input_data, input_dims, output_data, compute_metadata, element_size);
 }
@@ -90,7 +91,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   //set X
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
-  const auto x_dims = x_shape.GetDims();
+  const auto x_dims = x_shape.AsShapeVector();
   s_.x_data = reinterpret_cast<const HipT*>(X->Data<T>());
   s_.element_size = X->DataType()->Size();
   //set W
@@ -113,11 +114,11 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   } else {
     s_.z_data = nullptr;
   }
-  bool input_dims_changed = (s_.last_x_dims.GetDims() != x_dims);
-  bool w_dims_changed = (s_.last_w_dims.GetDims() != gsl::make_span(w_dims));
+  bool input_dims_changed = (s_.last_x_dims != x_dims);
+  bool w_dims_changed = (s_.last_w_dims != w_dims);
   if (input_dims_changed || w_dims_changed) {
     if (input_dims_changed)
-      s_.last_x_dims = x_dims;
+      s_.last_x_dims = gsl::make_span(x_dims);
 
     if (w_dims_changed) {
       s_.last_w_dims = gsl::make_span(w_dims);
