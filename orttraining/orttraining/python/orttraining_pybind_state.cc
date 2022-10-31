@@ -28,7 +28,7 @@
 #include "orttraining/python/orttraining_pybind_common.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
-#include "core/framework/execution_context.h"
+#include "core/framework/stream_execution_context.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/core/framework/torch/custom_function_register.h"
@@ -848,24 +848,36 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
               const std::vector<OrtValue>& user_inputs, std::vector<OrtValue>& user_outputs) -> void {
              ORT_THROW_IF_ERROR(model->EvalStep(user_inputs, user_outputs));
            })
-      .def("reset_grad", [](onnxruntime::training::api::Module* model) -> void {
-        ORT_THROW_IF_ERROR(model->ResetGrad());
-      })
-      .def("copy_parameters_to_buffer", [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
-        ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output));
-      })
-      .def("copy_buffer_to_parameters", [](onnxruntime::training::api::Module* model, OrtValue& input) -> void {
-        ORT_THROW_IF_ERROR(model->CopyBufferToParameters(input));
-      })
-      .def("get_parameters_size", [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
-        return model->GetParametersSize(trainable_only);
-      })
-      .def("save_checkpoint", [](onnxruntime::training::api::Module* model, const std::string& checkpoint_path) -> void {
-        onnxruntime::training::api::CheckpointState state;
-        ORT_THROW_IF_ERROR(model->GetStateDict(state.module_checkpoint_state));
-        ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(state,
-                                                                      ToPathString(checkpoint_path)));
-      });
+      .def("reset_grad",
+           [](onnxruntime::training::api::Module* model) -> void {
+             ORT_THROW_IF_ERROR(model->ResetGrad());
+           })
+      .def("copy_parameters_to_buffer",
+           [](onnxruntime::training::api::Module* model, OrtValue& output) -> void {
+             ORT_THROW_IF_ERROR(model->CopyParametersToBuffer(output));
+           })
+      .def("copy_buffer_to_parameters",
+           [](onnxruntime::training::api::Module* model, OrtValue& input) -> void {
+             ORT_THROW_IF_ERROR(model->CopyBufferToParameters(input));
+           })
+      .def("get_parameters_size",
+           [](onnxruntime::training::api::Module* model, bool trainable_only) -> size_t {
+             return model->GetParametersSize(trainable_only);
+           })
+      .def("save_checkpoint",
+           [](onnxruntime::training::api::Module* model, const std::string& checkpoint_path) -> void {
+             onnxruntime::training::api::CheckpointState state;
+             ORT_THROW_IF_ERROR(model->GetStateDict(state.module_checkpoint_state));
+             ORT_THROW_IF_ERROR(onnxruntime::training::api::SaveCheckpoint(state,
+                                                                           ToPathString(checkpoint_path)));
+           })
+      .def("export_model_for_inferencing",
+           [](onnxruntime::training::api::Module* model, const std::string& inference_model_path,
+              const std::vector<std::string>& graph_output_names) -> void {
+             ORT_ENFORCE(model, "Received a nullptr for expected pointer to class training::api::Module");
+             ORT_THROW_IF_ERROR(model->ExportModelForInferencing(inference_model_path,
+                                                                 graph_output_names));
+           });
 
   py::class_<onnxruntime::training::api::CheckpointState>
       checkpoint_state(m, "CheckpointState", R"pbdoc(CheckpointState.)pbdoc");

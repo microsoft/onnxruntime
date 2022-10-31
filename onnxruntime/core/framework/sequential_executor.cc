@@ -11,7 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/allocation_planner.h"
 #include "core/framework/execution_frame.h"
-#include "core/framework/execution_context.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
@@ -406,7 +406,11 @@ class KernelScope {
 #endif
 };
 
-onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx, const bool& terminate_flag) {
+onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
+                                  NodeIndex idx,
+                                  size_t stream_idx,
+                                  const bool& terminate_flag,
+                                  SessionScope& session_scope) {
   auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
   if (p_kernel->KernelDef().OpName() == "YieldOp") {
     // Do not execute YieldOp (it is an no-op anyways).
@@ -429,9 +433,7 @@ onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t s
   if (p_kernel->IsAsync()) {
     ORT_THROW("Async Kernel Support is not implemented yet.");
   } else {
-    auto session_scope = ctx.GetSessionScope();
-    ORT_ENFORCE(session_scope, "session scope uninitialized");
-    KernelScope kernel_scope(*session_scope, kernel_ctx, *p_kernel);
+    KernelScope kernel_scope(session_scope, kernel_ctx, *p_kernel);
     ORT_TRY {
 #ifdef ENABLE_TRAINING
       if (p_kernel->KernelDef().AllocateInputsContiguously()) {
@@ -504,18 +506,18 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
   }
 
   // prepare the execution context, notifications got initialized.
-  ExecutionContext ctx(session_state,
-                       valid_streams,
-                       execution_plan->notification_owners,
-                       feed_mlvalue_idxs,
-                       feeds,
-                       fetch_mlvalue_idxs,
-                       fetches,
-                       fetch_allocators,
-                       execution_plan->num_barriers,
-                       logger,
-                       device_streams,
-                       single_thread_mode);
+  StreamExecutionContext ctx(session_state,
+                             valid_streams,
+                             execution_plan->notification_owners,
+                             feed_mlvalue_idxs,
+                             feeds,
+                             fetch_mlvalue_idxs,
+                             fetches,
+                             fetch_allocators,
+                             execution_plan->num_barriers,
+                             logger,
+                             device_streams,
+                             single_thread_mode);
 #ifdef ENABLE_TRAINING
   if (only_execute_path_to_fetches) {
     auto* node_to_execute = session_state.GetToBeExecutedRange(fetch_mlvalue_idxs);
@@ -524,9 +526,16 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 #else
   ORT_UNUSED_PARAMETER(only_execute_path_to_fetches);
 #endif
+    const auto msg_string = ss.str();
+    LOGS(logger, ERROR) << msg_string;
+    return Status(status.Category(), status.Code(), msg_string);
+  }
+  ctx.RecycleNodeInputs(idx);
+  LOGS(logger, INFO) << "stream " << stream_idx << " launch kernel with idx " << idx;
+  return Status::OK();
+}
 
   SessionScope session_scope(session_state, ctx.GetExecutionFrame());
-  ctx.SetSessionScope(&session_scope);
 
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
 
@@ -537,8 +546,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
       // so don't need to invoke CompleteTask here
       // ctx.CompleteTask();
     } else {
-      concurrency::ThreadPool::Schedule(tp, [i, &ctx, &terminate_flag]() {
-        RunSince(i, ctx, terminate_flag, 0);
+      concurrency::ThreadPool::Schedule(tp, [i, &ctx, &terminate_flag, &session_scope]() {
+        RunSince(i, ctx, session_scope, terminate_flag, 0);
       });
     }
   }
@@ -583,7 +592,6 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
   SessionScope session_scope(session_state, ctx.GetExecutionFrame());
-  ctx.SetSessionScope(&session_scope);
 
   ctx.SetOrtValueCache(std::move(cache));
 
@@ -591,10 +599,10 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
 
   for (size_t i = 0; i < execution_plan->execution_plan.size(); ++i) {
     if (!execution_plan->execution_plan[i]->steps_.empty()) {
-      concurrency::ThreadPool::Schedule(tp, [i, &ctx, &terminate_flag]() {
+      concurrency::ThreadPool::Schedule(tp, [i, &ctx, &terminate_flag, &session_scope]() {
         auto* range = ctx.GetCurrentRange();
         size_t start = !range ? 0 : range->stream_pc_range[i].first;
-        RunSince(i, ctx, terminate_flag, start);
+        RunSince(i, ctx, session_scope, terminate_flag, start);
       });
     }
   }

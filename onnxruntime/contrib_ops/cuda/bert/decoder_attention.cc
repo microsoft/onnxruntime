@@ -43,7 +43,6 @@ Status CheckInputs(const TensorShape& query_shape,
                    const bool use_past,
                    const bool has_layer_state,
                    const bool has_key_padding_mask) {
-
   const auto& query_shape_dims = query_shape.GetDims();
   if (query_shape_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions, got ",
@@ -161,7 +160,7 @@ Status CheckInputs(const TensorShape& query_shape,
 
   return Status::OK();
 }
-} // anonymous namespace
+}  // anonymous namespace
 
 template <typename T>
 DecoderAttention<T>::DecoderAttention(const OpKernelInfo& info) : CudaKernel(info) {
@@ -218,7 +217,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int key_sequence_length = static_cast<int>(key_shape[0]);
   int head_size = hidden_size / num_heads_;
 
-  //k, v sequence after gemm
+  // k, v sequence after gemm
   int kv_sequence_length = 0;
 
   // Generate q, k, v w/o cache
@@ -244,19 +243,18 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool has_key_padding_mask_ = *(kernel_state_pinned + 3);
 
   ORT_RETURN_IF_ERROR(
-    CheckInputs(query->Shape(),
-                key->Shape(),
-                q_weights->Shape(),
-                kv_weights->Shape(),
-                bias->Shape(),
-                key_padding_mask,
-                key_cache,
-                value_cache,
-                static_kv_,
-                use_past_,
-                has_layer_state_,
-                has_key_padding_mask_)
-  );
+      CheckInputs(query->Shape(),
+                  key->Shape(),
+                  q_weights->Shape(),
+                  kv_weights->Shape(),
+                  bias->Shape(),
+                  key_padding_mask,
+                  key_cache,
+                  value_cache,
+                  static_kv_,
+                  use_past_,
+                  has_layer_state_,
+                  has_key_padding_mask_));
 
   // calculate q
   gemm_query_buffer_p = GetScratchBuffer<T>(batch_size * sequence_length * hidden_size * element_size, OrtStream(context));
@@ -293,7 +291,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
           reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n,
-          GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
+          GetConstOnes<CudaT>(m, Stream(context)), 1,
           &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -312,7 +310,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
           reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n,
-          GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
+          GetConstOnes<CudaT>(m, Stream(context)), 1,
           &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -323,7 +321,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       // gemm_kv_buffer in col-base: (2*h2, T_S*B)
     }
   } else {
-    ORT_ENFORCE(nullptr != key_cache && nullptr != value_cache); // (B, N, S, H)
+    ORT_ENFORCE(nullptr != key_cache && nullptr != value_cache);  // (B, N, S, H)
     const auto& cache_shape = key_cache->Shape();
     // key and value cache have identical shape
     int cache_sequence_length = static_cast<int>(cache_shape[2]);
@@ -335,7 +333,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
           reinterpret_cast<const CudaT*>(bias->Data<T>() + hidden_size), n,
-          GetConstOnes<CudaT>(m, GetCudaStreamFromContext(context)), 1,
+          GetConstOnes<CudaT>(m, Stream(context)), 1,
           &zero, reinterpret_cast<CudaT*>(gemm_kv_buffer_p.get()), n, device_prop));
       // matmul: (2*h2, h1)*(h1, T_S*B)
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
@@ -361,29 +359,29 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* new_value_cache(context->Output(2, new_cache_shape));
 
   return LaunchDecoderAttentionKernel(
-          device_prop,
-          stream,
-          cublas,
-          element_size,
-          batch_size,
-          sequence_length,
-          kv_sequence_length,
-          num_heads_,
-          head_size,
-          static_kv_,
-          use_past_,
-          has_layer_state_,
-          has_key_padding_mask_,
-          nullptr == gemm_query_buffer_p ? nullptr : reinterpret_cast<const CudaT*>(gemm_query_buffer_p.get()),
-          nullptr == gemm_kv_buffer_p ? nullptr : reinterpret_cast<const CudaT*>(gemm_kv_buffer_p.get()),
-          nullptr == key_padding_mask ? nullptr : key_padding_mask->Data<bool>(),
-          nullptr == key_cache ? nullptr : key_cache->Data<T>(),
-          nullptr == value_cache ? nullptr : value_cache->Data<T>(),
-          qkv_buffer_p.get(),
-          workspace_p.get(),
-          output->MutableData<T>(),
-          nullptr == new_key_cache ? nullptr : new_key_cache->MutableData<T>(),
-          nullptr == new_value_cache ? nullptr : new_value_cache->MutableData<T>());
+      device_prop,
+      stream,
+      cublas,
+      element_size,
+      batch_size,
+      sequence_length,
+      kv_sequence_length,
+      num_heads_,
+      head_size,
+      static_kv_,
+      use_past_,
+      has_layer_state_,
+      has_key_padding_mask_,
+      nullptr == gemm_query_buffer_p ? nullptr : reinterpret_cast<const CudaT*>(gemm_query_buffer_p.get()),
+      nullptr == gemm_kv_buffer_p ? nullptr : reinterpret_cast<const CudaT*>(gemm_kv_buffer_p.get()),
+      nullptr == key_padding_mask ? nullptr : key_padding_mask->Data<bool>(),
+      nullptr == key_cache ? nullptr : key_cache->Data<T>(),
+      nullptr == value_cache ? nullptr : value_cache->Data<T>(),
+      qkv_buffer_p.get(),
+      workspace_p.get(),
+      output->MutableData<T>(),
+      nullptr == new_key_cache ? nullptr : new_key_cache->MutableData<T>(),
+      nullptr == new_value_cache ? nullptr : new_value_cache->MutableData<T>());
 }
 
 }  // namespace cuda

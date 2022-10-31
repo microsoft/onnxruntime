@@ -85,37 +85,37 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (b_shape.Size() == 1) {
       // if B is (), (1,) or (1, 1), broadcast the scalar
       CUBLAS_RETURN_IF_ERROR(cublasCopyHelper(
-                                 Stream(ctx),
-                                 GetCublasHandle(ctx),
-                                 M * N,
-                                 b_data,
-                                 0,
-                                 out_data,
-                                 1));
+          Stream(ctx),
+          GetCublasHandle(ctx),
+          M * N,
+          b_data,
+          0,
+          out_data,
+          1));
     } else if (b_shape.NumDimensions() == 1 || b_shape[0] == 1) {
       // B is (N,) or (1, N), broadcast using Y(N,M) = 1 * B(N,1) x ones(1,M) + 0 * Y
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-                                 GetCublasHandle(ctx),
-                                 CUBLAS_OP_N,
-                                 CUBLAS_OP_N,
-                                 N, M, 1,
-                                 /*alpha*/ &one,
-                                 b_data, N,
-                                 GetConstOnes<CudaT>(M, GetCudaStreamFromContext(ctx)), 1,
-                                 /*beta*/ &zero,
-                                 out_data, N, device_prop));
+          GetCublasHandle(ctx),
+          CUBLAS_OP_N,
+          CUBLAS_OP_N,
+          N, M, 1,
+          /*alpha*/ &one,
+          b_data, N,
+          GetConstOnes<CudaT>(M, Stream(ctx)), 1,
+          /*beta*/ &zero,
+          out_data, N, device_prop));
     } else if (b_shape.NumDimensions() == 2 && b_shape[1] == 1) {
       // B is (M, 1), broadcast using Y(N,M) = 1 * ones(N,1) x B(1,M) + 0 * Y
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-                                     GetCublasHandle(ctx),
-                                     CUBLAS_OP_N,
-                                     CUBLAS_OP_N,
-                                     N, M, 1,
-                                     /*alpha*/ &one,
-                                     GetConstOnes<CudaT>(N, GetCudaStreamFromContext(ctx)), N,
-                                     b_data, 1,
-                                     /*beta*/ &zero,
-                                     out_data, N, device_prop));
+          GetCublasHandle(ctx),
+          CUBLAS_OP_N,
+          CUBLAS_OP_N,
+          N, M, 1,
+          /*alpha*/ &one,
+          GetConstOnes<CudaT>(N, Stream(ctx)), N,
+          b_data, 1,
+          /*beta*/ &zero,
+          out_data, N, device_prop));
     } else {
       // B is (M, N), no broadcast needed.
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, M * N * sizeof(T), cudaMemcpyDeviceToDevice, Stream(ctx)));
@@ -126,19 +126,19 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   CudaT beta = ToCudaType<T>::FromFloat(beta_);
   // Gemm, note that CUDA assumes col-major, so Y(N,M) = alpha * op(W) x op(X) + beta * Y
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-                             GetCublasHandle(ctx),
-                             trans_B_ ? CUBLAS_OP_T : CUBLAS_OP_N,
-                             trans_A_ ? CUBLAS_OP_T : CUBLAS_OP_N,
-                             N, M, K,
-                             &alpha,
-                             reinterpret_cast<const CudaT*>(W->Data<T>()),
-                             (trans_B_ ? K : N),
-                             reinterpret_cast<const CudaT*>(X->Data<T>()),
-                             (trans_A_ ? M : K),
-                             // ideally we need to set the output buffer contents to 0 if bias is missing,
-                             // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
-                             B != nullptr ? &beta : &zero,
-                             out_data, N, device_prop));
+      GetCublasHandle(ctx),
+      trans_B_ ? CUBLAS_OP_T : CUBLAS_OP_N,
+      trans_A_ ? CUBLAS_OP_T : CUBLAS_OP_N,
+      N, M, K,
+      &alpha,
+      reinterpret_cast<const CudaT*>(W->Data<T>()),
+      (trans_B_ ? K : N),
+      reinterpret_cast<const CudaT*>(X->Data<T>()),
+      (trans_A_ ? M : K),
+      // ideally we need to set the output buffer contents to 0 if bias is missing,
+      // but passing 0 for beta is cheaper and it will ignore any junk in the output buffer
+      B != nullptr ? &beta : &zero,
+      out_data, N, device_prop));
 
   return Status::OK();
 }

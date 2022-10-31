@@ -70,7 +70,7 @@ jobs:
       value: -a "-a -z -g $(optimizeGraph) -b $(bindInputs) $(trtEPOptionsArg) $(cudaEPOptionsArg)"
 
     - name: image
-      value: ort-$(branchName)
+      value: ort-image-$(Build.BuildId)
 
   steps:
     - ${{ if eq(parameters.TrtVersion, 'BIN') }}:

@@ -234,7 +234,7 @@ void FusedMatMulShapeMapping(
     std::vector<DimensionType>& outputShape);
 
 std::pair<std::vector<uint32_t>, std::vector<uint32_t>> GetFusedMatMulSizesAndStrides(
-    gsl::span<const uint32_t> sizes, 
+    gsl::span<const uint32_t> sizes,
     int32_t transBatch = 0,
     int32_t transpose = 0);
 
@@ -437,7 +437,7 @@ public:
     enum InputDims { N, C, H, W };
 
 public:
-    // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
     template<typename Info_t, typename Shape_t>
     ConvolutionHelperBase(const Info_t& info, const Shape_t& shape, bool transpose, bool hasDynamicPads, uint32_t inputTensorIndex, uint32_t filterTensorIndex) :
         m_inputTensorIndex(inputTensorIndex),
@@ -445,7 +445,7 @@ public:
         m_kernel(InitializeKernel(info, shape.GetInputTensorDimensionCount(inputTensorIndex), shape.GetInputTensorShape(filterTensorIndex)))
     {
         m_groupCount = info.template GetOptionalAttribute<uint32_t>(AttrName::Group, 1);
-        
+
         if (!transpose)
         {
             InitializeKernelAndShapes(ShapeInformationAdapter(shape));
@@ -507,8 +507,8 @@ public:
 class GemmHelper
 {
 public:
-    // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
-    // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
     template<typename Info_t, typename Shape_t>
     GemmHelper(const Info_t& info, const Shape_t& shape)
     {
@@ -591,8 +591,8 @@ class SliceHelper
     );
 
 public:
-    // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
-    // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
     template<typename Info_t, typename Shape_t>
     SliceHelper(const Info_t& info, const Shape_t& shape, uint32_t opsetVersion)
     {
@@ -722,6 +722,9 @@ public:
         MatMul,
         MatMulTransposeA,
         MatMulTransposeB,
+        MatMulNhcw,
+        MatMulNhcwTransposeA,
+        MatMulNhcwTransposeB,
         ReduceSum,
         Transpose,
         Total,
@@ -740,7 +743,7 @@ protected:
     {
         uint32_t labelIndexBegin;
         uint32_t labelIndexEnd;
-       
+
         uint32_t GetDimensionCount() const noexcept
         {
             return labelIndexEnd - labelIndexBegin;
@@ -1037,8 +1040,8 @@ protected:
 class UnpoolingHelper
 {
 public:
-    // Info_t is used to obtain attributes which will be used for calculating the output shape later. 
-    // Shape_t is used to obtain input shape which will be used for adjusting attribute value. 
+    // Info_t is used to obtain attributes which will be used for calculating the output shape later.
+    // Shape_t is used to obtain input shape which will be used for adjusting attribute value.
     template<typename Info_t, typename Shape_t>
     UnpoolingHelper(
         const Info_t& info,
@@ -1462,6 +1465,7 @@ using ShapeInferenceHelper_Affine = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QuantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_DequantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QLinearSigmoid = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_Attention = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Sign = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_IsNaN = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Erf = GetBroadcastedOutputShapeHelper;

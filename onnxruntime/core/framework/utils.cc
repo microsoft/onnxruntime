@@ -9,7 +9,7 @@
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/execution_frame.h"
-#include "core/framework/execution_context.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/kernel_def_builder.h"

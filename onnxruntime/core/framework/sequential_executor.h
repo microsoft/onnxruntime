@@ -21,12 +21,17 @@
 
 namespace onnxruntime {
 
-class ExecutionContext;
+class StreamExecutionContext;
 class DeviceStreamCollection;
+class SessionScope;
 typedef InlinedHashMap<std::string, OrtValue> OrtValueCache;
 typedef std::shared_ptr<OrtValueCache> OrtValueCachePtr;
 
-onnxruntime::Status ExecuteKernel(ExecutionContext& ctx, NodeIndex idx, size_t stream_idx, const bool& terminate_flag);
+onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
+                                  NodeIndex idx,
+                                  size_t stream_idx,
+                                  const bool& terminate_flag,
+                                  SessionScope& session_scope);
 
 onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
                                    gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
