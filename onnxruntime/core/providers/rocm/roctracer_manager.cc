@@ -210,7 +210,7 @@ void RoctracerManager::CreateEventForMemsetRecord(const roctracer_record_t* reco
   std::unordered_map<std::string, std::string> args {
     {"stream", call_record.cid_ == HIP_API_ID_hipMemset
                                 ? "0"
-                                : PointerToHexString(launch_args.args.hipMemsetAsync.stream)},
+                                : PointerToHexString((void*)launch_args.args.hipMemsetAsync.stream)},
     {"dst", dst_string},
     {"size", std::to_string(launch_args.args.hipMemset.sizeBytes)},
     {"value", std::to_string(launch_args.args.hipMemset.value)}
@@ -253,7 +253,7 @@ void RoctracerManager::CreateEventForMemcpyRecord(const roctracer_record_t* reco
   std::unordered_map<std::string, std::string> args {
     {"stream", call_record.cid_ == HIP_API_ID_hipMemcpy
                                 ? "0"
-                                : std::to_string(launch_args.args.hipMemcpyAsync.stream)},
+                                : PointerToHexString((void*)launch_args.args.hipMemcpyAsync.stream)},
     {"src", src_string},
     {"dst", dst_string},
     {"kind", memcpy_kind_string}
@@ -282,7 +282,7 @@ void RoctracerManager::CreateEventForMemcpy2DRecord(const roctracer_record_t* re
   std::unordered_map<std::string, std::string> args {
     {"stream", call_record.cid_ == HIP_API_ID_hipMemcpy2D
                                 ? "0"
-                                : std::to_string(launch_args.args.hipMemcpy2DAsync.stream)},
+                                : PointerToHexString((void*)launch_args.args.hipMemcpy2DAsync.stream)},
     {"src", src_string},
     {"dst", dst_string},
     {"spitch", std::to_string(launch_args.args.hipMemcpy2D.spitch)},
