@@ -691,7 +691,12 @@ else()
     message("AVX instruction set is not supported.")
   endif()
 
-  if (NOT (COMPILER_SUPPORT_MF16C AND COMPILER_SUPPORT_FMA AND COMPILER_SUPPORT_AVX))
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_ENABLE_TRAINING_ON_DEVICE)
+    message("F16C, FMA and AVX is not supported on Android for on-device training.")
+  endif()
+
+  if (NOT (COMPILER_SUPPORT_MF16C AND COMPILER_SUPPORT_FMA AND COMPILER_SUPPORT_AVX) OR
+    (CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_ENABLE_TRAINING_ON_DEVICE))
     message("One or more AVX/F16C instruction flags are not supported. ")
     set(onnxruntime_ENABLE_CPU_FP16_OPS FALSE)
   endif()
