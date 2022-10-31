@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -93,6 +94,11 @@ TEST(SqueezeOpTest, DuplicateAxes) {
 }
 
 TEST(SqueezeOpTest, BadAxes) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Dimension of input 0 must be 1 instead of 3. shape={3,1,4,5}";
+  }
+
   OpTester test("Squeeze");
   test.AddShapeToTensorData(false);  // TODO: re-enable shape inference test after ONNX fix
   // Bad axes - should be 1 instead of 0.
@@ -134,6 +140,11 @@ TEST(SqueezeOpTest, Squeeze_2_axes_input) {
 }
 
 TEST(SqueezeOpTest, Squeeze_Empty_Axes_opset13) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2068): Catastrophic failure";
+  }
+
   OpTester test("Squeeze", 13);
   test.AddInput<float>("data", {1, 1, 4, 1}, std::vector<float>(4, 1.0f));
   test.AddOutput<float>("squeezed", {4}, std::vector<float>(4, 1.0f));

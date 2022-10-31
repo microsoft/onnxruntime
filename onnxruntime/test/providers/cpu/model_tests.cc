@@ -857,6 +857,9 @@ TEST_P(ModelTest, Run) {
 #ifdef USE_ARMNN
   provider_names.push_back(ORT_TSTR("armnn"));
 #endif
+#ifdef USE_DML
+  provider_names.push_back(ORT_TSTR("dml"));
+#endif
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
   // Please make no more changes to the list

@@ -117,7 +117,8 @@ struct TensorCheck<uint8_t> {
 
     // For uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
     // For any other EPs, we still expect an exact match for the results
-    if (provider_type == kNnapiExecutionProvider && (has_abs_err || has_rel_err)) {
+    // TODO: Verify if DML can possibly have a ROUNDING_MODE parameter and conform to the other EPs #41968513
+    if ((provider_type == kNnapiExecutionProvider || provider_type == kDmlExecutionProvider) && (has_abs_err || has_rel_err)) {
       double threshold = has_abs_err
                              ? *(params.absolute_error_)
                              : 0.0;
@@ -208,7 +209,7 @@ struct TensorCheck<double> {
     }
 
     double threshold = 0.001;
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
     threshold = 0.005;
 #endif
 
@@ -265,7 +266,7 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
     output = output_tensor.Data<TypeToCheck>();
   }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
   constexpr float threshold = 0.005f;
 #else
   constexpr float threshold = 0.0001f;
@@ -335,7 +336,7 @@ struct TensorCheck<MLFloat16> {
     const bool has_rel_err = params.relative_error_.has_value();
 
     float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
     threshold = 0.005f;
 #endif
     for (int i = 0; i < size; ++i) {
@@ -389,7 +390,7 @@ struct TensorCheck<BFloat16> {
 
     /// XXX: May need to adjust threshold as BFloat is coarse
     float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
     threshold = 0.05f;  // expect at least 95% close
 #endif
     for (int i = 0; i < size; ++i) {
@@ -1246,6 +1247,8 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultSnpeExecutionProvider();
         else if (provider_type == onnxruntime::kXnnpackExecutionProvider)
           execution_provider = DefaultXnnpackExecutionProvider();
+        else if (provider_type == onnxruntime::kDmlExecutionProvider)
+          execution_provider = DefaultDmlExecutionProvider();
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
