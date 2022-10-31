@@ -54,20 +54,10 @@ private:
   size_t size_;
 };
 
-static const char* hip_api_calls_to_trace[] = {
-  "hipMemcpy",
-  "hipMemcpy2D",
-  "hipMemcpyAsync",
-  "hipMemcpy2DAsync",
-  "hipLaunchKernel",
-  "hipMemset",
-  "hipMemsetAsync",
-};
-
 struct ApiCallRecord {
   uint32_t domain_;
   uint32_t cid_;
-  hip_api_data_t api_data_;
+  hip_api_data_t api_data_ {};
 };
 
 class RoctracerManager
@@ -130,6 +120,9 @@ private:
   bool logging_enabled_ = false;
   std::mutex roctracer_manager_mutex_;
   roctracer_pool_t* activity_pool_;
+
+  // The api calls to track
+  static const std::vector<std::string> hip_api_calls_to_trace;
 };
 
 } /* end namespace profiling */

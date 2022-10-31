@@ -10,6 +10,16 @@ namespace profiling {
 // allocate a 16K buffer for recording async activities
 static constexpr size_t sc_activity_buffer_size = 0x4000;
 
+const std::vector<std::string> RoctracerManager::hip_api_calls_to_trace = {
+  "hipMemcpy",
+  "hipMemcpy2D",
+  "hipMemcpyAsync",
+  "hipMemcpy2DAsync",
+  "hipLaunchKernel",
+  "hipMemset",
+  "hipMemsetAsync",
+};
+
 // Implementation of RoctracerActivityBuffer
 RoctracerActivityBuffer& RoctracerActivityBuffer::operator = (const RoctracerActivityBuffer& other) {
   if (&other == this) {
@@ -31,6 +41,7 @@ RoctracerActivityBuffer& RoctracerActivityBuffer::operator = (RoctracerActivityB
   }
   std::swap(data_, other.data_);
   std::swap(size_, other.size_);
+  return *this;
 }
 
 RoctracerActivityBuffer::~RoctracerActivityBuffer() {
@@ -69,12 +80,24 @@ void RoctracerManager::StartLogging() {
     return;
   }
 
+  // Enable selective activity and API callbacks for the HIP APIs
+  roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
+  roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_API);
+
+  for (auto const& logged_api : hip_api_calls_to_trace) {
+    uint32_t cid = 0;
+    roctracer_op_code(ACTIVITY_DOMAIN_HIP_API, logged_api.c_str(), &cid, nullptr);
+    roctracer_enable_op_callback(ACTIVITY_DOMAIN_HIP_API, cid, ApiCallback, nullptr);
+    roctracer_enable_op_activity(ACTIVITY_DOMAIN_HIP_API, cid);
+  }
+
+  // Enable activity logging in the HCC domain.
   roctracer_properties_t hcc_cb_properties;
   memset(&hcc_cb_properties, 0, sizeof(roctracer_properties_t));
   hcc_cb_properties.buffer_size = sc_activity_buffer_size;
   hcc_cb_properties.buffer_callback_fun = ActivityCallback;
   roctracer_open_pool_expl(&hcc_cb_properties, &activity_pool_);
-  roctracer_enable_domain_activity_expl(ACTIVITY_DOMAIN_HCC_OPS, activity_pool_);
+  roctracer_enable_domain_activity_expl(ACTIVITY_DOMAIN_HIP_OPS, activity_pool_);
   roctracer_start();
   logging_enabled_ = true;
 }
@@ -87,8 +110,10 @@ void RoctracerManager::StopLogging() {
 
   roctracer_stop();
   roctracer_flush_activity_expl(activity_pool_);
-  roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HCC_OPS);
+  roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_API);
+  roctracer_disable_domain_activity(ACTIVITY_DOMAIN_HIP_OPS);
   roctracer_close_pool_expl(activity_pool_);
+  roctracer_disable_domain_callback(ACTIVITY_DOMAIN_HIP_API);
   logging_enabled_ = false;
 }
 
