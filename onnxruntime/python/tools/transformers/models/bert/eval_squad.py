@@ -14,7 +14,11 @@
 import argparse
 import csv
 import os
-from importlib.metadata import PackageNotFoundError, version
+try:
+    from importlib.metadata import PackageNotFoundError, version
+except ImportError:
+    from importlib_metadata import PackageNotFoundError, version
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
