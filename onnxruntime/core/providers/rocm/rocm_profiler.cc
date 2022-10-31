@@ -33,6 +33,7 @@ bool RocmProfiler::StartProfiling()
 {
   auto& manager = RoctracerManager::GetInstance();
   manager.StartLogging();
+  return true;
 }
 
 void RocmProfiler::EndProfiling(TimePoint start_time, Events& events)

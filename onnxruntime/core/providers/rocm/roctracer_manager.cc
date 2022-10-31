@@ -104,7 +104,7 @@ void RoctracerManager::Consume(uint64_t client_handle, const TimePoint& start_ti
 
   {
     // Ensure that at most one thread is working through the activity buffers at any time.
-    std::lock_guard<std::mutex> lock(activity_buffer_processor_mutex_);
+    std::lock_guard<std::mutex> lock_two(activity_buffer_processor_mutex_);
     ProcessActivityBuffers(activity_buffers, start_time);
     std::lock_guard<std::mutex> lock(event_list_mutex_);
     auto it = per_client_events_by_ext_correlation_.find(client_handle);
@@ -172,7 +172,7 @@ void RoctracerManager::CreateEventForKernelRecord(const roctracer_record_t* reco
   auto name = demangle(hipKernelNameRefByPtr(launch_args.args.hipLaunchKernel.function_address,
                                              launch_args.args.hipLaunchKernel.stream));
   std::unordered_map<std::string, std::string> args {
-    {"stream", std::to_string(launch_args.args.hipLaunchKernel.stream)},
+    {"stream", PointerToHexString((void*)(launch_args.args.hipLaunchKernel.stream))},
     {"grid_x", std::to_string(launch_args.args.hipLaunchKernel.numBlocks.x)},
     {"grid_y", std::to_string(launch_args.args.hipLaunchKernel.numBlocks.y)},
     {"grid_z", std::to_string(launch_args.args.hipLaunchKernel.numBlocks.z)},
