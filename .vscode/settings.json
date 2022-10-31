@@ -39,5 +39,26 @@
     "cpplint.filters": [
         "-build/include_subdir",
         "-runtime/references"
-    ]
+    ],
+    "files.associations": {
+        "BUILD": "raw",
+        "array": "cpp",
+        "bitset": "cpp",
+        "deque": "cpp",
+        "initializer_list": "cpp",
+        "list": "cpp",
+        "queue": "cpp",
+        "random": "cpp",
+        "regex": "cpp",
+        "span": "cpp",
+        "stack": "cpp",
+        "type_traits": "cpp",
+        "valarray": "cpp",
+        "vector": "cpp",
+        "xhash": "cpp",
+        "xstring": "cpp",
+        "xtree": "cpp",
+        "xutility": "cpp",
+        "*.inc": "cpp"
+    }
 }
