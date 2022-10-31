@@ -90,7 +90,11 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         if runtime_pytorch_version >= version.parse("1.12"):
             from torch.onnx import _globals
 
-            training_mode = _globals.GLOBALS.training_mode
+            assert _globals.GLOBALS.training_mode in [
+                _globals.GLOBALS.training_mode.EVAL,
+                _globals.GLOBALS.training_mode.TRAINING,
+            ], f"Unexpected training mode, expected EVAL or TRAINING, while it's {_globals.GLOBALS.training_mode} now"
+            training_mode = 1 if _globals.GLOBALS.training_mode == _globals.GLOBALS.training_mode.TRAINING else 0
         else:
             training_mode = symbolic_helper._training_mode
         cconv = n.cconv()
