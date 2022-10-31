@@ -58,6 +58,10 @@ struct EventRecord {
                   dur(duration),
                   args(event_args) {}
 
+  EventRecord(const EventRecord& other)
+    : cat(other.cat), pid(other.pid), tid(other.tid), name(other.name),
+      ts(other.ts), dur(other.dur), args(other.args) {}
+
   EventRecord(EventRecord&& other)
     : cat(other.cat), pid(other.pid), tid(other.tid), name(std::move(other.name)),
       ts(other.ts), dur(other.dur), args(std::move(other.args)) {}
