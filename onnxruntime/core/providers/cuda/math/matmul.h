@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace cuda {
