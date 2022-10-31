@@ -72,6 +72,7 @@ EventRecord& EventRecord::operator = (EventRecord&& other) {
   std::swap(name, other.name);
   dur = other.dur;
   std::swap(args, other.args);
+  return *this;
 }
 
 }  // namespace profiling
