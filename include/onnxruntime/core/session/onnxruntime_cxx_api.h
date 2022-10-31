@@ -603,13 +603,6 @@ struct ConstSessionImpl : Base<T> {
    */
   AllocatedStringPtr GetOverridableInitializerNameAllocated(size_t index, OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerName
 
-  /** \brief Returns a copy of the profiling file name.
-   *
-   * \param allocator to allocate memory for the copy of the string returned
-   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
-   *  The OrtAllocator instances must be valid at the point of memory release.
-   */
-  AllocatedStringPtr EndProfilingAllocated(OrtAllocator* allocator) const;  ///< Wraps OrtApi::SessionEndProfiling
   uint64_t GetProfilingStartTimeNs() const;                                 ///< Wraps OrtApi::SessionGetProfilingStartTimeNs
   ModelMetadata GetModelMetadata() const;                                   ///< Wraps OrtApi::SessionGetModelMetadata
 
@@ -650,6 +643,14 @@ struct SessionImpl : ConstSessionImpl<T> {
            const char* const* output_names, Value* output_values, size_t output_count);
 
   void Run(const RunOptions& run_options, const IoBinding&);  ///< Wraps OrtApi::RunWithBinding
+
+  /** \brief End profiling and return a copy of the profiling file name.
+   *
+   * \param allocator to allocate memory for the copy of the string returned
+   * \return a instance of smart pointer that would deallocate the buffer when out of scope.
+   *  The OrtAllocator instances must be valid at the point of memory release.
+   */
+  AllocatedStringPtr EndProfilingAllocated(OrtAllocator* allocator);  ///< Wraps OrtApi::SessionEndProfiling
 };
 
 }  // namespace detail
