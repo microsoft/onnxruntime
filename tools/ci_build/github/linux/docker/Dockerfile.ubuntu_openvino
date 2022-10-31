@@ -1,8 +1,11 @@
 ARG UBUNTU_VERSION=20.04
-FROM ubuntu:${UBUNTU_VERSION}
-
 ARG OPENVINO_VERSION=2022.2.0
+FROM openvino/ubuntu20_runtime:${OPENVINO_VERSION} AS builder
+
+FROM ubuntu:${UBUNTU_VERSION}
 ARG PYTHON_VERSION=3.8
+
+COPY --from=builder /opt/intel/openvino /opt/intel/openvino
 
 ADD scripts /tmp/scripts
 RUN /tmp/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} -d EdgeDevice && \
@@ -12,19 +15,13 @@ RUN /tmp/scripts/install_ubuntu.sh -p ${PYTHON_VERSION} -d EdgeDevice && \
 RUN apt update && apt install -y libnuma1 ocl-icd-libopencl1 && \
     rm -rf /var/lib/apt/lists/* /tmp/scripts
 
-ENV INTEL_OPENVINO_DIR /opt/intel/openvino_${OPENVINO_VERSION}
+ENV INTEL_OPENVINO_DIR /opt/intel/openvino/
 ENV LD_LIBRARY_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64:$INTEL_OPENVINO_DIR/runtime/3rdparty/tbb/lib:/usr/local/openblas/lib:$LD_LIBRARY_PATH
 ENV InferenceEngine_DIR $INTEL_OPENVINO_DIR/runtime/cmake
 ENV ngraph_DIR $INTEL_OPENVINO_DIR/runtime/cmake
 ENV IE_PLUGINS_PATH $INTEL_OPENVINO_DIR/runtime/lib/intel64
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH /usr/local/gradle/bin:$PATH
-
-RUN cd /opt && mkdir -p intel && cd intel && \
-    wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2022.2/linux/l_openvino_toolkit_ubuntu20_2022.2.0.7713.af16ea1d79a_x86_64.tgz && \
-    tar xzf l_openvino_toolkit_ubuntu20_2022.2.0.7713.af16ea1d79a_x86_64.tgz && rm -rf l_openvino_toolkit_ubuntu20_2022.2.0.7713.af16ea1d79a_x86_64.tgz && \
-    mv l_openvino_toolkit_ubuntu20_2022.2.0.7713.af16ea1d79a_x86_64 openvino_2022.2.0 && \
-    cd $INTEL_OPENVINO_DIR/install_dependencies && ./install_openvino_dependencies.sh -y
 
 WORKDIR /root
 
@@ -45,4 +42,4 @@ ARG BUILD_USER=onnxruntimedev
 WORKDIR /home/$BUILD_USER
 RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
 RUN adduser $BUILD_USER video
-USER $BUILD_USER
+USER $BUILD_USER 
