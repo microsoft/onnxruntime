@@ -12,58 +12,37 @@ from .ort_backend import OrtBackend
 
 
 class AotOrt(AotAutogradStrategy):
+    """Implement compiler interface to plug ORT into TorchDynam.
+
+    Under the hood, AotOrt.compile is called inside functorch. See aot_function
+    and aot_module in aot_autograd.py in PyTorch repo for more details. Basically,
+    AotOrt.compile is mapped to forward graph compiler, fw_compile, and backward
+    graph compiler, bw_compile, in aot_autograd.py.
+    """
+
     def __init__(self, graph_module: torch.fx.GraphModule, example_inputs):
         super().__init__(graph_module, example_inputs)
 
         self.ort = OrtBackend()
-        self.populate_aten2aten_decomps()
-
-    def populate_aten2aten_decomps(self):
-        aten = torch.ops.aten
-        default_decompositions = {
-            aten.detach,
-            aten.gelu_backward,
-            aten.leaky_relu_backward,
-            aten.sigmoid_backward,
-            aten.threshold_backward,
-            aten.hardtanh_backward,
-            aten.hardsigmoid_backward,
-            aten.hardswish_backward,
-            aten.tanh_backward,
-            aten.silu_backward,
-            aten.elu_backward,
-            aten.cudnn_batch_norm,
-            aten.cudnn_batch_norm_backward,
-            aten.masked_fill.Scalar,
-            aten.masked_fill.Tensor,
-            aten.elu,
-            aten.leaky_relu,
-            aten.hardtanh,
-            aten.hardswish,
-            aten.hardsigmoid,
-            aten.rsub,
-            aten.native_batch_norm_backward,
-        }
-
-        self.aten2aten_decompositions = torch._decomp.get_decompositions(default_decompositions)
 
     def candidate(self):
         return BACKENDS["aot_autograd"](
+            # Graph to compile.
             self.gm,
+            # Example inputs that self.gm can execute on.
+            # That it, self.gm(*example_inputs) will run.
             self.example_inputs,
+            # Forward graph's compiler.
             fw_compiler=self.ort,
+            # Backward graph's compiler.
             bw_compiler=self.ort,
+            # partition_fn splits training graph into forward and backward graphs.
             partition_fn=min_cut_rematerialization_partition,
-            decompositions=self.aten2aten_decompositions,
         )
 
 
-class AOTAutogradOrtWithContext:
-    def __init__(self):
-        self.backend_ctx_ctor = lambda: torch.jit.fuser("none")
-
-    def __call__(self, graph_module: torch.fx.GraphModule, example_inputs):
-        return AotOrt.compile_fn(graph_module, example_inputs)
-
-
-aot_ort = AOTAutogradOrtWithContext()
+# Call stack:
+# AotAutogradStrategy.compile_fn
+#  AotAutogradStrategy.verified_candidate
+#   AotOrt.candidate
+aot_ort = AotOrt.compile_fn
