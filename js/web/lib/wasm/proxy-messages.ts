@@ -69,6 +69,5 @@ interface MesssageEndProfiling extends MessageError {
   in ?: number;
 }
 
-export type OrtWasmMessage =
-    MessageInitWasm|MessageInitOrt|MessageCreateSessionAllocate|MessageCreateSessionFinalize|MessageCreateSession|
-    MessageReleaseSession|MessageRun|MesssageEndProfiling;
+export type OrtWasmMessage = MessageInitWasm|MessageInitOrt|MessageCreateSessionAllocate|MessageCreateSessionFinalize|
+    MessageCreateSession|MessageReleaseSession|MessageRun|MesssageEndProfiling;

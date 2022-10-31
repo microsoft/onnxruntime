@@ -32,62 +32,61 @@ const activeSessions = new Map<number, SessionMetadata>();
  * create an instance of InferenceSession.
  * @returns the metadata of InferenceSession. 0-value handle for failure.
  */
- export const createSessionAllocate =
- (model: Uint8Array): [number, number] => {
-   const wasm = getInstance();
-   const modelDataOffset = wasm._malloc(model.byteLength);
-   wasm.HEAPU8.set(model, modelDataOffset);
-   return [modelDataOffset, model.byteLength];
- };
+export const createSessionAllocate = (model: Uint8Array): [number, number] => {
+  const wasm = getInstance();
+  const modelDataOffset = wasm._malloc(model.byteLength);
+  wasm.HEAPU8.set(model, modelDataOffset);
+  return [modelDataOffset, model.byteLength];
+};
 
- export const createSessionFinalize =
- (modelData: SerializableModeldata, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
-   const wasm = getInstance();
+export const createSessionFinalize =
+    (modelData: SerializableModeldata, options?: InferenceSession.SessionOptions): SerializableSessionMetadata => {
+      const wasm = getInstance();
 
-   let sessionHandle = 0;
-   let sessionOptionsHandle = 0;
-   let allocs: number[] = [];
+      let sessionHandle = 0;
+      let sessionOptionsHandle = 0;
+      let allocs: number[] = [];
 
-   try {
-     [sessionOptionsHandle, allocs] = setSessionOptions(options);
+      try {
+        [sessionOptionsHandle, allocs] = setSessionOptions(options);
 
-     sessionHandle = wasm._OrtCreateSession(modelData[0], modelData[1], sessionOptionsHandle);
-     if (sessionHandle === 0) {
-       throw new Error('Can\'t create a session');
-     }
-   } finally {
-     wasm._free(modelData[0]);
-     wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
-     allocs.forEach(wasm._free);
-   }
+        sessionHandle = wasm._OrtCreateSession(modelData[0], modelData[1], sessionOptionsHandle);
+        if (sessionHandle === 0) {
+          throw new Error('Can\'t create a session');
+        }
+      } finally {
+        wasm._free(modelData[0]);
+        wasm._OrtReleaseSessionOptions(sessionOptionsHandle);
+        allocs.forEach(wasm._free);
+      }
 
-   const inputCount = wasm._OrtGetInputCount(sessionHandle);
-   const outputCount = wasm._OrtGetOutputCount(sessionHandle);
+      const inputCount = wasm._OrtGetInputCount(sessionHandle);
+      const outputCount = wasm._OrtGetOutputCount(sessionHandle);
 
-   const inputNames = [];
-   const inputNamesUTF8Encoded = [];
-   const outputNames = [];
-   const outputNamesUTF8Encoded = [];
-   for (let i = 0; i < inputCount; i++) {
-     const name = wasm._OrtGetInputName(sessionHandle, i);
-     if (name === 0) {
-       throw new Error('Can\'t get an input name');
-     }
-     inputNamesUTF8Encoded.push(name);
-     inputNames.push(wasm.UTF8ToString(name));
-   }
-   for (let i = 0; i < outputCount; i++) {
-     const name = wasm._OrtGetOutputName(sessionHandle, i);
-     if (name === 0) {
-       throw new Error('Can\'t get an output name');
-     }
-     outputNamesUTF8Encoded.push(name);
-     outputNames.push(wasm.UTF8ToString(name));
-   }
+      const inputNames = [];
+      const inputNamesUTF8Encoded = [];
+      const outputNames = [];
+      const outputNamesUTF8Encoded = [];
+      for (let i = 0; i < inputCount; i++) {
+        const name = wasm._OrtGetInputName(sessionHandle, i);
+        if (name === 0) {
+          throw new Error('Can\'t get an input name');
+        }
+        inputNamesUTF8Encoded.push(name);
+        inputNames.push(wasm.UTF8ToString(name));
+      }
+      for (let i = 0; i < outputCount; i++) {
+        const name = wasm._OrtGetOutputName(sessionHandle, i);
+        if (name === 0) {
+          throw new Error('Can\'t get an output name');
+        }
+        outputNamesUTF8Encoded.push(name);
+        outputNames.push(wasm.UTF8ToString(name));
+      }
 
-   activeSessions.set(sessionHandle, [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded]);
-   return [sessionHandle, inputNames, outputNames];
- };
+      activeSessions.set(sessionHandle, [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded]);
+      return [sessionHandle, inputNames, outputNames];
+    };
 
 
 /**

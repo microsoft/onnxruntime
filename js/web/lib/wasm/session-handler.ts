@@ -2,11 +2,11 @@
 // Licensed under the MIT License.
 
 import {readFile} from 'fs';
-import {promisify} from 'util';
 import {env, InferenceSession, SessionHandler, Tensor} from 'onnxruntime-common';
+import {promisify} from 'util';
 
-import {createSessionAllocate, createSessionFinalize, createSession, endProfiling, initOrt, releaseSession, run} from './proxy-wrapper';
-import { SerializableModeldata } from './proxy-messages';
+import {SerializableModeldata} from './proxy-messages';
+import {createSession, createSessionAllocate, createSessionFinalize, endProfiling, initOrt, releaseSession, run} from './proxy-wrapper';
 
 let ortInit: boolean;
 
@@ -57,7 +57,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       } else {
         // browser
         // fetch model and move to wasm heap.
-        const modelData : SerializableModeldata = await this.createSessionAllocate(pathOrBuffer);
+        const modelData: SerializableModeldata = await this.createSessionAllocate(pathOrBuffer);
         // create the session
         [this.sessionId, this.inputNames, this.outputNames] = await createSessionFinalize(modelData, options);
       }
