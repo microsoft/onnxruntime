@@ -125,6 +125,26 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t stride_A, stride_B, stride_C, batch_count;
   auto& device_prop = GetDeviceProp();
   if (helper.OutputOffsets().size() == 1) {
+    if (should_use_cublas_gemm_) {
+    
+    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+        Base::CublasHandle(),
+        transB,
+        transA,
+        static_cast<int>(helper.N()),
+        static_cast<int>(helper.M()),
+        static_cast<int>(helper.K()),
+        &alpha,
+        reinterpret_cast<const CudaT*>(right_X->Data<T>()),
+        ldb,
+        reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+        lda,
+        &zero,
+        reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+        ldc,
+        device_prop));
+    }
+    else {
       CUBLAS_RETURN_IF_ERROR(cublasLtMatmulHelper(
           CublasLtHandle(),
           transB,
@@ -144,6 +164,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
           NULL, false,
           NULL, 0,
           Stream()));
+    }
 
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
